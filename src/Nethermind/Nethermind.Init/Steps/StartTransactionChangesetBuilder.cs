@@ -4,7 +4,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
-using Nethermind.Core.ServiceStopper;
 using Nethermind.State.Flat.History.Changesets;
 
 namespace Nethermind.Init.Steps;
@@ -12,11 +11,12 @@ namespace Nethermind.Init.Steps;
 /// <summary>Starts the per-transaction changeset builder; a no-op when <c>FlatDb.HistoryTransactionIndexEnabled</c>
 /// is off.</summary>
 [RunnerStepDependencies(dependencies: [typeof(InitializeNetwork)])]
-public sealed class StartTransactionChangesetBuilder(TransactionChangesetBuilder builder, IServiceStopper serviceStopper) : IStep
+public sealed class StartTransactionChangesetBuilder(TransactionChangesetBuilder builder) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        serviceStopper.AddStoppable(builder);
+        // The builder is stopped before disposal by the service-stopper middleware, which registers every
+        // IStoppableService it activates; registering it here as well would only queue the same instance twice.
         builder.Start();
         return Task.CompletedTask;
     }

@@ -38,7 +38,8 @@ public class StateProviderCodeFlushTests
 
             provider.Commit(Prague.Instance, tracer, commitRoots, false);
 
-            tracer.Received(1).ReportCodeChange(address, null, Arg.Is<byte[]>(bytes => bytes.SequenceEqual(code)));
+            // Both byte[] arguments take a matcher: NSubstitute refuses a mix of literal and matcher across arguments of one type.
+            tracer.Received(1).ReportCodeChange(address, Arg.Is<byte[]>(previous => previous == null), Arg.Is<byte[]>(bytes => bytes.SequenceEqual(code)));
             Assert.That(provider.GetCode(hash), Is.EqualTo(code), "committed and staged code must remain readable");
         }
         Assert.That(codeDb.Writes, Is.EqualTo(commitRoots ? 2 : 0), "tracing must not force a staged-only commit to flush");

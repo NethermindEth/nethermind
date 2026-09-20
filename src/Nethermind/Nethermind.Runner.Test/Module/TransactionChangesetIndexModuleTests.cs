@@ -327,8 +327,10 @@ public class TransactionChangesetIndexModuleTests
         Assert.That(container.Dispose, Throws.Nothing, "the container disposes its singletons too; a second dispose must be harmless");
     }
 
+    // The builder stops before the databases it writes to are disposed, and it is the middleware that arranges that
+    // for every IStoppableService it activates - so resolving it is what has to register it, exactly once.
     [Test]
-    public async Task StartTransactionChangesetBuilder_WhenExecuted_RegistersPreDisposalStop()
+    public async Task TransactionChangesetBuilder_WhenResolvedAndStarted_IsRegisteredOnceForPreDisposalStop()
     {
         IServiceStopper stopper = Substitute.For<IServiceStopper>();
         using IContainer container = new ContainerBuilder()

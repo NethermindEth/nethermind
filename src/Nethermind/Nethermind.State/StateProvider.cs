@@ -936,6 +936,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         if (account is null)
         {
             _metrics.IncrementAccountDeleted();
+            // Resolve what is being removed before the block change is added: a block that removes an account it
+            // never read would otherwise have nothing to compare against and record no removal, and the storage
+            // that goes with the account would stay readable to a cache that cannot infer the wipe from a root.
+            GetState(address);
         }
 
         ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
