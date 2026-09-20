@@ -3,6 +3,7 @@
 
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
+using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Spec;
@@ -87,4 +88,20 @@ public class BeaconChainSpecTests
                 "Sepolia has a confirmed Gloas entry, unlike Mainnet and Hoodi");
             Assert.That(BeaconChainSpec.Sepolia.BlobSchedule, Has.Length.EqualTo(2));
         });
+
+    /// <summary>
+    /// A shipped network with no bootnodes cannot start discovery, and nothing else in the
+    /// driver reports it. `required` forces the field to be set; this checks it was set to
+    /// something usable rather than an empty array to satisfy the compiler.
+    /// </summary>
+    [TestCaseSource(nameof(ShippedNetworks))]
+    public void Every_shipped_spec_carries_bootnodes(string name, BeaconChainSpec spec) =>
+        Assert.That(spec.Bootnodes, Is.Not.Empty, $"{name} has no bootnode records");
+
+    private static IEnumerable<object[]> ShippedNetworks() =>
+    [
+        ["Mainnet", BeaconChainSpec.Mainnet],
+        ["Hoodi", BeaconChainSpec.Hoodi],
+        ["Sepolia", BeaconChainSpec.Sepolia],
+    ];
 }

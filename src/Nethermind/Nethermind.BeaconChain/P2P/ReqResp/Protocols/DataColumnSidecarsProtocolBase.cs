@@ -78,6 +78,12 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                     throw new Eth2ReqRespException("Data column sidecar chunk failed structural validation");
                 }
 
+                if (!DataColumnSidecarVerifier.VerifyBlobCount(sidecar, Spec))
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+                    throw new Eth2ReqRespException("Data column sidecar chunk carries more commitments than its epoch permits");
+                }
+
                 if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(sidecar)))
                 {
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
