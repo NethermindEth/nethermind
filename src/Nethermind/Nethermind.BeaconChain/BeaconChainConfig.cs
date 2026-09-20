@@ -13,7 +13,10 @@ public class BeaconChainConfig : IBeaconChainConfig
     public string? Bootnodes { get; set; }
     public string? StaticPeers { get; set; }
     public int TargetPeerCount { get; set; } = 50;
+    public int MinPeerCount { get; set; } = 20;
     public int MaxPeerCount { get; set; } = 80;
+    public int MaxConcurrentOutboundDials { get; set; } = 8;
+    public int FaultDisconnectsBeforeBan { get; set; } = 3;
     public int StateSnapshotIntervalEpochs { get; set; } = 32;
     public bool DisableOnExternalCl { get; set; } = true;
 }
