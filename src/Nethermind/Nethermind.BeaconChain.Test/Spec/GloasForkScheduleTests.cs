@@ -35,6 +35,7 @@ public class GloasForkScheduleTests
         MaxBlobsPerBlockElectra = BeaconChainSpec.Mainnet.MaxBlobsPerBlockElectra,
         GloasForkEpoch = GloasEpoch,
         GloasForkVersion = GloasVersion,
+        Bootnodes = [],
     };
 
     [Test]

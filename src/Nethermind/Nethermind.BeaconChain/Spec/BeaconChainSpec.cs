@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -80,6 +81,12 @@ public class BeaconChainSpec
     /// <summary>The Gloas <c>fork_version</c>, meaningless while <see cref="GloasForkEpoch"/> is unscheduled.</summary>
     public required byte[] GloasForkVersion { get; init; }
 
+    /// <summary>The consensus-layer bootnode records for this network.</summary>
+    /// <remarks>Held here rather than in a second switch keyed on chain id, which drifted:
+    /// Sepolia was added to the spec and not to the bootnodes, and discovery threw on a
+    /// network the spec claimed to support.</remarks>
+    public required string[] Bootnodes { get; init; }
+
     public ulong GetEpoch(ulong slot) => slot / SlotsPerEpoch;
 
     public ulong GetSlotAtTime(ulong unixTime) => unixTime < GenesisTime ? 0 : (unixTime - GenesisTime) / SecondsPerSlot;
@@ -135,6 +142,7 @@ public class BeaconChainSpec
     {
         ChainId = BlockchainIds.Mainnet,
         CheckpointSyncUrl = "https://mainnet.checkpoint.sigp.io",
+        Bootnodes = MainnetBootnodes.Enrs,
         SecondsPerSlot = 12,
         SlotsPerEpoch = 32,
         GenesisTime = 1606824023,
@@ -165,6 +173,7 @@ public class BeaconChainSpec
     {
         ChainId = BlockchainIds.Hoodi,
         CheckpointSyncUrl = "https://checkpoint-sync.hoodi.ethpandaops.io",
+        Bootnodes = HoodiBootnodes.Enrs,
         SecondsPerSlot = 12,
         SlotsPerEpoch = 32,
         GenesisTime = 1742213400,
@@ -218,6 +227,7 @@ public class BeaconChainSpec
     {
         ChainId = BlockchainIds.Sepolia,
         CheckpointSyncUrl = "https://checkpoint-sync.sepolia.ethpandaops.io",
+        Bootnodes = SepoliaBootnodes.Enrs,
         SecondsPerSlot = 12,
         SlotsPerEpoch = 32,
         GenesisTime = 1655733600,
