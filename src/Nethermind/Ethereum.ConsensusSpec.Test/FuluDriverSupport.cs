@@ -9,6 +9,7 @@ using System.Linq;
 using System.Reflection;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -27,7 +28,9 @@ namespace Ethereum.ConsensusSpec.Test;
 /// </summary>
 public static class FuluDriverSupport
 {
-    public const ulong MaxBlobsPerBlockElectra = 9;
+    // Derived from BeaconChainSpec.Mainnet rather than a separate literal, so this can never drift
+    // from the value StateTransition.Apply itself falls back to for a pre-BPO-schedule epoch.
+    public static readonly ulong MaxBlobsPerBlockElectra = BeaconChainSpec.Mainnet.MaxBlobsPerBlockElectra;
 
     public static BeaconStateFulu DecodeState(string path)
     {
