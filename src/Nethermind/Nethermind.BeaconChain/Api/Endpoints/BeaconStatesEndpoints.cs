@@ -124,9 +124,10 @@ internal static class BeaconStatesEndpoints
         List<string> statusFilters = CollectQueryValues(c, "status");
 
         HashSet<int>? indexFilter = null;
+        Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
         foreach (string id in CollectQueryValues(c, "id"))
         {
-            ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, out int index);
+            ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, ref pubkeyIndex, out int index);
             if (lookup == ValidatorIdStatus.Invalid)
             {
                 return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
@@ -218,9 +219,10 @@ internal static class BeaconStatesEndpoints
         }
         else
         {
+            Dictionary<BlsPublicKey, int>? pubkeyIndex = null;
             foreach (string id in idFilters)
             {
-                ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, out int index);
+                ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, ref pubkeyIndex, out int index);
                 if (lookup == ValidatorIdStatus.Invalid)
                 {
                     return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
@@ -339,20 +341,15 @@ internal static class BeaconStatesEndpoints
     private enum ValidatorIdStatus { Ok, NotFound, Invalid }
 
     /// <summary>Resolves a beacon-api <c>validator_id</c> path/query segment: a decimal index or a 0x-prefixed pubkey.</summary>
+    /// <remarks>Single-id call site only (<see cref="ValidatorById"/>): a pubkey id is resolved by an early-exit
+    /// linear scan, which is cheaper than building a map for one lookup.</remarks>
     private static ValidatorIdStatus TryResolveValidatorIndex(BeaconStateFulu state, string id, out int index)
     {
-        index = -1;
-        Validator[] validators = state.Validators!;
-
-        if (ulong.TryParse(id, out ulong parsedIndex))
-        {
-            if (parsedIndex >= (ulong)validators.Length) return ValidatorIdStatus.NotFound;
-            index = (int)parsedIndex;
-            return ValidatorIdStatus.Ok;
-        }
+        if (TryResolveNumericIndex(state.Validators!, id, out ValidatorIdStatus numericStatus, out index)) return numericStatus;
 
         if (HexConvert.TryParsePubKey(id, out BlsPublicKey pubkey))
         {
+            Validator[] validators = state.Validators!;
             for (int i = 0; i < validators.Length; i++)
             {
                 if (validators[i].Pubkey == pubkey)
@@ -366,6 +363,58 @@ internal static class BeaconStatesEndpoints
         }
 
         return ValidatorIdStatus.Invalid;
+    }
+
+    /// <summary>
+    /// Same contract as <see cref="TryResolveValidatorIndex(BeaconStateFulu, string, out int)"/>, but a pubkey id
+    /// is resolved through <paramref name="pubkeyIndex"/> instead of a linear scan. The caller owns the map's
+    /// lifetime - build it lazily on the first pubkey-form id in a request's id-filter loop and reuse it for every
+    /// subsequent id, so an all-numeric-id (or id-less) request never pays for it. Building it turns what would
+    /// otherwise be an O(validators) scan per pubkey id into one O(validators) build per request.
+    /// </summary>
+    private static ValidatorIdStatus TryResolveValidatorIndex(BeaconStateFulu state, string id, ref Dictionary<BlsPublicKey, int>? pubkeyIndex, out int index)
+    {
+        if (TryResolveNumericIndex(state.Validators!, id, out ValidatorIdStatus numericStatus, out index)) return numericStatus;
+
+        if (HexConvert.TryParsePubKey(id, out BlsPublicKey pubkey))
+        {
+            pubkeyIndex ??= BuildPubkeyIndex(state.Validators!);
+            return pubkeyIndex.TryGetValue(pubkey, out index) ? ValidatorIdStatus.Ok : ValidatorIdStatus.NotFound;
+        }
+
+        return ValidatorIdStatus.Invalid;
+    }
+
+    private static bool TryResolveNumericIndex(Validator[] validators, string id, out ValidatorIdStatus status, out int index)
+    {
+        index = -1;
+        if (!ulong.TryParse(id, out ulong parsedIndex))
+        {
+            status = ValidatorIdStatus.Invalid;
+            return false;
+        }
+
+        if (parsedIndex >= (ulong)validators.Length)
+        {
+            status = ValidatorIdStatus.NotFound;
+            return true;
+        }
+
+        index = (int)parsedIndex;
+        status = ValidatorIdStatus.Ok;
+        return true;
+    }
+
+    /// <summary>Builds a one-off pubkey-to-index map for a single request's id-filter loop; not cached across requests.</summary>
+    private static Dictionary<BlsPublicKey, int> BuildPubkeyIndex(Validator[] validators)
+    {
+        Dictionary<BlsPublicKey, int> map = new(validators.Length);
+        for (int i = 0; i < validators.Length; i++)
+        {
+            map[validators[i].Pubkey] = i;
+        }
+
+        return map;
     }
 
     private static bool MatchesAny(string status, List<string> filters)
