@@ -38,7 +38,7 @@ public class BeaconDiscoveryTests
     [Test]
     public void Local_enr_round_trips_and_update_bumps_sequence()
     {
-        BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, TestForkId);
+        BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, TestForkId, custodyGroupCount: 4);
         NodeRecord decoded = NodeRecord.FromEnrString(provider.Current.ToString());
 
         using (Assert.EnterMultipleScope())
@@ -63,6 +63,18 @@ public class BeaconDiscoveryTests
             Assert.That(updated.EnrSequence, Is.EqualTo(2ul));
             Assert.That(updatedForkId, Is.EqualTo(rotated));
         }
+    }
+
+    [TestCase(4ul)]
+    [TestCase(128ul)]
+    public void Local_enr_carries_the_cgc_entry_at_the_configured_custody_group_count(ulong custodyGroupCount)
+    {
+        // Read directly off the freshly-built record: CustodyGroupCountEntryTests already covers the
+        // RLP byte-encoding rule exhaustively, including the round trip through raw bytes that a
+        // record parsed off the wire (NodeRecord.FromEnrString) would decode this entry as instead.
+        BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, TestForkId, custodyGroupCount);
+
+        Assert.That(provider.Current.GetValue<ulong>("cgc"), Is.EqualTo(custodyGroupCount));
     }
 
     [TestCase("current", true, ExpectedResult = true)]
