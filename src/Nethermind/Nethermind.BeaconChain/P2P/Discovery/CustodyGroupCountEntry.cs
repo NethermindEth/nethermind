@@ -14,8 +14,8 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 /// Shaped like <see cref="Eth2Entry"/>.
 /// RLP's own unsigned-integer encoding already is "big-endian, no leading zero bytes, 0 as an empty
 /// string", so <c>writer.Encode(ulong)</c> alone satisfies the spec's byte-encoding rule without any
-/// extra trimming here. Not yet published in the local record: a node that advertises a custody
-/// count must actually serve those columns, so wiring this in belongs with the serving path.
+/// extra trimming here. Published in the local record by <see cref="BeaconNodeRecordProvider"/>, with
+/// the same count <see cref="LocalCustody"/> derives this node's serving columns/subnets from.
 /// </remarks>
 internal sealed class CustodyGroupCountEntry(ulong custodyGroupCount) : EnrContentEntry<ulong>(custodyGroupCount)
 {
