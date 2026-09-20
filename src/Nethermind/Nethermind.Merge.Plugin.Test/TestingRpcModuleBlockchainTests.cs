@@ -133,6 +133,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
         await WithMaintenance(chain.Container.Resolve<BlockTreeMutationLock>(), maintenance, async () =>
             result = await module.testing_commitBlockV1(NextPayloadAttributes(head.Header), [], []));
 
+        Hash256 suggestedHash = chain.BlockTree.BestSuggestedHeader!.Hash!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result!.Result.ResultType, Is.EqualTo(maintenance ? ResultType.Failure : ResultType.Success));
@@ -141,29 +142,28 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
             {
                 Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
                 Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(head.Hash));
-                Assert.That(chain.BlockTree.IsMainChain(chain.BlockTree.BestSuggestedHeader!.Hash!), Is.False);
+                Assert.That(chain.BlockTree.IsMainChain(suggestedHash), Is.False);
             }
             else
                 Assert.That(result.Data, Is.EqualTo(chain.BlockTree.Head.Hash));
         }
 
-        if (maintenance)
-        {
-            Hash256 refusedHash = chain.BlockTree.BestSuggestedHeader!.Hash!;
-            ResultWrapper<Hash256> retry = await module.testing_commitBlockV1(NextPayloadAttributes(head.Header), [], []);
+        ResultWrapper<Hash256> repeated = await module.testing_commitBlockV1(NextPayloadAttributes(head.Header), [], []);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(retry.Result.ResultType, Is.EqualTo(ResultType.Success), retry.Result.Error);
-                Assert.That(retry.Data, Is.EqualTo(refusedHash));
-                Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(refusedHash));
-                Assert.That(chain.BlockTree.IsMainChain(refusedHash), Is.True);
-            }
+        Assert.That(repeated.Result.ResultType, Is.EqualTo(ResultType.Success), repeated.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repeated.Data, maintenance ? Is.EqualTo(suggestedHash) : Is.Not.EqualTo(suggestedHash));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(repeated.Data));
+            Assert.That(chain.BlockTree.Head.ParentHash, Is.EqualTo(maintenance ? head.Hash : suggestedHash));
+            Assert.That(chain.BlockTree.Head.Number, Is.EqualTo(head.Number + (maintenance ? 1UL : 2UL)));
+            Assert.That(chain.BlockTree.IsMainChain(repeated.Data!), Is.True);
         }
     }
 
-    [Test]
-    public async Task Produced_block_reports_refused_canonical_update([Values] bool maintenance, [Values] bool warningsEnabled)
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    public async Task Produced_block_reports_refused_canonical_update(bool maintenance, bool warningsEnabled)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IBlockProducerRunner runner = Substitute.For<IBlockProducerRunner>();
