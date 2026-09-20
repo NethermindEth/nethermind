@@ -1929,7 +1929,7 @@ namespace Nethermind.Blockchain
             using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
             {
                 if (newHeadBlock is not null)
-                    ClearStaleMarkersAbove(newHeadBlock.Number, batch);
+                    ClearStaleMarkersAbove(newHeadBlock.Number, batch, (startNumber, endNumber.Value));
 
                 for (ulong i = endNumber.Value; i >= startNumber; i--)
                 {
@@ -1954,17 +1954,14 @@ namespace Nethermind.Blockchain
             }
 
             // Suggestions above a deleted level also lose their ancestry.
-            if (newHeadBlock is not null || (deleted > 0 &&
-                (BestSuggestedHeader?.Number >= startNumber || BestSuggestedBody?.Number >= startNumber)))
-            {
-                BestSuggestedHeader = newHeadBlock?.Header ?? Head?.Header;
+            if (newHeadBlock is not null || (deleted > 0 && BestSuggestedBody?.Number >= startNumber))
                 BestSuggestedBody = newHeadBlock ?? Head;
-            }
-            if (deleted > 0 && (BestSuggestedBeaconHeader?.Number >= startNumber || BestSuggestedBeaconBody?.Number >= startNumber))
-            {
-                BestSuggestedBeaconHeader = null;
+            if (newHeadBlock is not null || (deleted > 0 && BestSuggestedHeader?.Number >= startNumber))
+                BestSuggestedHeader = BestSuggestedBody?.Header ?? newHeadBlock?.Header ?? Head?.Header;
+            if (deleted > 0 && BestSuggestedBeaconBody?.Number >= startNumber)
                 BestSuggestedBeaconBody = null;
-            }
+            if (deleted > 0 && BestSuggestedBeaconHeader?.Number >= startNumber)
+                BestSuggestedBeaconHeader = BestSuggestedBeaconBody?.Header;
             if (LowestInsertedBeaconHeader?.Number >= startNumber && LowestInsertedBeaconHeader.Number <= endNumber)
                 LowestInsertedBeaconHeader = null;
             if (newHeadBlock is not null)
