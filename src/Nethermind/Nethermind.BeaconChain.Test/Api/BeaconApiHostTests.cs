@@ -74,7 +74,7 @@ public class BeaconApiHostTests
     public void ResetSharedState()
     {
         // Metrics.BeaconChainElInSync is process-wide static state (the orchestrator's own real
-        // signal, see ResponseEnvelope.ExecutionOptimistic) — pin it explicitly per test rather
+        // signal, see ResponseEnvelope.ExecutionOptimistic) - pin it explicitly per test rather
         // than depend on whatever the previous test left it as.
         Metrics.BeaconChainElInSync = 0;
         _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero };
@@ -248,7 +248,7 @@ public class BeaconApiHostTests
         JsonDocument body = await ReadJsonAsync(found);
         Assert.That(body.RootElement.GetProperty("data").GetProperty("canonical").GetBoolean(), Is.True);
         Assert.That(body.RootElement.GetProperty("data").GetProperty("header").GetProperty("message").GetProperty("slot").GetString(), Is.EqualTo(slot.ToString()));
-        // Head/finalized are both still zero: this block (slot 500000) is neither, so finalized must be false.
+        // Head/finalized are both still zero: this block (slot 13,200,000) is neither, so finalized must be false.
         Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False);
     }
 
