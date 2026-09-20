@@ -39,8 +39,8 @@ public enum GossipDropReason
 /// within <see cref="Eth2MessageId.MaxGossipSize"/>, SSZ decoding, duplicate suppression, and slot
 /// sanity against the wall clock (not from the future beyond
 /// <see cref="MaximumGossipClockDisparityMs"/>; blocks additionally not older than one epoch).
-/// Full spec gossip validation — proposer signature and shuffling, first-block-per-slot,
-/// parent-block checks, aggregator selection — requires the head state and belongs to the
+/// Full spec gossip validation - proposer signature and shuffling, first-block-per-slot,
+/// parent-block checks, aggregator selection - requires the head state and belongs to the
 /// orchestrator import pipeline consuming these events.
 /// </remarks>
 public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILogManager logManager, ExecutionPayloadEnvelopePool? envelopePool = null)
@@ -201,7 +201,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>
     /// Decode-only: the full <c>execution_payload</c> gossip conditions (envelope's block passes
     /// validation, builder/block-hash/execution-requests-root match the committed bid, envelope
-    /// signature) all need the head state and the block's bid, so — like <see cref="HandleBeaconBlock"/> —
+    /// signature) all need the head state and the block's bid, so - like <see cref="HandleBeaconBlock"/> -
     /// they are left to the orchestrator import pipeline.
     /// </summary>
     public void HandleExecutionPayloadEnvelope(byte[] message) =>
