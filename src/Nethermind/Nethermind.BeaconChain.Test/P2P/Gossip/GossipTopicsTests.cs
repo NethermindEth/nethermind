@@ -49,4 +49,24 @@ public class GossipTopicsTests
             Assert.That(GossipTopics.NextRotation(Spec, 419_072), Is.Null, "nothing scheduled after BPO2");
         }
     }
+
+    [TestCase(GossipTopics.ExecutionPayload, "/eth2/8c9f62fe/execution_payload/ssz_snappy")]
+    [TestCase(GossipTopics.PayloadAttestationMessage, "/eth2/8c9f62fe/payload_attestation_message/ssz_snappy")]
+    public void Builds_topic_strings_for_the_gloas_only_topics(string name, string expected) =>
+        Assert.That(GossipTopics.Topic(GossipTopics.CurrentDigest(Spec, 419072), name), Is.EqualTo(expected));
+
+    [Test]
+    public void Gloas_topic_names_are_exactly_execution_payload_and_payload_attestation_message_and_never_the_builder_only_ones()
+    {
+        Assert.That(GossipTopics.GloasTopicNames, Is.EquivalentTo(new[] { "execution_payload", "payload_attestation_message" }));
+        // execution_payload_bid and proposer_preferences exist only for builders/proposers; this
+        // node is non-attesting and must never subscribe to them.
+        Assert.That(GossipTopics.GloasTopicNames, Has.None.Contain("bid"));
+        Assert.That(GossipTopics.GloasTopicNames, Has.None.Contain("preferences"));
+    }
+
+    [TestCase(0ul, "data_column_sidecar_0")]
+    [TestCase(127ul, "data_column_sidecar_127")]
+    public void Builds_data_column_sidecar_topic_names(ulong subnetId, string expected) =>
+        Assert.That(GossipTopics.DataColumnSidecarTopicName(subnetId), Is.EqualTo(expected));
 }
