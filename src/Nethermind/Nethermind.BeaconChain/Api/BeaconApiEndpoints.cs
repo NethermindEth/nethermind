@@ -24,6 +24,14 @@ internal static class BeaconApiEndpoints
             {
                 await next(httpCtx);
             }
+            catch (NotSupportedException e) when (!httpCtx.RequestAborted.IsCancellationRequested)
+            {
+                // BeaconStateCodec throws this by name for a state whose fork this driver cannot
+                // decode (e.g. Gloas): the node lacks a capability, it is not malfunctioning, so the
+                // caller gets a labelled, actionable status rather than an opaque 500.
+                if (logger.IsWarn) logger.Warn($"Beacon API request for {httpCtx.Request.Method} {httpCtx.Request.Path} named a fork this driver cannot process: {e.Message}");
+                await ApiErrors.Write(httpCtx, StatusCodes.Status501NotImplemented, e.Message);
+            }
             catch (Exception e) when (!httpCtx.RequestAborted.IsCancellationRequested)
             {
                 if (logger.IsError) logger.Error($"Beacon API handler failed for {httpCtx.Request.Method} {httpCtx.Request.Path}", e);
