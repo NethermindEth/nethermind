@@ -4,7 +4,6 @@
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Core.Attributes;
 using Nethermind.Serialization.Rlp;
 using System;
 using System.Threading;
@@ -19,7 +18,17 @@ namespace Nethermind.Network.Rlpx
 
         private int _contextId;
 
-        [Todo(Improve.Refactor, "We can remove MAC space from here later and move it to encoder")]
+        private readonly IFrameCipher? _cipher;
+        private readonly IFrameMacProcessor? _macProcessor;
+        private readonly byte[]? _headerBuffer;
+
+        internal ZeroPacketSplitter(IFrameCipher cipher, IFrameMacProcessor macProcessor) : this()
+        {
+            _cipher = cipher;
+            _macProcessor = macProcessor;
+            _headerBuffer = new byte[Frame.HeaderSize];
+        }
+
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
             Interlocked.Increment(ref _contextId);
@@ -32,7 +41,8 @@ namespace Nethermind.Network.Rlpx
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
                 int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
-                output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize);
+                int frameStart = output.WriterIndex;
+                output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize + (_cipher is null ? 0 : 2 * Frame.MacSize));
 
                 // 000 - 016 | header
                 // 016 - 01x | packet type
@@ -88,11 +98,34 @@ namespace Nethermind.Network.Rlpx
                     output.WriteZero(Frame.HeaderSize - Rlp.LengthOfSequence(contentLength) - 3);
                 }
 
+                if (_cipher is not null) output.WriteZero(Frame.MacSize);
+
                 /*message*/
                 input.ReadBytes(output, framePayloadSize);
                 /*padding to 16*/
                 output.WriteZero(paddingSize);
+
+                if (_cipher is not null)
+                {
+                    output.WriteZero(Frame.MacSize);
+                    EncryptFrame(output, frameStart, framePayloadSize + paddingSize);
+                }
             }
+        }
+
+        private void EncryptFrame(IByteBuffer output, int frameStart, int payloadSize)
+        {
+            // Reserve MAC slots while framing so encryption can use the final wire buffer in place.
+            output.GetBytes(frameStart, _headerBuffer);
+            _cipher!.Encrypt(_headerBuffer!, 0, Frame.HeaderSize, _headerBuffer!, 0);
+            output.SetBytes(frameStart, _headerBuffer);
+
+            byte[] bytes = output.Array;
+            int headerOffset = output.ArrayOffset + frameStart;
+            _macProcessor!.AddMac(_headerBuffer!, 0, Frame.HeaderSize, bytes, headerOffset + Frame.HeaderSize, true);
+            int payloadOffset = headerOffset + Frame.HeaderSize + Frame.MacSize;
+            _cipher.Encrypt(bytes, payloadOffset, payloadSize, bytes, payloadOffset);
+            _macProcessor.AddMac(bytes, payloadOffset, payloadSize, bytes, payloadOffset + payloadSize, false);
         }
     }
 }

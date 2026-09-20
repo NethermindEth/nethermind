@@ -4,8 +4,10 @@
 using System;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using DotNetty.Common;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -18,6 +20,80 @@ namespace Nethermind.Network.Test.Rlpx;
 public class ZeroNettyFrameEncodeDecodeTests
 {
     private const int TestLength = 10000;
+
+    [Test]
+    public void Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IFrameCipher cipher = Substitute.For<IFrameCipher>();
+        int calls = 0;
+        cipher.When(x => x.Encrypt(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<byte[]>(), Arg.Any<int>()))
+            .Do(_ =>
+            {
+                if (++calls == failingCall) throw new InvalidOperationException("Encryption failed");
+            });
+        ZeroPacketSplitter splitter = new(cipher, Substitute.For<IFrameMacProcessor>());
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        IByteBuffer input = detector.Allocator.Buffer(17).WriteZero(17);
+
+        Assert.ThrowsAsync<EncoderException>(async () => await splitter.WriteAsync(context, input));
+        Assert.That(input.ReferenceCount, Is.Zero);
+        context.DidNotReceive().WriteAsync(Arg.Any<object>());
+    }
+
+    [Test]
+    public void Combined_encoder_matches_separate_stages(
+        [Values(1, 15, 16, 17, 1023, 1024, 1025, 2048, 4097)] int length,
+        [Values] bool disableFraming)
+    {
+        (EncryptionSecrets oldSecrets, _) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets newSecrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor oldMac = new(TestItem.IgnoredPublicKey, oldSecrets);
+        using FrameMacProcessor newMac = new(TestItem.IgnoredPublicKey, newSecrets);
+        ZeroPacketSplitter oldSplitter = new();
+        ZeroPacketSplitter newSplitter = new(new FrameCipher(newSecrets.AesSecret), newMac);
+        if (disableFraming)
+        {
+            oldSplitter.DisableFraming();
+            newSplitter.DisableFraming();
+        }
+
+        EmbeddedChannel oldChannel = new(new ZeroFrameEncoder(new FrameCipher(oldSecrets.AesSecret), oldMac), oldSplitter);
+        EmbeddedChannel newChannel = new(newSplitter);
+        if (disableFraming)
+        {
+            oldChannel.Pipeline.AddLast(new ZeroSnappyEncoder(LimboLogs.Instance));
+            newChannel.Pipeline.AddLast(new ZeroSnappyEncoder(LimboLogs.Instance));
+        }
+        byte[] payload = new byte[length];
+        new Random(42).NextBytes(payload);
+        payload[0] = 2;
+        try
+        {
+            // Cross the RLP context-id encoding boundary and exercise continuous cipher/MAC state.
+            for (int i = 0; i < 130; i++)
+            {
+                IByteBuffer oldInput = Unpooled.Buffer(length + 7).WriteZero(7).WriteBytes(payload).SkipBytes(7);
+                IByteBuffer newInput = oldInput.Copy();
+                oldChannel.WriteOutbound(oldInput);
+                newChannel.WriteOutbound(newInput);
+                using DisposableByteBuffer expected = oldChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+                using DisposableByteBuffer actual = newChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual.AsSpan().ToArray(), Is.EqualTo(expected.AsSpan().ToArray()), $"message {i}");
+                    Assert.That(oldInput.ReferenceCount, Is.Zero);
+                    Assert.That(newInput.ReferenceCount, Is.Zero);
+                }
+            }
+        }
+        finally
+        {
+            oldChannel.FinishAndReleaseAll();
+            newChannel.FinishAndReleaseAll();
+        }
+    }
 
     [Test]
     public async Task TwoWayConcurrentEncodeDecodeTests()

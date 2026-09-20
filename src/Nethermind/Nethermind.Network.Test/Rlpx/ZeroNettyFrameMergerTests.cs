@@ -80,12 +80,14 @@ public class ZeroNettyFrameMergerTests
     }
 
     [Test]
-    public void Decodes_encrypted_packets_across_socket_read_boundaries([Values(1, 17, 4096)] int readSize)
+    public void Decodes_encrypted_packets_across_socket_read_boundaries([Values(1, 17, 4096)] int readSize, [Values] bool combinedEncoder)
     {
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
         using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
         using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
-        EmbeddedChannel outbound = new(new ZeroFrameEncoder(new FrameCipher(a.AesSecret), outboundMac), new ZeroPacketSplitter());
+        EmbeddedChannel outbound = combinedEncoder
+            ? new(new ZeroPacketSplitter(new FrameCipher(a.AesSecret), outboundMac))
+            : new(new ZeroFrameEncoder(new FrameCipher(a.AesSecret), outboundMac), new ZeroPacketSplitter());
         EmbeddedChannel inbound = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac), new ZeroFrameMerger(LimboLogs.Instance));
         byte[][] payloads = [Enumerable.Range(0, 31).Select(i => (byte)i).ToArray(),
             Enumerable.Range(0, 2050).Select(i => (byte)i).ToArray(), [99]];
