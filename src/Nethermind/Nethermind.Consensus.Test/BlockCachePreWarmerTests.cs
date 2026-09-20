@@ -829,6 +829,51 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public void GroupTransactionsByWindowAndSender_MergesWindowsSharingASender()
+    {
+        // Windows of 3: [0 1 2] [3 4 5] [6]; sender A sits in the first two, so they merge; the last stays alone.
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyE, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyF, nonce: 0, gasLimit: 100_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> jobs = BlockCachePreWarmer.GroupTransactionsByWindowAndSender(block, size: 3, maxWorkers: 4);
+        try
+        {
+            string[] actual = jobs.Select(static w => string.Concat(w.Transactions.Select(static t => t.Index))).ToArray();
+            Assert.That(actual, Is.EqualTo(new[] { "012345", "6" }));
+        }
+        finally
+        {
+            DisposeGroups(jobs);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsByWindowAndSender_SplitsHeavyMergedJobBackIntoWindows()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> jobs = BlockCachePreWarmer.GroupTransactionsByWindowAndSender(block, size: 2, maxWorkers: 4);
+        try
+        {
+            string[] actual = jobs.Select(static w => string.Concat(w.Transactions.Select(static t => t.Index))).ToArray();
+            Assert.That(actual, Is.EqualTo(new[] { "01", "2" }));
+        }
+        finally
+        {
+            DisposeGroups(jobs);
+        }
+    }
+
+    [Test]
     public void GroupTransactionsBySender_SameSenderStaysGroupedInOrder()
     {
         Block block = Build.A.Block.WithTransactions(
