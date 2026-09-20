@@ -438,7 +438,8 @@ public sealed class BeaconSyncOrchestrator(
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
                 // Includes per-request timeouts, which cancel the request without cancelling the sync.
-                peer.ReportFailure($"Blocks-by-root for {root} failed: {e.Message}");
+                bool sessionDead = e.Message.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || e.Message.Contains("session", StringComparison.OrdinalIgnoreCase);
+                peer.ReportFailure(sessionDead ? PeerFailureReason.SessionClosed : PeerFailureReason.RequestFailed, $"Blocks-by-root for {root} failed: {e.Message}");
                 continue;
             }
 
@@ -554,7 +555,7 @@ public sealed class BeaconSyncOrchestrator(
 
         if (slot % spec.SlotsPerEpoch == 0 && _lastHead is { } head && _logger.IsInfo)
         {
-            _logger.Info($"Beacon chain: head slot {head.HeadSlot} ({head.HeadRoot}), finalized epoch {head.Finalized.Epoch}, peers {peerManager?.PeerCount ?? 0}, EL {(_elInSync ? "in sync" : "syncing")}");
+            _logger.Info($"Beacon chain: head slot {head.HeadSlot} ({head.HeadRoot}), finalized epoch {head.Finalized.Epoch}, peers {peerManager?.PeerCount ?? 0}/{config.TargetPeerCount}, EL {(_elInSync ? "in sync" : "syncing")}");
         }
     }
 
@@ -619,10 +620,10 @@ public sealed class BeaconSyncOrchestrator(
         using SemaphoreSlim dialGate = new(ConcurrentDials);
         await foreach (BeaconPeerCandidate candidate in discovery!.DiscoverPeers(token))
         {
-            while (peerManager!.PeerCount >= config.TargetPeerCount)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(30), token);
-            }
+            // PeerManager owns the target band (and the ban list and dial gate behind it), so this
+            // loop asks whether there is room rather than comparing PeerCount to config itself - the
+            // orchestrator's own comparison here and PeerManager's admission check used to disagree.
+            await peerManager!.WaitForAdmissionCapacityAsync(token);
 
             if (!_dialedPeerIds.TryAdd(candidate.PeerId, 0))
             {

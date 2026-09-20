@@ -31,7 +31,7 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The target number of beacon chain peers.", DefaultValue = "50")]
     int TargetPeerCount { get; set; }
 
-    [ConfigItem(Description = "The low watermark: below this many connected peers the node is under-peered. Purely diagnostic today - nothing yet drives extra dialing off it - since candidate discovery is paced by BeaconDiscovery, not by this config.", DefaultValue = "20")]
+    [ConfigItem(Description = "The low watermark: below this many connected peers the node is under-peered, and the peer manager runs its maintenance round (static-peer reconnect, health checks) on a shorter cadence. Candidate discovery pacing is still BeaconDiscovery's own concern, not this config's.", DefaultValue = "20")]
     int MinPeerCount { get; set; }
 
     [ConfigItem(Description = "The high watermark. Above this many connected peers, the peer manager trims the worst peers back down to TargetPeerCount.", DefaultValue = "80")]
