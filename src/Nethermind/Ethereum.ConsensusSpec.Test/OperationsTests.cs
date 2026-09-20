@@ -32,68 +32,81 @@ public class OperationsTests
         {
             Attestation.Decode(ssz, out Attestation value);
             BlockProcessing.ProcessAttestation(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }),
+        }
+        ),
         ["attester_slashing"] = ("attester_slashing.ssz_snappy", (ctx, ssz) =>
         {
             AttesterSlashing.Decode(ssz, out AttesterSlashing value);
             BlockProcessing.ProcessAttesterSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }),
+        }
+        ),
         ["block_header"] = ("block.ssz_snappy", (ctx, ssz) =>
         {
             BeaconBlock.Decode(ssz, out BeaconBlock value);
             BlockProcessing.ProcessBlockHeader(ctx.State, value);
-        }),
+        }
+        ),
         ["bls_to_execution_change"] = ("address_change.ssz_snappy", (ctx, ssz) =>
         {
             SignedBlsToExecutionChange.Decode(ssz, out SignedBlsToExecutionChange value);
             BlockProcessing.ProcessBlsToExecutionChange(ctx.State, value, ctx.VerifySignatures);
-        }),
+        }
+        ),
         ["consolidation_request"] = ("consolidation_request.ssz_snappy", (ctx, ssz) =>
         {
             ConsolidationRequest.Decode(ssz, out ConsolidationRequest value);
             BlockProcessing.ProcessConsolidationRequest(ctx.State, value, ctx.Cache);
-        }),
+        }
+        ),
         ["deposit"] = ("deposit.ssz_snappy", (ctx, ssz) =>
         {
             Deposit.Decode(ssz, out Deposit value);
             BlockProcessing.ProcessDeposit(ctx.State, value);
-        }),
+        }
+        ),
         ["deposit_request"] = ("deposit_request.ssz_snappy", (ctx, ssz) =>
         {
             DepositRequest.Decode(ssz, out DepositRequest value);
             BlockProcessing.ProcessDepositRequest(ctx.State, value);
-        }),
+        }
+        ),
         ["execution_payload"] = ("body.ssz_snappy", (ctx, ssz) =>
         {
             BeaconBlockBody.Decode(ssz, out BeaconBlockBody value);
             FixedNewPayloadNotifier notifier = new(ctx.ExecutionValid);
             BlockProcessing.ProcessExecutionPayload(ctx.State, value, notifier, FuluDriverSupport.MaxBlobsPerBlockElectra);
-        }),
+        }
+        ),
         ["proposer_slashing"] = ("proposer_slashing.ssz_snappy", (ctx, ssz) =>
         {
             ProposerSlashing.Decode(ssz, out ProposerSlashing value);
             BlockProcessing.ProcessProposerSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }),
+        }
+        ),
         ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", (ctx, ssz) =>
         {
             SyncAggregate.Decode(ssz, out SyncAggregate value);
             BlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.VerifySignatures);
-        }),
+        }
+        ),
         ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", (ctx, ssz) =>
         {
             SignedVoluntaryExit.Decode(ssz, out SignedVoluntaryExit value);
             BlockProcessing.ProcessVoluntaryExit(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
-        }),
+        }
+        ),
         ["withdrawal_request"] = ("withdrawal_request.ssz_snappy", (ctx, ssz) =>
         {
             WithdrawalRequest.Decode(ssz, out WithdrawalRequest value);
             BlockProcessing.ProcessWithdrawalRequest(ctx.State, value, ctx.Cache);
-        }),
+        }
+        ),
         ["withdrawals"] = ("execution_payload.ssz_snappy", (ctx, ssz) =>
         {
             ExecutionPayload.Decode(ssz, out ExecutionPayload value);
             BlockProcessing.ProcessWithdrawals(ctx.State, value);
-        }),
+        }
+        ),
     };
 
     private sealed class FixedNewPayloadNotifier(bool valid) : INewPayloadNotifier
