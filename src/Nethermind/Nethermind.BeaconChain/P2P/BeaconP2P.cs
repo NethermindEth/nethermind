@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
@@ -60,6 +61,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         BeaconChainStore store,
         IBeaconChainStatusSource statusSource,
         LocalMetadataSource metadataSource,
+        DataColumnSidecarPool dataColumnSidecarPool,
+        ExecutionPayloadEnvelopePool executionPayloadEnvelopePool,
         ILogManager logManager)
     {
         _config = config;
@@ -77,6 +80,10 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new MetaDataProtocolV3(metadataSource))
             .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store))
             .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store))
+            .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool))
+            .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool))
+            .AddSingleton(new ExecutionPayloadEnvelopesByRangeProtocol(spec, executionPayloadEnvelopePool))
+            .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool))
             .AddLibp2p(builder => builder
                 .WithPubsub()
                 .AddAppLayerProtocol<StatusProtocolV1>()
@@ -85,7 +92,11 @@ public sealed class BeaconP2P : IAsyncDisposable
                 .AddAppLayerProtocol<Eth2PingProtocol>()
                 .AddAppLayerProtocol<MetaDataProtocolV3>()
                 .AddAppLayerProtocol<BeaconBlocksByRangeProtocolV2>()
-                .AddAppLayerProtocol<BeaconBlocksByRootProtocolV2>())
+                .AddAppLayerProtocol<BeaconBlocksByRootProtocolV2>()
+                .AddAppLayerProtocol<DataColumnSidecarsByRangeProtocol>()
+                .AddAppLayerProtocol<DataColumnSidecarsByRootProtocol>()
+                .AddAppLayerProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
+                .AddAppLayerProtocol<ExecutionPayloadEnvelopesByRootProtocol>())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "eth2/1.0.0",
@@ -185,6 +196,32 @@ public sealed class BeaconP2P : IAsyncDisposable
     {
         using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
         return await session.DialAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<SignedBeaconBlock>>(roots, cts.Token);
+    }
+
+    public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
+    {
+        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(count));
+        return await session.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsByRangeRequest, IReadOnlyList<DataColumnSidecar>>(
+            new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, cts.Token);
+    }
+
+    public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+    {
+        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
+        return await session.DialAsync<DataColumnSidecarsByRootProtocol, DataColumnsByRootIdentifier[], IReadOnlyList<DataColumnSidecar>>(identifiers, cts.Token);
+    }
+
+    public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ISession session, ulong startSlot, ulong count, CancellationToken token)
+    {
+        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(count));
+        return await session.DialAsync<ExecutionPayloadEnvelopesByRangeProtocol, ExecutionPayloadEnvelopesByRangeRequest, IReadOnlyList<SignedExecutionPayloadEnvelope>>(
+            new ExecutionPayloadEnvelopesByRangeRequest { StartSlot = startSlot, Count = count }, cts.Token);
+    }
+
+    public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(ISession session, Hash256[] roots, CancellationToken token)
+    {
+        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
+        return await session.DialAsync<ExecutionPayloadEnvelopesByRootProtocol, Hash256[], IReadOnlyList<SignedExecutionPayloadEnvelope>>(roots, cts.Token);
     }
 
     /// <summary>Pings the peer with our metadata sequence number; returns theirs.</summary>

@@ -138,7 +138,7 @@ public class BeaconP2PLoopbackTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
-        BeaconP2P p2p = new(config, Spec, store, statusHolder, metadataSource, LimboLogs.Instance);
+        BeaconP2P p2p = new(config, Spec, store, statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
         return new Node(p2p, store, statusHolder, metadataSource, config);
     }
 }
