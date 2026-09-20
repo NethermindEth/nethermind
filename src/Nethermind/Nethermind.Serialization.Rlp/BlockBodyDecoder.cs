@@ -97,10 +97,16 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     }
 
     /// <summary>Decodes body contents with pooled transactions after the outer sequence prefix has been consumed.</summary>
-    /// <remarks>Preserves the existing public signature and default pooling behavior for external callers.</remarks>
+    /// <remarks>
+    /// The caller owns the decoded transactions. Return them to <see cref="TxDecoder.TxObjectPool"/> only after
+    /// all consumers have finished, and at most once. Network bodies use <see cref="OwnedBlockBodies"/> with a
+    /// memory owner for this lifetime. For retained bodies, use the regular Decode entry point with
+    /// <see cref="RlpBehaviors.SkipPooledTransactions"/> instead.
+    /// </remarks>
     public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
         => DecodeUnwrapped(ref ctx, lastPosition, RlpBehaviors.None);
 
+    /// <summary>Decodes body contents after the outer sequence prefix, with optional transaction pooling.</summary>
     /// <param name="ctx">Reader positioned at the transaction sequence.</param>
     /// <param name="lastPosition">Expected reader position after the body contents.</param>
     /// <param name="rlpBehaviors">

@@ -98,10 +98,18 @@ namespace Nethermind.TxPool.Test
 
         [Test, NonParallelizable]
         public void Rejected_blob_buffers_are_reused_only_without_discovery_subscribers(
-            [Values(0, 1, 2)] int listenerMode, [Values] bool pooled, [Values] bool ownsTransaction)
+            [Values(0, 1, 2)] int listenerMode, [Values] bool pooled, [Values] bool ownsTransaction,
+            [Values("size", "syncing", "translation")] string rejection)
         {
-            _txPool = CreatePool(new TxPoolConfig { MaxBlobTxSize = 1 });
+            if (rejection == "syncing")
+            {
+                _blockTree.Head = Build.A.Block.WithNumber(1).TestObject;
+            }
+            _txPool = CreatePool(new TxPoolConfig { MaxBlobTxSize = 1, ProofsTranslationEnabled = rejection == "translation" },
+                rejection == "translation" ? GetOsakaSpecProvider() : null);
             Transaction tx = DecodeReceivedBlob(0x11, pooled);
+            if (rejection == "translation")
+                tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper) with { Version = ProofVersion.V1 };
             byte[] original = ((ShardBlobNetworkWrapper)tx.NetworkWrapper).Blobs[0];
             Transaction retained = null;
             EventHandler<TxEventArgs> listener = null;
@@ -115,20 +123,25 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = ownsTransaction
                 ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
-            Assert.That(result, Is.EqualTo(AcceptTxResult.MaxTxSizeExceeded));
+            Assert.That(result, Is.EqualTo(rejection switch
+            {
+                "syncing" => AcceptTxResult.Syncing,
+                "translation" => AcceptTxResult.Invalid,
+                _ => AcceptTxResult.MaxTxSizeExceeded
+            }));
 
             Transaction next = DecodeReceivedBlob(0x22, pooled);
             byte[] nextBlob = ((ShardBlobNetworkWrapper)next.NetworkWrapper).Blobs[0];
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(ReferenceEquals(original, nextBlob), Is.EqualTo(ownsTransaction && pooled && listenerMode == 0));
+                Assert.That(ReferenceEquals(original, nextBlob), Is.EqualTo(ownsTransaction && pooled && (listenerMode == 0 || rejection == "syncing")));
                 Assert.That(nextBlob, Is.All.EqualTo(0x22));
                 if (!ownsTransaction)
                 {
                     Assert.That(((ShardBlobNetworkWrapper)tx.NetworkWrapper).Blobs[0], Is.SameAs(original));
                     Assert.That(original, Is.All.EqualTo(0x11));
                 }
-                if (listenerMode != 0)
+                if (listenerMode != 0 && rejection != "syncing")
                 {
                     Assert.That(retained, Is.SameAs(tx));
                     Assert.That(((ShardBlobNetworkWrapper)retained.NetworkWrapper).Blobs[0], Is.All.EqualTo(0x11));
@@ -250,6 +263,39 @@ namespace Nethermind.TxPool.Test
             public Transaction Retained;
 
             public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+            {
+                Retained = tx;
+                return AcceptTxResult.Invalid;
+            }
+        }
+
+        [Test]
+        public async Task Derived_pool_rejection_cannot_recycle_retained_transaction()
+        {
+            _txPool = CreatePool();
+            await _txPool.DisposeAsync();
+            RetainingTxPool derived = new(_ethereumEcdsa, _headInfo, _logManager);
+            _txPool = derived;
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+
+            AcceptTxResult result = ((IRecyclableTxPool)derived).SubmitOwnedTx(tx, out bool canRecycle);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(derived.Retained, Is.SameAs(tx));
+                Assert.That(canRecycle, Is.False);
+            }
+        }
+
+        private sealed class RetainingTxPool(IEthereumEcdsa ecdsa, IChainHeadInfoProvider headInfo, ILogManager logManager)
+            : TxPool(ecdsa, new BlobTxStorage(), headInfo, new TxPoolConfig(),
+                new TxValidator(TestBlockchainIds.ChainId), new SpecChangeTxValidator(TestBlockchainIds.ChainId),
+                logManager, Comparer<Transaction>.Create(static (_, _) => 0)), ITxPool
+        {
+            public Transaction Retained;
+
+            AcceptTxResult ITxPool.SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
             {
                 Retained = tx;
                 return AcceptTxResult.Invalid;

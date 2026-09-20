@@ -71,53 +71,48 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
         private sealed class PooledMessage : NewPooledTransactionHashesMessage68
         {
+            private MessageLists? _lists;
+            internal ArrayPoolList<byte> TypeList => _lists!.TypeList;
+            internal ArrayPoolList<int> SizeList => _lists!.SizeList;
+            internal AnnouncementHashes HashList => _lists!.HashList;
+
+            private PooledMessage(MessageLists lists) : base(lists.TypeList, lists.SizeList, lists.HashList)
+                => _lists = lists;
+
+            internal static PooledMessage Rent() => new(MessageLists.Rent());
+
+            public override void Dispose() => Interlocked.Exchange(ref _lists, null)?.Return();
+        }
+
+        // Only backing storage is reused: a stale message reference must not dispose a subsequent rental.
+        private sealed class MessageLists
+        {
             private const int MaxRetainedMessages = 32;
             private const int MaxRetainedCapacity = 128;
             // Like StripedLong, separate active slots by 128 bytes to avoid cross-core false sharing.
             private static readonly int SlotStride = 128 / IntPtr.Size;
-            private static readonly PooledMessage?[] Pool = new PooledMessage[(MaxRetainedMessages + 1) * SlotStride];
-            private static ref PooledMessage? CurrentSlot => ref Pool[(Environment.CurrentManagedThreadId % MaxRetainedMessages + 1) * SlotStride];
-            internal readonly ArrayPoolList<byte> TypeList;
-            internal readonly ArrayPoolList<int> SizeList;
-            internal readonly AnnouncementHashes HashList;
-            private int _returned;
+            private static readonly MessageLists?[] Pool = new MessageLists[(MaxRetainedMessages + 1) * SlotStride];
+            private static ref MessageLists? CurrentSlot => ref Pool[(Environment.CurrentManagedThreadId % MaxRetainedMessages + 1) * SlotStride];
+            internal readonly ArrayPoolList<byte> TypeList = new(0);
+            internal readonly ArrayPoolList<int> SizeList = new(0);
+            internal readonly AnnouncementHashes HashList = new();
 
-            private PooledMessage() : this(new(0), new(0), new()) { }
+            internal static MessageLists Rent() => Interlocked.Exchange(ref CurrentSlot, null) ?? new();
 
-            private PooledMessage(ArrayPoolList<byte> types, ArrayPoolList<int> sizes, AnnouncementHashes hashes)
-                : base(types, sizes, hashes)
+            internal void Return()
             {
-                TypeList = types;
-                SizeList = sizes;
-                HashList = hashes;
-            }
-
-            internal static PooledMessage Rent()
-            {
-                PooledMessage? message = Interlocked.Exchange(ref CurrentSlot, null);
-                if (message is not null)
-                {
-                    message._returned = 0;
-                    return message;
-                }
-                return new();
-            }
-
-            public override void Dispose()
-            {
-                if (Interlocked.Exchange(ref _returned, 1) != 0) return;
-
                 // Keep small announcements warm without retaining burst-sized arrays or hash references.
                 if (TypeList.Capacity <= MaxRetainedCapacity && SizeList.Capacity <= MaxRetainedCapacity && HashList.Capacity <= MaxRetainedCapacity)
                 {
                     TypeList.Clear();
                     SizeList.Clear();
                     HashList.Clear();
-                    AdaptivePacketType = 0;
                     if (Interlocked.CompareExchange(ref CurrentSlot, this, null) is null)
                         return;
                 }
-                base.Dispose();
+                TypeList.Dispose();
+                SizeList.Dispose();
+                HashList.Dispose();
             }
 
         }

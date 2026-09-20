@@ -445,8 +445,13 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
             for (int i = 0; i < count; i++)
             {
                 BinaryPrimitives.WriteInt32BigEndian(key[sizeof(ulong)..], i);
-                using MemoryManager<byte> payload = _processedBlobTxsDb.GetOwnedMemory(key)
-                    ?? throw new RlpException($"Missing processed blob transaction {i} for block {blockNumber}.");
+                using MemoryManager<byte>? payload = _processedBlobTxsDb.GetOwnedMemory(key);
+                if (payload is null)
+                {
+                    // Finalization cleanup can remove payloads after the index was read.
+                    blockBlobTransactions = null;
+                    return false;
+                }
                 RlpReader reader = new(payload.GetSpan());
                 transactions[i] = _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage)
                     ?? throw new RlpException($"Null processed blob transaction {i} for block {blockNumber}.");

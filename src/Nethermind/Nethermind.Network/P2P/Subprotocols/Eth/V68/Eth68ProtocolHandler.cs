@@ -167,13 +167,15 @@ public class Eth68ProtocolHandler(ISession session,
         int responseSizeLeft = responseSizeLimit;
         int requestCapacity = Math.Min(newTxHashesIndexes.Count, MaxPooledTransactionHashesPerRequest);
         ArrayPoolList<ValueHash256>? hashesToRequest = null;
+        AnnouncementHashes? announcementHashes = hashes as AnnouncementHashes;
+        ReadOnlySpan<ValueHash256> valueHashes = announcementHashes is null ? default : announcementHashes.Values.AsSpan();
         int toRequestCount = 0;
         bool hasOversizedTransaction = false;
 
         foreach (int index in newTxHashesIndexes.AsSpan())
         {
-            ref readonly ValueHash256 hash = ref hashes is AnnouncementHashes announcementHashes
-                ? ref announcementHashes.Values.AsSpan()[start + index]
+            ref readonly ValueHash256 hash = ref announcementHashes is not null
+                ? ref valueHashes[start + index]
                 : ref hashes[start + index].ValueHash256;
             (int Size, TxType Type) txShape = TxShapeAnnouncements.TryGet(hash, out (int Size, TxType Type) announcedShape)
                 ? announcedShape
@@ -309,10 +311,12 @@ public class Eth68ProtocolHandler(ISession session,
         bool registerForRetry)
     {
         ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(sizes.Length);
+        AnnouncementHashes? announcementHashes = hashes as AnnouncementHashes;
+        ReadOnlySpan<ValueHash256> valueHashes = announcementHashes is null ? default : announcementHashes.Values.AsSpan();
         for (int i = 0; i < sizes.Length; i++)
         {
-            ref readonly ValueHash256 hash = ref hashes is AnnouncementHashes announcementHashes
-                ? ref announcementHashes.Values.AsSpan()[start + i]
+            ref readonly ValueHash256 hash = ref announcementHashes is not null
+                ? ref valueHashes[start + i]
                 : ref hashes[start + i].ValueHash256;
             bool isKnown = _txPool.IsKnown(in hash);
             if (!isKnown)

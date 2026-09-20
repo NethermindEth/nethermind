@@ -92,6 +92,7 @@ namespace Nethermind.Consensus.Producers
                 fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, !isRevalidatedForTarget);
             }
 
+            int selectedBlobIndex = 0;
             foreach (Transaction tx in transactions)
             {
                 checkedTransactions++;
@@ -103,14 +104,13 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                while (selectedBlobTxs.Count > 0 && comparer.Compare(selectedBlobTxs[0], tx) < Equal)
+                while (selectedBlobIndex < selectedBlobTxs.Count && comparer.Compare(selectedBlobTxs[selectedBlobIndex], tx) < Equal)
                 {
-                    Transaction blobTx = selectedBlobTxs[0];
+                    Transaction blobTx = selectedBlobTxs[selectedBlobIndex++];
                     if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
                     {
                         yield return fullBlobTx;
                     }
-                    selectedBlobTxs.RemoveAt(0);
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
@@ -119,14 +119,12 @@ namespace Nethermind.Consensus.Producers
                 yield return tx;
             }
 
-            if (selectedBlobTxs.Count > 0)
+            while (selectedBlobIndex < selectedBlobTxs.Count)
             {
-                foreach (Transaction blobTx in selectedBlobTxs)
+                Transaction blobTx = selectedBlobTxs[selectedBlobIndex++];
+                if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
                 {
-                    if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
-                    {
-                        yield return fullBlobTx;
-                    }
+                    yield return fullBlobTx;
                 }
             }
 

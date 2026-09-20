@@ -35,7 +35,7 @@ public class TransactionTests
     }
 
     [Test, NonParallelizable]
-    public void Concurrent_returns_of_wrapper_copies_do_not_reissue_the_same_buffer_twice()
+    public void Returns_of_wrapper_copies_do_not_reissue_the_same_buffer_twice([Values] bool concurrent)
     {
         byte[] data = new byte[PooledBlobBuffers.BlobSize];
         // Drain the bounded pool so duplicate returns cannot be hidden by a full bucket.
@@ -48,7 +48,16 @@ public class TransactionTests
         };
         Transaction first = new() { NetworkWrapper = wrapper };
         Transaction second = new() { NetworkWrapper = wrapper with { Version = ProofVersion.V1 } };
-        Parallel.Invoke(() => PooledBlobBuffers.Return(first), () => PooledBlobBuffers.Return(second));
+        if (concurrent)
+        {
+            Parallel.Invoke(() => PooledBlobBuffers.Return(first), () => PooledBlobBuffers.Return(second));
+        }
+        else
+        {
+            PooledBlobBuffers.Return(first);
+            PooledBlobBuffers.Return(first);
+            PooledBlobBuffers.Return(second);
+        }
 
         byte[] firstRental = PooledBlobBuffers.Copy(data);
         byte[] secondRental = PooledBlobBuffers.Copy(data);

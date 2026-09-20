@@ -90,7 +90,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
             NextBlockContext next = PrepareNextBlockContext(headHeader);
 
             Dictionary<AddressAsKey, int> warmedPerSender = [];
-            Dictionary<AddressAsKey, (int first, int last, int count)> selectedBySender = [];
+            Dictionary<AddressAsKey, SenderSelection> selectedBySender = [];
 
             _preWarmer.StartSpeculativePreWarm(
                 headHeader,
@@ -133,7 +133,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     }
 
     private Block? BuildDeltaBlock(BlockHeader parent, NextBlockContext next, Dictionary<AddressAsKey, int> warmedPerSender,
-        Dictionary<AddressAsKey, (int first, int last, int count)> selectedBySender)
+        Dictionary<AddressAsKey, SenderSelection> selectedBySender)
     {
         Transaction[] delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender);
         return delta.Length == 0 ? null : new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null));
@@ -146,20 +146,20 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// </summary>
     /// <remarks>The optional scratch dictionary is owned by one speculative session and cleared between passes.</remarks>
     internal static Transaction[] SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
-        Dictionary<AddressAsKey, (int first, int last, int count)>? bySender = null)
+        Dictionary<AddressAsKey, SenderSelection>? bySender = null)
     {
         bySender ??= [];
         bySender.Clear();
-        using ArrayPoolListRef<(Transaction tx, int next)> transactions = new(0);
+        using ArrayPoolListRef<(Transaction tx, int next)> transactions = new(orderedTxs is ICollection<Transaction> collection ? collection.Count : 0);
         foreach (Transaction tx in orderedTxs)
         {
             if (tx.SenderAddress is not Address sender) continue;
-            ref (int first, int last, int count) group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out bool exists);
+            ref SenderSelection group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out bool exists);
             int index = transactions.Count;
-            if (exists) transactions.GetRef(group.last).next = index;
-            else group.first = index;
-            group.last = index;
-            group.count++;
+            if (exists) transactions.GetRef(group.Last).next = index;
+            else group.First = index;
+            group.Last = index;
+            group.Count++;
             transactions.Add((tx, -1));
         }
 
@@ -169,7 +169,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// <remarks>Kept out of line to reduce the stack frame of the transaction-grouping loop.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static Transaction[] SelectGroupedDelta(ReadOnlySpan<(Transaction tx, int next)> transactions,
-        Dictionary<AddressAsKey, (int first, int last, int count)> bySender, Dictionary<AddressAsKey, int> warmedPerSender)
+        Dictionary<AddressAsKey, SenderSelection> bySender, Dictionary<AddressAsKey, int> warmedPerSender)
     {
         if (warmedPerSender.Count == 0)
         {
@@ -177,33 +177,45 @@ public sealed class MempoolStatePrewarmer : IDisposable
             bySender.Clear();
             return initialDelta;
         }
-        using ArrayPoolListRef<Transaction> delta = new(0);
-        foreach (KeyValuePair<AddressAsKey, (int first, int last, int count)> senderGroup in bySender)
+        int deltaCount = 0;
+        foreach (KeyValuePair<AddressAsKey, SenderSelection> senderGroup in bySender)
+        {
+            warmedPerSender.TryGetValue(senderGroup.Key, out int warmed);
+            if (senderGroup.Value.Count > warmed) deltaCount += senderGroup.Value.Count;
+        }
+        if (deltaCount == 0)
+        {
+            bySender.Clear();
+            return [];
+        }
+        Transaction[] delta = new Transaction[deltaCount];
+        int position = 0;
+        foreach (KeyValuePair<AddressAsKey, SenderSelection> senderGroup in bySender)
         {
             ref int warmed = ref CollectionsMarshal.GetValueRefOrAddDefault(warmedPerSender, senderGroup.Key, out _);
-            if (senderGroup.Value.count <= warmed) continue;
-            for (int index = senderGroup.Value.first; index >= 0; index = transactions[index].next)
-                delta.Add(transactions[index].tx);
-            warmed = senderGroup.Value.count;
+            if (senderGroup.Value.Count <= warmed) continue;
+            for (int index = senderGroup.Value.First; index >= 0; index = transactions[index].next)
+                delta[position++] = transactions[index].tx;
+            warmed = senderGroup.Value.Count;
         }
 
         bySender.Clear();
-        return delta.ToArray();
+        return delta;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static Transaction[] SelectInitialDelta(ReadOnlySpan<(Transaction tx, int next)> transactions,
-        Dictionary<AddressAsKey, (int first, int last, int count)> bySender, Dictionary<AddressAsKey, int> warmedPerSender)
+        Dictionary<AddressAsKey, SenderSelection> bySender, Dictionary<AddressAsKey, int> warmedPerSender)
     {
         // A fresh pass selects every group, so the final array size is already known.
         warmedPerSender.EnsureCapacity(bySender.Count);
         Transaction[] delta = transactions.Length == 0 ? [] : new Transaction[transactions.Length];
         int position = 0;
-        foreach (KeyValuePair<AddressAsKey, (int first, int last, int count)> senderGroup in bySender)
+        foreach (KeyValuePair<AddressAsKey, SenderSelection> senderGroup in bySender)
         {
-            for (int index = senderGroup.Value.first; index >= 0; index = transactions[index].next)
+            for (int index = senderGroup.Value.First; index >= 0; index = transactions[index].next)
                 delta[position++] = transactions[index].tx;
-            warmedPerSender.Add(senderGroup.Key, senderGroup.Value.count);
+            warmedPerSender.Add(senderGroup.Key, senderGroup.Value.Count);
         }
         return delta;
     }
@@ -217,6 +229,13 @@ public sealed class MempoolStatePrewarmer : IDisposable
         }
         _cts.Cancel();
         _cts.Dispose();
+    }
+
+    internal struct SenderSelection
+    {
+        public int First;
+        public int Last;
+        public int Count;
     }
 
     private readonly record struct NextBlockContext(BlockHeader Header, IReleaseSpec Spec);

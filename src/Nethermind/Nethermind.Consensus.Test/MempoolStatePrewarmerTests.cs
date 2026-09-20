@@ -85,7 +85,7 @@ public class MempoolStatePrewarmerTests
         Transaction[] b = BuildSenderTxs(TestItem.PrivateKeyB, count);
         Transaction[] interleaved = a.Zip(b).SelectMany(pair => new[] { pair.First, pair.Second }).ToArray();
         Dictionary<AddressAsKey, int> warmed = [];
-        Dictionary<AddressAsKey, (int first, int last, int count)> scratch = [];
+        Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> scratch = [];
 
         Transaction[] first = MempoolStatePrewarmer.SelectDelta(interleaved, warmed, scratch);
         using (Assert.EnterMultipleScope())
@@ -105,7 +105,7 @@ public class MempoolStatePrewarmerTests
     {
         Transaction[] transactions = BuildSenderTxs(TestItem.PrivateKeyA, 2);
         Dictionary<AddressAsKey, int> warmed = [];
-        Dictionary<AddressAsKey, (int first, int last, int count)> scratch = [];
+        Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> scratch = [];
         Assert.Throws<InvalidOperationException>(() => MempoolStatePrewarmer.SelectDelta(FailingSource(), warmed, scratch));
         Assert.That(MempoolStatePrewarmer.SelectDelta(transactions, warmed, scratch), Is.EqualTo(transactions));
 

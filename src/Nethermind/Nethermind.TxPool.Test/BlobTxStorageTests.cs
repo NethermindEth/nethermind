@@ -24,6 +24,26 @@ namespace Nethermind.TxPool.Test;
 public class BlobTxStorageTests
 {
     [Test]
+    public void Missing_processed_payload_is_a_cache_miss([Values(0, 1)] int missingIndex)
+    {
+        using MemColumnsDb<BlobTxsColumns> db = new();
+        BlobTxStorage storage = new(db);
+        using ArrayPoolListRef<Transaction> transactions = new(2);
+        transactions.Add(CreateBlobTransaction(TestItem.PrivateKeyA, 0));
+        transactions.Add(CreateBlobTransaction(TestItem.PrivateKeyA, 1));
+        storage.AddBlobTransactionsFromBlock(358, transactions);
+        IDb processed = db.GetColumnDb(BlobTxsColumns.ProcessedTxs);
+        byte[][] payloadKeys = processed.GetAllKeys().Where(static key => key.Length == 12).OrderBy(static key => key[^1]).ToArray();
+        processed.Remove(payloadKeys[missingIndex]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.False);
+            Assert.That(restored, Is.Null);
+        }
+    }
+
+    [Test]
     public void Empty_processed_block_is_a_cache_miss()
     {
         using MemColumnsDb<BlobTxsColumns> db = new();

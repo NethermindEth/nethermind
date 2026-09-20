@@ -71,7 +71,7 @@ namespace Nethermind.Network.Rlpx
                     ResetInProgressPacket();
                     return;
                 }
-                _currentContextId = frame.TotalPacketSize.HasValue ? frame.ContextId : null;
+                _currentContextId = frame.ContextId;
             }
             else
             {

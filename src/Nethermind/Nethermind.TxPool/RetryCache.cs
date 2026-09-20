@@ -280,11 +280,11 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             }
         }
 
-        public void TrimIfEmpty()
+        public void TrimExcess()
         {
             lock (_lock)
             {
-                if (_queue.Count == 0 && _queue.EnsureCapacity(0) > MaxRetainedCapacity) _queue.TrimExcess();
+                if (_queue.Count <= MaxRetainedCapacity / 2 && _queue.EnsureCapacity(0) > MaxRetainedCapacity) _queue.TrimExcess();
             }
         }
 
@@ -293,9 +293,15 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             lock (_lock) _queue.Enqueue(item);
         }
 
-        public bool TryPeek(out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
+        public bool TryDequeueExpired(TimeProvider timeProvider, TimeSpan timeout,
+            out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
         {
-            lock (_lock) return _queue.TryPeek(out item);
+            lock (_lock)
+            {
+                if (!_queue.TryPeek(out item) || timeProvider.GetElapsedTime(item.EnqueuedAt) < timeout) return false;
+                _queue.Dequeue();
+                return true;
+            }
         }
 
         public bool TryDequeue(out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
@@ -412,35 +418,31 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             while (!_token.IsCancellationRequested
                 && retryResourcesProcessed < MaxRetryResourcesPerTick
                 && queueEntriesProcessed < queueEntriesToProcess
-                && _expiringQueue.TryPeek(out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
-                && _timeProvider.GetElapsedTime(item.EnqueuedAt) >= _timeout)
+                && _expiringQueue.TryDequeueExpired(_timeProvider, _timeout, out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item))
             {
-                if (_expiringQueue.TryDequeue(out item))
-                {
-                    queueEntriesProcessed++;
-                    bool queueSlotTransferred = false;
+                queueEntriesProcessed++;
+                bool queueSlotTransferred = false;
 
-                    try
+                try
+                {
+                    if (TryTakeRetryHandler(
+                        item,
+                        batchedRetryRequests,
+                        out RetryRequestEntry currentEntry,
+                        out IMessageHandler<TMessage>? retryHandler))
                     {
-                        if (TryTakeRetryHandler(
-                            item,
-                            batchedRetryRequests,
-                            out RetryRequestEntry currentEntry,
-                            out IMessageHandler<TMessage>? retryHandler))
-                        {
-                            retryResourcesProcessed++;
-                            ReleaseHandlerSlot(retryHandler!);
-                            Enqueue(item.ResourceId, currentEntry);
-                            queueSlotTransferred = true;
-                            CollectRetryRequest(item.ResourceId, retryHandler!, ref batchedRetryRequests);
-                        }
+                        retryResourcesProcessed++;
+                        ReleaseHandlerSlot(retryHandler!);
+                        Enqueue(item.ResourceId, currentEntry);
+                        queueSlotTransferred = true;
+                        CollectRetryRequest(item.ResourceId, retryHandler!, ref batchedRetryRequests);
                     }
-                    finally
+                }
+                finally
+                {
+                    if (!queueSlotTransferred)
                     {
-                        if (!queueSlotTransferred)
-                        {
-                            Interlocked.Decrement(ref _expiringQueueCounter);
-                        }
+                        Interlocked.Decrement(ref _expiringQueueCounter);
                     }
                 }
             }
@@ -456,7 +458,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             ReturnBatchedRetryRequests(batchedRetryRequests);
             MaintainOverflowStorage();
-            _expiringQueue.TrimIfEmpty();
+            _expiringQueue.TrimExcess();
         }
     }
 

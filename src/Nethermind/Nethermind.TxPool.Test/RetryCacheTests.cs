@@ -1368,7 +1368,7 @@ public class RetryCacheTests
     }
 
     [Test]
-    public void ExpiryQueue_ReleasesOversizedStorageOnlyWhenEmpty([Values] bool keepPending)
+    public void ExpiryQueue_ReleasesOversizedStorageWithOrWithoutPendingRequests([Values] bool keepPending)
     {
         const int count = 16_385;
         TestHandler source = new();
@@ -1386,12 +1386,16 @@ public class RetryCacheTests
         Assert.That(_cache.ResourcesInRetryQueue, Is.EqualTo(keepPending ? 1 : 0));
         if (keepPending)
         {
-            Assert.That(_cache.ExpiringQueueCapacity, Is.GreaterThanOrEqualTo(count));
+            Assert.That(_cache.ExpiringQueueCapacity, Is.LessThan(count));
             _cache.Received(count);
             _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
             _cache.ProcessRetryTick();
         }
-        Assert.That(_cache.ExpiringQueueCapacity, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+            Assert.That(_cache.ExpiringQueueCapacity, Is.LessThan(count));
+        }
     }
 
     [Test]

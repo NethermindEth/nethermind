@@ -54,8 +54,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
         private TransactionHashCache.PeerCache? _notifiedTransactions;
+        private object? _notifiedTransactionsLock;
         private protected TransactionHashCache.PeerCache NotifiedTransactions =>
-            LazyInitializer.EnsureInitialized(ref _notifiedTransactions, static () => SharedTransactionHashes.Cache.CreatePeerCache());
+            LazyInitializer.EnsureInitialized(ref _notifiedTransactions, ref _notifiedTransactionsLock, static () => SharedTransactionHashes.Cache.CreatePeerCache());
 
         private static class SharedTransactionHashes
         {

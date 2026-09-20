@@ -108,11 +108,12 @@ public class NewPooledTransactionHashesMessageSerializerTests
             Assert.That(next.Types, Is.EqualTo(source.Types));
             Assert.That(next.Sizes, Is.EqualTo(source.Sizes));
             Assert.That(next, Is.Not.SameAs(empty));
-            Assert.That(empty, count <= 128 ? Is.SameAs(first) : Is.Not.SameAs(first));
+            Assert.That(empty, Is.Not.SameAs(first));
+            Assert.That(empty.Types, count <= 128 ? Is.SameAs(first.Types) : Is.Not.SameAs(first.Types));
         }
     }
 
-    [Test]
+    [Test, NonParallelizable]
     public void Materialized_hashes_survive_message_reuse()
     {
         NewPooledTransactionHashesMessageSerializer serializer = new();
@@ -124,6 +125,8 @@ public class NewPooledTransactionHashesMessageSerializerTests
         first.Dispose();
 
         using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(nextBytes);
+        Assert.That(next.Hashes, Is.SameAs(first.Hashes), "Exercise a new lease over the same backing storage.");
+        first.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(hash, Is.EqualTo(TestItem.KeccakA));
