@@ -155,6 +155,11 @@ public static class ReqRespFraming
         }
 
         int sszLength = (int)declaredLength;
+        // Worst-case compressed size for a payload that decodes to sszLength bytes: one data frame
+        // per 64 KiB block plus one stream identifier. Bounds total buffered wire bytes so a peer
+        // cannot stall uncompressedTotal at zero with endless stream-identifier or padding frames.
+        long maxFramedBytes = 4 + StreamIdentifierContent.Length + ((sszLength + 65535) / 65536) * (long)(4 + MaxFrameDataLength);
+        long framedBytesRead = 0;
         using MemoryStream frames = new();
         long uncompressedTotal = 0;
         bool sawStreamIdentifier = false;
@@ -171,6 +176,12 @@ public static class ReqRespFraming
 
             byte[] data = new byte[dataLength];
             await stream.ReadExactlyAsync(data, token);
+
+            framedBytesRead += 4 + dataLength;
+            if (framedBytesRead > maxFramedBytes)
+            {
+                throw new Eth2ReqRespException($"Snappy framing for a {sszLength}-byte payload read {framedBytesRead} wire bytes, more than the {maxFramedBytes}-byte bound");
+            }
 
             switch (frameType)
             {
