@@ -10,7 +10,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Merge.Plugin.SszRest;

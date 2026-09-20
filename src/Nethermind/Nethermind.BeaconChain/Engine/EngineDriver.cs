@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
