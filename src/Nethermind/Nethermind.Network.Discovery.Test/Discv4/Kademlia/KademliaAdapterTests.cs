@@ -741,8 +741,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [Test]
         [CancelAfter(10000)]
         public async Task Authenticated_requests_reuse_only_usable_endpoint_bonds(
-            [Values("none", "expiry", "endpoint", "failures")] string invalidation, CancellationToken token)
+            [Values("none", "expiry", "endpoint", "failures")] string invalidation,
+            [Values] bool receivedPong, CancellationToken token)
         {
+            if (receivedPong) _adapter.GetSession(_receiver).OnPongReceived(_receiver.DiscoveryAddress);
             ConfigureBondCallback();
             _msgSender.SendMsg(Arg.Any<EnrRequestMsg>()).Returns(ci =>
             {
@@ -848,7 +850,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             bool result = await _adapter.Ping(_receiver, token);
 
             Assert.That(result, Is.True);
-            await _msgSender.Received(1).SendMsg(Arg.Any<PingMsg>());
+            await _msgSender.Received(shouldRequestEnr ? 2 : 1).SendMsg(Arg.Any<PingMsg>());
             if (shouldRequestEnr)
             {
                 await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));

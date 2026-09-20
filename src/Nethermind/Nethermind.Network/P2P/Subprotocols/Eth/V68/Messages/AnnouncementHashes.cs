@@ -11,8 +11,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 
 internal sealed class AnnouncementHashes : IOwnedReadOnlyList<Hash256>
 {
-    internal readonly ArrayPoolList<ValueHash256> Values = new(0);
+    internal readonly ArrayPoolList<ValueHash256> Values;
     private readonly ArrayPoolList<Hash256> _hashes = new(0);
+
+    internal AnnouncementHashes(int capacity = 0) => Values = new(capacity);
 
     public int Count => Values.Count;
     internal int Capacity => Math.Max(Values.Capacity, _hashes.Capacity);

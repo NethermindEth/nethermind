@@ -20,6 +20,7 @@ using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NonBlocking;
+using TaskExtensions = Nethermind.Core.Extensions.TaskExtensions;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
@@ -81,13 +82,13 @@ public class KademliaAdapter(
 
         if (Logger.IsTrace) TraceEnsureSession(node);
         PongMsg? pong = null;
-        if (!nodeSession.NotTooManyFailure || !nodeSession.HasEndpointBond(endpoint))
+        if (!nodeSession.NotTooManyFailure || !nodeSession.HasReceivedPingFrom(endpoint))
         {
             pong = await TryBond(node, nodeSession, token);
             if (pong is null) return false;
         }
         // Allow the remote peer's reciprocal ping/pong before sending an authenticated request.
-        if (!await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(_waitAfterPongDelay, token)) return false;
+        if (!await TaskExtensions.DelaySafe(_waitAfterPongDelay, token)) return false;
 
         nodeSession.OnOutgoingBonded(endpoint);
         if (pong is not null)

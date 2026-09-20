@@ -6,13 +6,14 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
+using TransactionDecoder = Nethermind.Serialization.Rlp.TxDecoder;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
-        private static readonly Nethermind.Serialization.Rlp.TxDecoder TxDecoder = Nethermind.Serialization.Rlp.TxDecoder.Instance;
+        private static readonly TransactionDecoder TxDecoder = TransactionDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
@@ -65,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 foreach (Transaction tx in result)
                 {
                     tx.ClearPreHash();
-                    Nethermind.Serialization.Rlp.TxDecoder.TxObjectPool.Return(tx);
+                    TransactionDecoder.TxObjectPool.Return(tx);
                 }
                 result.Dispose();
                 throw;

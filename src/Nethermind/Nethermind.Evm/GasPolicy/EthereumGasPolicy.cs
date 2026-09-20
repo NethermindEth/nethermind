@@ -706,6 +706,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
         CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
 
+    /// <inheritdoc/>
+    /// <param name="blockGasLimit">Unused by the Ethereum policy; intrinsic gas is independent of the block gas limit.</param>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {
         bool isEip2780SelfTransfer = spec.IsEip2780Enabled && tx.To is not null && tx.SenderAddress == tx.To;

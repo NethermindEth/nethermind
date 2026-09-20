@@ -151,6 +151,8 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
         => IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
 
+    /// <inheritdoc/>
+    /// <param name="blockGasLimit">Unused by the Ethereum intrinsic gas policy, with or without memoization.</param>
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options)
     {
         if (transaction is LightTransaction)

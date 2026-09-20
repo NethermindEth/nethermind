@@ -241,7 +241,7 @@ public class Eth68ProtocolHandler(ISession session,
                 ValueHash256 txHash = txHashes[i];
                 if (TxShapeAnnouncements.TryGet(txHash, out (int Size, TxType Type) txShape))
                 {
-                    hashesWithShape ??= new AnnouncementHashes();
+                    hashesWithShape ??= new AnnouncementHashes(txHashes.Length);
                     sizes ??= new ArrayPoolList<int>(txHashes.Length);
                     types ??= new ArrayPoolList<byte>(txHashes.Length);
 
