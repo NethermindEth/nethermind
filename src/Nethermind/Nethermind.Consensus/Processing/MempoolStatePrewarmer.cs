@@ -146,7 +146,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private Block? BuildDeltaBlock(BlockHeader parent, NextBlockContext next, Dictionary<AddressAsKey, int> warmedPerSender)
     {
         Transaction[] delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender);
-        return delta.Length == 0 ? null : new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null));
+        return new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null));
     }
 
     /// <summary>

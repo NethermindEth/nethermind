@@ -530,7 +530,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 Block? delta = nextDelta(token);
                 if (token.IsCancellationRequested) break;
 
-                if (delta is not null && delta.Transactions.Length > 0)
+                // An empty delta still warms the system-contract slots and the beneficiary for the predicted block.
+                if (delta is not null)
                 {
                     WarmDeltaSync(delta, head, spec, token);
                     // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
