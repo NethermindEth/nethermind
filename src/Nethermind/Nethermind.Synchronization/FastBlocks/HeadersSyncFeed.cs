@@ -57,6 +57,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again
         /// </summary>
         protected readonly ConcurrentQueue<HeadersSyncBatch> _pending = new();
+        private readonly ConcurrentQueue<HeadersSyncBatch> _retainedPending = new();
 
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet
@@ -122,7 +123,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 count += enumerator.Current.Value.Response?.Count ?? 0;
             }
             if (Volatile.Read(ref _retainedResponseCount) != 0)
-                foreach (HeadersSyncBatch batch in _pending) count += batch.Response?.Count ?? 0;
+                foreach (HeadersSyncBatch batch in _retainedPending) count += batch.Response?.Count ?? 0;
 
             return count;
         }
@@ -153,7 +154,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 amount += (ulong)enumerator.Current.Value?.ResponseSizeEstimate;
             }
             if (Volatile.Read(ref _retainedResponseCount) != 0)
-                foreach (HeadersSyncBatch batch in _pending) amount += (ulong)batch.ResponseSizeEstimate;
+                foreach (HeadersSyncBatch batch in _retainedPending) amount += (ulong)batch.ResponseSizeEstimate;
 
             return amount;
         }
@@ -381,7 +382,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 do
                 {
                     HandleDependentBatches(cancellationToken);
-                } while (_pending.IsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
+                } while (PendingIsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 HeadersSyncBatch? batch;
                 bool retryPending;
@@ -525,6 +526,11 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
 
                     foreach (HeadersSyncBatch pendingBatch in _pending)
+                    {
+                        all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
+                    }
+
+                    foreach (HeadersSyncBatch pendingBatch in _retainedPending)
                     {
                         all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
                     }
@@ -680,37 +686,46 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void EnqueuePending(HeadersSyncBatch batch)
         {
-            if (CurrentState == SyncFeedState.Finished)
+            lock (_handlerLock)
             {
-                batch.Dispose();
-                return;
-            }
+                if (CurrentState == SyncFeedState.Finished)
+                {
+                    batch.Dispose();
+                    return;
+                }
 
-            bool hasResponse = batch.Response is not null;
-            // Publish the count before the response so queue accounting cannot skip a retained buffer.
-            if (hasResponse) Interlocked.Increment(ref _retainedResponseCount);
-            _pending.Enqueue(batch);
-            if (hasResponse) MarkDirty();
+                bool hasResponse = batch.Response is not null;
+                // Publish the count before the response so queue accounting cannot skip a retained buffer.
+                if (hasResponse) Interlocked.Increment(ref _retainedResponseCount);
+                (hasResponse ? _retainedPending : _pending).Enqueue(batch);
+                if (hasResponse) MarkDirty();
+            }
         }
 
         /// <param name="retryPending">Whether the dequeued batch is a queued range awaiting re-download, so dispatching it counts as a retry.</param>
         private bool TryDequeuePending([NotNullWhen(true)] out HeadersSyncBatch? batch, out bool retryPending)
         {
             retryPending = false;
-            if (!_pending.TryDequeue(out batch)) return false;
-            retryPending = batch.Response is null;
-            if (!retryPending)
+            if (_retainedPending.TryDequeue(out batch))
             {
                 Interlocked.Decrement(ref _retainedResponseCount);
                 MarkDirty();
+                return true;
             }
+            if (!_pending.TryDequeue(out batch)) return false;
+            retryPending = true;
             return true;
         }
 
         private void ClearPending()
         {
-            while (TryDequeuePending(out HeadersSyncBatch? batch, out _)) batch.Dispose();
+            lock (_handlerLock)
+            {
+                while (TryDequeuePending(out HeadersSyncBatch? batch, out _)) batch.Dispose();
+            }
         }
+
+        private bool PendingIsEmpty => _pending.IsEmpty && _retainedPending.IsEmpty;
 
         private void EnqueueBatch(HeadersSyncBatch batch, bool skipPersisted = false)
         {
@@ -793,7 +808,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         $"response too long ({response.Length})");
                 }
 
-                RequeueAsNewBatch(batch, skipPersisted: false);
+                RequeueAsNewBatch(batch);
                 return 0;
             }
 
@@ -1054,6 +1069,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             if (!_disposed)
             {
+                Finish();
                 _sent.DisposeItems();
                 ClearPending();
                 foreach (KeyValuePair<ulong, HeadersSyncBatch> kvp in _dependencies)
