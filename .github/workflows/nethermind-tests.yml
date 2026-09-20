@@ -57,6 +57,7 @@ jobs:
           - Nethermind.Api.Test
           - Nethermind.AuRa.Test
           - Nethermind.BalRecorder.Test
+          - Nethermind.BeaconChain.Test
           - Nethermind.Blockchain.Test
           - Nethermind.CensorshipDetector.Plugin.Test
           - Nethermind.Clique.Test
@@ -440,6 +441,41 @@ jobs:
       test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
       setup_group: all
 
+  tests-consensus-spec:
+    name: Run ${{ matrix.project }}
+    needs: build
+    runs-on: ubuntu-latest
+    # The preset archives are streamed and extracted on every run rather than cached. A partially
+    # populated cache still carries its completion marker, and the suite then reports green over
+    # zero vectors - this repo's fixture downloader has already produced exactly that.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - Ethereum.ConsensusSpec.Test
+    env:
+      # The mainnet preset is ~900 MB compressed and several GB extracted, so pull requests run the
+      # minimal preset only and pushes cover both.
+      NETHERMIND_CONSENSUS_SPEC_MAINNET: ${{ github.event_name == 'push' && '1' || '' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
+
+      - name: ${{ matrix.project }}
+        working-directory: src/Nethermind/${{ matrix.project }}
+        run: |
+          dotnet restore ${{ matrix.project }}.csproj  # binaries from the shared Linux artifact
+          dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore
+
   matrix-guard:
     name: Check test project matrix is exhaustive
     runs-on: ubuntu-latest
@@ -473,7 +509,7 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked, nethtest, matrix-guard]
+    needs: [tests, tests-spec, tests-chunked, tests-consensus-spec, nethtest, matrix-guard]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -483,6 +519,7 @@ jobs:
             "${{ needs.tests.result }}" == "success" && \
             "${{ needs.tests-spec.result }}" == "success" && \
             "${{ needs.tests-chunked.result }}" == "success" && \
+            "${{ needs.tests-consensus-spec.result }}" == "success" && \
             "${{ needs.nethtest.result }}" == "success" && \
             "${{ needs.matrix-guard.result }}" == "success" \
           ]]
