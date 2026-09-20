@@ -13,6 +13,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
+using Nethermind.BeaconChain.Spec;
 namespace Nethermind.BeaconChain;
 
 /// <summary>
@@ -25,6 +26,7 @@ namespace Nethermind.BeaconChain;
 /// </remarks>
 public sealed class BeaconChainService(
     IBeaconChainConfig config,
+    BeaconChainSpec spec,
     BeaconChainStore store,
     PubkeyCache pubkeyCache,
     CheckpointSync checkpointSync,
@@ -80,7 +82,7 @@ public sealed class BeaconChainService(
                 throw new InvalidOperationException($"Persisted anchor state {anchorRoot} is missing or corrupt; delete the beaconChain database to checkpoint-sync again.");
             }
 
-            BeaconStateFulu.Decode(stateSsz, out state);
+            state = BeaconStateCodec.Decode(stateSsz, spec);
             blockRoot = anchorRoot;
             store.TryGetBlock(anchorRoot, out block);
         }
