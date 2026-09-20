@@ -312,6 +312,7 @@ public class ZeroNettyP2PHandlerTests
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         IByteBuffer first = null;
+        ZeroPacket firstPacket = null;
         byte[] payload = new byte[length];
         new Random(42).NextBytes(payload);
         session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
@@ -320,13 +321,17 @@ public class ZeroNettyP2PHandlerTests
             if (first is null)
             {
                 first = packet.Content;
+                firstPacket = packet;
                 AssertPacket(packet, payload, 7);
+                packet.Protocol = "eth";
                 packet.Content.SkipBytes(length);
                 packet.Content.MarkReaderIndex().MarkWriterIndex();
             }
             else
             {
                 AssertPacket(packet, [9, 8, 7], 8);
+                Assert.That(packet.Protocol, Is.Null, "protocol resolution from the previous message must not survive reuse");
+                Assert.That(ReferenceEquals(firstPacket, packet), Is.EqualTo(length == 65536));
                 Assert.That(ReferenceEquals(first, packet.Content), Is.EqualTo(length == 65536));
                 packet.Content.SkipBytes(1).ResetReaderIndex();
                 AssertPacket(packet, [9, 8, 7], 8);

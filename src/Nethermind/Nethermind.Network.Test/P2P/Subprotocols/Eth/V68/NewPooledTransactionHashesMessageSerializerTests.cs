@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -90,6 +91,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
             Enumerable.Repeat(TestItem.KeccakA, count).ToPooledList(count));
         byte[] bytes = serializer.Serialize(source);
         NewPooledTransactionHashesMessage68 first = serializer.Deserialize(bytes);
+        Assert.That(first.Hashes, Is.EqualTo(source.Hashes));
         first.AdaptivePacketType = 123;
         first.Dispose();
         first.Dispose();
@@ -108,6 +110,55 @@ public class NewPooledTransactionHashesMessageSerializerTests
             Assert.That(next, Is.Not.SameAs(empty));
             Assert.That(empty, count <= 128 ? Is.SameAs(first) : Is.Not.SameAs(first));
         }
+    }
+
+    [Test]
+    public void Materialized_hashes_survive_message_reuse()
+    {
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+        byte[] firstBytes = Convert.FromHexString("e501c102e1a0" + TestItem.KeccakA.ToString(false));
+        byte[] nextBytes = Convert.FromHexString("e501c102e1a0" + TestItem.KeccakB.ToString(false));
+        NewPooledTransactionHashesMessage68 first = serializer.Deserialize(firstBytes);
+        Hash256 hash = first.Hashes[0];
+        Assert.That(first.Hashes.AsSpan()[0], Is.SameAs(hash));
+        first.Dispose();
+
+        using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(nextBytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hash, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(next.Hashes[0], Is.EqualTo(TestItem.KeccakB));
+            Assert.That(serializer.Serialize(next), Is.EqualTo(nextBytes));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Decoding_without_materializing_hashes_has_bounded_allocations()
+    {
+        const int count = 128;
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+        using NewPooledTransactionHashesMessage68 source = new(
+            Enumerable.Repeat((byte)2, count).ToPooledList(count),
+            Enumerable.Repeat(100, count).ToPooledList(count),
+            Enumerable.Repeat(TestItem.KeccakA, count).ToPooledList(count));
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(serializer.Serialize(source)).AsDisposable();
+        for (int i = 0; i < 100; i++)
+        {
+            buffer.SetReaderIndex(0);
+            serializer.Deserialize(buffer).Dispose();
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++)
+        {
+            buffer.SetReaderIndex(0);
+            serializer.Deserialize(buffer).Dispose();
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        TestContext.Out.WriteLine($"Allocated bytes per announcement: {allocated / 100.0}");
+        Assert.That(allocated / 100, Is.LessThan(count * 16), "Decoding must not allocate an object per hash.");
     }
 
     [Test]

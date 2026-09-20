@@ -111,7 +111,15 @@ public class Eth68ProtocolHandler(ISession session,
 
         TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
-        AddNotifiedTransactions(message.Hashes.AsSpan());
+        if (message.Hashes is AnnouncementHashes announcementHashes)
+        {
+            foreach (ref readonly ValueHash256 hash in announcementHashes.Values.AsSpan())
+                NotifiedTransactions.Set(in hash);
+        }
+        else
+        {
+            AddNotifiedTransactions(message.Hashes.AsSpan());
+        }
 
         long startTime = Logger.IsTrace ? Stopwatch.GetTimestamp() : 0;
 
@@ -126,15 +134,14 @@ public class Eth68ProtocolHandler(ISession session,
         IOwnedReadOnlyList<byte> types,
         bool registerForRetry = true)
     {
-        ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
         ReadOnlySpan<int> sizesSpan = sizes.AsSpan();
         ReadOnlySpan<byte> typesSpan = types.AsSpan();
 
-        for (int start = 0; start < hashesSpan.Length; start += MaxPooledTransactionHashesPerRequest)
+        for (int start = 0; start < hashes.Count; start += MaxPooledTransactionHashesPerRequest)
         {
-            int count = Math.Min(MaxPooledTransactionHashesPerRequest, hashesSpan.Length - start);
+            int count = Math.Min(MaxPooledTransactionHashesPerRequest, hashes.Count - start);
             RequestPooledTransactionsPage(
-                hashesSpan.Slice(start, count),
+                hashes, start,
                 sizesSpan.Slice(start, count),
                 typesSpan.Slice(start, count),
                 registerForRetry);
@@ -142,12 +149,13 @@ public class Eth68ProtocolHandler(ISession session,
     }
 
     private void RequestPooledTransactionsPage(
-        ReadOnlySpan<Hash256> hashes,
+        IOwnedReadOnlyList<Hash256> hashes,
+        int start,
         ReadOnlySpan<int> sizes,
         ReadOnlySpan<byte> types,
         bool registerForRetry)
     {
-        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashes, sizes, types, registerForRetry);
+        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashes, start, sizes, types, registerForRetry);
         if (newTxHashesIndexes.Count == 0)
         {
             return;
@@ -164,7 +172,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         foreach (int index in newTxHashesIndexes.AsSpan())
         {
-            Hash256 hash = hashes[index];
+            Hash256 hash = hashes[start + index];
             (int Size, TxType Type) txShape = TxShapeAnnouncements.TryGet(hash, out (int Size, TxType Type) announcedShape)
                 ? announcedShape
                 : (sizes[index], (TxType)types[index]);
@@ -292,22 +300,27 @@ public class Eth68ProtocolHandler(ISession session,
     }
 
     private ArrayPoolListRef<int> AddMarkUnknownHashes(
-        ReadOnlySpan<Hash256> hashes,
+        IOwnedReadOnlyList<Hash256> hashes,
+        int start,
         ReadOnlySpan<int> sizes,
         ReadOnlySpan<byte> types,
         bool registerForRetry)
     {
-        ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(hashes.Length);
-        for (int i = 0; i < hashes.Length; i++)
+        ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(sizes.Length);
+        for (int i = 0; i < sizes.Length; i++)
         {
-            Hash256 hash = hashes[i];
-            if (!_txPool.IsKnown(hash))
+            bool isKnown = hashes is AnnouncementHashes announcementHashes
+                ? _txPool.IsKnown(in announcementHashes.Values.AsSpan()[start + i])
+                : _txPool.IsKnown(hashes[start + i]);
+            if (!isKnown)
             {
                 (int Size, TxType Type) txShape = (sizes[i], (TxType)types[i]);
                 if (txShape.Size <= 0 || !CanDecodeTransactionType(txShape.Type))
                 {
                     continue;
                 }
+
+                Hash256 hash = hashes[start + i];
 
                 // Delivered transactions must match their first decodable announcement even when that announcement was not requestable.
                 if (!TxShapeAnnouncements.TryGet(hash, out (int Size, TxType Type) retainedShape))

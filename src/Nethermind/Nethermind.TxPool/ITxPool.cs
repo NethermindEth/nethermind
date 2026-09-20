@@ -80,6 +80,8 @@ namespace Nethermind.TxPool
         Transaction? GetBestTx();
         IEnumerable<Transaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
+        /// <summary>Checks whether a transaction hash is already known.</summary>
+        bool IsKnown(in ValueHash256 hash) => IsKnown(new Hash256(hash));
         bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
 
         /// <summary>

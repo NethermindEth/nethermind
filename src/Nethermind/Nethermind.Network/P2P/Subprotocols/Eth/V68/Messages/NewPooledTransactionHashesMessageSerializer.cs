@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             {
                 message.TypeList.AddRange(ctx.DecodeByteArraySpan(TypesRlpLimit));
                 DecodeList(ref ctx, message.SizeList, static (ref RlpReader c) => c.DecodeInt(), SizesRlpLimit);
-                DecodeList(ref ctx, message.HashList, static (ref RlpReader c) => c.DecodeKeccak(), HashesRlpLimit);
+                DecodeList(ref ctx, message.HashList.Values, static (ref RlpReader c) => c.DecodeValueKeccakNonNull(), HashesRlpLimit);
                 return message;
             }
             catch
@@ -79,12 +79,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             private static ref PooledMessage? CurrentSlot => ref Pool[(Environment.CurrentManagedThreadId % MaxRetainedMessages + 1) * SlotStride];
             internal readonly ArrayPoolList<byte> TypeList;
             internal readonly ArrayPoolList<int> SizeList;
-            internal readonly ArrayPoolList<Hash256> HashList;
+            internal readonly AnnouncementHashes HashList;
             private int _returned;
 
-            private PooledMessage() : this(new(0), new(0), new(0)) { }
+            private PooledMessage() : this(new(0), new(0), new()) { }
 
-            private PooledMessage(ArrayPoolList<byte> types, ArrayPoolList<int> sizes, ArrayPoolList<Hash256> hashes)
+            private PooledMessage(ArrayPoolList<byte> types, ArrayPoolList<int> sizes, AnnouncementHashes hashes)
                 : base(types, sizes, hashes)
             {
                 TypeList = types;

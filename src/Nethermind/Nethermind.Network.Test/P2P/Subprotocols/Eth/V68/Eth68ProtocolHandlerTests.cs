@@ -824,6 +824,24 @@ public class Eth68ProtocolHandlerTests
         _transactionPool.Received(1).NotifyAboutTx(TestItem.KeccakA, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
     }
 
+    [Test]
+    public void Should_skip_known_hashes_in_mixed_announcement()
+    {
+        ValueHash256 known = TestItem.KeccakA.ValueHash256;
+        _transactionPool.IsKnown(in known).Returns(true);
+        using NewPooledTransactionHashesMessage68 message = new(
+            new ArrayPoolList<byte>(2) { (byte)TxType.EIP1559, (byte)TxType.EIP1559 },
+            new ArrayPoolList<int>(2) { 100, 100 },
+            new ArrayPoolList<Hash256>(2) { TestItem.KeccakA, TestItem.KeccakB });
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
+            m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakB));
+        _transactionPool.DidNotReceive().NotifyAboutTx(TestItem.KeccakA, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
+    }
+
     [TestCase(0, (byte)TxType.Legacy)]
     [TestCase(100, (byte)TxType.DepositTx)]
     [TestCase(100, byte.MaxValue)]

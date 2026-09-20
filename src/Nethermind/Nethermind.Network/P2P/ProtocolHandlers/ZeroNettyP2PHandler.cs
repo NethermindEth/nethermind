@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers;
 public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : SimpleChannelInboundHandler<ZeroPacket>
 {
     private const int MaxRetainedOutputCapacity = 64 * 1024;
-    private IByteBuffer? _outputBuffer;
+    private ZeroPacket? _outputPacket;
     private bool _stopped;
     private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
     private readonly ILogger _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -84,7 +84,8 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
                 if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {readableBytes}");
             }
 
-            IByteBuffer output = TakeOutputBuffer(ctx, uncompressedLength);
+            ZeroPacket outputPacket = TakeOutputPacket(ctx, uncompressedLength);
+            IByteBuffer output = outputPacket.Content;
 
             try
             {
@@ -110,17 +111,17 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             }
 
             content.SkipBytes(readableBytes);
-            ZeroPacket outputPacket = new(output);
             try
             {
+                outputPacket.Protocol = null;
                 outputPacket.PacketType = input.PacketType;
                 _session.ReceiveMessage(outputPacket);
             }
             finally
             {
                 // A retained downstream reference prevents reuse, including after a consumer throws.
-                if (!_stopped && _outputBuffer is null && output.ReferenceCount == 1 && output.Capacity <= MaxRetainedOutputCapacity)
-                    _outputBuffer = output;
+                if (!_stopped && _outputPacket is null && output.ReferenceCount == 1 && output.Capacity <= MaxRetainedOutputCapacity)
+                    _outputPacket = outputPacket;
                 else
                     outputPacket.SafeRelease();
             }
@@ -131,36 +132,41 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
     }
 
-    private IByteBuffer TakeOutputBuffer(IChannelHandlerContext context, int length)
+    private ZeroPacket TakeOutputPacket(IChannelHandlerContext context, int length)
     {
-        IByteBuffer? buffer = _outputBuffer;
-        if (buffer is not null && length <= MaxRetainedOutputCapacity)
+        ZeroPacket? packet = _outputPacket;
+        if (packet is not null && length <= MaxRetainedOutputCapacity)
         {
-            _outputBuffer = null;
-            if (buffer.Capacity >= length) return buffer.Clear().MarkReaderIndex().MarkWriterIndex();
-            buffer.SafeRelease();
+            _outputPacket = null;
+            IByteBuffer buffer = packet.Content;
+            if (buffer.Capacity >= length)
+            {
+                buffer.Clear().MarkReaderIndex().MarkWriterIndex();
+                return packet;
+            }
+            packet.SafeRelease();
         }
-        return context.Allocator.Buffer(length);
+        return new ZeroPacket(context.Allocator.Buffer(length));
     }
 
     public override void ChannelInactive(IChannelHandlerContext context)
     {
-        ReleaseOutputBuffer();
+        ReleaseOutputPacket();
         base.ChannelInactive(context);
     }
 
     public override void HandlerRemoved(IChannelHandlerContext context)
     {
-        ReleaseOutputBuffer();
+        ReleaseOutputPacket();
         base.HandlerRemoved(context);
     }
 
-    private void ReleaseOutputBuffer()
+    private void ReleaseOutputPacket()
     {
         _stopped = true;
-        IByteBuffer? buffer = _outputBuffer;
-        _outputBuffer = null;
-        buffer?.SafeRelease();
+        ZeroPacket? packet = _outputPacket;
+        _outputPacket = null;
+        packet?.SafeRelease();
     }
 
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)

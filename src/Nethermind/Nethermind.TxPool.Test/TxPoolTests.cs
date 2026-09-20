@@ -2543,11 +2543,13 @@ namespace Nethermind.TxPool.Test
                 EnsureSenderBalance(tx);
                 _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
                 Assert.That(_txPool.IsKnown(tx.Hash), Is.EqualTo(true));
+                Assert.That(_txPool.IsKnown(in tx.Hash.ValueHash256), Is.True);
                 Assert.That(_txPool.RemoveTransaction(tx.Hash), Is.EqualTo(true));
             }
             else
             {
                 Assert.That(_txPool.IsKnown(TestItem.KeccakA), Is.EqualTo(false));
+                Assert.That(_txPool.IsKnown(in TestItem.KeccakA.ValueHash256), Is.False);
                 Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
                 Assert.That(_txPool.RemoveTransaction(tx.Hash), Is.EqualTo(false));
             }

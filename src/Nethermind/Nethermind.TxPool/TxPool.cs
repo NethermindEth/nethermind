@@ -1803,6 +1803,8 @@ namespace Nethermind.TxPool
 
         public bool IsKnown(Hash256? hash) => hash is not null && _hashCache.Get(hash);
 
+        public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash);
+
         public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
