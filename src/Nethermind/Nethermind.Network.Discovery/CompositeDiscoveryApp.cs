@@ -32,6 +32,8 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     private readonly ILogger _logger;
     private IEventLoopGroup? _eventLoopGroup;
 
+    private static readonly TimeSpan EventLoopShutdownTimeout = TimeSpan.FromSeconds(5);
+
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
@@ -216,9 +218,27 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         }
     }
 
-    // Channels and discovery tasks are stopped first, so their event loop needs no additional quiet period.
-    private Task ShutdownEventLoopGroup()
-        => Interlocked.Exchange(ref _eventLoopGroup, null)?.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.Zero) ?? Task.CompletedTask;
+    /// <summary>Shuts the discovery event loop down without letting a stuck loop block node shutdown.</summary>
+    /// <remarks>
+    /// Channels and discovery tasks are stopped first, so the event loop needs no additional quiet period.
+    /// DotNetty queues a wake-up task while confirming shutdown and its own next confirmation reads that back as
+    /// pending work, so a task landing in the queue at that moment leaves the loop spinning instead of terminating.
+    /// The loop is abandoned once the budget is spent, the same way <see cref="Nethermind.Network.Rlpx.RlpxHost"/> bounds its own.
+    /// </remarks>
+    private async Task ShutdownEventLoopGroup()
+    {
+        IEventLoopGroup? eventLoopGroup = Interlocked.Exchange(ref _eventLoopGroup, null);
+        if (eventLoopGroup is null) return;
+
+        try
+        {
+            await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.Zero).WaitAsync(EventLoopShutdownTimeout);
+        }
+        catch (TimeoutException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Discovery event loop did not terminate in {EventLoopShutdownTimeout.TotalSeconds} seconds.");
+        }
+    }
 
     string IStoppableService.Description => "discovery connection";
 

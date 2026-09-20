@@ -120,6 +120,49 @@ public class CompositeDiscoveryAppTests
         }
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task StopAsync_CompletesWhenEventLoopCannotTerminate()
+    {
+        NetworkConfig networkConfig = new() { DiscoveryPort = GetAvailableUdpPort() };
+        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
+        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        IEventLoop? eventLoop = null;
+        discoveryApp.When(app => app.InitializeChannel(Arg.Any<IChannel>())).Do(call => eventLoop = ((IChannel)call[0]).EventLoop);
+        discoveryApp.StartAsync().Returns(Task.CompletedTask);
+        discoveryApp.StopAsync().Returns(Task.CompletedTask);
+        CompositeDiscoveryApp app = new(
+            networkConfig,
+            new DiscoveryConfig { UdpChannelCloseTimeout = 100 },
+            LimboLogs.Instance,
+            listenerState,
+            [discoveryApp],
+            new RecordingChannelFactory());
+
+        await app.StartAsync();
+        Assert.That(eventLoop, Is.Not.Null);
+
+        // Standing in for DotNetty's shutdown livelock: an event loop that cannot reach termination.
+        ManualResetEventSlim wedge = new();
+        Task wedged = eventLoop!.SubmitAsync(() =>
+        {
+            wedge.Wait();
+            return true;
+        });
+
+        try
+        {
+            // Generous against the shutdown budget, so an unbounded wait fails here instead of hanging the host.
+            await app.StopAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            wedge.Set();
+            await wedged;
+            wedge.Dispose();
+        }
+    }
+
     [TestCase("0.0.0.0", "2001:db8::1", "192.0.2.1", 30304)]
     [TestCase("2001:db8::5", "192.0.2.1", "2001:db8::1", 30305)]
     [TestCase("::", "2001:db8::1", "2001:db8::1", 30305)]
