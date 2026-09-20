@@ -73,5 +73,8 @@ public class BeaconChainModule : Module
             .AddColumnDatabase<BeaconChainDbColumns>("beaconChain")
             .AddStep(typeof(StartBeaconChain))
             ;
+
+        // Gated separately: the API can be off while the driver runs, but not the reverse.
+        builder.RegisterModule(new Api.BeaconApiModule());
     }
 }
