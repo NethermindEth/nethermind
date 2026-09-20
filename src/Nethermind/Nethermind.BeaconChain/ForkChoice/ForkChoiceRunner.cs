@@ -185,7 +185,7 @@ public sealed class ForkChoiceRunner
     /// only valid when the block carries no blob commitments.
     /// </param>
     /// <exception cref="ForkChoiceException">The block violates an <c>on_block</c> assertion, or its data is not available.</exception>
-    public void OnBlock(SignedBeaconBlock signedBlock, BeaconStateFulu postState, ExecutionStatus executionStatus = ExecutionStatus.Optimistic, IReadOnlyList<DataColumnSidecar>? dataColumns = null)
+    public void OnBlock(SignedBeaconBlock signedBlock, BeaconStateFulu postState, ExecutionStatus executionStatus, IReadOnlyList<DataColumnSidecar>? dataColumns)
     {
         BeaconBlock block = signedBlock.Message!;
         Hash256 parentRoot = block.ParentRoot!;
