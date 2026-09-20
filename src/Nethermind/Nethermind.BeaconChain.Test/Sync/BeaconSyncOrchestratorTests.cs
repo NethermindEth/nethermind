@@ -294,7 +294,7 @@ public class BeaconSyncOrchestratorTests
 
         public SignedBeaconBlock? CurrentBlock { get; set; }
 
-        public PayloadStatusV1? LastNewPayloadStatus => null;
+        public bool HasAnsweredNewPayload => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
         {
@@ -302,7 +302,7 @@ public class BeaconSyncOrchestratorTests
             return Task.FromResult(FcuResponses.Count > 0 ? FcuResponses.Dequeue() : PayloadStatusV1.Syncing);
         }
 
-        public bool NotifyNewPayload(BeaconBlockBody body) => true;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
     private sealed class StubPool : IBeaconSyncPeerPool

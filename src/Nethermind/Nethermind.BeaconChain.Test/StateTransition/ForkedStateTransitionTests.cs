@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -240,6 +241,6 @@ public class ForkedStateTransitionTests
 
     private sealed class AcceptingNotifier : INewPayloadNotifier
     {
-        public bool NotifyNewPayload(BeaconBlockBody body) => true;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 }
