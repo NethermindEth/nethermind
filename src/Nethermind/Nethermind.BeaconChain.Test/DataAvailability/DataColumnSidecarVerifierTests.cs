@@ -4,8 +4,10 @@
 using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
 
@@ -199,7 +201,102 @@ public class DataColumnSidecarVerifierTests
         {
             Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
             Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
-            Assert.That(DataColumnSidecarVerifier.Verify(sidecar), Is.False);
+            Assert.That(DataColumnSidecarVerifier.Verify(sidecar, BeaconChainSpec.Mainnet, BeaconChainSpec.Mainnet.FuluForkEpoch), Is.False);
+        });
+    }
+
+    [Test]
+    public void VerifyBlobCount_rejects_a_sidecar_with_no_commitments()
+    {
+        DataColumnSidecar sidecar = BuildValidSidecar();
+        sidecar.KzgCommitments = [];
+
+        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, BeaconChainSpec.Mainnet, BeaconChainSpec.Mainnet.FuluForkEpoch), Is.False);
+    }
+
+    [Test]
+    public void VerifyBlobCount_rejects_a_sidecar_with_null_commitments()
+    {
+        DataColumnSidecar sidecar = BuildValidSidecar();
+        sidecar.KzgCommitments = null;
+
+        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, BeaconChainSpec.Mainnet, BeaconChainSpec.Mainnet.FuluForkEpoch), Is.False);
+    }
+
+    /// <summary>
+    /// max_blobs_per_block is not a constant: BPO forks raise it at a scheduled epoch without a fork
+    /// version bump. A sidecar with a commitment count that a stale, fixed bound would have accepted
+    /// must still be judged against the schedule live at its own claimed epoch.
+    /// </summary>
+    [Test]
+    public void VerifyBlobCount_enforces_the_schedule_live_at_the_claimed_epoch_not_a_fixed_maximum()
+    {
+        BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
+        // Mainnet's own BPO1 (412672, max 15): 10 commitments is within the pre-BPO Electra/Fulu bound (9)
+        // only at BPO1 and later, never before.
+        DataColumnSidecar sidecar = BuildValidSidecar();
+        sidecar.KzgCommitments = new SszKzgCommitment[10];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, mainnet, mainnet.FuluForkEpoch), Is.False,
+                "before any BPO fork, Fulu still inherits Electra's max_blobs_per_block of 9");
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, mainnet, 412672 - 1), Is.False,
+                "the epoch immediately before BPO1 activates must still use the pre-BPO bound of 9");
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, mainnet, 412672), Is.True,
+                "BPO1's own activation epoch raises the bound to 15, admitting 10 commitments");
+        });
+    }
+
+    [Test]
+    public void VerifyBlobCount_accepts_exactly_the_scheduled_maximum_and_rejects_one_more()
+    {
+        BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
+        DataColumnSidecar atMax = BuildValidSidecar();
+        atMax.KzgCommitments = new SszKzgCommitment[9];
+        DataColumnSidecar overMax = BuildValidSidecar();
+        overMax.KzgCommitments = new SszKzgCommitment[10];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(atMax, mainnet, mainnet.FuluForkEpoch), Is.True);
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(overMax, mainnet, mainnet.FuluForkEpoch), Is.False);
+        });
+    }
+
+    private static BeaconChainSpec SmallBoundedBlobSpec() => new()
+    {
+        ChainId = 0,
+        SecondsPerSlot = 12,
+        SlotsPerEpoch = 32,
+        GenesisTime = 0,
+        GenesisValidatorsRoot = Hash256.Zero,
+        Forks = [new(Bytes.FromHexString("0x00000000"), 0)],
+        BlobSchedule = [new(20, 2)], // BPO raises the bound from 1 to 2 at epoch 20
+        ElectraForkEpoch = 0,
+        FuluForkEpoch = 10,
+        MaxBlobsPerBlockElectra = 1,
+        GloasForkEpoch = Presets.FarFutureEpoch,
+        GloasForkVersion = Bytes.FromHexString("0x00000000"),
+    };
+
+    /// <summary>
+    /// End-to-end through <see cref="DataColumnSidecarVerifier.Verify"/> with a cryptographically real
+    /// sidecar (not just a commitment-count fixture), crossing an actual BPO boundary: the same sidecar
+    /// is rejected before the bound rises and accepted at the epoch it does.
+    /// </summary>
+    [Test]
+    public void Verify_rejects_a_sidecar_over_the_bound_at_its_claimed_epoch_and_accepts_it_once_the_bound_rises()
+    {
+        BeaconChainSpec spec = SmallBoundedBlobSpec();
+        DataColumnSidecar sidecar = BuildValidSidecar(blobCount: 2);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(DataColumnSidecarVerifier.Verify(sidecar, spec, 19), Is.False,
+                "one epoch before the BPO, the schedule still caps max_blobs_per_block at 1");
+            Assert.That(DataColumnSidecarVerifier.Verify(sidecar, spec, 20), Is.True,
+                "at the BPO's own activation epoch the cap rises to 2, admitting this sidecar");
         });
     }
 }
