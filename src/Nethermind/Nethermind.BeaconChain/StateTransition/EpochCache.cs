@@ -4,6 +4,7 @@
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -12,13 +13,17 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// and an LRU of committee shufflings.
 /// </summary>
 /// <remarks>
-/// Not thread-safe and not fork-aware for the balance memo: own one instance per state lineage
-/// (e.g. per block-processing context) and do not share it across conflicting forks. The committee
-/// LRU is fork-safe because it is keyed by the shuffling decision root.
+/// Not thread-safe: own one instance per state lineage (e.g. per block-processing context). The
+/// balance memo enforces this at runtime (see <see cref="GetTotalActiveBalance(BeaconStateFulu)"/>):
+/// it is keyed by the same shuffling-decision root that makes the committee LRU fork-safe, so a
+/// second, conflicting branch at the same epoch is refused rather than silently handed the first
+/// branch's balance. Two branches that still share that decision root (e.g. sibling blocks at the
+/// same slot) are not distinguished, same as the committee LRU; only a separate instance per
+/// candidate is fully safe for that case.
 /// </remarks>
 public sealed class EpochCache
 {
-    private (ulong Epoch, ulong Balance)? _totalActiveBalance;
+    private (ulong Epoch, ulong Balance, Hash256 DecisionRoot)? _totalActiveBalance;
     private readonly CommitteeCacheLru _committees = new();
 
     /// <summary>
@@ -36,13 +41,27 @@ public sealed class EpochCache
     /// Returns <c>get_total_active_balance(state)</c> — the total effective balance of validators
     /// active in the current epoch, floored at <c>EFFECTIVE_BALANCE_INCREMENT</c> — memoized per epoch.
     /// </summary>
+    /// <exception cref="BeaconStateException">
+    /// This cache already holds a balance for this epoch computed against a different branch (a
+    /// different <see cref="BeaconStateAccessors.GetShufflingDecisionRoot"/>). Reusing an
+    /// <see cref="EpochCache"/> across two candidate branches at the same epoch would otherwise
+    /// silently hand one branch the other's balance; use a separate instance per branch instead.
+    /// </exception>
     public ulong GetTotalActiveBalance(BeaconStateFulu state)
     {
         ulong epoch = state.GetCurrentEpoch();
+        Hash256 decisionRoot = state.GetShufflingDecisionRoot(epoch);
         if (_totalActiveBalance is not { } cached || cached.Epoch != epoch)
         {
             ulong balance = state.GetTotalBalance(state.GetActiveValidatorIndices(epoch));
-            _totalActiveBalance = cached = (epoch, balance);
+            _totalActiveBalance = cached = (epoch, balance, decisionRoot);
+        }
+        else if (cached.DecisionRoot != decisionRoot)
+        {
+            throw new BeaconStateException(
+                $"EpochCache reused across branches at epoch {epoch}: memoized balance was built for " +
+                $"decision root {cached.DecisionRoot}, this state's is {decisionRoot}; use a separate " +
+                "EpochCache per branch");
         }
         return cached.Balance;
     }
@@ -61,13 +80,22 @@ public sealed class EpochCache
     /// Shares this cache's single memo slot: an instance is owned per state lineage (see the type
     /// remarks), and a lineage that has crossed the Gloas fork never calls the Fulu overload again.
     /// </summary>
+    /// <exception cref="BeaconStateException">See <see cref="GetTotalActiveBalance(BeaconStateFulu)"/>.</exception>
     public ulong GetTotalActiveBalance(BeaconStateGloas state)
     {
         ulong epoch = state.GetCurrentEpoch();
+        Hash256 decisionRoot = state.GetShufflingDecisionRoot(epoch);
         if (_totalActiveBalance is not { } cached || cached.Epoch != epoch)
         {
             ulong balance = state.GetTotalBalance(state.GetActiveValidatorIndices(epoch));
-            _totalActiveBalance = cached = (epoch, balance);
+            _totalActiveBalance = cached = (epoch, balance, decisionRoot);
+        }
+        else if (cached.DecisionRoot != decisionRoot)
+        {
+            throw new BeaconStateException(
+                $"EpochCache reused across branches at epoch {epoch}: memoized balance was built for " +
+                $"decision root {cached.DecisionRoot}, this state's is {decisionRoot}; use a separate " +
+                "EpochCache per branch");
         }
         return cached.Balance;
     }
