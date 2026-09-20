@@ -152,6 +152,48 @@ public class BeaconStatesValidatorsAndCommitteesTests
     }
 
     /// <summary>
+    /// A stale or misbuilt per-request pubkey map would resolve the second pubkey id to the wrong
+    /// index (or fail to find it) once the map holds more than one entry - a single-pubkey-id test
+    /// cannot distinguish a correct map from one that only works for its first insertion.
+    /// </summary>
+    [Test]
+    public async Task Validators_list_resolves_multiple_pubkey_ids_through_the_shared_request_map()
+    {
+        Hash256 root = TestRoot(20);
+        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
+        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
+        PutState(root, validators, balances);
+
+        string pubkeyOfIndex1 = validators[1].Pubkey.ToString();
+        string pubkeyOfIndex4 = validators[4].Pubkey.ToString();
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators?id={pubkeyOfIndex1}&id={pubkeyOfIndex4}");
+        JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        List<string> indices = [.. body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
+        Assert.That(indices, Is.EquivalentTo(new[] { "1", "4" }));
+    }
+
+    /// <summary>
+    /// <c>validator_balances</c> had no id-filter coverage at all before this: this both proves the
+    /// filter works there and, with two pubkey ids, exercises the same shared per-request map as the
+    /// <c>validators</c> list test above.
+    /// </summary>
+    [Test]
+    public async Task Validator_balances_id_filter_accepts_index_and_multiple_pubkey_ids()
+    {
+        Hash256 root = TestRoot(21);
+        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
+        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
+        PutState(root, validators, balances);
+
+        string pubkeyOfIndex1 = validators[1].Pubkey.ToString();
+        string pubkeyOfIndex4 = validators[4].Pubkey.ToString();
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validator_balances?id=0&id={pubkeyOfIndex1}&id={pubkeyOfIndex4}");
+        JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        List<string> indices = [.. body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
+        Assert.That(indices, Is.EquivalentTo(new[] { "0", "1", "4" }));
+    }
+
+    /// <summary>
     /// The beacon-api spec declares both <c>id</c> and <c>status</c> as array-typed query
     /// parameters; the repeated-key form (<c>id=a&amp;id=b</c>) is the array's canonical wire
     /// encoding, and comma-joined is a common client shorthand this driver also accepts. Only the
