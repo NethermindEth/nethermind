@@ -4,6 +4,7 @@
 using System;
 using System.Security.Cryptography;
 using CkzgLib;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -24,9 +25,9 @@ public static class DataColumnSidecarVerifier
     /// Structural validity: index range, non-empty, and column/commitments/proofs all the same length.
     /// </summary>
     /// <remarks>
-    /// The spec also bounds <c>len(kzg_commitments)</c> by the current epoch's
-    /// <c>max_blobs_per_block</c> fork parameter; that check needs the fork schedule (Spec/), which
-    /// this PeerDAS foundation deliberately does not touch, and is left to the caller.
+    /// Does not bound <c>len(kzg_commitments)</c> by <c>max_blobs_per_block</c>: that bound moves at
+    /// scheduled epochs without a fork version bump (blob-parameter-only forks), so it needs the epoch
+    /// the sidecar claims and is checked separately by <see cref="VerifyBlobCount"/>.
     /// </remarks>
     public static bool VerifyStructure(DataColumnSidecar sidecar)
     {
@@ -47,15 +48,34 @@ public static class DataColumnSidecarVerifier
     }
 
     /// <summary>
-    /// Full verification of a sidecar received from a peer. This is the entry point callers want:
-    /// the individual checks are exposed for testing and are not safe to use piecemeal.
+    /// Full verification of a sidecar received from a peer, claiming to belong to <paramref name="epoch"/>.
+    /// This is the entry point callers want: the individual checks are exposed for testing and are not
+    /// safe to use piecemeal.
     /// </summary>
     /// <remarks>
     /// Ordered cheapest-first so a hostile peer cannot make the node pay for a KZG batch by sending
-    /// a sidecar that fails a structural or merkle check.
+    /// a sidecar that fails a structural, blob-count or merkle check.
     /// </remarks>
-    public static bool Verify(DataColumnSidecar sidecar) =>
-        VerifyStructure(sidecar) && VerifyInclusionProof(sidecar) && VerifyKzgProofs(sidecar);
+    public static bool Verify(DataColumnSidecar sidecar, BeaconChainSpec spec, ulong epoch) =>
+        VerifyStructure(sidecar) && VerifyBlobCount(sidecar, spec, epoch) && VerifyInclusionProof(sidecar) && VerifyKzgProofs(sidecar);
+
+    /// <summary>
+    /// Rejects a sidecar whose commitment count exceeds <paramref name="epoch"/>'s scheduled
+    /// <c>max_blobs_per_block</c>. Blob-parameter-only forks change this bound at a scheduled epoch
+    /// without a fork version bump, so a fixed constant would keep accepting sidecars that are only
+    /// valid under a stale schedule; treating it as a function of the claimed epoch closes that gap.
+    /// </summary>
+    /// <remarks>Fails closed: a sidecar with no commitments is rejected, not treated as vacuously within bound.</remarks>
+    public static bool VerifyBlobCount(DataColumnSidecar sidecar, BeaconChainSpec spec, ulong epoch)
+    {
+        if (sidecar.KzgCommitments is not { Length: > 0 } commitments)
+        {
+            return false;
+        }
+
+        ulong maxBlobsPerBlock = spec.GetBlobParameters(epoch)?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra;
+        return (ulong)commitments.Length <= maxBlobsPerBlock;
+    }
 
     /// <summary>
     /// Batch-verifies every cell in <paramref name="sidecar"/> against its commitments and proofs.
