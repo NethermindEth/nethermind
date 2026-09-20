@@ -29,6 +29,13 @@ public class GloasForkTransitionTests
     public void UpgradeToGloas_preserves_the_fields_the_spec_says_carry_over()
     {
         BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
+        // Distinctive non-zero values: every one of these is asserted by value below, and a fixture
+        // that leaves them at their default makes those assertions pass against a dropped field.
+        pre.Slot = 64;
+        pre.Eth1DepositIndex = 7;
+        pre.NextWithdrawalIndex = 11;
+        pre.NextWithdrawalValidatorIndex = 13;
+        pre.DepositRequestsStartIndex = 17;
         BeaconChainSpec spec = SyntheticSpec();
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
