@@ -30,7 +30,7 @@ internal static class ConfigEndpoints
     /// This is a deliberate subset of the full mainnet <c>config.yaml</c>: only fields this driver
     /// actually holds a value for (in <see cref="BeaconChainSpec"/> or <see cref="Presets"/>) are
     /// included. A caller cannot use an absent field's absence to infer anything about it beyond
-    /// "not reported here" — nothing here claims completeness.
+    /// "not reported here" - nothing here claims completeness.
     /// </remarks>
     private static Task Spec(HttpContext c, BeaconApiContext ctx)
     {
