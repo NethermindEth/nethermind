@@ -67,6 +67,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Threads re-executing blocks for the backwards retrofit of the transaction index, each on its own block range with its own processing environment. The tip is always followed by one thread regardless. 1 runs the retrofit on that same thread. Each worker holds the state its current 128-block chunk wrote, a few hundred thousand entries on mainnet, so the count is a memory knob as well as a throughput one.", DefaultValue = "1")]
     int HistoryTransactionIndexWorkers { get; set; }
 
+    [ConfigItem(Description = "Experimental mainnet v2 archive retrofit using one isolated disk-backed replay state. Replaces retrofit workers, not tip following. Requires a nonzero HistoryTransactionIndexRetrofitFromBlock; coverage joins only after the ascending range completes.", DefaultValue = "false")]
+    bool HistoryTransactionIndexBulkFillEnabled { get; set; }
+
+    [ConfigItem(Description = "Maximum scratch database size in GiB for bulk transaction-index replay. Reaching the limit pauses replay without dropping its checkpoint.", DefaultValue = "1024")]
+    int HistoryTransactionIndexBulkFillMaxGiB { get; set; }
+
     [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]
     bool ArchiveProofServeEnabled { get; set; }
 

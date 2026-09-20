@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// </remarks>
 internal sealed class BulkFillScratchState
 {
-    private const byte FormatVersion = 1;
+    private const byte FormatVersion = 2;
     private static ReadOnlySpan<byte> IdentityKey => "bulk-fill-identity"u8;
     private readonly IColumnsDb<Columns> _db;
     private readonly ulong _anchor;
@@ -28,6 +28,7 @@ internal sealed class BulkFillScratchState
         Accounts,
         Storage,
         Clears,
+        Code,
     }
 
     public BulkFillScratchState(IColumnsDb<Columns> db, Hash256 identity, ulong anchor)
@@ -125,6 +126,12 @@ internal sealed class BulkFillScratchState
         return page;
     }
 
+    public void VerifyAnchor(Hash256 expectedRoot, bool rlpWrappedSlots, CancellationToken token)
+    {
+        if (_isFaulted) throw new InvalidOperationException("Reopen the scratch state after a failed import write.");
+        new BulkFillScratchVerifier(_db, _anchor).VerifyAnchor(expectedRoot, rlpWrappedSlots, token);
+    }
+
     private static void Stage(IWriteBatch batch, Columns target, ReadOnlySpan<byte> key, ulong height, ReadOnlySpan<byte> value)
     {
         if (target == Columns.Accounts)
@@ -136,6 +143,16 @@ internal sealed class BulkFillScratchState
         Span<byte> record = stackalloc byte[sizeof(ulong) + BaseFlatPersistence.RlpSlotValueBufferSize];
         BinaryPrimitives.WriteUInt64BigEndian(record, height);
         value.CopyTo(record[sizeof(ulong)..]);
-        batch.PutSpan(key, record[..(sizeof(ulong) + value.Length)]);
+        if (target == Columns.Storage)
+        {
+            Span<byte> orderedKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
+            HistoryKeyLayout.Storage.ExtractAddressKey(key, orderedKey);
+            key.Slice(BasePersistence.StoragePrefixPortion, Hash256.Size).CopyTo(orderedKey[HistoryKeyLayout.ScopeKeyLength..]);
+            batch.PutSpan(orderedKey, record[..(sizeof(ulong) + value.Length)]);
+        }
+        else
+        {
+            batch.PutSpan(key, record[..sizeof(ulong)]);
+        }
     }
 }

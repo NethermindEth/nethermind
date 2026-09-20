@@ -100,6 +100,8 @@ public sealed class TransactionChangesetIndex
     /// is accepted, so coverage stays one contiguous range.</summary>
     public bool TryClaim(ulong fromBlock, ulong toBlock) => _store.TryExtendCoverage(fromBlock, toBlock);
 
+    public void SyncWal() => _columns.SyncWal();
+
     /// <summary>Follows the history floor: a block whose history is gone cannot be traced, so its changesets have
     /// nothing left to serve.</summary>
     public void PruneBelow(ulong floor)

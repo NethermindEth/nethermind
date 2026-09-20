@@ -2,15 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
@@ -20,6 +31,69 @@ namespace Nethermind.Runner.Test.Module;
 [TestFixture]
 public class TransactionChangesetIndexModuleTests
 {
+    [Test]
+    public void BulkReplay_WhenProcessingConsecutiveBlocks_PreservesWithdrawalsAndTransactionState()
+    {
+        FlatDbConfig config = new() { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true };
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
+        using MemDb code = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> history = new();
+        HistoryRowFormat format = HistoryRowFormat.Resolve(new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks)), config);
+        Block genesis = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        tree.SuggestBlock(genesis);
+        using BulkFillSession session = new(new MemDbFactory(), code, TestItem.KeccakA, genesis.Header, false);
+        foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
+            Assert.That(session.ImportPage((ISortedKeyValueStore)history.GetColumnDb(column), format, column, CancellationToken.None), Is.True);
+        session.VerifyAnchor(CancellationToken.None);
+        BulkFillScopeProvider provider = new(session, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+            .AddModule(container.Resolve<IBlockValidationModule[]>())
+            .AddSingleton<IWorldStateScopeProvider>(provider)
+            .AddSingleton<IStateReader>(provider)
+            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts));
+        IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
+        TransactionChangesetIndex index = new(history, config);
+        Withdrawal withdrawal = new() { Address = TestItem.AddressA, AmountInGwei = 1 };
+        Block first = Build.A.Block.WithNumber(1).WithParent(genesis).WithPostMergeFlag(true)
+            .WithBlobGasUsed(0).WithExcessBlobGas(0).WithBaseFeePerGas(0).WithWithdrawals(withdrawal).TestObject;
+        Transaction transfer = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(7).WithGasPrice(0)
+            .WithGasLimit(21000).WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block second = Build.A.Block.WithNumber(2).WithParent(first).WithPostMergeFlag(true)
+            .WithBlobGasUsed(0).WithExcessBlobGas(0).WithBaseFeePerGas(0).WithTransactions(transfer).WithWithdrawals().TestObject;
+
+        foreach (Block block in new[] { first, second })
+        {
+            tree.Insert(block);
+            session.BeginBlock(block.Header);
+            using TransactionChangesetIndex.BlockCapture capture = index.StartBlock(block.Number);
+            Block isolated = block.WithReplacedHeader(block.Header.Clone());
+            try
+            {
+                Assert.That(processor.Process(isolated, TraceProcessingOptions.ReadOnlyReplay, capture.Tracer), Is.Not.Null);
+                Assert.That(capture.Commit(), Is.True);
+                index.SyncWal();
+                session.CommitBlock();
+            }
+            finally
+            {
+                isolated.DisposeAccountChanges();
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.TryGetAccount(second.Header, TestItem.AddressA, out AccountStruct sender), Is.True);
+            Assert.That(sender.Balance, Is.EqualTo(withdrawal.AmountInWei - 7));
+            Assert.That(sender.Nonce, Is.EqualTo(1UL));
+            Assert.That(provider.TryGetAccount(second.Header, TestItem.AddressB, out AccountStruct recipient), Is.True);
+            Assert.That(recipient.Balance, Is.EqualTo(new UInt256(7)));
+            Assert.That(session.CurrentState.BlockNumber, Is.EqualTo(2UL));
+            Assert.That(scope.Resolve<IWorldState>().IsInScope, Is.False);
+        }
+    }
+
     [TestCase(-1, 1)]
     [TestCase(1, 1)]
     [TestCase(4, 4)]

@@ -19,7 +19,8 @@ public sealed class TransactionChangesetBuilder(
     IHistoryBlockExecutorFactory executors,
     HistoryAvailability availability,
     IFlatDbConfig config,
-    ILogManager logManager) : IDisposable
+    ILogManager logManager,
+    ITransactionIndexBulkFill? bulkFill = null) : IDisposable
 {
     internal const ulong ChunkBlocks = 128;
     internal const int WarnAfterAttempts = 8;
@@ -47,14 +48,18 @@ public sealed class TransactionChangesetBuilder(
     private long _builtSinceReport;
     private int _disposed;
 
-    private bool RetrofitOnWorkers => _retrofitFromBlock != 0 && _workers > 1;
+    private bool RetrofitOnWorkers => bulkFill is { Enabled: true } || _retrofitFromBlock != 0 && _workers > 1;
 
     public void Start()
     {
         if (!index.Enabled || _threads.Count > 0) return;
 
         _threads.Add(StartThread(FollowTip, "Transaction changeset builder"));
-        if (RetrofitOnWorkers)
+        if (bulkFill is { Enabled: true })
+        {
+            _threads.Add(StartThread(() => bulkFill.Run(_cancellation.Token), "Transaction changeset bulk fill"));
+        }
+        else if (RetrofitOnWorkers)
         {
             for (int worker = 0; worker < _workers; worker++) _threads.Add(StartThread(Retrofit, $"Transaction changeset retrofit {worker}"));
         }
@@ -62,7 +67,8 @@ public sealed class TransactionChangesetBuilder(
         index.ReportCoverage();
         if (_logger.IsInfo) _logger.Info(
             $"Transaction changeset index building at {_dutyCyclePercent}% duty cycle" +
-            (_retrofitFromBlock == 0 ? "." : $", retrofitting down to block {_retrofitFromBlock} on {(RetrofitOnWorkers ? _workers : 1)} thread(s)."));
+            (bulkFill is { Enabled: true } ? $", using isolated bulk replay from block {_retrofitFromBlock}." :
+                _retrofitFromBlock == 0 ? "." : $", retrofitting down to block {_retrofitFromBlock} on {(RetrofitOnWorkers ? _workers : 1)} thread(s)."));
     }
 
     /// <summary>One step of the tip thread: the next block above coverage, or, without workers, the next below it.</summary>
