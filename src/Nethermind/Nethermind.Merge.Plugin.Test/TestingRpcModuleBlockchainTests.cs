@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.ExceptionServices;
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -147,15 +146,29 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
             else
                 Assert.That(result.Data, Is.EqualTo(chain.BlockTree.Head.Hash));
         }
+
+        if (maintenance)
+        {
+            Hash256 refusedHash = chain.BlockTree.BestSuggestedHeader!.Hash!;
+            ResultWrapper<Hash256> retry = await module.testing_commitBlockV1(NextPayloadAttributes(head.Header), [], []);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retry.Result.ResultType, Is.EqualTo(ResultType.Success), retry.Result.Error);
+                Assert.That(retry.Data, Is.EqualTo(refusedHash));
+                Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(refusedHash));
+                Assert.That(chain.BlockTree.IsMainChain(refusedHash), Is.True);
+            }
+        }
     }
 
     [Test]
-    public async Task Produced_block_reports_refused_canonical_update([Values] bool maintenance)
+    public async Task Produced_block_reports_refused_canonical_update([Values] bool maintenance, [Values] bool warningsEnabled)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IBlockProducerRunner runner = Substitute.For<IBlockProducerRunner>();
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsWarn.Returns(true);
+        logger.IsWarn.Returns(warningsEnabled);
         ILogManager logs = Substitute.For<ILogManager>();
         ILogger wrappedLogger = new(logger);
         logs.GetClassLogger<NonProcessingProducedBlockSuggester>().Returns(wrappedLogger);
@@ -178,7 +191,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(maintenance ? head.Hash : produced.Hash));
             Assert.That(chain.BlockTree.IsMainChain(produced.Hash!), Is.EqualTo(!maintenance));
         }
-        logger.Received(maintenance ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains(produced.Hash!.ToString())));
+        logger.Received(maintenance && warningsEnabled ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains(produced.Hash!.ToString())));
     }
 
     private static async Task WithMaintenance(BlockTreeMutationLock mutationLock, bool maintenance, Func<Task> action)
@@ -189,7 +202,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
             return;
         }
 
-        using ManualResetEventSlim release = new();
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task worker = Task.Run(() =>
         {
@@ -199,7 +212,8 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
                 using (held)
                 {
                     ready.SetResult();
-                    Assert.That(release.Wait(TimeSpan.FromSeconds(30)), Is.True, "maintenance release");
+                    // The thread-affine lock must be released on this worker, without an await.
+                    release.Task.WaitAsync(TimeSpan.FromSeconds(30)).GetAwaiter().GetResult();
                 }
             }
             catch (Exception exception)
@@ -222,7 +236,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
         }
         finally
         {
-            release.Set();
+            release.SetResult();
         }
         Task workers = Task.WhenAll(worker, actionTask);
         try

@@ -24,8 +24,10 @@ public class NonProcessingProducedBlockSuggester : IProducedBlockSuggester
     private void OnBlockProduced(object? sender, BlockEventArgs e)
     {
         if (_blockTree.SuggestBlock(e.Block, BlockTreeSuggestOptions.ForceDontSetAsMain) == AddBlockResult.Added &&
-            !_blockTree.TryUpdateMainChain(e.Block.Header, wereProcessed: true, preloadedBlocks: [e.Block]) && _logger.IsWarn)
-            _logger.Warn($"Canonical chain update refused for produced block {e.Block.Hash}.");
+            !_blockTree.TryUpdateMainChain(e.Block.Header, wereProcessed: true, preloadedBlocks: [e.Block]))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Canonical chain update refused for produced block {e.Block.Hash}.");
+        }
     }
 
     public void Dispose() => _blockProducerRunner.BlockProduced -= OnBlockProduced;

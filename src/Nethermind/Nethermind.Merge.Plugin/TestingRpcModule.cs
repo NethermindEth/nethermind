@@ -170,7 +170,7 @@ public class TestingRpcModule(
             return ResultWrapper<Hash256>.Fail("processed block has no hash", ErrorCodes.InternalError);
 
         AddBlockResult addBlockResult = blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceDontSetAsMain);
-        if (addBlockResult != AddBlockResult.Added)
+        if (addBlockResult is not (AddBlockResult.Added or AddBlockResult.AlreadyKnown))
         {
             if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
             return ResultWrapper<Hash256>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
