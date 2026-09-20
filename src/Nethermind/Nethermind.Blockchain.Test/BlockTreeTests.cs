@@ -2164,31 +2164,33 @@ public class BlockTreeTests
         }
     }
 
-    // A gap below a canonical predecessor is never scanned.
+    // Omit (1, true): a gap below a canonical predecessor is never scanned.
     [TestCase(1UL, false)]
     [TestCase(4UL, false)]
     [TestCase(4UL, true)]
     [MaxTime(Timeout.MaxTestTime)]
-    public void Delete_slice_clears_markers_through_old_head_and_preserves_isolated_markers_above_it(ulong missingLevel, bool canonicalPredecessor)
+    public void Delete_slice_clears_reachable_markers_and_preserves_isolated_markers(ulong missingLevel, bool canonicalPredecessor)
     {
-        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(7);
+        const int oldHead = 6;
+        const int deletedLevel = 3;
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(oldHead + 1);
         BlockTree tree = builder.TestObject;
-        Hash256[] survivingHashes = Enumerable.Range(4, 3)
+        Hash256[] survivingHashes = Enumerable.Range(deletedLevel + 1, oldHead - deletedLevel)
             .Where(level => (ulong)level != missingLevel)
             .Select(level => tree.FindHeader((ulong)level, BlockTreeLookupOptions.RequireCanonical)!.Hash!)
             .ToArray();
-        BlockHeader isolatedHeader = Build.A.BlockHeader.WithNumber(8).WithTotalDifficulty(1).TestObject;
+        BlockHeader isolatedHeader = Build.A.BlockHeader.WithNumber(oldHead + 2).WithTotalDifficulty(1).TestObject;
         tree.Insert(isolatedHeader);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tree.IsMainChain(isolatedHeader.Hash!), Is.True);
             Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(isolatedHeader.Hash));
         }
-        Hash256 expectedHead = canonicalPredecessor ? tree.FindHeader(2, BlockTreeLookupOptions.RequireCanonical)!.Hash! : tree.Genesis!.Hash!;
-        builder.ChainLevelInfoRepository.PersistLevel(2, new ChainLevelInfo(canonicalPredecessor, tree.FindLevel(2)!.BlockInfos));
+        Hash256 expectedHead = canonicalPredecessor ? tree.FindHeader(deletedLevel - 1, BlockTreeLookupOptions.RequireCanonical)!.Hash! : tree.Genesis!.Hash!;
+        builder.ChainLevelInfoRepository.PersistLevel(deletedLevel - 1, new ChainLevelInfo(canonicalPredecessor, tree.FindLevel(deletedLevel - 1)!.BlockInfos));
         builder.ChainLevelInfoRepository.Delete(missingLevel);
 
-        int deleted = tree.DeleteChainSlice(3, 3);
+        int deleted = tree.DeleteChainSlice(deletedLevel, deletedLevel);
         Assert.That(builder.ChainLevelInfoRepository, Is.InstanceOf<IClearableCache>());
         ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
 
@@ -2199,7 +2201,7 @@ public class BlockTreeTests
             Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(expectedHead));
             Assert.That(tree.BestSuggestedBody!.Hash, Is.EqualTo(expectedHead));
             Assert.That(tree.IsMainChain(isolatedHeader.Hash!), Is.True, "stop at the gap above the old head");
-            Assert.That(tree.FindLevel(3), Is.Null);
+            Assert.That(tree.FindLevel(deletedLevel), Is.Null);
         }
         foreach (Hash256 survivingHash in survivingHashes)
         {
