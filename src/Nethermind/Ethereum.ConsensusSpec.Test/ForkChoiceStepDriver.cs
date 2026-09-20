@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -20,10 +21,11 @@ namespace Ethereum.ConsensusSpec.Test;
 /// Replays one <c>fork_choice</c> vector's <c>steps.yaml</c> script against
 /// <see cref="ForkChoiceRunner"/>: on_tick, on_block (via the real <see cref="StateTransition"/>
 /// pipeline), on_attestation, on_attester_slashing and checks (head, justified/finalized
-/// checkpoints, proposer boost root). Honors each step's <c>valid</c> flag - an invalid step must
-/// be rejected, and acceptance is reported as a failure, never silently treated as a pass. Step
-/// shapes with no entry point in this driver (PeerDAS column availability, get_proposer_head)
-/// throw <see cref="NotImplementedInDriverException"/>, named, rather than being skipped.
+/// checkpoints, proposer boost root, get_proposer_head) and PeerDAS column-sidecar availability.
+/// Honors each step's <c>valid</c> flag - an invalid step must be rejected, and acceptance is
+/// reported as a failure, never silently treated as a pass. Step shapes with no entry point in
+/// this driver throw <see cref="NotImplementedInDriverException"/>, named, rather than being
+/// skipped.
 /// </summary>
 internal static class ForkChoiceStepDriver
 {
@@ -54,12 +56,13 @@ internal static class ForkChoiceStepDriver
         stateProvider.States[anchorRoot] = anchorState;
 
         ForkChoiceRunner runner = new(BeaconChainSpec.Mainnet, anchorState, anchorBlock, stateProvider, pubkeys);
+        bool executionValid = FuluDriverSupport.ReadExecutionValid(casePath);
 
         YamlSequenceNode steps = LoadSteps(Path.Combine(casePath, "steps.yaml"));
         int stepIndex = 0;
         foreach (YamlNode stepNode in steps.Children)
         {
-            RunStep(casePath, (YamlMappingNode)stepNode, runner, stateProvider, pubkeys, stepIndex);
+            RunStep(casePath, (YamlMappingNode)stepNode, runner, stateProvider, pubkeys, stepIndex, executionValid);
             stepIndex++;
         }
     }
@@ -72,7 +75,7 @@ internal static class ForkChoiceStepDriver
         return (YamlSequenceNode)yaml.Documents[0].RootNode;
     }
 
-    private static void RunStep(string casePath, YamlMappingNode step, ForkChoiceRunner runner, InMemoryStateProvider stateProvider, PubkeyCache pubkeys, int stepIndex)
+    private static void RunStep(string casePath, YamlMappingNode step, ForkChoiceRunner runner, InMemoryStateProvider stateProvider, PubkeyCache pubkeys, int stepIndex, bool executionValid)
     {
         if (TryGetScalar(step, "tick", out string? tickValue))
         {
@@ -82,10 +85,11 @@ internal static class ForkChoiceStepDriver
 
         if (TryGetScalar(step, "block", out string? blockKey))
         {
-            if (HasKey(step, "columns"))
-                throw new NotImplementedInDriverException($"step {stepIndex}: PeerDAS 'columns' data-column-sidecar availability is not implemented by this driver.");
+            DataColumnSidecar[]? dataColumns = TryGetChild(step, "columns", out YamlNode? columnsNode)
+                ? LoadDataColumnSidecars(casePath, (YamlSequenceNode)columnsNode!)
+                : null;
 
-            RunBlockStep(casePath, blockKey!, GetBool(step, "valid", defaultValue: true), runner, stateProvider, pubkeys, stepIndex);
+            RunBlockStep(casePath, blockKey!, GetBool(step, "valid", defaultValue: true), runner, stateProvider, pubkeys, stepIndex, dataColumns, executionValid);
             return;
         }
 
@@ -117,7 +121,7 @@ internal static class ForkChoiceStepDriver
     /// "fork branch: stateless hasher, fresh balance memo" comment for the same rule in production
     /// code) and this driver deliberately explores conflicting branches within one vector.
     /// </summary>
-    private static void RunBlockStep(string casePath, string blockKey, bool expectedValid, ForkChoiceRunner runner, InMemoryStateProvider stateProvider, PubkeyCache pubkeys, int stepIndex)
+    private static void RunBlockStep(string casePath, string blockKey, bool expectedValid, ForkChoiceRunner runner, InMemoryStateProvider stateProvider, PubkeyCache pubkeys, int stepIndex, DataColumnSidecar[]? dataColumns, bool executionValid)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, blockKey + ".ssz_snappy"));
         SignedBeaconBlock.Decode(ssz, out SignedBeaconBlock signedBlock);
@@ -137,8 +141,8 @@ internal static class ForkChoiceStepDriver
             try
             {
                 postState = parentState.Clone();
-                StateTransition.Apply(postState, signedBlock, new EpochCache(), pubkeys, new FixedNewPayloadNotifier(valid: true), BeaconChainSpec.Mainnet, validateResult: true, verifySignatures: true);
-                runner.OnBlock(signedBlock, postState, ExecutionStatus.Valid);
+                StateTransition.Apply(postState, signedBlock, new EpochCache(), pubkeys, new FixedNewPayloadNotifier(executionValid), BeaconChainSpec.Mainnet, validateResult: true, verifySignatures: true);
+                runner.OnBlock(signedBlock, postState, ExecutionStatus.Valid, dataColumns);
                 accepted = true;
             }
             catch (Exception ex)
@@ -155,6 +159,21 @@ internal static class ForkChoiceStepDriver
 
         if (accepted)
             stateProvider.States[blockRoot] = postState!;
+    }
+
+    /// <summary>Decodes the PeerDAS 'columns' sequence of a block step into the sidecars <see cref="ForkChoiceRunner.OnBlock"/> checks the block's data availability against.</summary>
+    private static DataColumnSidecar[] LoadDataColumnSidecars(string casePath, YamlSequenceNode columns)
+    {
+        DataColumnSidecar[] sidecars = new DataColumnSidecar[columns.Children.Count];
+        for (int i = 0; i < sidecars.Length; i++)
+        {
+            string key = ((YamlScalarNode)columns.Children[i]).Value!;
+            byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, key + ".ssz_snappy"));
+            DataColumnSidecar.Decode(ssz, out DataColumnSidecar sidecar);
+            sidecars[i] = sidecar;
+        }
+
+        return sidecars;
     }
 
     private static void RunAttestationStep(string casePath, string key, bool expectedValid, ForkChoiceRunner runner, int stepIndex)
@@ -191,8 +210,13 @@ internal static class ForkChoiceStepDriver
 
     private static void RunChecksStep(YamlMappingNode checks, ForkChoiceRunner runner, int stepIndex)
     {
-        if (HasKey(checks, "get_proposer_head"))
-            throw new NotImplementedInDriverException($"step {stepIndex}: checks.get_proposer_head has no entry point in this driver (ForkChoiceRunner exposes GetHead only, not the proposer's re-org tie-break).");
+        if (TryGetScalar(checks, "get_proposer_head", out string? proposerHeadRoot))
+        {
+            Hash256 expected = new(proposerHeadRoot!);
+            Hash256 actual = runner.GetProposerHead(runner.GetHead(), runner.CurrentSlot);
+            if (actual != expected)
+                Assert.Fail($"step {stepIndex}: checks.get_proposer_head expected {expected}, actual {actual}");
+        }
 
         if (TryGetScalar(checks, "time", out string? time))
         {
