@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Network;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.Enr;
 
 namespace Nethermind.BeaconChain.P2P.Discovery;

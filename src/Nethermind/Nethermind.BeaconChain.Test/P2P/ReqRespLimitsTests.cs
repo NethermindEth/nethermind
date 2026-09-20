@@ -13,7 +13,6 @@ using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
 using NUnit.Framework;

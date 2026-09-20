@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
-using Nethermind.BeaconChain.Types;
 
 namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 
