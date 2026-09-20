@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
+using Nethermind.BeaconChain.Spec;
 namespace Nethermind.BeaconChain.Sync;
 
 /// <summary>
@@ -22,7 +23,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// exotic-fork) roots unprocessable, which is acceptable below finality. Not thread-safe; owned by
 /// the import worker.
 /// </remarks>
-internal sealed class PostStateCache(BeaconChainStore store, Hash256 lineageRoot, BeaconStateFulu lineageState) : IForkChoiceStateProvider
+internal sealed class PostStateCache(BeaconChainStore store, BeaconChainSpec spec, Hash256 lineageRoot, BeaconStateFulu lineageState) : IForkChoiceStateProvider
 {
     private const int RetainedStateCount = 8;
 
@@ -59,7 +60,7 @@ internal sealed class PostStateCache(BeaconChainStore store, Hash256 lineageRoot
 
         if (store.TryGetState(blockRoot, out byte[]? ssz))
         {
-            BeaconStateFulu.Decode(ssz, out BeaconStateFulu state);
+            BeaconStateFulu state = BeaconStateCodec.Decode(ssz, spec);
             _retained.Set(blockRoot, state);
             return state;
         }
