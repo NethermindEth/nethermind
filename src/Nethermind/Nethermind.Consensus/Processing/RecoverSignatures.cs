@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
@@ -29,25 +28,6 @@ namespace Nethermind.Consensus.Processing
         private readonly ILogger _logger = logManager?.GetClassLogger<RecoverSignatures>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private Recovery? _current;
-
-        /// <summary>
-        /// Senders to have in place before a block is enqueued: enough for the prewarmer's first pass to cover the
-        /// processing thread's first few milliseconds, a fraction of the time recovering them all would take.
-        /// </summary>
-        internal static readonly int LeadingSenderCount = Environment.ProcessorCount * 4;
-
-        /// <summary>
-        /// Upper bound on <see cref="WaitForLeadingSenders(Transaction[])"/>: the head arrives in a fraction of a
-        /// millisecond, so only a saturated thread pool can reach it, and then the caller must go on regardless.
-        /// </summary>
-        private static readonly TimeSpan LeadingSenderTimeout = TimeSpan.FromMicroseconds(250);
-
-        /// <summary>
-        /// Spin iterations between deadline checks. The wait must not yield: measured on a saturated eight-core
-        /// box, a single <see cref="SpinWait"/> yield cost the Engine API thread up to 29 ms, so the deadline
-        /// only holds while the thread keeps its quantum.
-        /// </summary>
-        private const int LeadingSenderSpinIterations = 64;
 
         public void RecoverData(Block block)
         {
@@ -114,56 +94,13 @@ namespace Nethermind.Consensus.Processing
             ThreadPool.UnsafeQueueUserWorkItem(recovery, preferLocal: false);
         }
 
-        internal bool IsRecoveryInFlight(Transaction[] txs) => InFlightFor(txs) is not null;
-
-        /// <summary>The running recovery covering <paramref name="txs"/>, or <c>null</c> when there is none.</summary>
+        /// <summary>Whether the recovery started for <paramref name="txs"/> is still running.</summary>
         /// <remarks><see cref="Block"/>'s constructor copies the transaction array, so only the shared
         /// transaction objects can identify the recovery.</remarks>
-        private Recovery? InFlightFor(Transaction[] txs)
+        internal bool IsRecoveryInFlight(Transaction[] txs)
         {
             Recovery? current = Volatile.Read(ref _current);
-            return current is not null && !current.IsCompleted && ReferenceEquals(current.Transactions[0], txs[0])
-                ? current
-                : null;
-        }
-
-        /// <summary>
-        /// Blocks until the leading transactions (<see cref="LeadingSenderCount"/>, never more than half the
-        /// block) have their senders, the running
-        /// recovery has ended, or <see cref="LeadingSenderTimeout"/> elapses; returns at once when no recovery is
-        /// running for <paramref name="txs"/>.
-        /// </summary>
-        /// <remarks>
-        /// Recovery hands out transactions in ascending order to every core, so that head lands within the first
-        /// hundred microseconds, usually while the caller is still validating the block. Enqueueing with it in
-        /// place spares the processing thread an inline recovery on its very first transactions and gives the
-        /// prewarmer a non-empty first pass.
-        /// </remarks>
-        public void WaitForLeadingSenders(Transaction[] txs) => WaitForLeadingSenders(txs, LeadingSenderTimeout);
-
-        internal void WaitForLeadingSenders(Transaction[] txs, TimeSpan timeout)
-        {
-            if (InFlightFor(txs) is not Recovery recovery) return;
-
-            // Half the block at most: waiting for every sender is what this whole path exists to avoid, and a
-            // block shorter than the head would otherwise be recovered in full before it is enqueued.
-            int leading = Math.Min(LeadingSenderCount, txs.Length / 2);
-            long start = Stopwatch.GetTimestamp();
-            while (!recovery.IsCompleted && !HasLeadingSenders(txs, leading))
-            {
-                if (Stopwatch.GetElapsedTime(start) >= timeout) return;
-                Thread.SpinWait(LeadingSenderSpinIterations);
-            }
-        }
-
-        private static bool HasLeadingSenders(Transaction[] txs, int leading)
-        {
-            for (int i = 0; i < leading; i++)
-            {
-                if (txs[i].IsSigned && txs[i].SenderAddress is null) return false;
-            }
-
-            return true;
+            return current is not null && !current.IsCompleted && ReferenceEquals(current.Transactions[0], txs[0]);
         }
 
         /// <summary>Recovers senders and EIP-7702 authorities for transactions not yet attached to a <see cref="Block"/>.</summary>
