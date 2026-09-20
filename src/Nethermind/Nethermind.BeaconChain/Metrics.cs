@@ -54,6 +54,10 @@ public class Metrics
     [Description("Beacon chain peers dropped, by goodbye reason.")]
     public static ConcurrentDictionary<StringLabel, long> BeaconChainPeersDroppedByReason { get; } = new();
 
+    [KeyIsLabel("reason")]
+    [Description("Beacon chain peer failures reported by range-sync/backfill callers, by closed-cardinality reason.")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainPeerFailuresByReason { get; } = new();
+
     [CounterMetric]
     [Description("Outbound dials attempted toward discovered beacon chain peers.")]
     public static ulong BeaconChainDialAttempts { get; set; }
