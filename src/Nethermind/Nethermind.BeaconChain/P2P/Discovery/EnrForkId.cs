@@ -114,6 +114,21 @@ public sealed class EnrForkId : IEquatable<EnrForkId>
         return next;
     }
 
+    /// <summary>
+    /// The <c>nfd</c> ENR entry value to advertise at <paramref name="epoch"/>: the digest of the next
+    /// scheduled fork (regular or EIP-7892 BPO), or <see langword="null"/> when none is scheduled.
+    /// </summary>
+    /// <remarks>
+    /// Single source of truth for "what is the next digest": both <see cref="BeaconDiscovery"/>'s
+    /// candidate filter and <see cref="BeaconNodeRecordProvider"/>'s <c>nfd</c> entry call this
+    /// rather than each re-deriving it from <see cref="NextDigestEpoch"/>, so the two cannot drift apart.
+    /// </remarks>
+    public static byte[]? NextForkDigest(BeaconChainSpec spec, ulong epoch)
+    {
+        ulong nextEpoch = NextDigestEpoch(spec, epoch);
+        return nextEpoch == Presets.FarFutureEpoch ? null : Spec.ForkDigest.Compute(spec, nextEpoch);
+    }
+
     public bool Equals(EnrForkId? other) =>
         other is not null &&
         NextForkEpoch == other.NextForkEpoch &&

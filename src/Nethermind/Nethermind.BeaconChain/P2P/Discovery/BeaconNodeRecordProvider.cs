@@ -4,6 +4,7 @@
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
@@ -11,7 +12,7 @@ using Nethermind.Network.Enr;
 
 namespace Nethermind.BeaconChain.P2P.Discovery;
 
-/// <summary>Builds and re-signs the local beacon chain discv5 ENR with the <c>eth2</c> fork id entry.</summary>
+/// <summary>Builds and re-signs the local beacon chain discv5 ENR with the <c>eth2</c> and <c>nfd</c> entries.</summary>
 /// <remarks>
 /// The TCP port advertises the libp2p host while the UDP port advertises discv5, both signed with the
 /// persisted p2p identity so the ENR's secp256k1 key matches the libp2p peer id. <see cref="Update"/>
@@ -28,8 +29,9 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
     private readonly Lock _updateLock = new();
     private volatile NodeRecord _current;
     private EnrForkId _forkId;
+    private byte[] _nextForkDigest;
 
-    public BeaconNodeRecordProvider(PrivateKey key, IPAddress externalIp, int tcpPort, int udpPort, EnrForkId forkId, ulong custodyGroupCount)
+    public BeaconNodeRecordProvider(PrivateKey key, IPAddress externalIp, int tcpPort, int udpPort, EnrForkId forkId, ulong custodyGroupCount, byte[]? nextForkDigest = null)
     {
         _key = key;
         _externalIp = externalIp;
@@ -38,7 +40,8 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
         _custodyGroupCount = custodyGroupCount;
         _signer = new NodeRecordSigner(new Ecdsa(), key);
         _forkId = forkId;
-        _current = Build(forkId, sequence: 1);
+        _nextForkDigest = nextForkDigest ?? NfdEntry.NoneScheduled;
+        _current = Build(forkId, _nextForkDigest, sequence: 1);
     }
 
     public NodeRecord Current => _current;
@@ -59,24 +62,44 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
         }
     }
 
-    /// <summary>Replaces the <c>eth2</c> entry and bumps the ENR sequence when the fork id changed.</summary>
-    /// <returns><see langword="true"/> when a new record was published; <see langword="false"/> when unchanged.</returns>
-    public bool Update(EnrForkId forkId)
+    /// <summary>The currently advertised <c>nfd</c> value: <see cref="NfdEntry.NoneScheduled"/> when no fork is upcoming.</summary>
+    public byte[] NextForkDigest
     {
+        get
+        {
+            lock (_updateLock)
+            {
+                return _nextForkDigest;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Replaces the <c>eth2</c> and <c>nfd</c> entries and bumps the ENR sequence when either changed.
+    /// </summary>
+    /// <param name="nextForkDigest">
+    /// The digest to advertise under <c>nfd</c>, or <see langword="null"/> when no fork is scheduled
+    /// (published as <see cref="NfdEntry.NoneScheduled"/>).
+    /// </param>
+    /// <returns><see langword="true"/> when a new record was published; <see langword="false"/> when unchanged.</returns>
+    public bool Update(EnrForkId forkId, byte[]? nextForkDigest = null)
+    {
+        byte[] normalizedNextDigest = nextForkDigest ?? NfdEntry.NoneScheduled;
         lock (_updateLock)
         {
-            if (forkId.Equals(_forkId))
+            if (forkId.Equals(_forkId) && Bytes.AreEqual(normalizedNextDigest, _nextForkDigest))
             {
                 return false;
             }
 
             _forkId = forkId;
-            _current = Build(forkId, _current.EnrSequence + 1);
+            _nextForkDigest = normalizedNextDigest;
+            _current = Build(forkId, normalizedNextDigest, _current.EnrSequence + 1);
             return true;
         }
     }
 
-    private NodeRecord Build(EnrForkId forkId, ulong sequence)
+    private NodeRecord Build(EnrForkId forkId, byte[] nextForkDigest, ulong sequence)
     {
         NodeRecord record = new();
         record.SetEntry(new IpEntry(_externalIp));
@@ -85,6 +108,7 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
         record.SetEntry(new SecP256k1Entry(_key.CompressedPublicKey));
         record.SetEntry(new Eth2Entry(forkId.Encode()));
         record.SetEntry(new CustodyGroupCountEntry(_custodyGroupCount));
+        record.SetEntry(new NfdEntry(nextForkDigest));
         record.EnrSequence = sequence;
         _signer.Sign(record);
         return record;
