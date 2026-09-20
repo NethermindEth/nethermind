@@ -52,8 +52,8 @@ public interface IDebugBridge
     /// Does not requeue removed transactions or clear receipt indexes, safe/finalized hashes or historical download progress.
     /// Availability checks enforce retention, not a full scan for missing trie descendants.
     /// Receipt lookups may still return removed transactions. Requires paused, drained block processing and quiescent persistence.
-    /// Refuses active initial synchronization. A pivot above the target moves to the target only when historical
-    /// downloads are complete and every retained progress marker is at or below the target.
+    /// Refuses active initial synchronization. A pivot above the target must move with it: the rewind is refused unless historical
+    /// downloads are complete and every retained progress marker is at or below the target. Backfill permits rewinds at or above the pivot.
     /// Concurrent synchronization may receive retryable canonical-update refusals during maintenance.
     /// Returns false on mutation contention or overlap with another debug head reset or chain-slice deletion.
     /// Same-payload replay remains unsupported because processed markers and cached VALID results are retained;

@@ -163,11 +163,13 @@ public class DebugBridge : IDebugBridge
     {
         endNumber = _blockTree.BestKnownNumber;
         if (startNumber == 0 || startNumber > endNumber)
-            return ResultWrapper<int>.Fail($"startNumber must be positive and cannot exceed the highest known block ({endNumber}).", ErrorCodes.InvalidParams);
+            return ResultWrapper<int>.Fail($"startNumber must be positive and cannot exceed the known chain high-water mark ({endNumber}).", ErrorCodes.InvalidParams);
         if (endNumber - startNumber > IBlockTree.MaxDeletionSpan)
             return ResultWrapper<int>.Fail($"The deletion range cannot span more than {IBlockTree.MaxDeletionSpan + 1} chain levels.", ErrorCodes.InvalidParams);
 
-        if (IsInitialSyncActive || (startNumber <= _blockTree.SyncPivot.BlockNumber && !IsHistoricalSyncFinished()))
+        SyncMode mode = _syncModeSelector.Current;
+        if (IsInitialSyncActive(mode) || (startNumber <= _blockTree.SyncPivot.BlockNumber &&
+            ((mode & SyncMode.FastBlocks) != 0 || !IsHistoricalSyncFinished())))
             return ResultWrapper<int>.Fail("Historical sync is unfinished or initial synchronization is active; wait for synchronization to complete before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
         ulong validatedEnd = endNumber;
@@ -208,8 +210,13 @@ public class DebugBridge : IDebugBridge
             return false;
         }
 
-        bool rewindPivot = header.Number < _blockTree.SyncPivot.BlockNumber &&
-                           IsHistoricalSyncFinished() && !HasHistoricalProgressAbove(header.Number);
+        bool rewindPivot = header.Number < _blockTree.SyncPivot.BlockNumber;
+        if (rewindPivot && ((_syncModeSelector.Current & SyncMode.FastBlocks) != 0 ||
+                            !IsHistoricalSyncFinished() || HasHistoricalProgressAbove(header.Number)))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: the sync pivot cannot follow it; rewind less deeply.");
+            return false;
+        }
         if (!_blockTree.TryRewindHead(header.Hash!)) return false;
         // Keep completed sync aligned with the rewound head before state cleanup can yield to the selector.
         if (rewindPivot) _blockTree.SyncPivot = (header.Number, header.Hash!);
@@ -218,8 +225,8 @@ public class DebugBridge : IDebugBridge
         return true;
     }
 
-    private bool IsInitialSyncActive => (_syncModeSelector.Current &
-        (SyncMode.FastBlocks | SyncMode.BeaconHeaders | SyncMode.StateNodes | SyncMode.FastSync | SyncMode.UpdatingPivot | SyncMode.DbLoad)) != 0;
+    private static bool IsInitialSyncActive(SyncMode mode) => (mode &
+        (SyncMode.BeaconHeaders | SyncMode.StateNodes | SyncMode.FastSync | SyncMode.UpdatingPivot | SyncMode.DbLoad)) != 0;
 
     private bool IsHistoricalSyncFinished() =>
         _syncProgressResolver.IsFastBlocksHeadersFinished() &&
@@ -236,7 +243,7 @@ public class DebugBridge : IDebugBridge
     private bool CanRewindChain()
     {
         if (!CanMutateChain()) return false;
-        if (!IsInitialSyncActive) return true;
+        if (!IsInitialSyncActive(_syncModeSelector.Current)) return true;
         if (_logger.IsWarn) _logger.Warn("Cannot rewind the head while initial synchronization is active; wait for synchronization to complete.");
         return false;
     }

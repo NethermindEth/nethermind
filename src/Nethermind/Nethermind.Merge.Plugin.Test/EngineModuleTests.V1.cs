@@ -43,6 +43,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
@@ -1959,7 +1960,8 @@ public partial class EngineModuleTests
     public async Task rewinding_the_head_lets_the_node_execute_a_new_branch_from_there([Values] bool byHash)
     {
         using MergeTestBlockchain chain =
-            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" },
+                configurer: builder => builder.AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.Full)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);

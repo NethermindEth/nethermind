@@ -241,7 +241,7 @@ namespace Nethermind.Blockchain
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
         event EventHandler<ForkChoiceUpdateEventArgs> OnForkChoiceUpdated;
 
-        /// <summary>Maximum difference between the last and first levels in a deletion slice.</summary>
+        /// <summary>Maximum difference between the last and first levels in a deletion slice; the inclusive level count is this value plus one.</summary>
         const ulong MaxDeletionSpan = 50_000;
 
         /// <summary>Deletes the requested chain levels and updates the head if necessary.</summary>

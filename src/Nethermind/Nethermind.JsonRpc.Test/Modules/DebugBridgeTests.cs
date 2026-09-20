@@ -114,24 +114,47 @@ public class DebugBridgeTests
             Assert.That(progress.IsFastBlockAccessListsFinished(), Is.EqualTo(history != HistoricalSync.AccessLists));
         }
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        ISyncModeSelector selector = container.Resolve<ISyncModeSelector>();
+        selector.Update();
+        SyncMode backfill = history switch
+        {
+            HistoricalSync.Bodies => SyncMode.FastBodies,
+            HistoricalSync.Receipts => SyncMode.FastReceipts,
+            HistoricalSync.AccessLists => SyncMode.FastBlockAccessLists,
+            _ => SyncMode.None
+        };
+        if (backfill != SyncMode.None)
+            Assert.That(selector.Current.HasFlag(SyncMode.Full | backfill), Is.True, $"full sync must coexist with backfill, got {selector.Current}");
         ulong retainedHead = history is HistoricalSync.BodyAboveHead or HistoricalSync.CompleteDeepRewind ? 1UL : 2;
         if (history != HistoricalSync.CompleteWithoutRewind)
-            Assert.That(debug.debug_setHead(new BlockParameter(retainedHead)).Data, Is.True);
+        {
+            bool canRewind = history is HistoricalSync.Complete or HistoricalSync.CompleteDeepRewind or HistoricalSync.DeleteProgressFloor;
+            Assert.That(debug.debug_setHead(new BlockParameter(retainedHead)).Data, Is.EqualTo(canRewind));
+            if (!canRewind)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[4].Hash));
+                    Assert.That(tree.SyncPivot, Is.EqualTo((4UL, blocks[4].Hash!)));
+                    Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(blocks[4].Hash!.Bytes.ToArray()));
+                }
+                // Direct tree callers can rewind without RPC policy; deletion must still protect their retained sync progress.
+                Assert.That(tree.TryRewindHead(blocks[retainedHead].Hash!), Is.True);
+            }
+        }
         ulong expectedPivot = history switch
         {
             HistoricalSync.Complete or HistoricalSync.DeleteProgressFloor => 2,
             HistoricalSync.CompleteDeepRewind => 1,
             _ => 4
         };
-        if (history is not (HistoricalSync.Complete or HistoricalSync.CompleteDeepRewind))
-            Assert.That(tree.SyncPivot.BlockNumber, Is.EqualTo(expectedPivot));
+        Assert.That(tree.SyncPivot.BlockNumber, Is.EqualTo(expectedPivot));
 
         IDbProvider db = container.Resolve<IDbProvider>();
         byte[]? headerProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash);
         byte[]? bodyProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber);
         byte[]? accessListProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
         bool accepted = history is HistoricalSync.Complete or HistoricalSync.CompleteDeepRewind or HistoricalSync.CompleteWithoutRewind;
-        ISyncModeSelector selector = container.Resolve<ISyncModeSelector>();
         if (accepted)
         {
             selector.Update();
@@ -199,6 +222,7 @@ public class DebugBridgeTests
         int syncChecks = 0;
         selector.Current.Returns(_ =>
         {
+            // The second read is in-lock revalidation, after its deletion end has been captured.
             if (++syncChecks == 2)
                 tree.Insert(arriving, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
             return SyncMode.Full;
@@ -214,6 +238,7 @@ public class DebugBridgeTests
             Assert.That(result.Data, Is.EqualTo(1));
             Assert.That(tree.FindBlock(pending.Hash!, BlockTreeLookupOptions.None), Is.Null);
             Assert.That(tree.FindHeader(arriving.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(tree.FindLevel(2)!.HasBlockOnMainChain, Is.True, "the arriving header's marker is outside the deletion range");
             Assert.That(tree.Head!.Hash, Is.EqualTo(genesis.Hash));
         }
     }
@@ -244,6 +269,50 @@ public class DebugBridgeTests
             Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes),
                 Is.EqualTo((accepted ? genesis.Hash : head.Hash)!.Bytes.ToArray()));
             Assert.That(tree.FindBlock(head.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task Chain_mutation_during_backfill_respects_pivot(
+        [Values] ChainMutation mutation,
+        [Values(SyncMode.FastBodies, SyncMode.FastReceipts, SyncMode.FastBlockAccessLists)] SyncMode backfill,
+        [Values(1, 2, 3)] int target)
+    {
+        ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+        selector.Current.Returns(SyncMode.Full | backfill);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new SyncConfig { FastSync = false }))
+            .AddSingleton<ISyncModeSelector>(selector)
+            .Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block[] blocks = new Block[5];
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            blocks[i] = (i == 0 ? Build.A.Block.Genesis : Build.A.Block.WithParent(blocks[i - 1])).TestObject;
+            AddToMainChain(tree, blocks[i]);
+        }
+        tree.SyncPivot = (2, blocks[2].Hash!);
+        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        bool accepted = target >= 2;
+        if (mutation == ChainMutation.DeleteSlice)
+        {
+            ResultWrapper<int> result = debug.debug_deleteChainSlice(target + 1, force: true);
+            if (accepted) Assert.That(result.Data, Is.EqualTo(4 - target));
+            else Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        }
+        else
+            Assert.That(ResetHead(container, blocks[target], mutation == ChainMutation.ResetByHash).Data, Is.EqualTo(accepted));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[accepted ? target : 4].Hash));
+            Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes),
+                Is.EqualTo(blocks[accepted ? target : 4].Hash!.Bytes.ToArray()));
+            Assert.That(tree.SyncPivot, Is.EqualTo((2UL, blocks[2].Hash!)));
+            Assert.That(tree.FindBlock(blocks[2].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(tree.FindBlock(blocks[4].Hash!, BlockTreeLookupOptions.None),
+                accepted && mutation == ChainMutation.DeleteSlice ? Is.Null : Is.Not.Null);
         }
     }
 
@@ -352,7 +421,7 @@ public class DebugBridgeTests
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
             if (start == 1)
-                Assert.That(result.Result.Error, Is.EqualTo("startNumber must be positive and cannot exceed the highest known block (0)."));
+                Assert.That(result.Result.Error, Is.EqualTo("startNumber must be positive and cannot exceed the known chain high-water mark (0)."));
         }
     }
 
