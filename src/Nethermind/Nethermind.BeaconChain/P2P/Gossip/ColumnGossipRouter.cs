@@ -66,6 +66,7 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
     // blocks can never accumulate together under one key.
     private readonly LruCache<Hash256, List<DataColumnSidecar>> _heldColumnsByBlockRoot = new(SeenCacheSize, "beacon column reconstruction held columns");
     private readonly LruKeyCache<Hash256> _reconstructedBlockRoots = new(SeenCacheSize, "beacon column reconstruction completed blocks");
+    private readonly Lock _reconstructionLock = new();
 
     private Func<string, ITopic>? _getTopic;
     private byte[] _currentForkDigest = [];
@@ -249,27 +250,37 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
     /// reconstructs the full matrix and publishes the columns this node did not itself receive
     /// (Fulu p2p-interface.md "distributed blob publishing"). Runs at most once per block: a
     /// completed root is never revisited, so a later gossip arrival for the same block cannot
-    /// re-reconstruct or re-publish.
+    /// re-reconstruct or re-publish. Different subnets' <c>OnMessage</c> callbacks can fire
+    /// concurrently on separate threads for the very columns reconstruction watches, so the
+    /// read-check-mutate sequence over <see cref="_heldColumnsByBlockRoot"/> and
+    /// <see cref="_reconstructedBlockRoots"/> runs under <see cref="_reconstructionLock"/>: each
+    /// cache is individually thread-safe, but that does not make Get-then-Add-then-Set atomic, and
+    /// an unguarded race here silently drops held columns rather than merely delaying reconstruction.
     /// </summary>
     private void TrackHeldColumnAndMaybeReconstruct(Hash256 blockRoot, DataColumnSidecar sidecar)
     {
-        if (_reconstructedBlockRoots.Get(blockRoot))
+        List<DataColumnSidecar> held;
+        DataColumnSidecar[] fullMatrix;
+        lock (_reconstructionLock)
         {
-            return;
+            if (_reconstructedBlockRoots.Get(blockRoot))
+            {
+                return;
+            }
+
+            held = _heldColumnsByBlockRoot.Get(blockRoot) ?? [];
+            held.Add(sidecar);
+            _heldColumnsByBlockRoot.Set(blockRoot, held);
+
+            if (held.Count < Eip7594DasConstants.RequiredColumnsForReconstruction
+                || !DataColumnReconstruction.TryReconstruct(held, out fullMatrix))
+            {
+                return;
+            }
+
+            _reconstructedBlockRoots.Set(blockRoot);
+            _heldColumnsByBlockRoot.Delete(blockRoot);
         }
-
-        List<DataColumnSidecar> held = _heldColumnsByBlockRoot.Get(blockRoot) ?? [];
-        held.Add(sidecar);
-        _heldColumnsByBlockRoot.Set(blockRoot, held);
-
-        if (held.Count < Eip7594DasConstants.RequiredColumnsForReconstruction
-            || !DataColumnReconstruction.TryReconstruct(held, out DataColumnSidecar[] fullMatrix))
-        {
-            return;
-        }
-
-        _reconstructedBlockRoots.Set(blockRoot);
-        _heldColumnsByBlockRoot.Delete(blockRoot);
 
         foreach (ReconstructedSidecarToPublish entry in ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix))
         {
