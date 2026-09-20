@@ -813,7 +813,7 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000),
             GroupingTx(TestItem.PrivateKeyE, nonce: 0, gasLimit: 100_000)).TestObject;
 
-        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "012", "34" }));
+        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "0-1-2", "3-4" }));
     }
 
     // Sender A sits in the first two windows, so they merge into one job; the third window stays alone.
@@ -829,13 +829,13 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyE, nonce: 0, gasLimit: 100_000),
             GroupingTx(TestItem.PrivateKeyF, nonce: 0, gasLimit: 100_000)).TestObject;
 
-        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "012345", "6" }));
+        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "0-1-2-3-4-5", "6" }));
     }
 
     // The split threshold is strictly greater-than 4,000,000 aggregate declared gas, and applies only to a
-    // job longer than one window; a split job falls back to its windows, not to single transactions.
-    [TestCase(1_000_000u, new[] { "0123" })]
-    [TestCase(1_000_001u, new[] { "012", "3" })]
+    // job spanning more than one window; a split job falls back to its windows, not to single transactions.
+    [TestCase(1_000_000u, new[] { "0-1-2-3" })]
+    [TestCase(1_000_001u, new[] { "0-1-2", "3" })]
     public void GroupTransactions_SplitsHeavyMergedJobsBackIntoWindows(uint gasPerTx, string[] expected)
     {
         Block block = Build.A.Block.WithTransactions(
@@ -847,6 +847,28 @@ public class BlockCachePreWarmerTests
         Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(expected));
     }
 
+    // Senders B, C and D are already warm, leaving A's two transactions as a short component straddling
+    // the [0 1 2] / [3 4 5] boundary; it still has two windows' worth of parallelism to gain.
+    [Test]
+    public void GroupTransactions_SplitsAHeavyComponentShorterThanAWindow()
+    {
+        Transaction[] warmed =
+        [
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000)
+        ];
+        Block block = Build.A.Block.WithTransactions(
+            warmed[0],
+            warmed[1],
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000),
+            warmed[2]).TestObject;
+
+        Assert.That(JobIndices(block, maxWorkers: 4, warmed.Select(static tx => tx.Hash!).ToHashSet()),
+            Is.EqualTo(new[] { "2", "3" }));
+    }
+
     [Test]
     public void GroupTransactions_DoesNotSplitASingleWindow()
     {
@@ -854,14 +876,14 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000),
             GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 5_000_000)).TestObject;
 
-        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "01" }), "a single window has no parallelism to gain from a split");
+        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "0-1" }), "a single window has no parallelism to gain from a split");
     }
 
     // Below two workers a split cannot add parallelism; it only discards state propagation.
     // Negative means unlimited, matching ParallelOptions.MaxDegreeOfParallelism.
-    [TestCase(1, new[] { "0123" })]
-    [TestCase(2, new[] { "012", "3" })]
-    [TestCase(-1, new[] { "012", "3" })]
+    [TestCase(1, new[] { "0-1-2-3" })]
+    [TestCase(2, new[] { "0-1-2", "3" })]
+    [TestCase(-1, new[] { "0-1-2", "3" })]
     public void GroupTransactions_SplitsOnlyWithParallelWorkers(int maxWorkers, string[] expected)
     {
         Block block = Build.A.Block.WithTransactions(
@@ -884,7 +906,7 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 1),
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_999_999)).TestObject;
 
-        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "012", "3" }), "an extreme declared gas limit must saturate, not wrap, the aggregate");
+        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "0-1-2", "3" }), "an extreme declared gas limit must saturate, not wrap, the aggregate");
     }
 
     [Test]
@@ -897,7 +919,7 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
             GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000)).TestObject;
 
-        Assert.That(JobIndices(block, maxWorkers: 4, [warmed.Hash!]), Is.EqualTo(new[] { "02", "3" }));
+        Assert.That(JobIndices(block, maxWorkers: 4, [warmed.Hash!]), Is.EqualTo(new[] { "0-2", "3" }));
     }
 
     [Test]
@@ -909,7 +931,7 @@ public class BlockCachePreWarmerTests
             unsigned,
             GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000)).TestObject;
 
-        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "02" }));
+        Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "0-2" }));
     }
 
     private static string[] JobIndices(Block block, int maxWorkers, HashSet<Nethermind.Core.Crypto.Hash256>? speculativelyWarmed = null)
@@ -917,7 +939,7 @@ public class BlockCachePreWarmerTests
         ArrayPoolList<BlockCachePreWarmer.WarmupJob> jobs = BlockCachePreWarmer.GroupTransactions(block, maxWorkers, speculativelyWarmed);
         try
         {
-            return jobs.Select(static job => string.Concat(job.Transactions.Select(static item => item.Index))).ToArray();
+            return jobs.Select(static job => string.Join('-', job.Transactions.Select(static item => item.Index))).ToArray();
         }
         finally
         {

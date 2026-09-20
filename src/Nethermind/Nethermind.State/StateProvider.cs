@@ -1059,7 +1059,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
     }
 
-    // used in EthereumTests
     internal void SetNonce(Address address, in ulong nonce)
     {
         _needsStateRootUpdate = true;

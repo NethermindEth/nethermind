@@ -731,7 +731,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             // Warming is speculative — canonical execution never consumes its writes — so grouping only
             // trades warm relevance for parallelism, never correctness.
-            using ArrayPoolList<WarmupJob> senderGroups =
+            using ArrayPoolList<WarmupJob> jobs =
                 GroupTransactions(block, parallelOptions.MaxDegreeOfParallelism, blockState.SpeculativelyWarmed);
 
             try
@@ -743,9 +743,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // crosses jobs.
                 ParallelUnbalancedWork.For(
                     0,
-                    senderGroups.Count,
+                    jobs.Count,
                     parallelOptions,
-                    () => new TxWarmupWorker(blockState, senderGroups, parallelOptions.CancellationToken),
+                    () => new TxWarmupWorker(blockState, jobs, parallelOptions.CancellationToken),
                     static (groupIndex, worker) =>
                     {
                         BlockState blockState = worker.BlockState;
@@ -772,7 +772,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
             finally
             {
-                foreach (WarmupJob job in senderGroups.AsSpan())
+                foreach (WarmupJob job in jobs.AsSpan())
                     job.Transactions.Dispose();
             }
         }
@@ -795,7 +795,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <remarks>
     /// Per-sender groups leave a transaction blind to what its neighbours wrote and warm a long chain on a single
     /// worker; windows fix the first and the split below bounds the second. A merged job whose
-    /// declared gas exceeds <see cref="SplitSenderGroupGasThreshold"/> would warm slower than the main loop
+    /// declared gas exceeds <see cref="SplitJobGasThreshold"/> would warm slower than the main loop
     /// executes it, so it is broken back into plain windows when there are workers to run them in parallel.
     /// </remarks>
     internal static ArrayPoolList<WarmupJob> GroupTransactions(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null)
@@ -834,7 +834,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             // Splitting pays only when idle workers exist to absorb the windows. Negative follows
             // ParallelOptions.MaxDegreeOfParallelism semantics: unlimited.
-            if (maxWorkers is < 0 or >= 2 && component.Count > WarmWindowSize && TotalGasLimit(component) > SplitSenderGroupGasThreshold)
+            if (maxWorkers is < 0 or >= 2 && SpansMoreThanOneWindow(component) && TotalGasLimit(component) > SplitJobGasThreshold)
             {
                 SplitIntoWindows(component, result);
                 component.Dispose();
@@ -850,8 +850,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return result;
 
         // Invalid signature leaves the sender null; the block will be rejected — nothing to warm.
+        // Hash is lazy (a lock plus a Keccak on a miss), so only realize it when there is a set to look in.
         static bool IsWarmable(Transaction tx, ISet<Hash256>? speculativelyWarmed) =>
-            tx.SenderAddress is not null && !(tx.Hash is Hash256 hash && speculativelyWarmed?.Contains(hash) == true);
+            tx.SenderAddress is not null &&
+            (speculativelyWarmed is null || tx.Hash is not Hash256 hash || !speculativelyWarmed.Contains(hash));
 
         static int Find(int[] parent, int i)
         {
@@ -866,6 +868,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (a != b) parent[Math.Max(a, b)] = Math.Min(a, b);
         }
     }
+
+    /// <summary>A component confined to one window has no parallelism to gain from a split.</summary>
+    private static bool SpansMoreThanOneWindow(ArrayPoolList<(int Index, Transaction Tx)> component) =>
+        component[0].Index / WarmWindowSize != component[^1].Index / WarmWindowSize;
 
     private static void SplitIntoWindows(ArrayPoolList<(int Index, Transaction Tx)> component, ArrayPoolList<WarmupJob> result)
     {
@@ -890,7 +896,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private const int WarmWindowSize = 3;
 
     /// <summary>Total declared gas above which a merged job is warmed as parallel windows instead of one sequence.</summary>
-    private const ulong SplitSenderGroupGasThreshold = 4_000_000;
+    private const ulong SplitJobGasThreshold = 4_000_000;
 
     private static ulong TotalGasLimit(ArrayPoolList<(int Index, Transaction Tx)> group)
     {
