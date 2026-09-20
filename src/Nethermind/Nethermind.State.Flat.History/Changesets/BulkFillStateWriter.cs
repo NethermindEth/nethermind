@@ -9,7 +9,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.Trie;
 using Columns = Nethermind.State.Flat.History.Changesets.BulkFillScratchState.Columns;
 
 namespace Nethermind.State.Flat.History.Changesets;

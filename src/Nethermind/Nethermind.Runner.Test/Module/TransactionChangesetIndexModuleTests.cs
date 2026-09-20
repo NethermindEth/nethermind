@@ -65,13 +65,14 @@ public class TransactionChangesetIndexModuleTests
 
         foreach (Block block in new[] { first, second })
         {
-            tree.Insert(block);
+            Assert.That(tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
+            Assert.That(block.TotalDifficulty, Is.Not.Null);
             session.BeginBlock(block.Header);
             using TransactionChangesetIndex.BlockCapture capture = index.StartBlock(block.Number);
             Block isolated = block.WithReplacedHeader(block.Header.Clone());
             try
             {
-                Assert.That(processor.Process(isolated, TraceProcessingOptions.ReadOnlyReplay, capture.Tracer), Is.Not.Null);
+                Assert.That(processor.Process(isolated, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList, capture.Tracer), Is.Not.Null);
                 Assert.That(capture.Commit(), Is.True);
                 index.SyncWal();
                 session.CommitBlock();

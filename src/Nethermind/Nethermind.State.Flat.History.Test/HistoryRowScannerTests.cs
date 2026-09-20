@@ -26,7 +26,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
-using NSubstitute;
 
 namespace Nethermind.State.Flat.History.Test;
 
@@ -39,7 +38,7 @@ public class HistoryRowScannerTests
         using TempPath directory = TempPath.GetTempDirectory();
         using FailingWalScratchDb memory = new();
         using MemDb code = new();
-        IDbFactory factory = ScratchFactory(directory.Path, memory, false);
+        IDbFactory factory = new ScratchDbFactory(directory.Path, memory, false);
         BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
         BlockHeader next = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
         using (BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false))
@@ -68,7 +67,7 @@ public class HistoryRowScannerTests
         using TempPath directory = TempPath.GetTempDirectory();
         using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
         using MemDb code = new();
-        IDbFactory factory = ScratchFactory(directory.Path, memory, rocks);
+        IDbFactory factory = new ScratchDbFactory(directory.Path, memory, rocks);
         BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
         BlockHeader next = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
         byte[] bytecode = [0x60, 0x01, 0x00];
@@ -109,7 +108,7 @@ public class HistoryRowScannerTests
         using TempPath directory = TempPath.GetTempDirectory();
         using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
         using MemDb code = new();
-        IDbFactory factory = ScratchFactory(directory.Path, memory, false);
+        IDbFactory factory = new ScratchDbFactory(directory.Path, memory, false);
         BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
         using BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, rlpWrapped);
         ImportEmptyState(session);
@@ -154,7 +153,7 @@ public class HistoryRowScannerTests
         using TempPath directory = TempPath.GetTempDirectory();
         using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
         using MemDb code = new();
-        IDbFactory factory = ScratchFactory(directory.Path, memory, rocks);
+        IDbFactory factory = new ScratchDbFactory(directory.Path, memory, rocks);
         BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
         using (BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false))
         {
@@ -169,18 +168,6 @@ public class HistoryRowScannerTests
         Assert.That(reopened.IsReady, Is.False);
         ImportEmptyState(reopened);
         Assert.That(reopened.CreateReader().GetAccount(TestItem.AddressA), Is.Null);
-    }
-
-    private static IDbFactory ScratchFactory(string directory, SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory, bool rocks)
-    {
-        IDbFactory factory = Substitute.For<IDbFactory>();
-        factory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(directory);
-        factory.CreateColumnsDb<BulkFillScratchState.Columns>(Arg.Any<DbSettings>()).Returns(_ => rocks
-            ? new ColumnsDb<BulkFillScratchState.Columns>(directory, new DbSettings("TransactionIndexScratch", directory), new DbConfig(),
-                new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-                LimboLogs.Instance, Enum.GetValues<BulkFillScratchState.Columns>())
-            : memory);
-        return factory;
     }
 
     private static void ImportEmptyState(BulkFillSession session)
@@ -563,6 +550,22 @@ public class HistoryRowScannerTests
                 "a 64-nibble slot prefix has no children to split into, so a partition that still does not fit streams its keys one identity at a time instead of asking for a deeper split");
             Assert.That(streamed, Is.EqualTo(colliding - 1), "at full depth the streamed-key cap does not apply: every colliding identity but the one that fits is streamed, because the alternative is a split that cannot exist");
             Assert.That(rows.Count, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class ScratchDbFactory(string directory, SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory, bool rocks) : IDbFactory
+    {
+        public string GetFullDbPath(DbSettings dbSettings) => directory;
+
+        public IDb CreateDb(DbSettings dbSettings) => throw new NotSupportedException();
+
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
+        {
+            if (rocks)
+                return new ColumnsDb<T>(directory, new DbSettings("TransactionIndexScratch", directory), new DbConfig(),
+                    new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+                    LimboLogs.Instance, Enum.GetValues<T>());
+            return (IColumnsDb<T>)(object)memory;
         }
     }
 
