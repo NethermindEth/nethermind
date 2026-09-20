@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -414,8 +415,10 @@ public static class GloasBlockProcessing
             throw new BeaconStateException("Envelope payload withdrawals do not match state.payload_expected_withdrawals");
 
         Hash256?[] versionedHashes = PayloadConverter.ToBlobVersionedHashes(bid.BlobKzgCommitments);
-        if (!notifier.NotifyNewPayload(payload, versionedHashes, envelope.ParentBeaconBlockRoot!, envelope.ExecutionRequests!))
-            throw new BeaconStateException("Execution payload envelope was rejected by the execution layer");
+        // Irrelevant is default(ExecutionStatus): a notifier that returns no verdict must not admit the envelope.
+        ExecutionStatus executionStatus = notifier.NotifyNewPayload(payload, versionedHashes, envelope.ParentBeaconBlockRoot!, envelope.ExecutionRequests!);
+        if (executionStatus is ExecutionStatus.Invalid or ExecutionStatus.Irrelevant)
+            throw new BeaconStateException($"Execution payload envelope was rejected by the execution layer ({executionStatus})");
     }
 
     private static bool VerifyExecutionPayloadEnvelopeSignature(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, PubkeyCache pubkeys)

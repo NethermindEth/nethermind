@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -435,12 +436,12 @@ public class BeaconStatesValidatorsAndCommitteesTests
     private sealed class NoOpEngineDriver : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
-        public PayloadStatusV1? LastNewPayloadStatus => null;
+        public bool HasAnsweredNewPayload => false;
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
             Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid });
 
-        public bool NotifyNewPayload(BeaconBlockBody body) => true;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
     private sealed class NoOpProcessExitSource : IProcessExitSource

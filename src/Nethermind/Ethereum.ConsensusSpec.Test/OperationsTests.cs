@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -111,7 +112,7 @@ public class OperationsTests
 
     private sealed class FixedNewPayloadNotifier(bool valid) : INewPayloadNotifier
     {
-        public bool NotifyNewPayload(BeaconBlockBody body) => valid;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => valid ? ExecutionStatus.Valid : ExecutionStatus.Invalid;
     }
 
     [TestCaseSource(nameof(MinimalCases))]
