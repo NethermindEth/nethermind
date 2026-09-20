@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -13,7 +14,7 @@ namespace Nethermind.Consensus.Processing;
 
 public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime)
 {
-    public PrewarmerEnv Create(PreBlockCaches preBlockCaches)
+    public IPrewarmerEnv Create(PreBlockCaches preBlockCaches)
     {
         PrewarmerState prewarmerState = new(preBlockCaches, isPrewarmer: true);
         PrewarmerScopeProvider worldState = new(
@@ -34,22 +35,28 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
             childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>(),
             childScope.Resolve<IHasAccessList[]>());
     }
+
+    private sealed class PrewarmerEnv(IReadOnlyTxProcessorSource inner, IHasAccessList[] systemAccessLists) : IPrewarmerEnv
+    {
+        public ReadOnlySpan<IHasAccessList> SystemAccessLists => systemAccessLists;
+
+        public IReadOnlyTxProcessingScope Build(BlockHeader? header) => inner.Build(header);
+
+        public void Dispose() => inner.Dispose();
+    }
 }
 
 /// <summary>
-/// A prewarmer env together with the system-contract access-list hints bound to that env's own world state.
+/// A prewarmer env: a read-only tx processor source plus the system-contract access-list hints bound to its own
+/// world state.
 /// </summary>
 /// <remarks>
 /// The hint providers read state (<c>AccountExists</c> / <c>IsContract</c>) to decide whether the system contract is
 /// deployed, so they are only usable inside an open world-state scope. Resolving them from the env's lifetime scope
-/// binds them to the env's world state, the one <see cref="Build"/> opens a scope on. The main processing world state
-/// has no scope open between blocks, which is exactly when the speculative pass evaluates them.
+/// binds them to the env's world state, the one <see cref="IReadOnlyTxProcessorSource.Build"/> opens a scope on. The
+/// main processing world state has no scope open between blocks, which is exactly when the speculative pass runs.
 /// </remarks>
-public sealed class PrewarmerEnv(IReadOnlyTxProcessorSource inner, IHasAccessList[] systemAccessLists) : IReadOnlyTxProcessorSource
+public interface IPrewarmerEnv : IReadOnlyTxProcessorSource
 {
-    public IHasAccessList[] SystemAccessLists { get; } = systemAccessLists;
-
-    public IReadOnlyTxProcessingScope Build(BlockHeader? header) => inner.Build(header);
-
-    public void Dispose() => inner.Dispose();
+    ReadOnlySpan<IHasAccessList> SystemAccessLists { get; }
 }

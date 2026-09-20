@@ -40,7 +40,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
     private readonly int _speculativeConcurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
-    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
+    private readonly ObjectPool<IPrewarmerEnv> _envPool;
     private readonly ILogger _logger;
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
@@ -87,7 +87,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.MempoolPreWarmConcurrency) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
-        IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
+        IPooledObjectPolicy<IPrewarmerEnv> poolPolicy,
         int minPoolSize,
         int concurrency,
         bool parallelExecutionBatchRead,
@@ -330,7 +330,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (MainThreadTxIndex >= candidate.Index) return;
 
         Transaction tx = candidate.Tx;
-        IReadOnlyTxProcessorSource env = _envPool.Get();
+        IPrewarmerEnv env = _envPool.Get();
         try
         {
             using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(round.RemainingCaptureCells);
@@ -411,7 +411,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // Reads through a prewarmer scope populate PreBlockCaches, so plain parallel reads are the warm-up.
             Parallel.ForEach(Partitioner.Create(0, cellCount, rangeSize), parallelOptions, range =>
             {
-                IReadOnlyTxProcessorSource env = _envPool.Get();
+                IPrewarmerEnv env = _envPool.Get();
                 try
                 {
                     using IReadOnlyTxProcessingScope scope = env.Build(parent);
@@ -696,7 +696,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 ParallelUnbalancedWork.For(0, block.Withdrawals.Length, parallelOptions, (EnvPool: _envPool, Block: block, Parent: parent),
                     static (i, state) =>
                     {
-                        IReadOnlyTxProcessorSource env = state.EnvPool.Get();
+                        IPrewarmerEnv env = state.EnvPool.Get();
                         try
                         {
                             using IReadOnlyTxProcessingScope scope = env.Build(state.Parent);
@@ -992,13 +992,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
-            ObjectPool<IReadOnlyTxProcessorSource> envPool = PreWarmer._envPool;
+            ObjectPool<IPrewarmerEnv> envPool = PreWarmer._envPool;
             try
             {
                 Address? beneficiary = block.Header.GasBeneficiary;
                 if (warmSystemAccessLists || beneficiary is not null)
                 {
-                    IReadOnlyTxProcessorSource env = envPool.Get();
+                    IPrewarmerEnv env = envPool.Get();
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.Build(parent);
@@ -1006,15 +1006,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         WarmupSender(beneficiary, null, scope.WorldState);
 
                         // Evaluated here rather than up front: the hints read state, and the only world state with an
-                        // open scope on the speculative path is this env's own. Every env the pool hands out comes
-                        // from PrewarmerEnvFactory, so the pattern only fails for a test policy with no hints to warm.
-                        if (warmSystemAccessLists && env is PrewarmerEnv prewarmerEnv)
-                        {
-                            foreach (IHasAccessList systemAccessList in prewarmerEnv.SystemAccessLists)
-                            {
-                                if (systemAccessList.GetAccessList(Block, Spec) is AccessList list) scope.WorldState.WarmUp(list);
-                            }
-                        }
+                        // open scope on the speculative path is this env's own.
+                        if (warmSystemAccessLists) WarmupSystemAccessLists(env.SystemAccessLists, scope.WorldState);
                     }
                     finally
                     {
@@ -1052,6 +1045,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
+        /// <remarks>
+        /// Tolerates a pruned root the same way <see cref="WarmupSender"/> does: losing a hint costs a cold read, it is
+        /// not a reason to abandon the rest of the pass.
+        /// </remarks>
+        private void WarmupSystemAccessLists(ReadOnlySpan<IHasAccessList> systemAccessLists, IWorldState worldState)
+        {
+            foreach (IHasAccessList systemAccessList in systemAccessLists)
+            {
+                try
+                {
+                    if (systemAccessList.GetAccessList(Block, Spec) is AccessList list) worldState.WarmUp(list);
+                }
+                catch (MissingTrieNodeException)
+                {
+                }
+            }
+        }
+
         private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
         {
             try
@@ -1072,16 +1083,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private readonly struct WarmingState<TPayload>(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent) : IDisposable
+    private readonly struct WarmingState<TPayload>(ObjectPool<IPrewarmerEnv> envPool, TPayload payload, BlockHeader parent) : IDisposable
     {
         public static Action<WarmingState<TPayload>> FinallyAction { get; } = DisposeThreadState;
 
-        private readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
-        private readonly IReadOnlyTxProcessorSource? Env;
+        private readonly ObjectPool<IPrewarmerEnv> EnvPool = envPool;
+        private readonly IPrewarmerEnv? Env;
         public readonly TPayload Payload = payload;
         public readonly IReadOnlyTxProcessingScope? Scope;
 
-        private WarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, parent)
+        private WarmingState(ObjectPool<IPrewarmerEnv> envPool, TPayload payload, BlockHeader parent, IPrewarmerEnv env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, parent)
         {
             Env = env;
             Scope = scope;
@@ -1089,7 +1100,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         public WarmingState<TPayload> InitThreadState()
         {
-            IReadOnlyTxProcessorSource env = EnvPool.Get();
+            IPrewarmerEnv env = EnvPool.Get();
             try
             {
                 return new(EnvPool, Payload, parent, env, scope: env.Build(parent));
@@ -1114,18 +1125,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <summary>
-    /// Pool policy for <see cref="IReadOnlyTxProcessorSource"/> envs used by the prewarmer.
+    /// Pool policy for the <see cref="IPrewarmerEnv"/> instances used by the prewarmer.
     /// </summary>
-    internal class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches _preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    internal class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches _preBlockCaches) : IPooledObjectPolicy<IPrewarmerEnv>
     {
-        public IReadOnlyTxProcessorSource Create() => envFactory.Create(_preBlockCaches);
+        public IPrewarmerEnv Create() => envFactory.Create(_preBlockCaches);
 
         /// <remarks>
         /// Always returns true — the env is valid for reuse. The pool that owns this policy
         /// must call <see cref="IDisposable.Dispose"/> on any item it cannot retain; failing
         /// to do so leaks resources held by the env for the lifetime of the process.
         /// </remarks>
-        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+        public bool Return(IPrewarmerEnv obj) => true;
     }
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
@@ -1142,7 +1153,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly BlockState BlockState = blockState;
         public readonly ArrayPoolList<WarmupJob> Jobs = jobs;
         public readonly CancellationToken Token = token;
-        public readonly IReadOnlyTxProcessorSource Env = blockState.PreWarmer._envPool.Get();
+        public readonly IPrewarmerEnv Env = blockState.PreWarmer._envPool.Get();
 
         public void ReturnEnv() => BlockState.PreWarmer._envPool.Return(Env);
     }
