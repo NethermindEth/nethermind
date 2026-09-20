@@ -166,9 +166,10 @@ public class RecoverSignaturesTest
     {
         int leading = RecoverSignatures.LeadingSenderCount;
         using ManualResetEventSlim gate = new();
-        Transaction[] txs = SignedTransactions(leading + 2);
+        // Long enough that the head is the full LeadingSenderCount rather than half the block.
+        Transaction[] txs = SignedTransactions(leading * 2 + 2);
         // Only the tail is parked, so the wait can end on the leading senders but never on completion.
-        RecoverSignatures sut = CreateSut(gate, txs[leading], txs[leading + 1]);
+        RecoverSignatures sut = CreateSut(gate, txs[^1], txs[^2]);
 
         sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create());
         sut.WaitForLeadingSenders(txs, TimeSpan.FromMilliseconds(DrainTimeoutMs));
@@ -184,13 +185,30 @@ public class RecoverSignaturesTest
     public void WaitForLeadingSenders_GivesUpWhenTheHeadDoesNotArrive()
     {
         using ManualResetEventSlim gate = new();
-        Transaction[] txs = SignedTransactions(RecoverSignatures.LeadingSenderCount + 2);
+        Transaction[] txs = SignedTransactions(RecoverSignatures.LeadingSenderCount * 2 + 2);
         RecoverSignatures sut = CreateSut(gate, txs[0]);
 
         sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create());
         sut.WaitForLeadingSenders(txs, TimeSpan.FromMilliseconds(20));
 
         Assert.That(txs[0].SenderAddress, Is.Null, "a sender that never arrives must not hold the caller");
+
+        ReleaseAndDrain(gate, sut, txs);
+    }
+
+    [Test]
+    public void WaitForLeadingSenders_ShortBlock_DoesNotWaitForEverySender()
+    {
+        using ManualResetEventSlim gate = new();
+        Transaction[] txs = SignedTransactions(4);
+        RecoverSignatures sut = CreateSut(gate, txs[2], txs[3]);
+
+        sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create());
+        sut.WaitForLeadingSenders(txs, TimeSpan.FromMilliseconds(DrainTimeoutMs));
+
+        Assert.That(sut.IsRecoveryInFlight(txs), Is.True, "a block shorter than the head must still be enqueued mid-recovery");
+        Assert.That(txs[0].SenderAddress, Is.Not.Null);
+        Assert.That(txs[1].SenderAddress, Is.Not.Null);
 
         ReleaseAndDrain(gate, sut, txs);
     }

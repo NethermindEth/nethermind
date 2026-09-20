@@ -121,7 +121,8 @@ namespace Nethermind.Consensus.Processing
         }
 
         /// <summary>
-        /// Blocks until the first <see cref="LeadingSenderCount"/> transactions have their senders, the running
+        /// Blocks until the leading transactions (<see cref="LeadingSenderCount"/>, never more than half the
+        /// block) have their senders, the running
         /// recovery has ended, or <see cref="LeadingSenderTimeout"/> elapses; returns at once when no recovery is
         /// running for <paramref name="txs"/>.
         /// </summary>
@@ -137,7 +138,9 @@ namespace Nethermind.Consensus.Processing
         {
             if (InFlightFor(txs) is not Recovery recovery) return;
 
-            int leading = Math.Min(LeadingSenderCount, txs.Length);
+            // Half the block at most: waiting for every sender is what this whole path exists to avoid, and a
+            // block shorter than the head would otherwise be recovered in full before it is enqueued.
+            int leading = Math.Min(LeadingSenderCount, txs.Length / 2);
             long start = Stopwatch.GetTimestamp();
             SpinWait spinner = default;
             while (!recovery.IsCompleted && !HasLeadingSenders(txs, leading))
