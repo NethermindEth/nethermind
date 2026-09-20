@@ -40,7 +40,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
             {
-                DecodeShardBlobNetworkWrapper(transaction, ref decoderContext, rlpBehaviors);
+                DecodeShardBlobNetworkWrapper(transaction, ref decoderContext, rlpBehaviors, networkWrapperCheck);
 
                 if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
@@ -115,7 +115,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         writer.Encode(transaction.BlobVersionedHashes!);
     }
 
-    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+    private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, int networkWrapperCheck)
     {
         ProofVersion version = ProofVersion.V0;
         if (!decoderContext.IsSequenceNext() && !decoderContext.IsNextItemEmptyByteArray())
@@ -143,7 +143,11 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         BlobCellMask cellMask = default;
         byte[][]? cells = null;
 
-        if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(maxSearch: 2) > 0)
+        // Bound the peek to THIS transaction's wrapper sequence. Without the bound it counts to
+        // the end of the whole buffer, so in a multi-transaction array (the processed-blob-txs
+        // entry written per block) a following transaction is mistaken for the cell mask that
+        // pre-#11094 entries simply do not have.
+        if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(networkWrapperCheck, maxSearch: 2) > 0)
         {
             cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
             byte[][] decodedCells = decoderContext.DecodeByteArrays(NetworkWrapperCellProofsCountLimit);
