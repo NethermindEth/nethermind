@@ -8,25 +8,51 @@ using NUnit.Framework;
 namespace Ethereum.ConsensusSpec.Test;
 
 /// <summary>
-/// Enumerates the consensus-specs <c>fork_choice</c> suite without driving it: this repo has a
-/// <c>ForkChoiceRunner</c>/<c>ForkChoiceStore</c>, but wiring their on_tick/on_block/on_attestation
-/// surface to the steps.yaml script format is real work this task did not reach (see the report). Every
-/// vector is still enumerated and named from its manifest.yaml (kept by
-/// <see cref="ConsensusSpecArchive"/>'s selective extraction precisely so this suite never has to guess
-/// a count), and reported not-implemented - explicit and counted, never a silent skip and never a pass,
-/// per this task's reporting rules.
+/// Runs the consensus-specs <c>fork_choice</c> suite by replaying each vector's <c>steps.yaml</c>
+/// script (<see cref="ForkChoiceStepDriver"/>) against this repo's
+/// <see cref="Nethermind.BeaconChain.ForkChoice.ForkChoiceRunner"/>. Fulu-only, mainnet-preset-only
+/// for the same reason as <see cref="SanityTests"/> and <see cref="OperationsTests"/>:
+/// <c>BeaconStateFulu</c>'s SSZ shape hard-codes mainnet-scaled vector bounds (sync committee size,
+/// historical roots, randao mixes, slashings), so it cannot decode a minimal-preset
+/// <c>anchor_state.ssz_snappy</c> at all - confirmed directly (decoding one throws
+/// <c>InvalidDataException: expected at least 2737225 bytes but found 19921</c>). The minimal-preset
+/// vectors (66 of them) are still enumerated and named, and reported not-implemented rather than
+/// silently skipped; only the mainnet-preset vectors (opt in with
+/// NETHERMIND_CONSENSUS_SPEC_MAINNET=1) actually drive the fork-choice pipeline.
 /// </summary>
 [TestFixture]
 public class ForkChoiceTests
 {
     [TestCaseSource(nameof(MinimalCases))]
-    public void Vector(ForkChoiceCase testCase) =>
+    public void Vector(ForkChoiceCase testCase) => Execute(testCase);
+
+    [TestCaseSource(nameof(MainnetCases))]
+    public void Vector_mainnet(ForkChoiceCase testCase) => Execute(testCase);
+
+    private static void Execute(ForkChoiceCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("fork_choice", "fulu", testCase.Preset, testCase.VectorName, () =>
-            throw new NotImplementedInDriverException(
-                "fork_choice driving is not implemented in this pass: this repo's ForkChoiceRunner/ForkChoiceStore " +
-                "is not wired to the steps.yaml on_tick/on_block/on_attestation/checks script format."));
+        {
+            if (testCase.Preset == nameof(ConsensusPreset.Minimal))
+            {
+                throw new NotImplementedInDriverException(
+                    "BeaconStateFulu's SSZ shape hard-codes mainnet-preset-scaled vector bounds (see SszStaticTests' " +
+                    "BeaconState/Attestation/SyncCommittee entries), so it cannot decode a minimal-preset " +
+                    "anchor_state.ssz_snappy at all; this suite only drives fork choice for real against the " +
+                    "mainnet preset (opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
+            }
+
+            ForkChoiceStepDriver.Run(testCase.CasePath);
+        });
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
+
+    private static IEnumerable<TestCaseData> MainnetCases()
+    {
+        if (!ConsensusSpecArchive.MainnetEnabled)
+            yield break;
+        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet))
+            yield return data;
+    }
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
     {
