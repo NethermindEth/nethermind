@@ -5,8 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
@@ -48,6 +51,9 @@ public sealed class BlockImporter : IBlockImporter
     private readonly IBeaconChainConfig _config;
     private readonly ILogger _logger;
 
+    /// <summary>The <c>is_data_available</c> rule for blocks from the network; store replays use <see cref="ReplayedBlockAvailability"/>.</summary>
+    private readonly IDataAvailabilityRule _availability;
+
     private readonly PostStateCache _states;
     private readonly ForkChoiceRunner _runner;
 
@@ -70,6 +76,7 @@ public sealed class BlockImporter : IBlockImporter
         IEngineDriver engine,
         IBeaconChainConfig config,
         ILogManager logManager,
+        IDataAvailabilityRule availability,
         BeaconStateFulu anchorState,
         SignedBeaconBlock anchorBlock,
         Hash256 anchorRoot)
@@ -80,6 +87,7 @@ public sealed class BlockImporter : IBlockImporter
         _engine = engine;
         _config = config;
         _logger = logManager.GetClassLogger<BlockImporter>();
+        _availability = availability;
 
         _states = new PostStateCache(store, spec, anchorRoot, anchorState);
         _runner = new ForkChoiceRunner(spec, anchorState, anchorBlock.Message!, _states, pubkeys);
@@ -175,11 +183,13 @@ public sealed class BlockImporter : IBlockImporter
         // The transition hook already drove engine_newPayload; an INVALID verdict made Apply throw.
         bool payloadValid = _engine.LastNewPayloadStatus?.Status == PayloadStatus.Valid;
         OnSlotTick(block.Slot); // a timely gossip block can be marginally ahead of the last tick
+
+        // A stored block passed this gate before it was persisted, and the columns that satisfied it
+        // are not persisted, so a trusted replay can neither re-check them nor needs to.
+        IDataAvailabilityRule availability = verifySignatures ? _availability : ReplayedBlockAvailability.Instance;
         try
         {
-            // Null, not the columns this node holds: the availability rule wants every column, which a
-            // base-custody node never has, so passing a partial set would reject every blob block.
-            _runner.OnBlock(signedBlock, state, payloadValid ? ExecutionStatus.Valid : ExecutionStatus.Optimistic, dataColumns: null);
+            _runner.OnBlock(signedBlock, state, payloadValid ? ExecutionStatus.Valid : ExecutionStatus.Optimistic, availability);
         }
         catch (ForkChoiceException e)
         {
@@ -420,14 +430,37 @@ public sealed class BlockImporter : IBlockImporter
 }
 
 /// <inheritdoc cref="IBlockImporterFactory"/>
+/// <remarks>
+/// Every importer created here applies <see cref="CustodySamplingAvailability"/>: the production
+/// <c>is_data_available</c>, fed from the gossip sidecar pool and this node's discovery identity. The
+/// supernode <see cref="FullColumnSetAvailability"/> is for the consensus-spec vectors only and is
+/// deliberately not reachable from this factory.
+/// </remarks>
+/// <param name="pool">Where an importer looks up the columns this node holds for a block.</param>
+/// <param name="discovery">
+/// Supplies the node id the custody columns derive from; <c>null</c> (the P2P-less configuration
+/// some tests run) leaves the identity unknown, so no blob-carrying block is ever available.
+/// </param>
 public sealed class BlockImporterFactory(
     BeaconChainSpec spec,
     BeaconChainStore store,
     PubkeyCache pubkeys,
     IEngineDriver engine,
     IBeaconChainConfig config,
-    ILogManager logManager) : IBlockImporterFactory
+    ILogManager logManager,
+    DataColumnSidecarPool pool,
+    BeaconDiscovery? discovery = null) : IBlockImporterFactory
 {
     public IBlockImporter Create(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot) =>
-        new BlockImporter(spec, store, pubkeys, engine, config, logManager, anchorState, anchorBlock, anchorRoot);
+        new BlockImporter(
+            spec,
+            store,
+            pubkeys,
+            engine,
+            config,
+            logManager,
+            new CustodySamplingAvailability(new DiscoveryNodeCustodySource(discovery), new DataColumnPoolSource(pool)),
+            anchorState,
+            anchorBlock,
+            anchorRoot);
 }
