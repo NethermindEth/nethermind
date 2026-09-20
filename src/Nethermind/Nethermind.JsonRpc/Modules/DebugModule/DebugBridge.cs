@@ -137,7 +137,7 @@ public class DebugBridge : IDebugBridge
         deletionError = GetDeletionError(startNumber, out ulong endNumber);
         if (deletionError is not null) return deletionError;
 
-        bool replacesHead = startNumber > 0 && _blockTree.Head?.Number >= startNumber;
+        bool replacesHead = _blockTree.Head?.Number >= startNumber;
         bool replacesPivot = startNumber <= _blockTree.SyncPivot.BlockNumber &&
                              _blockTree.SyncPivot.BlockNumber <= endNumber;
         Block? target = replacesHead

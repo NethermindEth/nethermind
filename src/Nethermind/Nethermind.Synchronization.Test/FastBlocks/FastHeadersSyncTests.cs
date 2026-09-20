@@ -1405,6 +1405,51 @@ public class FastHeadersSyncTests
         }
     }
 
+    [Test]
+    public async Task Retained_response_survives_cancellation_before_replay()
+    {
+        BlockHeader[] headers = new BlockHeader[3];
+        headers[0] = Build.A.BlockHeader.WithNumber(0).WithDifficulty(1).TestObject;
+        headers[1] = Build.A.BlockHeader.WithParent(headers[0]).WithDifficulty(1).TestObject;
+        headers[2] = Build.A.BlockHeader.WithParent(headers[1]).WithDifficulty(1).TestObject;
+        ISyncPeerPool peers = Substitute.For<ISyncPeerPool>();
+        peers.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new SyncConfig
+            {
+                FastSync = true,
+                PivotNumber = 2,
+                PivotHash = headers[2].Hash!.ToString(),
+                PivotTotalDifficulty = "1000"
+            }))
+            .AddSingleton<ISyncPeerPool>(peers)
+            .AddSingleton<ISyncReport>(new NullSyncReport())
+            .AddSingleton<HeadersSyncFeed>()
+            .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        tree.SyncPivot = (2, headers[2].Hash!);
+        HeadersSyncFeed feed = container.Resolve<HeadersSyncFeed>();
+        feed.InitializeFeed();
+        HeadersSyncBatch batch = (await feed.PrepareRequest())!;
+        ReadOnlySpan<BlockHeader?> responseSpan = headers.AsSpan();
+        IOwnedReadOnlyList<BlockHeader?> response = responseSpan.ToPooledList();
+        batch.Response = response;
+        GetFeedMethod<Action<HeadersSyncBatch>>(feed, "RetainResponse")(batch);
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await feed.PrepareRequest(cancellation.Token));
+        Assert.DoesNotThrow(() => response.AsSpan(), "cancellation must leave the retained response queued");
+        Assert.That(await feed.PrepareRequest(), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.LowestInsertedHeader!.Number, Is.Zero);
+            for (ulong number = 1; number <= 2; number++)
+                Assert.That(tree.FindHeader(number)?.Hash, Is.EqualTo(headers[number].Hash));
+        }
+    }
+
     private static T GetFeedMethod<T>(HeadersSyncFeed feed, string name) where T : Delegate =>
         typeof(HeadersSyncFeed).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)!.CreateDelegate<T>(feed);
 

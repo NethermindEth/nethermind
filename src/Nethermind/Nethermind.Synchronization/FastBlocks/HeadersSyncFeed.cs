@@ -387,13 +387,21 @@ namespace Nethermind.Synchronization.FastBlocks
                 while (TryDequeuePending(out batch))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
-                    batch!.MarkRetry();
-                    if (batch.Response is null) break;
+                    if (batch.Response is null)
+                    {
+                        batch.MarkRetry();
+                        break;
+                    }
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        EnqueuePending(batch);
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
                     using (batch)
                     {
+                        batch.MarkHandlingStart();
                         try
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
                             lock (_handlerLock) InsertHeaders(batch);
                         }
                         catch (BlockTreeNotReadyException)
@@ -410,6 +418,10 @@ namespace Nethermind.Synchronization.FastBlocks
                             RequeueAsNewBatch(batch);
                             if (_logger.IsError) _logger.Error($"Failed to insert retained batch {batch}", e);
                             return Task.FromResult<HeadersSyncBatch?>(null);
+                        }
+                        finally
+                        {
+                            batch.MarkHandlingEnd();
                         }
                     }
                     if (++retainedBatchesProcessed >= maxRetainedBatchesToProcess)
@@ -689,7 +701,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch? left = skipPersisted ? batch : ProcessPersistedPortion(batch);
             if (left is not null)
             {
-                EnqueuePending(batch);
+                EnqueuePending(left);
             }
         }
 

@@ -6,4 +6,4 @@ using System;
 namespace Nethermind.Blockchain;
 
 /// <summary>The block tree temporarily cannot accept new blocks; the insertion may be retried.</summary>
-public sealed class BlockTreeNotReadyException() : InvalidOperationException("Cannot accept new blocks at the moment.");
+public sealed class BlockTreeNotReadyException(string? message = null) : InvalidOperationException(message ?? "Cannot accept new blocks at the moment.");
