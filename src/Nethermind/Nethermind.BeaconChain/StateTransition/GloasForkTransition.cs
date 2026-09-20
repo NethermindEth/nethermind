@@ -301,7 +301,7 @@ public static class GloasForkTransition
 
         return new PayloadTimelinessCommittee
         {
-            Indices = [.. ComputeBalanceWeightedSelection(pre, indices, seed, (int)Presets.PtcSize, shuffleIndices: false).Select(static i => (ulong)i)],
+            Indices = [.. ComputeBalanceWeightedSelection(pre.Validators!, indices, seed, (int)Presets.PtcSize, shuffleIndices: false).Select(static i => (ulong)i)],
         };
     }
 
@@ -310,8 +310,10 @@ public static class GloasForkTransition
     /// <paramref name="indices"/> by effective balance, with replacement. Mirrors the existing
     /// <see cref="BeaconStateAccessors.ComputeProposerIndex"/> rejection-sampling loop, generalized to
     /// keep sampling until <paramref name="size"/> selections are made instead of stopping at the first.
+    /// Takes the registry rather than a state so the Fulu-typed upgrade and the Gloas-typed epoch
+    /// processing (<see cref="GloasEpochProcessing"/>) share the one implementation.
     /// </summary>
-    private static int[] ComputeBalanceWeightedSelection(BeaconStateFulu state, IReadOnlyList<int> indices, ReadOnlySpan<byte> seed, int size, bool shuffleIndices)
+    internal static int[] ComputeBalanceWeightedSelection(Validator[] validators, IReadOnlyList<int> indices, ReadOnlySpan<byte> seed, int size, bool shuffleIndices)
     {
         if (indices.Count == 0)
             throw new BeaconStateException("Cannot select a balance-weighted committee from an empty candidate list");
@@ -338,7 +340,7 @@ public static class GloasForkTransition
             if (shuffleIndices)
                 nextIndex = SwapOrNotShuffle.ComputeShuffledIndex(nextIndex, indices.Count, seed);
 
-            ulong effectiveBalance = state.Validators![indices[nextIndex]].EffectiveBalance;
+            ulong effectiveBalance = validators[indices[nextIndex]].EffectiveBalance;
             ulong randomValue = BinaryPrimitives.ReadUInt16LittleEndian(randomBytes[(int)offset..]);
             ulong weight = effectiveBalance * BeaconStateAccessors.MaxRandomValue;
             ulong threshold = Presets.MaxEffectiveBalanceElectra * randomValue;
