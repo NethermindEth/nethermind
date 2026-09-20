@@ -179,7 +179,9 @@ public class GloasBlockProcessingTests
         // block-root consistency check is what catches the mismatch - the second line of defense.
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             GloasBlockProcessing.VerifyExecutionPayloadEnvelope(new MisboundStates(block1Root, live), envelope1, new AcceptingNotifier(), new PubkeyCache()))!;
-        Assert.That(ex.Message, Does.Contain("beacon block root does not match"));
+        // The parent-root check one line later fails too and its message also says "beacon block
+        // root does not match"; only the block-root check names the state's own latest block.
+        Assert.That(ex.Message, Does.Contain("does not match the state's own latest block"));
     }
 
     [Test]
