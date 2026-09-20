@@ -168,7 +168,22 @@ public sealed class BlockImporter : IBlockImporter
         _engine.CurrentBlock = signedBlock;
         try
         {
+            // A transition that runs in place cannot be abandoned part-way: ProcessBlockHeader has
+            // already advanced LatestBlockHeader by the time the engine is called, so a retry of
+            // the same block would fail its own header check forever. Drive newPayload before
+            // anything is mutated. A cloned transition can abort for free, and keeping the call in
+            // the hook there leaves the spec's validation order intact for untrusted blocks.
+            if (ReferenceEquals(state, parentState) && onLineage)
+            {
+                verdict.Prime(block.Body!);
+            }
+
             StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures);
+        }
+        catch (EngineUnavailableException e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Deferring block {blockRoot} at slot {block.Slot}: {e.Message}");
+            return BlockImportResult.EngineUnavailable;
         }
         catch (BeaconStateException e)
         {
@@ -442,11 +457,22 @@ public sealed class BlockImporter : IBlockImporter
     /// </remarks>
     private sealed class ImportVerdict(IEngineDriver engine) : INewPayloadNotifier
     {
+        private BeaconBlockBody? _primed;
+
         /// <summary>The verdict for this import, optimistic until the hook produces one.</summary>
         public ExecutionStatus Status { get; private set; } = ExecutionStatus.Optimistic;
 
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) =>
+        /// <summary>Obtains the verdict for <paramref name="body"/> ahead of the transition that will consume it.</summary>
+        /// <remarks>The hook is served this verdict rather than calling the engine a second time.</remarks>
+        /// <exception cref="EngineUnavailableException">The execution layer returned no verdict.</exception>
+        public void Prime(BeaconBlockBody body)
+        {
             Status = engine.NotifyNewPayload(body);
+            _primed = body;
+        }
+
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) =>
+            ReferenceEquals(body, _primed) ? Status : Status = engine.NotifyNewPayload(body);
 
         public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) =>
             Status = engine.NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests);
