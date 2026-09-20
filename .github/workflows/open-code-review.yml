@@ -74,7 +74,7 @@ jobs:
       group: open-code-review-${{ github.repository_id }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 55
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
     permissions:
@@ -177,7 +177,7 @@ jobs:
 
       - name: Review captured range
         id: review
-        timeout-minutes: 20
+        timeout-minutes: 35
         env:
           OCR_LLM_TOKEN: ${{ secrets[vars.OCR_API_KEY_SECRET || 'OCR_LITELLM_API_KEY'] }}
           HEAD_SHA: ${{ steps.target.outputs.head }}
@@ -199,7 +199,7 @@ jobs:
           "$OCR_DIRECTORY/ocr" review "${ARGS[@]}" --preview \
             > "$OCR_DIRECTORY/preview.json" 2> "$OCR_DIRECTORY/stderr.log"
           set +e
-          timeout --signal=TERM --kill-after=15s 18m \
+          timeout --signal=TERM --kill-after=15s 32m \
             "$OCR_DIRECTORY/ocr" review "${ARGS[@]}" \
             > "$OCR_DIRECTORY/result.json" 2>> "$OCR_DIRECTORY/stderr.log"
           OCR_EXIT_CODE=$?
@@ -207,7 +207,7 @@ jobs:
           echo "$OCR_EXIT_CODE" > "$OCR_DIRECTORY/exit-code.txt"
 
       - name: Independently investigate and validate findings
-        timeout-minutes: 9
+        timeout-minutes: 15
         env:
           OCR_LLM_TOKEN: ${{ secrets[vars.OCR_API_KEY_SECRET || 'OCR_LITELLM_API_KEY'] }}
           OCR_VALIDATION_TOKEN_BUDGET: ${{ vars.OCR_VALIDATION_TOKEN_BUDGET || '1000000' }}
