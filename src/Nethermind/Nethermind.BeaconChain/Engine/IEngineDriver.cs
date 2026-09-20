@@ -18,8 +18,8 @@ public interface IEngineDriver : INewPayloadNotifier
     /// <inheritdoc cref="EngineDriver.CurrentBlock"/>
     SignedBeaconBlock? CurrentBlock { get; set; }
 
-    /// <inheritdoc cref="EngineDriver.LastNewPayloadStatus"/>
-    PayloadStatusV1? LastNewPayloadStatus { get; }
+    /// <inheritdoc cref="EngineDriver.HasAnsweredNewPayload"/>
+    bool HasAnsweredNewPayload { get; }
 
     /// <inheritdoc cref="EngineDriver.ForkchoiceUpdated"/>
     Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash);

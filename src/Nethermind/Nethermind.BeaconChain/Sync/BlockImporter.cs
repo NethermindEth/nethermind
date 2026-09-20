@@ -17,7 +17,6 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.BeaconChain.Sync;
 
@@ -165,10 +164,11 @@ public sealed class BlockImporter : IBlockImporter
             cache = new EpochCache(); // fork branch: stateless hasher, fresh balance memo
         }
 
+        ImportVerdict verdict = new(_engine);
         _engine.CurrentBlock = signedBlock;
         try
         {
-            StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, _engine, _spec, validateResult: true, verifySignatures);
+            StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures);
         }
         catch (BeaconStateException e)
         {
@@ -181,7 +181,7 @@ public sealed class BlockImporter : IBlockImporter
         }
 
         // The transition hook already drove engine_newPayload; an INVALID verdict made Apply throw.
-        bool payloadValid = _engine.LastNewPayloadStatus?.Status == PayloadStatus.Valid;
+        ExecutionStatus executionStatus = verdict.Status;
         OnSlotTick(block.Slot); // a timely gossip block can be marginally ahead of the last tick
 
         // A stored block passed this gate before it was persisted, and the columns that satisfied it
@@ -189,7 +189,7 @@ public sealed class BlockImporter : IBlockImporter
         IDataAvailabilityRule availability = verifySignatures ? _availability : ReplayedBlockAvailability.Instance;
         try
         {
-            _runner.OnBlock(signedBlock, state, payloadValid ? ExecutionStatus.Valid : ExecutionStatus.Optimistic, availability);
+            _runner.OnBlock(signedBlock, state, executionStatus, availability);
         }
         catch (ForkChoiceException e)
         {
@@ -197,7 +197,7 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.Invalid;
         }
 
-        if (payloadValid)
+        if (executionStatus is ExecutionStatus.Valid)
         {
             _runner.OnValidExecutionPayload(blockRoot);
         }
@@ -427,6 +427,30 @@ public sealed class BlockImporter : IBlockImporter
 
         if (pruned > 0 && _logger.IsDebug) _logger.Debug($"Pruned {pruned} non-canonical blocks below finalized slot {finalizedSlot}");
     }
+
+    /// <summary>
+    /// Carries one block's execution verdict from the state transition's <c>newPayload</c> hook
+    /// back to the importer.
+    /// </summary>
+    /// <remarks>
+    /// The verdict has to bind to the block that produced it. Reading it from a field on the
+    /// shared <see cref="IEngineDriver"/> binds it instead to whichever caller ran
+    /// <c>newPayload</c> last, which can admit a block to fork choice as
+    /// <see cref="ExecutionStatus.Valid"/> when it was only <see cref="ExecutionStatus.Optimistic"/>.
+    /// That is not recoverable: invalidating a node fork choice already holds as valid throws.
+    /// One instance per import, so the binding holds by construction rather than by call ordering.
+    /// </remarks>
+    private sealed class ImportVerdict(IEngineDriver engine) : INewPayloadNotifier
+    {
+        /// <summary>The verdict for this import, optimistic until the hook produces one.</summary>
+        public ExecutionStatus Status { get; private set; } = ExecutionStatus.Optimistic;
+
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) =>
+            Status = engine.NotifyNewPayload(body);
+
+        public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) =>
+            Status = engine.NotifyNewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests);
+    }
 }
 
 /// <inheritdoc cref="IBlockImporterFactory"/>
@@ -463,4 +487,5 @@ public sealed class BlockImporterFactory(
             anchorState,
             anchorBlock,
             anchorRoot);
+
 }

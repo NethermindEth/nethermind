@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
@@ -24,8 +25,13 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// </summary>
 public interface INewPayloadNotifier
 {
-    /// <summary>Returns whether the execution layer accepted the body's payload (with its versioned hashes and execution requests).</summary>
-    bool NotifyNewPayload(BeaconBlockBody body);
+    /// <summary>Returns the execution layer's verdict on the body's payload (with its versioned hashes and execution requests).</summary>
+    /// <remarks>
+    /// <see cref="ExecutionStatus.Optimistic"/> means the payload was not rejected and was not
+    /// validated either; the caller must carry that distinction into fork choice rather than
+    /// collapsing it into acceptance.
+    /// </remarks>
+    ExecutionStatus NotifyNewPayload(BeaconBlockBody body);
 
     /// <summary>
     /// Gloas <c>ExecutionEngine.verify_and_notify_new_payload</c> for an execution payload envelope
@@ -34,7 +40,7 @@ public interface INewPayloadNotifier
     /// and <see cref="RequireEnvelopeSupport"/> turns a production notifier still relying on it into
     /// a startup failure instead of a throw at the first Gloas envelope.
     /// </summary>
-    bool NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) =>
+    ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) =>
         throw new NotSupportedException($"{GetType().Name} does not implement execution-layer notification for Gloas execution payload envelopes");
 
     /// <summary>
@@ -256,8 +262,10 @@ public static class BlockProcessing
         if ((ulong)(body.BlobKzgCommitments?.Length ?? 0) > maxBlobsPerBlock)
             throw new BeaconStateException($"Blob commitment count {body.BlobKzgCommitments!.Length} exceeds limit {maxBlobsPerBlock}");
 
-        if (!notifier.NotifyNewPayload(body))
-            throw new BeaconStateException("Execution payload was rejected by the execution layer");
+        // Irrelevant is default(ExecutionStatus): a notifier that returns no verdict must not admit the block.
+        ExecutionStatus executionStatus = notifier.NotifyNewPayload(body);
+        if (executionStatus is ExecutionStatus.Invalid or ExecutionStatus.Irrelevant)
+            throw new BeaconStateException($"Execution payload was rejected by the execution layer ({executionStatus})");
 
         Transaction.MerkleizeList(payload.Transactions ?? [], 1_048_576UL, out UInt256 transactionsRoot);
         Withdrawal.MerkleizeList(payload.Withdrawals ?? [], 16UL, out UInt256 withdrawalsRoot);

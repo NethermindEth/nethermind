@@ -8,6 +8,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Test.DataAvailability;
@@ -311,6 +312,6 @@ internal sealed class ImportableBlobBlock
 
     private sealed class AcceptingNotifier : INewPayloadNotifier
     {
-        public bool NotifyNewPayload(BeaconBlockBody body) => true;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 }
