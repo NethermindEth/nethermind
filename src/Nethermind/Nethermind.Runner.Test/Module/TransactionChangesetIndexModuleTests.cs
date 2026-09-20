@@ -142,10 +142,10 @@ public class TransactionChangesetIndexModuleTests
             .WithValue(10).WithGasPrice(0).WithGasLimit(200000).WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Block third = NextBlock(second, deployment);
         Address contract = ContractAddress.From(TestItem.AddressA, 1);
-        Transaction firstCall = Build.A.Transaction.WithTo(contract).WithGasPrice(0).WithGasLimit(100000)
+        Transaction firstCall = Build.A.Transaction.WithTo(contract).WithValue(0).WithGasPrice(0).WithGasLimit(100000)
             .WithNonce(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Block fourth = NextBlock(third, firstCall);
-        Transaction secondCall = Build.A.Transaction.WithTo(contract).WithGasPrice(0).WithGasLimit(100000)
+        Transaction secondCall = Build.A.Transaction.WithTo(contract).WithValue(0).WithGasPrice(0).WithGasLimit(100000)
             .WithNonce(3).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Block fifth = NextBlock(fourth, secondCall);
 
