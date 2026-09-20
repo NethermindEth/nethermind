@@ -27,7 +27,7 @@ namespace Nethermind.BeaconChain.P2P;
 /// The libp2p stack this plugin consumes has no gossipsub peer scoring at all, so this class is the
 /// only line of defence against a misbehaving mesh neighbour: it cannot penalise a peer, only
 /// disconnect it, cap how many it admits, and remember which ones kept faulting. See
-/// <see cref="PeerRecord"/> for the per-peer-id history that survives a single disconnect (the ban
+/// <see cref="BanRecord"/> for the per-peer-id history that survives a single disconnect (the ban
 /// list and diagnostics), as opposed to <see cref="ManagedPeer"/>, which only lives as long as the
 /// session does.
 /// </remarks>
@@ -35,17 +35,27 @@ public class PeerManager(
     BeaconP2P p2p,
     IBeaconChainConfig config,
     IBeaconChainStatusSource statusSource,
-    ILogManager logManager) : IBeaconSyncPeerPool
+    ILogManager logManager) : IBeaconSyncPeerPool, IPeerDirectory
 {
     // Generous: a slow peer hammered by range-sync batches can rack up transient timeouts
     // without being useless, and dialable mainnet peers are scarce.
     private const int MaxConsecutiveFailures = 8;
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(30);
+
+    // Below MinPeerCount, maintenance (static-peer reconnect and health checks) runs on this
+    // shorter cadence instead: the one lever PeerManager itself owns for "more aggressive" behaviour
+    // while under-peered. Discovery's own candidate pacing is a different component's concern.
+    private static readonly TimeSpan UnderPeeredMaintenanceInterval = TimeSpan.FromSeconds(5);
+
+    // How often WaitForAdmissionCapacityAsync re-checks the target band while parked.
+    private static readonly TimeSpan AdmissionPollInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DialTimeout = TimeSpan.FromSeconds(10);
     private const string PeerIdSeparator = "/p2p/";
 
     // Bounds the per-peer-id ban/diagnostics table so years of churn on a public network cannot
-    // grow it forever. Best-effort eviction, not a true LRU: see EvictIfOverCapacity.
+    // grow it forever. Real (deterministic) policy: evicts the oldest tracked non-banned entry -
+    // see EvictIfOverCapacity. A banned entry is never evicted; the table can only exceed this bound
+    // if every tracked id happens to be banned, which FaultDisconnectsBeforeBan makes rare.
     private const int MaxTrackedPeerIds = 8192;
 
     private readonly ILogger _logger = logManager.GetClassLogger<PeerManager>();
@@ -53,12 +63,21 @@ public class PeerManager(
 
     // Keyed by peer id (not dial address), so a ban and the message/failure history behind it
     // survive both a disconnect and a later reconnection attempt from a different address.
-    private readonly ConcurrentDictionary<string, PeerRecord> _peerRecords = new();
+    private readonly ConcurrentDictionary<string, BanRecord> _peerRecords = new();
+    private long _nextRecordSequence;
 
     // The one outbound-dial limiter for this plugin: both the static-peer loop below and
     // discovery-driven dials from TryAddPeerAsync fund through it, so it is where
     // MaxConcurrentOutboundDials is actually enforced, not a second copy of it.
     private readonly SemaphoreSlim _outboundDialGate = new(Math.Max(1, config.MaxConcurrentOutboundDials));
+
+    // Admission reservations: an address is present here from the moment a discovery-driven dial is
+    // allowed to proceed until its outcome (success or failure) is known, so a concurrent dial cannot
+    // read a stale _peers.Count and admit past MaxPeerCount (see TryReserveAdmissionSlot). Guarded by
+    // _admissionLock rather than left as independent atomics, because the ceiling check and the
+    // reservation must happen as one step, not two.
+    private readonly ConcurrentDictionary<string, byte> _dialing = new();
+    private readonly object _admissionLock = new();
 
     /// <summary>Raised with the dropped peer's id so dial dedup can allow a later re-dial.</summary>
     public event Action<string>? PeerDropped;
@@ -79,7 +98,29 @@ public class PeerManager(
                 if (_logger.IsError) _logger.Error("Beacon chain peer maintenance failed.", e);
             }
 
-            await Task.Delay(MaintenanceInterval, token);
+            await Task.Delay(NextMaintenanceInterval, token);
+        }
+    }
+
+    /// <summary>The low watermark's one real effect: maintenance (static-peer reconnect, health
+    /// checks) runs more often while under-peered instead of the knob being read nowhere.</summary>
+    private TimeSpan NextMaintenanceInterval => _peers.Count < config.MinPeerCount ? UnderPeeredMaintenanceInterval : MaintenanceInterval;
+
+    /// <summary>Internal so a test can assert the cadence choice without waiting out a real interval.</summary>
+    internal TimeSpan NextMaintenanceIntervalForTest => NextMaintenanceInterval;
+
+    /// <summary>
+    /// Backpressure for the discovery dial loop: the loop should ask whether there is room rather
+    /// than deciding for itself from raw config, so this is the one place "at target" is defined.
+    /// Returns once the pool is below <see cref="IBeaconChainConfig.TargetPeerCount"/> counting both
+    /// connected peers and dials already admitted but not yet resolved, so a burst of concurrent
+    /// dials cannot itself blow through the target the moment they all land.
+    /// </summary>
+    public async Task WaitForAdmissionCapacityAsync(CancellationToken token)
+    {
+        while (_peers.Count + _dialing.Count >= config.TargetPeerCount)
+        {
+            await Task.Delay(AdmissionPollInterval, token);
         }
     }
 
@@ -186,22 +227,49 @@ public class PeerManager(
             return false;
         }
 
-        if (_peers.Count >= config.MaxPeerCount)
+        if (!TryReserveAdmissionSlot(address))
         {
-            if (_logger.IsDebug) _logger.Debug($"Refusing to dial {address}: at the configured peer band ceiling ({config.MaxPeerCount})");
+            if (_logger.IsDebug) _logger.Debug($"Refusing to dial {address}: already in flight or at the configured peer band ceiling ({config.MaxPeerCount})");
             return false;
         }
 
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        cts.CancelAfter(DialTimeout);
         try
         {
-            return await ConnectAsync(address, cts.Token);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cts.CancelAfter(DialTimeout);
+            try
+            {
+                return await ConnectAsync(address, cts.Token);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Dialing beacon chain peer {address} timed out");
+                return false;
+            }
         }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        finally
         {
-            if (_logger.IsDebug) _logger.Debug($"Dialing beacon chain peer {address} timed out");
-            return false;
+            _dialing.TryRemove(address, out _);
+        }
+    }
+
+    /// <summary>
+    /// Atomically checks the ceiling and reserves <paramref name="address"/> as one step, so
+    /// concurrent dials cannot all observe the same stale count and all pass (the exact overshoot
+    /// this closes: up to MaxConcurrentOutboundDials could previously admit past MaxPeerCount).
+    /// Also refuses a second concurrent dial to the same address rather than double-reserving it.
+    /// </summary>
+    private bool TryReserveAdmissionSlot(string address)
+    {
+        lock (_admissionLock)
+        {
+            if (_dialing.ContainsKey(address) || _peers.Count + _dialing.Count >= config.MaxPeerCount)
+            {
+                return false;
+            }
+
+            _dialing[address] = 0;
+            return true;
         }
     }
 
@@ -235,7 +303,7 @@ public class PeerManager(
         }
 
         List<PeerDiagnostics> snapshot = new(_peerRecords.Count);
-        foreach (KeyValuePair<string, PeerRecord> record in _peerRecords)
+        foreach (KeyValuePair<string, BanRecord> record in _peerRecords)
         {
             bool connected = connectedByPeerId.TryGetValue(record.Key, out ManagedPeer? peer);
             snapshot.Add(new PeerDiagnostics(
@@ -253,6 +321,84 @@ public class PeerManager(
 
         return snapshot;
     }
+
+    /// <summary>The Beacon API's <c>node/peers</c> surface. Only outbound-dialed peers exist here:
+    /// this manager has no inbound-admission path, so <see cref="PeerDirection.Inbound"/> and
+    /// <see cref="PeerConnectionState.Disconnected"/>/<see cref="PeerConnectionState.Disconnecting"/>
+    /// are never produced today, even though the enums model the API's full set. A dial in flight
+    /// (reserved but not yet resolved - see <see cref="TryReserveAdmissionSlot"/>) reports as
+    /// <see cref="PeerConnectionState.Connecting"/>; everything in <c>_peers</c> is already
+    /// status-exchanged and reports as <see cref="PeerConnectionState.Connected"/>. <c>AgentVersion</c>
+    /// is always <c>null</c>: the identify protocol's per-peer data lives inside <c>BeaconP2P</c>,
+    /// which is out of reach from here without wiring this manager could not add.</summary>
+    public IReadOnlyList<PeerRecord> Peers
+    {
+        get
+        {
+            List<PeerRecord> result = new(_peers.Count + _dialing.Count);
+            foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
+            {
+                result.Add(ToConnectedRecord(peer.Value));
+            }
+
+            foreach (KeyValuePair<string, byte> dialing in _dialing)
+            {
+                if (!_peers.ContainsKey(dialing.Key))
+                {
+                    result.Add(ToConnectingRecord(dialing.Key));
+                }
+            }
+
+            return result;
+        }
+    }
+
+    /// <summary>Looks up one peer by libp2p peer id (not dial address). An empty id or one this
+    /// manager has no record of is refused rather than matched against an unrelated entry - see the
+    /// class remarks on never handing out on an unresolved identity.</summary>
+    public bool TryGetPeer(string peerId, out PeerRecord peer)
+    {
+        if (string.IsNullOrEmpty(peerId))
+        {
+            peer = default;
+            return false;
+        }
+
+        foreach (KeyValuePair<string, ManagedPeer> connected in _peers)
+        {
+            if (string.Equals(connected.Value.PeerId, peerId, StringComparison.Ordinal))
+            {
+                peer = ToConnectedRecord(connected.Value);
+                return true;
+            }
+        }
+
+        foreach (KeyValuePair<string, byte> dialing in _dialing)
+        {
+            if (!_peers.ContainsKey(dialing.Key) && string.Equals(ExtractPeerId(dialing.Key), peerId, StringComparison.Ordinal))
+            {
+                peer = ToConnectingRecord(dialing.Key);
+                return true;
+            }
+        }
+
+        peer = default;
+        return false;
+    }
+
+    private static PeerRecord ToConnectedRecord(ManagedPeer peer) => new(
+        peer.PeerId,
+        PeerDirection.Outbound,
+        PeerConnectionState.Connected,
+        peer.Session.RemoteAddress?.ToString() ?? peer.Id,
+        AgentVersion: null);
+
+    private static PeerRecord ToConnectingRecord(string address) => new(
+        ExtractPeerId(address),
+        PeerDirection.Outbound,
+        PeerConnectionState.Connecting,
+        address,
+        AgentVersion: null);
 
     // GoodbyeReason is const ulong, not an enum, so the wire value is resolved to a name by hand
     // for a bounded-cardinality metric label instead of the raw number.
@@ -280,21 +426,24 @@ public class PeerManager(
     /// <summary>Internal so a test can check the ban key derivation directly.</summary>
     internal static string ExtractPeerIdForTest(string address) => ExtractPeerId(address);
 
-    private bool IsBanned(string peerId) => _peerRecords.TryGetValue(peerId, out PeerRecord? record) && record.Banned;
+    private bool IsBanned(string peerId) => _peerRecords.TryGetValue(peerId, out BanRecord? record) && record.Banned;
 
-    private PeerRecord GetOrCreateRecord(string peerId)
+    private BanRecord GetOrCreateRecord(string peerId)
     {
-        if (_peerRecords.TryGetValue(peerId, out PeerRecord? existing))
+        if (_peerRecords.TryGetValue(peerId, out BanRecord? existing))
         {
             return existing;
         }
 
         EvictIfOverCapacity();
-        return _peerRecords.GetOrAdd(peerId, static _ => new PeerRecord());
+        return _peerRecords.GetOrAdd(peerId, _ => new BanRecord(Interlocked.Increment(ref _nextRecordSequence)));
     }
 
-    /// <summary>Best-effort bound on the ban/diagnostics table, not a true LRU: evicts arbitrary
-    /// non-banned entries so the table cannot grow without limit over a long-running node's peer churn.</summary>
+    /// <summary>Real (deterministic) bound on the ban/diagnostics table: evicts the oldest tracked
+    /// non-banned entry by creation order, not an arbitrary one from undefined dictionary enumeration
+    /// order. A banned entry is never evicted, so the table can still exceed the cap if every tracked
+    /// id happens to be banned - accepted, since that needs FaultDisconnectsBeforeBan-many faults per
+    /// id and is not the churn this bound defends against.</summary>
     private void EvictIfOverCapacity()
     {
         if (_peerRecords.Count < MaxTrackedPeerIds)
@@ -302,12 +451,20 @@ public class PeerManager(
             return;
         }
 
-        foreach (KeyValuePair<string, PeerRecord> entry in _peerRecords)
+        string? oldestKey = null;
+        long oldestSequence = long.MaxValue;
+        foreach (KeyValuePair<string, BanRecord> entry in _peerRecords)
         {
-            if (!entry.Value.Banned && _peerRecords.TryRemove(entry.Key, out _) && _peerRecords.Count < MaxTrackedPeerIds)
+            if (!entry.Value.Banned && entry.Value.Sequence < oldestSequence)
             {
-                return;
+                oldestSequence = entry.Value.Sequence;
+                oldestKey = entry.Key;
             }
+        }
+
+        if (oldestKey is not null)
+        {
+            _peerRecords.TryRemove(oldestKey, out _);
         }
     }
 
@@ -427,7 +584,7 @@ public class PeerManager(
     /// </summary>
     internal void RecordDisconnect(string peerId, long messagesSent, long failuresReported, ulong reason, string detail)
     {
-        PeerRecord record = GetOrCreateRecord(peerId);
+        BanRecord record = GetOrCreateRecord(peerId);
         record.LastDisconnectReason = GoodbyeReasonName(reason);
         record.LastDisconnectDetail = detail;
         record.MessagesSent = messagesSent;
@@ -451,10 +608,18 @@ public class PeerManager(
     /// <summary>Internal so a test can assert ban state without dialing: see <see cref="RecordDisconnect(string,long,long,ulong,string)"/>.</summary>
     internal bool IsBannedForTest(string peerId) => IsBanned(peerId);
 
+    /// <summary>Internal so a test can put an address straight into the "dialing" reservation set,
+    /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.</summary>
+    internal void ReserveDialingForTest(string address) => _dialing[address] = 0;
+
     /// <summary>The durable, peer-id-keyed half of a peer's history: outlives any one
-    /// <see cref="ManagedPeer"/> session so a ban and disconnect history survive reconnection attempts.</summary>
-    private sealed class PeerRecord
+    /// <see cref="ManagedPeer"/> session so a ban and disconnect history survive reconnection attempts.
+    /// Named apart from the public, Beacon-API-shaped <see cref="PeerRecord"/> struct, which this is
+    /// not: that one is a live-connection snapshot, this is durable ban/diagnostics bookkeeping.</summary>
+    private sealed class BanRecord(long sequence)
     {
+        /// <summary>Creation order, for a deterministic oldest-first eviction in <see cref="EvictIfOverCapacity"/>.</summary>
+        public readonly long Sequence = sequence;
         public volatile bool Banned;
         public int ConsecutiveFaultDisconnects;
         public int DisconnectCount;
@@ -502,17 +667,28 @@ public class PeerManager(
             return await p2p.RequestBlocksByRootAsync(Session, roots, token);
         }
 
-        public void ReportFailure(string reason)
+        public void ReportFailure(PeerFailureReason reason, string? detail = null)
         {
             Interlocked.Increment(ref _failuresReported);
 
-            // A closed channel means the session is dead — every further request would fail, so
-            // skip the failure budget and let the next maintenance round (or the dial-loop
-            // cooldown) reconnect instead of wedging on a zombie session.
-            int failures = reason.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || reason.Contains("session", StringComparison.OrdinalIgnoreCase)
+            // A dead session means every further request would fail, so skip the failure budget and
+            // let the next maintenance round (or the dial-loop cooldown) reconnect instead of
+            // wedging on a zombie session.
+            int failures = reason == PeerFailureReason.SessionClosed
                 ? Interlocked.Exchange(ref _consecutiveFailures, MaxConsecutiveFailures)
                 : Interlocked.Increment(ref _consecutiveFailures);
-            if (manager._logger.IsDebug) manager._logger.Debug($"Beacon chain peer {Id} reported as failing ({failures}/{MaxConsecutiveFailures}): {reason}");
+            Metrics.BeaconChainPeerFailuresByReason.Increment(new StringLabel(reason.ToString()));
+            if (manager._logger.IsDebug) manager._logger.Debug($"Beacon chain peer {Id} reported as failing ({failures}/{MaxConsecutiveFailures}): {reason}{(detail is null ? "" : $" ({detail})")}");
+        }
+
+        /// <summary>Legacy free-text overload for callers this change's file boundary could not
+        /// reach (RangeSync.cs). Classifies by the exact substring rule this method used before the
+        /// reason became closed-cardinality, so the metric label and the fatal-session fast path both
+        /// keep behaving the same for those callers.</summary>
+        public void ReportFailure(string reason)
+        {
+            bool sessionDead = reason.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || reason.Contains("session", StringComparison.OrdinalIgnoreCase);
+            ReportFailure(sessionDead ? PeerFailureReason.SessionClosed : PeerFailureReason.RequestFailed, reason);
         }
     }
 }
