@@ -4,12 +4,14 @@
 using System;
 using System.Threading;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
@@ -18,7 +20,12 @@ using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Int256;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
@@ -32,10 +39,67 @@ namespace Nethermind.Runner.Test.Module;
 public class TransactionChangesetIndexModuleTests
 {
     [Test]
+    public void GenesisBootstrap_WhenAnchorIsHistorical_LeavesImportToHistoryScan()
+    {
+        using MemDb code = new();
+        Block anchor = Build.A.Block.WithNumber(10).TestObject;
+        using BulkFillSession session = new(new MemDbFactory(), code, TestItem.KeccakA, anchor.Header, false);
+        TransactionIndexGenesisBootstrap bootstrap = new(new ChainSpec(), new InitConfig { ChainSpecPath = "missing-chainspec" },
+            new EthereumJsonSerializer(), LimboLogs.Instance);
+
+        Assert.That(bootstrap.TryImport(session, CancellationToken.None), Is.False);
+        Assert.That(session.IsReady, Is.False);
+    }
+
+    [TestCase(0, TestName = "GenesisBootstrap_WithCode_LeavesImportToHistoryScan")]
+    [TestCase(1, TestName = "GenesisBootstrap_WithStorage_LeavesImportToHistoryScan")]
+    [TestCase(2, TestName = "GenesisBootstrap_WithConstructor_LeavesImportToHistoryScan")]
+    public void GenesisBootstrap_WhenAllocationsNeedExecution_LeavesImportToHistoryScan(int kind)
+    {
+        ChainSpecAllocation allocation = kind switch
+        {
+            0 => new() { Code = [0x00] },
+            1 => new() { Storage = new() { [1] = [0x01] } },
+            _ => new() { Constructor = [0x00] },
+        };
+        ChainSpec spec = new() { Allocations = new() { [TestItem.AddressA] = allocation } };
+        using MemDb code = new();
+        Block anchor = Build.A.Block.WithNumber(0).TestObject;
+        using BulkFillSession session = new(new MemDbFactory(), code, TestItem.KeccakA, anchor.Header, false);
+        TransactionIndexGenesisBootstrap bootstrap = new(spec, new InitConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
+
+        Assert.That(bootstrap.TryImport(session, CancellationToken.None), Is.False);
+        Assert.That(session.IsReady, Is.False);
+    }
+
+    [TestCase(false, TestName = "GenesisBootstrap_WithLoadedAllocations_VerifiesMainnetRoot")]
+    [TestCase(true, TestName = "GenesisBootstrap_WithReleasedAllocations_ReloadsAndVerifiesMainnetRoot")]
+    public void GenesisBootstrap_WhenStartingAtGenesis_VerifiesMainnetRoot(bool released)
+    {
+        EthereumJsonSerializer serializer = new();
+        InitConfig config = new() { ChainSpecPath = "chainspec/foundation.json" };
+        ChainSpec spec = new ChainSpecFileLoader(serializer, LimboLogs.Instance).LoadEmbeddedOrFromFile(config.ChainSpecPath);
+        Hash256 expectedRoot = new("0xd7f8974fb5ac78d9ac099b9ad5018bedc2ce0a72dad1827a1709da30580f0544");
+        Block genesis = Build.A.Block.WithNumber(0).WithStateRoot(expectedRoot).TestObject;
+        if (released) spec.Allocations = null;
+        using MemDb code = new();
+        using BulkFillSession session = new(new MemDbFactory(), code, TestItem.KeccakA, genesis.Header, false);
+        TransactionIndexGenesisBootstrap bootstrap = new(spec, config, serializer, LimboLogs.Instance);
+
+        Assert.That(bootstrap.TryImport(session, CancellationToken.None), Is.True);
+        Assert.That(session.IsReady, Is.True);
+        Assert.That(session.CurrentState.StateRoot, Is.EqualTo(expectedRoot.ValueHash256));
+        Assert.That(bootstrap.TryImport(session, CancellationToken.None), Is.True);
+    }
+
+    [Test]
     public void BulkReplay_WhenProcessingConsecutiveBlocks_PreservesWithdrawalsAndTransactionState()
     {
         FlatDbConfig config = new() { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true };
-        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance))
+            .Build();
         using MemDb code = new();
         using SnapshotableMemColumnsDb<FlatHistoryColumns> history = new();
         HistoryRowFormat format = HistoryRowFormat.Resolve(new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks)), config);

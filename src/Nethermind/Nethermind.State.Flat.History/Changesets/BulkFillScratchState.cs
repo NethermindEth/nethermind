@@ -66,13 +66,7 @@ internal sealed class BulkFillScratchState
         if (_isFaulted) throw new InvalidOperationException("Reopen the scratch state after a failed import write.");
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxRows);
         token.ThrowIfCancellationRequested();
-        Columns target = column switch
-        {
-            FlatHistoryColumns.AccountHistory => Columns.Accounts,
-            FlatHistoryColumns.StorageHistory => Columns.Storage,
-            FlatHistoryColumns.StorageClears => Columns.Clears,
-            _ => throw new ArgumentOutOfRangeException(nameof(column)),
-        };
+        Columns target = TargetColumn(column);
         HistoricalStateScan scan = new(source, format, column, _anchor);
         byte[] checkpointKey = [(byte)target];
         byte[]? checkpoint = _db.GetColumnDb(Columns.Metadata)[checkpointKey];
@@ -131,6 +125,20 @@ internal sealed class BulkFillScratchState
         if (_isFaulted) throw new InvalidOperationException("Reopen the scratch state after a failed import write.");
         new BulkFillScratchVerifier(_db, _anchor).VerifyAnchor(expectedRoot, rlpWrappedSlots, token);
     }
+
+    public double ImportFraction(FlatHistoryColumns column)
+    {
+        byte[]? checkpoint = _db.GetColumnDb(Columns.Metadata)[new byte[] { (byte)TargetColumn(column) }];
+        return checkpoint is null ? 0 : checkpoint[0] == 1 ? 1 : BulkFillImportProgress.Fraction(checkpoint.AsSpan(1));
+    }
+
+    private static Columns TargetColumn(FlatHistoryColumns column) => column switch
+    {
+        FlatHistoryColumns.AccountHistory => Columns.Accounts,
+        FlatHistoryColumns.StorageHistory => Columns.Storage,
+        FlatHistoryColumns.StorageClears => Columns.Clears,
+        _ => throw new ArgumentOutOfRangeException(nameof(column)),
+    };
 
     private static void Stage(IWriteBatch batch, Columns target, ReadOnlySpan<byte> key, ulong height, ReadOnlySpan<byte> value)
     {

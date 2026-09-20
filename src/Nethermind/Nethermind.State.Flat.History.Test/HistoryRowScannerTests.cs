@@ -33,6 +33,96 @@ namespace Nethermind.State.Flat.History.Test;
 public class HistoryRowScannerTests
 {
     [Test]
+    public void GenesisImport_WhenReopened_PreservesVerifiedState([Values] bool rocks)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
+        using MemDb code = new();
+        IDbFactory factory = new ScratchDbFactory(directory.Path, memory, rocks);
+        Account account = new(3, 123);
+        StateTree tree = new();
+        tree.Set(TestItem.AddressA, account);
+        tree.UpdateRootHash();
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(tree.RootHash).TestObject.Header;
+        using (BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false))
+        {
+            using SnapshotableMemColumnsDb<FlatHistoryColumns> source = new();
+            HistoryRowFormat format = HistoryColumnsWriter.CreateSharedFormat(source, new FlatDbConfig()).RowFormat;
+            RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory,
+                TestItem.AddressA.ToAccountPath.Bytes, 0, AccountDecoder.Slim.EncodeAsBytes(account));
+            session.ImportPage(Store(source, FlatHistoryColumns.AccountHistory), format, FlatHistoryColumns.AccountHistory, CancellationToken.None);
+            session.ImportGenesis([new(TestItem.AddressA, account)], CancellationToken.None);
+            Assert.That(session.IsReady, Is.True);
+        }
+        using BulkFillSession reopened = new(factory, code, TestItem.KeccakA, anchor, false);
+        Assert.That(reopened.IsReady, Is.True);
+        Assert.That(reopened.CreateReader().GetAccount(TestItem.AddressA), Is.EqualTo(account));
+        Assert.That(reopened.CurrentState.BlockNumber, Is.Zero);
+    }
+
+    [Test]
+    public void GenesisImport_WhenWalSyncFails_RequiresReopenAndVerification()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using FailingWalScratchDb memory = new();
+        using MemDb code = new();
+        IDbFactory factory = new ScratchDbFactory(directory.Path, memory, false);
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using (BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false))
+        {
+            memory.IsWalFailureEnabled = true;
+            Assert.Throws<IOException>(() => session.ImportGenesis([], CancellationToken.None));
+            Assert.That(session.IsReady, Is.False);
+            Assert.Throws<InvalidOperationException>(() => session.VerifyAnchor(CancellationToken.None));
+        }
+        Assert.Throws<IOException>(() => new BulkFillSession(factory, code, TestItem.KeccakA, anchor, false));
+        memory.IsWalFailureEnabled = false;
+        using BulkFillSession recovered = new(factory, code, TestItem.KeccakA, anchor, false);
+        Assert.That(recovered.IsReady, Is.False);
+        recovered.ImportGenesis([], CancellationToken.None);
+        Assert.That(recovered.IsReady, Is.True);
+    }
+
+    [Test]
+    public void GenesisImport_WhenRootMismatches_DoesNotPublishReadyCheckpoint()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
+        using MemDb code = new();
+        IDbFactory factory = new ScratchDbFactory(directory.Path, memory, false);
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using (BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false))
+        {
+            Assert.Throws<InvalidDataException>(() => session.ImportGenesis([new(TestItem.AddressA, new Account(0, 1))], CancellationToken.None));
+            Assert.That(session.IsReady, Is.False);
+        }
+        using BulkFillSession reopened = new(factory, code, TestItem.KeccakA, anchor, false);
+        Assert.That(reopened.IsReady, Is.False);
+    }
+
+    [Test]
+    public void GenesisImport_WhenCancelledMidBatch_DoesNotCommitAccounts()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
+        using MemDb code = new();
+        using CancellationTokenSource cancellation = new();
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
+
+        Assert.Throws<OperationCanceledException>(() => session.ImportGenesis(Allocations(), cancellation.Token));
+        Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Accounts).GetAllKeys(), Is.Empty);
+        Assert.That(session.IsReady, Is.False);
+
+        IEnumerable<KeyValuePair<Address, Account>> Allocations()
+        {
+            yield return new(TestItem.AddressA, new Account(0, 1));
+            cancellation.Cancel();
+            yield return new(TestItem.AddressB, new Account(0, 2));
+        }
+    }
+
+    [Test]
     public void BulkReplay_WhenCheckpointSyncFails_RequiresReopenBeforeAdvancing()
     {
         using TempPath directory = TempPath.GetTempDirectory();

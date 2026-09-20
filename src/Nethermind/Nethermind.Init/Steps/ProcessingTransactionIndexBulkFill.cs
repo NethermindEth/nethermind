@@ -26,6 +26,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
     ISpecProvider specs,
     TransactionChangesetIndex index,
     BulkFillSessionFactory sessions,
+    TransactionIndexGenesisBootstrap genesisBootstrap,
     IFlatDbConfig config,
     ILifetimeScope root,
     IBlockValidationModule[] validationModules,
@@ -73,7 +74,11 @@ public sealed class ProcessingTransactionIndexBulkFill(
             session.ReleaseState();
             return true;
         }
-        sessions.Import(session, anchor, () => RequireCanonical(anchor), token);
+        RequireCanonical(anchor);
+        sessions.CheckDisk(session);
+        if (!genesisBootstrap.TryImport(session, token))
+            sessions.Import(session, anchor, () => RequireCanonical(anchor), token);
+        RequireCanonical(anchor);
         BlockHeader checkpoint = FindHeader(session.CurrentState.BlockNumber);
         if (checkpoint.Hash != session.BlockHash || new StateId(checkpoint) != session.CurrentState)
             throw new InvalidDataException("Bulk replay checkpoint no longer matches the canonical chain.");

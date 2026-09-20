@@ -46,30 +46,40 @@ public sealed class BulkFillSessionFactory(
     public void Import(BulkFillSession session, BlockHeader anchor, Action validateCanonical, CancellationToken token)
     {
         if (session.IsReady) return;
+        int stage = 0;
         foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
         {
+            stage++;
             if (_logger.IsInfo) _logger.Info($"Bulk transaction index importing {column} at block {anchor.Number} into {session.DirectoryPath}.");
             bool complete;
-            long reportedAt = Stopwatch.GetTimestamp();
+            long importStartedAt = Stopwatch.GetTimestamp();
+            long reportedAt = importStartedAt;
+            long scanned = 0;
+            double initialFraction = session.ImportFraction(column);
             do
             {
                 long startedAt = Stopwatch.GetTimestamp();
                 token.ThrowIfCancellationRequested();
                 CheckDisk(session);
                 long lease = scopes.EnterScope();
+                HistoricalStateScan.Page page;
                 try
                 {
                     ValidateSource(anchor);
                     validateCanonical();
-                    complete = session.ImportPage((ISortedKeyValueStore)history.GetColumnDb(column), format, column, token);
+                    page = session.ReadImportPage((ISortedKeyValueStore)history.GetColumnDb(column), format, column, token);
                 }
                 finally
                 {
                     scopes.ExitScope(lease);
                 }
-                if (Stopwatch.GetElapsedTime(reportedAt) >= TimeSpan.FromSeconds(30))
+                complete = page.Complete;
+                scanned += page.Scanned;
+                if (complete || Stopwatch.GetElapsedTime(reportedAt) >= TimeSpan.FromSeconds(30))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Bulk transaction index importing {column}: scratch {session.Size / (1024 * 1024)} MiB.");
+                    double fraction = complete ? 1 : page.Position is { } position ? BulkFillImportProgress.Fraction(position.Key) : 0;
+                    if (_logger.IsInfo) _logger.Info(BulkFillImportProgress.Format(column, stage, scanned, initialFraction,
+                        fraction, Stopwatch.GetElapsedTime(importStartedAt), complete, session.Size));
                     reportedAt = Stopwatch.GetTimestamp();
                 }
                 Rest(Stopwatch.GetElapsedTime(startedAt), token);

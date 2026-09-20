@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Serialization.Rlp;
 using Columns = Nethermind.State.Flat.History.Changesets.BulkFillScratchState.Columns;
 
 namespace Nethermind.State.Flat.History.Changesets;
@@ -86,10 +87,15 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
     }
 
     public bool ImportPage(ISortedKeyValueStore source, HistoryRowFormat format, FlatHistoryColumns column, CancellationToken token)
+        => ReadImportPage(source, format, column, token).Complete;
+
+    internal double ImportFraction(FlatHistoryColumns column) => _import.ImportFraction(column);
+
+    internal HistoricalStateScan.Page ReadImportPage(ISortedKeyValueStore source, HistoryRowFormat format, FlatHistoryColumns column, CancellationToken token)
     {
         RequireHealthy();
         if (IsReady) throw new InvalidOperationException("Scratch replay has already started.");
-        return _import.ImportPage(source, format, column, 8192, token).Complete;
+        return _import.ImportPage(source, format, column, 8192, token);
     }
 
     public void VerifyAnchor(CancellationToken token)
@@ -108,6 +114,55 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
             _isFaulted = true;
             throw;
         }
+    }
+
+    public void ImportGenesis(IEnumerable<KeyValuePair<Address, Account>> allocations, CancellationToken token)
+    {
+        RequireHealthy();
+        if (CurrentState.BlockNumber != 0 || _batch is not null)
+            throw new InvalidOperationException("Genesis bootstrap requires a genesis scratch anchor.");
+        if (IsReady) return;
+        token.ThrowIfCancellationRequested();
+        IColumnsWriteBatch<Columns> batch = _db.StartWriteBatch();
+        try
+        {
+            IWriteBatch accounts = batch.GetColumnBatch(Columns.Accounts);
+            foreach ((Address address, Account account) in allocations)
+            {
+                token.ThrowIfCancellationRequested();
+                if (account.StorageRoot != Keccak.EmptyTreeHash || account.CodeHash != Keccak.OfAnEmptyString)
+                    throw new NotSupportedException("Genesis bootstrap requires plain account allocations.");
+                accounts.PutSpan(address.ToAccountPath.Bytes, AccountDecoder.Slim.EncodeAsBytes(account));
+            }
+            IWriteBatch metadata = batch.GetColumnBatch(Columns.Metadata);
+            foreach (Columns column in new[] { Columns.Accounts, Columns.Storage, Columns.Clears })
+                metadata.PutSpan(new byte[] { (byte)column }, new byte[] { 1 });
+            token.ThrowIfCancellationRequested();
+        }
+        catch
+        {
+            _isFaulted = true;
+            try
+            {
+                batch.Clear();
+            }
+            finally
+            {
+                batch.Dispose();
+            }
+            throw;
+        }
+        try
+        {
+            batch.Dispose();
+            _db.SyncWal();
+        }
+        catch
+        {
+            _isFaulted = true;
+            throw;
+        }
+        VerifyAnchor(token);
     }
 
     public void BeginBlock(BlockHeader block)
