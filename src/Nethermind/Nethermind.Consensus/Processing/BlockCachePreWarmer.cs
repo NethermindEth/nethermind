@@ -209,7 +209,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         for (int i = 0; i < transactions.Length; i++)
         {
             Transaction tx = transactions[i];
-            if (tx.GasLimit <= StorageDiscoveryGasThreshold || tx.SenderAddress is null || tx.To is null) continue;
+            // Deliberately not filtered on the sender: selection runs while recovery is still in flight, and
+            // dropping a heavy transaction here would switch discovery off for it for the whole block.
+            if (tx.GasLimit <= StorageDiscoveryGasThreshold || tx.To is null) continue;
             if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
 
             (candidates ??= new(MaxDiscoveryCandidates)).Add((i, tx));
@@ -339,6 +341,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (MainThreadTxIndex >= candidate.Index) return;
 
         Transaction tx = candidate.Tx;
+        // Still not recovered: a later round picks it up.
+        if (tx.SenderAddress is null) return;
+
         IReadOnlyTxProcessorSource env = _envPool.Get();
         try
         {
@@ -662,8 +667,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (!addressWarmer.HasBal)
             {
-                WarmupTransactions(blockState, parallelOptions);
+                // Withdrawals need no senders and are applied at block end, so they are warmed first rather
+                // than behind a transaction loop that runs until recovery catches up.
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
+                WarmupTransactions(blockState, parallelOptions);
             }
 
             if (_logger.IsDebug) DebugPreWarming("Finished", suggestedBlock.Number, isPreparation, transactionCount);
@@ -735,11 +742,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         bool[] claimed = ArrayPool<bool>.Shared.Rent(txCount);
         Array.Clear(claimed, 0, txCount);
         int firstUnclaimed = 0;
-        do
+        while (WarmupRecoveredTransactions(blockState, parallelOptions, claimed)
+               && WaitForMoreSenders(blockState.Block.Transactions, claimed, ref firstUnclaimed, parallelOptions.CancellationToken))
         {
-            WarmupRecoveredTransactions(blockState, parallelOptions, claimed);
         }
-        while (WaitForMoreSenders(blockState.Block.Transactions, claimed, ref firstUnclaimed, parallelOptions.CancellationToken));
 
         ArrayPool<bool>.Shared.Return(claimed);
     }
@@ -749,6 +755,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// thread has passed every unclaimed transaction or the block is done.
     /// </summary>
     /// <param name="firstUnclaimed">Lower bound of the unclaimed range; a claim is never released, so it only moves forward.</param>
+    /// <remarks>
+    /// The speculative caller pins <c>MainThreadTxIndex</c> to -1, so that exit never fires for it. It builds its
+    /// delta from the txpool, where every sender is already recovered, so the first pass claims everything and
+    /// this is not entered at all.
+    /// </remarks>
     private bool WaitForMoreSenders(Transaction[] txs, bool[] claimed, ref int firstUnclaimed, CancellationToken cancellationToken)
     {
         while (firstUnclaimed < txs.Length && claimed[firstUnclaimed]) firstUnclaimed++;
@@ -772,32 +783,38 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             {
                 spinner.SpinOnce(sleep1Threshold: -1);
             }
-            else
-            {
-                try
-                {
-                    if (cancellationToken.WaitHandle.WaitOne(1)) return false;
-                }
-                catch (ObjectDisposedException)
-                {
-                    // BranchProcessor disposes the source before it joins this task, so a disposed source
-                    // means the block is done.
-                    return false;
-                }
-            }
+            else if (SleepUnlessDone(cancellationToken)) return false;
         }
 
         return false;
     }
 
-    private void WarmupRecoveredTransactions(BlockState blockState, ParallelOptions parallelOptions, bool[] claimed)
+    /// <returns><c>false</c> when the pass ended early, so the caller must not run another.</returns>
+    /// <summary>Sleeps a millisecond unless the block finishes first; <c>true</c> once it has.</summary>
+    /// <remarks>
+    /// BranchProcessor disposes the token source before it joins the prewarm task, so a disposed source is
+    /// itself the signal that the block is done.
+    /// </remarks>
+    private static bool SleepUnlessDone(CancellationToken cancellationToken)
     {
-        if (parallelOptions.CancellationToken.IsCancellationRequested) return;
+        try
+        {
+            return cancellationToken.WaitHandle.WaitOne(1);
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
+    }
+
+    private bool WarmupRecoveredTransactions(BlockState blockState, ParallelOptions parallelOptions, bool[] claimed)
+    {
+        if (parallelOptions.CancellationToken.IsCancellationRequested) return false;
 
         try
         {
             Block block = blockState.Block;
-            if (block.Transactions.Length == 0) return;
+            if (block.Transactions.Length == 0) return false;
 
             // Group transactions by sender: an unsplit group warms sequentially so state changes
             // (balance, storage) from tx[N] are visible to tx[N+1]; exceptionally heavy chains are
@@ -806,7 +823,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // parallelism, never correctness.
             using ArrayPoolList<WarmupJob> senderGroups =
                 GroupTransactionsBySender(block, parallelOptions.MaxDegreeOfParallelism, blockState.SpeculativelyWarmed, claimed);
-            if (senderGroups.Count == 0) return;
+            if (senderGroups.Count == 0) return true;
 
             try
             {
@@ -853,11 +870,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         catch (OperationCanceledException)
         {
             // Ignore, block completed cancel
+            return false;
         }
         catch (Exception ex)
         {
             _logger.DebugError("Error pre-warming transactions", ex);
+            return false;
         }
+
+        return true;
     }
 
     internal static ArrayPoolList<WarmupJob> GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null, bool[]? claimed = null)
@@ -1118,18 +1139,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     // claim once warmed, so later passes only revisit what is still waiting for a sender.
                     bool[] warmed = ArrayPool<bool>.Shared.Rent(count);
                     Array.Clear(warmed, 0, count);
-                    WarmingState<(Block Block, bool[] Warmed)> baseState = new(envPool, (block, warmed), parent);
+                    // Recipients are known up front, so only the first pass warms them; later passes exist
+                    // solely to pick up senders that had not been recovered yet.
+                    bool warmRecipients = true;
                     do
                     {
+                        WarmingState<(Block Block, bool[] Warmed, bool WarmRecipients)> baseState =
+                            new(envPool, (block, warmed, warmRecipients), parent);
                         ParallelUnbalancedWork.For(
                             0,
                             count,
                             parallelOptions,
                             baseState.InitThreadState,
                             WarmupSenderAt,
-                            WarmingState<(Block, bool[])>.FinallyAction);
+                            WarmingState<(Block, bool[], bool)>.FinallyAction);
+                        warmRecipients = false;
                     }
-                    while (AnyUnwarmedSender(block, warmed, count) && !parallelOptions.CancellationToken.IsCancellationRequested);
+                    while (WaitForMoreSenders(block, warmed, count, parallelOptions.CancellationToken));
 
                     ArrayPool<bool>.Shared.Return(warmed);
                 }
@@ -1140,12 +1166,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        private static WarmingState<(Block Block, bool[] Warmed)> WarmupSenderAt(int i, WarmingState<(Block Block, bool[] Warmed)> state)
+        private static WarmingState<(Block Block, bool[] Warmed, bool WarmRecipients)> WarmupSenderAt(
+            int i,
+            WarmingState<(Block Block, bool[] Warmed, bool WarmRecipients)> state)
         {
             if (state.Payload.Warmed[i]) return state;
 
             Transaction tx = TransactionAt(state.Payload.Block, i);
-            WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
+            WarmupSender(tx.SenderAddress, state.Payload.WarmRecipients ? tx.To : null, state.Scope!.WorldState);
             if (tx.SenderAddress is not null) state.Payload.Warmed[i] = true;
 
             return state;
@@ -1158,11 +1186,32 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             return i < txs.Length ? txs[i] : block.InclusionListTransactions![i - txs.Length];
         }
 
-        private static bool AnyUnwarmedSender(Block block, bool[] warmed, int count)
+        /// <summary>
+        /// Waits until an index no pass has warmed yet has its sender; <c>false</c> once every index is warmed
+        /// or the block is done.
+        /// </summary>
+        /// <remarks>
+        /// Waiting for a sender rather than re-testing at once is what keeps a steady trickle of arrivals from
+        /// queueing a fresh fan-out, and a scope build per worker, to warm a single address.
+        /// </remarks>
+        private static bool WaitForMoreSenders(Block block, bool[] warmed, int count, CancellationToken cancellationToken)
         {
-            for (int i = 0; i < count; i++)
+            long start = Stopwatch.GetTimestamp();
+            SpinWait spinner = default;
+            while (!cancellationToken.IsCancellationRequested)
             {
-                if (!warmed[i] && TransactionAt(block, i).SenderAddress is not null) return true;
+                bool anyPending = false;
+                for (int i = 0; i < count; i++)
+                {
+                    if (warmed[i]) continue;
+                    if (TransactionAt(block, i).SenderAddress is not null) return true;
+                    anyPending = true;
+                }
+
+                if (!anyPending) return false;
+
+                if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
+                else if (SleepUnlessDone(cancellationToken)) return false;
             }
 
             return false;
