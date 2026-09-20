@@ -55,6 +55,33 @@ public abstract class ForkedBeaconState
 }
 
 /// <summary>
+/// Wraps whichever concrete signed block shape a caller has decoded, mirroring
+/// <see cref="ForkedBeaconState"/> on the block side: <see cref="ForkedStateTransition.Apply"/> needs
+/// to know which SSZ shape (Fulu's <c>SignedBeaconBlock</c> or Gloas's
+/// <see cref="SignedBeaconBlockGloas"/>, an entirely different body - the bid/envelope split, not an
+/// additive change) it was actually given, since the two are unrelated types, not a fork-versioned
+/// view of the same one.
+/// </summary>
+public abstract class ForkedSignedBeaconBlock
+{
+    private ForkedSignedBeaconBlock() { }
+
+    public abstract ulong Slot { get; }
+
+    public sealed class OfFulu(SignedBeaconBlock block) : ForkedSignedBeaconBlock
+    {
+        public SignedBeaconBlock Block { get; } = block;
+        public override ulong Slot => Block.Message!.Slot;
+    }
+
+    public sealed class OfGloas(SignedBeaconBlockGloas block) : ForkedSignedBeaconBlock
+    {
+        public SignedBeaconBlockGloas Block { get; } = block;
+        public override ulong Slot => Block.Message!.Slot;
+    }
+}
+
+/// <summary>
 /// Fork-dispatching entry point over <see cref="ForkedBeaconState"/>. See the type's own remarks for
 /// why this exists instead of a generic or interface-typed state transition.
 /// </summary>
@@ -68,20 +95,19 @@ public static class ForkedStateTransition
     /// <remarks>
     /// Crossing the boundary itself is fully implemented: slots are advanced under the existing,
     /// unmodified Fulu pipeline right up to the boundary slot, then <see cref="GloasForkTransition.UpgradeToGloas"/>
-    /// runs. Applying a block whose target fork is Gloas is not: this driver has no Gloas
-    /// <c>ProcessBlock</c> (the ePBS bid/envelope split and its own epoch/slot processing are a
-    /// separate, larger piece of work - see the two-dimensional fork choice note in this task's scope).
-    /// That gap fails loudly here rather than silently running the Fulu pipeline against a Gloas state
-    /// or block.
+    /// runs. Applying a Gloas-targeted block now runs the real ePBS pipeline (see
+    /// <see cref="GloasBlockProcessing"/>); see that type's remarks for exactly which parts of it are
+    /// implemented versus a declared, by-name gap.
     /// </remarks>
     /// <exception cref="BeaconStateException">
     /// The block's fork does not match the state actually reached (e.g. a pre-Gloas block against a
-    /// state already carried past the boundary), or the state carries a fork this dispatcher does not
-    /// (yet) know how to advance further.
+    /// state already carried past the boundary), the block was constructed with the wrong SSZ shape
+    /// for the fork its slot targets, or the state carries a fork this dispatcher does not know how
+    /// to advance further.
     /// </exception>
     public static ForkedBeaconState Apply(
         ForkedBeaconState state,
-        SignedBeaconBlock signedBlock,
+        ForkedSignedBeaconBlock signedBlock,
         EpochCache cache,
         PubkeyCache pubkeys,
         INewPayloadNotifier notifier,
@@ -89,18 +115,15 @@ public static class ForkedStateTransition
         bool validateResult = true,
         bool verifySignatures = true)
     {
-        ulong blockEpoch = spec.GetEpoch(signedBlock.Message!.Slot);
+        ulong blockEpoch = spec.GetEpoch(signedBlock.Slot);
         BeaconFork targetFork = spec.ForkAtEpoch(blockEpoch);
 
         state = CrossBoundaryIfNeeded(state, targetFork, spec, cache);
 
         return (state, targetFork) switch
         {
-            (ForkedBeaconState.OfFulu fulu, BeaconFork.Fulu) => ApplyFulu(fulu, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures),
-            (ForkedBeaconState.OfGloas, BeaconFork.Gloas) => throw new NotSupportedException(
-                "Gloas block processing is not implemented: the ePBS split (bid/envelope processing) " +
-                "and the two-dimensional fork-choice integration it depends on are separate work. This " +
-                "dispatcher only carries a state across the fork boundary (see GloasForkTransition)."),
+            (ForkedBeaconState.OfFulu fulu, BeaconFork.Fulu) => ApplyFulu(fulu, RequireFulu(signedBlock), cache, pubkeys, notifier, spec, validateResult, verifySignatures),
+            (ForkedBeaconState.OfGloas gloas, BeaconFork.Gloas) => ApplyGloas(gloas, RequireGloas(signedBlock), cache, pubkeys, notifier, spec, validateResult, verifySignatures),
             (ForkedBeaconState.OfFulu, BeaconFork.Gloas) => throw new BeaconStateException(
                 "State is still Fulu after attempting the boundary crossing; the block's slot is not yet at GloasForkEpoch's boundary but claims fork Gloas"),
             (ForkedBeaconState.OfGloas, BeaconFork.Fulu) => throw new BeaconStateException(
@@ -110,6 +133,16 @@ public static class ForkedStateTransition
             _ => throw new NotSupportedException($"Unhandled (state, fork) combination: ({state.GetType().Name}, {targetFork})"),
         };
     }
+
+    private static SignedBeaconBlock RequireFulu(ForkedSignedBeaconBlock block) =>
+        block is ForkedSignedBeaconBlock.OfFulu fulu
+            ? fulu.Block
+            : throw new BeaconStateException($"Block at slot {block.Slot} targets the Fulu fork but was constructed as {block.GetType().Name}");
+
+    private static SignedBeaconBlockGloas RequireGloas(ForkedSignedBeaconBlock block) =>
+        block is ForkedSignedBeaconBlock.OfGloas gloas
+            ? gloas.Block
+            : throw new BeaconStateException($"Block at slot {block.Slot} targets the Gloas fork but was constructed as {block.GetType().Name}");
 
     /// <summary>
     /// If <paramref name="state"/> is still Fulu but <paramref name="targetFork"/> is Gloas, advances it
@@ -140,5 +173,45 @@ public static class ForkedStateTransition
     {
         StateTransition.Apply(fulu.State, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures);
         return fulu;
+    }
+
+    /// <summary>
+    /// The Gloas analogue of <see cref="StateTransition.Apply"/>: advances slots (refusing to cross
+    /// an epoch boundary - see <see cref="GloasSlotProcessing"/>), verifies the proposer signature,
+    /// runs <see cref="GloasBlockProcessing.ProcessBlock"/>, and validates the claimed post-state root.
+    /// </summary>
+    /// <remarks>
+    /// Skips slot advancement entirely when <c>state.Slot == block.Slot</c>: the very first Gloas
+    /// block sits at exactly the fork boundary slot <see cref="CrossBoundaryIfNeeded"/> already
+    /// advanced the state to, mirroring that method's own <c>fulu.Slot &lt; boundarySlot</c> guard
+    /// rather than requiring the strict inequality consensus-specs' own <c>process_slots</c> assert
+    /// would (this codebase's fork-crossing seam intentionally "spends" that slot advancement once,
+    /// in <see cref="CrossBoundaryIfNeeded"/>, rather than in the per-block call that follows it).
+    /// </remarks>
+    private static ForkedBeaconState ApplyGloas(
+        ForkedBeaconState.OfGloas gloas,
+        SignedBeaconBlockGloas signedBlock,
+        EpochCache cache,
+        PubkeyCache pubkeys,
+        INewPayloadNotifier notifier,
+        BeaconChainSpec spec,
+        bool validateResult,
+        bool verifySignatures)
+    {
+        BeaconStateGloas state = gloas.State;
+        BeaconBlockGloas block = signedBlock.Message!;
+
+        if (state.Slot < block.Slot)
+            GloasSlotProcessing.ProcessSlots(state, block.Slot);
+
+        if (verifySignatures && !GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, pubkeys))
+            throw new BeaconStateException($"Invalid proposer signature for the block at slot {block.Slot}");
+
+        GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures);
+
+        if (validateResult && block.StateRoot != SszRoots.HashTreeRoot(state))
+            throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
+
+        return gloas;
     }
 }

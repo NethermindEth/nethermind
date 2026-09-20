@@ -36,43 +36,62 @@ public class ForkedStateTransitionTests
         BeaconChainSpec spec = SyntheticSpec(gloasForkEpoch: 1_000_000);
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            ForkedStateTransition.Apply(state, block, new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec, validateResult: false, verifySignatures: false))!;
+            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec, validateResult: false, verifySignatures: false))!;
 
         Assert.That(ex.Message, Does.Contain("parent root"));
     }
 
+    /// <summary>
+    /// Gloas block processing is real now (see <see cref="Nethermind.BeaconChain.Test.StateTransition.GloasBlockProcessingTests"/>
+    /// for the full, valid-transition coverage), so this test keeps the same "deliberately break one
+    /// check, assert on that check's own exact message" style as the Fulu test above: only the real
+    /// <see cref="GloasBlockProcessing.ProcessBlockHeader"/> raises this exact text, which is proof
+    /// the dispatcher crossed the boundary and delegated into the real Gloas pipeline rather than
+    /// silently no-op'ing.
+    /// </summary>
     [Test]
-    public void Apply_crosses_the_gloas_boundary_then_fails_loudly_on_the_unimplemented_block_pipeline()
+    public void Apply_crosses_the_gloas_boundary_then_delegates_into_the_real_gloas_pipeline()
     {
         // GloasForkEpoch = 1 means the boundary slot is SLOTS_PER_EPOCH (32); a block at that slot
-        // targets Gloas.
+        // targets Gloas, and sits exactly at the boundary slot the crossing already advanced to.
         BeaconStateFulu fuluState = CreateState(validatorCount: 2048);
         BeaconChainSpec spec = SyntheticSpec(gloasForkEpoch: 1);
         ulong boundarySlot = Presets.SlotsPerEpoch;
-        SignedBeaconBlock block = new() { Message = new BeaconBlock { Slot = boundarySlot }, Signature = default };
+        // A default (zero) bid parent block hash cannot match the fork-upgrade placeholder bid's
+        // block hash (Hash(0x71) below), so process_parent_execution_payload takes its "parent was
+        // empty" path - a true no-op given empty parent execution requests - before process_block_header
+        // runs and rejects the deliberately wrong (zero) parent root.
+        SignedBeaconBlockGloas block = new()
+        {
+            Message = new BeaconBlockGloas
+            {
+                Slot = boundarySlot,
+                ParentRoot = Hash256.Zero,
+                Body = new BeaconBlockBodyGloas { SignedExecutionPayloadBid = new SignedExecutionPayloadBid { Message = new ExecutionPayloadBid() } },
+            },
+            Signature = default,
+        };
         ForkedBeaconState state = new ForkedBeaconState.OfFulu(fuluState);
 
-        NotSupportedException ex = Assert.Throws<NotSupportedException>(() =>
-            ForkedStateTransition.Apply(state, block, new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec))!;
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfGloas(block), new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec, validateResult: false, verifySignatures: false))!;
 
-        // The specific "not implemented" message (rather than some other failure) is itself the
-        // evidence that UpgradeToGloas ran and succeeded before this dispatcher gave up.
-        Assert.That(ex.Message, Does.Contain("Gloas block processing is not implemented"));
+        Assert.That(ex.Message, Does.Contain("does not match latest header root"));
     }
 
     [Test]
-    public void Apply_throws_when_asked_to_apply_an_earlier_fork_block_against_a_state_already_past_the_boundary()
+    public void Apply_throws_when_the_block_was_constructed_with_the_wrong_ssz_shape_for_the_fork_it_targets()
     {
         BeaconStateGloas gloasState = new() { Slot = 100 };
         ForkedBeaconState state = new ForkedBeaconState.OfGloas(gloasState);
         BeaconChainSpec spec = SyntheticSpec(gloasForkEpoch: 0);
-        SignedBeaconBlock block = new() { Message = new BeaconBlock { Slot = 50 }, Signature = default }; // epoch 1, still "Fulu" per this spec's epoch-0 Gloas boundary... see below
+        // With GloasForkEpoch = 0 every epoch targets Gloas, so slot 50 still resolves to Gloas; a
+        // Fulu-shaped SignedBeaconBlock can never be the right container for that fork.
+        SignedBeaconBlock block = new() { Message = new BeaconBlock { Slot = 50 }, Signature = default };
 
-        // With GloasForkEpoch = 0 every epoch targets Gloas, so this instead exercises the (OfGloas,
-        // Gloas) branch; assert on the type of failure only, not the exact branch, since both are
-        // "this driver has no Gloas block pipeline" and neither silently mishandles the block.
-        Assert.Throws<NotSupportedException>(() =>
-            ForkedStateTransition.Apply(state, block, new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec));
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec))!;
+        Assert.That(ex.Message, Does.Contain("targets the Gloas fork but was constructed as"));
     }
 
     [Test]
@@ -86,7 +105,7 @@ public class ForkedStateTransitionTests
         SignedBeaconBlock block = new() { Message = new BeaconBlock { Slot = 0 }, Signature = default };
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            ForkedStateTransition.Apply(state, block, new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec))!;
+            ForkedStateTransition.Apply(state, new ForkedSignedBeaconBlock.OfFulu(block), new EpochCache(), new PubkeyCache(), new AcceptingNotifier(), spec))!;
         Assert.That(ex.Message, Does.Contain("already crossed into Gloas"));
     }
 
