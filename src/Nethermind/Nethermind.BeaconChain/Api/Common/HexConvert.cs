@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -21,6 +22,26 @@ internal static class HexConvert
         try
         {
             hash = new Hash256(Bytes.FromHexString(s));
+            return true;
+        }
+        catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Parses a 0x-prefixed 48-byte BLS pubkey, the alternate form of a beacon-api <c>validator_id</c>.</summary>
+    public static bool TryParsePubKey(string s, out BlsPublicKey pubkey)
+    {
+        pubkey = default;
+        if (string.IsNullOrEmpty(s) || !s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) || s.Length != 2 + BlsPublicKey.Length * 2)
+        {
+            return false;
+        }
+
+        try
+        {
+            pubkey = new BlsPublicKey(Bytes.FromHexString(s));
             return true;
         }
         catch (Exception e) when (e is FormatException or IndexOutOfRangeException or ArgumentException)
