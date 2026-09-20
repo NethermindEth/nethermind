@@ -25,6 +25,15 @@ public interface INewPayloadNotifier
 {
     /// <summary>Returns whether the execution layer accepted the body's payload (with its versioned hashes and execution requests).</summary>
     bool NotifyNewPayload(BeaconBlockBody body);
+
+    /// <summary>
+    /// Gloas <c>ExecutionEngine.verify_and_notify_new_payload</c> for an execution payload envelope
+    /// (spec <c>verify_execution_payload_envelope</c>, EIP-7732). Default-implemented so an existing
+    /// implementer of this interface (e.g. the plugin's engine adapter) keeps compiling without
+    /// change; it throws by name until a real engine adapter is wired up for envelopes.
+    /// </summary>
+    bool NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) =>
+        throw new NotSupportedException("Execution-layer notification for a Gloas execution payload envelope is not wired up: no engine adapter implements it yet.");
 }
 
 /// <summary>
