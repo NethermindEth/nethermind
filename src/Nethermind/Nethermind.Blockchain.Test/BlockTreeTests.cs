@@ -2164,6 +2164,32 @@ public class BlockTreeTests
         }
     }
 
+    [TestCase(1UL, false)]
+    [TestCase(4UL, false)]
+    [TestCase(4UL, true)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Delete_slice_clears_surviving_markers_across_gaps(ulong missingLevel, bool canonicalPredecessor)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(7);
+        BlockTree tree = builder.TestObject;
+        Hash256 survivingHash = tree.Head!.Hash!;
+        Hash256 expectedHead = canonicalPredecessor ? tree.FindHeader(2, BlockTreeLookupOptions.RequireCanonical)!.Hash! : tree.Genesis!.Hash!;
+        builder.ChainLevelInfoRepository.PersistLevel(2, new ChainLevelInfo(canonicalPredecessor, tree.FindLevel(2)!.BlockInfos));
+        builder.ChainLevelInfoRepository.Delete(missingLevel);
+
+        int deleted = tree.DeleteChainSlice(3, 3);
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deleted, Is.EqualTo(1));
+            Assert.That(tree.Head!.Hash, Is.EqualTo(expectedHead));
+            Assert.That(tree.FindHeader(survivingHash, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(tree.IsMainChain(survivingHash), Is.False);
+            Assert.That(tree.FindLevel(3), Is.Null);
+        }
+    }
+
     public enum SliceHead { CanonicalPredecessor, GenesisFallback, AboveHead }
 
     private static IEnumerable<TestCaseData> SliceCases()
@@ -2173,7 +2199,8 @@ public class BlockTreeTests
                 foreach (ulong end in new[] { 3UL, 4UL })
                     foreach (bool missingLevel in new[] { false, true })
                     {
-                        if (head == SliceHead.AboveHead && clearCache || missingLevel && end == 4) continue;
+                        // Above-head deletion does no body lookup; a gap matters to marker clearing only if a later level survives.
+                        if ((head == SliceHead.AboveHead && clearCache) || (missingLevel && end == 4)) continue;
                         yield return new TestCaseData(head, clearCache, end, missingLevel)
                             .SetName($"Delete_slice_{head}_{(clearCache ? "Cold" : "Warm")}_End{end}_{(missingLevel ? "Gap" : "Complete")}");
                     }
@@ -2210,7 +2237,11 @@ public class BlockTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deleted, Is.EqualTo(endNumber - (missingLevel ? 2UL : 1UL)));
-            Assert.That(blockTree.IsMainChain(lastHash, throwOnMissingHash: false), Is.False);
+            if (endNumber == 3)
+            {
+                Assert.That(blockTree.FindHeader(lastHash, BlockTreeLookupOptions.None), Is.Not.Null);
+                Assert.That(blockTree.IsMainChain(lastHash), Is.False);
+            }
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(expectedHead));
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(expectedHead));
             Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(expectedHead));
@@ -3727,8 +3758,10 @@ public class BlockTreeTests
         }
     }
 
+    public enum BeaconDeletion { None, Header, Body }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Loads_best_suggested_beacon_post_merge_when_beacon_blocks_sit_ahead_of_head([Values] bool headerOnly)
+    public void Loads_beacon_suggestions_and_updates_them_after_deletion([Values] BeaconDeletion deletion)
     {
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
@@ -3752,15 +3785,16 @@ public class BlockTreeTests
             Assert.That(reloaded.BestSuggestedBeaconHeader?.Hash, Is.EqualTo(block6.Hash), "beacon header");
             Assert.That(reloaded.BestSuggestedBeaconBody?.Hash, Is.EqualTo(block6.Hash), "beacon body");
         }
-        if (headerOnly)
+        if (deletion != BeaconDeletion.None)
         {
             BlockHeader header7 = Build.A.BlockHeader.WithParent(block6.Header).WithDifficulty(0).TestObject;
             reloaded.Insert(header7, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);
-            reloaded.DeleteChainSlice(7, 7);
+            reloaded.DeleteChainSlice(deletion == BeaconDeletion.Body ? 6UL : 7UL, 7);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reloaded.BestSuggestedBeaconHeader?.Hash, Is.EqualTo(block6.Hash));
-                Assert.That(reloaded.BestSuggestedBeaconBody?.Hash, Is.EqualTo(block6.Hash));
+                Hash256? expectedSuggestion = deletion == BeaconDeletion.Body ? null : block6.Hash;
+                Assert.That(reloaded.BestSuggestedBeaconHeader?.Hash, Is.EqualTo(expectedSuggestion));
+                Assert.That(reloaded.BestSuggestedBeaconBody?.Hash, Is.EqualTo(expectedSuggestion));
             }
         }
     }

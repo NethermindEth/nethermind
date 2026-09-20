@@ -1929,7 +1929,7 @@ namespace Nethermind.Blockchain
             using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
             {
                 if (newHeadBlock is not null)
-                    ClearStaleMarkersAbove(newHeadBlock.Number, batch, (startNumber, endNumber.Value));
+                    ClearStaleMarkersAbove(newHeadBlock.Number, batch, (startNumber, endNumber.Value), scanThrough: Head!.Number);
 
                 for (ulong i = endNumber.Value; i >= startNumber; i--)
                 {
@@ -1953,11 +1953,11 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            // Suggestions above a deleted level also lose their ancestry.
+            // Suggestions above a deleted level lose their ancestry; reset bodies before using them as header fallbacks.
             if (newHeadBlock is not null || (deleted > 0 && BestSuggestedBody?.Number >= startNumber))
                 BestSuggestedBody = newHeadBlock ?? Head;
             if (newHeadBlock is not null || (deleted > 0 && BestSuggestedHeader?.Number >= startNumber))
-                BestSuggestedHeader = BestSuggestedBody?.Header ?? newHeadBlock?.Header ?? Head?.Header;
+                BestSuggestedHeader = BestSuggestedBody?.Header ?? Head?.Header;
             if (deleted > 0 && BestSuggestedBeaconBody?.Number >= startNumber)
                 BestSuggestedBeaconBody = null;
             if (deleted > 0 && BestSuggestedBeaconHeader?.Number >= startNumber)
