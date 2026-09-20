@@ -22,12 +22,23 @@ namespace Nethermind.BeaconChain.Sync;
 /// around epoch boundaries suffices. States falling out of all tiers make the corresponding (old or
 /// exotic-fork) roots unprocessable, which is acceptable below finality. Not thread-safe; owned by
 /// the import worker.
+/// <para/>
+/// Post-Gloas states live in a tier of their own (<see cref="RetainGloas"/>): every recent Gloas
+/// block's post-state, not only epoch boundaries, because an execution payload envelope is verified
+/// against the frozen post-state of exactly the block it names, one slot after that block. There is
+/// no store fallback for this tier: <see cref="BeaconChainStore"/> snapshots decode as
+/// <see cref="BeaconStateFulu"/> only, so a Gloas root that has aged out is unknown, not mis-typed.
 /// </remarks>
-internal sealed class PostStateCache(BeaconChainStore store, BeaconChainSpec spec, Hash256 lineageRoot, BeaconStateFulu lineageState) : IForkChoiceStateProvider
+internal sealed class PostStateCache(BeaconChainStore store, BeaconChainSpec spec, Hash256 lineageRoot, BeaconStateFulu lineageState) : IForkChoiceStateProvider, IGloasBlockStateProvider
 {
     private const int RetainedStateCount = 8;
 
+    // Two epochs of slots: an envelope arrives within its block's slot, and a payload attestation
+    // or late envelope for a block two epochs back is already outside any window the spec honors.
+    private const int RetainedGloasStateCount = 2 * (int)Presets.SlotsPerEpoch;
+
     private readonly LruCache<Hash256, BeaconStateFulu> _retained = new(RetainedStateCount, nameof(PostStateCache));
+    private readonly LruCache<Hash256, BeaconStateGloas> _retainedGloas = new(RetainedGloasStateCount, nameof(PostStateCache) + "Gloas");
 
     /// <summary>The root of the block whose post-state is <see cref="LineageState"/>.</summary>
     public Hash256 LineageRoot { get; private set; } = lineageRoot;
@@ -70,4 +81,15 @@ internal sealed class PostStateCache(BeaconChainStore store, BeaconChainSpec spe
 
     /// <inheritdoc/>
     public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
+
+    /// <summary>
+    /// Retains a Gloas block's post-state under its block root, frozen: the state must not be
+    /// mutated afterwards, or an envelope for that block will be verified against a state its
+    /// builder never saw. A lineage that keeps advancing in place retains a clone, not itself.
+    /// </summary>
+    public void RetainGloas(Hash256 blockRoot, BeaconStateGloas state) => _retainedGloas.Set(blockRoot, state);
+
+    /// <inheritdoc/>
+    public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) =>
+        _retainedGloas.TryGet(blockRoot, out BeaconStateGloas? retained) ? retained : null;
 }
