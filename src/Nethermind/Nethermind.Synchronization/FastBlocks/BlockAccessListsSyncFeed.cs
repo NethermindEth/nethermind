@@ -106,7 +106,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             _blockTree,
             _pivotNumber,
             _syncPointers.LowestInsertedBlockAccessListBlockNumber,
-            _syncConfig.AncientBlockAccessListsBarrier);
+            _syncConfig.AncientBlockAccessListsBarrier,
+            _logger);
 
     protected override SyncMode ActivationSyncModes { get; }
         = SyncMode.FastBlockAccessLists & ~SyncMode.FastBlocks;

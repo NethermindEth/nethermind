@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Synchronization.FastBlocks;
 using NSubstitute;
 using NUnit.Framework;
@@ -51,7 +52,7 @@ public class SyncStatusListTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
-        SyncStatusList syncStatusList = new(blockTree, 1000, null, 900);
+        SyncStatusList syncStatusList = new(blockTree, 1000, null, 900, LimboLogs.Instance.GetClassLogger<SyncStatusListTests>());
 
         syncStatusList.TryGetInfosForBatch(500, new AlwaysDownloadStrategy(), out BlockInfo?[] infos);
 
@@ -72,7 +73,7 @@ public class SyncStatusListTests
                 };
             });
 
-        SyncStatusList syncStatusList = new(blockTree, 100000, null, 1000);
+        SyncStatusList syncStatusList = new(blockTree, 100000, null, 1000, LimboLogs.Instance.GetClassLogger<SyncStatusListTests>());
 
         ConstantDownloadStrategy downloadStrategy = new([99999UL, 99995UL, 99950UL, 99000UL, 99001UL, 99003UL, 85000UL]);
 
@@ -105,7 +106,7 @@ public class SyncStatusListTests
                     : new BlockInfo(TestItem.KeccakA, 0) { BlockNumber = blockNumber };
             });
 
-        SyncStatusList syncStatusList = new(blockTree, 100, null, 90);
+        SyncStatusList syncStatusList = new(blockTree, 100, null, 90, LimboLogs.Instance.GetClassLogger<SyncStatusListTests>());
 
         List<ulong> GetAndInsert()
         {
@@ -124,6 +125,25 @@ public class SyncStatusListTests
 
         syncStatusList.TryGetInfosForBatch(50, new AlwaysDownloadStrategy(), out _);
         Assert.That(syncStatusList.LowestInsertWithoutGaps, Is.LessThan(unsettled));
+    }
+
+    [Test]
+    public void Frontier_block_orphaned_in_sent_is_requeued()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>())
+            .Returns(ci => new BlockInfo(TestItem.KeccakA, 0) { BlockNumber = ci.ArgAt<ulong>(0) });
+
+        // Zero threshold: the frontier counts as stuck on the scan after the one that first observed it.
+        SyncStatusList syncStatusList = new(blockTree, 100, null, 90, LimboLogs.Instance.GetClassLogger<SyncStatusListTests>(), TimeSpan.Zero);
+
+        // Take the pivot into a batch and drop it, as a dispatch abandoned before the feed sees a response does.
+        syncStatusList.TryGetInfosForBatch(1, new AlwaysDownloadStrategy(), out BlockInfo?[] orphaned);
+        Assert.That(orphaned[0]!.BlockNumber, Is.EqualTo(100));
+
+        syncStatusList.TryGetInfosForBatch(1, new AlwaysDownloadStrategy(), out BlockInfo?[] requeued);
+
+        Assert.That(requeued[0]?.BlockNumber, Is.EqualTo(100));
     }
 
     [Test]

@@ -118,7 +118,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedBodyNumber,
-                _barrier);
+                _barrier,
+                _logger);
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
 

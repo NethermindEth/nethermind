@@ -2,24 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
+using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
     internal class SyncStatusList
     {
         private const int ParallelExistCheckSize = 1024;
+
+        /// <summary>How long the insert frontier may sit on one block before that block is requeued.</summary>
+        /// <remarks>
+        /// Comfortably above the request and stale-request timeouts, so a batch that is merely slow is never
+        /// duplicated: only a slot that no response will ever settle reaches this.
+        /// </remarks>
+        private static readonly TimeSpan DefaultStuckFrontierThreshold = TimeSpan.FromSeconds(30);
+
         private long _queueSize;
         private readonly IBlockTree _blockTree;
+        private readonly ILogger _logger;
         private readonly FastBlockStatusList _statuses;
         private readonly LruCache<ulong, BlockInfo> _cache = new(maxCapacity: 64, startCapacity: 64, "blockInfo Cache");
         private ulong _lowestInsertWithoutGaps;
         private readonly ulong _lowerBound;
+        private readonly TimeSpan _stuckFrontierThreshold;
+        private ulong _watchedFrontier;
+        private long _watchedFrontierSince;
 
         public ulong LowestInsertWithoutGaps
         {
@@ -29,13 +43,49 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public long QueueSize => _queueSize;
 
-        public SyncStatusList(IBlockTree blockTree, ulong pivotNumber, ulong? lowestInserted, ulong lowerBound)
+        public SyncStatusList(IBlockTree blockTree, ulong pivotNumber, ulong? lowestInserted, ulong lowerBound, ILogger logger, TimeSpan? stuckFrontierThreshold = null)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _statuses = new FastBlockStatusList(pivotNumber + 1);
 
             LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
             _lowerBound = lowerBound;
+            _logger = logger;
+            _stuckFrontierThreshold = stuckFrontierThreshold ?? DefaultStuckFrontierThreshold;
+            _watchedFrontier = LowestInsertWithoutGaps;
+            _watchedFrontierSince = Stopwatch.GetTimestamp();
+        }
+
+        /// <summary>
+        /// Requeues the frontier block once it has held the frontier for <see cref="_stuckFrontierThreshold"/>.
+        /// </summary>
+        /// <remarks>
+        /// A block claimed as <see cref="FastBlockStatus.Sent"/> is only ever settled by the response it was
+        /// claimed for, so a batch slot that is dropped before it reaches the feed pins the frontier for good:
+        /// everything below it still downloads and the feed then idles on a full queue that can never drain.
+        /// Handing the block back to the next scan costs at worst a duplicate request.
+        /// </remarks>
+        private void RequeueStuckFrontier()
+        {
+            ulong frontier = Volatile.Read(ref _lowestInsertWithoutGaps);
+            if (frontier != _watchedFrontier)
+            {
+                _watchedFrontier = frontier;
+                _watchedFrontierSince = Stopwatch.GetTimestamp();
+                return;
+            }
+
+            if (Stopwatch.GetElapsedTime(_watchedFrontierSince) < _stuckFrontierThreshold) return;
+
+            _watchedFrontierSince = Stopwatch.GetTimestamp();
+            if (_statuses.TrySet(frontier, FastBlockStatus.Pending))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Requeued block {frontier}, which held the fast blocks frontier for {_stuckFrontierThreshold.TotalSeconds:N0}s without a response.");
+            }
+            else if (_logger.IsWarn)
+            {
+                _logger.Warn($"Fast blocks frontier stuck on block {frontier} ({_statuses[frontier]}) for {_stuckFrontierThreshold.TotalSeconds:N0}s.");
+            }
         }
 
         private void GetInfosForBatch(Span<BlockInfo?> blockInfos)
@@ -98,6 +148,8 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <returns></returns>
         public bool TryGetInfosForBatch(int batchSize, IBlockDownloadStrategy blockDownloadStrategy, out BlockInfo?[] infos)
         {
+            RequeueStuckFrontier();
+
             ArrayPoolList<BlockInfo?> workingArray = new(batchSize, batchSize);
             try
             {
