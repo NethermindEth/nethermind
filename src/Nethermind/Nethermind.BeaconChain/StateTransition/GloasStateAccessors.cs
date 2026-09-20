@@ -24,9 +24,19 @@ public static class GloasStateAccessors
 {
     public static ulong GetCurrentEpoch(this BeaconStateGloas state) => BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
 
-    /// <summary>Spec <c>get_randao_mix</c>.</summary>
-    public static Hash256 GetRandaoMix(this BeaconStateGloas state, ulong epoch) =>
-        state.RandaoMixes![(int)(epoch % Presets.EpochsPerHistoricalVector)];
+    /// <summary>Spec <c>get_randao_mix</c>: returns the randao mix recorded for <paramref name="epoch"/>.</summary>
+    /// <remarks>See the Fulu <see cref="BeaconStateAccessors.GetRandaoMix"/> remarks for the window this enforces.</remarks>
+    /// <exception cref="BeaconStateException">The epoch is outside the historical-vector window.</exception>
+    public static Hash256 GetRandaoMix(this BeaconStateGloas state, ulong epoch)
+    {
+        ulong currentEpoch = state.GetCurrentEpoch();
+        ulong age = currentEpoch - epoch; // unsigned wraparound: also rejects epoch > currentEpoch
+        if (age >= Presets.EpochsPerHistoricalVector)
+            throw new BeaconStateException(
+                $"Randao mix for epoch {epoch} is not available: state is at epoch {currentEpoch}, " +
+                $"window covers the {Presets.EpochsPerHistoricalVector} epochs up to and including it");
+        return state.RandaoMixes![(int)(epoch % Presets.EpochsPerHistoricalVector)];
+    }
 
     /// <summary>Spec <c>get_block_root_at_slot</c>.</summary>
     /// <exception cref="BeaconStateException">The slot is not within the last <c>SLOTS_PER_HISTORICAL_ROOT</c> slots.</exception>
@@ -35,6 +45,21 @@ public static class GloasStateAccessors
         if (!(slot < state.Slot && state.Slot <= slot + Presets.SlotsPerHistoricalRoot))
             throw new BeaconStateException($"Block root for slot {slot} is not available at state slot {state.Slot}");
         return state.BlockRoots![(int)(slot % Presets.SlotsPerHistoricalRoot)];
+    }
+
+    /// <summary>
+    /// Returns the root of the last block that could influence the attester shuffling for
+    /// <paramref name="epoch"/>. Used as a fork-safe cache key; see
+    /// <see cref="BeaconStateAccessors.GetShufflingDecisionRoot"/> for the Fulu twin.
+    /// </summary>
+    public static Hash256 GetShufflingDecisionRoot(this BeaconStateGloas state, ulong epoch)
+    {
+        ulong decisionSlot = epoch >= Presets.MinSeedLookahead
+            ? BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch - Presets.MinSeedLookahead)
+            : 0;
+        if (decisionSlot > 0)
+            decisionSlot--;
+        return state.Slot == 0 ? Hash256.Zero : state.GetBlockRootAtSlot(decisionSlot);
     }
 
     /// <summary>Returns the signing domain for the given domain type at <paramref name="epoch"/> (current epoch when null).</summary>
