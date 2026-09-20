@@ -11,15 +11,14 @@ using System.Threading;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroPacketSplitter() : MessageToByteEncoder<IByteBuffer>, IFramingAware
+    public class ZeroPacketSplitter() : MessageToByteEncoder<IByteBuffer>
     {
         private const int Framed = 0;
         private const int Unframed = 1;
         private const int Snappy = 2;
 
-        public void DisableFraming() => Interlocked.CompareExchange(ref _encodingMode, Unframed, Framed);
-
-        public int MaxFrameSize => Volatile.Read(ref _encodingMode) == Framed ? Frame.DefaultMaxFrameSize : int.MaxValue;
+        /// <remarks>Unframed encoding is retained for wire-equivalence tests and outbound benchmarks.</remarks>
+        internal void DisableFraming() => Interlocked.CompareExchange(ref _encodingMode, Unframed, Framed);
 
         private int _contextId;
         private ILogger _snappyLogger;

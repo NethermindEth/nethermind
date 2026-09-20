@@ -117,14 +117,11 @@ public abstract class HobbitTestsBase
 
         IChannelHandler decoder = new ZeroFrameDecoder(_frameCipherB, _macProcessorB);
         IChannelHandler merger = new ZeroFrameMerger(LimboLogs.Instance);
-        IFramingAware splitter = new ZeroPacketSplitter(_frameCipherA, _macProcessorA);
-
-        Assert.That(splitter.MaxFrameSize, Is.EqualTo(Frame.DefaultMaxFrameSize), "default max frame size");
+        ZeroPacketSplitter splitter = new(_frameCipherA, _macProcessorA);
 
         if (!framingEnabled)
         {
             splitter.DisableFraming();
-            Assert.That(splitter.MaxFrameSize, Is.EqualTo(int.MaxValue), "max frame size when framing disabled");
         }
 
         EmbeddedChannel embeddedChannel = new();

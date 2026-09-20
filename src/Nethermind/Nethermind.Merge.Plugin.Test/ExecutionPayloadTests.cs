@@ -23,7 +23,8 @@ public class ExecutionPayloadTests
     private static TxType[] TxTypes() => [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
 
     [Test, NonParallelizable]
-    public void Payload_decoding_leaves_pooled_transactions_available([Values(1, 64)] int count, [Values] bool malformed)
+    public void Payload_decoding_leaves_pooled_transactions_available(
+        [Values(1, 64)] int count, [Values] bool malformed, [Values] bool borrowMemory)
     {
         byte[][] encoded = BuildDiverseBatch(count);
         byte[] control = EncodeTx(TxType.Legacy);
@@ -35,17 +36,30 @@ public class ExecutionPayloadTests
         Transaction? rented = null;
         try
         {
-            Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+            string? error;
+            Transaction[]? transactions;
+            if (borrowMemory)
+            {
+                Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+                error = result.Error;
+                transactions = result.Data;
+            }
+            else
+            {
+                TransactionDecodingResult result = TxsDecoder.DecodeTxs(encoded, skipErrors: false);
+                error = result.Error;
+                transactions = result.Transactions;
+            }
             RlpReader reader = new(control);
             rented = TxDecoder.Instance.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result.IsError, Is.EqualTo(malformed));
+                Assert.That(error is not null, Is.EqualTo(malformed));
                 Assert.That(rented, Is.SameAs(marker), "Payload decoding must leave the reusable P2P transaction in the pool.");
                 if (!malformed)
                 {
-                    Assert.That(result.Data!, Has.Length.EqualTo(count));
-                    Assert.That(result.Data!, Does.Not.Contain(marker));
+                    Assert.That(transactions!, Has.Length.EqualTo(count));
+                    Assert.That(transactions!, Does.Not.Contain(marker));
                 }
             }
         }

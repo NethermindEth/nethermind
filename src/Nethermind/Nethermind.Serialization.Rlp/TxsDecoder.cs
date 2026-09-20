@@ -7,6 +7,7 @@ using Nethermind.Core;
 namespace Nethermind.Serialization.Rlp;
 
 /// <summary>Decodes a list of EIP-2718 <c>TransactionType || TransactionPayload</c> entries.</summary>
+/// <remarks>Transaction objects are freshly allocated because payloads and inclusion lists retain them.</remarks>
 public static partial class TxsDecoder
 {
     private const int ParallelDecodeThreshold = 32;
@@ -23,8 +24,7 @@ public static partial class TxsDecoder
 
     /// <summary>Decodes transactions borrowing the input buffers.</summary>
     /// <remarks>Calldata and delayed-hash bytes alias the caller's arrays, which must remain unmodified
-    /// for the lifetime of the decoded transactions. Transaction objects are freshly allocated because the
-    /// execution payload retains them. Use <see cref="DecodeTxs(byte[][], bool)"/> when copying is required.</remarks>
+    /// for the lifetime of the decoded transactions. Use <see cref="DecodeTxs(byte[][], bool)"/> when copying is required.</remarks>
     internal static TransactionDecodingResult DecodeTxsBorrowingBuffers(byte[][] txData, bool skipErrors) => DecodeTxs(txData, skipErrors, borrowMemory: true);
 
     private static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors, bool borrowMemory)
@@ -40,8 +40,7 @@ public static partial class TxsDecoder
     private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp, bool borrowMemory)
     {
         RlpReader ctx = borrowMemory ? new(rlp.AsMemory()) : new(rlp);
-        RlpBehaviors behaviors = RlpBehaviors.SkipTypedWrapping;
-        if (borrowMemory) behaviors |= RlpBehaviors.SkipPooledTransactions;
+        RlpBehaviors behaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.SkipPooledTransactions;
         return rlpDecoder.DecodeCompleteNotNull(ref ctx, behaviors);
     }
 
