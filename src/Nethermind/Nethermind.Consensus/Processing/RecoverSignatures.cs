@@ -40,7 +40,14 @@ namespace Nethermind.Consensus.Processing
         /// Upper bound on <see cref="WaitForLeadingSenders(Transaction[])"/>: the head arrives in a fraction of a
         /// millisecond, so only a saturated thread pool can reach it, and then the caller must go on regardless.
         /// </summary>
-        private static readonly TimeSpan LeadingSenderTimeout = TimeSpan.FromMilliseconds(2);
+        private static readonly TimeSpan LeadingSenderTimeout = TimeSpan.FromMicroseconds(250);
+
+        /// <summary>
+        /// Spin iterations between deadline checks. The wait must not yield: measured on a saturated eight-core
+        /// box, a single <see cref="SpinWait"/> yield cost the Engine API thread up to 29 ms, so the deadline
+        /// only holds while the thread keeps its quantum.
+        /// </summary>
+        private const int LeadingSenderSpinIterations = 64;
 
         public void RecoverData(Block block)
         {
@@ -142,11 +149,10 @@ namespace Nethermind.Consensus.Processing
             // block shorter than the head would otherwise be recovered in full before it is enqueued.
             int leading = Math.Min(LeadingSenderCount, txs.Length / 2);
             long start = Stopwatch.GetTimestamp();
-            SpinWait spinner = default;
             while (!recovery.IsCompleted && !HasLeadingSenders(txs, leading))
             {
                 if (Stopwatch.GetElapsedTime(start) >= timeout) return;
-                spinner.SpinOnce(sleep1Threshold: -1);
+                Thread.SpinWait(LeadingSenderSpinIterations);
             }
         }
 
