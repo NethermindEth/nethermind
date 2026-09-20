@@ -79,6 +79,8 @@ public class RangeSyncTests
             Task.FromResult<IReadOnlyList<SignedBeaconBlock>>([]);
 
         public void ReportFailure(string reason) => Failures++;
+
+        public void ReportFailure(PeerFailureReason reason, string? detail = null) => Failures++;
     }
 
     private sealed class StubPool(params IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
