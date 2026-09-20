@@ -188,7 +188,8 @@ public sealed class BeaconDiscovery(
     /// <returns><see langword="true"/> when a new ENR was published.</returns>
     public bool UpdateLocalEnr()
     {
-        if (!_localEnr!.Update(EnrForkId.Compute(spec, CurrentEpoch)))
+        ulong epoch = CurrentEpoch;
+        if (!_localEnr!.Update(EnrForkId.Compute(spec, epoch), EnrForkId.NextForkDigest(spec, epoch)))
         {
             return false;
         }
@@ -298,6 +299,40 @@ public sealed class BeaconDiscovery(
         return EnrForkId.TryDecode(ssz, out forkId);
     }
 
+    /// <summary>
+    /// Decodes a record's <c>nfd</c> entry: <see langword="false"/> when the entry is absent (a peer
+    /// that has not adopted EIP-7892 yet), and <c>null</c> when present but advertising
+    /// <see cref="NfdEntry.NoneScheduled"/> (no fork is upcoming for that peer).
+    /// </summary>
+    internal static bool TryGetNextForkDigest(NodeRecord record, out byte[]? nextForkDigest)
+    {
+        nextForkDigest = null;
+        byte[]? value = record.GetObj<byte[]>("nfd");
+        if (value is null)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<byte> ssz = value;
+        if (ssz.Length != NfdEntry.NoneScheduled.Length)
+        {
+            // Same wire quirk as the eth2 entry: a record parsed off the wire keeps the raw RLP of an
+            // entry type it does not itself know how to decode.
+            try
+            {
+                RlpReader reader = new(value);
+                ssz = reader.DecodeByteArraySpan();
+            }
+            catch (RlpException)
+            {
+                return false;
+            }
+        }
+
+        nextForkDigest = Bytes.AreEqual(ssz, NfdEntry.NoneScheduled) ? null : ssz.ToArray();
+        return true;
+    }
+
     private BeaconPeerCandidate? CreateCandidate(Node node)
     {
         if (node.Enr is not NodeRecord record)
@@ -326,8 +361,7 @@ public sealed class BeaconDiscovery(
             {
                 _digestEpoch = epoch;
                 _currentDigest = ForkDigest.Compute(spec, epoch);
-                ulong nextEpoch = EnrForkId.NextDigestEpoch(spec, epoch);
-                _nextDigest = nextEpoch == Presets.FarFutureEpoch ? null : ForkDigest.Compute(spec, nextEpoch);
+                _nextDigest = EnrForkId.NextForkDigest(spec, epoch);
             }
 
             return (_currentDigest, _nextDigest);
@@ -363,7 +397,8 @@ public sealed class BeaconDiscovery(
         CryptoRandom cryptoRandom = new();
         PrivateKey nodeKey = LoadOrCreateIdentity(cryptoRandom);
         LocalCustody = new LocalCustody(nodeKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
-        BeaconNodeRecordProvider localEnr = new(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, CurrentEpoch), LocalCustody.CustodyGroupCount);
+        ulong epoch = CurrentEpoch;
+        BeaconNodeRecordProvider localEnr = new(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, epoch), LocalCustody.CustodyGroupCount, EnrForkId.NextForkDigest(spec, epoch));
         Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), config.P2PPort, config.Discv5Port, true);
 
         IContainer discv5Services = new ContainerBuilder()
