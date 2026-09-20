@@ -98,7 +98,7 @@ public class CheckpointSyncTests
             new BlockImporterFactory(BeaconChainSpec.Mainnet, store, new PubkeyCache(), engine, config, logManager, new DataColumnSidecarPool()),
             engine,
             pool,
-            new RangeSync(pool, logManager),
+            new RangeSync(pool, logManager, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet),
             slotClock,
             new GossipRouter(BeaconChainSpec.Mainnet, slotClock, logManager),
             new BeaconChainStatusHolder(BeaconChainSpec.Mainnet, Timestamper.Default),

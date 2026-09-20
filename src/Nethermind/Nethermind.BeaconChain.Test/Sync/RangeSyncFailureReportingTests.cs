@@ -7,7 +7,9 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Types;
@@ -49,7 +51,7 @@ public class RangeSyncFailureReportingTests
             _ => [TestChain.CreateBlock(startSlot, parentRoot: Hash256.Zero), .. chain.Skip(1)],
         });
         StubPeer goodPeer = new("good", headSlot: TargetSlot, (startSlot, count) => [.. chain.Where(b => b.Message!.Slot >= startSlot && b.Message.Slot < startSlot + count)]);
-        RangeSync sync = new(new StubPool(badPeer, goodPeer), LimboLogs.Instance);
+        RangeSync sync = new(new StubPool(badPeer, goodPeer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet);
 
         List<SignedBeaconBlock> imported = [];
         await foreach (SignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
@@ -81,6 +83,9 @@ public class RangeSyncFailureReportingTests
 
         public Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<SignedBeaconBlock>>([]);
+
+        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<DataColumnSidecar>>([]);
 
         public void ReportFailure(PeerFailureReason reason, string? detail = null) => TypedReports.Add(reason);
 
