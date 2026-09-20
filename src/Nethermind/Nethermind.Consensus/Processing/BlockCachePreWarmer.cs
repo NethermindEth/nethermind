@@ -913,7 +913,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
         private readonly ReadOnlyBlockAccessList? Bal = bal;
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
-        // Under BAL the recipients are already warmed from BlockProcessor.HintBal.
         private readonly bool WarmWithdrawals = bal is null && spec.WithdrawalsEnabled && block.Withdrawals?.Length > 0;
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
