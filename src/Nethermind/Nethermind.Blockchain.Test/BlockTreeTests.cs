@@ -2132,7 +2132,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Delete_slice_moves_head_to_canonical_predecessor_or_genesis([Values] bool precedingLevelCanonical, [Values] bool clearBlockCache)
     {
-        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
         BlockTree blockTree = builder.TestObject;
         Hash256 expectedHead = precedingLevelCanonical ? blockTree.FindHeader(1, BlockTreeLookupOptions.RequireCanonical)!.Hash! : blockTree.Genesis!.Hash!;
         builder.ChainLevelInfoRepository.PersistLevel(1, new ChainLevelInfo(precedingLevelCanonical, blockTree.FindLevel(1)!.BlockInfos));
@@ -2142,15 +2142,29 @@ public class BlockTreeTests
             ((IClearableCache)builder.BlockStore).ClearCache();
         }
 
-        int deleted = blockTree.DeleteChainSlice(2, 2);
+        int deleted = blockTree.DeleteChainSlice(2, 4);
+
+        Hash256? suggestedHeaderAfterDelete = blockTree.BestSuggestedHeader?.Hash;
+        Hash256? suggestedBodyAfterDelete = blockTree.BestSuggestedBody?.Hash;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(deleted, Is.EqualTo(1));
+            Assert.That(deleted, Is.EqualTo(3));
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(expectedHead));
             Assert.That(blockTree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null);
             Assert.That(blockTree.FindLevel(2), Is.Null);
             Assert.That(builder.BlockInfoDb.Get(Keccak.Zero.Bytes), Is.EqualTo(expectedHead.Bytes.ToArray()));
+        }
+
+        Block replacement = Build.A.Block.WithParent(blockTree.Head!).WithExtraData([0x42]).TestObject;
+        blockTree.SuggestBlock(replacement);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suggestedHeaderAfterDelete, Is.EqualTo(expectedHead));
+            Assert.That(suggestedBodyAfterDelete, Is.EqualTo(expectedHead));
+            Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(replacement.Hash));
+            Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(replacement.Hash));
         }
     }
 

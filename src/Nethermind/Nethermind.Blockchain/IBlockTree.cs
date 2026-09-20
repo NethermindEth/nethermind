@@ -93,8 +93,9 @@ namespace Nethermind.Blockchain
         /// Requires a canonical target at or below the current head. Retains block bodies and state,
         /// clears canonical markers above the target, and resets the best-suggested pointers.
         /// The caller must check state availability before rewinding.
+        /// The default implementation returns false.
         /// </remarks>
-        /// <returns>Whether the head could be rewound. The default implementation returns false.</returns>
+        /// <returns>Whether the head could be rewound.</returns>
         bool TryRewindHead(Hash256 blockHash) => false;
 
         void NewOldestBlock(ulong oldestBlock);

@@ -1952,6 +1952,8 @@ namespace Nethermind.Blockchain
 
             if (newHeadBlock is not null)
             {
+                BestSuggestedHeader = newHeadBlock.Header;
+                BestSuggestedBody = newHeadBlock;
                 UpdateHeadBlock(newHeadBlock);
             }
 

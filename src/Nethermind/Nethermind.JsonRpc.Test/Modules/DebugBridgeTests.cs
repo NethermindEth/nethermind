@@ -114,7 +114,8 @@ public class DebugBridgeTests
                 if (!releaseRefusal.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("refusal was not released");
             });
         Task<int> request = Task.Run(() => MutateChain(debug, genesis, mutation));
-        bool updated;
+        bool updated = false;
+        Exception? assertionFailure = null;
         try
         {
             try
@@ -127,12 +128,17 @@ public class DebugBridgeTests
             }
             updated = tree.TryUpdateMainChain(next.Header, true, true, next);
         }
+        catch (Exception exception)
+        {
+            assertionFailure = exception;
+        }
         finally
         {
             releaseRefusal.Set();
             tree.IsProcessingBlock = false;
         }
-        int result = await request.WaitAsync(TimeSpan.FromSeconds(10));
+        await DrainWorkers(request, assertionFailure);
+        int result = await request;
         using (Assert.EnterMultipleScope())
         {
             AssertCalls(() => logger.Received(1).Warn(refusalWarning));
@@ -463,18 +469,10 @@ public class DebugBridgeTests
         {
             releaseMutation.Set();
         }
-        try
-        {
-            Task workers = (resumeThread.ThreadState & ThreadState.Unstarted) == 0
-                ? Task.WhenAll(firstTask, resumed.Task)
-                : firstTask;
-            await workers.WaitAsync(TimeSpan.FromSeconds(10));
-        }
-        catch (Exception cleanupFailure) when (assertionFailure is not null)
-        {
-            throw new AggregateException(assertionFailure, cleanupFailure);
-        }
-        if (assertionFailure is not null) ExceptionDispatchInfo.Capture(assertionFailure).Throw();
+        Task workers = (resumeThread.ThreadState & ThreadState.Unstarted) == 0
+            ? Task.WhenAll(firstTask, resumed.Task)
+            : firstTask;
+        await DrainWorkers(workers, assertionFailure);
         (int? Result, Exception? Failure) firstOutcome = await firstTask;
         (bool resumeResult, Exception? resumeFailure) = await resumed.Task;
         using (Assert.EnterMultipleScope())
@@ -499,6 +497,19 @@ public class DebugBridgeTests
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(blocks[0].Hash));
             Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(blocks[0].Hash!.Bytes.ToArray()));
         }
+    }
+
+    private static async Task DrainWorkers(Task workers, Exception? assertionFailure)
+    {
+        try
+        {
+            await workers.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (Exception cleanupFailure) when (assertionFailure is not null)
+        {
+            throw new AggregateException(assertionFailure, cleanupFailure);
+        }
+        if (assertionFailure is not null) ExceptionDispatchInfo.Capture(assertionFailure).Throw();
     }
 
     private sealed class ObservedPersistenceManager(IPersistenceManager inner) : IPersistenceManager
