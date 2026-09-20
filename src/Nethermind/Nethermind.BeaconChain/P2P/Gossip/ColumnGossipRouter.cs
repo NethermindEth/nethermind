@@ -9,8 +9,10 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
+using Snappier;
 
 namespace Nethermind.BeaconChain.P2P.Gossip;
 
@@ -56,7 +58,15 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
     private readonly LruKeyCache<(ulong Slot, ulong ProposerIndex, ulong Index)> _seenSidecars = new(SeenCacheSize, "beacon column gossip seen sidecars");
     private readonly long[] _dropCounts = new long[Enum.GetValues<ColumnGossipDropReason>().Length];
     private readonly Lock _subscriptionLock = new();
-    private readonly List<(ITopic Topic, Action<byte[]> Handler)> _subscriptions = [];
+    private readonly List<(ulong Subnet, ITopic Topic, Action<byte[]> Handler)> _subscriptions = [];
+
+    // Per-block-root accumulation of held columns, purely to decide when to attempt reconstruction
+    // (das-core.md "SHOULD reconstruct" at 50%+); keyed by the full header's hash tree root rather
+    // than (slot, proposer_index) so, like DataColumnReconstruction itself, columns of two different
+    // blocks can never accumulate together under one key.
+    private readonly LruCache<Hash256, List<DataColumnSidecar>> _heldColumnsByBlockRoot = new(SeenCacheSize, "beacon column reconstruction held columns");
+    private readonly LruKeyCache<Hash256> _reconstructedBlockRoots = new(SeenCacheSize, "beacon column reconstruction completed blocks");
+    private readonly Lock _reconstructionLock = new();
 
     private Func<string, ITopic>? _getTopic;
     private byte[] _currentForkDigest = [];
@@ -91,7 +101,7 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
                 throw new InvalidOperationException($"{nameof(ColumnGossipRouter)} is not started");
             }
 
-            foreach ((ITopic topic, Action<byte[]> handler) in _subscriptions)
+            foreach ((ulong _, ITopic topic, Action<byte[]> handler) in _subscriptions)
             {
                 topic.OnMessage -= handler;
                 topic.Unsubscribe();
@@ -111,7 +121,7 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
             Action<byte[]> handler = message => Handle(subnetId, message);
             topic.OnMessage += handler;
             topic.Subscribe();
-            _subscriptions.Add((topic, handler));
+            _subscriptions.Add((subnetId, topic, handler));
         }
 
         if (_logger.IsInfo) _logger.Info($"Subscribed {_subnets.Count} data column sidecar subnets for fork digest 0x{Convert.ToHexStringLower(forkDigest)}");
@@ -227,8 +237,99 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
             return;
         }
 
-        pool?.Add(SszRoots.HashTreeRoot(header), slot, sidecar);
+        Hash256 blockRoot = SszRoots.HashTreeRoot(header);
+        pool?.Add(blockRoot, slot, sidecar);
         DataColumnSidecarReceived?.Invoke(sidecar);
+
+        TrackHeldColumnAndMaybeReconstruct(blockRoot, sidecar);
+    }
+
+    /// <summary>
+    /// Accumulates <paramref name="sidecar"/> under <paramref name="blockRoot"/> and, once this
+    /// block's held columns cross <see cref="Eip7594DasConstants.RequiredColumnsForReconstruction"/>,
+    /// reconstructs the full matrix and publishes the columns this node did not itself receive
+    /// (Fulu p2p-interface.md "distributed blob publishing"). Runs at most once per block: a
+    /// completed root is never revisited, so a later gossip arrival for the same block cannot
+    /// re-reconstruct or re-publish. Different subnets' <c>OnMessage</c> callbacks can fire
+    /// concurrently on separate threads for the very columns reconstruction watches, so the
+    /// read-check-mutate sequence over <see cref="_heldColumnsByBlockRoot"/> and
+    /// <see cref="_reconstructedBlockRoots"/> runs under <see cref="_reconstructionLock"/>: each
+    /// cache is individually thread-safe, but that does not make Get-then-Add-then-Set atomic, and
+    /// an unguarded race here silently drops held columns rather than merely delaying reconstruction.
+    /// </summary>
+    private void TrackHeldColumnAndMaybeReconstruct(Hash256 blockRoot, DataColumnSidecar sidecar)
+    {
+        List<DataColumnSidecar> held;
+        DataColumnSidecar[] fullMatrix;
+        lock (_reconstructionLock)
+        {
+            if (_reconstructedBlockRoots.Get(blockRoot))
+            {
+                return;
+            }
+
+            held = _heldColumnsByBlockRoot.Get(blockRoot) ?? [];
+            held.Add(sidecar);
+            _heldColumnsByBlockRoot.Set(blockRoot, held);
+
+            if (held.Count < Eip7594DasConstants.RequiredColumnsForReconstruction
+                || !DataColumnReconstruction.TryReconstruct(held, out fullMatrix))
+            {
+                return;
+            }
+
+            _reconstructedBlockRoots.Set(blockRoot);
+            _heldColumnsByBlockRoot.Delete(blockRoot);
+        }
+
+        foreach (ReconstructedSidecarToPublish entry in ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix))
+        {
+            PublishReconstructed(entry);
+        }
+    }
+
+    /// <summary>
+    /// Exposes a locally reconstructed sidecar exactly as if it had arrived over gossip: marks the
+    /// anti-equivocation cache first, then adds it to the serving pool, raises
+    /// <see cref="DataColumnSidecarReceived"/>, and - only if this node is subscribed to the
+    /// sidecar's own subnet - publishes it there. Marking first (rather than after publishing) means
+    /// a genuine concurrent gossip arrival for the same (slot, proposer_index, index) is correctly
+    /// caught as a duplicate by <see cref="Handle"/> instead of racing this method's own update.
+    /// </summary>
+    private void PublishReconstructed(ReconstructedSidecarToPublish entry)
+    {
+        if (!_seenSidecars.Set((entry.Slot, entry.ProposerIndex, entry.Sidecar.Index)))
+        {
+            // A gossip copy of this exact column won the race and already marked the cache: its own
+            // Handle call already added it to the pool and raised the event, so do neither again.
+            return;
+        }
+
+        Hash256 blockRoot = SszRoots.HashTreeRoot(entry.Sidecar.SignedBlockHeader!.Message!);
+        pool?.Add(blockRoot, entry.Slot, entry.Sidecar);
+        DataColumnSidecarReceived?.Invoke(entry.Sidecar);
+
+        if (FindSubnetTopic(entry.Subnet) is { } topic)
+        {
+            topic.Publish(Snappy.CompressToArray(DataColumnSidecar.Encode(entry.Sidecar)));
+        }
+    }
+
+    /// <summary>The subscribed topic for <paramref name="subnet"/>, or null if this node does not custody it.</summary>
+    private ITopic? FindSubnetTopic(ulong subnet)
+    {
+        lock (_subscriptionLock)
+        {
+            foreach ((ulong subscribedSubnet, ITopic subscribedTopic, _) in _subscriptions)
+            {
+                if (subscribedSubnet == subnet)
+                {
+                    return subscribedTopic;
+                }
+            }
+        }
+
+        return null;
     }
 
     private ColumnGossipDropReason? ValidateNotFromFuture(ulong slot)
