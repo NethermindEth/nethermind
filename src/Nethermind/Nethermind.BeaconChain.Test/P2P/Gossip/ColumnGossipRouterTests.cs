@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
@@ -95,6 +96,38 @@ public class ColumnGossipRouterTests
         Hash256 blockRoot = SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!);
         Assert.That(pool.TryGet(blockRoot, ColumnIndex, out DataColumnSidecar? pooled), Is.True, "an accepted sidecar is added to the serving pool");
         Assert.That(pooled!.Index, Is.EqualTo(ColumnIndex));
+    }
+
+    [Test]
+    [Repeat(20)]
+    public void Concurrent_gossip_arrivals_across_subnets_do_not_race_the_held_column_accumulator()
+    {
+        const int required = 64;
+        ulong[] subscribedSubnets = [.. Enumerable.Range(0, 128).Select(i => (ulong)i)];
+        DataColumnSidecarPool pool = new();
+        ColumnGossipRouter router = CreateRouter(pool);
+        Dictionary<string, FakeTopic> topics = [];
+        byte[] digest = ForkDigest.Compute(Spec, 419_072);
+        router.Start(id => topics[id] = new FakeTopic(), digest, subscribedSubnets);
+
+        System.Collections.Concurrent.ConcurrentBag<DataColumnSidecar> receivedEvents = [];
+        router.DataColumnSidecarReceived += s => receivedEvents.Add(s);
+
+        Task[] tasks = new Task[required];
+        for (ulong column = 0; column < (ulong)required; column++)
+        {
+            ulong c = column;
+            tasks[c] = Task.Run(() =>
+            {
+                DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(c, CurrentSlot);
+                topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(c))].Deliver(Message(sidecar));
+            });
+        }
+
+        Task.WaitAll(tasks);
+
+        Assert.That(receivedEvents.Select(s => s.Index).Distinct().Count(), Is.EqualTo(Eip7594DasConstants.NumberOfColumns),
+            $"expected all 128 columns raised, got {receivedEvents.Select(s => s.Index).Distinct().Count()} distinct, {receivedEvents.Count} total events");
     }
 
     [Test]
