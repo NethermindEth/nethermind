@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -79,6 +80,50 @@ public class DebugBridgeTests
             Assert.That(tree.FindBlock(head.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(tree.FindLevel(2), Is.Not.Null);
             Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(head.Hash!.Bytes.ToArray()));
+        }
+    }
+
+    [Test]
+    public async Task Refused_running_mutation_does_not_interrupt_canonical_updates([Values] ChainMutation mutation)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule())
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger))).Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        Block head = Build.A.Block.WithParent(genesis).TestObject;
+        Block next = Build.A.Block.WithParent(head).TestObject;
+        AddToMainChain(tree, genesis);
+        AddToMainChain(tree, head);
+        tree.SuggestBlock(next);
+        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        TaskCompletionSource refusing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim releaseRefusal = new();
+        logger.When(x => x.Warn("Cannot mutate the chain: pause block processing and wait for it to drain."))
+            .Do(_ =>
+            {
+                refusing.SetResult();
+                if (!releaseRefusal.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("refusal was not released");
+            });
+        Task<int> request = Task.Run(() => MutateChain(debug, genesis, mutation));
+        bool updated;
+        try
+        {
+            await refusing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            updated = tree.TryUpdateMainChain(next.Header, true, true, next);
+        }
+        finally
+        {
+            releaseRefusal.Set();
+        }
+        int result = await request.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.True, "a refused debug request must not interrupt a live canonical update");
+            Assert.That(result, Is.EqualTo(mutation == ChainMutation.DeleteSlice ? ErrorCodes.ResourceUnavailable : 0));
+            Assert.That(tree.Head!.Hash, Is.EqualTo(next.Hash));
+            Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(next.Hash!.Bytes.ToArray()));
         }
     }
 
@@ -366,8 +411,8 @@ public class DebugBridgeTests
         {
             try { resumed.SetResult((admin.admin_resumeBlockProcessing().Data, null)); }
             catch (Exception exception) { resumed.SetResult((false, exception)); }
-        });
-        (int? Result, Exception? Failure) firstOutcome;
+        }) { IsBackground = true };
+        Exception? assertionFailure = null;
         try
         {
             await mutationEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -399,13 +444,27 @@ public class DebugBridgeTests
             Assert.That(resumed.Task.IsCompleted, Is.False, "admin resume must wait for state cleanup");
             Assert.That(container.Resolve<IBlockProcessingPauseControl>().IsPaused, Is.True);
         }
+        catch (Exception exception)
+        {
+            assertionFailure = exception;
+        }
         finally
         {
             releaseMutation.Set();
-            firstOutcome = await firstTask;
-            if ((resumeThread.ThreadState & ThreadState.Unstarted) == 0)
-                await resumed.Task;
         }
+        try
+        {
+            Task workers = (resumeThread.ThreadState & ThreadState.Unstarted) == 0
+                ? Task.WhenAll(firstTask, resumed.Task)
+                : firstTask;
+            await workers.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (Exception cleanupFailure) when (assertionFailure is not null)
+        {
+            throw new AggregateException(assertionFailure, cleanupFailure);
+        }
+        if (assertionFailure is not null) ExceptionDispatchInfo.Capture(assertionFailure).Throw();
+        (int? Result, Exception? Failure) firstOutcome = await firstTask;
         (bool resumeResult, Exception? resumeFailure) = await resumed.Task;
         using (Assert.EnterMultipleScope())
         {

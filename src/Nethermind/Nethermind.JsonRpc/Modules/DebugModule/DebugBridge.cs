@@ -116,6 +116,8 @@ public class DebugBridge : IDebugBridge
 
     public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
     {
+        if (!CanMutateChain()) return ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot delete the chain slice from {startNumber}: chain mutation contention or overlapping maintenance; retry the request.");
@@ -137,6 +139,8 @@ public class DebugBridge : IDebugBridge
 
     public bool UpdateHeadBlock(BlockParameter blockParameter)
     {
+        if (!CanMutateChain()) return false;
+
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: chain mutation contention or overlapping maintenance; retry the request.");

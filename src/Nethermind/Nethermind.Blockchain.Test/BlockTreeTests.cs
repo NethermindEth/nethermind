@@ -2130,13 +2130,17 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_delete_one_block([Values] bool precedingLevelCanonical, [Values] bool clearBlockCache)
+    public void Delete_slice_moves_head_to_canonical_predecessor_or_genesis([Values] bool precedingLevelCanonical, [Values] bool clearBlockCache)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
         BlockTree blockTree = builder.TestObject;
         Hash256 expectedHead = precedingLevelCanonical ? blockTree.FindHeader(1, BlockTreeLookupOptions.RequireCanonical)!.Hash! : blockTree.Genesis!.Hash!;
-        blockTree.FindLevel(1)!.HasBlockOnMainChain = precedingLevelCanonical;
-        if (clearBlockCache) ((IClearableCache)builder.BlockStore).ClearCache();
+        builder.ChainLevelInfoRepository.PersistLevel(1, new ChainLevelInfo(precedingLevelCanonical, blockTree.FindLevel(1)!.BlockInfos));
+        if (clearBlockCache)
+        {
+            Assert.That(builder.BlockStore, Is.InstanceOf<IClearableCache>());
+            ((IClearableCache)builder.BlockStore).ClearCache();
+        }
 
         int deleted = blockTree.DeleteChainSlice(2, 2);
 
