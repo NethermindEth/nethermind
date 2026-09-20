@@ -81,7 +81,7 @@ public sealed class BlockImporter : IBlockImporter
         _config = config;
         _logger = logManager.GetClassLogger<BlockImporter>();
 
-        _states = new PostStateCache(store, anchorRoot, anchorState);
+        _states = new PostStateCache(store, spec, anchorRoot, anchorState);
         _runner = new ForkChoiceRunner(spec, anchorState, anchorBlock.Message!, _states, pubkeys);
         _canonicalHead = anchorRoot;
         _lastSnapshotEpoch = anchorState.GetCurrentEpoch();

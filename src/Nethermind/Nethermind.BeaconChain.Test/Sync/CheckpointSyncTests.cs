@@ -63,7 +63,7 @@ public class CheckpointSyncTests
         PubkeyCache pubkeyCache = new();
         stopwatch.Restart();
         using (CheckpointSync offlineSync = new(offlineConfig, BeaconChainSpec.Mainnet, store, logManager))
-        using (BeaconChainService service = new(offlineConfig, store, pubkeyCache, offlineSync, CreateOrchestrator(offlineConfig, store, logManager), CreateDetector(logManager), logManager))
+        using (BeaconChainService service = new(offlineConfig, BeaconChainSpec.Mainnet, store, pubkeyCache, offlineSync, CreateOrchestrator(offlineConfig, store, logManager), CreateDetector(logManager), logManager))
         {
             await service.Start();
         }
@@ -74,7 +74,7 @@ public class CheckpointSyncTests
         // Third start loads the persisted pubkey cache instead of rebuilding it.
         PubkeyCache reloadedCache = new();
         using (CheckpointSync offlineSync = new(offlineConfig, BeaconChainSpec.Mainnet, store, logManager))
-        using (BeaconChainService service = new(offlineConfig, store, reloadedCache, offlineSync, CreateOrchestrator(offlineConfig, store, logManager), CreateDetector(logManager), logManager))
+        using (BeaconChainService service = new(offlineConfig, BeaconChainSpec.Mainnet, store, reloadedCache, offlineSync, CreateOrchestrator(offlineConfig, store, logManager), CreateDetector(logManager), logManager))
         {
             await service.Start();
         }

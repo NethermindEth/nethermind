@@ -391,7 +391,9 @@ public sealed class BeaconDiscovery(
         return _handler;
     }
 
-    private List<Node> CreateBootNodes()
+    /// <summary>The bootnodes discovery will dial: the config override if set, otherwise the
+    /// network's own records from the spec.</summary>
+    internal List<Node> CreateBootNodes()
     {
         string[] enrs = string.IsNullOrWhiteSpace(config.Bootnodes)
             ? spec.Bootnodes
