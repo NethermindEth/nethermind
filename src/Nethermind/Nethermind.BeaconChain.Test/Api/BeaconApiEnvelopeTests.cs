@@ -6,7 +6,6 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.BeaconChain;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
