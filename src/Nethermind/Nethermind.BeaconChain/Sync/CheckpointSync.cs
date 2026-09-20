@@ -139,7 +139,7 @@ public class CheckpointSync(
 
     private BeaconStateFulu DecodeState(ReadOnlySpan<byte> sszBytes)
     {
-        BeaconStateFulu.Decode(sszBytes, out BeaconStateFulu state);
+        BeaconStateFulu state = BeaconStateCodec.Decode(sszBytes, spec);
         ThrowIfUnsupportedFork(state);
         return state;
     }

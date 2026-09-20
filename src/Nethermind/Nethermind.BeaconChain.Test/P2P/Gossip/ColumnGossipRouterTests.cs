@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using Google.Protobuf;
 using Nethermind.BeaconChain.DataAvailability;
@@ -107,11 +108,17 @@ public class ColumnGossipRouterTests
             return sidecar;
         }), ColumnGossipDropReason.FailedStructure).SetName("empty commitments fails structural check");
 
-        // Cryptographically valid in every other respect, so it can only be rejected for its
-        // commitment count: mainnet allows 9 at this epoch and raises the bound only at a BPO fork.
-        yield return new TestCaseData(
-            new Func<DataColumnSidecar>(() => DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex, CurrentSlot, blobCount: 10)),
-            ColumnGossipDropReason.FailedBlobCount).SetName("more commitments than the epoch's max_blobs_per_block");
+        // One over the 21 that mainnet's BPO2 allows at this slot's epoch. Padded rather than
+        // built from 22 real blobs: the count is checked before any KZG work, which is the point.
+        yield return new TestCaseData(new Func<DataColumnSidecar>(() =>
+        {
+            DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex, CurrentSlot);
+            const int overBpo2 = 22;
+            sidecar.KzgCommitments = [.. Enumerable.Repeat(sidecar.KzgCommitments![0], overBpo2)];
+            sidecar.KzgProofs = [.. Enumerable.Repeat(sidecar.KzgProofs![0], overBpo2)];
+            sidecar.Column = [.. Enumerable.Repeat(sidecar.Column![0], overBpo2)];
+            return sidecar;
+        }), ColumnGossipDropReason.FailedBlobCount).SetName("more commitments than the epoch's max_blobs_per_block");
 
         yield return new TestCaseData(
             new Func<DataColumnSidecar>(() => DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex + 1, CurrentSlot)),
