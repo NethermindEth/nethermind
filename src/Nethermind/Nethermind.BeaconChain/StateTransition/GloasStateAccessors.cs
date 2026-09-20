@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -22,7 +24,44 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// </summary>
 public static class GloasStateAccessors
 {
+    // EIP-8061 churn parameters (specs/gloas/beacon-chain.md "Configuration/Validator cycle" at the
+    // pinned commit). They belong beside their Electra siblings in Spec/Presets.cs, which this
+    // change could not touch; move them there when that file is next edited.
+    internal const ulong ChurnLimitQuotientGloas = 1UL << 15;
+    internal const ulong ConsolidationChurnLimitQuotient = 1UL << 16;
+    internal const ulong MaxPerEpochActivationChurnLimitGloas = 256_000_000_000;
+
     public static ulong GetCurrentEpoch(this BeaconStateGloas state) => BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
+
+    public static ulong GetPreviousEpoch(this BeaconStateGloas state)
+    {
+        ulong currentEpoch = state.GetCurrentEpoch();
+        return currentEpoch == Presets.GenesisEpoch ? Presets.GenesisEpoch : currentEpoch - 1;
+    }
+
+    /// <summary>Spec <c>get_block_root</c>: the block root at the start slot of a recent <paramref name="epoch"/>.</summary>
+    public static Hash256 GetBlockRoot(this BeaconStateGloas state, ulong epoch) =>
+        state.GetBlockRootAtSlot(BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch));
+
+    /// <summary>Spec <c>get_seed</c> (unmodified in Gloas): the shuffling seed for <paramref name="epoch"/> and the given domain type.</summary>
+    /// <remarks>
+    /// Same shape as the Fulu <see cref="BeaconStateAccessors.GetSeed"/>, and for the same reason:
+    /// the spec's <c>epoch + EPOCHS_PER_HISTORICAL_VECTOR - MIN_SEED_LOOKAHEAD - 1</c> lands on the
+    /// same vector slot as the plain <c>epoch - MIN_SEED_LOOKAHEAD - 1</c> (the vector length divides
+    /// 2^64), but inflating the epoch would push every call outside the window
+    /// <see cref="GetRandaoMix"/> enforces. Only the previous, current and next epoch (and their
+    /// lookahead) have a mix the window still covers.
+    /// </remarks>
+    /// <exception cref="BeaconStateException">The mix epoch the seed derives from is outside the historical-vector window.</exception>
+    public static Hash256 GetSeed(this BeaconStateGloas state, ulong epoch, ReadOnlySpan<byte> domainType)
+    {
+        Hash256 mix = state.GetRandaoMix(epoch - Presets.MinSeedLookahead - 1);
+        Span<byte> preimage = stackalloc byte[4 + 8 + 32];
+        domainType.CopyTo(preimage);
+        BinaryPrimitives.WriteUInt64LittleEndian(preimage[4..], epoch);
+        mix.Bytes.CopyTo(preimage[12..]);
+        return new Hash256(SHA256.HashData(preimage));
+    }
 
     /// <summary>Spec <c>get_randao_mix</c>: returns the randao mix recorded for <paramref name="epoch"/>.</summary>
     /// <remarks>See the Fulu <see cref="BeaconStateAccessors.GetRandaoMix"/> remarks for the window this enforces.</remarks>
@@ -170,26 +209,42 @@ public static class GloasStateAccessors
     public static ulong GetBaseRewardPerIncrement(this BeaconStateGloas state, EpochCache cache) =>
         Presets.EffectiveBalanceIncrement * Presets.BaseRewardFactor / BeaconStateAccessors.IntegerSquareRoot(state.GetTotalActiveBalance(cache));
 
-    /// <summary>Returns the EIP-7251 balance churn limit for the current epoch, in Gwei.</summary>
-    public static ulong GetBalanceChurnLimit(this BeaconStateGloas state, EpochCache cache)
+    /// <summary>
+    /// Spec <c>get_activation_churn_limit</c> (EIP-8061, new in Gloas): the capped per-epoch churn
+    /// pending deposits consume. Exits no longer share this budget - see <see cref="GetExitChurnLimit"/>.
+    /// </summary>
+    public static ulong GetActivationChurnLimit(this BeaconStateGloas state, EpochCache cache) =>
+        Math.Min(MaxPerEpochActivationChurnLimitGloas, state.GetExitChurnLimit(cache));
+
+    /// <summary>Spec <c>get_exit_churn_limit</c> (EIP-8061, new in Gloas): the uncapped per-epoch exit churn.</summary>
+    public static ulong GetExitChurnLimit(this BeaconStateGloas state, EpochCache cache)
     {
-        ulong churn = Math.Max(Presets.MinPerEpochChurnLimitElectra, state.GetTotalActiveBalance(cache) / Presets.ChurnLimitQuotient);
+        ulong churn = Math.Max(Presets.MinPerEpochChurnLimitElectra, state.GetTotalActiveBalance(cache) / ChurnLimitQuotientGloas);
         return churn - churn % Presets.EffectiveBalanceIncrement;
     }
 
-    /// <summary>Returns the EIP-7251 churn limit dedicated to activations and exits, in Gwei.</summary>
-    public static ulong GetActivationExitChurnLimit(this BeaconStateGloas state, EpochCache cache) =>
-        Math.Min(Presets.MaxPerEpochActivationExitChurnLimit, state.GetBalanceChurnLimit(cache));
+    /// <summary>
+    /// Spec <c>get_consolidation_churn_limit</c> (modified in Gloas): derived directly from the total
+    /// active balance instead of as the remainder of the Electra balance churn.
+    /// </summary>
+    public static ulong GetConsolidationChurnLimit(this BeaconStateGloas state, EpochCache cache)
+    {
+        ulong churn = state.GetTotalActiveBalance(cache) / ConsolidationChurnLimitQuotient;
+        return churn - churn % Presets.EffectiveBalanceIncrement;
+    }
 
-    /// <summary>Returns the EIP-7251 churn limit dedicated to consolidations, in Gwei.</summary>
-    public static ulong GetConsolidationChurnLimit(this BeaconStateGloas state, EpochCache cache) =>
-        state.GetBalanceChurnLimit(cache) - state.GetActivationExitChurnLimit(cache);
+    /// <summary>Spec <c>get_builder_payment_quorum_threshold</c>: the PTC weight a pending builder payment needs to be honored at the epoch boundary.</summary>
+    public static ulong GetBuilderPaymentQuorumThreshold(this BeaconStateGloas state, EpochCache cache)
+    {
+        ulong perSlotBalance = state.GetTotalActiveBalance(cache) / Presets.SlotsPerEpoch;
+        return perSlotBalance * Presets.BuilderPaymentThresholdNumerator / Presets.BuilderPaymentThresholdDenominator;
+    }
 
-    /// <summary>Spec <c>compute_exit_epoch_and_update_churn</c>.</summary>
+    /// <summary>Spec <c>compute_exit_epoch_and_update_churn</c> (modified in Gloas: exits draw on <see cref="GetExitChurnLimit"/>).</summary>
     public static ulong ComputeExitEpochAndUpdateChurn(this BeaconStateGloas state, ulong exitBalance, EpochCache cache)
     {
         ulong earliestExitEpoch = Math.Max(state.EarliestExitEpoch, BeaconStateAccessors.ComputeActivationExitEpoch(state.GetCurrentEpoch()));
-        ulong perEpochChurn = state.GetActivationExitChurnLimit(cache);
+        ulong perEpochChurn = state.GetExitChurnLimit(cache);
         ulong exitBalanceToConsume = state.EarliestExitEpoch < earliestExitEpoch ? perEpochChurn : state.ExitBalanceToConsume;
 
         if (exitBalance > exitBalanceToConsume)
@@ -241,6 +296,29 @@ public static class GloasStateAccessors
         updated.ExitEpoch = exitQueueEpoch;
         updated.WithdrawableEpoch = CheckedEpochSum(exitQueueEpoch, Presets.MinValidatorWithdrawabilityDelay);
         state.Validators[index] = updated;
+    }
+
+    /// <summary>Spec <c>add_validator_to_registry</c> (Electra, unmodified in Gloas): appends a deposit-derived validator and its per-validator list entries.</summary>
+    public static void AddValidatorToRegistry(this BeaconStateGloas state, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount)
+    {
+        Validator validator = new()
+        {
+            Pubkey = pubkey,
+            WithdrawalCredentials = withdrawalCredentials,
+            EffectiveBalance = 0,
+            Slashed = false,
+            ActivationEligibilityEpoch = Presets.FarFutureEpoch,
+            ActivationEpoch = Presets.FarFutureEpoch,
+            ExitEpoch = Presets.FarFutureEpoch,
+            WithdrawableEpoch = Presets.FarFutureEpoch,
+        };
+        validator.EffectiveBalance = Math.Min(amount - amount % Presets.EffectiveBalanceIncrement, validator.GetMaxEffectiveBalance());
+
+        state.Validators = [.. state.Validators!, validator];
+        state.Balances = [.. state.Balances!, amount];
+        state.PreviousEpochParticipation = [.. state.PreviousEpochParticipation!, 0];
+        state.CurrentEpochParticipation = [.. state.CurrentEpochParticipation!, 0];
+        state.InactivityScores = [.. state.InactivityScores!, 0UL];
     }
 
     /// <summary>Epoch addition that rejects uint64 overflow like the pyspec's <c>Epoch(...)</c> constructor.</summary>
