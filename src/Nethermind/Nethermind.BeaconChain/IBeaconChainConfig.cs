@@ -31,8 +31,17 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "The target number of beacon chain peers.", DefaultValue = "50")]
     int TargetPeerCount { get; set; }
 
-    [ConfigItem(Description = "The max number of beacon chain peers.", DefaultValue = "80")]
+    [ConfigItem(Description = "The low watermark: below this many connected peers the node is under-peered. Purely diagnostic today - nothing yet drives extra dialing off it - since candidate discovery is paced by BeaconDiscovery, not by this config.", DefaultValue = "20")]
+    int MinPeerCount { get; set; }
+
+    [ConfigItem(Description = "The high watermark. Above this many connected peers, the peer manager trims the worst peers back down to TargetPeerCount.", DefaultValue = "80")]
     int MaxPeerCount { get; set; }
+
+    [ConfigItem(Description = "The max number of outbound dials the peer manager will have in flight at once, static and discovered peers combined.", DefaultValue = "8")]
+    int MaxConcurrentOutboundDials { get; set; }
+
+    [ConfigItem(Description = "Consecutive goodbye-Fault disconnects from the same peer id before it is added to the in-memory ban list, which then refuses every further dial or reconnection attempt for that id regardless of the address it is next seen at.", DefaultValue = "3")]
+    int FaultDisconnectsBeforeBan { get; set; }
 
     [ConfigItem(Description = "The interval, in epochs, between persisted beacon state snapshots.", DefaultValue = "32")]
     int StateSnapshotIntervalEpochs { get; set; }
