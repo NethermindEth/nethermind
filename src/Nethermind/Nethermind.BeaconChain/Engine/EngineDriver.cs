@@ -142,17 +142,26 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// </summary>
     /// <remarks>
     /// Both <c>newPayload</c> overloads go through here so neither can record the answer and the
-    /// other forget to; <see cref="ForkchoiceUpdated"/> deliberately does not.
+    /// other forget to; <see cref="ForkchoiceUpdated"/> deliberately does not, because a
+    /// fork-choice call that fails is not a statement about any particular block.
     /// </remarks>
+    /// <exception cref="EngineUnavailableException">The call produced no verdict.</exception>
     private PayloadStatusV1 UnwrapNewPayload(Result result, PayloadStatusV1? status, string method)
     {
         HasAnsweredNewPayload = true;
-        return Unwrap(result, status, method);
+        if (result.ResultType == ResultType.Success && status is not null)
+        {
+            return status;
+        }
+
+        if (_logger.IsError) _logger.Error($"In-process engine_{method} call failed: {result.Error}");
+        throw new EngineUnavailableException(method, result.Error);
     }
 
     /// <remarks>
-    /// An engine error is not a verdict on the block — treat it like an unavailable execution
-    /// client and report SYNCING so the caller proceeds optimistically.
+    /// Only <see cref="ForkchoiceUpdated"/> reports SYNCING for a failed call, because it is a
+    /// statement about the head rather than a verdict on a block the caller is about to import.
+    /// The <c>newPayload</c> path goes through <see cref="UnwrapNewPayload"/> and throws instead.
     /// </remarks>
     private PayloadStatusV1 Unwrap(Result result, PayloadStatusV1? status, string method)
     {
