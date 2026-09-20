@@ -159,11 +159,14 @@ public partial class BlockProcessor(
 
         _balManager.Setup(block);
 
+        ProcessingThread.Phase = 0;
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 
+        ProcessingThread.Phase = 1;
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        ProcessingThread.Phase = 2;
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below

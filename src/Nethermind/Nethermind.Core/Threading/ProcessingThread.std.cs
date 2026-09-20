@@ -14,6 +14,10 @@ public static partial class ProcessingThread
     [ThreadStatic]
     private static bool _isBlockProcessingThread;
 
+    /// <summary>Probe: 0 before the transactions (system calls), 1 during transaction execution, 2 at block end.</summary>
+    [ThreadStatic]
+    public static int Phase;
+
     public static bool IsBlockProcessingThread
     {
         get => _isBlockProcessingThread;
