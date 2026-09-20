@@ -2164,25 +2164,28 @@ public class BlockTreeTests
         }
     }
 
-    // Omit (1, true): a gap below a canonical predecessor is never scanned.
-    [TestCase(1UL, false)]
-    [TestCase(4UL, false)]
-    [TestCase(4UL, true)]
+    // Omit (false, true): a gap below a canonical predecessor is never scanned.
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
     [MaxTime(Timeout.MaxTestTime)]
-    public void Delete_slice_clears_reachable_markers_and_preserves_isolated_markers(ulong missingLevel, bool canonicalPredecessor)
+    public void Delete_slice_clears_reachable_markers_and_preserves_isolated_markers(bool gapAboveDeletedRange, bool canonicalPredecessor)
     {
         const int oldHead = 6;
         const int deletedLevel = 3;
+        const int gapAboveHead = oldHead + 1;
+        ulong missingLevel = (ulong)(gapAboveDeletedRange ? deletedLevel + 1 : deletedLevel - 2);
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(oldHead + 1);
         BlockTree tree = builder.TestObject;
         Hash256[] survivingHashes = Enumerable.Range(deletedLevel + 1, oldHead - deletedLevel)
             .Where(level => (ulong)level != missingLevel)
             .Select(level => tree.FindHeader((ulong)level, BlockTreeLookupOptions.RequireCanonical)!.Hash!)
             .ToArray();
-        BlockHeader isolatedHeader = Build.A.BlockHeader.WithNumber(oldHead + 2).WithTotalDifficulty(1).TestObject;
+        BlockHeader isolatedHeader = Build.A.BlockHeader.WithNumber(gapAboveHead + 1).WithTotalDifficulty(1).TestObject;
         tree.Insert(isolatedHeader);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(tree.FindLevel(gapAboveHead), Is.Null);
             Assert.That(tree.IsMainChain(isolatedHeader.Hash!), Is.True);
             Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(isolatedHeader.Hash));
         }
