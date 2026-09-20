@@ -81,6 +81,7 @@ public partial class PreBlockCaches
     }
 
     /// <summary>The keys one committed transaction wrote.</summary>
+    /// <remarks>Storage batches of one commit run on the parallel storage-root workers, so they add under <see cref="Merge"/>.</remarks>
     public sealed class CommittedWriteSet(int txIndex) : IDisposable
     {
         public int TxIndex { get; } = txIndex;
@@ -88,6 +89,14 @@ public partial class PreBlockCaches
         public PooledList<StorageCell> Slots { get; } = [];
 
         public bool IsEmpty => Accounts.Count == 0 && Slots.Count == 0;
+
+        public void Merge(PooledList<StorageCell> slots)
+        {
+            lock (Slots)
+            {
+                Slots.AddRange(slots);
+            }
+        }
 
         public void Dispose()
         {
@@ -168,12 +177,14 @@ public partial class PreBlockCaches
         Address address,
         CommittedWriteSet writes) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        private readonly PooledList<StorageCell> _slots = [];
+
         public void Set(in UInt256 index, in UInt256 value)
         {
             inner.Set(in index, in value);
             StorageCell cell = new(address, in index);
             caches._committedSlots[cell] = value;
-            writes.Slots.Add(cell);
+            _slots.Add(cell);
         }
 
         public void Clear()
@@ -186,6 +197,11 @@ public partial class PreBlockCaches
             }
         }
 
-        public void Dispose() => inner.Dispose();
+        public void Dispose()
+        {
+            inner.Dispose();
+            if (_slots.Count > 0) writes.Merge(_slots);
+            _slots.Dispose();
+        }
     }
 }

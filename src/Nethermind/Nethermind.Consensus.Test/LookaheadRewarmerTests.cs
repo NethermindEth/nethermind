@@ -130,6 +130,29 @@ public class LookaheadRewarmerTests
         caches.EndConsumerScope();
     }
 
+    [Test]
+    public void Concurrent_storage_batches_of_one_commit_all_reach_the_write_set()
+    {
+        PreBlockCaches caches = CreateCaches();
+        RecordingWriteBatch inner = new();
+        const int Contracts = 32;
+        const int SlotsPerContract = 64;
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = caches.WrapCommittedWrites(inner))
+        {
+            // Storage batches of one commit are written by the parallel storage-root workers.
+            System.Threading.Tasks.Parallel.For(0, Contracts, contract =>
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(Address.FromNumber((UInt256)(contract + 1)), SlotsPerContract);
+                for (int slot = 0; slot < SlotsPerContract; slot++) storage.Set((UInt256)slot, (UInt256)(slot + 1));
+            });
+        }
+
+        Assert.That(caches.TryDequeueCommitted(out PreBlockCaches.CommittedWriteSet? writes), Is.True);
+        Assert.That(writes!.Slots.Count, Is.EqualTo(Contracts * SlotsPerContract));
+        writes.Dispose();
+    }
+
     private sealed class RecordingWriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         public int Accounts;
