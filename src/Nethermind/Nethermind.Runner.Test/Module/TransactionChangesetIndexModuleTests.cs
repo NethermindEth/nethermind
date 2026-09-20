@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -13,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
@@ -34,6 +36,7 @@ using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
+using NSubstitute;
 using WorldStateSnapshot = Nethermind.Evm.State.Snapshot;
 
 namespace Nethermind.Runner.Test.Module;
@@ -322,5 +325,20 @@ public class TransactionChangesetIndexModuleTests
         builder.Dispose();
 
         Assert.That(container.Dispose, Throws.Nothing, "the container disposes its singletons too; a second dispose must be harmless");
+    }
+
+    [Test]
+    public async Task StartTransactionChangesetBuilder_WhenExecuted_RegistersPreDisposalStop()
+    {
+        IServiceStopper stopper = Substitute.For<IServiceStopper>();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true }))
+            .AddSingleton<IServiceStopper>(stopper)
+            .Build();
+
+        TransactionChangesetBuilder builder = container.Resolve<TransactionChangesetBuilder>();
+        await container.Resolve<StartTransactionChangesetBuilder>().Execute(CancellationToken.None);
+
+        stopper.Received(1).AddStoppable(builder);
     }
 }

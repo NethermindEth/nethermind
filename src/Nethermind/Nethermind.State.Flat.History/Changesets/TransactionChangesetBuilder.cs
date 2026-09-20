@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Collections;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -20,7 +21,7 @@ public sealed class TransactionChangesetBuilder(
     HistoryAvailability availability,
     IFlatDbConfig config,
     ILogManager logManager,
-    ITransactionIndexBulkFill? bulkFill = null) : IDisposable
+    ITransactionIndexBulkFill? bulkFill = null) : IDisposable, IStoppableService
 {
     internal const ulong ChunkBlocks = 128;
     internal const int WarnAfterAttempts = 8;
@@ -34,6 +35,7 @@ public sealed class TransactionChangesetBuilder(
     private readonly ILogger _logger = logManager.GetClassLogger<TransactionChangesetBuilder>();
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Lock _chunks = new();
+    private readonly Lock _shutdown = new();
     private readonly Stack<Chunk> _retry = new();
     private readonly Dictionary<ulong, ulong> _completedByTop = [];
     private readonly HashSet<ulong> _stalledTops = [];
@@ -46,7 +48,7 @@ public sealed class TransactionChangesetBuilder(
     private bool _wasRetrofitting;
     private ulong? _reportedUnsupportedBoundary;
     private long _builtSinceReport;
-    private int _disposed;
+    private bool _disposed;
 
     private bool RetrofitOnWorkers => bulkFill is { Enabled: true } || _retrofitFromBlock != 0 && _workers > 1;
 
@@ -199,15 +201,17 @@ public sealed class TransactionChangesetBuilder(
         }
     }
 
+    public Task StopAsync() => Task.Run(Dispose);
+
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-
-        _cancellation.Cancel();
-        bool everyThreadStopped = true;
-        foreach (Thread thread in _threads) everyThreadStopped &= thread.Join(TimeSpan.FromSeconds(5));
-        if (everyThreadStopped)
+        lock (_shutdown)
         {
+            if (_disposed) return;
+            _disposed = true;
+
+            _cancellation.Cancel();
+            foreach (Thread thread in _threads) thread.Join();
             try
             {
                 _tipExecutor?.Dispose();

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -506,6 +507,26 @@ public class TransactionChangesetBuilderTests
 
     private TransactionChangesetIndex Index() => new(_columns, _config);
 
+    [Test]
+    public async Task StopAsync_WhenBulkReplayIsExiting_WaitsForWorkerCompletion()
+    {
+        using BlockingBulkFill bulkFill = new();
+        using TransactionChangesetBuilder builder = new(Index(), _executor, _availability, _config, LimboLogs.Instance, bulkFill);
+        builder.Start();
+        Task stop = builder.StopAsync();
+        try
+        {
+            await bulkFill.Stopping.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(stop.IsCompleted, Is.False, "databases must remain open until the worker exits");
+        }
+        finally
+        {
+            bulkFill.Release.Set();
+            await stop.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        await builder.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
     private TransactionChangesetBuilder Builder() => Builder(Index());
 
     private TransactionChangesetBuilder Builder(TransactionChangesetIndex index) =>
@@ -522,6 +543,22 @@ public class TransactionChangesetBuilderTests
         }
 
         _availability.PublishWatermark(upTo, HistoryAvailability.FormatVersion);
+    }
+
+    private sealed class BlockingBulkFill : ITransactionIndexBulkFill, IDisposable
+    {
+        public bool Enabled => true;
+        public TaskCompletionSource Stopping { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ManualResetEventSlim Release { get; } = new();
+
+        public void Run(CancellationToken token)
+        {
+            token.WaitHandle.WaitOne();
+            Stopping.SetResult();
+            Release.Wait();
+        }
+
+        public void Dispose() => Release.Dispose();
     }
 
     private sealed class RecordingExecutor : IHistoryBlockExecutor, IHistoryBlockExecutorFactory
