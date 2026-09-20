@@ -55,13 +55,32 @@ public static class BeaconStateAccessors
         return state.BlockRoots![(int)(slot % Presets.SlotsPerHistoricalRoot)];
     }
 
-    public static Hash256 GetRandaoMix(this BeaconStateFulu state, ulong epoch) =>
-        state.RandaoMixes![(int)(epoch % Presets.EpochsPerHistoricalVector)];
+    /// <summary>Spec <c>get_randao_mix</c>: returns the randao mix recorded for <paramref name="epoch"/>.</summary>
+    /// <remarks>
+    /// <c>get_randao_mix</c> is only ever called (directly, or via <see cref="GetSeed"/>) with an
+    /// epoch within <see cref="Presets.EpochsPerHistoricalVector"/> of the state's current epoch;
+    /// outside that window the vector slot has been overwritten by (or never yet holds) a different
+    /// epoch's mix, so refuse rather than silently return it.
+    /// </remarks>
+    /// <exception cref="BeaconStateException">The epoch is outside the historical-vector window.</exception>
+    public static Hash256 GetRandaoMix(this BeaconStateFulu state, ulong epoch)
+    {
+        ulong currentEpoch = state.GetCurrentEpoch();
+        ulong age = currentEpoch - epoch; // unsigned wraparound: also rejects epoch > currentEpoch
+        if (age >= Presets.EpochsPerHistoricalVector)
+            throw new BeaconStateException(
+                $"Randao mix for epoch {epoch} is not available: state is at epoch {currentEpoch}, " +
+                $"window covers the {Presets.EpochsPerHistoricalVector} epochs up to and including it");
+        return state.RandaoMixes![(int)(epoch % Presets.EpochsPerHistoricalVector)];
+    }
 
     /// <summary>Returns the shuffling seed for <paramref name="epoch"/> and the given domain type.</summary>
     public static Hash256 GetSeed(this BeaconStateFulu state, ulong epoch, ReadOnlySpan<byte> domainType)
     {
-        Hash256 mix = state.GetRandaoMix(epoch + Presets.EpochsPerHistoricalVector - Presets.MinSeedLookahead - 1);
+        // Unsigned wraparound (not "+ EpochsPerHistoricalVector"): GetRandaoMix now bounds-checks the
+        // raw epoch against the state's current epoch, so inflating it by a vector length here would
+        // push a perfectly valid call outside that window instead of just fixing up the mod index.
+        Hash256 mix = state.GetRandaoMix(epoch - Presets.MinSeedLookahead - 1);
         Span<byte> preimage = stackalloc byte[4 + 8 + 32];
         domainType.CopyTo(preimage);
         BinaryPrimitives.WriteUInt64LittleEndian(preimage[4..], epoch);
