@@ -297,11 +297,16 @@ public static class GloasForkTransition
 
         List<int> indices = [];
         for (int i = 0; i < committees.CommitteesPerSlot; i++)
-            indices.AddRange(committees.GetBeaconCommittee(slot, i).ToArray());
+            indices.AddRange(committees.GetBeaconCommittee(slot, i));
+
+        int[] selected = ComputeBalanceWeightedSelection(pre.Validators!, indices, seed, (int)Presets.PtcSize, shuffleIndices: false);
+        ulong[] ptcIndices = new ulong[selected.Length];
+        for (int i = 0; i < selected.Length; i++)
+            ptcIndices[i] = (ulong)selected[i];
 
         return new PayloadTimelinessCommittee
         {
-            Indices = [.. ComputeBalanceWeightedSelection(pre.Validators!, indices, seed, (int)Presets.PtcSize, shuffleIndices: false).Select(static i => (ulong)i)],
+            Indices = ptcIndices,
         };
     }
 
