@@ -355,15 +355,49 @@ public class PeerBandTests
             await knocking.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
 
             string knockingId = knocking.P2P.LocalPeerId!.ToString();
-            await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), token, "the refusal was never recorded");
+            // The knocking side losing its session proves the refusal ran to its disconnect, so the
+            // record check below cannot pass merely by looking before the refusal happened.
+            await WaitUntilAsync(() => knocking.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 1, token, "the refused session was not torn down");
-            PeerManager.PeerDiagnostics refused = peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(peerManager.PeerCount, Is.EqualTo(1), "an inbound session must not take the pool past MaxPeerCount");
-                Assert.That(refused.Connected, Is.False);
-                Assert.That(refused.LastDisconnectReason, Is.EqualTo("TooManyPeers"));
+                Assert.That(peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
+                    "a never-admitted id must not get a record: distinct knockers at the ceiling would otherwise evict real peers' history");
             }
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_refusal_at_the_peer_band_ceiling_leaves_the_consecutive_fault_streak_untouched(CancellationToken token)
+    {
+        Node dialed = CreateNode();
+        Node knocking = CreateNode();
+        Node local = CreateNode();
+        SetMatchingStatus(dialed, knocking, local);
+        local.Config.MaxPeerCount = 1;
+        local.Config.FaultDisconnectsBeforeBan = 2;
+
+        await using (local.P2P)
+        await using (dialed.P2P)
+        await using (knocking.P2P)
+        {
+            await dialed.P2P.StartAsync(token);
+            await knocking.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+            string knockingId = knocking.P2P.LocalPeerId!.ToString();
+            peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
+
+            await knocking.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId).LastDisconnectReason == "TooManyPeers", token, "the refusal was never recorded");
+
+            // Being turned away while we are full says nothing about the peer's behaviour: the fault
+            // before it and the fault after it must still add up to the threshold of two.
+            peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+            Assert.That(peerManager.IsBannedForTest(knockingId), Is.True);
         }
     }
 
