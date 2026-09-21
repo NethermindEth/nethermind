@@ -17,9 +17,11 @@ namespace Ethereum.ConsensusSpec.Test;
 /// <summary>
 /// Runs the consensus-specs <c>operations</c> suite against this repo's per-operation
 /// <c>BlockProcessing.Process*</c> methods, which are documented as "independently callable, matching
-/// the per-operation spec test fixtures" - this suite is exactly what that sentence describes. Scoped
-/// to the fulu fork (see <see cref="FuluDriverSupport"/>'s remarks); every other fork is reported
-/// not-implemented, named and counted, never silently skipped.
+/// the per-operation spec test fixtures" - this suite is exactly what that sentence describes. Driven
+/// for every fork in <see cref="ConsensusSpecArchive.StateTransitionForks"/> through its
+/// <see cref="ForkDriver"/>; earlier forks have no state container in this repo and are not enumerated
+/// (see <see cref="ConsensusSpecArchive"/>). Minimal-preset vectors are reported not-implemented,
+/// named and counted, never silently skipped.
 /// </summary>
 [TestFixture]
 public class OperationsTests
@@ -122,16 +124,18 @@ public class OperationsTests
     public void Vector_mainnet(OperationCase testCase) => Execute(testCase);
 
     private static void Execute(OperationCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("operations", "fulu", testCase.Preset, testCase.VectorName, () =>
+        ConsensusSpecTestSummary.RunAndRecord("operations", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
         {
             if (testCase.Preset == nameof(ConsensusPreset.Minimal))
             {
                 throw new NotImplementedInDriverException(
-                    "BeaconStateFulu's SSZ shape hard-codes mainnet-preset-scaled vector bounds (see SszStaticTests' " +
-                    "BeaconState/Attestation/SyncCommittee entries), so it cannot decode a minimal-preset pre.ssz_snappy " +
+                    "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds (see SszStaticTests' " +
+                    "BeaconState/Attestation/SyncCommittee entries), so they cannot decode a minimal-preset pre.ssz_snappy " +
                     "at all; this suite only runs for real against the mainnet preset (opt in with " +
                     "NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
             }
+
+            ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
 
             if (!Handlers.TryGetValue(testCase.OperationName, out (string File, Action<OpContext, byte[]> Apply) handler))
                 throw new NotImplementedInDriverException($"operation '{testCase.OperationName}' has no handler in this driver.");
@@ -140,10 +144,10 @@ public class OperationsTests
             if (!File.Exists(operandPath))
                 throw new NotImplementedInDriverException($"expected operand file '{handler.File}' is missing for this vector.");
 
-            BeaconStateFulu state = FuluDriverSupport.DecodeState(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
+            BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
             OpContext ctx = new(
                 state,
-                new EpochCache(),
+                driver.NewCache(),
                 FuluDriverSupport.BuildPubkeyCache(state),
                 FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath),
                 FuluDriverSupport.ReadExecutionValid(testCase.CasePath));
@@ -161,14 +165,7 @@ public class OperationsTests
                 if (thrown is not null)
                     Assert.Fail($"expected the operation to be accepted, but it threw: {thrown}");
 
-                BeaconStateFulu expectedPost = FuluDriverSupport.DecodeState(postPath);
-                Hash256 expectedRoot = FuluDriverSupport.StateRoot(expectedPost);
-                Hash256 actualRoot = FuluDriverSupport.StateRoot(ctx.State);
-                if (expectedRoot != actualRoot)
-                {
-                    List<string> diff = FuluDriverSupport.Diff(expectedPost, ctx.State, "state");
-                    Assert.Fail($"post-state root mismatch: expected {expectedRoot}, actual {actualRoot}. Diverging fields: {(diff.Count > 0 ? string.Join("; ", diff) : "(none found - roots differ anyway)")}");
-                }
+                FuluDriverSupport.AssertPostStateRoot(driver, postPath, ctx.State);
             }
             else if (thrown is null)
             {
@@ -188,24 +185,27 @@ public class OperationsTests
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
     {
-        string? operationsRoot = ConsensusSpecArchive.SuitePath(preset, "fulu", "operations");
-        if (operationsRoot is null)
-            yield break;
-
-        foreach (string opDir in Directory.GetDirectories(operationsRoot))
+        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
-            string opName = Path.GetFileName(opDir);
-            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(opDir, "pre.ssz_snappy"))
+            string? operationsRoot = ConsensusSpecArchive.SuitePath(preset, fork, "operations");
+            if (operationsRoot is null)
+                continue;
+
+            foreach (string opDir in Directory.GetDirectories(operationsRoot))
             {
-                string vectorName = $"{preset}/fulu/operations/{opName}/{Path.GetFileName(caseDir)}";
-                OperationCase testCase = new(preset.ToString(), opName, caseDir, vectorName);
-                yield return new TestCaseData(testCase).SetName(vectorName);
+                string opName = Path.GetFileName(opDir);
+                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(opDir, "pre.ssz_snappy"))
+                {
+                    string vectorName = $"{preset}/{fork}/operations/{opName}/{Path.GetFileName(caseDir)}";
+                    OperationCase testCase = new(preset.ToString(), fork, opName, caseDir, vectorName);
+                    yield return new TestCaseData(testCase).SetName(vectorName);
+                }
             }
         }
     }
 }
 
-public readonly record struct OperationCase(string Preset, string OperationName, string CasePath, string VectorName)
+public readonly record struct OperationCase(string Preset, string Fork, string OperationName, string CasePath, string VectorName)
 {
     public override string ToString() => VectorName;
 }
