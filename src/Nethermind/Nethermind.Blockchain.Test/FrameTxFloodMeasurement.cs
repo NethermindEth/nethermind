@@ -649,25 +649,38 @@ public class FrameTxFloodMeasurement
             : null;
 
     [TestCaseSource(nameof(CeilingCases))]
-    public async Task Sustainable_rejection_rate_during_block_production(ulong ceiling)
+    public async Task Sustainable_rejection_rate_during_block_production(ulong ceiling) =>
+        await MeasureProductionSustainableRate("keccak-wide", ceiling);
+
+    [TestCaseSource(nameof(CeilingCases))]
+    public async Task Sustainable_rejection_rate_during_block_production_signature_stuffed(ulong ceiling) =>
+        await MeasureProductionSustainableRate("signature-stuffed", ceiling);
+
+    private async Task MeasureProductionSustainableRate(string shape, ulong ceiling)
     {
         SkipUnlessSingleCore();
-        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
-        await BuildChain("keccak-wide", ceiling);
+        if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        await BuildChain(shape, ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling, shape: shape);
         rig.RunFor(WarmupWindow);
         double w0 = Percentile(rig.Measure(MeasureWindow), 0.50);
 
-        RunRateRamp(ceiling, "keccak-wide", "production_rate_ramp", "production_capacity", extraFields: "", w0,
-            rate => MeasureProductionUnderFlood(rig, rate));
+        Func<long>? rejectionCounter = RejectionCounterFor(shape);
+        RunRateRamp(ceiling, shape, "production_rate_ramp", "production_capacity", extraFields: "", w0,
+            rate => MeasureProductionUnderFlood(rig, rate, rejectionCounter), ProductionRates);
     }
+
+    /// <summary>The producer cliff falls inside one 50 tx/s step, so its ramp carries two extra points.</summary>
+    private static readonly int[] ProductionRates = [50, 75, 100, 125, 150, 200, 250, 300, 350, 400];
+
+    private static readonly int[] AdmissionRates = [50, 100, 150, 200, 250, 300, 350, 400];
 
     private void RunRateRamp(
         ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields, double w0,
-        Func<int, FloodOutcome> measureAtRate)
+        Func<int, FloodOutcome> measureAtRate, int[]? rateGrid = null)
     {
-        int[] rates = [50, 100, 150, 200, 250, 300, 350, 400];
+        int[] rates = rateGrid ?? AdmissionRates;
 
         // The fixture warm-up exercises block processing only, so the first flood of a ramp pays the
         // generator's cold start and can miss the lag budget at a rate the node otherwise sustains.
@@ -764,10 +777,12 @@ public class FrameTxFloodMeasurement
             measure: window => MeasureBlockProcessing(window, TimeSpan.Zero),
             rejectionCounter);
 
-    private FloodOutcome MeasureProductionUnderFlood(ProducerRig rig, int offeredRate) =>
+    private FloodOutcome MeasureProductionUnderFlood(
+        ProducerRig rig, int offeredRate, Func<long>? rejectionCounter = null) =>
         MeasureUnderFloodGeneric(offeredRate,
             warmup: () => { Thread.Sleep(FloodSettle); rig.RunFor(WarmupWindow); },
             measure: rig.Measure,
+            rejectionCounter: rejectionCounter,
             onWindowStart: rig.MarkWindowStart);
 
     /// <summary>
@@ -947,10 +962,19 @@ public class FrameTxFloodMeasurement
         return tx;
     }
 
-    private static Transaction FrameTx(int salt, ulong ceiling)
+    private static Transaction FrameTx(int salt, ulong ceiling, string shape = "keccak-wide")
     {
         byte[] data = new byte[32];
         BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(28), salt);
+
+        bool stuffed = shape == "signature-stuffed";
+
+        // Block production does not set ExecutionOptions.FrameSignaturesPreValidated, so every attempt
+        // re-runs the recoveries; the prefix still never approves, which is what drives the retry.
+        TxFrameSignature[] signatures = stuffed
+            ? FrameTxTestFrames.RecoveredSecp256k1Signatures(
+                new EthereumEcdsa(TestBlockchainIds.ChainId), StuffedSignatureCount(ceiling))
+            : [];
 
         Transaction tx = new()
         {
@@ -958,8 +982,8 @@ public class FrameTxFloodMeasurement
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = Attacker,
-            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: ceiling, UInt256.Zero, data)],
-            FrameSignatures = [],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: stuffed ? MinimalFrameGas : ceiling, UInt256.Zero, data)],
+            FrameSignatures = signatures,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
@@ -1108,7 +1132,7 @@ public class FrameTxFloodMeasurement
 
         private ProducerRig(
             IReadOnlyTxProcessingScope processingScope, IReadOnlyTxProcessorSource processorSource,
-            IReleaseSpec spec, ulong ceiling, int kRetry)
+            IReleaseSpec spec, ulong ceiling, int kRetry, string shape)
         {
             _processingScope = processingScope;
             _processorSource = processorSource;
@@ -1121,7 +1145,7 @@ public class FrameTxFloodMeasurement
                 .WithBaseFeePerGas(UInt256.Zero)
                 .WithBeneficiary(TestItem.AddressE)
                 .WithGasLimit(BlockGasLimit)
-                .WithTransactions(FrameTx(0, ceiling))
+                .WithTransactions(FrameTx(0, ceiling, shape))
                 .TestObject;
         }
 
@@ -1132,7 +1156,7 @@ public class FrameTxFloodMeasurement
         /// </summary>
         /// <remarks>The returned rig owns the processing scope and its source; nothing else does, so a throw
         /// before the rig is returned has to close them.</remarks>
-        public static ProducerRig Create(FloodTestBlockchain chain, int kRetry, ulong ceiling)
+        public static ProducerRig Create(FloodTestBlockchain chain, int kRetry, ulong ceiling, string shape = "keccak-wide")
         {
             ISpecProvider specProvider = chain.SpecProvider;
             IReleaseSpec spec = specProvider.GenesisSpec;
@@ -1147,7 +1171,7 @@ public class FrameTxFloodMeasurement
                 CountingAdapter adapter = new(
                     new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), measureBurn: false);
 
-                ProducerRig rig = new(scope, source, spec, ceiling, kRetry);
+                ProducerRig rig = new(scope, source, spec, ceiling, kRetry, shape);
 
                 IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
                 balManager.Enabled.Returns(false);
