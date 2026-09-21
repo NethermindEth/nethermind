@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Sync;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
@@ -28,7 +31,7 @@ public class CustodySamplingAvailabilityTests
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
         RecordingColumnSource columns = new(chain, []);
-        CustodySamplingAvailability rule = new(new FixedCustodySource(null), columns);
+        CustodySamplingAvailability rule = new(new FixedCustodySource(null), columns, chain.ClockAtEpoch(0));
 
         bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
@@ -43,7 +46,7 @@ public class CustodySamplingAvailabilityTests
     public void Fails_closed_while_the_node_identity_is_unknown()
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
-        CustodySamplingAvailability rule = new(new FixedCustodySource(null), new RecordingColumnSource(chain, All()));
+        CustodySamplingAvailability rule = new(new FixedCustodySource(null), new RecordingColumnSource(chain, All()), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False);
     }
@@ -54,7 +57,7 @@ public class CustodySamplingAvailabilityTests
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
         RecordingColumnSource columns = new(chain, custody.SampledColumns);
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), columns);
+        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), columns, chain.ClockAtEpoch(0));
 
         bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
 
@@ -73,7 +76,7 @@ public class CustodySamplingAvailabilityTests
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != custody.CustodyColumns[^1])));
+        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != custody.CustodyColumns[^1])), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False);
     }
@@ -84,7 +87,7 @@ public class CustodySamplingAvailabilityTests
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
         ulong sampledOnly = custody.SampledColumns.First(c => !custody.CustodyColumns.Contains(c));
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != sampledOnly)));
+        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns.Where(c => c != sampledOnly)), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False, "das-core: sampling succeeds only if every selected column is retrieved");
     }
@@ -98,7 +101,7 @@ public class CustodySamplingAvailabilityTests
         byte[] cell = tampered.Column![0].AsSpan().ToArray();
         cell[^1] ^= 0x01;
         tampered.Column[0] = SszBlobCell.FromSpan(cell);
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns));
+        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False, "the source only says it holds a column; the rule must still prove it");
     }
@@ -112,9 +115,52 @@ public class CustodySamplingAvailabilityTests
         // still verify against its own header, so only the per-index cross-check can reject it.
         SszKzgCommitment[] blockCommitments = chain.Block.Message!.Body!.BlobKzgCommitments!;
         chain.Block.Message.Body.BlobKzgCommitments = [blockCommitments[1], blockCommitments[0]];
-        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns));
+        CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns), chain.ClockAtEpoch(0));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False);
+    }
+
+    [Test]
+    public void Below_the_availability_window_a_blob_block_is_available_without_identity_or_columns()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        RecordingColumnSource columns = new(chain, []);
+        CustodySamplingAvailability rule = new(new FixedCustodySource(null), columns, chain.ClockAtEpoch(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 1));
+
+        bool available = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(available, Is.True, "the network no longer guarantees to serve this epoch's columns, so none can be demanded");
+            Assert.That(columns.Requested, Is.Empty, "the window is decided before any column is looked up");
+        });
+    }
+
+    /// <summary>
+    /// The window is a wall-clock window, re-read at every check: one rule instance must change its
+    /// verdict on the same block as the clock advances, and epoch 0 stays inside the window until
+    /// the clock is strictly more than <c>MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS</c> epochs past it.
+    /// </summary>
+    [Test]
+    public void The_window_follows_the_wall_clock_at_every_check()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)chain.Spec.GenesisTime).UtcDateTime);
+        CustodySamplingAvailability rule = new(new FixedCustodySource(null), new RecordingColumnSource(chain, []), new SlotClock(chain.Spec, timestamper));
+        TimeSpan epoch = TimeSpan.FromSeconds(chain.Spec.SlotsPerEpoch * chain.Spec.SecondsPerSlot);
+
+        bool atGenesis = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
+        timestamper.Add(epoch * Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests);
+        bool atTheWindowEdge = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
+        timestamper.Add(epoch);
+        bool oneEpochPast = rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(atGenesis, Is.False, "inside the window, with no identity, the rule fails closed");
+            Assert.That(atTheWindowEdge, Is.False, "epoch 0 is the window's first epoch when the clock reads exactly the window width");
+            Assert.That(oneEpochPast, Is.True, "one epoch later the same instance sees the block leave the window");
+        });
     }
 
     private static IEnumerable<ulong> All() => Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(c => (ulong)c);

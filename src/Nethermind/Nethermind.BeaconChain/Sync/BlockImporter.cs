@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -61,6 +62,7 @@ public sealed class BlockImporter : IBlockImporter
 
     private readonly PostStateCache _states;
     private readonly ForkChoiceRunner _runner;
+    private readonly ForkChoiceSnapshotHolder? _forkChoiceSnapshots;
 
     /// <summary>Imported-but-not-finalized block roots and their slots, for store pruning at finalization.</summary>
     private readonly Dictionary<Hash256, ulong> _unfinalized = [];
@@ -73,6 +75,7 @@ public sealed class BlockImporter : IBlockImporter
     private Hash256 _canonicalHead;
     private ulong _lastSnapshotEpoch;
 
+    /// <param name="forkChoiceSnapshots">Where <see cref="ComputeHead"/> publishes a copy of the fork-choice store for readers off the import thread; <c>null</c> publishes nothing.</param>
     public BlockImporter(
         BeaconChainSpec spec,
         BeaconChainStore store,
@@ -83,7 +86,8 @@ public sealed class BlockImporter : IBlockImporter
         IDataAvailabilityRule availability,
         BeaconStateFulu anchorState,
         SignedBeaconBlock anchorBlock,
-        Hash256 anchorRoot)
+        Hash256 anchorRoot,
+        ForkChoiceSnapshotHolder? forkChoiceSnapshots = null)
     {
         _spec = spec;
         _store = store;
@@ -92,6 +96,7 @@ public sealed class BlockImporter : IBlockImporter
         _config = config;
         _logger = logManager.GetClassLogger<BlockImporter>();
         _availability = availability;
+        _forkChoiceSnapshots = forkChoiceSnapshots;
 
         _states = new PostStateCache(store, spec, anchorRoot, anchorState);
         _runner = new ForkChoiceRunner(spec, anchorState, anchorBlock.Message!, _states, pubkeys);
@@ -269,6 +274,8 @@ public sealed class BlockImporter : IBlockImporter
     public HeadView ComputeHead()
     {
         Hash256 head = _runner.GetHead();
+        // After GetHead, so the copy carries the weights this head was chosen by.
+        _forkChoiceSnapshots?.Current = _runner.Snapshot();
         AdoptHeadLineage(head);
         UpdateCanonicalIndex(head);
         return new HeadView(
@@ -511,6 +518,11 @@ public sealed class BlockImporter : IBlockImporter
 /// Supplies the node id the custody columns derive from; <c>null</c> (the P2P-less configuration
 /// some tests run) leaves the identity unknown, so no blob-carrying block is ever available.
 /// </param>
+/// <param name="clock">
+/// The wall clock the <see cref="DataAvailabilityBoundary"/> is measured against; <c>null</c> (tests
+/// that construct the factory by hand) means the system clock, which is what the container supplies.
+/// </param>
+/// <param name="forkChoiceSnapshots">Where every importer publishes its fork-choice snapshots; <c>null</c> publishes nothing.</param>
 public sealed class BlockImporterFactory(
     BeaconChainSpec spec,
     BeaconChainStore store,
@@ -519,8 +531,12 @@ public sealed class BlockImporterFactory(
     IBeaconChainConfig config,
     ILogManager logManager,
     DataColumnSidecarPool pool,
-    BeaconDiscovery? discovery = null) : IBlockImporterFactory
+    BeaconDiscovery? discovery = null,
+    SlotClock? clock = null,
+    ForkChoiceSnapshotHolder? forkChoiceSnapshots = null) : IBlockImporterFactory
 {
+    private readonly SlotClock _clock = clock ?? new SlotClock(spec, Timestamper.Default);
+
     public IBlockImporter Create(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot) =>
         new BlockImporter(
             spec,
@@ -529,9 +545,10 @@ public sealed class BlockImporterFactory(
             engine,
             config,
             logManager,
-            new CustodySamplingAvailability(new DiscoveryNodeCustodySource(discovery), new DataColumnPoolSource(pool)),
+            new CustodySamplingAvailability(new DiscoveryNodeCustodySource(discovery), new DataColumnPoolSource(pool), _clock),
             anchorState,
             anchorBlock,
-            anchorRoot);
+            anchorRoot,
+            forkChoiceSnapshots);
 
 }

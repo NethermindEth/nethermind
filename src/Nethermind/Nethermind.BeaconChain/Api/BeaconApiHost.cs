@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
@@ -38,7 +39,8 @@ public sealed class BeaconApiHost(
     ILogManager logManager,
     BeaconP2P? p2p = null,
     PeerManager? peerManager = null,
-    BeaconDiscovery? discovery = null) : IAsyncDisposable
+    BeaconDiscovery? discovery = null,
+    ForkChoiceSnapshotHolder? forkChoiceSnapshots = null) : IAsyncDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconApiHost>();
     private WebApplication? _app;
@@ -57,7 +59,7 @@ public sealed class BeaconApiHost(
         builder.WebHost.UseUrls($"http://{apiConfig.Host}:{apiConfig.Port}");
 
         WebApplication app = builder.Build();
-        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery);
+        BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots);
         BeaconApiEndpoints.MapAll(app, ctx);
 
         await app.StartAsync(token);
