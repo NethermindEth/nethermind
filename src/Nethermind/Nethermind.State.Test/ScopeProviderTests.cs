@@ -845,8 +845,6 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
-        // A selfdestruct that reverts within its transaction: the clear leaves a conservative mark, so the caches end up
-        // holding nothing of the slot rather than the value it had before the block.
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
         {
             ws.Get(in SlotA1, out _);
@@ -862,7 +860,8 @@ public class ScopeProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(carried, Is.True);
-            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False, "asserted before the read below caches it again");
+            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }));
             consumer.Get(in SlotA1, out UInt256 storageValue2);
             Assert.That(storageValue2.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 7 }));
             Assert.That(CachedAccount(caches, TestItem.AddressA).StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash), "the account keeps its storage");
