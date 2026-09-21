@@ -242,8 +242,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (admitted.Count == 0) return;
 
             int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
-            StrongBox<int> pendingSenders = new(0);
-            DiscoveryRound roundState = new(block, parent, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates, pendingSenders);
+            DiscoveryRound roundState = new(block, parent, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates, cancellationToken);
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, admitted.Count),
@@ -269,10 +268,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (!WarmDiscoveredStorage(parent, roundCells, cancellationToken)) return;
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }
-            else if (pendingSenders.Value == 0 && (deferred.Count == 0 || nextRoundCandidates.Count == admitted.Count))
+            else if (deferred.Count == 0 || nextRoundCandidates.Count == admitted.Count)
             {
                 // No progress and no budget freed for the deferred — the next round would repeat this one.
-                // A candidate still waiting on its sender is the exception: the next round may find it there.
                 return;
             }
 
@@ -324,7 +322,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PooledSet<StorageCell> cells,
         Lock cellsLock,
         List<(int Index, Transaction Tx)> nextRoundCandidates,
-        StrongBox<int> pendingSenders)
+        CancellationToken cancellationToken)
     {
         public readonly Block Block = block;
         public readonly BlockHeader Parent = parent;
@@ -334,7 +332,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly PooledSet<StorageCell> Cells = cells;
         public readonly Lock CellsLock = cellsLock;
         public readonly List<(int Index, Transaction Tx)> NextRoundCandidates = nextRoundCandidates;
-        public readonly StrongBox<int> PendingSenders = pendingSenders;
+        public readonly CancellationToken CancellationToken = cancellationToken;
+    }
+
+    /// <summary>Waits for a candidate's sender; <c>false</c> once the main thread has passed it or the block is done.</summary>
+    private bool WaitForSender((int Index, Transaction Tx) candidate, DiscoveryRound round)
+    {
+        long start = Stopwatch.GetTimestamp();
+        SpinWait spinner = default;
+        while (candidate.Tx.SenderAddress is null)
+        {
+            // Once the main thread is there, discovering its reads no longer helps and only contends.
+            if (round.CancellationToken.IsCancellationRequested || MainThreadTxIndex >= candidate.Index) return false;
+
+            if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
+            else if (SleepUnlessDone(round.CancellationToken)) return false;
+        }
+
+        return true;
     }
 
     private void DiscoverTransactionStorageReads((int Index, Transaction Tx) candidate, DiscoveryRound round)
@@ -343,17 +358,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (MainThreadTxIndex >= candidate.Index) return;
 
         Transaction tx = candidate.Tx;
-        if (tx.SenderAddress is null)
-        {
-            // Not recovered yet: carry the candidate into the next round rather than dropping it for the block.
-            using (round.CellsLock.EnterScope())
-            {
-                round.NextRoundCandidates.Add(candidate);
-                round.PendingSenders.Value++;
-            }
-
-            return;
-        }
+        // Recovery hands senders out in ascending order and so reaches the heaviest transactions last, which
+        // are exactly the ones selected here. Wait for this one rather than spend a round on it: rounds are
+        // the chained-read depth budget, and six of them elapse well inside the recovery latency.
+        if (tx.SenderAddress is null && !WaitForSender(candidate, round)) return;
 
         IReadOnlyTxProcessorSource env = _envPool.Get();
         try
@@ -1188,7 +1196,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 // Nothing left, or the main thread has executed everything still pending — warming an account
                 // it has already read only contends with it. A sender that never arrives exits here too.
-                if (lastPending < 0 || PreWarmer.MainThreadTxIndex >= lastPending) return false;
+                // MainThreadTxIndex only counts block transactions, so an inclusion-list index waits on the
+                // block's last one instead, which is when warming it stops being useful anyway.
+                int lastPendingTx = Math.Min(lastPending, block.Transactions.Length - 1);
+                if (lastPending < 0 || PreWarmer.MainThreadTxIndex >= lastPendingTx) return false;
 
                 if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
                 else if (SleepUnlessDone(cancellationToken)) return false;
