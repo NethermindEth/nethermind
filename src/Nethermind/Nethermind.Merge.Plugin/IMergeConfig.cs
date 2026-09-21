@@ -81,7 +81,7 @@ public interface IMergeConfig : IConfig
 
             A floor rather than a quota: the cohort gets this share or the share a uniform draw would have given it, whichever is larger, so a share below `InclusionListOldestSenderCount` divided by the pool size changes nothing.
 
-            A non-zero share raises the odds that a transaction a builder keeps passing over reaches a list, but it also weakens the list against a flooded pool, since pending age costs an attacker nothing but time. Age is measured from when the pool accepted the sender's next pending transaction, so replacing it — a fee bump, for instance — restamps it as newly arrived and drops the sender out of the cohort. Measure before enabling it on a live network.
+            A non-zero share raises the odds that a transaction a builder keeps passing over reaches a list, but it also weakens the list against a flooded pool: crowding the cohort out costs `InclusionListOldestSenderCount` funded accounts, and a transaction offering no tip above the base fee stays ready without ever being worth mining, so holding those places costs nothing but time. Age is measured from when the pool accepted the sender's next pending transaction, so replacing it — a fee bump, for instance — restamps it as newly arrived and drops the sender out of the cohort. Measure before enabling it on a live network.
             """, DefaultValue = "0", HiddenFromDocs = true)]
     double InclusionListOldestSenderShare { get; set; }
 
