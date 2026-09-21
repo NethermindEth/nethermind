@@ -12,9 +12,9 @@ namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 /// <summary>
 /// Subnet derivation for a known (fixed) node id. Mainnet's <c>NUMBER_OF_COLUMNS ==
 /// NUMBER_OF_CUSTODY_GROUPS == 128</c> coincidence (see <c>CustodyGroupsTests</c>) makes
-/// group == column == subnet, so the expected subnets below are independently recomputed straight
-/// from <see cref="CustodyGroups.GetCustodyGroups"/> rather than copied from <see cref="LocalCustody"/>'s
-/// own output.
+/// group == column == subnet, so the expected subnets below are the spec's
+/// <c>get_custody_groups</c> result for the raw id bytes <c>00..1f</c>, computed from the pyspec
+/// algorithm outside this code base rather than through <see cref="CustodyGroups.GetCustodyGroups"/>.
 /// </summary>
 public class LocalCustodyTests
 {
@@ -23,7 +23,7 @@ public class LocalCustodyTests
     [Test]
     public void Derives_the_requested_count_of_distinct_sorted_subnets_for_a_known_node_id()
     {
-        ulong[] expectedGroups = CustodyGroups.GetCustodyGroups(KnownNodeId, Eip7594DasConstants.CustodyRequirement);
+        ulong[] expectedGroups = [57, 84, 105, 113];
 
         LocalCustody custody = new(KnownNodeId, Eip7594DasConstants.CustodyRequirement);
 
@@ -47,7 +47,11 @@ public class LocalCustodyTests
         LocalCustody first = new(KnownNodeId, Eip7594DasConstants.SamplesPerSlot);
         LocalCustody second = new(KnownNodeId, Eip7594DasConstants.SamplesPerSlot);
 
-        Assert.That(second.Subnets, Is.EqualTo(first.Subnets));
+        Assert.Multiple(() =>
+        {
+            Assert.That(first.Subnets, Is.EqualTo(new ulong[] { 40, 57, 61, 84, 102, 105, 113, 120 }));
+            Assert.That(second.Subnets, Is.EqualTo(first.Subnets));
+        });
     }
 
     [Test]
