@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -265,6 +266,52 @@ internal static class GloasTestFixtures
         credentials[0] = Presets.BlsWithdrawalPrefix;
         return new Hash256(credentials);
     }
+
+    /// <summary>
+    /// An aggregate over committee <paramref name="committeeIndex"/> at <c>data.Slot</c> with every
+    /// member attesting, signed with their <see cref="ValidatorKey"/>s when <paramref name="sign"/>
+    /// (a state still carrying placeholder pubkeys can only be processed unverified).
+    /// </summary>
+    public static AttestationGloas CommitteeAttestation(BeaconStateGloas state, AttestationData data, CommitteeCache committees, int committeeIndex, bool sign)
+    {
+        int[] committee = committees.GetBeaconCommittee(data.Slot, committeeIndex).ToArray();
+        BitArray committeeBits = new(Presets.MaxCommitteesPerSlot);
+        committeeBits[committeeIndex] = true;
+
+        BlsSignature signature = default;
+        if (sign)
+        {
+            Hash256 domain = state.GetDomain(DomainType.BeaconAttester, data.Target!.Epoch);
+            signature = AggregateSignature(Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain), committee);
+        }
+
+        return new AttestationGloas
+        {
+            AggregationBits = new BitArray(committee.Length, true),
+            Data = data,
+            Signature = signature,
+            CommitteeBits = committeeBits,
+        };
+    }
+
+    /// <summary>The same aggregate in the Fulu container, for the differential tests.</summary>
+    public static Attestation ToFuluAttestation(AttestationGloas attestation) => new()
+    {
+        AggregationBits = attestation.AggregationBits,
+        Data = attestation.Data,
+        Signature = attestation.Signature,
+        CommitteeBits = attestation.CommitteeBits,
+    };
+
+    /// <summary>A vote at <paramref name="slot"/> for <paramref name="headRoot"/>, sourced from the checkpoint the state has justified for <paramref name="targetEpoch"/> and targeting that epoch's boundary root.</summary>
+    public static AttestationData VoteFor(BeaconStateGloas state, ulong slot, ulong targetEpoch, Hash256 headRoot, ulong index = 0) => new()
+    {
+        Slot = slot,
+        Index = index,
+        BeaconBlockRoot = headRoot,
+        Source = targetEpoch == state.GetCurrentEpoch() ? state.CurrentJustifiedCheckpoint : state.PreviousJustifiedCheckpoint,
+        Target = new Checkpoint { Epoch = targetEpoch, Root = state.GetBlockRoot(targetEpoch) },
+    };
 
     /// <summary>The aggregate of each listed validator's signature over <paramref name="signingRoot"/>; a repeated index signs (and so must be aggregated) once per occurrence.</summary>
     public static BlsSignature AggregateSignature(Hash256 signingRoot, IReadOnlyList<int> validatorIndices)
