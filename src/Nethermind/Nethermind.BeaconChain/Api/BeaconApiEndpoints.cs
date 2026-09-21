@@ -38,7 +38,11 @@ internal static class BeaconApiEndpoints
             }
             catch (Exception e) when (!httpCtx.RequestAborted.IsCancellationRequested)
             {
-                if (logger.IsError) logger.Error($"Beacon API handler failed for {httpCtx.Request.Method} {httpCtx.Request.Path}", e);
+                if (logger.IsError)
+                {
+                    string outcome = httpCtx.Response.HasStarted ? "; the response had already started, so the connection is aborted" : "";
+                    logger.Error($"Beacon API handler failed for {httpCtx.Request.Method} {httpCtx.Request.Path}{outcome}", e);
+                }
                 await ApiErrors.Write(httpCtx, StatusCodes.Status500InternalServerError, "Internal server error");
             }
         });
