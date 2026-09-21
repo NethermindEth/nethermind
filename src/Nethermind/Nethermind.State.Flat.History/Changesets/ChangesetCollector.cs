@@ -14,6 +14,9 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// each slot, then packs them once.</summary>
 internal sealed class ChangesetCollector
 {
+    private const int MaxRetainedEntries = 512;
+    private const int MaxRetainedPacked = 64 * 1024;
+
     private readonly Dictionary<AddressAsKey, AccountChange> _accounts = [];
     private readonly Dictionary<StorageCell, byte[]> _storage = [];
     private byte[] _packed = [];
@@ -75,10 +78,19 @@ internal sealed class ChangesetCollector
         return buffer.WithoutLeadingZeros();
     }
 
+    /// <summary>Clears the collector, keeping its dictionaries warm for the next transaction in this position. What
+    /// grew past what a transaction normally writes is let go of instead: the capture lives as long as the process and
+    /// holds one collector per position, so retaining every position's high-water mark would be unbounded in practice.</summary>
     public void Reset()
     {
         _accounts.Clear();
+        if (_accounts.EnsureCapacity(0) > MaxRetainedEntries) _accounts.TrimExcess();
         _storage.Clear();
+        if (_storage.EnsureCapacity(0) > MaxRetainedEntries) _storage.TrimExcess();
+        if (_packed.Length <= MaxRetainedPacked) return;
+
+        ArrayPool<byte>.Shared.Return(_packed);
+        _packed = [];
     }
 
     public void Release()
