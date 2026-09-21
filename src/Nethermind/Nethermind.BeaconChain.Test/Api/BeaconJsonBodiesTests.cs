@@ -40,7 +40,7 @@ public class BeaconJsonBodiesTests
     [SetUp]
     public void ResetSharedState()
     {
-        Metrics.BeaconChainElInSync = 0;
+        _host.StatusHolder.ExecutionInSync = false;
         _host.SetStatus(Hash256.Zero, Hash256.Zero, 0);
     }
 
@@ -137,24 +137,17 @@ public class BeaconJsonBodiesTests
         _host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(slot, BeaconApiTestHost.FilledHash(0x00)));
         _host.Store.SetCanonicalRoot(slot, root);
 
-        try
-        {
-            Metrics.BeaconChainElInSync = 0;
-            _host.SetStatus(root, Hash256.Zero, 0);
-            JsonElement optimistic = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
-            Assert.That(optimistic.GetProperty("execution_optimistic").GetBoolean(), Is.True, "the EL has not validated the head: a caller must not treat this body as verified");
-            Assert.That(optimistic.GetProperty("finalized").GetBoolean(), Is.False);
+        _host.StatusHolder.ExecutionInSync = false;
+        _host.SetStatus(root, Hash256.Zero, 0);
+        JsonElement optimistic = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
+        Assert.That(optimistic.GetProperty("execution_optimistic").GetBoolean(), Is.True, "the EL has not validated the head: a caller must not treat this body as verified");
+        Assert.That(optimistic.GetProperty("finalized").GetBoolean(), Is.False);
 
-            Metrics.BeaconChainElInSync = 1;
-            _host.SetStatus(root, root, 412_501);
-            JsonElement confirmed = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
-            Assert.That(confirmed.GetProperty("execution_optimistic").GetBoolean(), Is.False, "the orchestrator flipped the in-sync gauge after a VALID verdict");
-            Assert.That(confirmed.GetProperty("finalized").GetBoolean(), Is.True, "epoch 412,500 is at or before finalized epoch 412,501");
-        }
-        finally
-        {
-            Metrics.BeaconChainElInSync = 0;
-        }
+        _host.StatusHolder.ExecutionInSync = true;
+        _host.SetStatus(root, root, 412_501);
+        JsonElement confirmed = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
+        Assert.That(confirmed.GetProperty("execution_optimistic").GetBoolean(), Is.False, "the orchestrator flipped the in-sync flag after a VALID verdict");
+        Assert.That(confirmed.GetProperty("finalized").GetBoolean(), Is.True, "epoch 412,500 is at or before finalized epoch 412,501");
     }
 
     [Test]

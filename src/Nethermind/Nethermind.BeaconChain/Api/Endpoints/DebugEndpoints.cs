@@ -78,7 +78,7 @@ internal static class DebugEndpoints
         BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(state.Slot));
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
         return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
-            ResponseEnvelope.ExecutionOptimistic(),
+            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
             ResponseEnvelope.IsFinalized(ctx, state.Slot, resolved.Root),
             s => BeaconJsonWriter.WriteBeaconStateAsync(s, state));
     }

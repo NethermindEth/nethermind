@@ -82,6 +82,8 @@ public class BeaconSyncOrchestratorTests
                 (goodHead.HeadExecutionHash!, goodHead.JustifiedExecutionHash!, goodHead.FinalizedExecutionHash!),
             ]), "FCU retried exactly once with the recomputed head");
             Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(goodHead.HeadRoot), "status advertises the recovered head");
+            Assert.That(harness.StatusHolder.JustifiedRoot, Is.EqualTo(goodHead.Justified.Root), "status carries the recovered head's justified root");
+            Assert.That(harness.StatusHolder.ExecutionInSync, Is.True, "the retried FCU returned VALID");
         }
     }
 
