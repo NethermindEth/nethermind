@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -160,6 +161,7 @@ public class SeedFlatHistoryGenesisTests
             new TestHardwareInfo(32L * 1024 * 1024 * 1024),
             new Lazy<IPersistence>(() => flatPersistence),
             new Lazy<IDb>(() => new MemDb()),
+            Substitute.For<ISyncConfig>(),
             LimboLogs.Instance);
     }
 }

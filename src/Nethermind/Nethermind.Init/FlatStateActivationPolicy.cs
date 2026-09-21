@@ -4,7 +4,9 @@
 using System;
 using System.Linq;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -22,17 +24,18 @@ public sealed class FlatStateActivationPolicy(
     IHardwareInfo hardwareInfo,
     Lazy<IPersistence> flatPersistence,
     [KeyFilter(DbNames.State)] Lazy<IDb> patriciaStateDb,
+    ISyncConfig syncConfig,
     ILogManager logManager)
 {
     private static readonly long LowMemoryLayoutThreshold = 16.GiB;
 
-    private readonly bool _result = Compute(flatDbConfig, hardwareInfo, flatPersistence, patriciaStateDb, logManager.GetClassLogger<FlatStateActivationPolicy>());
+    private readonly bool _result = Compute(flatDbConfig, hardwareInfo, flatPersistence, patriciaStateDb, syncConfig, logManager.GetClassLogger<FlatStateActivationPolicy>());
 
     public bool ShouldTurnOnFlatDb() => _result;
 
-    private static bool Compute(IFlatDbConfig flatDbConfig, IHardwareInfo hardwareInfo, Lazy<IPersistence> flatPersistence, Lazy<IDb> patriciaStateDb, ILogger logger)
+    private static bool Compute(IFlatDbConfig flatDbConfig, IHardwareInfo hardwareInfo, Lazy<IPersistence> flatPersistence, Lazy<IDb> patriciaStateDb, ISyncConfig syncConfig, ILogger logger)
     {
-        bool activateFlat = DecideBackend(flatDbConfig, flatPersistence, patriciaStateDb, logger);
+        bool activateFlat = DecideBackend(flatDbConfig, flatPersistence, patriciaStateDb, syncConfig, logger);
         if (activateFlat) AdviseLayoutForMemory(flatDbConfig, hardwareInfo, logger);
         return activateFlat;
     }
@@ -49,30 +52,55 @@ public sealed class FlatStateActivationPolicy(
             $"Set '--FlatDb.Layout {nameof(FlatLayout.FlatInTrie)}' to switch (requires a fresh flat DB sync).");
     }
 
-    private static bool DecideBackend(IFlatDbConfig flatDbConfig, Lazy<IPersistence> flatPersistence, Lazy<IDb> patriciaStateDb, ILogger logger)
+    private static bool DecideBackend(IFlatDbConfig flatDbConfig, Lazy<IPersistence> flatPersistence, Lazy<IDb> patriciaStateDb, ISyncConfig syncConfig, ILogger logger)
     {
+        using IPersistence.IPersistenceReader reader = flatPersistence.Value.CreateReader();
+
         if (!flatDbConfig.Enabled)
         {
+            if (reader.CurrentState != StateId.PreGenesis)
+            {
+                throw new InvalidConfigurationException(
+                    "Refusing --FlatDb.Enabled=false on an existing flat DB: that would discard the complete flat state and full-resync. Keep FlatDb.Enabled=true, or start from a fresh datadir.",
+                    -1);
+            }
+
             if (logger.IsInfo) logger.Info("State backend: patricia (flat DB disabled).");
             return false;
         }
-        using IPersistence.IPersistenceReader reader = flatPersistence.Value.CreateReader();
+
+        bool activateFlat;
         if (reader.CurrentState != StateId.PreGenesis)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (existing flat DB detected).");
-            return true;
+            activateFlat = true;
         }
-        if (flatDbConfig.ImportFromPruningTrieState)
+        else if (flatDbConfig.ImportFromPruningTrieState)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (importing from patricia trie state).");
-            return true;
+            activateFlat = true;
         }
-        if (patriciaStateDb.Value.GetAllKeys().Any())
+        else if (patriciaStateDb.Value.GetAllKeys().Any())
         {
             if (logger.IsInfo) logger.Info("State backend: patricia (existing patricia state detected).");
-            return false;
+            activateFlat = false;
         }
-        if (logger.IsInfo) logger.Info("State backend: flat (fresh node, flat DB enabled).");
-        return true;
+        else
+        {
+            if (logger.IsInfo) logger.Info("State backend: flat (fresh node, flat DB enabled).");
+            activateFlat = true;
+        }
+
+        if (activateFlat
+            && syncConfig.FastSync
+            && !syncConfig.SnapSync
+            && !flatDbConfig.ImportFromPruningTrieState)
+        {
+            throw new InvalidConfigurationException(
+                "FlatDb with FastSync requires SnapSync. Legacy TreeSync on Flat leaves permanent holes (HeaderGasUsedMismatch). Set Sync.SnapSync=true, or FlatDb.Enabled=false to stay on patricia.",
+                -1);
+        }
+
+        return activateFlat;
     }
 }

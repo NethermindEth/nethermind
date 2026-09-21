@@ -3,6 +3,8 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
@@ -74,9 +76,76 @@ public class FlatStateActivationPolicyTests
         Assert.That(warned, Is.EqualTo(expectWarn));
     }
 
+    [Test]
+    public void Fresh_flat_with_fast_sync_and_no_snap_is_refused()
+    {
+        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreatePolicy(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: false,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            fastSync: true,
+            snapSync: false))!;
+
+        Assert.That(ex.Message, Does.Contain("SnapSync").And.Contain("FlatDb.Enabled"));
+    }
+
+    [Test]
+    public void Fresh_flat_with_fast_and_snap_is_allowed()
+    {
+        FlatStateActivationPolicy policy = CreatePolicy(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: false,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            fastSync: true,
+            snapSync: true);
+
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+    }
+
+    [Test]
+    public void Import_from_patricia_with_fast_sync_and_no_snap_is_allowed()
+    {
+        FlatStateActivationPolicy policy = CreatePolicy(
+            enabled: true,
+            importFromPruning: true,
+            flatHasData: false,
+            patriciaHasData: true,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            fastSync: true,
+            snapSync: false);
+
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+    }
+
+    [Test]
+    public void Disabling_flat_on_an_existing_flat_db_is_refused()
+    {
+        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreatePolicy(
+            enabled: false,
+            importFromPruning: false,
+            flatHasData: true,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance))!;
+
+        Assert.That(ex.Message, Does.Contain("FlatDb.Enabled").And.Contain("existing"));
+    }
+
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
-        FlatLayout layout, long availableMemoryBytes, ILogManager logManager)
+        FlatLayout layout, long availableMemoryBytes, ILogManager logManager,
+        bool fastSync = false, bool snapSync = false)
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(enabled);
@@ -92,11 +161,16 @@ public class FlatStateActivationPolicyTests
         if (patriciaHasData)
             patriciaDb.Set([1], [1]);
 
+        ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
+        syncConfig.FastSync.Returns(fastSync);
+        syncConfig.SnapSync.Returns(snapSync);
+
         return new FlatStateActivationPolicy(
             flatDbConfig,
             new TestHardwareInfo(availableMemoryBytes),
             new Lazy<IPersistence>(() => flatPersistence),
             new Lazy<IDb>(() => patriciaDb),
+            syncConfig,
             logManager);
     }
 }

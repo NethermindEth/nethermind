@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.EthStats;
+using Nethermind.State.Flat;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
@@ -58,6 +59,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("archive")]
     public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
+
+    [TestCase("poacore.json")]
+    [TestCase("poacore_validator.json")]
+    public void Poacore_non_archive_keeps_patricia(string config) =>
+        Test<IFlatDbConfig, bool>(config, static c => c.Enabled, false);
 
     [TestCase("archive", true)]
     [TestCase("fast", true)]
