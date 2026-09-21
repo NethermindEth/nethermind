@@ -814,7 +814,7 @@
           "Nethermind.Crypto.Bls": "[1.1.0, )",
           "Nethermind.Crypto.SecP256r1": "[1.1.0, )",
           "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.GmpBindings": "[1.0.3, )",
+          "Nethermind.GmpBindings": "[2.0.0, )",
           "Nethermind.MclBindings": "[2.0.0, )",
           "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
           "Nethermind.Specs": "[1.40.0-unstable, )"
@@ -1545,9 +1545,9 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.Libp2p": {
         "type": "CentralTransitive",
@@ -1781,9 +1781,9 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
@@ -1871,9 +1871,9 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
@@ -1961,9 +1961,9 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
@@ -2051,9 +2051,9 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
@@ -2141,9 +2141,9 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",

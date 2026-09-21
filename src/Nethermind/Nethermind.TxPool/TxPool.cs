@@ -3,6 +3,7 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -31,6 +32,7 @@ using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Network")]
 
 namespace Nethermind.TxPool
 {
@@ -38,7 +40,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IAsyncDisposable
+    public class TxPool : ITxPool, IAsyncDisposable, IRecyclableTxPool
     {
         private const int RevalidationAbandonmentWarningThreshold = 3;
         private const int MarkerPublicationDeferralWarningThreshold = 3;
@@ -46,6 +48,7 @@ namespace Nethermind.TxPool
         private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
 
         private readonly IIncomingTxFilter[] _preHashFilters;
+        private readonly IIncomingTxFilter[] _hashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
 
         private readonly HashCache _hashCache = new();
@@ -282,10 +285,14 @@ namespace Nethermind.TxPool
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger)
             ];
 
-            List<IIncomingTxFilter> postHashFilters =
+            _hashFilters =
             [
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
+            ];
+
+            List<IIncomingTxFilter> postHashFilters =
+            [
                 new MalformedTxFilter(validator, _specChangeTxValidator, ecdsa, _logger),
                 new FrameTxMisplacedExpiryFrameFilter(_logger), // before ExpiredFrameTxFilter: leaves the deadline readable from the leading frame alone
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
@@ -443,7 +450,7 @@ namespace Nethermind.TxPool
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
             => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
-        public bool TryGetPendingBlobCellMask(Hash256 hash, out BlobCellMask availableMask)
+        public bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask)
             => _blobTransactions.TryGetAvailableCellMask(hash, out availableMask);
 
         public bool TryGetPendingBlobCellMetadata(
@@ -1424,7 +1431,24 @@ namespace Nethermind.TxPool
         }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
+            => SubmitTx(tx, handlingOptions, ownsTransaction: false, out _);
+
+        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle)
         {
+            // A derived pool can reimplement ITxPool and retain transactions on rejection.
+            if (GetType() != typeof(TxPool))
+            {
+                canRecycle = false;
+                return ((ITxPool)this).SubmitTx(tx, TxHandlingOptions.None);
+            }
+            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle);
+        }
+
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle)
+        {
+            canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
+            if (!canRecycle)
+                PooledBlobBuffers.Disown(tx);
             bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
@@ -1434,6 +1458,7 @@ namespace Nethermind.TxPool
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
             {
+                PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Syncing;
             }
 
@@ -1443,7 +1468,13 @@ namespace Nethermind.TxPool
             // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
 
-            NewDiscovered?.Invoke(this, new TxEventArgs(tx));
+            EventHandler<TxEventArgs>? discovered = NewDiscovered;
+            if (discovered is not null)
+            {
+                canRecycle = false;
+                PooledBlobBuffers.Disown(tx);
+                discovered(this, new TxEventArgs(tx));
+            }
 
             if (_logger.IsTrace)
             {
@@ -1454,6 +1485,7 @@ namespace Nethermind.TxPool
                 && !BlobProofsTranslator.TryTranslateToCurrentProofVersion(tx, _headInfo.CurrentProofVersion))
             {
                 Metrics.PendingTransactionsDiscarded++;
+                PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Invalid;
             }
 
@@ -1470,9 +1502,10 @@ namespace Nethermind.TxPool
                 // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
                 state = new(tx, _accounts, headSpec);
-                accepted = FilterTransactions(tx, handlingOptions, ref state);
+                accepted = FilterTransactions(tx, handlingOptions, ref state, ref canRecycle);
                 if (accepted)
                 {
+                    canRecycle = false;
                     accepted = AddCore(tx, ref state, startBroadcast);
                 }
                 else
@@ -1483,6 +1516,7 @@ namespace Nethermind.TxPool
                     }
 
                     Metrics.PendingTransactionsDiscarded++;
+                    PooledBlobBuffers.Return(tx);
                 }
             }
             finally
@@ -1514,10 +1548,10 @@ namespace Nethermind.TxPool
             }
         }
 
-        public AnnounceResult NotifyAboutTx(Hash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
-            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(hash) ?
+        public AnnounceResult NotifyAboutTx(in ValueHash256 hash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) =>
+            (!AcceptTxWhenNotSynced && _headInfo.IsSyncing) || _hashCache.Get(in hash) ?
                 AnnounceResult.Delayed :
-                _retryCache.Announced(hash, retryHandler);
+                _retryCache.Announced(in hash, retryHandler);
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
         {
@@ -1530,7 +1564,8 @@ namespace Nethermind.TxPool
             try
             {
                 TxFilteringState state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
-                return FilterTransactions(tx, TxHandlingOptions.None, ref state, skipSamplingDeferredFilters: true);
+                bool canRecycle = false;
+                return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipSamplingDeferredFilters: true);
             }
             finally
             {
@@ -1542,6 +1577,7 @@ namespace Nethermind.TxPool
             Transaction tx,
             TxHandlingOptions handlingOptions,
             ref TxFilteringState state,
+            ref bool canRecycle,
             bool skipSamplingDeferredFilters = false)
         {
             IIncomingTxFilter[] filters = _preHashFilters;
@@ -1556,11 +1592,21 @@ namespace Nethermind.TxPool
                 }
             }
 
+            foreach (IIncomingTxFilter filter in _hashFilters)
+            {
+                if (skipSamplingDeferredFilters && filter is AlreadyKnownTxFilter) continue;
+                AcceptTxResult accepted = filter.Accept(tx, ref state, handlingOptions);
+                if (!accepted) return accepted;
+            }
+
+            // Validators and later filters can be supplied by plugins and retain the transaction.
+            canRecycle = false;
+            PooledBlobBuffers.Disown(tx);
             filters = _postHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
                 if (skipSamplingDeferredFilters
-                    && filters[i] is AlreadyKnownTxFilter or BlobProofsTxFilter)
+                    && filters[i] is BlobProofsTxFilter)
                 {
                     continue;
                 }
@@ -1775,7 +1821,8 @@ namespace Nethermind.TxPool
             UpdateTransactionDelegate updateTx,
             ForkRevalidation? revalidation)
         {
-            UInt256? previousTxBottleneck = null;
+            UInt256 previousTxBottleneck = default;
+            bool hasPreviousTxBottleneck = false;
             int i = 0;
             UInt256 cumulativeCost = 0;
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
@@ -1849,11 +1896,15 @@ namespace Nethermind.TxPool
                         }
                     }
 
-                    // The clamp is skipped for a payer-funded frame tx: seeded from a balance that never pays it,
-                    // it would return zero and pin the whole bucket's ordering key through the running minimum.
-                    previousTxBottleneck ??= tx.CalculateAffordableGasPrice(
-                        isEip1559,
-                        _headInfo.CurrentBaseFee, tx.FeeChargedToSender() ? balance : UInt256.MaxValue);
+                    if (!hasPreviousTxBottleneck)
+                    {
+                        // The clamp is skipped for a payer-funded frame tx: seeded from a balance that never pays it,
+                        // it would return zero and pin the whole bucket's ordering key through the running minimum.
+                        previousTxBottleneck = tx.CalculateAffordableGasPrice(
+                            isEip1559,
+                            _headInfo.CurrentBaseFee, tx.FeeChargedToSender() ? balance : UInt256.MaxValue);
+                        hasPreviousTxBottleneck = true;
+                    }
 
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null, so check is skipped
                     if (tx.MaxFeePerBlobGas < _headInfo.CurrentFeePerBlobGas)
@@ -1874,7 +1925,7 @@ namespace Nethermind.TxPool
                             MarkForEviction(tx, false);
                         }
 
-                        gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
+                        gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
                     }
 
                     if (tx.GasBottleneck != gasBottleneck)
@@ -2518,15 +2569,15 @@ namespace Nethermind.TxPool
                 || (txType == TxType.FrameTx && _blobTransactions.ContainsKey(hash))
                 || _broadcaster.ContainsTx(hash);
 
-        public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
+        public bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
             _transactions.TryGetValue(hash, out transaction)
             || _blobTransactions.TryGetValue(hash, out transaction)
             || _broadcaster.TryGetPersistentTx(hash, out transaction);
 
-        public bool TryGetPendingTransactionWithoutBlobs(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+        public bool TryGetPendingTransactionWithoutBlobs(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction)
         {
             if ((_transactions.TryGetValue(hash, out transaction)
-                || _blobTransactions.TryGetValueWithoutBlobs(hash.ValueHash256, out transaction)
+                || _blobTransactions.TryGetValueWithoutBlobs(hash, out transaction)
                 || _broadcaster.TryGetPersistentTx(hash, out transaction))
                 && transaction is not null)
             {
@@ -2545,10 +2596,11 @@ namespace Nethermind.TxPool
         public PendingTransactionsView GetPendingForProduction(BlockHeader targetBlock, bool filterToReadyTx, UInt256 baseFee)
         {
             long forkStateVersion = Volatile.Read(ref _forkStateVersion);
-            IDictionary<AddressAsKey, Transaction[]> transactions = filterToReadyTx
-                ? GetPendingTransactionsBySender(true, baseFee)
-                : GetPendingTransactionsBySender();
-            IDictionary<AddressAsKey, Transaction[]> blobTransactions = GetPendingLightBlobTransactionsBySender(filterToReadyTx, baseFee);
+            Predicate<(AddressAsKey key, Transaction first)>? filter = filterToReadyTx
+                ? data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)
+                : null;
+            IDictionary<AddressAsKey, Transaction[]> transactions = _transactions.GetProductionSnapshot(filter);
+            IDictionary<AddressAsKey, Transaction[]> blobTransactions = _blobTransactions.GetProductionSnapshot(filter);
 
             return new(transactions, blobTransactions, IsRevalidatedFor(targetBlock, forkStateVersion));
         }
@@ -2636,6 +2688,8 @@ namespace Nethermind.TxPool
         public IEnumerable<Transaction> GetBestTxOfEachSender() => _transactions.GetFirsts();
 
         public bool IsKnown(Hash256? hash) => hash is not null && _hashCache.Get(hash);
+
+        public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash);
 
         public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
 

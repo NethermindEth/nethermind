@@ -388,7 +388,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGasPolicy FloorGas)
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    public TGasPolicy MinimalGas { get; } = TGasPolicy.Max(Standard, FloorGas);
+    public TGasPolicy MinimalGas => TGasPolicy.Max(Standard, FloorGas);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static explicit operator TGasPolicy(IntrinsicGas<TGasPolicy> gas) => gas.MinimalGas;
 

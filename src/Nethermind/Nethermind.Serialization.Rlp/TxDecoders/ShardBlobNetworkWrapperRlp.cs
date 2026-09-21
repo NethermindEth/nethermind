@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using CkzgLib;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -47,23 +48,64 @@ internal static class ShardBlobNetworkWrapperRlp
         }
         else
         {
-            blobs = decoderContext.DecodeByteArrays(BlobsCountLimit);
+            blobs = (rlpBehaviors & RlpBehaviors.PoolBlobBuffers) != 0
+                ? DecodePooledBlobs(ref decoderContext)
+                : decoderContext.DecodeByteArrays(BlobsCountLimit);
         }
 
-        byte[][] commitments = decoderContext.DecodeByteArrays(CommitmentsCountLimit);
-        RlpLimit proofsCountLimit = version is ProofVersion.V1 ? CellProofsCountLimit : ProofsCountLimit;
-        byte[][] proofs = decoderContext.DecodeByteArrays(proofsCountLimit);
-        BlobCellMask cellMask = default;
-        byte[][]? cells = null;
-
-        if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(maxSearch: 2) > 0)
+        PooledBlobBuffers? pooledBuffers = blobs.Length != 0 && (rlpBehaviors & RlpBehaviors.PoolBlobBuffers) != 0
+            ? new(blobs) : null;
+        try
         {
-            cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
-            byte[][] decodedCells = decoderContext.DecodeByteArrays(CellProofsCountLimit);
-            cells = cellMask.IsEmpty && decodedCells.Length == 0 ? null : decodedCells;
+            byte[][] commitments = decoderContext.DecodeByteArrays(CommitmentsCountLimit);
+            RlpLimit proofsCountLimit = version is ProofVersion.V1 ? CellProofsCountLimit : ProofsCountLimit;
+            byte[][] proofs = decoderContext.DecodeByteArrays(proofsCountLimit);
+            BlobCellMask cellMask = default;
+            byte[][]? cells = null;
+
+            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(maxSearch: 2) > 0)
+            {
+                cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
+                byte[][] decodedCells = decoderContext.DecodeByteArrays(CellProofsCountLimit);
+                cells = cellMask.IsEmpty && decodedCells.Length == 0 ? null : decodedCells;
+            }
+
+            return new ShardBlobNetworkWrapper(blobs, commitments, proofs, version, cellMask, cells)
+            {
+                PooledBuffers = pooledBuffers
+            };
+        }
+        catch
+        {
+            pooledBuffers?.Return();
+            throw;
+        }
+    }
+
+    private static byte[][] DecodePooledBlobs(ref RlpReader reader)
+    {
+        int end = reader.ReadSequenceLength() + reader.Position;
+        int count = reader.PeekNumberOfItemsRemaining(end, maxSearch: BlobCountLimit + 1);
+        reader.GuardLimit(count, BlobsCountLimit);
+        if (count == 0)
+        {
+            reader.Check(end);
+            return [];
         }
 
-        return new ShardBlobNetworkWrapper(blobs, commitments, proofs, version, cellMask, cells);
+        byte[][] blobs = new byte[count][];
+        try
+        {
+            for (int i = 0; i < count; i++)
+                blobs[i] = PooledBlobBuffers.Copy(reader.DecodeByteArraySpan());
+            reader.Check(end);
+            return blobs;
+        }
+        catch
+        {
+            new PooledBlobBuffers(blobs).Return();
+            throw;
+        }
     }
 
     [SkipLocalsInit]

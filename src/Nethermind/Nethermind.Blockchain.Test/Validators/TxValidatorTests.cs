@@ -941,7 +941,7 @@ public class TxValidatorTests
     }
 
     [Test]
-    public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse()
+    public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse([Values] bool skipErrorDetails, [Values] bool skipMemo)
     {
         byte[] data = new byte[262_000];
         Array.Fill(data, (byte)0xff);
@@ -952,13 +952,19 @@ public class TxValidatorTests
             .SignedAndResolved().TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance);
+        TxValidationOptions options = skipErrorDetails ? TxValidationOptions.SkipErrorDetails : TxValidationOptions.None;
+        if (skipMemo) options |= TxValidationOptions.SkipIntrinsicGasMemo;
+        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance, blockGasLimit: 0, options);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
             Assert.That(result.IsIntrinsicGasError, Is.True);
+            Assert.That(tx.IntrinsicGasMemo, skipMemo ? Is.Null : Is.Not.Null);
+            Assert.That(result.Error, skipErrorDetails
+                ? Is.SameAs(TxErrorMessages.IntrinsicGasTooLow)
+                : Does.Contain("exceeded cap of 16777216"));
         }
     }
 
