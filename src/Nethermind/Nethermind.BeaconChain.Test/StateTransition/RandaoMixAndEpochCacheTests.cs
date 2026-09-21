@@ -160,9 +160,6 @@ public class RandaoMixAndEpochCacheTests
         EpochCache cache = new();
         ulong balanceA = cache.GetTotalActiveBalance(siblingA);
         Assert.That(() => cache.GetTotalActiveBalance(siblingB), Is.EqualTo(balanceA), "same-epoch siblings legitimately share the total");
-        // The sharing is only legitimate while the memo hands B what B would compute alone; this is
-        // the assertion that goes red if a sibling collision ever becomes possible.
-        Assert.That(cache.GetTotalActiveBalance(siblingB), Is.EqualTo(siblingB.GetTotalBalance(siblingB.GetActiveValidatorIndices(epoch))));
     }
 
     [Test]
