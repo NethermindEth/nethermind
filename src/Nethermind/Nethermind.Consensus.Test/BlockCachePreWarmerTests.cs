@@ -773,10 +773,15 @@ public class BlockCachePreWarmerTests
         Block sameSlot = BuildEmptyChild(head, timestamp: 12);
         Block missedSlot = BuildEmptyChild(head, timestamp: 24);
 
+        const int sameSlotPasses = 5;
         int passes = 0;
+        // Stopping on the hint count would end the session the moment it reached two, which an evaluate-every-pass
+        // implementation reaches just as fast; stopping on the pass count runs both predicted slots to the end.
         Assert.That(
-            RunIdleSession(preWarmer, head, _ => (Interlocked.Increment(ref passes) <= 5 ? sameSlot : missedSlot, Osaka.Instance), () => hint.Calls >= 2),
-            Is.True, "the prediction moving to the next slot must redo the system warm");
+            RunIdleSession(preWarmer, head,
+                _ => (Interlocked.Increment(ref passes) <= sameSlotPasses ? sameSlot : missedSlot, Osaka.Instance),
+                () => Volatile.Read(ref passes) > sameSlotPasses * 2),
+            Is.True, "the idle session must keep running past the pass that moves the prediction");
 
         Assert.That(hint.Calls, Is.EqualTo(2), "the passes sharing a predicted timestamp must reuse the first warm");
     }
@@ -795,11 +800,19 @@ public class BlockCachePreWarmerTests
         BlockHeader head = BuildParentHeader();
         Block sameSlot = BuildEmptyChild(head, timestamp: 12);
 
+        int passes = 0;
         Assert.That(
-            RunIdleSession(preWarmer, head, _ => (sameSlot, Osaka.Instance), () => hint.Calls >= 2),
-            Is.True, "a pass that never reached its hints must leave the slot open for the next one to retry");
+            RunIdleSession(preWarmer, head,
+                _ =>
+                {
+                    Interlocked.Increment(ref passes);
+                    return (sameSlot, Osaka.Instance);
+                },
+                () => Volatile.Read(ref passes) > BlockCachePreWarmer.MaxSystemWarmAttempts * 2),
+            Is.True, "the idle session must keep running past the retry and the passes that reuse its warm");
 
-        Assert.That(hint.Calls, Is.EqualTo(2), "once a pass has warmed the slot, the later ones must reuse it");
+        Assert.That(hint.Calls, Is.EqualTo(2),
+            "a pass that never reached its hints must leave the slot open for exactly one retry");
     }
 
     /// <summary>
@@ -816,11 +829,35 @@ public class BlockCachePreWarmerTests
         BlockHeader head = BuildParentHeader();
         Block sameSlot = BuildEmptyChild(head, timestamp: 12);
 
+        int passes = 0;
         Assert.That(
-            RunIdleSession(preWarmer, head, _ => (sameSlot, Osaka.Instance), () => hint.Calls > BlockCachePreWarmer.MaxSystemWarmAttempts, TimeSpan.FromSeconds(1)),
-            Is.False, "a slot whose hints keep failing must be retired rather than retried for the rest of the gap");
+            RunIdleSession(preWarmer, head,
+                _ =>
+                {
+                    Interlocked.Increment(ref passes);
+                    return (sameSlot, Osaka.Instance);
+                },
+                () => Volatile.Read(ref passes) > BlockCachePreWarmer.MaxSystemWarmAttempts * 2),
+            Is.True, "the idle session must keep running well past the attempt cap");
 
-        Assert.That(hint.Calls, Is.EqualTo(BlockCachePreWarmer.MaxSystemWarmAttempts));
+        Assert.That(hint.Calls, Is.EqualTo(BlockCachePreWarmer.MaxSystemWarmAttempts),
+            "a slot whose hints keep failing must be retired rather than retried for the rest of the gap");
+    }
+
+    /// <summary>
+    /// The idle session only runs on a node with a gap to fill; the reactive pass must warm the same hints for the
+    /// block it is about to process, for every node that never had one.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WarmsTheSystemAccessListsOfTheBlockBeingProcessed()
+    {
+        CountingAccessListHint hint = new();
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
+
+        await RunPreWarmCaches(preWarmer, BuildReactiveWarmBlock(), BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(hint.Calls, Is.EqualTo(1), "the reactive pass must warm the system-contract slots of its own block");
     }
 
     private const ulong Eip4788HistoryBufferLength = 8191;
@@ -837,13 +874,13 @@ public class BlockCachePreWarmerTests
 
     /// <summary>Runs an idle session over <paramref name="nextDelta"/> until <paramref name="until"/> holds, then joins it.</summary>
     /// <returns>Whether <paramref name="until"/> held before the wait timed out.</returns>
-    private static bool RunIdleSession(BlockCachePreWarmer preWarmer, BlockHeader head, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, Func<bool> until, TimeSpan? timeout = null)
+    private static bool RunIdleSession(BlockCachePreWarmer preWarmer, BlockHeader head, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, Func<bool> until)
     {
         using CancellationTokenSource cancellation = new();
         Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, nextDelta, idlePassDelayMs: 1, cancellation.Token);
         try
         {
-            return SpinWait.SpinUntil(until, timeout ?? TimeSpan.FromSeconds(5));
+            return SpinWait.SpinUntil(until, TimeSpan.FromSeconds(5));
         }
         finally
         {

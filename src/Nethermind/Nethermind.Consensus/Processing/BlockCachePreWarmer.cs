@@ -458,7 +458,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private bool WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, bool warmSystemAccessLists, CancellationToken token)
     {
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists);
-        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        // Run inline rather than through the pool: this pass is going to block on the warmer anyway, and the block
+        // that ends the gap joins this thread, so a queued item would put thread-pool dispatch latency on its path.
+        ((IThreadPoolWorkItem)addressWarmer).Execute();
         PreWarmCachesParallel(
             blockState,
             delta,
@@ -1051,11 +1053,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private bool WarmupSystemAccessLists(ReadOnlySpan<IHasAccessList> systemAccessLists, IWorldState worldState)
         {
             bool warmed = true;
+            CancellationToken token = parallelOptions.CancellationToken;
             foreach (IHasAccessList systemAccessList in systemAccessLists)
             {
+                // The hints are plugin-supplied and read state, so bound them on the token the way the transaction
+                // and withdrawal loops are: this warmer is joined on the way into block processing.
+                if (token.IsCancellationRequested) return false;
                 try
                 {
-                    if (systemAccessList.GetAccessList(Block, Spec) is AccessList list) worldState.WarmUp(list);
+                    if (systemAccessList.GetAccessList(Block, Spec) is AccessList list) worldState.WarmUp(list, token);
                 }
                 catch (MissingTrieNodeException)
                 {

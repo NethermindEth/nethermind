@@ -31,18 +31,30 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
                 .AddSingleton<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
         });
 
-        return new PrewarmerEnv(
-            childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>(),
-            childScope.Resolve<IHasAccessList[]>());
+        try
+        {
+            return new PrewarmerEnv(
+                childScope,
+                childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>(),
+                childScope.Resolve<IHasAccessList[]>());
+        }
+        catch
+        {
+            // A hint provider is plugin-replaceable and its constructor can throw; without this the scope and the
+            // resettable world state it holds are left with no reference to dispose them.
+            childScope.Dispose();
+            throw;
+        }
     }
 
-    private sealed class PrewarmerEnv(IReadOnlyTxProcessorSource inner, IHasAccessList[] systemAccessLists) : IPrewarmerEnv
+    private sealed class PrewarmerEnv(ILifetimeScope scope, IReadOnlyTxProcessorSource inner, IHasAccessList[] systemAccessLists) : IPrewarmerEnv
     {
         public ReadOnlySpan<IHasAccessList> SystemAccessLists => systemAccessLists;
 
         public IReadOnlyTxProcessingScope Build(BlockHeader? header) => inner.Build(header);
 
-        public void Dispose() => inner.Dispose();
+        /// <remarks>Disposes the scope rather than just the inner env, so anything else resolved into it is released too.</remarks>
+        public void Dispose() => scope.Dispose();
     }
 }
 
