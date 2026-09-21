@@ -131,6 +131,18 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.UnknownParent;
         }
 
+        // The spec's on_block asserts is_data_available before state_transition; checking it here,
+        // ahead of the clone and the engine call, means a block trailing its columns costs nothing
+        // to defer and never reaches the engine. A stored block passed this gate before it was
+        // persisted, and the columns that satisfied it are not persisted, so a trusted replay can
+        // neither re-check them nor needs to.
+        IDataAvailabilityRule availability = verifySignatures ? _availability : ReplayedBlockAvailability.Instance;
+        if (!availability.IsDataAvailable(block, blockRoot, _spec))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Deferring block {blockRoot} at slot {block.Slot}: blob data is not yet available");
+            return BlockImportResult.DataUnavailable;
+        }
+
         bool onLineage = parentRoot == _states.LineageRoot;
         BeaconStateFulu? parentState = onLineage ? _states.LineageState : _states.CopyBlockState(parentRoot);
         if (parentState is null)
@@ -199,9 +211,8 @@ public sealed class BlockImporter : IBlockImporter
         ExecutionStatus executionStatus = verdict.Status;
         OnSlotTick(block.Slot); // a timely gossip block can be marginally ahead of the last tick
 
-        // A stored block passed this gate before it was persisted, and the columns that satisfied it
-        // are not persisted, so a trusted replay can neither re-check them nor needs to.
-        IDataAvailabilityRule availability = verifySignatures ? _availability : ReplayedBlockAvailability.Instance;
+        // Already confirmed available above; this is a harmless backstop for a caller of OnBlock
+        // that does not pre-check (the consensus-spec vector harness calls it directly).
         try
         {
             _runner.OnBlock(signedBlock, state, executionStatus, availability);
