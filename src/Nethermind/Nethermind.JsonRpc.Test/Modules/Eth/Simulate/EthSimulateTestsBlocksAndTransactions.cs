@@ -1261,8 +1261,10 @@ public class EthSimulateTestsBlocksAndTransactions
         [Values] bool validation)
     {
         IReleaseSpec spec = eip8037Enabled ? Amsterdam.Instance : Amsterdam.NoEip8037Instance;
-        Assert.That(spec.IsEip8037Enabled, Is.EqualTo(eip8037Enabled));
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
+        // CreateChain re-wraps the spec (OverridableSpecProvider/OverridableReleaseSpec), so pin the
+        // flag the chain actually resolved rather than the literal that was passed in.
+        Assert.That(chain.SpecProvider.GetSpec(chain.BlockTree.Head!.Header).IsEip8037Enabled, Is.EqualTo(eip8037Enabled));
 
         byte[] secondSlot = new byte[32];
         secondSlot[^1] = 1;
@@ -1297,22 +1299,27 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(calls.Select(static call => call.Error), Is.All.Null);
         Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
 
+        // Calldata: tx 1 passes 32 zero bytes, tx 2 passes 31 zero bytes and one non-zero byte.
         const ulong cumulativeIntrinsicGas = 2 * (GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess)
-            + 63 * GasCostOf.TxDataZero + GasCostOf.TxDataNonZeroEip2028;
+            + (32 + 31) * GasCostOf.TxDataZero + GasCostOf.TxDataNonZeroEip2028;
         const ulong cumulativeOpcodeGas = 2 * (3 * GasCostOf.VeryLow + Eip8038Constants.ColdStorageAccess);
-        ulong cumulativeStorageWriteExecutionGas = 2 * (eip8037Enabled ? Eip8038Constants.StorageWrite : GasCostOf.SSet);
-        ulong cumulativeExecutionGas = cumulativeIntrinsicGas + cumulativeOpcodeGas + cumulativeStorageWriteExecutionGas;
-        ulong cumulativeStateGas = eip8037Enabled ? 2 * (ulong)GasCostOf.SSetState : 0;
-        ulong expectedBlockGas = Math.Max(cumulativeExecutionGas, cumulativeStateGas);
+        const ulong cumulativeExecutionGas = cumulativeIntrinsicGas + cumulativeOpcodeGas + 2 * Eip8038Constants.StorageWrite;
+        const ulong cumulativeStateGas = 2 * (ulong)GasCostOf.SSetState;
+
+        ulong cumulativePaidGas = calls.Aggregate(0UL, static (total, call) => total + call.GasUsed!.Value);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(calls.Aggregate(0UL, static (total, call) => total + call.GasUsed!.Value),
-                Is.EqualTo(cumulativeExecutionGas + cumulativeStateGas));
-            Assert.That(block.GasUsed, Is.EqualTo(expectedBlockGas));
             if (eip8037Enabled)
             {
+                Assert.That(cumulativePaidGas, Is.EqualTo(cumulativeExecutionGas + cumulativeStateGas));
                 Assert.That(cumulativeStateGas, Is.GreaterThan(cumulativeExecutionGas));
+                Assert.That(block.GasUsed, Is.EqualTo(cumulativeStateGas));
+            }
+            else
+            {
+                // No state dimension, so the block reports exactly the gas the calls paid.
+                Assert.That(block.GasUsed, Is.EqualTo(cumulativePaidGas));
             }
         }
     }
