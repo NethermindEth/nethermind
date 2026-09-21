@@ -57,8 +57,9 @@ public class ExecutionPayloadTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(error is not null, Is.EqualTo(malformed));
-                Assert.That(decoder.TrackedDecodes, Is.GreaterThanOrEqualTo(count), "Payload decoding must route through the tracked decoder.");
-                Assert.That(factoryCalls, Is.Zero, "Payload decoding must bypass the reusable transaction factory.");
+                Assert.That(decoder.TrackedDecodes, malformed ? Is.GreaterThanOrEqualTo(count) : Is.EqualTo(count),
+                    "Payload decoding must route through the tracked decoder.");
+                Assert.That(Volatile.Read(ref factoryCalls), Is.Zero, "Payload decoding must bypass the reusable transaction factory.");
                 if (!malformed)
                 {
                     Assert.That(transactions!, Has.Length.EqualTo(count));
@@ -66,7 +67,7 @@ public class ExecutionPayloadTests
             }
             RlpReader reader = new(control);
             decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
-            Assert.That(factoryCalls, Is.EqualTo(1), "Ordinary decoding must exercise the tracked factory.");
+            Assert.That(Volatile.Read(ref factoryCalls), Is.EqualTo(1), "Ordinary decoding must exercise the tracked factory.");
         }
         finally
         {
