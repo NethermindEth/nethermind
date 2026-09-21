@@ -117,7 +117,8 @@ public partial class BlockProcessor
                 balManager.SpendGas(currentTx.BlockGasUsed);
                 if (shouldValidateBal) balManager.ValidateBlockAccessList(block, i + 1);
 
-                StageTransactionProcessedEvent(
+                // Null-conditional short-circuits the argument, so no args are allocated when nothing is staging.
+                _pendingTransactionProcessedEvents?.Add(
                     new TxProcessedEventArgs((int)i, currentTx, block.Header, receiptsTracer.TxReceipts[(int)i]));
             }
 
@@ -283,11 +284,8 @@ public partial class BlockProcessor
             }
         }
 
-        private void StageTransactionProcessedEvent(TxProcessedEventArgs args) =>
-            _pendingTransactionProcessedEvents?.Add(args);
-
         void BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler.OnTransactionProcessed(TxProcessedEventArgs args) =>
-            StageTransactionProcessedEvent(args);
+            _pendingTransactionProcessedEvents?.Add(args);
 
         /// <inheritdoc/>
         public void PublishTransactionProcessedEvents()
