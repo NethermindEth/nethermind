@@ -45,6 +45,9 @@ namespace Nethermind.Consensus.Test;
 [TestFixture]
 public class BlockCachePreWarmerTests
 {
+    private static readonly TimeSpan PendingProbe = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan DiscoveryTimeout = TimeSpan.FromSeconds(30);
+
     private IContainer _container;
     private ILifetimeScope _processingScope;
     private Nethermind.Core.Crypto.Hash256 _genesisStateRoot;
@@ -1007,9 +1010,9 @@ public class BlockCachePreWarmerTests
         Assert.That(JobIndices(block, maxWorkers: 4), Is.EqualTo(new[] { "0-2" }));
     }
 
-    private static string[] JobIndices(Block block, int maxWorkers, HashSet<Nethermind.Core.Crypto.Hash256>? speculativelyWarmed = null)
+    private static string[] JobIndices(Block block, int maxWorkers, HashSet<Nethermind.Core.Crypto.Hash256>? speculativelyWarmed = null, bool[]? claimed = null)
     {
-        ArrayPoolList<BlockCachePreWarmer.WarmupJob> jobs = BlockCachePreWarmer.GroupTransactions(block, maxWorkers, speculativelyWarmed);
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> jobs = BlockCachePreWarmer.GroupTransactions(block, maxWorkers, speculativelyWarmed, claimed);
         try
         {
             return jobs.Select(static job => string.Join('-', job.Transactions.Select(static item => item.Index))).ToArray();
@@ -1041,12 +1044,15 @@ public class BlockCachePreWarmerTests
             .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
         Transaction belowThreshold = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        Block block = Build.A.Block.WithTransactions(heavy, heavyCreate, heavyWarmed, belowThreshold).TestObject;
+        // Selection runs while recovery is still in flight, so a pending sender must not drop the candidate.
+        Transaction heavyUnrecovered = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
+            .SignedAndResolved(TestItem.PrivateKeyD).WithSenderAddress(null).TestObject;
+        Block block = Build.A.Block.WithTransactions(heavy, heavyCreate, heavyWarmed, belowThreshold, heavyUnrecovered).TestObject;
 
         List<(int Index, Transaction Tx)>? candidates = BlockCachePreWarmer.SelectDiscoveryCandidates(
             block, speculativelyWarmed: new HashSet<Hash256> { heavyWarmed.Hash! });
 
-        Assert.That(candidates, Is.EqualTo(new[] { (0, heavy) }));
+        Assert.That(candidates, Is.EqualTo(new[] { (0, heavy), (4, heavyUnrecovered) }));
     }
 
     [Test]
@@ -1091,6 +1097,87 @@ public class BlockCachePreWarmerTests
 
             Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.False,
                 "a candidate the main thread has already started must not be re-executed by discovery");
+        }
+    }
+
+    /// <summary>
+    /// Selection runs while recovery is in flight, so the heaviest candidates - the ones ascending recovery reaches
+    /// last - routinely arrive without a sender. Discovery waits for one rather than dropping the candidate.
+    /// </summary>
+    [Test]
+    public void DiscoverAndWarmStorage_WaitsForACandidateWhoseSenderIsStillPending()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Address sender = heavy.SenderAddress!;
+            heavy.SenderAddress = null;
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
+
+            using CancellationTokenSource cts = new();
+            Task discovery = Task.Run(() =>
+                preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, cts.Token));
+
+            try
+            {
+                // Discovery cannot finish while the sender is missing, so completing here is the regression:
+                // the candidate was dropped rather than waited for. Pending is also the handshake - the sender
+                // below is published with the wait demonstrably in progress.
+                Assert.That(discovery.Wait(PendingProbe), Is.False, "discovery must wait for the sender, not drop the candidate");
+
+                heavy.SenderAddress = sender;
+
+                Assert.That(discovery.Wait(DiscoveryTimeout), Is.True, "the wait must end when the sender lands");
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.True,
+                    "the candidate must be discovered once its sender arrives");
+            }
+            finally
+            {
+                cts.Cancel();
+                discovery.Wait(DiscoveryTimeout);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The sender may never arrive at all, so the wait is bounded by the main thread reaching the candidate: past that
+    /// point discovering its reads only contends with the execution that is already doing them.
+    /// </summary>
+    [Test]
+    public void DiscoverAndWarmStorage_StopsWaitingForASenderOnceTheMainThreadArrives()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
+
+            using CancellationTokenSource cts = new();
+            Task discovery = Task.Run(() =>
+                preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, cts.Token));
+
+            try
+            {
+                // Pending means the wait is in progress, so the main thread below arrives inside it rather than
+                // before the skip test that opens the candidate.
+                Assert.That(discovery.Wait(PendingProbe), Is.False, "discovery must wait for the sender, not drop the candidate");
+
+                preWarmer.OnBeforeTxExecution();
+
+                Assert.That(discovery.Wait(DiscoveryTimeout), Is.True, "the wait must end when the main thread arrives");
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.False,
+                    "a candidate the main thread has reached must not be re-executed by discovery");
+            }
+            finally
+            {
+                cts.Cancel();
+                discovery.Wait(DiscoveryTimeout);
+            }
         }
     }
 
@@ -1943,5 +2030,39 @@ public class BlockCachePreWarmerTests
                 inner.SetBlockExecutionContext(in blockExecutionContext);
             }
         }
+    }
+
+    [Test]
+    public void GroupTransactions_ClaimsGroupedTransactionsAndPicksUpLateSendersNextPass()
+    {
+        Transaction late = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        late.SenderAddress = null;
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            late,
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000)).TestObject;
+        bool[] claimed = new bool[3];
+
+        Assert.That(JobIndices(block, maxWorkers: 4, claimed: claimed), Is.EqualTo(new[] { "0-2" }), "the unrecovered tx is left for a later pass");
+        Assert.That(claimed, Is.EqualTo(new[] { true, false, true }));
+
+        late.SenderAddress = TestItem.AddressB;
+        Assert.That(JobIndices(block, maxWorkers: 4, claimed: claimed), Is.EqualTo(new[] { "1" }), "the late sender is a job of its own, its window neighbours are already claimed");
+        Assert.That(claimed, Is.All.True);
+
+        Assert.That(JobIndices(block, maxWorkers: 4, claimed: claimed), Is.Empty);
+    }
+
+    [Test]
+    public void GroupTransactions_ClaimsSpeculativelyWarmedTransactionsWithoutWarmingThem()
+    {
+        Transaction warmed = GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000);
+        Block block = Build.A.Block.WithTransactions(
+            warmed,
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000)).TestObject;
+        bool[] claimed = new bool[2];
+
+        Assert.That(JobIndices(block, maxWorkers: 4, [warmed.Hash!], claimed), Is.EqualTo(new[] { "1" }));
+        Assert.That(claimed, Is.All.True, "an already warmed transaction must not keep the pass loop waiting");
     }
 }
