@@ -89,14 +89,14 @@ public sealed class TransactionChangesetBuilder(
     /// are already on disk, at a fraction of the rate sync produces them.</summary>
     private bool TryBuildNext(ulong block, IHistoryBlockExecutor executor)
     {
-        if (executors.GetCanonicalHash(block) is not { } canonicalHash || !index.HasRowsOf(block, canonicalHash))
-        {
-            if (!Build(block, executor)) return false;
-        }
+        if (!HasCanonicalRows(block) && !Build(block, executor)) return false;
 
         index.TryClaim(block, block);
         return true;
     }
+
+    private bool HasCanonicalRows(ulong block) =>
+        executors.GetCanonicalHash(block) is { } canonicalHash && index.HasRowsOf(block, canonicalHash);
 
     /// <summary>One step of a retrofit worker: takes the next chunk below the coverage edge and builds it whole. False
     /// when there was nothing to take or the chunk could not be built, so the caller backs off instead of spinning.</summary>
@@ -162,21 +162,40 @@ public sealed class TransactionChangesetBuilder(
     }
 
     /// <summary>A chunk runs ascending on one open state, so a key the chunk touches is read from history once and
-    /// then from memory; on a disk-bound archive that is most of the cost of the retrofit.</summary>
+    /// then from memory; on a disk-bound archive that is most of the cost of the retrofit. A block whose rows already
+    /// carry the canonical hash, written by the inline capture or by an earlier attempt at this chunk that failed
+    /// further on, is not executed again: each block's batch is durable on its own, and the same hash check the tip
+    /// path makes proves the rows complete. The state the run holds is stale past a skipped block, so the next block
+    /// that does execute opens a fresh run.</summary>
     internal bool BuildChunk(in Chunk chunk, IHistoryBlockExecutor executor)
     {
-        using IHistoryBlockRun? run = executor.BeginRun(chunk.Bottom);
-        if (run is null) return false;
-
-        for (ulong block = chunk.Bottom; block <= chunk.Top; block++)
+        IHistoryBlockRun? run = null;
+        try
         {
-            using TransactionChangesetIndex.BlockCapture capture = index.StartBlock(block);
-            if (!run.TryExecuteNext(capture.Tracer, _cancellation.Token) || !capture.Commit()) return false;
+            for (ulong block = chunk.Bottom; block <= chunk.Top; block++)
+            {
+                if (HasCanonicalRows(block))
+                {
+                    run?.Dispose();
+                    run = null;
+                    continue;
+                }
 
-            Interlocked.Increment(ref _builtSinceReport);
+                run ??= executor.BeginRun(block);
+                if (run is null) return false;
+
+                using TransactionChangesetIndex.BlockCapture capture = index.StartBlock(block);
+                if (!run.TryExecuteNext(capture.Tracer, _cancellation.Token) || !capture.Commit()) return false;
+
+                Interlocked.Increment(ref _builtSinceReport);
+            }
+
+            return true;
         }
-
-        return true;
+        finally
+        {
+            run?.Dispose();
+        }
     }
 
     /// <summary>Joins the chunk to coverage when it touches the edge, then every completed chunk that now touches

@@ -87,12 +87,16 @@ internal sealed class TransactionChangesetStore
 
     /// <summary>Drops every row below <paramref name="floor"/>. Coverage is trimmed first, so a crash between the two
     /// leaves rows nothing claims rather than a claim nothing backs, and a claim below the floor is refused from then
-    /// on, so rows written before the prune and claimed after it cannot slip back in.</summary>
+    /// on, so rows written before the prune and claimed after it cannot slip back in. A floor already pruned to is
+    /// nothing to do: the pruner calls this on every pass, and a range deletion that deletes nothing still leaves
+    /// tombstones every read of the column consults until compaction.</summary>
     public void PruneBelow(ulong floor)
     {
         lock (_coverageLock)
         {
-            _prunedBelow = Math.Max(_prunedBelow, floor);
+            if (floor <= _prunedBelow) return;
+
+            _prunedBelow = floor;
             if (TryGetCoverage(out ulong from, out ulong to) && from < floor)
             {
                 if (to < floor) ClearCoverage();

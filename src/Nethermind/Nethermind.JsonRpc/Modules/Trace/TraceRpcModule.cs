@@ -533,7 +533,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
             CancellationToken cancellationToken = timeout.Token;
-            tracer2.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(cancellationToken), transactionHash, prefixSeeds));
+            // A prefix recorded under the block's own spec says nothing about the block run under another one, even
+            // though the header keeps its hash: no seed when the spec is overridden.
+            tracer2.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(cancellationToken), transactionHash, specOverride is null ? prefixSeeds : null));
             return tracer.BuildResult();
         }
 
@@ -666,7 +668,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride));
             }
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseHeader, specOverride: specOverride);
-            env.Component.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(ct), transactionHash, prefixSeeds));
+            env.Component.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(ct), transactionHash, specOverride is null ? prefixSeeds : null));
         }
 
         /// <summary>

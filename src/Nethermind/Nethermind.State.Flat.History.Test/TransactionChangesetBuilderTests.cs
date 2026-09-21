@@ -390,6 +390,37 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void AChunk_SkipsBlocksWhoseRowsAlreadyCarryTheCanonicalHash_AndReopensTheRunAfterThem()
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        TransactionChangesetIndex index = Index();
+        using TransactionChangesetBuilder builder = Builder(index);
+        builder.TryBuildNext();
+        for (ulong block = 200; block <= 205; block++)
+        {
+            Block written = Build.A.Block.WithNumber(block).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+            WriteInline(index, written);
+            _executor.CanonicalHashes[block] = written.Hash!;
+        }
+        _executor.Executed.Clear();
+        _executor.RunsOpened = 0;
+
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk chunk);
+        bool built = builder.BuildChunk(chunk, _executor);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(_executor.Executed, Has.None.InRange(200UL, 205UL), "rows already carrying the canonical hash are complete, so the block is not executed again");
+            Assert.That(_executor.Executed, Does.Contain(199UL).And.Contain(206UL));
+            Assert.That(_executor.Executed, Has.Count.EqualTo(128 - 6));
+            Assert.That(_executor.RunsOpened, Is.EqualTo(2), "the state a run holds is stale past a block it did not execute, so the block after the skipped ones opens a fresh run");
+        }
+    }
+
+    [Test]
     public void AChunkThatFailed_IsRetriedBeforeANewOneIsHandedOut()
     {
         Capture(upTo: 300);

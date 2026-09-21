@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -160,6 +162,28 @@ public class MidBlockOverlayCacheTests
         if (atTheBoundary) boundaryLease.Dispose();
     }
 
+    [Test]
+    public void AFoldThatFailsForAnyOtherReason_IsRefused_AndTheEntryIsLentAgainAfterwards()
+    {
+        using FailingColumn column = new();
+        TransactionChangesetStore store = new(column);
+        MidBlockOverlayCache cache = new(store);
+        for (ushort transaction = 0; transaction < 4; transaction++) WriteBalance(store, column, transaction, (UInt256)(transaction + 1));
+
+        column.Failure = new IOException("column read failed");
+        bool refused = !cache.TryRent(Block, in HashA, 3, out _, version: 0);
+        column.Failure = null;
+        bool rented = cache.TryRent(Block, in HashA, 3, out MidBlockOverlayCache.Lease lease, version: 0);
+
+        using (lease)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused, Is.True, "a read that fails is a refusal like any other: the trace replays the prefix rather than fail the request");
+            Assert.That(rented, Is.True, "the pin and the extending flag went back with the refusal, so the entry is not dead until the next rent replaces it");
+            Assert.That(BalanceOf(lease.Overlay), Is.EqualTo((UInt256)3));
+        }
+    }
+
     private void WriteHalfReadableRow(ushort transactionIndex, UInt256 balance)
     {
         ChangesetCollector collector = new();
@@ -199,15 +223,31 @@ public class MidBlockOverlayCacheTests
         }
     }
 
-    private void WriteBalance(ushort transactionIndex, UInt256 balance)
+    private void WriteBalance(ushort transactionIndex, UInt256 balance) =>
+        WriteBalance(_store, _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets), transactionIndex, balance);
+
+    private static void WriteBalance(TransactionChangesetStore store, IDb column, ushort transactionIndex, UInt256 balance)
     {
         ChangesetCollector collector = new();
         collector.Balance(TestItem.AddressA, balance);
-        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _columns.StartWriteBatch())
+        using (IWriteBatch batch = column.StartWriteBatch())
         {
-            _store.Write(Block, transactionIndex, collector.Pack(), batch.GetColumnBatch(FlatHistoryColumns.TransactionChangesets));
+            store.Write(Block, transactionIndex, collector.Pack(), batch);
         }
 
         collector.Release();
+    }
+
+    /// <summary>A sorted column whose range reads fail on demand, the way a closing or damaged store would.</summary>
+    private sealed class FailingColumn : TestMemDb, ISortedKeyValueStore
+    {
+        public Exception? Failure { get; set; }
+
+        public new ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
+        {
+            if (Failure is { } failure) throw failure;
+
+            return base.GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags);
+        }
     }
 }

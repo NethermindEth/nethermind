@@ -51,6 +51,25 @@ public class TransactionChangesetIndexTests
     }
 
     [Test]
+    public void PruneBelow_AtAFloorAlreadyPrunedTo_LeavesTheColumnAlone()
+    {
+        Capture(transactions: 3);
+        _index.PruneBelow(8);
+        Assert.That(_index.HasRowsOf(7, _block.Hash!), Is.False, "precondition: the first prune removed the block");
+        Capture(transactions: 3);
+
+        _index.PruneBelow(8);
+        bool leftAlone = _index.HasRowsOf(7, _block.Hash!);
+        _index.PruneBelow(9);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leftAlone, Is.True, "the pruner asks on every pass, and a floor already pruned to must not issue another range deletion: its tombstones cost every read until compaction and delete nothing");
+            Assert.That(_index.HasRowsOf(7, _block.Hash!), Is.False, "a floor that moved is pruned to");
+        }
+    }
+
+    [Test]
     public void TheBlockTheRowsWereBuiltFrom_IsServed()
     {
         Capture(transactions: 3);

@@ -14,6 +14,8 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Init.Modules;
+using Nethermind.Init.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -382,6 +384,104 @@ public class BlockProcessorTests
             Assert.That(actual, Is.EqualTo(expected), "the balance the prefix left must win over what the opening system call recorded for the same account");
         }
     }
+
+    [Test]
+    public async Task TransactionTraceBoundary_WhenThePrefixIsSeeded_TellsNoHandlerAboutMisnumberedReceipts()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        Hash256 target = block.Transactions[2].Hash!;
+        GethTraceOptions traceOptions = new() { TxHash = target, Tracer = "callTracer" };
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        RecordingProcessedHandler replayed = new();
+        RecordingProcessedHandler seeded = new();
+
+        ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds: null, out _, processed: replayed);
+        ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds, out int executed, processed: seeded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replayed.Indices, Is.EqualTo(new[] { 0, 1, 2 }), "precondition: the replay tells the handler about every transaction, in order");
+            Assert.That(executed, Is.EqualTo(1), "precondition: the prefix was seeded");
+            Assert.That(seeded.Indices, Is.Empty, "the receipts tracer numbers receipts from the first executed transaction, so a handler keyed on receipt.Index or GasUsedTotal would read transaction 0; it is told nothing instead");
+        }
+    }
+
+    private sealed class RecordingProcessedHandler : BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
+    {
+        public List<int> Indices { get; } = [];
+        public void OnTransactionProcessed(TxProcessedEventArgs args) => Indices.Add(args.Index);
+    }
+
+    [Test]
+    public async Task ProcessingHistoryBlockExecutor_LoadsTheNextBlockOnlyWhenItIsAskedFor()
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        Block first = await AddThreeTransferBlock(chain);
+        Block second = await AddThreeTransferBlock(chain, firstNonce: 3);
+        IBlockTree counting = CountingBlockTree(chain.BlockTree);
+        ProcessingHistoryBlockExecutorFactory factory = new(counting, chain.SpecProvider, chain.Container.Resolve<IOverridableEnvFactory>(), chain.Container, chain.Container.Resolve<IBlockValidationModule[]>());
+        using IHistoryBlockExecutor executor = factory.Create();
+
+        Assert.That(executor.TryExecute((ulong)first.Number, NullBlockTracer.Instance, CancellationToken.None), Is.True);
+        int bodiesForOneShot = BodyReads(counting);
+        counting.ClearReceivedCalls();
+        using IHistoryBlockRun run = executor.BeginRun((ulong)first.Number)!;
+        bool ranFirst = run.TryExecuteNext(NullBlockTracer.Instance, CancellationToken.None);
+        int bodiesAfterFirst = BodyReads(counting);
+        bool ranSecond = run.TryExecuteNext(NullBlockTracer.Instance, CancellationToken.None);
+        bool ranPastTheHead = run.TryExecuteNext(NullBlockTracer.Instance, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bodiesForOneShot, Is.EqualTo(1), "a one-shot execution reads one body: the successor it will never run is not loaded");
+            Assert.That(ranFirst && ranSecond, Is.True);
+            Assert.That(bodiesAfterFirst, Is.EqualTo(1), "a run reads the next body when it is asked for the next block, not ahead of it");
+            Assert.That(ranPastTheHead, Is.False, "nothing canonical follows the head");
+            Assert.That(second.ParentHash, Is.EqualTo(first.Hash), "precondition: the two blocks are consecutive");
+        }
+    }
+
+    [Test]
+    public async Task ProcessingHistoryBlockExecutor_EndsTheRunWhenTheCanonicalChainMovedUnderIt()
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        Block first = await AddThreeTransferBlock(chain);
+        Block second = await AddThreeTransferBlock(chain, firstNonce: 3);
+        IBlockTree counting = CountingBlockTree(chain.BlockTree);
+        Block sibling = Build.A.Block.WithNumber(second.Number).WithParentHash(TestItem.KeccakA).WithTransactions(second.Transactions).TestObject;
+        counting.FindBlock((ulong)second.Number, Arg.Any<BlockTreeLookupOptions>()).Returns(sibling);
+        ProcessingHistoryBlockExecutorFactory factory = new(counting, chain.SpecProvider, chain.Container.Resolve<IOverridableEnvFactory>(), chain.Container, chain.Container.Resolve<IBlockValidationModule[]>());
+        using IHistoryBlockExecutor executor = factory.Create();
+        using IHistoryBlockRun run = executor.BeginRun((ulong)first.Number)!;
+
+        bool ranFirst = run.TryExecuteNext(NullBlockTracer.Instance, CancellationToken.None);
+        bool ranSibling = run.TryExecuteNext(NullBlockTracer.Instance, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ranFirst, Is.True);
+            Assert.That(ranSibling, Is.False, "the state the run holds is the first block's, and the canonical block at the next height is no longer its child; executing it there would stamp a sibling's child with the canonical hash");
+        }
+    }
+
+    /// <summary>The real tree behind a substitute, so the lookups the executor makes can be counted.</summary>
+    private static IBlockTree CountingBlockTree(IBlockTree real)
+    {
+        IBlockTree counting = Substitute.For<IBlockTree>();
+        counting.FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(call => real.FindBlock(call.ArgAt<ulong>(0), call.ArgAt<BlockTreeLookupOptions>(1)));
+        counting.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(call => real.FindHeader(call.ArgAt<Hash256>(0), call.ArgAt<BlockTreeLookupOptions>(1), call.ArgAt<ulong?>(2)));
+        counting.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(call => real.FindHeader(call.ArgAt<ulong>(0), call.ArgAt<BlockTreeLookupOptions>(1)));
+        return counting;
+    }
+
+    private static int BodyReads(IBlockTree counting) =>
+        counting.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IBlockTree.FindBlock));
 
     [Test]
     public async Task TransactionTraceBoundary_WhenTheSeedIsRefused_ReplaysThePrefix()
@@ -1047,7 +1147,8 @@ public class BlockProcessorTests
 
     /// <summary>Runs the block the way the debug RPC does: its own read-only processing environment, where the prefix
     /// overlay can be armed on the read path.</summary>
-    private static string ReplayThroughTraceEnvironment(BasicTestBlockchain chain, BlockHeader parent, Block block, Hash256 target, GethTraceOptions traceOptions, IPrefixStateSeedSource? seeds, out int executed, bool supportsOverlay = true)
+    private static string ReplayThroughTraceEnvironment(BasicTestBlockchain chain, BlockHeader parent, Block block, Hash256 target, GethTraceOptions traceOptions, IPrefixStateSeedSource? seeds, out int executed, bool supportsOverlay = true,
+        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? processed = null)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
         IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
@@ -1060,6 +1161,7 @@ public class BlockProcessorTests
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddModule(env);
             if (!supportsOverlay) builder.AddDecorator<IWorldState, OverlayRefusingState>();
+            if (processed is not null) builder.AddSingleton(processed);
         });
         BlockchainProcessorFacade processor = scope.Resolve<BlockchainProcessorFacade>();
         IWorldState state = scope.Resolve<IWorldState>();

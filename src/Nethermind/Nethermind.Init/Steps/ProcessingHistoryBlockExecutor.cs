@@ -49,15 +49,22 @@ public sealed class ProcessingHistoryBlockExecutor(
         return candidate is not null && !specProvider.GetSpec(candidate.Header).BlockLevelAccessListsEnabled ? candidate : null;
     }
 
+    /// <summary>The successor is looked up only when it is asked for: a one-shot execution never asks, and a chunk
+    /// then reads one body per block it runs rather than one ahead of it.</summary>
     private sealed class Run(ProcessingHistoryBlockExecutor executor, IDisposable state, Block first) : IHistoryBlockRun
     {
         private Block? _next = first;
+        private ulong _lastNumber;
+        private Hash256? _lastHash;
 
         public bool TryExecuteNext(IBlockTracer tracer, CancellationToken cancellationToken)
         {
-            Block? block = _next;
-            if (block is null) return false;
+            Block? block = _next ?? executor.FindCanonical(_lastNumber + 1);
+            // The run keeps one state open on the block just executed, so the next block must be its child. If the
+            // canonical chain moved in between, the run ends rather than execute a sibling's child on that state.
+            if (block is null || (_lastHash is not null && block.Header.ParentHash != _lastHash)) return false;
 
+            _next = null;
             Block isolated = block.WithReplacedHeader(block.Header.Clone());
             try
             {
@@ -67,10 +74,8 @@ public sealed class ProcessingHistoryBlockExecutor(
             {
                 isolated.DisposeAccountChanges();
             }
-            // The run keeps one state open on the block just executed, so the next block must be its child. If the
-            // canonical chain moved between the two lookups, end the run rather than execute a sibling's child here.
-            Block? candidate = executor.FindCanonical((ulong)block.Number + 1);
-            _next = candidate?.Header.ParentHash == block.Hash ? candidate : null;
+            _lastNumber = (ulong)block.Number;
+            _lastHash = block.Hash;
             return true;
         }
 

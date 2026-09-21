@@ -108,7 +108,10 @@ public sealed class TransactionTraceExecutor(
             }
 
             if (!result) BlockProcessor.BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, tx, i);
-            transactionProcessed?.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i - first]));
+            // With a seeded prefix the receipts tracer numbers receipts from the first executed transaction, so the
+            // receipt of transaction i carries index i - first and a cumulative gas that leaves out the prefix; a
+            // handler keyed on either would be told about the wrong transaction, so it is told nothing.
+            if (first == 0) transactionProcessed?.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i]));
             if (balManager.Enabled)
             {
                 balManager.NextTransaction();
@@ -119,6 +122,7 @@ public sealed class TransactionTraceExecutor(
 
         Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
         Metrics.PublishBlockGasPriceGauges();
+        // The receipts of what executed: with a seeded prefix that is the tail from the target on, not the block's.
         return [.. tracer.TxReceipts];
     }
 }

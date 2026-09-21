@@ -70,8 +70,9 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
         }
     }
 
-    /// <summary>A row the codec cannot read is a refusal, not a failure: the trace then replays the prefix and
-    /// answers, which is what every other refusal here does. The pin goes back with it.</summary>
+    /// <summary>A fold that fails is a refusal, not a failure, whatever failed: a row the codec cannot read, a column
+    /// that could not be read, a store closing under the request. The trace then replays the prefix and answers, which
+    /// is what every other refusal here does, and the pin and the extending flag go back so the entry is lent again.</summary>
     private bool TryExtend(MidBlockOverlay overlay, ushort beforeTransaction)
     {
         try
@@ -79,9 +80,9 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
             Extend(overlay, beforeTransaction);
             return true;
         }
-        catch (InvalidDataException)
+        catch (Exception exception)
         {
-            Flat.Metrics.RecordUnreadableTransactionChangesetRow();
+            if (exception is InvalidDataException) Flat.Metrics.RecordUnreadableTransactionChangesetRow();
 
             lock (_lock)
             {

@@ -13,6 +13,7 @@ namespace Nethermind.State.Flat.History.Changesets;
 internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWriteBatch batch) : IBlockTracer, IDisposable
 {
     private readonly ChangesetCollector _collector = new();
+    private ChangesetTxTracer? _tracer;
     private ulong _block;
     private int _transactionIndex = -1;
     private int _expectedTransactions;
@@ -36,11 +37,12 @@ internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWri
         store.WriteBlockHash(_block, block.Hash ?? ThrowUnsealed(block), batch);
     }
 
+    /// <summary>One tracer over the one collector, reset per transaction: nothing holds a tracer past EndTxTrace.</summary>
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         _collector.Reset();
         _transactionIndex++;
-        return new ChangesetTxTracer(_collector);
+        return _tracer ??= new ChangesetTxTracer(_collector);
     }
 
     public void EndTxTrace()
