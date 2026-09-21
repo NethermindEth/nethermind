@@ -13,15 +13,21 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>Reusable prewarm deduplication state that is never committed into a snapshot.</summary>
-public sealed class PbtTransientResource(long capacity = 1024) : IDisposable, IResettable
+/// <summary>Per-block scratch state that is never committed into a snapshot: prewarm deduplication and the node groups staged for the shared trie cache.</summary>
+public sealed class PbtTransientResource(long prewarmCapacity = 1024, int nodeGroupCapacity = 1024) : IDisposable, IResettable
 {
-    private BloomFilter _prewarmedAddresses = new(capacity, 14);
+    /// <summary>Capacities the pool remembers so a replacement resource starts where the last one grew to.</summary>
+    public sealed record Size(long PrewarmCapacity, int NodeGroupCapacity);
+
+    private BloomFilter _prewarmedAddresses = new(prewarmCapacity, 14);
     private long _leases = RefCountingLease.Single;
     private IPbtResourcePool? _returnPool;
     private PbtResourcePool.Usage _returnUsage;
 
-    internal long Capacity => _prewarmedAddresses.Capacity;
+    /// <summary>Groups folded or warmed during this block, folded into the shared cache after the block commits.</summary>
+    public PbtTrieNodeCache.ChildCache NodeGroups { get; } = new(nodeGroupCapacity);
+
+    internal Size GetSize() => new(_prewarmedAddresses.Capacity, NodeGroups.Capacity);
 
     internal void OnRented(IPbtResourcePool pool, PbtResourcePool.Usage usage)
     {
@@ -31,6 +37,13 @@ public sealed class PbtTransientResource(long capacity = 1024) : IDisposable, IR
     }
 
     internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
+
+    /// <summary>Spins until only the owner lease remains, so in-flight warmer reads and writes have drained.</summary>
+    internal void WaitForExclusiveLease()
+    {
+        SpinWait spinWait = default;
+        while (Volatile.Read(ref _leases) != RefCountingLease.Single) spinWait.SpinOnce();
+    }
 
     internal void ReleaseLease()
     {
@@ -66,10 +79,11 @@ public sealed class PbtTransientResource(long capacity = 1024) : IDisposable, IR
         return (ulong)SpanExtensions.FastHash64ForAddressAndSlot(ref address, ref Unsafe.As<UInt256, byte>(ref slotValue));
     }
 
-    /// <summary>Clears deduplication state, growing the filter if its capacity was exceeded.</summary>
+    /// <summary>Clears deduplication state and staged groups, growing either structure if its capacity was exceeded.</summary>
     /// <remarks>Only the exclusive owner may reset the resource after all query leases have drained.</remarks>
     public void Reset()
     {
+        NodeGroups.Reset();
         if (_prewarmedAddresses.Count > _prewarmedAddresses.Capacity)
         {
             long capacity = (long)BitOperations.RoundUpToPowerOf2((ulong)_prewarmedAddresses.Count);
@@ -83,6 +97,10 @@ public sealed class PbtTransientResource(long capacity = 1024) : IDisposable, IR
         }
     }
 
-    /// <summary>Frees the filter when the exclusively owned resource is discarded, rather than returned to its pool.</summary>
-    public void Dispose() => _prewarmedAddresses.Dispose();
+    /// <summary>Frees the filter and releases staged groups when the exclusively owned resource is discarded, rather than returned to its pool.</summary>
+    public void Dispose()
+    {
+        NodeGroups.Dispose();
+        _prewarmedAddresses.Dispose();
+    }
 }

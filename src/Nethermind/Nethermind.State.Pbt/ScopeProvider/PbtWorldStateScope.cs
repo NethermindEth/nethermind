@@ -187,9 +187,13 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             StateId newStateId = new(blockNumber, _rootHash);
             if (newStateId != _currentStateId)
             {
-                PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot);
-                if (_isReadOnly) snapshot.Dispose();
-                else _commitTarget.AddSnapshot(snapshot);
+                PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot, out PbtTransientResource transientResource);
+                if (_isReadOnly)
+                {
+                    snapshot.Dispose();
+                    transientResource.ReleaseLease();
+                }
+                else _commitTarget.AddSnapshot(snapshot, transientResource);
                 _currentStateId = newStateId;
             }
             _currentHeader = _childHeader;

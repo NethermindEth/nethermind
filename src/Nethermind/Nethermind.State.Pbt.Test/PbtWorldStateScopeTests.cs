@@ -48,20 +48,21 @@ public class PbtWorldStateScopeTests
             canonicalRoot = scope.RootHash;
         }
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(canonicalRoot).TestObject;
-        cache.Clear();
+        PbtNodePath rootPath = new([], 0);
+        // The canonical commit hands its folded groups to the manager, which folds them into the shared cache in the background.
+        Assert.That(() => cache.TryGet(canonicalRoot.ValueHash256, rootPath, out _), Is.True.After(5000, 10));
         using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
         using (PbtWorldStateScope scope = (PbtWorldStateScope)overrides.WorldState.BeginScope(parent, new LocalMetrics()))
         {
-            PbtNodePath rootPath = new([], 0);
             using RefCountingMemory? group = scope.Bundle.GetNodeGroup(rootPath, canonicalRoot.ValueHash256);
             Assert.That(group, Is.Not.Null);
             using RefCountingMemory? cached = cache.TryGet(canonicalRoot.ValueHash256, rootPath, out RefCountingMemory? payload) ? payload : null;
-            Assert.That(cached, Is.Not.Null, "the override bundle must populate the injected singleton cache");
             Assert.That(cached!.Memory.ToArray(), Is.EqualTo(group!.Memory.ToArray()));
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
                 batch.Set(TestItem.AddressA, delete ? null : Build.An.Account.WithBalance(2).TestObject);
             scope.Commit(2);
             Assert.That(scope.RootHash, Is.Not.EqualTo(canonicalRoot));
+            Assert.That(cache.TryGet(scope.RootHash.ValueHash256, rootPath, out _), Is.False, "an override commit must not feed the shared cache");
         }
         using IWorldStateScopeProvider.IScope canonical = manager.GlobalWorldState.BeginScope(parent, new LocalMetrics());
         using (Assert.EnterMultipleScope())

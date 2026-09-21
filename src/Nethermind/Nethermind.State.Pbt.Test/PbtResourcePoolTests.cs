@@ -265,25 +265,31 @@ public class PbtResourcePoolTests
     }
 
     [Test]
-    public void OverflowDisposesBloomAndRetainsGrownCapacity()
+    public void OverflowDisposesBloomAndRetainsGrownCapacity([Values] bool growNodeGroups)
     {
         PbtTransientResource resource = _pool.GetCachedResource(PbtResourcePool.Usage.Compact2);
-        long originalCapacity = resource.Capacity;
+        PbtTransientResource.Size originalSize = resource.GetSize();
         try
         {
             for (int slot = 0; slot < 2048; slot++) resource.ShouldPrewarm(TestItem.AddressA, (UInt256)slot);
+            if (growNodeGroups)
+                for (int first = 0; first < 32; first++)
+                    for (int second = 0; second < 256; second++)
+                        resource.NodeGroups.Set(default, new PbtNodePath([(byte)(first + 2), (byte)second], 16), RefCountingMemory.Wrapping([1]));
         }
         finally
         {
             resource.ReleaseLease();
         }
-        Assert.That(resource.Capacity, Is.GreaterThan(originalCapacity));
+        Assert.That(resource.GetSize().PrewarmCapacity, Is.GreaterThan(originalSize.PrewarmCapacity));
+        Assert.That(resource.GetSize().NodeGroupCapacity, growNodeGroups ? Is.GreaterThan(originalSize.NodeGroupCapacity) : Is.EqualTo(originalSize.NodeGroupCapacity));
+        Assert.That(resource.NodeGroups.Count, Is.Zero);
         Assert.Throws<ObjectDisposedException>(() => resource.ShouldPrewarm(TestItem.AddressA));
         PbtTransientResource replacement = _pool.GetCachedResource(PbtResourcePool.Usage.Compact2);
         try
         {
             Assert.That(replacement, Is.Not.SameAs(resource));
-            Assert.That(replacement.Capacity, Is.EqualTo(resource.Capacity));
+            Assert.That(replacement.GetSize(), Is.EqualTo(resource.GetSize()));
             Assert.That(replacement.ShouldPrewarm(TestItem.AddressA), Is.True);
         }
         finally

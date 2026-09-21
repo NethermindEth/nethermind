@@ -434,10 +434,10 @@ public class PbtSnapshotBundleTests
     }
 
     [NonParallelizable]
-    [TestCase(0UL, 2)]
-    [TestCase(1UL, 2)]
-    [TestCase(1048576UL, 1)]
-    public void Trie_cache_reuses_only_matching_subtree_hashes(ulong budget, int expectedReads)
+    [TestCase(0UL, false)]
+    [TestCase(1UL, false)]
+    [TestCase(1048576UL, true)]
+    public void Trie_cache_reuses_only_matching_subtree_hashes(ulong budget, bool admitted)
     {
         long initialHits = Metrics.PbtTrieCacheHits["account"];
         long initialMisses = Metrics.PbtTrieCacheMisses["account"];
@@ -450,14 +450,20 @@ public class PbtSnapshotBundleTests
         PbtReadOnlySnapshotBundle readOnly = new(new(0), reader);
         using PbtSnapshotBundle bundle = new(Snapshots(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         Assert.That(bundle.TreeRoot, Is.Not.EqualTo(readOnly.TreeRoot));
-        for (int read = 0; read < 2; read++)
-        {
-            using RefCountingMemory? payload = bundle.GetNodeGroup(path, reader.CurrentRoot);
+        using (PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1))
+            for (int read = 0; read < 2; read++)
+            {
+                using RefCountingMemory? payload = ((IPbtStore)session).GetNodeGroup(path, reader.CurrentRoot);
+                Assert.That(payload!.GetSpan().ToArray(), Is.EqualTo(encoding));
+            }
+        using (RefCountingMemory? payload = bundle.GetNodeGroup(path, reader.CurrentRoot))
             Assert.That(payload!.GetSpan().ToArray(), Is.EqualTo(encoding));
-        }
+        Assert.That(reader.GroupReadCount, Is.EqualTo(1), "the warmer stages its read for the fold");
+        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), reader.CurrentRoot, out PbtTransientResource retired);
+        cache.Add(retired);
+        retired.ReleaseLease();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.GroupReadCount, Is.EqualTo(expectedReads));
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero, "cache must not retain oversized source allocations");
             Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(budget));
         }
@@ -474,25 +480,22 @@ public class PbtSnapshotBundleTests
         Assert.That(forkReader.GroupReadCount, Is.EqualTo(1));
         Assert.That(cache.TryGet(default, new PbtNodePath([0], 4), out _), Is.False);
         Assert.That(cache.TryGet(default, new PbtStorageNodePath([], 0), out _), Is.False);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Metrics.PbtTrieCacheHits["account"] - initialHits, Is.EqualTo(2 - expectedReads));
-            Assert.That(Metrics.PbtTrieCacheMisses["account"] - initialMisses, Is.EqualTo(expectedReads + 3));
-        }
         using (RefCountingMemory? payload = bundle.GetNodeGroup(path, reader.CurrentRoot))
             Assert.That(payload!.Memory.ToArray(), Is.EqualTo(encoding));
         int readsBeforeWarming = reader.GroupReadCount;
-        using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1);
-        using RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(path, reader.CurrentRoot);
+        using PbtTrieWarmupSession laterSession = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 2);
+        using RefCountingMemory? warmed = ((IPbtStore)laterSession).GetNodeGroup(path, reader.CurrentRoot);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(warmed!.Memory.ToArray(), Is.EqualTo(encoding));
-            Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeWarming + expectedReads - 1), "warming must use the supplied subtree hash, not its local view root");
+            Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeWarming + (admitted ? 0 : 1)), "warming must use the supplied subtree hash, not its local view root");
+            Assert.That(Metrics.PbtTrieCacheHits["account"] - initialHits, Is.EqualTo(admitted ? 2 : 0));
+            Assert.That(Metrics.PbtTrieCacheMisses["account"] - initialMisses, Is.EqualTo(admitted ? 4 : 6));
         }
     }
 
     [Test]
-    public void Trie_cache_reuses_unchanged_descendants_across_roots([Values] bool warmFirst)
+    public void Trie_cache_reuses_unchanged_descendants_across_roots([Values] bool forkWarms)
     {
         PbtNodePath path = new(Bytes.FromHexString("00"), 4);
         byte[] originalNode = BranchEncoding(1);
@@ -506,30 +509,114 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         Reader reader = new(default, null) { GroupKey = path, GroupPayload = original, CurrentRoot = TestItem.KeccakA.ValueHash256 };
         using PbtSnapshotBundle bundle = new(new(0), new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
-        using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1);
-        using (RefCountingMemory? payload = warmFirst
-            ? ((IPbtStore)session).GetNodeGroup(path, originalHash)
-            : bundle.GetNodeGroup(path, originalHash))
-            Assert.That(payload!.Memory.ToArray(), Is.EqualTo(original));
+        WarmAndCommit(bundle, cache, path, originalHash, original);
         Assert.That(reader.GroupReadCount, Is.EqualTo(1));
 
         Reader forkReader = new(default, null) { GroupKey = path, GroupPayload = original, CurrentRoot = TestItem.KeccakB.ValueHash256 };
         using PbtSnapshotBundle fork = new(new(0), new PbtReadOnlySnapshotBundle(new(0), forkReader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         using PbtTrieWarmupSession forkSession = fork.CreateTrieWarmupSession(new NoopTrieWarmer(), 2);
-        using (RefCountingMemory? payload = warmFirst
-            ? fork.GetNodeGroup(path, originalHash)
-            : ((IPbtStore)forkSession).GetNodeGroup(path, originalHash))
+        using (RefCountingMemory? payload = forkWarms
+            ? ((IPbtStore)forkSession).GetNodeGroup(path, originalHash)
+            : fork.GetNodeGroup(path, originalHash))
             Assert.That(payload!.Memory.ToArray(), Is.EqualTo(original));
         Assert.That(forkReader.GroupReadCount, Is.Zero, "an unrelated tree-root change must not invalidate this subtree");
 
         Reader changedReader = new(default, null) { GroupKey = path, GroupPayload = changed, CurrentRoot = TestItem.KeccakB.ValueHash256 };
         using PbtSnapshotBundle changedBundle = new(new(0), new PbtReadOnlySnapshotBundle(new(0), changedReader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
-        using (RefCountingMemory? payload = changedBundle.GetNodeGroup(path, changedHash))
-            Assert.That(payload!.Memory.ToArray(), Is.EqualTo(changed));
+        WarmAndCommit(changedBundle, cache, path, changedHash, changed);
         Assert.That(changedReader.GroupReadCount, Is.EqualTo(1), "different subtree hashes must miss even with the same whole-tree root");
         using (RefCountingMemory? payload = bundle.GetNodeGroup(path, originalHash))
             Assert.That(payload!.Memory.ToArray(), Is.EqualTo(original));
         Assert.That(reader.GroupReadCount, Is.EqualTo(2), "replacement must not make the old view return the new subtree");
+    }
+
+    /// <summary>Warms one group, checks the fold reads the staged copy, then commits the block so the group reaches the shared cache.</summary>
+    private static void WarmAndCommit(PbtSnapshotBundle bundle, PbtTrieNodeCache cache, PbtNodePath path, in ValueHash256 groupHash, byte[] expected)
+    {
+        using (PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1))
+        using (RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(path, groupHash))
+            Assert.That(warmed!.Memory.ToArray(), Is.EqualTo(expected));
+        using (RefCountingMemory? payload = bundle.GetNodeGroup(path, groupHash))
+            Assert.That(payload!.Memory.ToArray(), Is.EqualTo(expected));
+        bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), groupHash, out PbtTransientResource retired).Dispose();
+        cache.Add(retired);
+        retired.ReleaseLease();
+    }
+
+    [NonParallelizable]
+    [Test]
+    public void Transient_stages_folded_and_warmed_groups_and_bulk_add_folds_them_into_the_shared_cache([ValueSource(nameof(CachePartitions))] string partition, [Values] bool rocksDbBacked)
+    {
+        long initialEntries = Metrics.PbtTrieCacheEntries[partition];
+        using PbtTrieNodeCache cache = new(CacheConfig(partition, 1048576));
+        using TrackingTransientPool pool = new();
+        TrackingMemoryProvider foldMemory = new();
+        RocksDbMemoryProvider rocksDbMemory = new();
+        PbtNodePath foldedPath = CachePath(partition);
+        PbtNodePath warmedPath = CachePath(partition, 1);
+        byte[] first = EncodeGroup(foldedPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
+        byte[] second = EncodeGroup(foldedPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(2))]);
+        byte[] warmed = EncodeGroup(warmedPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(warmedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(3))]);
+        ValueHash256 firstHash = new(Value(1));
+        ValueHash256 secondHash = new(Value(2));
+        ValueHash256 warmedHash = new(Value(3));
+        Reader reader = new(default, null) { GroupKey = warmedPath, GroupPayload = warmed, MemoryProvider = rocksDbBacked ? rocksDbMemory : foldMemory };
+        PbtSnapshotBundle bundle = new(new(0), new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        PbtTransientResource transient = pool.LastRented!;
+
+        using (RefCountingMemory payload = Memory(first, foldMemory)) bundle.SetNodeGroup(foldedPath, firstHash, payload);
+        using (RefCountingMemory payload = Memory(second, foldMemory)) bundle.SetNodeGroup(foldedPath, secondHash, payload);
+        using (PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1))
+        using (RefCountingMemory? read = ((IPbtStore)session).GetNodeGroup(warmedPath, warmedHash))
+            Assert.That(read!.Memory.ToArray(), Is.EqualTo(warmed));
+        using (RefCountingMemory? read = bundle.GetNodeGroup(warmedPath, warmedHash))
+            Assert.That(read!.Memory.ToArray(), Is.EqualTo(warmed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transient.NodeGroups.Count, Is.EqualTo(2));
+            Assert.That(transient.NodeGroups.TryGet(firstHash, foldedPath, out _), Is.False, "a later fold of the same path supersedes the earlier one");
+            Assert.That(transient.NodeGroups.TryGet(secondHash, foldedPath, out RefCountingMemory? staged), Is.True);
+            using (staged) Assert.That(staged!.Memory.ToArray(), Is.EqualTo(second));
+            Assert.That(reader.GroupReadCount, Is.EqualTo(1), "the fold reads the warmer's staged copy");
+            Assert.That(TrackingMemoryProvider.CountUnreleased(rocksDbBacked ? rocksDbMemory.Rented : foldMemory.Rented), Is.EqualTo(rocksDbBacked ? 0 : 2), "a RocksDB slice is copied rather than pinned; pooled payloads are leased");
+        }
+
+        PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default, out PbtTransientResource retired);
+        Assert.That(retired, Is.SameAs(transient));
+        cache.Add(retired);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.EntryCount, Is.EqualTo(2));
+            Assert.That(Metrics.PbtTrieCacheEntries[partition] - initialEntries, Is.EqualTo(2));
+            Assert.That(cache.TryGet(firstHash, foldedPath, out _), Is.False);
+            Assert.That(cache.TryGet(secondHash, foldedPath, out RefCountingMemory? folded), Is.True);
+            using (folded) Assert.That(folded!.Memory.ToArray(), Is.EqualTo(second));
+            Assert.That(cache.TryGet(warmedHash, warmedPath, out RefCountingMemory? cached), Is.True);
+            using (cached) Assert.That(cached!.Memory.ToArray(), Is.EqualTo(warmed));
+        }
+        retired.ReleaseLease();
+        snapshot.Dispose();
+        bundle.Dispose();
+        cache.Clear();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.ReturnCount, Is.EqualTo(2));
+            Assert.That(transient.NodeGroups.Count, Is.Zero);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(foldMemory.Rented), Is.Zero);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(rocksDbMemory.Rented), Is.Zero);
+        }
+    }
+
+    private sealed class RocksDbMemoryProvider : IRefCountingMemoryProvider
+    {
+        public List<RefCountingMemory> Rented { get; } = [];
+
+        public RefCountingMemory Rent(int length)
+        {
+            RefCountingMemory memory = RefCountingMemory.OwningRocksDb(ArrayMemoryManager.From(new byte[length])!);
+            Rented.Add(memory);
+            return memory;
+        }
     }
 
     // At a 1 MiB budget each shard holds a single set, so paths sharing the top hash byte share a set.
@@ -924,10 +1011,13 @@ public class PbtSnapshotBundleTests
         }
         using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1);
         using RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256);
+        using RefCountingMemory? rewarmed = ((IPbtStore)session).GetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(warmed?.Memory.ToArray(), Is.EqualTo(newestTier == 3 ? local : expected), "warming uses frozen layers, not live writes or stale cached base groups");
-            Assert.That(reader.GroupReadCount, Is.EqualTo(newestTier == 0 ? 1 : 0));
+            Assert.That(rewarmed?.Memory.ToArray(), Is.EqualTo(warmed?.Memory.ToArray()));
+            // The fold's own read stages nothing, so the warmer reads persistence once more and then serves its staged copy.
+            Assert.That(reader.GroupReadCount, Is.EqualTo(newestTier == 0 ? 2 : 0));
         }
     }
 

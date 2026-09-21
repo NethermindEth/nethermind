@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -18,6 +19,7 @@ using Nethermind.Int256;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Logging;
+using Nethermind.Pbt;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
 
@@ -384,13 +386,13 @@ public class PbtDbManagerTests
         Task producer = Task.CompletedTask;
         try
         {
-            manager.AddSnapshot(PersistenceSnapshot(0, 1, pool));
-            manager.AddSnapshot(PersistenceSnapshot(1, 2, pool));
+            manager.AddSnapshot(PersistenceSnapshot(0, 1, pool), pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing));
+            manager.AddSnapshot(PersistenceSnapshot(1, 2, pool), pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing));
             await enteredPersistence.Task.WaitAsync(TimeSpan.FromSeconds(10));
             producer = Task.Run(() =>
             {
                 for (int number = 3; number <= 68; number++)
-                    manager.AddSnapshot(PersistenceSnapshot(number - 1, number, pool));
+                    manager.AddSnapshot(PersistenceSnapshot(number - 1, number, pool), pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing));
             });
             await producerStalled.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.That(producer.IsCompleted, Is.False);
@@ -446,6 +448,72 @@ public class PbtDbManagerTests
         await using PbtTestContext reopened = new(db, new PbtConfig { MirrorFlat = mirror });
         using IPbtPersistence.IReader reader = reopened.Persistence.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(mirror ? StateId.PreGenesis : new StateId(1, root)));
+    }
+
+    public enum TransientHandOff { Admitted, NoCache, Duplicate, ChannelFull }
+
+    [Test]
+    public async Task AddSnapshot_hands_the_transient_to_the_populator_or_releases_it([Values] TransientHandOff mode)
+    {
+        PbtConfig config = new() { CompactionOffset = 0 };
+        PbtResourcePool pool = new(config);
+        PbtSnapshotRepository repository = new();
+        using MemDb metadata = new();
+        IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
+        exitSource.Token.Returns(CancellationToken.None);
+        IPbtPersistence persistence = Substitute.For<IPbtPersistence>();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.CurrentState.Returns(PersistenceState(0));
+        persistence.CreateReader().Returns(reader);
+        persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>()).Returns(Substitute.For<IPbtPersistence.IWriteBatch>());
+        PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
+        PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
+            repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        using PbtTrieNodeCache cache = new(config);
+        PbtDbManager manager = new(repository, coordinator, persistence, pool, new PbtSnapshotCompactor(pool, schedule, repository, config),
+            exitSource, LimboLogs.Instance, config, new MetricsConfig(), mode == TransientHandOff.NoCache ? null : cache);
+        PbtTransientResource first = StagedTransient(pool, 1);
+        PbtTransientResource second = StagedTransient(pool, 2);
+        PbtTransientResource third = StagedTransient(pool, 3);
+        try
+        {
+            // An extra lease parks the populator on the first transient, so the second fills the one-slot queue and the third finds it full.
+            bool firstHeld = mode == TransientHandOff.ChannelFull && first.TryAcquireLease();
+            manager.AddSnapshot(PersistenceSnapshot(0, 1, pool), first);
+            manager.AddSnapshot(PersistenceSnapshot(mode == TransientHandOff.Duplicate ? 0 : 1, mode == TransientHandOff.Duplicate ? 1 : 2, pool), second);
+            if (mode == TransientHandOff.ChannelFull) manager.AddSnapshot(PersistenceSnapshot(2, 3, pool), third);
+            else third.ReleaseLease();
+            using (Assert.EnterMultipleScope())
+            {
+                if (mode is TransientHandOff.NoCache or TransientHandOff.Duplicate) Assert.That(IsReturned(second), Is.True, "a transient that cannot reach the populator returns to the pool at once");
+                if (mode == TransientHandOff.ChannelFull) Assert.That(IsReturned(third), Is.True, "a transient refused by the full queue returns to the pool at once");
+            }
+            if (firstHeld) first.ReleaseLease();
+            Assert.That(() => cache.EntryCount, Is.EqualTo(mode switch { TransientHandOff.NoCache => 0, TransientHandOff.Duplicate => 1, _ => 2 }).After(5000, 10));
+            Assert.That(() => IsReturned(first) && IsReturned(second) && IsReturned(third), Is.True.After(5000, 10), "every transient returns to the pool once ingested or refused");
+            Assert.That(first.NodeGroups.Count + second.NodeGroups.Count + third.NodeGroups.Count, Is.Zero);
+        }
+        finally
+        {
+            await manager.DisposeAsync();
+            repository.RemoveStatesUntil(ulong.MaxValue);
+        }
+    }
+
+    /// <summary>A returned resource refuses new leases until it is rented again; a probe that succeeds is undone.</summary>
+    private static bool IsReturned(PbtTransientResource transient)
+    {
+        if (!transient.TryAcquireLease()) return true;
+        transient.ReleaseLease();
+        return false;
+    }
+
+    private static PbtTransientResource StagedTransient(PbtResourcePool pool, byte marker)
+    {
+        PbtTransientResource transient = pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing);
+        using RefCountingMemory payload = RefCountingMemory.Wrapping([marker]);
+        transient.NodeGroups.Set(new ValueHash256(TestItem.KeccakA.Bytes), new PbtNodePath([marker], 8), payload);
+        return transient;
     }
 
     private static StateId PersistenceState(int number) => new((ulong)number, TestItem.KeccakA.ValueHash256);

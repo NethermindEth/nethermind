@@ -136,12 +136,12 @@ public class PbtResourcePool : IPbtResourcePool
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writableBundlePoolSize)
     {
         private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
-        // Each writable bundle holds three partition batches and one prewarm resource.
+        // Each writable bundle holds three partition batches and one transient resource.
         private readonly ConcurrentStackPool<PbtWriteBatchBuilder<PbtPath>> _writeBatchPool = new(writableBundlePoolSize * 2);
         private readonly ConcurrentStackPool<PbtWriteBatchBuilder<PbtStoragePath>> _storageWriteBatchPool = new(writableBundlePoolSize);
         private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), "PbtWriteBatchBuilder");
         private readonly ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
-        private long _lastCachedResourceCapacity = 1024;
+        private PbtTransientResource.Size _lastCachedResourceSize = new(1024, 1024);
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
 
@@ -214,14 +214,15 @@ public class PbtResourcePool : IPbtResourcePool
             }
 
             Metrics.PbtCreatedPooledResource.AddBy(_cachedResourceLabel, 1);
-            return new PbtTransientResource(Volatile.Read(ref _lastCachedResourceCapacity));
+            PbtTransientResource.Size size = Volatile.Read(ref _lastCachedResourceSize);
+            return new PbtTransientResource(size.PrewarmCapacity, size.NodeGroupCapacity);
         }
 
         public void ReturnCachedResource(PbtTransientResource resource)
         {
             Metrics.PbtActivePooledResource.AddBy(_cachedResourceLabel, -1);
             if (!_cachedResourcePool.Return(resource))
-                Volatile.Write(ref _lastCachedResourceCapacity, resource.Capacity);
+                Volatile.Write(ref _lastCachedResourceSize, resource.GetSize());
             Metrics.PbtCachedPooledResource[_cachedResourceLabel] = _cachedResourcePool.PooledItemCount;
         }
 

@@ -114,15 +114,16 @@ internal sealed class PbtTrieWarmupSession(
         if (RefCountingLease.ReleaseOnce(ref _accessors)) ReleaseFrozenLayers();
     }
 
-    // Only frozen, independently leased layers participate; live write buffers and growing snapshot lists never do.
+    // Only frozen, independently leased layers are read; live write buffers and growing snapshot lists never are.
+    // Whatever is resolved past them is staged in the transient resource so the fold finds it without repeating the read.
     RefCountingMemory? IPbtStore.GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
     {
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
         for (int index = initialSnapshots.Count - 1; index >= 0; index--)
             if (initialSnapshots[index].Content.TryGetNodeGroup(storagePath, out RefCountingMemory? payload)) return payload;
-        if (trieNodeCache?.TryGet(groupHash, storagePath, out RefCountingMemory? cached) == true) return cached;
-        RefCountingMemory? result = readOnlyBundle.GetNodeGroup(storagePath);
-        if (result is not null) trieNodeCache?.Add(groupHash, storagePath, result);
+        if (transientResource.NodeGroups.TryGet(groupHash, storagePath, out RefCountingMemory? staged)) return staged;
+        if (trieNodeCache?.TryGet(groupHash, storagePath, out RefCountingMemory? result) != true) result = readOnlyBundle.GetNodeGroup(storagePath);
+        if (result is not null) transientResource.NodeGroups.Set(groupHash, storagePath, result);
         return result;
     }
 

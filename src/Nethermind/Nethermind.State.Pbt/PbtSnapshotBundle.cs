@@ -112,7 +112,11 @@ public sealed class PbtSnapshotBundle(
         _storageBatch.CompleteDrain();
     }
 
-    internal void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => WriteBuffer.SetNodeGroup(groupKey, payload);
+    internal void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+    {
+        WriteBuffer.SetNodeGroup(groupKey, payload);
+        _transientResource.NodeGroups.Set(groupHash, groupKey, payload);
+    }
 
     internal RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath>
     {
@@ -122,10 +126,9 @@ public sealed class PbtSnapshotBundle(
         if (WriteBuffer.TryGetNodeGroup(storagePath, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(storagePath, out payload)) return payload;
+        if (_transientResource.NodeGroups.TryGet(groupHash, storagePath, out payload)) return payload;
         if (trieNodeCache?.TryGet(groupHash, storagePath, out payload) == true) return payload;
-        payload = readOnlyBundle.GetNodeGroup(storagePath);
-        if (payload is not null) trieNodeCache?.Add(groupHash, storagePath, payload);
-        return payload;
+        return readOnlyBundle.GetNodeGroup(storagePath);
     }
 
     internal IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
@@ -382,15 +385,22 @@ public sealed class PbtSnapshotBundle(
 
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
+        PbtSnapshot snapshot = CollectSnapshot(from, to, treeRoot, out PbtTransientResource retired);
+        retired.ReleaseLease();
+        return snapshot;
+    }
+
+    /// <summary>Seals the write buffer into a snapshot and hands the block's transient resource to the caller, who owns its remaining lease.</summary>
+    public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot, out PbtTransientResource retired)
+    {
         if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
             throw new InvalidOperationException("Pending leaf changes must be folded before collecting a snapshot.");
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
-        PbtTransientResource retired = _transientResource;
+        retired = _transientResource;
         Volatile.Write(ref _transientResource, resourcePool.GetCachedResource(usage));
-        retired.ReleaseLease();
         return snapshot;
     }
 

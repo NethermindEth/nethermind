@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -60,7 +61,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
 
     /// <summary>Retains a group under its path and subtree hash, superseding an older hash at the same path; the caller keeps its own lease.</summary>
     /// <remarks>A payload with more than 20% pool slack, or one borrowed from RocksDB, is copied rather than leased.</remarks>
-    public void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
+    internal void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
     {
         if (IsStorage(path)) Add(_storage, groupHash, path, payload);
         else Add(IsCode(path) ? _code : _account, groupHash, path, payload);
@@ -68,9 +69,32 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
 
     private static void Add<TPath, TStored>(Partition<TStored> partition, in ValueHash256 groupHash, TPath path, RefCountingMemory payload)
         where TPath : struct, IPbtNodePath<TPath>
-        where TStored : struct, IPbtNodePath<TStored>
+        where TStored : struct, IPbtNodePath<TStored> =>
+        Report(partition, partition.Add(groupHash, path, payload));
+
+    /// <summary>Folds a retired block's staged groups into the shared cache once its last reader has left.</summary>
+    /// <remarks>Child shard <c>i</c> maps onto parent shard <c>i</c>, so the shards ingest in parallel with one lock acquisition each.</remarks>
+    public void Add(PbtTransientResource transientResource)
     {
-        Metrics.PbtTrieCacheMemory.AddBy(partition.Label, partition.Add(groupHash, path, payload));
+        transientResource.WaitForExclusiveLease();
+        ChildCache child = transientResource.NodeGroups;
+        long account = 0;
+        long code = 0;
+        long storage = 0;
+        Parallel.For(0, ShardCount, shard =>
+        {
+            Interlocked.Add(ref account, _account.AddShard(shard, child.Account));
+            Interlocked.Add(ref code, _code.AddShard(shard, child.Code));
+            Interlocked.Add(ref storage, _storage.AddShard(shard, child.Storage));
+        });
+        Report(_account, account);
+        Report(_code, code);
+        Report(_storage, storage);
+    }
+
+    private static void Report<TStored>(Partition<TStored> partition, long delta) where TStored : struct, IPbtNodePath<TStored>
+    {
+        Metrics.PbtTrieCacheMemory.AddBy(partition.Label, delta);
         Metrics.PbtTrieCacheEntries[partition.Label] = partition.EntryCount;
     }
 
@@ -82,11 +106,8 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         Clear(_storage);
     }
 
-    private static void Clear<TStored>(Partition<TStored> partition) where TStored : struct, IPbtNodePath<TStored>
-    {
-        Metrics.PbtTrieCacheMemory.AddBy(partition.Label, partition.Clear());
-        Metrics.PbtTrieCacheEntries[partition.Label] = partition.EntryCount;
-    }
+    private static void Clear<TStored>(Partition<TStored> partition) where TStored : struct, IPbtNodePath<TStored> =>
+        Report(partition, partition.Clear());
 
     /// <summary>Stops admission and releases all cache-owned payload references.</summary>
     public void Dispose()
@@ -101,6 +122,8 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     private static bool ShouldCopy(RefCountingMemory payload) => payload.IsRocksDbBacked || payload.Capacity * 5L > payload.GetSpan().Length * 6L;
 
     private static long EntrySize(RefCountingMemory payload) => (ShouldCopy(payload) ? payload.GetSpan().Length : payload.Capacity) + EntryOverhead;
+
+    private static int ShardIndex(int hash) => (int)((uint)hash >> 24);
 
     private static RefCountingMemory Retain(RefCountingMemory payload)
     {
@@ -149,8 +172,6 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             }
         }
 
-        private static int ShardIndex(int hash) => (int)((uint)hash >> 24);
-
         // The top hash byte selects the shard, so the set is drawn from the remaining bits.
         private int SetIndex(int hash) => (hash & 0xFFFFFF) % _setCount;
 
@@ -171,6 +192,26 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
                 return Volatile.Read(ref _disposed) ? 0 : shard.Add(SetIndex(hash), groupHash, path, payload, size, _shardBudget);
         }
 
+        /// <summary>Admits every group staged in the child's shard <paramref name="shardIndex"/> under a single lock acquisition.</summary>
+        /// <returns>The change in retained bytes.</returns>
+        internal long AddShard(int shardIndex, ChildPartition<TStored> source)
+        {
+            Shard<TStored> shard = _shards[shardIndex];
+            long delta = 0;
+            lock (shard.Sync)
+            {
+                if (Volatile.Read(ref _disposed)) return 0;
+                foreach (ref ChildEntry<TStored> entry in source.Shards[shardIndex].AsSpan())
+                {
+                    if (entry.Payload is null) continue;
+                    long size = EntrySize(entry.Payload);
+                    if (size > _shardBudget) continue;
+                    delta += shard.Add(SetIndex(entry.Hash), entry.GroupHash, entry.Path, entry.Payload, size, _shardBudget);
+                }
+            }
+            return delta;
+        }
+
         /// <returns>The change in retained bytes.</returns>
         internal long Clear()
         {
@@ -181,6 +222,159 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         }
 
         internal void StopAdmission() => Volatile.Write(ref _disposed, true);
+    }
+
+    /// <summary>Per-block staging cache that a <see cref="PbtTransientResource"/> carries until the block commits and <see cref="Add(PbtTransientResource)"/> folds it into the shared cache.</summary>
+    /// <remarks>
+    /// Partitioned and sharded like the parent so ingestion pairs shard with shard. Each shard is a direct-mapped table
+    /// where a later write to the same slot supersedes the earlier one; fold workers and warmer threads write concurrently,
+    /// so every slot access takes its shard lock because an overwrite releases the previous payload's lease.
+    /// A RocksDB-backed payload is copied on entry so the block cache is not pinned for the life of the block.
+    /// </remarks>
+    public sealed class ChildCache : IDisposable
+    {
+        private const double UtilRatio = 0.25;
+        private readonly Lock[] _locks = new Lock[ShardCount];
+        private int _shardSize;
+
+        public ChildCache(int capacity)
+        {
+            _shardSize = ShardSize(capacity);
+            for (int index = 0; index < _locks.Length; index++) _locks[index] = new Lock();
+            Account = new ChildPartition<PbtNodePath>(_shardSize);
+            Code = new ChildPartition<PbtNodePath>(_shardSize);
+            Storage = new ChildPartition<PbtStorageNodePath>(_shardSize);
+        }
+
+        internal ChildPartition<PbtNodePath> Account { get; }
+        internal ChildPartition<PbtNodePath> Code { get; }
+        internal ChildPartition<PbtStorageNodePath> Storage { get; }
+
+        public int Count => Volatile.Read(ref Account.Count) + Volatile.Read(ref Code.Count) + Volatile.Read(ref Storage.Count);
+
+        /// <summary>Slots per partition; the value a replacement cache is constructed with to match this one.</summary>
+        public int Capacity => ShardCount * _shardSize;
+
+        private const int PartitionCount = 3;
+
+        private static int ShardSize(int capacity) => (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, (capacity + ShardCount - 1) / ShardCount));
+
+        /// <summary>Stages a group under its path and subtree hash; a null tombstone is ignored.</summary>
+        internal void Set<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        {
+            if (payload is null) return;
+            RefCountingMemory retained;
+            if (payload.IsRocksDbBacked) retained = RefCountingMemory.Wrapping(payload.GetSpan().ToArray());
+            else
+            {
+                payload.AcquireLease();
+                retained = payload;
+            }
+            if (IsStorage(path)) Set(Storage, groupHash, path, retained);
+            else Set(IsCode(path) ? Code : Account, groupHash, path, retained);
+        }
+
+        private void Set<TPath, TStored>(ChildPartition<TStored> partition, in ValueHash256 groupHash, TPath path, RefCountingMemory retained)
+            where TPath : struct, IPbtNodePath<TPath>
+            where TStored : struct, IPbtNodePath<TStored>
+        {
+            int hash = path.GetHashCode();
+            RefCountingMemory? released;
+            lock (_locks[ShardIndex(hash)])
+            {
+                ref ChildEntry<TStored> entry = ref partition.Slot(hash);
+                bool present = entry.Payload is not null && entry.Hash == hash && entry.GroupHash == groupHash && entry.Path.Equals(path);
+                released = present ? retained : entry.Payload;
+                if (!present)
+                {
+                    if (entry.Payload is null) Interlocked.Increment(ref partition.Count);
+                    entry = new ChildEntry<TStored> { Hash = hash, GroupHash = groupHash, Path = path.ToPath<TStored>(), Payload = retained };
+                }
+            }
+            ((IDisposable?)released)?.Dispose();
+        }
+
+        /// <summary>Leases the staged group at <paramref name="path"/> whose subtree hash is <paramref name="groupHash"/>.</summary>
+        /// <returns><c>true</c> when <paramref name="payload"/> holds a caller-owned lease to release with <see cref="IDisposable.Dispose"/>.</returns>
+        internal bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> =>
+            IsStorage(path)
+                ? TryGet(Storage, groupHash, path, out payload)
+                : TryGet(IsCode(path) ? Code : Account, groupHash, path, out payload);
+
+        private bool TryGet<TPath, TStored>(ChildPartition<TStored> partition, in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload)
+            where TPath : struct, IPbtNodePath<TPath>
+            where TStored : struct, IPbtNodePath<TStored>
+        {
+            int hash = path.GetHashCode();
+            lock (_locks[ShardIndex(hash)])
+            {
+                ref ChildEntry<TStored> entry = ref partition.Slot(hash);
+                if (entry.Payload is null || entry.Hash != hash || entry.GroupHash != groupHash || !entry.Path.Equals(path))
+                {
+                    payload = null;
+                    return false;
+                }
+                entry.Payload.AcquireLease();
+                payload = entry.Payload;
+                return true;
+            }
+        }
+
+        /// <summary>Releases every staged payload, growing the tables when the block filled more than a quarter of the slots.</summary>
+        /// <remarks>Only the exclusive owner may reset after all leases have drained.</remarks>
+        public void Reset()
+        {
+            int count = Count;
+            while (count > PartitionCount * Capacity * UtilRatio) _shardSize *= 2;
+            Dispose();
+        }
+
+        /// <summary>Releases every staged payload without growing.</summary>
+        public void Dispose()
+        {
+            Account.Clear(_shardSize);
+            Code.Clear(_shardSize);
+            Storage.Clear(_shardSize);
+        }
+    }
+
+    internal sealed class ChildPartition<TStored>(int shardSize) where TStored : struct, IPbtNodePath<TStored>
+    {
+        internal ChildEntry<TStored>[][] Shards = CreateShards(shardSize);
+        internal int Count;
+        private int _mask = shardSize - 1;
+
+        internal ref ChildEntry<TStored> Slot(int hash) => ref Shards[ShardIndex(hash)][hash & _mask];
+
+        /// <summary>Releases every payload; reallocates the tables when <paramref name="shardSize"/> differs from the current one.</summary>
+        internal void Clear(int shardSize)
+        {
+            foreach (ChildEntry<TStored>[] shard in Shards)
+                foreach (ref ChildEntry<TStored> entry in shard.AsSpan())
+                {
+                    ((IDisposable?)entry.Payload)?.Dispose();
+                    entry = default;
+                }
+            Count = 0;
+            if (shardSize == _mask + 1) return;
+            Shards = CreateShards(shardSize);
+            _mask = shardSize - 1;
+        }
+
+        private static ChildEntry<TStored>[][] CreateShards(int shardSize)
+        {
+            ChildEntry<TStored>[][] shards = new ChildEntry<TStored>[ShardCount][];
+            for (int index = 0; index < shards.Length; index++) shards[index] = new ChildEntry<TStored>[shardSize];
+            return shards;
+        }
+    }
+
+    internal struct ChildEntry<TStored> where TStored : struct, IPbtNodePath<TStored>
+    {
+        internal int Hash;
+        internal ValueHash256 GroupHash;
+        internal TStored Path;
+        internal RefCountingMemory? Payload;
     }
 
     /// <remarks>Lookups are lock-free; every other member expects the caller to hold <see cref="Sync"/>.</remarks>
