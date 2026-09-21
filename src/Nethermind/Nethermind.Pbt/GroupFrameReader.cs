@@ -133,8 +133,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         {
             int width = PbtFourLevelGroupGeometry.WidthOf(position);
             if (width is 1 or PbtFourLevelGroupGeometry.BoundarySlots) return default;
-            ValueHash256 left = GetHash(path, position - width);
-            ValueHash256 right = GetHash(path, position - 1);
+            GetChildHashes(path, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
             return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.LocalPathOf(position), left, right, knownHash);
         }
         PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
@@ -163,8 +162,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         }
         else if (PbtFourLevelGroupGeometry.WidthOf(position) is int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
         {
-            ValueHash256 left = GetHash(path, position - width);
-            ValueHash256 right = GetHash(path, position - 1);
+            GetChildHashes(path, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
             if (left != default && right != default)
             {
                 Span<byte> branch = stackalloc byte[67];
@@ -176,6 +174,31 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         _hashes[position] = hash;
         _hashed |= bit;
         return hash;
+    }
+
+    /// <summary>
+    /// <see cref="GetHash"/> for both children of an omitted branch; two stored encodings that still need
+    /// hashing are hashed together.
+    /// </summary>
+    private void GetChildHashes(scoped in PbtTraversalPath path, int leftPosition, int rightPosition, out ValueHash256 left, out ValueHash256 right)
+    {
+        uint bits = (1u << leftPosition) | (1u << rightPosition);
+        if ((_hashed & bits) == 0)
+        {
+            ReadOnlyMemory<byte> leftEncoding = GetEncoding(path, leftPosition);
+            ReadOnlyMemory<byte> rightEncoding = GetEncoding(path, rightPosition);
+            if (!leftEncoding.IsEmpty && !rightEncoding.IsEmpty)
+            {
+                _metrics?.AddNodeHashes(2);
+                Blake3Hash.HashTwo(PbtNodeReader.FromValidated(leftEncoding.Span).Preimage, PbtNodeReader.FromValidated(rightEncoding.Span).Preimage, out left, out right);
+                _hashes[leftPosition] = left;
+                _hashes[rightPosition] = right;
+                _hashed |= bits;
+                return;
+            }
+        }
+        left = GetHash(path, leftPosition);
+        right = GetHash(path, rightPosition);
     }
 
     public void Dispose()
