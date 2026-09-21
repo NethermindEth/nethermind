@@ -322,21 +322,69 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         };
     }
 
-    private sealed class NoOpEngineDriver : IEngineDriver
+    /// <summary>A well-formed block with an empty body at <paramref name="slot"/>, for endpoints that only need something decodable in the store.</summary>
+    public static SignedBeaconBlock MinimalBlock(ulong slot) => new()
     {
-        public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload => false;
+        Message = new BeaconBlock
+        {
+            Slot = slot,
+            ProposerIndex = 0,
+            ParentRoot = Hash256.Zero,
+            StateRoot = Hash256.Zero,
+            Body = new BeaconBlockBody
+            {
+                Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
+                Graffiti = Hash256.Zero,
+                ProposerSlashings = [],
+                AttesterSlashings = [],
+                Attestations = [],
+                Deposits = [],
+                VoluntaryExits = [],
+                SyncAggregate = new SyncAggregate { SyncCommitteeBits = new BitArray(512) },
+                ExecutionPayload = new ExecutionPayload
+                {
+                    ParentHash = Hash256.Zero,
+                    FeeRecipient = Address.Zero,
+                    StateRoot = Hash256.Zero,
+                    ReceiptsRoot = Hash256.Zero,
+                    LogsBloom = Bloom.Empty,
+                    PrevRandao = Hash256.Zero,
+                    BlockNumber = 1,
+                    GasLimit = 30_000_000,
+                    GasUsed = 0,
+                    Timestamp = 1_606_824_023,
+                    ExtraData = [],
+                    BaseFeePerGas = 7,
+                    BlockHash = Hash256.Zero,
+                    Transactions = [],
+                    Withdrawals = [],
+                    BlobGasUsed = 0,
+                    ExcessBlobGas = 0,
+                },
+                BlsToExecutionChanges = [],
+                BlobKzgCommitments = [],
+                ExecutionRequests = new ExecutionRequests { Deposits = [], Withdrawals = [], Consolidations = [] },
+            },
+        },
+    };
+}
 
-        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid });
+/// <summary>An engine that reports every payload and fork choice as valid; <see cref="HasAnsweredNewPayload"/> is settable for tests that drive the sync-status endpoints.</summary>
+internal sealed class NoOpEngineDriver : IEngineDriver
+{
+    public SignedBeaconBlock? CurrentBlock { get; set; }
+    public bool HasAnsweredNewPayload { get; set; }
 
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
-    }
+    public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
+        Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid });
 
-    private sealed class NoOpProcessExitSource : IProcessExitSource
-    {
-        private readonly CancellationTokenSource _cts = new();
-        public void Exit(int exitCode) => _cts.Cancel();
-        public CancellationToken Token => _cts.Token;
-    }
+    public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
+}
+
+/// <summary>An exit source whose token is cancelled by <see cref="Exit"/> and by nothing else.</summary>
+internal sealed class NoOpProcessExitSource : IProcessExitSource
+{
+    private readonly CancellationTokenSource _cts = new();
+    public void Exit(int exitCode) => _cts.Cancel();
+    public CancellationToken Token => _cts.Token;
 }
