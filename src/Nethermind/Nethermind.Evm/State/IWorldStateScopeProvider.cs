@@ -65,6 +65,8 @@ public interface IWorldStateScopeProvider
         /// <returns>A borrowed trie-warmer reference bound to this scope.</returns>
         ITrieWarmupSession CreateTrieWarmupSession() => ITrieWarmupSession.Noop.Instance;
 
+        bool StorageRootsAreAuthoritative => true;
+
         void UpdateRootHash();
 
         /// <summary>

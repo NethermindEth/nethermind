@@ -368,6 +368,38 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedSlot!.Value.ToMinimalBigEndian(), Is.EqualTo(slotValue));
     }
 
+    [Test]
+    public void WriteBatch_DeletingAccountHeldByTrie_WithVerifyWithTrie_DoesNotThrow([Values] bool hasStorage)
+    {
+        // Deleting an account deletes it from the flat snapshot at once but from the trie only when the batch is
+        // disposed. The storage-tree lookup the delete makes in between reads the account back, and with
+        // VerifyWithTrie that read used to be compared against the trie, which still held it: the EIP-161
+        // clearing of any pre-existing empty account (e.g. the identity precompile at the Spurious Dragon block)
+        // threw "Incorrect account ... vs flat:".
+        using TestContext ctx = new(new FlatDbConfig { VerifyWithTrie = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        Account account = hasStorage ? new Account(nonce: 1, balance: 5) : Account.TotallyEmpty;
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            // storage before the account, as block processing flushes it
+            if (hasStorage)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+                storageBatch.Set((UInt256)1, (UInt256)0xCAFE);
+            }
+            writeBatch.Set(address, account);
+        }
+
+        Assert.That(() =>
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            writeBatch.Set(address, null);
+        }, Throws.Nothing);
+        Assert.That(scope.Get(address), Is.Null);
+    }
+
     #endregion
 
     #region Selfdestruct Interaction Tests

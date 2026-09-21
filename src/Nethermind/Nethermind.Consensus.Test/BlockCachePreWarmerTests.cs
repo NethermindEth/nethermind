@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -312,6 +313,109 @@ public class BlockCachePreWarmerTests
         // AddressA should still be warmed via speculative tx execution (not BAL path)
         // since it's a sender in the transactions
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA should be warmed via speculative execution even without BAL path");
+    }
+
+    /// <summary>
+    /// Withdrawals are credited at block end, so their recipients must be warmed in the address warmer's
+    /// immediate phase, not in a pass that can only start once every transaction has been warmed.
+    /// </summary>
+    /// <remarks>
+    /// Cache presence after the prewarm completes cannot tell the two apart. The transaction warmers are
+    /// therefore parked inside their scope setup, which a pass sequenced after them could never outlive,
+    /// and the recipient must already be warm while they are still in flight.
+    /// </remarks>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_WarmsWithdrawalRecipients_WhileTransactionWarmingIsStillInFlight(CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        using ManualResetEventSlim gate = new(initialState: false);
+        using CountdownEvent txScopesInFlight = new(2);
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
+            onTxScope: static () => { },
+            onWarmup: static () => { });
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            minPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        // Four senders so both warm workers claim a job and park; the recipient is touched by nothing else.
+        Transaction[] txs =
+        [
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000),
+        ];
+        Block block = Build.A.Block
+            .WithTransactions(txs)
+            .WithWithdrawals(Build.A.Withdrawal.WithRecipient(TestItem.AddressE).WithAmount(1).TestObject)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        bool warmedWhileTxsParked;
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: both warm workers must be parked inside their first job's scope setup");
+
+                warmedWhileTxsParked = SpinWait.SpinUntil(
+                    () => preBlockCaches.StateCache.TryGetValue(TestItem.AddressE, out _),
+                    TimeSpan.FromSeconds(10));
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        Assert.That(warmedWhileTxsParked, Is.True,
+            "withdrawal recipients are warmed in the address warmer's immediate phase, not after the transaction pass");
+    }
+
+    /// <summary>
+    /// The system access lists are registered through an <c>as IHasAccessList</c> cast, so a decorator over
+    /// <see cref="IExecutionRequestsProcessor"/> that stops implementing it would drop the hint with no error.
+    /// </summary>
+    [Test]
+    public void SystemAccessLists_ResolvedFromTheProcessingScope_CoverTheRequestQueueContracts()
+    {
+        IHasAccessList[] systemAccessLists = _processingScope.Resolve<IHasAccessList[]>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).TestObject;
+
+        List<Address> hintedAddresses = [];
+        using (worldState.BeginScope(BuildParentHeader()))
+        {
+            foreach (IHasAccessList systemAccessList in systemAccessLists)
+            {
+                AccessList? accessList = systemAccessList.GetAccessList(block, Amsterdam.Instance);
+                if (accessList is null) continue;
+
+                foreach ((Address address, _) in accessList)
+                {
+                    hintedAddresses.Add(address);
+                }
+            }
+        }
+
+        Assert.That(hintedAddresses, Does.Contain(Eip7002Constants.WithdrawalRequestPredeployAddress)
+            .And.Contains(Eip7251Constants.ConsolidationRequestPredeployAddress));
     }
 
     /// <summary>Prewarming warms a transaction's declared EIP-2930 access-list slots for the main thread.</summary>
