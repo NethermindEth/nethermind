@@ -125,9 +125,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        // Overlap ecrecover with root computation, hash validation and block tree insertion;
-        // the processing queue's RecoverSignatures then short-circuits on recovered senders.
-        Task senderRecoveryTask = StartSenderRecovery(request);
+        // Overlap ecrecover with everything that follows, block tree insertion and enqueueing included;
+        // the processing queue's RecoverSignatures step joins whatever is left, off this thread.
+        StartSenderRecovery(request);
 
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
@@ -294,7 +294,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, senderRecoveryTask);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
         switch (result)
         {
@@ -462,22 +462,22 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private Task StartSenderRecovery(ExecutionPayload request)
+    private void StartSenderRecovery(ExecutionPayload request)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
-        // the senders; they recover in the processing queue as before. On rejected payloads the
-        // task is deliberately fire-and-forget — see the catch below.
+        // the senders; they recover in the processing queue as before. The task is deliberately
+        // fire-and-forget — see the catch below.
         if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
-            return Task.CompletedTask;
+            return;
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
             // TryGetBlock reports the decoding error; nothing to recover otherwise.
-            return Task.CompletedTask;
+            return;
 
         Transaction[] txs = transactions.Data;
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
-        return Task.Run(() =>
+        _ = Task.Run(() =>
         {
             try
             {
@@ -491,7 +491,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         });
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
@@ -533,16 +533,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
-            // the tree insert reads only the raw payload bytes, never the recovered senders,
-            // so it can safely overlap the remainder of sender recovery
-            Task<AddBlockResult> suggestTask = senderRecoveryTask.IsCompleted
-                ? _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask()
-                : Task.Run(() => _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask());
-
-            // recovery must complete before Enqueue — the prewarmer needs all senders up front
-            await senderRecoveryTask;
-
-            AddBlockResult addResult = await suggestTask.TimeoutOn(timeoutTask);
+            // The tree insert reads only the raw payload bytes, never the recovered senders, and the
+            // preprocessor step ahead of processing joins whatever recovery is left — so neither this
+            // thread nor Enqueue waits for it. The prewarmer still sees every sender up front.
+            AddBlockResult addResult = await _blockTree
+                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
+                .AsTask()
+                .TimeoutOn(timeoutTask);
 
             result = addResult switch
             {
