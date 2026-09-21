@@ -7,9 +7,9 @@ namespace Nethermind.Core.Buffers.Slab;
 
 /// <summary>A block handed out by <see cref="SlabMemoryAllocator.Allocate"/>; give it back with <see cref="SlabMemoryAllocator.Free"/>.</summary>
 /// <remarks>
-/// <see cref="Owner"/> is the slab or chunk the block was carved from (null for a dedicated huge
-/// allocation) and <see cref="Index"/> its region or first page there, so freeing needs no address
-/// lookup. The block is valid until it is freed; <see cref="Capacity"/> may exceed the requested size.
+/// <see cref="Owner"/> is the slab the block was carved from (null for a dedicated allocation) and
+/// <see cref="Index"/> its region there, so freeing needs no address lookup. The block is valid
+/// until it is freed; <see cref="Capacity"/> may exceed the requested size.
 /// </remarks>
 public readonly unsafe struct SlabAllocation
 {

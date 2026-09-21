@@ -149,7 +149,7 @@ public class RefCountingMemoryTests
     {
         long initialNativeCount = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount;
         long initialNativeCapacity = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCapacity;
-        using SlabMemoryAllocator allocator = new(new SlabAllocatorOptions(SlabAllocatorOptions.GenerateSizeClasses(16, 4, 4096), 4096, 64 * 1024, 16, 8));
+        using SlabMemoryAllocator allocator = new(new SlabAllocatorOptions(SlabAllocatorOptions.GenerateSizeClasses(16, 4, 4096), 4096, 16, 8));
         SlabRefCountingMemoryProvider provider = new(allocator);
         RefCountingMemory memory = provider.Rent(100);
         memory.GetSpan().Fill(7);

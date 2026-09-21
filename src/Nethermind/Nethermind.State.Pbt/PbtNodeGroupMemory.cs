@@ -11,7 +11,7 @@ namespace Nethermind.State.Pbt;
 /// <remarks>
 /// Four classes per doubling keep a typical ~1.2 KB group within a few percent of its class instead of
 /// a power-of-two bucket, and the explicit top class holds the writer's largest possible payload so it
-/// never falls through to a 128 KiB page run.
+/// never falls through to a dedicated allocation.
 /// </remarks>
 public static class PbtNodeGroupMemory
 {
@@ -26,7 +26,7 @@ public static class PbtNodeGroupMemory
         int[] classes = new int[generated.Length + 1];
         generated.CopyTo(classes, 0);
         classes[^1] = MaxPayloadClass;
-        return new SlabAllocatorOptions(classes, SlabAllocatorOptions.DefaultPageSize, SlabAllocatorOptions.DefaultChunkSize, Quantum, SlabAllocatorOptions.DefaultThreadCacheMaxCount);
+        return new SlabAllocatorOptions(classes, SlabAllocatorOptions.DefaultPageSize, Quantum, SlabAllocatorOptions.DefaultThreadCacheMaxCount);
     }
 
     public static SlabRefCountingMemoryProvider CreateProvider() => new(new SlabMemoryAllocator(CreateOptions()));

@@ -12,25 +12,29 @@ internal readonly record struct RegionHandle(Slab Slab, int Index);
 /// <summary>The shared slabs of one size class; thread caches move regions in and out in batches under its lock.</summary>
 /// <remarks>
 /// Slabs with a free region sit in a doubly linked list; one emptied slab is retained out of the
-/// list so a bin oscillating around a slab boundary does not churn pages, and further emptied slabs
-/// return their pages. A region parked in a thread cache counts as allocated, so an empty slab really
-/// has no outstanding region. Lock order is bin then page: the allocator's page lock is taken inside.
+/// list so a bin oscillating around a slab boundary does not churn native allocations, and further
+/// emptied slabs are released. A region parked in a thread cache counts as allocated, so an empty
+/// slab really has no outstanding region.
 /// </remarks>
-internal sealed class SizeClassBin(SlabMemoryAllocator allocator, int classIndex, int classSize, int slabOrder, int regionCount, int threadCacheCapacity)
+internal sealed class SizeClassBin(SlabMemoryAllocator allocator, int classIndex, int classSize, int slabSize, int threadCacheCapacity)
 {
     private readonly Lock _lock = new();
     private Slab? _nonFullHead;
     private Slab? _spareEmpty;
     private long _allocatedRegions;
+    private long _slabBytes;
 
     public int ClassIndex { get; } = classIndex;
     public int ClassSize { get; } = classSize;
-    public int SlabOrder { get; } = slabOrder;
-    public int RegionCount { get; } = regionCount;
+    public int SlabSize { get; } = slabSize;
+    public int RegionCount { get; } = slabSize / classSize;
     public int ThreadCacheCapacity { get; } = threadCacheCapacity;
 
     /// <summary>Bytes handed out by this bin and not yet given back, regions parked in thread caches included.</summary>
     public long AllocatedBytes => Volatile.Read(ref _allocatedRegions) * ClassSize;
+
+    /// <summary>Native bytes held by this bin's slabs.</summary>
+    public long SlabBytes => Volatile.Read(ref _slabBytes);
 
     public int AllocateBatch(Span<RegionHandle> into)
     {
@@ -42,7 +46,7 @@ internal sealed class SizeClassBin(SlabMemoryAllocator allocator, int classIndex
                 Slab? slab = _nonFullHead;
                 if (slab is null)
                 {
-                    slab = _spareEmpty ?? allocator.CreateSlab(this);
+                    slab = _spareEmpty ?? CreateSlab();
                     _spareEmpty = null;
                     Link(slab);
                 }
@@ -79,16 +83,29 @@ internal sealed class SizeClassBin(SlabMemoryAllocator allocator, int classIndex
         lock (_lock)
         {
             if (_spareEmpty is null) return;
-            allocator.ReleaseSlab(_spareEmpty);
+            ReleaseSlab(_spareEmpty);
             _spareEmpty = null;
         }
+    }
+
+    private Slab CreateSlab()
+    {
+        Slab slab = new(this, SlabSize, ClassSize, RegionCount);
+        _slabBytes += SlabSize;
+        return slab;
+    }
+
+    private void ReleaseSlab(Slab slab)
+    {
+        slab.Release();
+        _slabBytes -= SlabSize;
     }
 
     private void Retire(Slab slab)
     {
         Unlink(slab);
         if (_spareEmpty is null && !allocator.IsDisposed) _spareEmpty = slab;
-        else allocator.ReleaseSlab(slab);
+        else ReleaseSlab(slab);
     }
 
     private void Link(Slab slab)

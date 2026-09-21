@@ -7,58 +7,50 @@ using System.Numerics;
 
 namespace Nethermind.Core.Buffers.Slab;
 
-/// <summary>Geometry of a <see cref="SlabMemoryAllocator"/>: page and chunk sizes, the small size classes, and the thread-cache depth.</summary>
+/// <summary>Geometry of a <see cref="SlabMemoryAllocator"/>: the slab page size, the small size classes, and the thread-cache depth.</summary>
 /// <remarks>
-/// A request up to the largest size class is served from a slab of that class; a larger one gets a
-/// power-of-two page run from the buddy allocator, and one above <see cref="ChunkSize"/> a dedicated
-/// native allocation. Every class must be a multiple of <see cref="Quantum"/>, which keeps regions
-/// 16-byte aligned off the malloc-aligned chunk base without needing an aligned allocation.
+/// A request up to the largest size class is served from a slab of that class, and a larger one gets
+/// a dedicated native allocation. Every class must be a multiple of <see cref="Quantum"/>, which keeps
+/// regions 16-byte aligned off the malloc-aligned slab base without needing an aligned allocation.
 /// </remarks>
 public sealed class SlabAllocatorOptions
 {
     public const int MinimumQuantum = 16;
     public const int DefaultPageSize = 16 * 1024;
-    public const int DefaultChunkSize = 4 * 1024 * 1024;
     public const int DefaultQuantum = 64;
     public const int DefaultThreadCacheMaxCount = 32;
-    private const int ChunkToLargestClassRatio = 4;
 
     private readonly int[] _sizeClasses;
 
-    /// <param name="sizeClasses">Strictly ascending small size classes, each a multiple of <paramref name="quantum"/>, the largest at most <paramref name="chunkSize"/> / 4.</param>
-    /// <param name="pageSize">Buddy allocation unit in bytes; a power of two.</param>
-    /// <param name="chunkSize">Native allocation unit in bytes; a power-of-two multiple of <paramref name="pageSize"/>.</param>
+    /// <param name="sizeClasses">Strictly ascending small size classes, each a multiple of <paramref name="quantum"/>.</param>
+    /// <param name="pageSize">Granularity of a slab's size in bytes; a power of two.</param>
     /// <param name="quantum">Size-class granularity in bytes; a power of two of at least <see cref="MinimumQuantum"/>.</param>
     /// <param name="threadCacheMaxCount">Upper bound on regions a thread caches per class; a class caps lower so a cache holds at most ~64 KiB of it.</param>
-    public SlabAllocatorOptions(int[] sizeClasses, int pageSize, int chunkSize, int quantum, int threadCacheMaxCount)
+    public SlabAllocatorOptions(int[] sizeClasses, int pageSize, int quantum, int threadCacheMaxCount)
     {
         ArgumentNullException.ThrowIfNull(sizeClasses);
         ArgumentOutOfRangeException.ThrowIfLessThan(quantum, MinimumQuantum);
         if (!BitOperations.IsPow2(quantum)) throw new ArgumentOutOfRangeException(nameof(quantum), quantum, "must be a power of two");
         ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, quantum);
         if (!BitOperations.IsPow2(pageSize)) throw new ArgumentOutOfRangeException(nameof(pageSize), pageSize, "must be a power of two");
-        ArgumentOutOfRangeException.ThrowIfLessThan(chunkSize, pageSize * ChunkToLargestClassRatio);
-        if (!BitOperations.IsPow2(chunkSize)) throw new ArgumentOutOfRangeException(nameof(chunkSize), chunkSize, "must be a power of two");
         ArgumentOutOfRangeException.ThrowIfZero(sizeClasses.Length);
         ArgumentOutOfRangeException.ThrowIfLessThan(threadCacheMaxCount, 1);
 
         int previous = 0;
         foreach (int sizeClass in sizeClasses)
         {
-            if (sizeClass <= previous || sizeClass % quantum != 0 || sizeClass > chunkSize / ChunkToLargestClassRatio)
-                throw new ArgumentOutOfRangeException(nameof(sizeClasses), sizeClass, $"classes must ascend in multiples of {quantum} up to {chunkSize / ChunkToLargestClassRatio}");
+            if (sizeClass <= previous || sizeClass % quantum != 0)
+                throw new ArgumentOutOfRangeException(nameof(sizeClasses), sizeClass, $"classes must ascend in multiples of {quantum}");
             previous = sizeClass;
         }
 
         _sizeClasses = (int[])sizeClasses.Clone();
         PageSize = pageSize;
-        ChunkSize = chunkSize;
         Quantum = quantum;
         ThreadCacheMaxCount = threadCacheMaxCount;
     }
 
     public int PageSize { get; }
-    public int ChunkSize { get; }
     public int Quantum { get; }
     public ReadOnlySpan<int> SizeClasses => _sizeClasses;
     public int ThreadCacheMaxCount { get; }
