@@ -29,6 +29,7 @@ public class LocalCustodyTests
 
         Assert.Multiple(() =>
         {
+            Assert.That(custody.NodeId, Is.EqualTo(KnownNodeId), "the id the groups were derived from, so a consumer re-deriving from it lands on the same groups");
             Assert.That(custody.CustodyGroupCount, Is.EqualTo(Eip7594DasConstants.CustodyRequirement));
             Assert.That(custody.CustodyGroups, Is.EqualTo(expectedGroups));
             // Group == column == subnet under the mainnet preset coincidence, so the subnet set
