@@ -9,10 +9,12 @@ public class NativeCallTracerLogEntry(
     Address address,
     byte[] data,
     Hash256[] topics,
+    ulong index,
     ulong position)
 {
     public Address Address { get; init; } = address;
     public byte[] Data { get; init; } = data;
     public Hash256[] Topics { get; init; } = topics;
+    public ulong Index { get; init; } = index;
     public ulong Position { get; init; } = position;
 }

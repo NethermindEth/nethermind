@@ -48,10 +48,12 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
+    private readonly ArrayPoolList<ulong> _logIndexAtEntry = new(1024);
     private readonly CompositeDisposable _disposables = [];
 
     private EvmExceptionType? _error;
     private ulong _remainingGas;
+    private ulong _logIndex;
     private bool _framesCollapsed = false;
     private NativeCallTracerCallFrame?[]? _frameRoots;
     private EvmExceptionType?[]? _frameErrors;
@@ -81,6 +83,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         if (_config.WithLog)
         {
             IsTracingLogs = true;
+            _logIndex = (ulong)(options.LogIndexStart?.Invoke() ?? 0);
         }
     }
 
@@ -118,11 +121,17 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
         // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
         _callStack.DisposeRecursive();
+        _logIndexAtEntry.Dispose();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+
+        if (_config.WithLog)
+        {
+            _logIndexAtEntry.Add(_logIndex);
+        }
 
         if (_config.OnlyTopCall && Depth > 0)
             return;
@@ -146,6 +155,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     {
         base.ReportLog(log);
 
+        ulong index = _logIndex++;
         if (_config.OnlyTopCall && Depth > 0)
             return;
 
@@ -160,6 +170,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             log.Address,
             log.Data,
             log.Topics,
+            index,
             (ulong)callFrame.Calls.Count);
 
         callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(8);
@@ -392,6 +403,17 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
+        if (_config.WithLog)
+        {
+            // Logs of a halted frame never reach the receipt, so they do not consume an index.
+            ulong logIndexAtEntry = _logIndexAtEntry[^1];
+            _logIndexAtEntry.RemoveAt(_logIndexAtEntry.Count - 1);
+            if (error is not null)
+            {
+                _logIndex = logIndexAtEntry;
+            }
+        }
+
         if (Depth == 0)
         {
             // Only a frame transaction reaches this with more frames to come; every other transaction's

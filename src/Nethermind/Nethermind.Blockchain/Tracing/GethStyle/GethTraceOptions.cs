@@ -40,6 +40,10 @@ public record GethTraceOptions
     [JsonIgnore]
     public bool NoBaseFee { get; init; }
 
+    /// <summary>Resolves the number of logs the block's preceding transactions emitted; callTracer log indexes continue from it.</summary>
+    [JsonIgnore]
+    public Func<int>? LogIndexStart { get; init; }
+
     /// <summary>
     /// When set, overrides <c>JsonRpc.EnableTracingStreamMode</c> for this single call.
     /// </summary>
