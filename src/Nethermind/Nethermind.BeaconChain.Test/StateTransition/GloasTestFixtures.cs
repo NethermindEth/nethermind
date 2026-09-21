@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
@@ -210,6 +211,29 @@ internal static class GloasTestFixtures
         SignedHeader1 = SignedHeader(state, slot, proposerIndex, Hash(0x21)),
         SignedHeader2 = SignedHeader(state, slot, proposerIndex, Hash(0x22)),
     };
+
+    /// <summary>Attestation data voting for distinct roots derived from <paramref name="fill"/>, with the given slot and source/target epochs.</summary>
+    public static AttestationData Vote(ulong slot, ulong sourceEpoch, ulong targetEpoch, byte fill) => new()
+    {
+        Slot = slot,
+        Index = 0,
+        BeaconBlockRoot = Hash(fill),
+        Source = new Checkpoint { Epoch = sourceEpoch, Root = Hash((byte)(fill + 1)) },
+        Target = new Checkpoint { Epoch = targetEpoch, Root = Hash((byte)(fill + 2)) },
+    };
+
+    /// <summary>An indexed attestation by <paramref name="validatorIndices"/> over <paramref name="data"/>, aggregate-signed with their <see cref="ValidatorKey"/>s under <c>DOMAIN_BEACON_ATTESTER</c>.</summary>
+    public static IndexedAttestationGloas SignedIndexedAttestation(BeaconStateGloas state, AttestationData data, int[] validatorIndices)
+    {
+        Hash256 domain = state.GetDomain(DomainType.BeaconAttester, data.Target!.Epoch);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain);
+        return new IndexedAttestationGloas
+        {
+            AttestingIndices = [.. validatorIndices.Select(i => (ulong)i)],
+            Data = data,
+            Signature = AggregateSignature(signingRoot, validatorIndices),
+        };
+    }
 
     /// <summary>The aggregate of each listed validator's signature over <paramref name="signingRoot"/>; a repeated index signs (and so must be aggregated) once per occurrence.</summary>
     public static BlsSignature AggregateSignature(Hash256 signingRoot, IReadOnlyList<int> validatorIndices)

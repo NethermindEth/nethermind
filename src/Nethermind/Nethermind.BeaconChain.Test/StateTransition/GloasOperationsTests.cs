@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -141,6 +142,79 @@ public class GloasOperationsTests
 
         Assert.That(ex.Message, Does.Contain(expectedMessage));
         Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected slashing must leave the state untouched");
+    }
+
+    // ---- Attester slashings ----
+
+    [Test]
+    public void ProcessAttesterSlashing_slashes_exactly_the_validators_in_both_conflicting_votes()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        // A double vote: same target epoch, different data.
+        AttesterSlashingGloas slashing = new()
+        {
+            Attestation1 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xA0), [1, 2, 3]),
+            Attestation2 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xB0), [2, 3, 4]),
+        };
+        ulong balanceBefore = state.Balances![2];
+
+        GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Validators!.Select(v => v.Slashed).Take(6), Is.EqualTo(new[] { false, false, true, true, false, false }).AsCollection);
+            Assert.That(state.Balances[2], Is.EqualTo(balanceBefore - 32 * Gwei / Presets.MinSlashingPenaltyQuotientElectra));
+            Assert.That(state.Slashings![1], Is.EqualTo(2 * 32 * Gwei));
+        });
+    }
+
+    [TestCase("no intersection", "slashed no validator")]
+    [TestCase("same vote twice", "not slashable")]
+    [TestCase("unsorted indices", "attestation 1 is invalid")]
+    [TestCase("bad signature", "attestation 2 is invalid")]
+    public void ProcessAttesterSlashing_rejects_an_invalid_slashing_and_mutates_nothing(string defect, string expectedMessage)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        AttestationData vote1 = Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xA0);
+        AttestationData vote2 = Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xB0);
+        AttesterSlashingGloas slashing = defect switch
+        {
+            "no intersection" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote2, [3, 4]) },
+            "same vote twice" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote1, [2, 3]) },
+            "unsorted indices" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [2, 1]), Attestation2 = SignedIndexedAttestation(state, vote2, [2, 3]) },
+            "bad signature" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote2, [2, 3]) },
+            _ => throw new ArgumentOutOfRangeException(nameof(defect)),
+        };
+        if (defect == "bad signature")
+            slashing.Attestation2!.Signature = Corrupt(slashing.Attestation2.Signature);
+        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
+
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true))!;
+
+        Assert.That(ex.Message, Does.Contain(expectedMessage));
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected slashing must leave the state untouched");
+    }
+
+    [Test]
+    public void IsValidIndexedAttestation_enforces_the_eip7688_bound_that_replaced_the_lists_ssz_limit()
+    {
+        const int bound = Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot;
+        // Enough validators that a strictly ascending, in-range index list can exceed the bound.
+        BeaconStateGloas state = new() { Validators = [.. Enumerable.Repeat(new Validator(), bound + 1)] };
+        static IndexedAttestationGloas WithIndices(int count) => new()
+        {
+            AttestingIndices = [.. Enumerable.Range(0, count).Select(i => (ulong)i)],
+            Data = Vote(slot: 0, sourceEpoch: 0, targetEpoch: 0, fill: 0xA0),
+        };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound), new PubkeyCache(), verifySignature: false), Is.True);
+            Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound + 1), new PubkeyCache(), verifySignature: false), Is.False);
+        });
     }
 
     [Test]
