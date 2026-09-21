@@ -63,7 +63,8 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.Position = position;
 
             BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
-            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
+            // Blocks retain transactions without the return path provided by OwnedBlockBodies.Dispose.
+            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck, usePooledTransactions: false);
 
             Block block = new(header, body)
             {
