@@ -89,7 +89,8 @@ public class DebugForkChoiceTests
             JsonElement first = nodes[0];
             Assert.That(first.GetProperty("slot").GetString(), Is.EqualTo("224"));
             Assert.That(first.GetProperty("block_root").GetString(), Is.EqualTo(Anchor.ToString()));
-            Assert.That(first.TryGetProperty("parent_root", out _), Is.False, "the tree root has no parent in the tree, and none is invented");
+            Assert.That(first.GetProperty("parent_root").GetString(), Is.EqualTo(Hash256.Zero.ToString()),
+                "parent_root is required by the Node schema, so the tree root carries the zero root rather than omitting it");
             Assert.That(first.GetProperty("justified_epoch").GetString(), Is.EqualTo("6"));
             Assert.That(first.GetProperty("finalized_epoch").GetString(), Is.EqualTo("5"));
             Assert.That(first.GetProperty("weight").GetString(), Is.EqualTo("0"));
