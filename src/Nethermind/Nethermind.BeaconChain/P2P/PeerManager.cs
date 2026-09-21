@@ -306,11 +306,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     }
 
     /// <summary>Already in the pool as this exact session or as the same established peer id under any address.</summary>
-    private bool IsRecorded(ISession session, string establishedId)
+    private bool IsRecorded(ISession session, string establishedId) => HoldsSession(session) || TryFindConnected(establishedId, out _);
+
+    private bool HoldsSession(ISession session)
     {
         foreach (KeyValuePair<string, ManagedPeer> connected in _peers)
         {
-            if (ReferenceEquals(connected.Value.Session, session) || string.Equals(connected.Value.PeerId, establishedId, StringComparison.Ordinal))
+            if (ReferenceEquals(connected.Value.Session, session))
             {
                 return true;
             }
@@ -556,14 +558,18 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         try
         {
             await _outboundDialGate.WaitAsync(token);
+            ISession? session = null;
+            bool admissionResolved = false;
             try
             {
-                ISession session = await _p2p.DialPeerAsync(Multiaddress.Decode(address), token);
+                session = await _p2p.DialPeerAsync(Multiaddress.Decode(address), token);
                 // The dial returns before the agent probe has answered, and may hand back a session that
                 // already existed (the peer connected to us first): wait for what the libp2p layer
                 // recorded instead of assuming "we dialed it, no client string".
                 BeaconP2P.SessionInfo info = await _p2p.GetSessionInfoAsync(session, token);
-                return await AdmitSessionAsync(address, peerId, session, info, enr, token);
+                bool admitted = await AdmitSessionAsync(address, peerId, session, info, enr, token);
+                admissionResolved = true;
+                return admitted;
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
@@ -572,6 +578,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
             finally
             {
+                // Covers the dial-timeout cancellation exit as well as a thrown status exchange: either
+                // way the dial produced a session that no admission decision ever closed.
+                if (session is not null && !admissionResolved)
+                {
+                    await DisconnectUnadmittedAsync(session);
+                }
+
                 _outboundDialGate.Release();
             }
         }
@@ -672,6 +685,27 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         catch (Exception e)
         {
             if (_logger.IsDebug) _logger.Debug($"Admitting beacon chain peer {address} failed: {e.Message}");
+            await DisconnectUnadmittedAsync(session);
+        }
+    }
+
+    /// <summary>Closes a session whose admission failed after it was open. Left alone, the libp2p layer
+    /// would keep a connection this manager neither counts against the band nor health-checks.</summary>
+    private async Task DisconnectUnadmittedAsync(ISession session)
+    {
+        // Another admission path may have recorded this very session meanwhile (see AdmitSessionAsync).
+        if (HoldsSession(session))
+        {
+            return;
+        }
+
+        try
+        {
+            await session.DisconnectAsync();
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Disconnect from {session.RemoteAddress} failed: {e.Message}");
         }
     }
 
