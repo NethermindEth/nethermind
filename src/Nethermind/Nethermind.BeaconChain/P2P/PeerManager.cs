@@ -942,14 +942,5 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             if (manager._logger.IsDebug) manager._logger.Debug($"Beacon chain peer {Id} reported as failing ({failures}/{MaxConsecutiveFailures}): {reason}{(detail is null ? "" : $" ({detail})")}");
         }
 
-        /// <summary>Legacy free-text overload for callers this change's file boundary could not
-        /// reach (RangeSync.cs). Classifies by the exact substring rule this method used before the
-        /// reason became closed-cardinality, so the metric label and the fatal-session fast path both
-        /// keep behaving the same for those callers.</summary>
-        public void ReportFailure(string reason)
-        {
-            bool sessionDead = reason.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || reason.Contains("session", StringComparison.OrdinalIgnoreCase);
-            ReportFailure(sessionDead ? PeerFailureReason.SessionClosed : PeerFailureReason.RequestFailed, reason);
-        }
     }
 }
