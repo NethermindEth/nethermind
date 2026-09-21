@@ -130,6 +130,7 @@ internal static class ForkChoiceStepDriver
 
         bool accepted;
         string? rejectionReason = null;
+        Exception? rejection = null;
         BeaconStateFulu? postState = null;
         if (!stateProvider.States.TryGetValue(block.ParentRoot!, out BeaconStateFulu? parentState))
         {
@@ -148,6 +149,7 @@ internal static class ForkChoiceStepDriver
             catch (Exception ex)
             {
                 accepted = false;
+                rejection = ex;
                 rejectionReason = ex.Message;
             }
         }
@@ -156,6 +158,7 @@ internal static class ForkChoiceStepDriver
             Assert.Fail($"step {stepIndex}: block {blockKey} (slot {block.Slot}) was expected to be REJECTED but the driver accepted it");
         if (!accepted && expectedValid)
             Assert.Fail($"step {stepIndex}: block {blockKey} (slot {block.Slot}) was expected to be accepted but the driver rejected it: {rejectionReason}");
+        AssertRejectedForASpecReason(rejection, $"step {stepIndex}: block {blockKey} (slot {block.Slot})");
 
         if (!accepted)
             return;
@@ -199,14 +202,15 @@ internal static class ForkChoiceStepDriver
         Attestation.Decode(ssz, out Attestation attestation);
 
         bool accepted = true;
-        string? rejectionReason = null;
+        Exception? rejection = null;
         try { runner.OnAttestation(attestation, isFromBlock: false, verifySignature: true); }
-        catch (Exception ex) { accepted = false; rejectionReason = ex.Message; }
+        catch (Exception ex) { accepted = false; rejection = ex; }
 
         if (accepted && !expectedValid)
             Assert.Fail($"step {stepIndex}: attestation {key} was expected to be REJECTED but the driver accepted it");
         if (!accepted && expectedValid)
-            Assert.Fail($"step {stepIndex}: attestation {key} was expected to be accepted but the driver rejected it: {rejectionReason}");
+            Assert.Fail($"step {stepIndex}: attestation {key} was expected to be accepted but the driver rejected it: {rejection!.Message}");
+        AssertRejectedForASpecReason(rejection, $"step {stepIndex}: attestation {key}");
     }
 
     private static void RunAttesterSlashingStep(string casePath, string key, bool expectedValid, ForkChoiceRunner runner, int stepIndex)
@@ -215,14 +219,22 @@ internal static class ForkChoiceStepDriver
         AttesterSlashing.Decode(ssz, out AttesterSlashing slashing);
 
         bool accepted = true;
-        string? rejectionReason = null;
+        Exception? rejection = null;
         try { runner.OnAttesterSlashing(slashing, verifySignatures: true); }
-        catch (Exception ex) { accepted = false; rejectionReason = ex.Message; }
+        catch (Exception ex) { accepted = false; rejection = ex; }
 
         if (accepted && !expectedValid)
             Assert.Fail($"step {stepIndex}: attester_slashing {key} was expected to be REJECTED but the driver accepted it");
         if (!accepted && expectedValid)
-            Assert.Fail($"step {stepIndex}: attester_slashing {key} was expected to be accepted but the driver rejected it: {rejectionReason}");
+            Assert.Fail($"step {stepIndex}: attester_slashing {key} was expected to be accepted but the driver rejected it: {rejection!.Message}");
+        AssertRejectedForASpecReason(rejection, $"step {stepIndex}: attester_slashing {key}");
+    }
+
+    /// <summary>An expected rejection that came from anything but a spec assertion is a crash the vector happened to want, not a pass.</summary>
+    private static void AssertRejectedForASpecReason(Exception? rejection, string subject)
+    {
+        if (rejection is not null && !FuluDriverSupport.IsSpecRejection(rejection))
+            Assert.Fail($"{subject} was rejected by {rejection.GetType().Name} rather than a spec assertion: {rejection}");
     }
 
     private static void RunChecksStep(YamlMappingNode checks, ForkChoiceRunner runner, int stepIndex)

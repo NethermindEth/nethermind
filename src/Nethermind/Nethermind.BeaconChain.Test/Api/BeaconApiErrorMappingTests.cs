@@ -15,19 +15,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Api.Common;
-using Nethermind.BeaconChain.Engine;
-using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
@@ -242,23 +238,5 @@ public class BeaconApiErrorMappingTests
         byte[] bytes = new byte[32];
         bytes[31] = marker;
         return new Hash256(bytes);
-    }
-
-    private sealed class NoOpEngineDriver : IEngineDriver
-    {
-        public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload => false;
-
-        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid });
-
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
-    }
-
-    private sealed class NoOpProcessExitSource : IProcessExitSource
-    {
-        private readonly CancellationTokenSource _cts = new();
-        public void Exit(int exitCode) => _cts.Cancel();
-        public CancellationToken Token => _cts.Token;
     }
 }
