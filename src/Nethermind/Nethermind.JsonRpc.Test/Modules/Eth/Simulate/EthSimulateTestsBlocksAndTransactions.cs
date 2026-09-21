@@ -1012,10 +1012,8 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// Regression test for #12692: under EIP-7928 the block-access-list path must route its tx
-    /// processors through the simulate adapter, so the simulate gas accounting still runs. Without
-    /// the adapter the reported block <c>gasUsed</c> is left at 0 even though the call executed
-    /// successfully.
+    /// Regression test for #12692: under EIP-7928 the block-access-list path must project a
+    /// successful call's gas usage into the simulated block header.
     /// </summary>
     [Test]
     public async Task eth_simulateV1_reports_block_gas_used_on_bal_path()
@@ -1253,12 +1251,17 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
     }
 
+    /// <summary>
+    /// Regression test: simulated block <c>gasUsed</c> must preserve the EIP-8037 maximum of the
+    /// cumulative execution and state dimensions instead of reporting only execution gas.
+    /// </summary>
     [Test, Combinatorial]
     public async Task eth_simulateV1_reports_multidimensional_block_gas_used(
         [Values] bool eip8037Enabled,
         [Values] bool validation)
     {
-        IReleaseSpec spec = eip8037Enabled ? Amsterdam.Instance : Osaka.Instance;
+        IReleaseSpec spec = eip8037Enabled ? Amsterdam.Instance : Amsterdam.NoEip8037Instance;
+        Assert.That(spec.IsEip8037Enabled, Is.EqualTo(eip8037Enabled));
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
 
         byte[] secondSlot = new byte[32];
@@ -1294,13 +1297,18 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(calls.Select(static call => call.Error), Is.All.Null);
         Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
 
-        ulong cumulativePaidGas = calls.Aggregate(0UL, static (total, call) => total + call.GasUsed!.Value);
+        const ulong cumulativeIntrinsicGas = 2 * (GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess)
+            + 63 * GasCostOf.TxDataZero + GasCostOf.TxDataNonZeroEip2028;
+        const ulong cumulativeOpcodeGas = 2 * (3 * GasCostOf.VeryLow + Eip8038Constants.ColdStorageAccess);
+        ulong cumulativeStorageWriteExecutionGas = 2 * (eip8037Enabled ? Eip8038Constants.StorageWrite : GasCostOf.SSet);
+        ulong cumulativeExecutionGas = cumulativeIntrinsicGas + cumulativeOpcodeGas + cumulativeStorageWriteExecutionGas;
         ulong cumulativeStateGas = eip8037Enabled ? 2 * (ulong)GasCostOf.SSetState : 0;
-        ulong cumulativeExecutionGas = cumulativePaidGas - cumulativeStateGas;
         ulong expectedBlockGas = Math.Max(cumulativeExecutionGas, cumulativeStateGas);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(calls.Aggregate(0UL, static (total, call) => total + call.GasUsed!.Value),
+                Is.EqualTo(cumulativeExecutionGas + cumulativeStateGas));
             Assert.That(block.GasUsed, Is.EqualTo(expectedBlockGas));
             if (eip8037Enabled)
             {
