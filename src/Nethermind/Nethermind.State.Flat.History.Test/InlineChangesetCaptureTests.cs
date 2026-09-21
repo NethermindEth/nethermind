@@ -17,6 +17,7 @@ public class InlineChangesetCaptureTests
 {
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _columns = null!;
     private TransactionChangesetIndex _index = null!;
+    private InlineChangesetCapture _capture = null!;
     private Block _block = null!;
     private bool _syncing;
 
@@ -25,6 +26,9 @@ public class InlineChangesetCaptureTests
     {
         _columns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _index = new TransactionChangesetIndex(_columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        // One capture for the whole test, as in production: it is a singleton on the processing path, so anything
+        // it keeps between blocks is kept across every block the node executes.
+        _capture = new InlineChangesetCapture(_index, new AlwaysCapture(() => _syncing), LimboLogs.Instance);
         _block = Build.A.Block.WithNumber(9).WithTransactions(Build.A.Transaction.WithNonce(0).TestObject, Build.A.Transaction.WithNonce(1).TestObject).TestObject;
         _syncing = true;
     }
@@ -95,17 +99,16 @@ public class InlineChangesetCaptureTests
     [Test]
     public void ABlockCarryingATransactionThatIsNotItsOwn_WritesNothing()
     {
-        InlineChangesetCapture capture = new(_index, new AlwaysCapture(), LimboLogs.Instance);
-        capture.StartNewBlockTrace(_block);
-        Observe(capture.StartNewTxTrace(_block.Transactions[0]), 0);
-        capture.EndTxTrace();
+        _capture.StartNewBlockTrace(_block);
+        Observe(_capture.StartNewTxTrace(_block.Transactions[0]), 0);
+        _capture.EndTxTrace();
 
         // A system transaction injected by a plugin: traced, but with nowhere to record its writes.
-        ITxTracer stray = capture.StartNewTxTrace(Build.A.Transaction.WithNonce(7).TestObject);
-        capture.EndTxTrace();
-        Observe(capture.StartNewTxTrace(_block.Transactions[1]), 1);
-        capture.EndTxTrace();
-        capture.EndBlockTrace();
+        ITxTracer stray = _capture.StartNewTxTrace(Build.A.Transaction.WithNonce(7).TestObject);
+        _capture.EndTxTrace();
+        Observe(_capture.StartNewTxTrace(_block.Transactions[1]), 1);
+        _capture.EndTxTrace();
+        _capture.EndBlockTrace();
 
         using (Assert.EnterMultipleScope())
         {
@@ -137,16 +140,15 @@ public class InlineChangesetCaptureTests
 
     private void Process(bool[] observe, Address? address = null)
     {
-        InlineChangesetCapture capture = new(_index, new AlwaysCapture(() => _syncing), LimboLogs.Instance);
-        capture.StartNewBlockTrace(_block);
+        _capture.StartNewBlockTrace(_block);
         for (int i = 0; i < _block.Transactions.Length; i++)
         {
-            ITxTracer tracer = capture.StartNewTxTrace(_block.Transactions[i]);
+            ITxTracer tracer = _capture.StartNewTxTrace(_block.Transactions[i]);
             if (observe[i]) Observe(tracer, i, address);
-            capture.EndTxTrace();
+            _capture.EndTxTrace();
         }
 
-        capture.EndBlockTrace();
+        _capture.EndBlockTrace();
     }
 
     private static void Observe(ITxTracer tracer, int index, Address? address = null)
