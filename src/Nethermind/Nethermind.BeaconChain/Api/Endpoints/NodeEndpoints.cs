@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
@@ -24,13 +28,8 @@ internal static class NodeEndpoints
         app.MapGet("/eth/v1/node/identity", c => Identity(c, ctx));
         app.MapGet("/eth/v1/node/syncing", c => Syncing(c, ctx));
         app.MapGet("/eth/v1/node/peer_count", c => PeerCount(c, ctx));
-
-        // PeerManager tracks connected sessions only (address -> session), not a peer's real libp2p
-        // peer id, direction or connection-state history, so the per-peer listing fields the spec
-        // requires cannot be filled in truthfully.
-        const string peersGap = "Per-peer identity, state and direction are not tracked by this driver's peer manager; only a connected-peer count is available from /eth/v1/node/peer_count.";
-        app.MapGet("/eth/v1/node/peers", c => ApiErrors.Write(c, StatusCodes.Status501NotImplemented, peersGap, c.RequestAborted));
-        app.MapGet("/eth/v1/node/peers/{peer_id}", c => ApiErrors.Write(c, StatusCodes.Status501NotImplemented, peersGap, c.RequestAborted));
+        app.MapGet("/eth/v1/node/peers", c => Peers(c, ctx));
+        app.MapGet("/eth/v1/node/peers/{peer_id}", (HttpContext c, string peer_id) => PeerById(c, peer_id, ctx));
     }
 
     private static Task Health(HttpContext c, BeaconApiContext ctx)
@@ -141,6 +140,120 @@ internal static class NodeEndpoints
         return BeaconApiJson.WriteDataAsync(c, dto, c.RequestAborted);
     }
 
+    /// <summary>
+    /// <c>/eth/v1/node/peers</c>: every peer this driver's peer manager currently tracks, optionally
+    /// narrowed by the repeatable <c>state</c> and <c>direction</c> query parameters. A missing peer
+    /// manager reports an empty list rather than an error - the same "zero rather than unavailable"
+    /// choice <see cref="PeerCount"/> already makes for the same case.
+    /// </summary>
+    private static Task Peers(HttpContext c, BeaconApiContext ctx)
+    {
+        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
+        {
+            return ContentNegotiation.WriteNotAcceptable(c);
+        }
+
+        List<PeerConnectionState> states = [];
+        foreach (string? raw in c.Request.Query["state"])
+        {
+            if (ParseState(raw) is not { } state)
+            {
+                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Unknown peer state '{raw}'.", c.RequestAborted);
+            }
+
+            states.Add(state);
+        }
+
+        List<PeerDirection> directions = [];
+        foreach (string? raw in c.Request.Query["direction"])
+        {
+            if (ParseDirection(raw) is not { } direction)
+            {
+                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Unknown peer direction '{raw}'.", c.RequestAborted);
+            }
+
+            directions.Add(direction);
+        }
+
+        IReadOnlyList<PeerRecord> peers = ctx.PeerManager?.Peers ?? [];
+        List<PeerDto> filtered = new(peers.Count);
+        foreach (PeerRecord peer in peers)
+        {
+            if (states.Count > 0 && !states.Contains(peer.State))
+            {
+                continue;
+            }
+
+            if (directions.Count > 0 && !directions.Contains(peer.Direction))
+            {
+                continue;
+            }
+
+            filtered.Add(ToPeerDto(peer));
+        }
+
+        c.Response.ContentType = ContentNegotiation.Json;
+        return JsonSerializer.SerializeAsync(c.Response.Body, new PeersEnvelopeDto(filtered, new PeersMetaDto(filtered.Count)), BeaconApiJson.Options, c.RequestAborted);
+    }
+
+    /// <summary><c>/eth/v1/node/peers/{peer_id}</c>: a single tracked peer, or 404 for an id this
+    /// driver's peer manager (or the driver itself, when it has none) has no record of.</summary>
+    private static Task PeerById(HttpContext c, string peer_id, BeaconApiContext ctx)
+    {
+        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
+        {
+            return ContentNegotiation.WriteNotAcceptable(c);
+        }
+
+        if (ctx.PeerManager is null || !ctx.PeerManager.TryGetPeer(peer_id, out PeerRecord peer))
+        {
+            return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"No known peer '{peer_id}'.", c.RequestAborted);
+        }
+
+        return BeaconApiJson.WriteDataAsync(c, ToPeerDto(peer), c.RequestAborted);
+    }
+
+    private static PeerDto ToPeerDto(PeerRecord peer) => new(
+        peer.PeerId,
+        peer.Enr,
+        peer.LastKnownMultiaddr,
+        StateWireName(peer.State),
+        DirectionWireName(peer.Direction));
+
+    /// <summary>Wire strings per the Beacon API's <c>node/peers</c> state set, mirroring
+    /// <see cref="PeerConnectionState"/>'s own doc comment rather than a naming-policy guess.</summary>
+    private static PeerConnectionState? ParseState(string? raw) => raw switch
+    {
+        "disconnected" => PeerConnectionState.Disconnected,
+        "connecting" => PeerConnectionState.Connecting,
+        "connected" => PeerConnectionState.Connected,
+        "disconnecting" => PeerConnectionState.Disconnecting,
+        _ => null,
+    };
+
+    private static PeerDirection? ParseDirection(string? raw) => raw switch
+    {
+        "inbound" => PeerDirection.Inbound,
+        "outbound" => PeerDirection.Outbound,
+        _ => null,
+    };
+
+    private static string StateWireName(PeerConnectionState state) => state switch
+    {
+        PeerConnectionState.Disconnected => "disconnected",
+        PeerConnectionState.Connecting => "connecting",
+        PeerConnectionState.Connected => "connected",
+        PeerConnectionState.Disconnecting => "disconnecting",
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
+    };
+
+    private static string DirectionWireName(PeerDirection direction) => direction switch
+    {
+        PeerDirection.Inbound => "inbound",
+        PeerDirection.Outbound => "outbound",
+        _ => throw new ArgumentOutOfRangeException(nameof(direction), direction, null),
+    };
+
     private sealed record VersionDto([property: JsonPropertyName("version")] string Version);
 
     private sealed record MetadataDto(
@@ -167,4 +280,19 @@ internal static class NodeEndpoints
         [property: JsonPropertyName("connecting")] string Connecting,
         [property: JsonPropertyName("connected")] string Connected,
         [property: JsonPropertyName("disconnecting")] string Disconnecting);
+
+    // No shared BeaconApiJson helper produces a {"data": [...], "meta": {...}} shape (only a single
+    // "data" value or the fork-versioned envelope), so this is written directly rather than reusing one.
+    private sealed record PeerDto(
+        [property: JsonPropertyName("peer_id")] string PeerId,
+        [property: JsonPropertyName("enr")] string? Enr,
+        [property: JsonPropertyName("last_seen_p2p_address")] string LastSeenP2PAddress,
+        [property: JsonPropertyName("state")] string State,
+        [property: JsonPropertyName("direction")] string Direction);
+
+    private sealed record PeersMetaDto([property: JsonPropertyName("count")] int Count);
+
+    private sealed record PeersEnvelopeDto(
+        [property: JsonPropertyName("data")] IReadOnlyList<PeerDto> Data,
+        [property: JsonPropertyName("meta")] PeersMetaDto Meta);
 }
