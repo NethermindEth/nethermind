@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -10,20 +9,15 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Api;
-using Nethermind.BeaconChain.Engine;
-using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
@@ -39,11 +33,11 @@ public class BeaconApiHostTests
     private BeaconApiHost _host = null!;
     private BeaconChainStatusHolder _statusHolder = null!;
     private BeaconChainStore _store = null!;
-    private FakeEngineDriver _engine = null!;
+    private NoOpEngineDriver _engine = null!;
     private HttpClient _client = null!;
     private ManualTimestamper _timestamper = null!;
     private SlotClock _slotClock = null!;
-    private FakeProcessExitSource _exitSource = null!;
+    private NoOpProcessExitSource _exitSource = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
@@ -52,8 +46,8 @@ public class BeaconApiHostTests
         _statusHolder = new BeaconChainStatusHolder(Spec, _timestamper);
         _slotClock = new SlotClock(Spec, _timestamper);
         _store = new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>());
-        _engine = new FakeEngineDriver();
-        _exitSource = new FakeProcessExitSource();
+        _engine = new NoOpEngineDriver();
+        _exitSource = new NoOpProcessExitSource();
 
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
         _host = new BeaconApiHost(apiConfig, new BeaconChainConfig(), Spec, _statusHolder, _slotClock, _store,
@@ -342,7 +336,7 @@ public class BeaconApiHostTests
         Assert.That(missing.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
 
         const ulong slot = 13_200_000; // epoch 412,500 > FuluForkEpoch (411,392) on BeaconChainSpec.Mainnet
-        SignedBeaconBlock block = CreateMinimalBlock(slot);
+        SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(slot);
         Hash256 root = TestRoot(4);
         _store.PutBlock(root, block);
         _store.SetCanonicalRoot(slot, root);
@@ -370,7 +364,7 @@ public class BeaconApiHostTests
 
         const ulong slot = 13_200_001; // epoch 412,500 > FuluForkEpoch (411,392) on BeaconChainSpec.Mainnet
         Hash256 root = TestRoot(5);
-        _store.PutBlock(root, CreateMinimalBlock(slot));
+        _store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
         _statusHolder.JustifiedRoot = root;
 
         HttpResponseMessage justified = await _client.GetAsync("/eth/v1/beacon/headers/justified");
@@ -402,7 +396,7 @@ public class BeaconApiHostTests
     public async Task Dispose_removes_the_exit_token_registration_so_a_later_process_exit_never_reenters_the_host()
     {
         TestErrorLogManager logManager = new();
-        FakeProcessExitSource exitSource = new();
+        NoOpProcessExitSource exitSource = new();
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
         BeaconApiHost host = new(apiConfig, new BeaconChainConfig(), Spec, _statusHolder, _slotClock, _store,
             new LocalMetadataSource(), _engine, exitSource, logManager);
@@ -449,72 +443,9 @@ public class BeaconApiHostTests
 
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
         BeaconApiHost host = new(apiConfig, config, Spec, statusHolder, new SlotClock(Spec, Timestamper.Default), store,
-            metadataSource, new FakeEngineDriver(), new FakeProcessExitSource(), LimboLogs.Instance, peerManager: peerManager);
+            metadataSource, new NoOpEngineDriver(), new NoOpProcessExitSource(), LimboLogs.Instance, peerManager: peerManager);
         await host.StartAsync(CancellationToken.None);
         HttpClient client = new() { BaseAddress = new Uri($"http://127.0.0.1:{host.Port}") };
         return (host, client, peerManager);
-    }
-
-    private static SignedBeaconBlock CreateMinimalBlock(ulong slot) => new()
-    {
-        Message = new BeaconBlock
-        {
-            Slot = slot,
-            ProposerIndex = 21,
-            ParentRoot = Hash256.Zero,
-            StateRoot = Hash256.Zero,
-            Body = new BeaconBlockBody
-            {
-                Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-                Graffiti = Hash256.Zero,
-                ProposerSlashings = [],
-                AttesterSlashings = [],
-                Attestations = [],
-                Deposits = [],
-                VoluntaryExits = [],
-                SyncAggregate = new SyncAggregate { SyncCommitteeBits = new BitArray(512) },
-                ExecutionPayload = new Nethermind.BeaconChain.Types.ExecutionPayload
-                {
-                    ParentHash = Hash256.Zero,
-                    FeeRecipient = Address.Zero,
-                    StateRoot = Hash256.Zero,
-                    ReceiptsRoot = Hash256.Zero,
-                    LogsBloom = Bloom.Empty,
-                    PrevRandao = Hash256.Zero,
-                    BlockNumber = 23_000_000,
-                    GasLimit = 30_000_000,
-                    GasUsed = 21_000,
-                    Timestamp = 1_750_000_000,
-                    ExtraData = Bytes.FromHexString("0xc0ffee"),
-                    BaseFeePerGas = 7,
-                    BlockHash = Hash256.Zero,
-                    Transactions = [],
-                    Withdrawals = [],
-                    BlobGasUsed = 0,
-                    ExcessBlobGas = 0,
-                },
-                BlsToExecutionChanges = [],
-                BlobKzgCommitments = [],
-                ExecutionRequests = new ExecutionRequests { Deposits = [], Withdrawals = [], Consolidations = [] },
-            },
-        },
-    };
-
-    private sealed class FakeEngineDriver : IEngineDriver
-    {
-        public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload { get; set; }
-
-        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid });
-
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
-    }
-
-    private sealed class FakeProcessExitSource : IProcessExitSource
-    {
-        private readonly CancellationTokenSource _cts = new();
-        public void Exit(int exitCode) => _cts.Cancel();
-        public CancellationToken Token => _cts.Token;
     }
 }
