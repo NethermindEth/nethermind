@@ -1032,8 +1032,6 @@ public class BlockProcessorTests
             builder
                 .AddModule(validation)
                 .AddModule(new TransactionTraceModule(validation))
-                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddModule(env)
                 .Add<ParallelBlockTracer.Components>();
             if (hideRewardBoundary.HasValue)
@@ -1128,8 +1126,6 @@ public class BlockProcessorTests
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
             .AddModule(validation)
             .AddModule(new TransactionTraceModule(validation))
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddModule(env));
         BlockchainProcessorFacade processor = scope.Resolve<BlockchainProcessorFacade>();
         using IDisposable pinned = env.BuildAndOverride(parent);
@@ -1157,8 +1153,6 @@ public class BlockProcessorTests
             builder
             .AddModule(validation)
             .AddModule(new TransactionTraceModule(validation))
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddModule(env);
             if (!supportsOverlay) builder.AddDecorator<IWorldState, OverlayRefusingState>();
             if (processed is not null) builder.AddSingleton(processed);

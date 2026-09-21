@@ -526,6 +526,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
 
         _availability.PublishWatermark(pivotBlock, _formatVersion);
+        Metrics.FlatHistoryWatermark = (long)pivotBlock;
         if (!hasFloor || pivotBlock >= currentFloor)
         {
             // Slices first, so no read ever sees a general floor above a slice floor.

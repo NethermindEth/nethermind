@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
@@ -30,7 +31,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.History.Changesets;
@@ -121,13 +121,10 @@ public class TransactionChangesetIndexModuleTests
             Assert.That(session.ImportPage((ISortedKeyValueStore)history.GetColumnDb(column), format, column, CancellationToken.None), Is.True);
         session.VerifyAnchor(CancellationToken.None);
         BulkFillScopeProvider provider = new(session, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
-        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
-            .AddModule(container.Resolve<IBlockValidationModule[]>())
-            .AddSingleton<IWorldStateScopeProvider>(provider)
-            .AddSingleton<IStateReader>(provider)
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts));
+        using ILifetimeScope scope = ProcessingTransactionIndexBulkFill.BuildReplayScope(container, provider, container.Resolve<IBlockValidationModule[]>());
         IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
+        Block originalHead = tree.Head;
+        IReceiptStorage receipts = scope.Resolve<IReceiptStorage>();
         TransactionChangesetIndex index = new(history, config);
         Withdrawal withdrawal = new() { Address = TestItem.AddressA, AmountInGwei = 1 };
         Block first = Build.A.Block.WithNumber(1).WithParent(genesis).WithPostMergeFlag(true)
@@ -161,10 +158,16 @@ public class TransactionChangesetIndexModuleTests
             Block isolated = block.WithReplacedHeader(block.Header.Clone());
             try
             {
-                Assert.That(processor.Process(isolated, ProcessingTransactionIndexBulkFill.ReplayOptions, capture.Tracer), Is.Not.Null);
+                Block processed = processor.Process(isolated, ProcessingTransactionIndexBulkFill.ReplayOptions, capture.Tracer);
+                Assert.That(processed, Is.Not.Null);
                 Assert.That(capture.Commit(), Is.True);
                 index.SyncWal();
                 session.CommitBlock();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tree.Head, Is.SameAs(originalHead), "bulk replay must not advance the main chain");
+                    Assert.That(receipts.HasBlock(processed.Number, processed.Hash!), Is.False, "bulk replay must not persist receipts");
+                }
             }
             finally
             {
@@ -232,6 +235,8 @@ public class TransactionChangesetIndexModuleTests
         {
             Assert.That(wrongNonce.Nonce, Is.EqualTo(100UL));
             Assert.That(session.CurrentState.BlockNumber, Is.EqualTo(sixth.Number));
+            Assert.That(tree.FindBlock(invalid.Hash!, BlockTreeLookupOptions.None), Is.Not.Null,
+                "a failed scratch replay must not delete a block from the shared tree");
         }
     }
 
