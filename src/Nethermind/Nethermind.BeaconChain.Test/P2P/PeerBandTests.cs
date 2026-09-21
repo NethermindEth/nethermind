@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -360,6 +361,15 @@ public class PeerBandTests
 
             await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
             await WaitUntilAsync(() => peerManager.PeerCount == 1, token, "the inbound session was never admitted");
+
+            // Straight at the libp2p layer: the manager's own dial path short-circuits on "already
+            // connected" before it ever dials, so only a direct dial exercises the session reuse.
+            ISession reused = await local.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(remote.P2P)), token);
+
+            Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? established), Is.True);
+            Assert.That(reused, Is.SameAs(established), "the dial must hand back the session the remote opened, not open a second one");
+            Assert.That((await local.P2P.GetSessionInfoAsync(reused, token)).Direction, Is.EqualTo(PeerDirection.Inbound));
+            Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1), "one connection, not a second outbound one");
 
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True, "already connected counts as success");
 
