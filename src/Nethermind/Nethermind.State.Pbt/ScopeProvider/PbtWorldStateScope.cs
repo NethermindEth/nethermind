@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly ConcurrencyController _foldQuota;
     private readonly FoldFanOut _foldFanOut;
     private readonly bool _omitPrefixlessBranches;
+    private readonly IRefCountingMemoryProvider _nodeGroupMemory;
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
@@ -63,6 +65,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _foldQuota = new ConcurrencyController(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
         _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
         _omitPrefixlessBranches = config.OmitPrefixlessBranches;
+        _nodeGroupMemory = resourcePool.NodeGroupMemory;
         _usage = usage;
         _currentStateId = currentStateId;
         _currentHeader = currentHeader;
@@ -161,7 +164,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
             LastFoldMutationCount = Bundle.PendingMutationCount;
             long updaterStart = Stopwatch.GetTimestamp();
-            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes, _foldQuota, _foldFanOut, _omitPrefixlessBranches, Metrics.PbtPartitionFoldTime);
+            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes, _foldQuota, _foldFanOut, _omitPrefixlessBranches, Metrics.PbtPartitionFoldTime, memoryProvider: _nodeGroupMemory);
             Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
             Bundle.CompleteLeafChanges();
         }

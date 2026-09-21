@@ -758,12 +758,16 @@ public class PbtNodeGroupTests
 
     private static int ReadGroupCount<TPath>(TPath groupKey, byte[] payload) where TPath : struct, IPbtNodePath<TPath> => PbtStoreTestExtensions.ReadGroup(groupKey, payload).Count;
 
-    [TestCase(1, 2)]
-    [TestCase(10, 2)]
-    [TestCase(PbtNodeGroupCodec.PositionCount, 3)]
-    public void Writer_rents_few_buffers_and_detaches_a_right_sized_payload(int nodeCount, int maxRents)
+    [TestCase(1, 2, false)]
+    [TestCase(10, 2, false)]
+    [TestCase(PbtNodeGroupCodec.PositionCount, 3, false)]
+    [TestCase(1, 2, true)]
+    [TestCase(10, 2, true)]
+    [TestCase(PbtNodeGroupCodec.PositionCount, 4, true)]
+    public void Writer_rents_few_buffers_and_detaches_a_right_sized_payload(int nodeCount, int maxRents, bool slabProvider)
     {
-        TrackingMemoryProvider memory = new();
+        using SlabRefCountingMemoryProvider slab = PbtNodeGroupMemory.CreateProvider();
+        TrackingMemoryProvider memory = new(slabProvider ? slab : PooledRefCountingMemoryProvider.Instance);
         PbtStorageNodePath groupKey = new([], 0);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, memory, true);
@@ -779,7 +783,7 @@ public class PbtNodeGroupTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(memory.RentCount, Is.LessThanOrEqualTo(maxRents));
-                Assert.That(memory.RequestedLengths[^1], Is.LessThan(2 * payloadLength), "retained capacity is close to the payload");
+                Assert.That(payload.Capacity, Is.LessThan(2 * payloadLength), "retained capacity is close to the payload");
                 Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).Count, Is.EqualTo(nodeCount));
                 Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(1), "only the detached payload is retained");
             }

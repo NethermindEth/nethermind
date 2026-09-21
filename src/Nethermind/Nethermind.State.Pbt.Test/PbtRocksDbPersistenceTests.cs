@@ -499,7 +499,7 @@ public class PbtRocksDbPersistenceTests
         PbtConfig config = new() { CompactSize = 2, CompactionOffset = 0 };
         DbConfig dbConfig = new();
         PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, config, Substitute.For<IDisposableStack>(), LimboLogs.Instance);
-        PbtResourcePool pool = new(config);
+        PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
         PbtSnapshotRepository repository = new();
         PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(pool, schedule, repository, config);

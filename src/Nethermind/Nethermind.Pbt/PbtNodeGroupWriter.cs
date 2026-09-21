@@ -14,14 +14,9 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     where TPath : struct, IPbtNodePath<TPath>
 {
     private const int MaxEntriesLength = ushort.MaxValue;
-    private const int MaxCapacity = PbtNodeGroupCodec.HeaderLength + MaxEntriesLength + PbtNodeGroupCodec.MaxTrailerLength;
+    private const int MaxCapacity = PbtNodeGroupCodec.MaxPayloadLength;
     /// <summary>A pool bucket that holds most groups outright, so growth rarely copies more than once.</summary>
     private const int InitialCapacity = 1024;
-    /// <summary>
-    /// A detached group is compacted only when its payload fills at most this fraction of the buffer:
-    /// pool buckets are powers of two, so a smaller rent lands in a smaller bucket only below half.
-    /// </summary>
-    private const int CompactionSlackRatio = 2;
     private readonly int _bitDepth;
     private readonly IRefCountingMemoryProvider _memoryProvider;
     private readonly bool _omitPrefixlessBranches;
@@ -193,9 +188,10 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         int length = PbtNodeGroupCodec.HeaderLength + _written + trailerLength;
         PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability, descendantBytes);
         RefCountingMemory memory = _memory;
-        if (memory.GetSpan().Length >= length * CompactionSlackRatio)
+        // The snapshot retains the detached buffer's whole capacity until the segment is persisted, so
+        // the payload moves whenever a re-rent would land it in a smaller bucket.
+        if (_memoryProvider.RoundUpCapacity(length) < memory.Capacity)
         {
-            // The snapshot retains the detached buffer's whole capacity until the segment is persisted.
             RefCountingMemory compacted = _memoryProvider.Rent(length);
             memory.GetSpan()[..length].CopyTo(compacted.GetSpan());
             ((IDisposable)memory).Dispose();

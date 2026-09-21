@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -41,6 +42,7 @@ public class PbtModule(IPbtConfig config) : Module
             .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
             // A second pool would halve each pool's hit rate.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
+            .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider())
             .AddSingleton<PbtTrieNodeCache>()
             .Bind<IPbtTrieNodeCache, PbtTrieNodeCache>()
             .AddSingleton<PbtSnapshotRepository>()

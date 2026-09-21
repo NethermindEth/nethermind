@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Buffers;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
@@ -36,4 +37,6 @@ public interface IPbtResourcePool
     /// <summary>Returns a storage accumulator to its original rental usage.</summary>
     void ReturnStorageWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder<PbtStoragePath> batch);
 
+    /// <summary>The memory the tree fold writes node-group payloads into.</summary>
+    IRefCountingMemoryProvider NodeGroupMemory { get; }
 }

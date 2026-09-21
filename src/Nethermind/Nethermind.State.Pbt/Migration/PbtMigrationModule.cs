@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Container;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -42,6 +43,7 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
             .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
+            .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider())
             .AddSingleton<PbtTrieNodeCache>()
             .Bind<IPbtTrieNodeCache, PbtTrieNodeCache>()
             .AddSingleton<PbtSnapshotRepository>()

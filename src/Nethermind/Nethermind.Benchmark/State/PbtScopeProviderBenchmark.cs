@@ -8,6 +8,7 @@ using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -116,7 +117,7 @@ public class PbtScopeProviderBenchmark
         PbtConfig config = new();
         PbtSnapshotRepository repository = new();
         PbtRocksDbPersistence persistence = new(_pbtDb, config);
-        PbtResourcePool resourcePool = new(config);
+        PbtResourcePool resourcePool = new(config, PooledRefCountingMemoryProvider.Instance);
         PbtCompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config);
         PbtPersistenceCoordinator coordinator = new(

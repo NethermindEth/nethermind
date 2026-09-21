@@ -116,7 +116,7 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
 
         PbtRocksDbPersistence reopened = new(pbtDb, config);
-        PbtResourcePool pool = new(config);
+        PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reopened.CreateReader()), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
         Account retained = bundle.GetAccount(TestItem.AddressB)!.WithChangedNonce(4).WithChangedBalance(43);

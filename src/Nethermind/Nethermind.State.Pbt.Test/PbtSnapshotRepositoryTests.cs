@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -11,7 +12,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtSnapshotRepositoryTests
 {
-    private readonly PbtResourcePool _pool = new(new PbtConfig());
+    private readonly PbtResourcePool _pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
     private PbtSnapshotRepository _repository = null!;
 
     [SetUp]

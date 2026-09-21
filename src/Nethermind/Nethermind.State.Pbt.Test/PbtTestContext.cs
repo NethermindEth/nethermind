@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -47,7 +48,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     /// <summary>Resolves nothing unless a test supplies one, so scopes report their own EIP-8297 root.</summary>
     public IPbtChildHeaderSource ChildHeaders { get; }
 
-    public PbtTestContext(IColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, ITrieWarmer? trieWarmer = null, IMetricsConfig? metricsConfig = null)
+    public PbtTestContext(IColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, ITrieWarmer? trieWarmer = null, IMetricsConfig? metricsConfig = null, IRefCountingMemoryProvider? nodeGroupMemory = null)
     {
         metricsConfig ??= new MetricsConfig();
         Db = db ?? new SnapshotableMemColumnsDb<PbtColumns>("pbt");
@@ -59,7 +60,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(Db, new PbtConfig()), new TestProcessExitSource(_cts));
         Persistence = _cachedReaderPersistence;
-        ResourcePool = new PbtResourcePool(Config);
+        ResourcePool = new PbtResourcePool(Config, nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance);
         Schedule = new PbtCompactionSchedule(MetadataDb, Config, LimboLogs.Instance);
         Compactor = new PbtSnapshotCompactor(ResourcePool, Schedule, Repository, Config);
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);

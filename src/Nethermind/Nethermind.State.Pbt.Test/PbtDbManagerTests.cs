@@ -255,7 +255,7 @@ public class PbtDbManagerTests
     public void Persistence_PrefersExistingUnits_AndBoundsBackgroundDrain(int width, int mode)
     {
         PbtConfig config = new() { CompactSize = 32, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 32, MirrorFlat = mode == 2 };
-        PbtResourcePool pool = new(config);
+        PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
         PbtSnapshotRepository repository = new();
         using MemDb metadata = new();
         PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
@@ -304,7 +304,7 @@ public class PbtDbManagerTests
     public void Persistence_FailedCommitDoesNotPublishOrPrune_AndUnknownMirrorSeedDoesNotAdvance()
     {
         PbtConfig config = new() { CompactSize = 2, CompactionOffset = 0, MirrorFlat = true };
-        PbtResourcePool pool = new(config);
+        PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
         PbtSnapshotRepository repository = new();
         using MemDb metadata = new();
         IPbtPersistence persistence = Substitute.For<IPbtPersistence>();
@@ -347,7 +347,7 @@ public class PbtDbManagerTests
     public async Task PersistenceBackpressure_StallsProducer_AndShutdownDrains([Values] bool cancelProducer)
     {
         PbtConfig config = new() { CompactSize = 1, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 1 };
-        PbtResourcePool pool = new(config);
+        PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
         PbtSnapshotRepository repository = new();
         using MemDb metadata = new();
         using CancellationTokenSource processExit = new();
@@ -456,7 +456,7 @@ public class PbtDbManagerTests
     public async Task AddSnapshot_hands_the_transient_to_the_populator_or_releases_it([Values] TransientHandOff mode)
     {
         PbtConfig config = new() { CompactionOffset = 0 };
-        PbtResourcePool pool = new(config);
+        PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
         PbtSnapshotRepository repository = new();
         using MemDb metadata = new();
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();

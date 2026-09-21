@@ -1,0 +1,280 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+using Nethermind.Core.Buffers.Slab;
+using NUnit.Framework;
+
+namespace Nethermind.Core.Test.Buffers.Slab;
+
+[Parallelizable(ParallelScope.All)]
+public unsafe class SlabMemoryAllocatorTests
+{
+    private const int PageSize = 4096;
+    private const int ChunkSize = 16 * PageSize;
+    private const int Quantum = 16;
+    private const int ThreadCacheMaxCount = 8;
+
+    private static SlabMemoryAllocator CreateAllocator() =>
+        new(new SlabAllocatorOptions(SlabAllocatorOptions.GenerateSizeClasses(Quantum, 4, PageSize), PageSize, ChunkSize, Quantum, ThreadCacheMaxCount));
+
+    [TestCase(64, 4, 2048, new[] { 64, 128, 192, 256, 320, 384, 448, 512, 640, 768, 896, 1024, 1280, 1536, 1792, 2048 })]
+    [TestCase(16, 4, 128, new[] { 16, 32, 48, 64, 80, 96, 112, 128 })]
+    [TestCase(16, 2, 200, new[] { 16, 32, 48, 64, 96, 128, 192 })]
+    public void GenerateSizeClasses_spaces_classes_like_jemalloc(int quantum, int classesPerDoubling, int maxSize, int[] expected) =>
+        Assert.That(SlabAllocatorOptions.GenerateSizeClasses(quantum, classesPerDoubling, maxSize), Is.EqualTo(expected));
+
+    [Test]
+    public void Options_reject_invalid_geometry()
+    {
+        int[] classes = [16, 32];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SlabAllocatorOptions(classes, 3000, ChunkSize, Quantum, 8), "page size not a power of two");
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SlabAllocatorOptions(classes, PageSize, PageSize * 2, Quantum, 8), "chunk too small");
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SlabAllocatorOptions(classes, PageSize, ChunkSize, 8, 8), "quantum below minimum");
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SlabAllocatorOptions([32, 16], PageSize, ChunkSize, Quantum, 8), "classes not ascending");
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SlabAllocatorOptions([24], PageSize, ChunkSize, Quantum, 8), "class not a quantum multiple");
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SlabAllocatorOptions([ChunkSize / 2], PageSize, ChunkSize, Quantum, 8), "class above a quarter chunk");
+            Assert.Throws<ArgumentOutOfRangeException>(() => new SlabAllocatorOptions([], PageSize, ChunkSize, Quantum, 8), "no classes");
+            Assert.Throws<ArgumentOutOfRangeException>(() => SlabAllocatorOptions.GenerateSizeClasses(Quantum, 3, PageSize), "classes per doubling not a power of two");
+        }
+    }
+
+    [Test]
+    public void Buddy_hands_out_disjoint_runs_and_coalesces_back_to_the_whole_chunk([Values(0, 1, 2, 3, 4)] int order)
+    {
+        SlabChunk chunk = new(ChunkSize, PageSize);
+        try
+        {
+            int runCount = (ChunkSize / PageSize) >> order;
+            List<int> pages = [];
+            for (int i = 0; i < runCount; i++) pages.Add(chunk.TryAllocatePages(order));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pages, Is.Unique);
+                Assert.That(pages, Has.All.Matches<int>(page => page >= 0 && page % (1 << order) == 0));
+                Assert.That(chunk.TryAllocatePages(0), Is.EqualTo(-1), "a full chunk has no page left");
+                Assert.That(chunk.IsEmpty, Is.False);
+            }
+
+            Random random = new(order);
+            while (pages.Count > 0)
+            {
+                int index = random.Next(pages.Count);
+                chunk.FreePages(pages[index], order);
+                pages.RemoveAt(index);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chunk.IsEmpty, "every run merged back");
+                Assert.That(chunk.TryAllocatePages(chunk.MaxOrder), Is.Zero, "the whole chunk is one run again");
+            }
+        }
+        finally
+        {
+            chunk.Release();
+        }
+    }
+
+    [Test]
+    public void Allocate_sizes_blocks_to_their_class_and_frees_them_completely([Values(0, 1, 16, 1000, 1200, PageSize, 5000, 20000, ChunkSize, 200_000)] int size)
+    {
+        using SlabMemoryAllocator allocator = CreateAllocator();
+        SlabAllocation first = allocator.Allocate(size);
+        SlabAllocation second = allocator.Allocate(size);
+        first.AsSpan().Fill(0xA1);
+        second.AsSpan().Fill(0xB2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Capacity, Is.EqualTo(allocator.RoundUpCapacity(size)).And.GreaterThanOrEqualTo(size));
+            Assert.That(first.Pointer != second.Pointer, "blocks are distinct");
+            Assert.That(first.AsSpan().IndexOfAnyExcept((byte)0xA1), Is.EqualTo(-1), "the second fill did not touch the first block");
+            Assert.That(allocator.OutstandingBytes, Is.GreaterThanOrEqualTo(2L * first.Capacity), "a refill batch may sit in the thread cache");
+        }
+
+        allocator.Free(in first);
+        allocator.Free(in second);
+        allocator.FlushThreadCache();
+        Assert.That(allocator.OutstandingBytes, Is.Zero);
+    }
+
+    [Test]
+    public void Thread_cache_reuses_the_last_freed_region_and_refills_without_growing()
+    {
+        using SlabMemoryAllocator allocator = CreateAllocator();
+        const int size = 64;
+        int cacheCapacity = Math.Clamp(64 * 1024 / size, 4, ThreadCacheMaxCount);
+        int count = 3 * cacheCapacity;
+        SlabAllocation[] blocks = new SlabAllocation[count];
+        for (int i = 0; i < count; i++)
+        {
+            blocks[i] = allocator.Allocate(size);
+            blocks[i].AsSpan().Fill((byte)i);
+        }
+
+        for (int i = 0; i < count; i++)
+            Assert.That(blocks[i].AsSpan().IndexOfAnyExcept((byte)i), Is.EqualTo(-1), $"region {i} overlaps another");
+
+        long reserved = allocator.ReservedBytes;
+        for (int i = 0; i < count; i++) allocator.Free(in blocks[i]);
+        SlabAllocation reused = allocator.Allocate(size);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reused.Pointer == blocks[^1].Pointer, "the thread cache is LIFO");
+            Assert.That(allocator.ReservedBytes, Is.EqualTo(reserved), "cached regions do not grow the arena");
+            Assert.That(allocator.ChunkCount, Is.EqualTo(1));
+        }
+
+        allocator.Free(in reused);
+        allocator.FlushThreadCache();
+        Assert.That(allocator.OutstandingBytes, Is.Zero);
+    }
+
+    [Test]
+    public void Empty_slabs_and_chunks_are_released_beyond_one_spare()
+    {
+        using SlabMemoryAllocator allocator = CreateAllocator();
+        // A page-sized class puts one region per slab, so every region is its own page run.
+        const int pagesPerChunk = ChunkSize / PageSize;
+        SlabAllocation[] blocks = new SlabAllocation[2 * pagesPerChunk + 1];
+        for (int i = 0; i < blocks.Length; i++) blocks[i] = allocator.Allocate(PageSize);
+        Assert.That(allocator.ChunkCount, Is.EqualTo(3));
+
+        for (int i = 0; i < blocks.Length; i++) allocator.Free(in blocks[i]);
+        allocator.FlushThreadCache();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocator.OutstandingBytes, Is.Zero);
+            Assert.That(allocator.ChunkCount, Is.EqualTo(2), "the chunk holding the spare slab plus one spare empty chunk");
+        }
+
+        allocator.Dispose();
+        Assert.That(allocator.ReservedBytes, Is.Zero);
+    }
+
+    [Test]
+    public void A_dying_thread_returns_its_cached_regions()
+    {
+        using SlabMemoryAllocator allocator = CreateAllocator();
+        Thread worker = new(() =>
+        {
+            SlabAllocation[] blocks = new SlabAllocation[4];
+            for (int i = 0; i < blocks.Length; i++) blocks[i] = allocator.Allocate(128);
+            for (int i = 0; i < blocks.Length; i++) allocator.Free(in blocks[i]);
+        });
+        worker.Start();
+        worker.Join();
+        Assert.That(allocator.OutstandingBytes, Is.GreaterThan(0), "the regions are parked in the dead thread's cache");
+
+        // The thread-local slot is unlinked by one collection and the cache finalized by a later one.
+        for (int attempt = 0; attempt < 10 && allocator.OutstandingBytes > 0; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+
+        Assert.That(allocator.OutstandingBytes, Is.Zero);
+    }
+
+    [Test]
+    public void Dispose_frees_chunks_once_nothing_is_outstanding([Values] bool freeBeforeDispose)
+    {
+        SlabMemoryAllocator allocator = CreateAllocator();
+        SlabAllocation small = allocator.Allocate(100);
+        SlabAllocation large = allocator.Allocate(3 * PageSize);
+        SlabAllocation huge = allocator.Allocate(2 * ChunkSize);
+
+        if (freeBeforeDispose)
+        {
+            allocator.Free(in small);
+            allocator.Free(in large);
+            allocator.Free(in huge);
+            allocator.Dispose();
+            Assert.That(allocator.ReservedBytes, Is.Zero, "the caller's cache is flushed by Dispose");
+        }
+        else
+        {
+            allocator.Dispose();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(allocator.ReservedBytes, Is.EqualTo(ChunkSize + 2L * ChunkSize), "live blocks keep their memory");
+                Assert.Throws<ObjectDisposedException>(() => allocator.Allocate(1));
+            }
+
+            allocator.Free(in small);
+            allocator.Free(in large);
+            allocator.Free(in huge);
+            Assert.That(allocator.ReservedBytes, Is.Zero, "the last free releases the chunk");
+        }
+    }
+
+    [TestCase(8, 20_000, 1)]
+    public void Concurrent_allocations_never_overlap_and_all_return(int threads, int iterations, int seed)
+    {
+        using SlabMemoryAllocator allocator = CreateAllocator();
+        ConcurrentQueue<(SlabAllocation Block, byte Tag)> handedOff = new();
+        List<Exception> failures = [];
+        Thread[] workers = new Thread[threads];
+        for (int t = 0; t < threads; t++)
+        {
+            int threadSeed = seed * 1000 + t;
+            workers[t] = new Thread(() =>
+            {
+                try
+                {
+                    Random random = new(threadSeed);
+                    List<(SlabAllocation Block, byte Tag)> mine = [];
+                    for (int i = 0; i < iterations; i++)
+                    {
+                        byte tag = (byte)random.Next(1, 256);
+                        SlabAllocation block = allocator.Allocate(random.Next(0, 3 * PageSize));
+                        block.AsSpan().Fill(tag);
+                        if (random.Next(2) == 0) mine.Add((block, tag));
+                        else handedOff.Enqueue((block, tag));
+
+                        if (mine.Count > 32)
+                        {
+                            VerifyAndFree(allocator, mine[^1]);
+                            mine.RemoveAt(mine.Count - 1);
+                        }
+
+                        if (i % 8 == 0 && handedOff.TryDequeue(out (SlabAllocation Block, byte Tag) foreign)) VerifyAndFree(allocator, foreign);
+                    }
+
+                    foreach ((SlabAllocation Block, byte Tag) entry in mine) VerifyAndFree(allocator, entry);
+                    allocator.FlushThreadCache();
+                }
+                catch (Exception e)
+                {
+                    lock (failures) failures.Add(e);
+                }
+            });
+            workers[t].Start();
+        }
+
+        foreach (Thread worker in workers) worker.Join();
+        while (handedOff.TryDequeue(out (SlabAllocation Block, byte Tag) leftover)) VerifyAndFree(allocator, leftover);
+        allocator.FlushThreadCache();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failures, Is.Empty);
+            Assert.That(allocator.OutstandingBytes, Is.Zero);
+        }
+    }
+
+    private static void VerifyAndFree(SlabMemoryAllocator allocator, (SlabAllocation Block, byte Tag) entry)
+    {
+        if (entry.Block.AsSpan().IndexOfAnyExcept(entry.Tag) >= 0) throw new InvalidOperationException("a block was overwritten by another allocation");
+        allocator.Free(in entry.Block);
+    }
+}

@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Pbt;
@@ -19,7 +20,9 @@ public class PbtResourcePool : IPbtResourcePool
 {
     private readonly Dictionary<Usage, ResourcePoolCategory> _categories;
 
-    public PbtResourcePool(IPbtConfig config) =>
+    public PbtResourcePool(IPbtConfig config, IRefCountingMemoryProvider nodeGroupMemory)
+    {
+        NodeGroupMemory = nodeGroupMemory;
         _categories = new()
         {
             // A persisted segment returns its whole chain at once, so the pool must absorb that burst:
@@ -44,6 +47,10 @@ public class PbtResourcePool : IPbtResourcePool
             { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 0) },
             { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 0) },
         };
+    }
+
+    /// <inheritdoc/>
+    public IRefCountingMemoryProvider NodeGroupMemory { get; }
 
     public PbtSnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();
 

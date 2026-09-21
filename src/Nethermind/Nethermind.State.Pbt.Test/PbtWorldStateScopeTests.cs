@@ -23,6 +23,7 @@ using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
+using RefCountingMemoryMetrics = Nethermind.Core.Buffers.Metrics.Metrics;
 using NSubstitute;
 
 namespace Nethermind.State.Pbt.Test;
@@ -196,6 +197,26 @@ public class PbtWorldStateScopeTests
 
         Assert.That(scope.Get(TestItem.AddressA)?.Balance, Is.EqualTo(UInt256.One), "the scope reads back what it committed");
         Assert.That(ctx.Repository.Count, Is.Zero, "and the layer never reaches the repository");
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Slab_backed_node_groups_are_freed_once_the_scope_and_cache_are_gone()
+    {
+        long baselineCount = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount;
+        using SlabRefCountingMemoryProvider slab = PbtNodeGroupMemory.CreateProvider();
+        await using (PbtTestContext ctx = new(nodeGroupMemory: slab))
+        {
+            using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+            Write(scope, 1);
+            scope.UpdateRootHash();
+            scope.Commit(1);
+            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.GreaterThan(baselineCount), "the fold wrote its groups into native memory");
+        }
+
+        // Regions freed on fold and persistence threads stay parked in their caches, so only the
+        // instance count proves that every payload was released.
+        Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(baselineCount));
     }
 
     /// <summary>
@@ -776,7 +797,7 @@ public class PbtWorldStateScopeTests
 
     private static PbtWorldStateScope CreateCountingScope(CountingWarmupReader reader, IPbtTrieNodeCache cache, ITrieWarmer warmer)
     {
-        PbtResourcePool pool = new(new PbtConfig());
+        PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader);
         PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         return new PbtWorldStateScope(reader.CurrentState, null, bundle, Substitute.For<IWorldStateScopeProvider.ICodeDb>(),

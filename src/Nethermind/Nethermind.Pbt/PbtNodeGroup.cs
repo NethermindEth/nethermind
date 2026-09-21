@@ -50,6 +50,9 @@ public static class PbtNodeGroupCodec
     public const long MaxDescendantBytes = (1L << (8 * DescendantBytesLength)) - 1;
 
     private const int MaxOffset = ushort.MaxValue;
+
+    /// <summary>The largest payload a group can encode: header, a full entries section, and the widest trailer.</summary>
+    public const int MaxPayloadLength = HeaderLength + MaxOffset + MaxTrailerLength;
     private const uint ReservedRootBit = 1u << PbtFourLevelGroupGeometry.RootPosition;
     private const uint AllowedPositionBits = (1u << PositionCount) - 1;
 

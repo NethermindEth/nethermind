@@ -20,7 +20,7 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtResourcePoolTests
 {
     private PbtResourcePool _pool = null!;
-    [SetUp] public void SetUp() => _pool = new PbtResourcePool(new PbtConfig());
+    [SetUp] public void SetUp() => _pool = new PbtResourcePool(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
 
     [TestCase(0x00, false, 0xFFFF, 64)]
     [TestCase(0x01, false, 0xFFFF, 64)]

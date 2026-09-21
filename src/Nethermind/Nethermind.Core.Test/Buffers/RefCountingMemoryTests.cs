@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Buffers.Slab;
 using NUnit.Framework;
 using RefCountingMemoryMetrics = Nethermind.Core.Buffers.Metrics.Metrics;
 
@@ -140,6 +141,42 @@ public class RefCountingMemoryTests
         finally
         {
             ((IDisposable?)memory)?.Dispose();
+        }
+    }
+
+    [Test]
+    public void OwningNative_frees_the_block_on_the_last_release_and_tracks_native_metrics()
+    {
+        long initialNativeCount = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount;
+        long initialNativeCapacity = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCapacity;
+        using SlabMemoryAllocator allocator = new(new SlabAllocatorOptions(SlabAllocatorOptions.GenerateSizeClasses(16, 4, 4096), 4096, 64 * 1024, 16, 8));
+        SlabRefCountingMemoryProvider provider = new(allocator);
+        RefCountingMemory memory = provider.Rent(100);
+        memory.GetSpan().Fill(7);
+        memory.Shrink(60);
+        memory.AcquireLease();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.GetSpan().Length, Is.EqualTo(60));
+            Assert.That(memory.GetSpan().IndexOfAnyExcept((byte)7), Is.EqualTo(-1));
+            Assert.That(memory.Capacity, Is.EqualTo(112), "the size class above 100 with quantum 16");
+            Assert.That(provider.RoundUpCapacity(100), Is.EqualTo(112));
+            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(initialNativeCount + 1));
+            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCapacity, Is.EqualTo(initialNativeCapacity + 112));
+        }
+
+        ((IDisposable)memory).Dispose();
+        allocator.FlushThreadCache();
+        Assert.That(allocator.OutstandingBytes, Is.GreaterThan(0), "one lease is still out");
+
+        ((IDisposable)memory).Dispose();
+        allocator.FlushThreadCache();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocator.OutstandingBytes, Is.Zero, "the last release freed the block");
+            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(initialNativeCount));
+            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCapacity, Is.EqualTo(initialNativeCapacity));
         }
     }
 

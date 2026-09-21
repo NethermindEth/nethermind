@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtSnapshotCompactorTests
 {
-    private readonly PbtResourcePool _pool = new(new PbtConfig());
+    private readonly PbtResourcePool _pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
     private static readonly PbtConfig Config = new() { CompactSize = 16 };
 
     [TestCase(false, false)]

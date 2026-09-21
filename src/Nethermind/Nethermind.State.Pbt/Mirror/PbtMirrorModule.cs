@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Container;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -32,6 +33,7 @@ public class PbtMirrorModule(IPbtConfig config) : Module
             .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
             // A second pool would halve cache hit rates.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
+            .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider())
             .AddSingleton<PbtTrieNodeCache>()
             .Bind<IPbtTrieNodeCache, PbtTrieNodeCache>()
             .AddSingleton<PbtSnapshotRepository>()
