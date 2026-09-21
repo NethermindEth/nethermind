@@ -465,7 +465,7 @@ public class PbtSnapshotBundleTests
         retired.ReleaseLease();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero, "cache must not retain oversized source allocations");
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(admitted ? 1 : 0), "an admitted source allocation stays leased by the cache");
             Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(budget));
         }
         int readsBeforeDirectRead = reader.GroupReadCount;
@@ -579,7 +579,7 @@ public class PbtSnapshotBundleTests
             Assert.That(transient.NodeGroups.TryGet(secondHash, foldedPath, out RefCountingMemory? staged), Is.True);
             using (staged) Assert.That(staged!.Memory.ToArray(), Is.EqualTo(second));
             Assert.That(reader.GroupReadCount, Is.EqualTo(1), "the fold reads the warmer's staged copy");
-            Assert.That(TrackingMemoryProvider.CountUnreleased(rocksDbBacked ? rocksDbMemory.Rented : foldMemory.Rented), Is.EqualTo(rocksDbBacked ? 0 : 2), "a RocksDB slice is copied rather than pinned; pooled payloads are leased");
+            Assert.That(TrackingMemoryProvider.CountUnreleased(foldMemory.Rented) + TrackingMemoryProvider.CountUnreleased(rocksDbMemory.Rented), Is.EqualTo(2), "the staged fold and the warmed read are leased as-is, never copied");
         }
 
         PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default, out PbtTransientResource retired);
@@ -864,7 +864,7 @@ public class PbtSnapshotBundleTests
                 {
                     string label = CachePartitions[index];
                     long memory = Metrics.PbtTrieCacheMemory[label] - initialMemory[index];
-                    Assert.That(memory, Is.EqualTo(entryMemory[index] + (label == partition ? 1600 - 3 : 0)), label);
+                    Assert.That(memory, Is.EqualTo(entryMemory[index] + (label == partition ? larger.Capacity - source.Capacity : 0)), label);
                     totalMemory += memory;
                 }
                 Assert.That(cache.MemorySize, Is.EqualTo(totalMemory));
@@ -886,7 +886,7 @@ public class PbtSnapshotBundleTests
     {
         using PbtTrieNodeCache cache = new(new PbtConfig { AccountTrieNodeCacheSizeBudget = 1048576 });
         PbtNodePath path = new([], 0);
-        using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
+        RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
         cache.Add(default, path, source);
         Assert.That(cache.TryGet(default, path, out RefCountingMemory? retained), Is.True);
         using (retained)
@@ -908,14 +908,15 @@ public class PbtSnapshotBundleTests
                 Assert.That(cache.TryGet(default, path, out _), Is.False);
             }
         }
-        Assert.Throws<InvalidOperationException>(() => retained!.AcquireLease());
+        ((IDisposable)source).Dispose();
+        Assert.Throws<InvalidOperationException>(() => source.AcquireLease(), "the cache released every lease it took");
     }
 
-    [TestCase(16, false, true)]
-    [TestCase(2048, false, true)]
-    [TestCase(1600, false, false)]
-    [TestCase(2048, true, false)]
-    public void Trie_cache_shares_right_sized_managed_payloads_and_copies_the_rest(int length, bool rocksDbBacked, bool expectedShared)
+    [TestCase(16, false)]
+    [TestCase(2048, false)]
+    [TestCase(1600, false)]
+    [TestCase(2048, true)]
+    public void Trie_cache_leases_every_payload_without_copying(int length, bool rocksDbBacked)
     {
         using PbtTrieNodeCache cache = new(CacheConfig("account", 1048576));
         PbtNodePath path = CachePath("account");
@@ -924,10 +925,10 @@ public class PbtSnapshotBundleTests
             : Memory(new byte[length]);
         cache.Add(default, path, source);
         Assert.That(cache.TryGet(default, path, out RefCountingMemory? hit), Is.True);
-        using (hit) Assert.That(ReferenceEquals(hit, source), Is.EqualTo(expectedShared));
+        using (hit) Assert.That(hit, Is.SameAs(source));
         ((IDisposable)source).Dispose();
-        Assert.That(source.TryAcquireLease(), Is.EqualTo(expectedShared), "only a shared payload stays leased by the cache after its producer releases it");
-        if (expectedShared) ((IDisposable)source).Dispose();
+        Assert.That(source.TryAcquireLease(), Is.True, "the cache's lease keeps the payload alive after its producer releases it");
+        ((IDisposable)source).Dispose();
         cache.Clear();
         using (Assert.EnterMultipleScope())
         {

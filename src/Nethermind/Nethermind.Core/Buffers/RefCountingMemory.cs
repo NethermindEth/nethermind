@@ -76,9 +76,6 @@ public sealed class RefCountingMemory : MemoryManager<byte>
     /// <summary>Gets the size of the backing buffer, which a pooled buffer may have rented larger than the value.</summary>
     public int Capacity => _capacity;
 
-    /// <summary>Gets whether the memory is borrowed from RocksDB rather than held in a managed array.</summary>
-    public bool IsRocksDbBacked => _backingKind is BackingKind.RocksDb;
-
     /// <summary>Wraps an array whose lifetime is owned elsewhere; the last release does not free it.</summary>
     public static RefCountingMemory Wrapping(byte[] array) => new(array, array.Length, BackingKind.Wrapped);
 
