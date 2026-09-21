@@ -10,7 +10,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -21,6 +20,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using MemoryAllowance = Nethermind.TxPool.MemoryAllowance;
@@ -29,6 +29,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
+        protected const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
@@ -54,8 +56,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
-        protected AssociativeKeyCache<ValueHash256>? _notifiedTransactions;
-        protected AssociativeKeyCache<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
+        private TransactionHashCache.PeerCache? _notifiedTransactions;
+        private object? _notifiedTransactionsLock;
+        private protected TransactionHashCache.PeerCache NotifiedTransactions =>
+            LazyInitializer.EnsureInitialized(ref _notifiedTransactions, ref _notifiedTransactionsLock, static () => SharedTransactionHashes.Cache.CreatePeerCache());
+
+        private static class SharedTransactionHashes
+        {
+            // Allow for different inbound histories across peers as well as the current pool.
+            // TxPool sets MemPoolSize before peers start; this process-wide capacity is fixed on first use.
+            internal static readonly TransactionHashCache Cache = new(4 * MemoryAllowance.MemPoolSize);
+        }
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
@@ -356,7 +367,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 Block? block = SyncServer.Find(hashes[i]);
                 if (block is null)
                 {
-                    // GetBlockBodies responses are sparse: unavailable hashes are omitted from the response.
                     continue;
                 }
 
@@ -398,10 +408,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-            ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
+            ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
 
             ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Length; i++)
+            for (int i = 0; i < hashes.Length && i < MaxReceiptsLookups; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {

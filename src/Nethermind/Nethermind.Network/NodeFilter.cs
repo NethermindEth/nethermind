@@ -5,6 +5,7 @@ using System;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 
@@ -23,7 +24,7 @@ public sealed class NodeFilter
     /// </summary>
     public static readonly NodeFilter AcceptAll = new();
 
-    private readonly ClockCache<IpSubnetKey, long>? _cache;
+    private readonly ClockCache<IpSubnetKey, LastSeen>? _cache;
     private readonly bool _exactMatchOnly;
     private readonly ParsedIPAddress? _parsedCurrentIp;
     private readonly long _timeoutMs;
@@ -66,10 +67,17 @@ public sealed class NodeFilter
 
         // Benign race: two threads may both accept the same key concurrently.
         // The filter is advisory — a double-accept is harmless.
-        if (_cache.TryGet(key, out long lastSeen) && now - lastSeen < _timeoutMs)
-            return false;
+        if (_cache.TryGet(key, out LastSeen lastSeen))
+        {
+            if (now - Volatile.Read(ref lastSeen.Timestamp) < _timeoutMs)
+                return false;
 
-        _cache.Set(key, now);
+            Volatile.Write(ref lastSeen.Timestamp, now);
+        }
+        else
+        {
+            _cache.Set(key, new LastSeen(now));
+        }
         return true;
     }
 
@@ -80,7 +88,22 @@ public sealed class NodeFilter
             return;
         }
 
-        _cache.Set(GetKey(ipAddress, exactOnly), Environment.TickCount64);
+        IpSubnetKey key = GetKey(ipAddress, exactOnly);
+        long now = Environment.TickCount64;
+        if (_cache.TryGet(key, out LastSeen lastSeen))
+        {
+            Volatile.Write(ref lastSeen.Timestamp, now);
+        }
+        else
+        {
+            _cache.Set(key, new LastSeen(now));
+        }
+    }
+
+    // Mutate the timestamp without replacing ClockCache's dictionary entry on every packet.
+    private sealed class LastSeen(long timestamp)
+    {
+        public long Timestamp = timestamp;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
