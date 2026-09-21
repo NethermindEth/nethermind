@@ -99,8 +99,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
             .AddModule(validationModules)
             .AddSingleton<IWorldStateScopeProvider>(provider)
             .AddSingleton<IStateReader>(provider)
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts));
+            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>());
         IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
         long reportedAt = Stopwatch.GetTimestamp();
         ulong reportedBlock = session.CurrentState.BlockNumber;

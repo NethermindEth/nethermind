@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
@@ -125,9 +126,10 @@ public class TransactionChangesetIndexModuleTests
             .AddModule(container.Resolve<IBlockValidationModule[]>())
             .AddSingleton<IWorldStateScopeProvider>(provider)
             .AddSingleton<IStateReader>(provider)
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts));
+            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>());
         IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
+        Block? originalHead = tree.Head;
+        IReceiptStorage receipts = container.Resolve<IReceiptStorage>();
         TransactionChangesetIndex index = new(history, config);
         Withdrawal withdrawal = new() { Address = TestItem.AddressA, AmountInGwei = 1 };
         Block first = Build.A.Block.WithNumber(1).WithParent(genesis).WithPostMergeFlag(true)
@@ -165,6 +167,11 @@ public class TransactionChangesetIndexModuleTests
                 Assert.That(capture.Commit(), Is.True);
                 index.SyncWal();
                 session.CommitBlock();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tree.Head, Is.SameAs(originalHead), "bulk replay must not advance the main chain");
+                    Assert.That(receipts.Get(block), Is.Empty, "bulk replay must not persist receipts");
+                }
             }
             finally
             {
@@ -232,6 +239,8 @@ public class TransactionChangesetIndexModuleTests
         {
             Assert.That(wrongNonce.Nonce, Is.EqualTo(100UL));
             Assert.That(session.CurrentState.BlockNumber, Is.EqualTo(sixth.Number));
+            Assert.That(tree.FindBlock(invalid.Hash!, BlockTreeLookupOptions.None), Is.Not.Null,
+                "a failed scratch replay must not delete a block from the shared tree");
         }
     }
 
