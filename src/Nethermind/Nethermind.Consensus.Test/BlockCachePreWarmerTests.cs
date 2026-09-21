@@ -1524,12 +1524,65 @@ public class BlockCachePreWarmerTests
     [CancelAfter(15_000)]
     public void PreWarmCaches_WarmsATransactionWhoseSenderArrivesDuringTheFanOut(CancellationToken testToken)
     {
+        Transaction late = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        late.SenderAddress = null;
+        Block block = Build.A.Block
+            .WithTransactions(
+                GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+                late,
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        int warmedTxs = RunGatedFanOut(block, testToken, whileParked: () => late.SenderAddress = TestItem.AddressB);
+
+        Assert.That(warmedTxs, Is.EqualTo(3), "the transaction whose sender arrived late must be warmed by the running fan-out");
+    }
+
+    /// <summary>
+    /// A transaction the main thread has already started by the time its sender lands is never warmed, and it must
+    /// not keep the waiting worker busy either: left unclaimed it would read as an arrival on every scan while
+    /// nothing could act on it, and the fan-out would spin until the block was cancelled instead of finishing.
+    /// </summary>
+    [Test]
+    [CancelAfter(15_000)]
+    public void PreWarmCaches_ATransactionOvertakenBeforeItsSenderArrives_IsSkippedAndDoesNotStallTheFanOut(CancellationToken testToken)
+    {
+        Transaction late = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        late.SenderAddress = null;
+        Block block = Build.A.Block
+            .WithTransactions(
+                GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+                late,
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000))
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        BlockCachePreWarmer? preWarmer = null;
+        int warmedTxs = RunGatedFanOut(block, testToken, whileParked: () =>
+        {
+            // The main thread reaches the late transaction before its sender does, then the sender lands.
+            preWarmer!.OnBeforeTxExecution();
+            preWarmer.OnBeforeTxExecution();
+            late.SenderAddress = TestItem.AddressB;
+        }, created: created => preWarmer = created);
+
+        Assert.That(warmedTxs, Is.EqualTo(2), "only the two transactions ahead of the main thread are warmed; the overtaken ones are skipped, not spun on");
+    }
+
+    /// <summary>
+    /// Runs a reactive warm with two workers, parks both inside their first job's scope, runs
+    /// <paramref name="whileParked"/>, releases them and returns how many transactions were warmed.
+    /// </summary>
+    private int RunGatedFanOut(Block block, CancellationToken testToken, Action whileParked, Action<BlockCachePreWarmer>? created = null)
+    {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
 
         using ManualResetEventSlim gate = new(initialState: false);
-        using CountdownEvent txScopesInFlight = new(1);
+        using CountdownEvent txScopesInFlight = new(2);
         int warmedTxs = 0;
         TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
             onTxScope: static () => { },
@@ -1543,13 +1596,7 @@ public class BlockCachePreWarmerTests
             nodeStorageCache,
             preBlockCaches,
             LimboLogs.Instance);
-
-        Transaction late = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
-        late.SenderAddress = null;
-        Block block = Build.A.Block
-            .WithTransactions(GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000), late)
-            .WithGasLimit(30_000_000)
-            .TestObject;
+        created?.Invoke(preWarmer);
 
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         BlockHeader parent = BuildParentHeader();
@@ -1559,10 +1606,8 @@ public class BlockCachePreWarmerTests
             try
             {
                 Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
-                    "precondition: a worker must be parked inside the first job's scope setup");
-
-                // The sender lands while the fan-out is already running, as background recovery does on a real block.
-                late.SenderAddress = TestItem.AddressB;
+                    "precondition: two workers must be parked inside their first job's scope setup");
+                whileParked();
             }
             finally
             {
@@ -1572,10 +1617,10 @@ public class BlockCachePreWarmerTests
             warmTask.GetAwaiter().GetResult();
         }
 
-        Assert.That(warmedTxs, Is.EqualTo(2), "the transaction whose sender arrived late must be warmed by the running fan-out");
+        return warmedTxs;
     }
 
-    /// <summary>
+
     /// Verifies that warm workers rent one environment for their whole lifetime instead of one
     /// per job: two workers parked on their first jobs then draining four jobs must produce
     /// exactly two tx-warm env returns, not four.
