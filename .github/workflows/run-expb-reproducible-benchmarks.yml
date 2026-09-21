@@ -926,10 +926,12 @@ jobs:
           esac
           # -f so an HTTP error is a failure rather than an error page written to ${YQ}, and retries
           # because the release CDN does return the occasional 504.
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 60 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
           chmod +x "${YQ}"
-          # A truncated download is still a file; fail here rather than at the first rewrite below.
-          "${YQ}" --version
+          # A truncated download is still a file, and a non-ELF one bash just runs as a script, so
+          # check the banner rather than the exit code. Fail here, not at the first rewrite below.
+          yq_version="$("${YQ}" --version)"
+          [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
@@ -2416,10 +2418,12 @@ jobs:
           esac
           # -f so an HTTP error is a failure rather than an error page written to ${YQ}, and retries
           # because the release CDN does return the occasional 504.
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 60 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
           chmod +x "${YQ}"
-          # A truncated download is still a file; fail here rather than at the first rewrite below.
-          "${YQ}" --version
+          # A truncated download is still a file, and a non-ELF one bash just runs as a script, so
+          # check the banner rather than the exit code. Fail here, not at the first rewrite below.
+          yq_version="$("${YQ}" --version)"
+          [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
