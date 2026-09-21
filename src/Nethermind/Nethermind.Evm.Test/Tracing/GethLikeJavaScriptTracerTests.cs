@@ -256,13 +256,15 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("5f5f205000", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:POP,P3:POP,S4:STOP,P4:STOP", 0, TestName = "Callbacks_paired_mid_code_opcode")]
     [TestCase("00", "S0:STOP,P0:STOP", 0, TestName = "Callbacks_paired_explicit_stop")]
     [TestCase("5f5ff3", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:RETURN,P2:RETURN", 0, TestName = "Callbacks_paired_explicit_return")]
-    [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,P2:REVERT", 1, TestName = "Callbacks_paired_explicit_revert")]
+    // REVERT faults from SetOperationStack, so its marker lands between step and postStep;
+    // every other failure faults from EndInstructionTraceError, i.e. after postStep.
+    [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,F2:REVERT,P2:REVERT", 1, TestName = "Callbacks_paired_explicit_revert")]
     [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_paired_explicit_self_destruct")]
-    [TestCase("20", "S0:KECCAK256,P0:KECCAK256", 1, TestName = "Callbacks_paired_stack_underflow")]
-    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256", 1, TestName = "Callbacks_paired_out_of_gas")]
+    [TestCase("20", "S0:KECCAK256,P0:KECCAK256,F0:KECCAK256", 1, TestName = "Callbacks_paired_stack_underflow")]
+    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256,F6:KECCAK256", 1, TestName = "Callbacks_paired_out_of_gas")]
     [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_paired_jumpi_falls_off_code")]
-    [TestCase("fe", "S0:INVALID,P0:INVALID", 1, TestName = "Callbacks_paired_invalid_opcode")]
-    [TestCase("0f", "S0:opcode 0xf not defined,P0:opcode 0xf not defined", 1, TestName = "Callbacks_paired_undefined_opcode")]
+    [TestCase("fe", "S0:INVALID,P0:INVALID,F0:INVALID", 1, TestName = "Callbacks_paired_invalid_opcode")]
+    [TestCase("0f", "S0:opcode 0xf not defined,P0:opcode 0xf not defined,F0:opcode 0xf not defined", 1, TestName = "Callbacks_paired_undefined_opcode")]
     public void Instruction_callbacks_are_paired(string codeHex, string sequence, int faults)
     {
         string userTracer = @"{
@@ -270,7 +272,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                     faults: 0,
                     step: function(log, db) { this.sequence.push('S' + log.getPC() + ':' + log.op.toString()) },
                     postStep: function(log, db) { this.sequence.push('P' + log.getPC() + ':' + log.op.toString()) },
-                    fault: function(log, db) { this.faults++ },
+                    fault: function(log, db) { this.sequence.push('F' + log.getPC() + ':' + log.op.toString()); this.faults++ },
                     result: function(ctx, db) { return this.sequence.join(',') + '|' + this.faults }
                 }";
 
