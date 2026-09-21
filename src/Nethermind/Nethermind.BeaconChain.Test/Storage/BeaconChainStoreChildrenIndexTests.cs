@@ -116,6 +116,20 @@ public class BeaconChainStoreChildrenIndexTests
     }
 
     [Test]
+    public void Deleting_a_block_whose_parent_root_is_zero_unlinks_it_like_any_other_child()
+    {
+        Hash256 childA = TestRoot(2);
+        Hash256 childB = TestRoot(3);
+        _store.PutBlock(childA, CreateBlock(101, parent: Hash256.Zero));
+        _store.PutBlock(childB, CreateBlock(102, parent: Hash256.Zero));
+
+        _store.DeleteBlock(childA);
+
+        Assert.That(_store.TryGetChildren(Hash256.Zero, out Hash256[] children, out _), Is.True);
+        Assert.That(children, Is.EqualTo(new[] { childB }), "the zero root is a legal parent root, not a sentinel: its list must forget a deleted block like any other parent's");
+    }
+
+    [Test]
     public void Deleting_a_legacy_block_does_not_touch_its_parents_list()
     {
         Hash256 legacyParent = TestRoot(1);
