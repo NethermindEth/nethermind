@@ -34,6 +34,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.State.Flat;
 using Nethermind.Trie;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -966,6 +967,19 @@ public class JsonRpcServiceTests
             .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
+    }
+
+    [Test]
+    public void State_unavailable_exception_returns_resource_unavailable()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>())
+            .Throws(new StateUnavailableException("State for block 1 is unavailable"));
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            TestRequest(ethRpcModule, "eth_getLogs", "{}"),
+            ErrorCodes.ResourceUnavailable,
+            "State for block 1 is unavailable");
     }
 
     [RpcModule(ModuleType.Eth)]

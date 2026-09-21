@@ -22,6 +22,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+using Nethermind.State.Flat;
 using Nethermind.Trie;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
@@ -630,6 +631,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetInvocationException { InnerException: MissingTrieNodeException e } =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
 
+            StateUnavailableException e =>
+                HandleStateUnavailable(e, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: StateUnavailableException e } =>
+                HandleStateUnavailable(e, methodName, request, returnAction),
+
             _ => HandleException(ex, methodName, request, returnAction)
         };
 
@@ -661,6 +668,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // The Warn above carries the message but not the exception, so the trace still needs KeepTrace.
             return KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
         }
+
+        JsonRpcErrorResponse HandleStateUnavailable(StateUnavailableException ex, string methodName, JsonRpcRequest request, Action? returnAction) =>
+            KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
     }
 
     /// <summary>Renders an exception chain for <c>error.data</c> without exposing its stack trace.</summary>
