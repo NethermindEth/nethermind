@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.Flat.History.Changesets;
@@ -32,4 +33,8 @@ public interface IHistoryBlockExecutorFactory
     IHistoryBlockExecutor Create();
     /// <summary>Returns the last supported canonical height at or below the bound, or null when it cannot be determined.</summary>
     ulong? GetLastSupportedBlock(ulong lowerBound, ulong upperBound) => lowerBound <= upperBound ? upperBound : null;
+
+    /// <summary>The hash of the canonical block at this height, or null when there is none. Lets the builder tell
+    /// whether rows already at a height belong to the canonical block; null means it re-executes instead.</summary>
+    Hash256? GetCanonicalHash(ulong block) => null;
 }

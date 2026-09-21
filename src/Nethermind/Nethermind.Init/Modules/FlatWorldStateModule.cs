@@ -15,7 +15,6 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -190,15 +189,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             if (flatDbConfig.HistoryTransactionIndexEnabled)
             {
                 builder
-                    .AddSingleton<InlineChangesetCapture>(ctx =>
-                    {
-                        IBlockTree blockTree = ctx.Resolve<IBlockTree>();
-                        ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
-                        return new InlineChangesetCapture(
-                            ctx.Resolve<TransactionChangesetIndex>(),
-                            block => !specProvider.GetSpec(block.Header).BlockLevelAccessListsEnabled && IsFarFromTheTip(blockTree, block),
-                            ctx.Resolve<ILogManager>());
-                    })
+                    .AddSingleton<IInlineCapturePolicy, InlineCapturePolicy>()
+                    .AddSingleton<InlineChangesetCapture>()
                     .AddSingleton<IMainProcessingModule, InlineChangesetCaptureModule>();
             }
         }
@@ -217,12 +209,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 "with it off no history is captured, so these settings would be silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
     }
-
-    /// <summary>A block this far below the best header the node knows of is sync, not the tip: no reorg reaches it.</summary>
-    internal const ulong InlineCaptureTipDistance = 256;
-
-    private static bool IsFarFromTheTip(IBlockTree blockTree, Block block) =>
-        blockTree.BestSuggestedHeader is { } best && best.Number >= block.Number + InlineCaptureTipDistance;
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {

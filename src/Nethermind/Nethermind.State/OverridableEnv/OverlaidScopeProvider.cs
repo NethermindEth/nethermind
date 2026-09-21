@@ -36,8 +36,11 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public Account? Get(Address address)
         {
+            IStateReadOverlay? overlay = slot.Current;
+            if (overlay is not null && overlay.TryGetAccountWithoutBasis(address, out Account? standalone)) return standalone;
+
             Account? underlying = inner.Get(address);
-            return slot.Current is { } overlay && overlay.TryGetAccount(address, underlying, out Account? overlaid) ? overlaid : underlying;
+            return overlay is not null && overlay.TryGetAccount(address, underlying, out Account? overlaid) ? overlaid : underlying;
         }
 
         public void HintGet(Address address, Account? account) => inner.HintGet(address, account);

@@ -21,20 +21,31 @@ internal sealed class MidBlockReadOverlay(MidBlockOverlay overlay) : IStateReadO
             return false;
         }
 
-        if (account.Emptied && !account.Exists)
-        {
-            overlaid = null;
-            return true;
-        }
+        overlaid = Overlay(account, account.Emptied ? Account.TotallyEmpty : underlying ?? Account.TotallyEmpty);
+        return true;
+    }
 
-        Account basis = account.Emptied ? Account.TotallyEmpty : underlying ?? Account.TotallyEmpty;
+    /// <summary>An account the prefix emptied stands on the empty account, not on the one in the state underneath, so
+    /// it is answered without reading it - one random archive read saved per such account on the trace path.</summary>
+    public bool TryGetAccountWithoutBasis(Address address, out Account? overlaid)
+    {
+        overlaid = null;
+        if (!overlay.TryGetAccount(address, out MidBlockOverlay.AccountOverlay? account) || !account.Emptied) return false;
+
+        overlaid = Overlay(account, Account.TotallyEmpty);
+        return true;
+    }
+
+    private static Account? Overlay(MidBlockOverlay.AccountOverlay account, Account basis)
+    {
+        if (account.Emptied && !account.Exists) return null;
+
         bool wiped = account.StorageClearedAt != MidBlockOverlay.NeverCleared;
-        overlaid = new Account(
+        return new Account(
             account.Nonce is { } nonce ? (ulong)nonce : (ulong)basis.Nonce,
             account.Balance ?? basis.Balance,
             wiped ? Keccak.EmptyTreeHash : basis.StorageRoot,
             account.CodeHash is { } codeHash ? (Hash256)codeHash : basis.CodeHash);
-        return true;
     }
 
     public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value) => overlay.TryGetStorage(new StorageCell(address, index), out value);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -32,9 +33,23 @@ public class InlineChangesetCaptureTests
     public void TearDown() => _columns.Dispose();
 
     [Test]
-    public void ABlockExecutedWhileSyncing_IsIndexedAndClaimed()
+    public void ABlockExecutedWhileSyncing_WritesItsRowsAndLeavesTheClaimToTheBuilder()
     {
         Process(observe: [true, true]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_index.HasRowsOf(9, _block.Hash!), Is.True);
+            Assert.That(_index.Covers(9), Is.False,
+                "capture runs before the block is validated, so a rejected block must not leave its height covered");
+        }
+    }
+
+    [Test]
+    public void RowsWrittenInline_SeedTheOverlayOnceTheHeightIsClaimed()
+    {
+        Process(observe: [true, true]);
+        _index.TryClaim(9, 9);
 
         bool rented = _index.TryRentOverlay(9, _block.Hash!, 2, out MidBlockOverlayCache.Lease lease);
         using (lease)
@@ -42,7 +57,6 @@ public class InlineChangesetCaptureTests
             lease.Overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(_index.Covers(9), Is.True);
                 Assert.That(rented, Is.True);
                 Assert.That(account!.Nonce, Is.EqualTo((UInt256)2), "the second transaction's write is what the overlay ends on");
             }
@@ -50,15 +64,13 @@ public class InlineChangesetCaptureTests
     }
 
     [Test]
-    public void EmptyBlock_BetweenCoveredBlocks_ExtendsCoverage()
+    public void EmptyBlock_StillWritesItsRows()
     {
-        _index.TryClaim(8, 8);
         _block = Build.A.Block.WithNumber(9).WithTransactions([]).TestObject;
-        Process(observe: []);
-        _block = Build.A.Block.WithNumber(10).WithTransactions(Build.A.Transaction.TestObject).TestObject;
-        Process(observe: [true]);
 
-        Assert.That(_index.TryGetCoverage(out ulong from, out ulong to) && from == 8 && to == 10, Is.True,
+        Process(observe: []);
+
+        Assert.That(_index.HasRowsOf(9, _block.Hash!), Is.True,
             "an empty block must not leave a gap that prevents subsequent inline coverage");
     }
 
@@ -69,42 +81,81 @@ public class InlineChangesetCaptureTests
 
         Process(observe: [true, true]);
 
-        Assert.That(_index.Covers(9), Is.False, "near the tip a reorg can still remove the block; only durable history is indexed there");
+        Assert.That(_index.HasRowsOf(9, _block.Hash!), Is.False, "near the tip a reorg can still remove the block; only durable history is indexed there");
     }
 
     [Test]
-    public void ABlockWhoseExecutionWasNotObserved_IsNotClaimed()
+    public void ABlockWhoseExecutionWasNotObserved_WritesNothing()
     {
         Process(observe: [true, false]);
 
-        Assert.That(_index.Covers(9), Is.False, "a transaction that reported no change was executed where the tracer cannot see, so the rows would be wrong");
+        Assert.That(_index.HasRowsOf(9, _block.Hash!), Is.False, "a transaction that reported no change was executed where the tracer cannot see, so the rows would be wrong");
     }
 
     [Test]
-    public void ABlockThatDoesNotTouchCoverage_WritesRowsButClaimsNothing()
+    public void ABlockCarryingATransactionThatIsNotItsOwn_WritesNothing()
     {
-        _index.TryClaim(3, 3);
+        InlineChangesetCapture capture = new(_index, new AlwaysCapture(), LimboLogs.Instance);
+        capture.StartNewBlockTrace(_block);
+        Observe(capture.StartNewTxTrace(_block.Transactions[0]), 0);
+        capture.EndTxTrace();
 
-        Process(observe: [true, true]);
+        // A system transaction injected by a plugin: traced, but with nowhere to record its writes.
+        ITxTracer stray = capture.StartNewTxTrace(Build.A.Transaction.WithNonce(7).TestObject);
+        capture.EndTxTrace();
+        Observe(capture.StartNewTxTrace(_block.Transactions[1]), 1);
+        capture.EndTxTrace();
+        capture.EndBlockTrace();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_index.Covers(9), Is.False, "coverage is one contiguous range; the builder fills the gap and claims it then");
-            Assert.That(_index.TryGetCoverage(out _, out ulong to) && to == 3, Is.True);
+            Assert.That(stray.IsTracingState, Is.False, "a transaction the block does not hold has no position to record against");
+            Assert.That(_index.HasRowsOf(9, _block.Hash!), Is.False,
+                "its writes went nowhere, so a later transaction seeded from this prefix would be missing them");
         }
     }
 
-    private void Process(bool[] observe)
+    [Test]
+    public void ABlockReusingItsCollectors_CarriesNothingOverFromTheBlockBefore()
     {
-        InlineChangesetCapture capture = new(_index, _ => _syncing, LimboLogs.Instance);
+        Process(observe: [true, true]);
+        _block = Build.A.Block.WithNumber(10).WithTransactions(Build.A.Transaction.WithNonce(0).TestObject).TestObject;
+        Process(observe: [true], address: TestItem.AddressB);
+        _index.TryClaim(10, 10);
+
+        bool rented = _index.TryRentOverlay(10, _block.Hash!, 1, out MidBlockOverlayCache.Lease lease);
+        using (lease)
+        {
+            bool carriedOver = lease.Overlay.TryGetAccount(TestItem.AddressA, out _);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rented, Is.True);
+                Assert.That(carriedOver, Is.False, "collectors are kept across blocks, so a stale write must not reach the next block's rows");
+            }
+        }
+    }
+
+    private void Process(bool[] observe, Address? address = null)
+    {
+        InlineChangesetCapture capture = new(_index, new AlwaysCapture(() => _syncing), LimboLogs.Instance);
         capture.StartNewBlockTrace(_block);
         for (int i = 0; i < _block.Transactions.Length; i++)
         {
             ITxTracer tracer = capture.StartNewTxTrace(_block.Transactions[i]);
-            if (observe[i] && tracer.IsTracingState) tracer.ReportNonceChange(TestItem.AddressA, (UInt256)i, (UInt256)(i + 1));
+            if (observe[i]) Observe(tracer, i, address);
             capture.EndTxTrace();
         }
 
         capture.EndBlockTrace();
+    }
+
+    private static void Observe(ITxTracer tracer, int index, Address? address = null)
+    {
+        if (tracer.IsTracingState) tracer.ReportNonceChange(address ?? TestItem.AddressA, (UInt256)index, (UInt256)(index + 1));
+    }
+
+    private sealed class AlwaysCapture(Func<bool>? predicate = null) : IInlineCapturePolicy
+    {
+        public bool ShouldCapture(Block block) => predicate?.Invoke() ?? true;
     }
 }

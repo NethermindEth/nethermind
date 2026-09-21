@@ -15,6 +15,15 @@ public interface IStateReadOverlay
     /// overlay sees it, null for one it knows to be gone.</summary>
     bool TryGetAccount(Address address, Account? underlying, out Account? overlaid);
 
+    /// <summary>The same answer for the accounts the overlay can answer for on its own, so that reading one costs no
+    /// read of the state underneath. False means the answer needs that state as its basis, and
+    /// <see cref="TryGetAccount"/> is asked with it.</summary>
+    bool TryGetAccountWithoutBasis(Address address, out Account? overlaid)
+    {
+        overlaid = null;
+        return false;
+    }
+
     /// <summary>True supplies a known slot value, including zero after a clear. False requires an underlying read; the out value is ignored.</summary>
     bool TryGetStorage(Address address, in UInt256 index, out UInt256 value);
 

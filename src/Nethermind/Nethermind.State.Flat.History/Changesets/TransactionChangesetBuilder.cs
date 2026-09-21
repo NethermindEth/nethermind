@@ -25,6 +25,7 @@ public sealed class TransactionChangesetBuilder(
     internal const int WarnAfterAttempts = 8;
     internal static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RepeatedFailureInterval = TimeSpan.FromMinutes(1);
 
     private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
@@ -70,7 +71,19 @@ public sealed class TransactionChangesetBuilder(
         if (!TryNextBlock(out ulong block)) return false;
 
         _tipExecutor ??= executors.Create();
-        if (!Build(block, _tipExecutor)) return false;
+        return TryBuildNext(block, _tipExecutor);
+    }
+
+    /// <summary>The inline capture writes whole blocks ahead of coverage, so a height whose rows already carry the
+    /// canonical block's hash is claimed as it stands: the rows and that hash are written in one atomic batch, so a
+    /// matching hash proves them complete. Without this a single gap leaves the tip thread re-executing blocks that
+    /// are already on disk, at a fraction of the rate sync produces them.</summary>
+    private bool TryBuildNext(ulong block, IHistoryBlockExecutor executor)
+    {
+        if (executors.GetCanonicalHash(block) is not { } canonicalHash || !index.HasRowsOf(block, canonicalHash))
+        {
+            if (!Build(block, executor)) return false;
+        }
 
         index.TryClaim(block, block);
         return true;
@@ -192,23 +205,32 @@ public sealed class TransactionChangesetBuilder(
         }
     }
 
+    /// <summary>Every thread owns and disposes the executor it runs on, so shutdown only has to wait for them, and it
+    /// waits on a fixed budget rather than per thread. A thread still running past it is left to finish on its own and
+    /// the token source is left undisposed, since that thread is still waiting on it: a bounded leak on a wedged
+    /// worker, rather than a node that will not exit.</summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         _cancellation.Cancel();
+        long startedAt = Stopwatch.GetTimestamp();
         bool everyThreadStopped = true;
-        foreach (Thread thread in _threads) everyThreadStopped &= thread.Join(TimeSpan.FromSeconds(5));
-        if (everyThreadStopped)
+        foreach (Thread thread in _threads)
         {
-            try
-            {
-                _tipExecutor?.Dispose();
-            }
-            finally
-            {
-                _cancellation.Dispose();
-            }
+            TimeSpan remaining = ShutdownBudget - Stopwatch.GetElapsedTime(startedAt);
+            everyThreadStopped &= thread.Join(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
+        }
+
+        try
+        {
+            _tipExecutor?.Dispose();
+        }
+        finally
+        {
+            if (everyThreadStopped) _cancellation.Dispose();
+            else if (_logger.IsWarn) _logger.Warn(
+                $"Transaction changeset indexing did not stop within {ShutdownBudget.TotalSeconds:F0}s; leaving it to finish on its own.");
         }
     }
 
@@ -238,10 +260,11 @@ public sealed class TransactionChangesetBuilder(
     private void FollowTip()
     {
         CancellationToken token = _cancellation.Token;
+        using IHistoryBlockExecutor executor = executors.Create();
         while (!token.IsCancellationRequested)
         {
             long startedAt = Stopwatch.GetTimestamp();
-            bool built = Guarded(TryBuildNext, token);
+            bool built = Guarded(() => TryNextBlock(out ulong block) && TryBuildNext(block, executor), token);
             if (token.IsCancellationRequested) return;
 
             ReportProgress();
