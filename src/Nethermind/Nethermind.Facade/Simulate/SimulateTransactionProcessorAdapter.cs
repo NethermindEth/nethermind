@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -29,16 +30,21 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         PrepareForInclusionCheck(transaction, simulateRequestState.BlockStateGasLeft);
         transaction.Hash = transaction.CalculateHash();
 
+        // The state budget only depletes while a BlockReceiptsTracer publishes the cumulative state gas;
+        // without one the fix for #12692 silently reverts, so pin the premise rather than only tolerate it.
         BlockReceiptsTracer? receiptsTracer = txTracer.GetTracer<BlockReceiptsTracer>();
+        Debug.Assert(receiptsTracer is not null, $"Simulate must be traced through a {nameof(BlockReceiptsTracer)}.");
         ulong cumulativeStateGasBefore = receiptsTracer?.BlockStateGasUsed ?? 0;
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
 
         ulong blockGasUsed = transaction.BlockGasUsed;
         ulong blockStateGasUsed = receiptsTracer?.BlockStateGasUsed.SaturatingSub(cumulativeStateGasBefore) ?? 0;
-        // Validation refreshes the state budget from receipt totals before the next transaction;
-        // no-validation simulation relies on this running value instead.
-        simulateRequestState.TotalGasLeft = simulateRequestState.TotalGasLeft.SaturatingSub(blockGasUsed);
+        // A transaction's gas limit funds both EIP-8037 dimensions, so the request-wide cap — which is what
+        // clamps that limit — depletes by their sum, while the block budgets below track one dimension each.
+        simulateRequestState.TotalGasLeft = simulateRequestState.TotalGasLeft.SaturatingSub(blockGasUsed.SaturatingAdd(blockStateGasUsed));
         simulateRequestState.BlockGasLeft = simulateRequestState.BlockGasLeft.SaturatingSub(blockGasUsed);
+        // The BAL inclusion check refreshes this from receipt totals when it runs; otherwise — non-BAL specs,
+        // ForceSequentialBlockAccessList, block production, Validation:false — this running value is authoritative.
         simulateRequestState.BlockStateGasLeft = simulateRequestState.BlockStateGasLeft.SaturatingSub(blockStateGasUsed);
 
         _currentTxIndex++;

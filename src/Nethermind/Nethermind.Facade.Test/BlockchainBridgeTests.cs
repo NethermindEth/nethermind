@@ -914,9 +914,12 @@ public class BlockchainBridgeTests
         Assert.That(_blockchainBridge.HasStateForBlock(header), Is.False);
     }
 
-    [TestCase(50_000ul, 30_000ul, 50_000ul, 30_000ul, 30_000ul, TestName = "Simulate adapter subtracts gas from all budgets")]
-    [TestCase(80_000ul, 60_000ul, 20_000ul, 0ul, 0ul, TestName = "Simulate adapter accepts exact block and state budgets")]
-    [TestCase(100_001ul, 60_001ul, 0ul, 0ul, 0ul, TestName = "Simulate adapter saturates all budgets exceeded by one")]
+    // A transaction's gas limit funds both EIP-8037 dimensions, so the request cap depletes by their sum
+    // while the two block budgets each track one dimension.
+    [TestCase(50_000ul, 30_000ul, 120_000ul, 30_000ul, 30_000ul, TestName = "Simulate adapter depletes the request cap by both gas dimensions")]
+    [TestCase(80_000ul, 60_000ul, 60_000ul, 0ul, 0ul, TestName = "Simulate adapter accepts exact block and state budgets")]
+    [TestCase(80_001ul, 60_001ul, 59_998ul, 0ul, 0ul, TestName = "Simulate adapter saturates block budgets exceeded by one")]
+    [TestCase(ulong.MaxValue - 1, 60_000ul, 0ul, 0ul, 0ul, TestName = "Simulate adapter saturates the request cap instead of wrapping")]
     public void Simulate_adapter_uses_block_gas_used_for_budgets(
         ulong blockGasUsed,
         ulong blockStateGasUsed,
@@ -926,7 +929,7 @@ public class BlockchainBridgeTests
     {
         SimulateRequestState simulateRequestState = new()
         {
-            TotalGasLeft = 100_000,
+            TotalGasLeft = 200_000,
             BlockGasLeft = 80_000,
             BlockStateGasLeft = 60_000,
             Validate = true,

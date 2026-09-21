@@ -32,6 +32,7 @@ public class EthSimulateTestsBlocksAndTransactions
 {
     private const ulong StateGasBlockLimit = 200_000;
     private const ulong RemainingStateGasAfterSstore = StateGasBlockLimit - (ulong)GasCostOf.SSetState;
+    private const ulong TwoSstoreRequestGasCap = 200_000;
 
     public static SimulatePayload<TransactionForRpc> CreateSerializationPayload(TestRpcBlockchain chain)
     {
@@ -1330,6 +1331,39 @@ public class EthSimulateTestsBlocksAndTransactions
         else
         {
             Assert.That(result.Result.Error, Does.Contain("StateDimensionExceeded"));
+        }
+    }
+
+    /// <summary>
+    /// A storage write spends far more state gas than execution gas, so a request cap depleted by the
+    /// execution dimension alone lets one request burn a multiple of <c>JsonRpc.GasCap</c>.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_request_gas_cap_counts_state_gas()
+    {
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: StateGasBlockLimit, validation: false);
+
+        // Each write costs ~125k: SSetState 97_920 of state gas plus ~27k of execution. The cap admits the
+        // first and leaves the second short only while both dimensions deplete it; counting execution alone
+        // would leave ~173k and let both writes through, spending ~250k against a 200k cap.
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
+            new JsonRpcConfig { GasCap = TwoSstoreRequestGasCap }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+        ulong totalGasUsed = 0;
+        foreach (SimulateCallResult call in calls)
+        {
+            totalGasUsed += call.GasUsed ?? 0;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].Error, Is.Null);
+            Assert.That(calls[1].Error, Is.Not.Null, "the second write must exhaust the request budget");
+            Assert.That(totalGasUsed, Is.LessThanOrEqualTo(TwoSstoreRequestGasCap));
         }
     }
 
