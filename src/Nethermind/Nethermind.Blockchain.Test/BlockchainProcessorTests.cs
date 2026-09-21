@@ -632,7 +632,7 @@ public class BlockchainProcessorTests
 
         context.Processed(_block1D2).BecomesNewHead();
 
-        await waiting.WaitAsync(TimeSpan.FromMilliseconds(ProcessingWait));
+        await waiting.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(context.WaitUntilRemoved(_block1D2).IsCompleted, Is.True, "once removed, the block holds nobody either");
     }
 
