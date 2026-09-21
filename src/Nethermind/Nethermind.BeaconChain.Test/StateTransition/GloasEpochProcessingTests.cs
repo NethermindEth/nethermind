@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
@@ -18,7 +19,8 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// against the already-tested Fulu pipeline for every step Gloas left unchanged, and directly for
 /// the three steps it changed - the builder payment window rotation (and the three settlement
 /// branches in block processing that depend on it), the PTC window rotation, and the payload
-/// availability reset in <c>process_slot</c>.
+/// availability reset in <c>process_slot</c> - plus the EIP-8061 pending-deposit queue, which draws
+/// on the new capped activation churn.
 /// </summary>
 public class GloasEpochProcessingTests
 {
@@ -255,6 +257,173 @@ public class GloasEpochProcessingTests
             Assert.That(availability[33], Is.False, "process_slot at slot 32 unsets slot 33");
             Assert.That(availability[34], Is.False, "process_slot at slot 33 unsets slot 34");
             Assert.That(availability[32], Is.True, "the slot already processed under Fulu keeps its upgrade-time value");
+        });
+    }
+
+    // ---- EIP-8061: pending deposits draw on the capped activation churn ----
+
+    [TestCase(2048, 32UL, 128UL, 128UL)] // 65,536 ETH / 2^15 is under the 128 ETH floor
+    [TestCase(8192, 1001UL, 250UL, 250UL)] // 8,200,192 ETH / 2^15 = 250.25 ETH, floored to a whole increment
+    [TestCase(8192, 2048UL, 512UL, 256UL)] // over the 256 ETH activation cap; the exit churn is uncapped
+    public void GetActivationChurnLimit_is_the_exit_churn_capped_at_256_eth(int validatorCount, ulong effectiveBalanceEth, ulong expectedExitEth, ulong expectedActivationEth)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        // Only the registry feeds the churn limits; the rest of the state stays the fixture's.
+        Validator[] validators = new Validator[validatorCount];
+        for (int i = 0; i < validators.Length; i++)
+        {
+            validators[i] = new Validator
+            {
+                Pubkey = Pubkey((byte)i),
+                WithdrawalCredentials = Hash256.Zero,
+                EffectiveBalance = effectiveBalanceEth * Gwei,
+                ActivationEpoch = 0,
+                ExitEpoch = Presets.FarFutureEpoch,
+                WithdrawableEpoch = Presets.FarFutureEpoch,
+            };
+        }
+        state.Validators = validators;
+        EpochCache cache = new();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.GetExitChurnLimit(cache), Is.EqualTo(expectedExitEth * Gwei));
+            Assert.That(state.GetActivationChurnLimit(cache), Is.EqualTo(expectedActivationEth * Gwei));
+        });
+    }
+
+    [Test]
+    public void ProcessPendingDeposits_stops_at_the_first_deposit_over_the_activation_churn_and_carries_the_remainder_forward()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        EpochCache cache = new();
+        Assert.That(state.GetActivationChurnLimit(cache), Is.EqualTo(128 * Gwei), "fixture bug: 2048 validators at 32 ETH must sit on the churn floor");
+        PendingDeposit first = TopUpDeposit(state, 3, 100 * Gwei, BoundarySlot);
+        PendingDeposit second = TopUpDeposit(state, 5, 100 * Gwei, BoundarySlot);
+        PendingDeposit third = TopUpDeposit(state, 7, 10 * Gwei, BoundarySlot);
+        state.PendingDeposits = [first, second, third];
+
+        GloasEpochProcessing.ProcessPendingDeposits(state, cache);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Balances![3], Is.EqualTo(132 * Gwei));
+            Assert.That(state.Balances[5], Is.EqualTo(32 * Gwei), "the deposit that overflows the churn is not applied");
+            Assert.That(state.Balances[7], Is.EqualTo(32 * Gwei), "the queue stops at the first overflow; a later deposit that would fit is not pulled ahead of it");
+            Assert.That(state.PendingDeposits, Is.EqualTo(new[] { second, third }).AsCollection);
+            Assert.That(state.DepositBalanceToConsume, Is.EqualTo(28 * Gwei), "the churn the stopped deposit left unused carries over");
+        });
+
+        GloasEpochProcessing.ProcessPendingDeposits(state, cache);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Balances![5], Is.EqualTo(132 * Gwei), "the carried-over 28 ETH plus a fresh 128 ETH covers both remaining deposits");
+            Assert.That(state.Balances[7], Is.EqualTo(42 * Gwei));
+            Assert.That(state.PendingDeposits, Is.Empty);
+            Assert.That(state.DepositBalanceToConsume, Is.Zero, "nothing carries over when the queue drains under budget");
+        });
+    }
+
+    [Test]
+    public void ProcessPendingDeposits_postpones_an_exiting_validators_deposit_to_the_tail_without_charging_the_churn()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.Validators![3].ExitEpoch = 5;
+        PendingDeposit exiting = TopUpDeposit(state, 3, 100 * Gwei, BoundarySlot);
+        PendingDeposit active = TopUpDeposit(state, 5, 100 * Gwei, BoundarySlot);
+        PendingDeposit unfinalized = TopUpDeposit(state, 7, 1 * Gwei, BoundarySlot + 1);
+        state.PendingDeposits = [exiting, active, unfinalized];
+
+        GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Balances![3], Is.EqualTo(32 * Gwei), "a deposit for an exiting validator waits until it is withdrawable");
+            Assert.That(state.Balances[5], Is.EqualTo(132 * Gwei), "the postponed 100 ETH must not count against the 128 ETH churn");
+            Assert.That(state.PendingDeposits, Is.EqualTo(new[] { unfinalized, exiting }).AsCollection, "postponed deposits go behind the unprocessed head of the queue");
+            Assert.That(state.DepositBalanceToConsume, Is.Zero);
+        });
+    }
+
+    [Test]
+    public void ProcessPendingDeposits_credits_a_withdrawn_validators_deposit_outside_the_churn()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.Validators![3].ExitEpoch = 0;
+        state.Validators[3].WithdrawableEpoch = 1;
+        PendingDeposit withdrawn = TopUpDeposit(state, 3, 100 * Gwei, BoundarySlot);
+        PendingDeposit active = TopUpDeposit(state, 5, 100 * Gwei, BoundarySlot);
+        state.PendingDeposits = [withdrawn, active];
+
+        GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Balances![3], Is.EqualTo(132 * Gwei), "credited for withdrawal rather than queued behind the churn");
+            Assert.That(state.Balances[5], Is.EqualTo(132 * Gwei), "200 ETH exceeds the churn, so the withdrawn validator's deposit must not have been charged");
+            Assert.That(state.PendingDeposits, Is.Empty);
+            Assert.That(state.DepositBalanceToConsume, Is.Zero);
+        });
+    }
+
+    [Test]
+    public void ProcessPendingDeposits_applies_deposits_up_to_the_finalized_slot_and_leaves_newer_ones_queued()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        Assert.That(BeaconStateAccessors.ComputeStartSlotAtEpoch(state.FinalizedCheckpoint!.Epoch), Is.EqualTo(BoundarySlot), "fixture bug: the boundary slot must be exactly the finalized slot");
+        PendingDeposit finalized = TopUpDeposit(state, 3, 1 * Gwei, BoundarySlot);
+        PendingDeposit unfinalized = TopUpDeposit(state, 5, 1 * Gwei, BoundarySlot + 1);
+        state.PendingDeposits = [finalized, unfinalized];
+
+        GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Balances![3], Is.EqualTo(33 * Gwei), "a deposit at the finalized slot itself is processable");
+            Assert.That(state.Balances[5], Is.EqualTo(32 * Gwei));
+            Assert.That(state.PendingDeposits, Is.EqualTo(new[] { unfinalized }).AsCollection);
+            Assert.That(state.DepositBalanceToConsume, Is.Zero, "waiting on finality is not a churn stop");
+        });
+    }
+
+    [Test]
+    public void ProcessPendingDeposits_applies_at_most_MaxPendingDepositsPerEpoch_deposits()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.PendingDeposits = [.. Enumerable.Range(0, Presets.MaxPendingDepositsPerEpoch + 1).Select(_ => TopUpDeposit(state, 3, 1 * Gwei, BoundarySlot))];
+        PendingDeposit last = state.PendingDeposits[^1];
+
+        GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Balances![3], Is.EqualTo((32 + (ulong)Presets.MaxPendingDepositsPerEpoch) * Gwei));
+            Assert.That(state.PendingDeposits, Has.Length.EqualTo(1));
+            Assert.That(state.PendingDeposits![0], Is.SameAs(last));
+            Assert.That(state.DepositBalanceToConsume, Is.Zero, "the count bound is not a churn stop, so nothing carries over");
+        });
+    }
+
+    [Test]
+    public void ProcessPendingDeposits_admits_a_new_pubkey_only_with_a_valid_deposit_signature()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        int registrySize = state.Validators!.Length;
+        PendingDeposit signed = NewValidatorDeposit(keyIndex: 300, 32 * Gwei, BoundarySlot);
+        PendingDeposit forged = NewValidatorDeposit(keyIndex: 301, 32 * Gwei, BoundarySlot, signerKeyIndex: 302);
+        state.PendingDeposits = [signed, forged];
+
+        GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Validators, Has.Length.EqualTo(registrySize + 1), "the forged deposit is consumed without adding a validator");
+            Assert.That(state.Validators![^1].Pubkey, Is.EqualTo(signed.Pubkey));
+            Assert.That(state.Validators[^1].EffectiveBalance, Is.EqualTo(32 * Gwei));
+            Assert.That(state.Balances, Has.Length.EqualTo(registrySize + 1));
+            Assert.That(state.Balances![^1], Is.EqualTo(32 * Gwei));
+            Assert.That(state.PendingDeposits, Is.Empty);
         });
     }
 
