@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -12,7 +13,7 @@ namespace Nethermind.Facade.Simulate;
 
 /// <remarks>
 /// Stateful and single-threaded: it advances a per-block <c>_currentTxIndex</c> and mutates the shared
-/// <see cref="SimulateRequestState"/> gas counters with unsynchronised <c>-=</c>. It must therefore only ever
+/// <see cref="SimulateRequestState"/> gas counters without synchronization. It must therefore only ever
 /// drive one transaction stream at a time, in order — i.e. the sequential block-access-list path. Simulate
 /// guarantees this by never attaching a <c>BlockAccessList</c> to its synthesised blocks, which keeps
 /// <c>BlockAccessListManager.ParallelExecutionEnabled</c> false. Do not register it on a parallel pool.
@@ -33,6 +34,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         ulong blockGasUsed = transaction.BlockGasUsed;
         simulateRequestState.TotalGasLeft -= blockGasUsed;
         simulateRequestState.BlockGasLeft -= blockGasUsed;
+        simulateRequestState.BlockStateGasLeft = simulateRequestState.BlockStateGasLeft.SaturatingSub(transaction.BlockStateGasUsed);
 
         _currentTxIndex++;
         return result;

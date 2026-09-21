@@ -66,6 +66,11 @@ namespace Nethermind.Core
         /// </summary>
         [JsonIgnore]
         public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
+        /// <summary>
+        /// State gas used for EIP-8037 block accounting.
+        /// </summary>
+        [JsonIgnore]
+        public ulong BlockStateGasUsed { get; set; }
         public Address? To { get; set; }
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
@@ -317,6 +322,7 @@ namespace Nethermind.Core
                 obj.GasLimit = default;
                 obj._spentGas = default;
                 obj._blockGasUsed = default;
+                obj.BlockStateGasUsed = default;
                 obj.To = default;
                 obj.Value = default;
                 obj.Data = default;

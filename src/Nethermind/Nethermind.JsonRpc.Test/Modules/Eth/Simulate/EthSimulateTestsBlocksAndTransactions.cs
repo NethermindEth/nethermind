@@ -1215,42 +1215,116 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
     }
 
-    /// <summary>
-    /// #12692 (item 1, state dimension): a storage write costs far more state gas than execution gas, so a
-    /// following no-gas call must clamp to the state budget too, else StateDimensionExceeded.
-    /// </summary>
-    [Test]
-    public async Task eth_simulateV1_no_gas_call_after_state_write_fits_state_dimension()
+    [Test, Combinatorial]
+    public async Task eth_simulateV1_clamps_omitted_gas_to_remaining_state_budget(
+        [Values] bool eip8037Enabled,
+        [Values] bool validation)
     {
-        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
-
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
-                        // runtime code PUSH1 1, PUSH1 0, SSTORE: writes a new slot → large EIP-8037 state gas
-                        { TestItem.AddressC, new AccountOverride { Code = Bytes.FromHexString("0x6001600055") } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 200_000, GasPrice = UInt256.Zero },
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
-                    ]
-                }
-            ],
-            Validation = true
-        };
+        IReleaseSpec spec = eip8037Enabled ? Amsterdam.Instance : Osaka.Instance;
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
+        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: null, validation);
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
+        Assert.That(result.Data, Is.Not.Null);
+        SimulateBlockResult<SimulateCallResult> block = result.Data![0];
+        SimulateCallResult[] calls = block.Calls.ToArray();
+        Assert.That(calls, Has.Length.EqualTo(2));
+        Assert.That(calls[0].Error, Is.Null);
+        Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
+
+        ulong cumulativePaidGas = calls.Aggregate(0UL, static (total, call) => total + call.GasUsed!.Value);
+        ulong cumulativeStateGas = eip8037Enabled ? (ulong)GasCostOf.SSetState : 0;
+        ulong expectedBlockGas = eip8037Enabled
+            ? Math.Max(cumulativePaidGas - cumulativeStateGas, cumulativeStateGas)
+            : cumulativePaidGas;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[1].Error, eip8037Enabled ? Is.Not.Null : Is.Null);
+            Assert.That(calls[1].GasUsed, eip8037Enabled ? Is.EqualTo(102_080) : Is.LessThan(102_080));
+            Assert.That(block.GasLimit, Is.EqualTo(200_000));
+            Assert.That(block.GasUsed, Is.EqualTo(expectedBlockGas));
+        }
+    }
+
+    [Test]
+    public async Task eth_simulateV1_reports_two_state_writes_in_block_gas_used()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
+        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: 200_000, validation: false);
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        SimulateBlockResult<SimulateCallResult> block = result.Data![0];
+        SimulateCallResult[] calls = block.Calls.ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls.Select(static call => call.Error), Is.All.Null);
+            Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
+            Assert.That(block.GasLimit, Is.EqualTo(200_000));
+            Assert.That(block.GasUsed, Is.EqualTo(2 * (ulong)GasCostOf.SSetState));
+        }
+    }
+
+    [TestCase(102_080ul, Core.ResultType.Success, TestName = "state budget exact fit is admitted")]
+    [TestCase(102_081ul, Core.ResultType.Failure, TestName = "state budget exceeded by one is rejected")]
+    public async Task eth_simulateV1_enforces_remaining_state_budget_at_inclusion(ulong secondGas, Core.ResultType expectedResult)
+    {
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas, validation: true);
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(expectedResult));
+        if (expectedResult == Core.ResultType.Success)
+        {
+            SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(calls[0].Error, Is.Null);
+                Assert.That(calls[1].Error, Is.Not.Null);
+                Assert.That(calls[1].GasUsed, Is.EqualTo(secondGas));
+            }
+        }
+        else
+        {
+            Assert.That(result.Result.Error, Does.Contain("StateDimensionExceeded"));
+        }
+    }
+
+    private static SimulatePayload<TransactionForRpc> CreateTwoSstorePayload(ulong? secondGas, bool validation)
+    {
+        byte[] secondSlot = new byte[32];
+        secondSlot[^1] = 1;
+        return new SimulatePayload<TransactionForRpc>
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = 200_000 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                        { TestItem.AddressC, new AccountOverride { Code = Bytes.FromHexString("0x600160003555") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 200_000, GasPrice = UInt256.Zero, Input = new byte[32] },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = secondGas, GasPrice = UInt256.Zero, Input = secondSlot }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
     }
 
     /// <summary>
