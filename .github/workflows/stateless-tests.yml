@@ -45,7 +45,7 @@ jobs:
           - vm: sp1
             project: Nethermind.Stateless.Sp1Guest
           - vm: openvm
-            project: Nethermind.Stateless.OpenVmGuest
+            project: Nethermind.Stateless.OpenVMGuest
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -131,7 +131,7 @@ jobs:
             # top, so this is deliberately loose.
             minutes: 30
           - vm: openvm
-            project: Nethermind.Stateless.OpenVmGuest
+            project: Nethermind.Stateless.OpenVMGuest
             minutes: 15
     steps:
       - name: Check out repository
