@@ -142,8 +142,6 @@ public class RangeSyncTests
             return Task.FromResult<IReadOnlyList<DataColumnSidecar>>(columnHandler?.Invoke(startSlot, count, columns) ?? []);
         }
 
-        public void ReportFailure(string reason) => Failures++;
-
         public void ReportFailure(PeerFailureReason reason, string? detail = null) => Failures++;
     }
 
