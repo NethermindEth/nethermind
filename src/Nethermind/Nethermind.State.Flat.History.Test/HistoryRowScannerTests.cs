@@ -284,6 +284,35 @@ public class HistoryRowScannerTests
         Assert.That(reopened.CreateReader().GetAccount(TestItem.AddressA), Is.Null, "the next release finishes what the cancelled one started");
     }
 
+    [Test]
+    public void BulkReplay_WhenABlockReadsAnAccountThatDoesNotExist_WritesNoRemovalForIt()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
+        using MemDb code = new();
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
+        ImportEmptyState(session);
+        BlockHeader first = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
+        CommitScratch(session, first, writer => writer.Set(TestItem.AddressA, new Account(1, 100)));
+        BlockHeader second = Build.A.Block.WithNumber(2).WithParentHash(first.Hash!).TestObject.Header;
+
+        // The block snapshot carries every account the block touched: A, which it removes, and B, which it only read
+        // and which does not exist, the shape of a block probing thousands of empty addresses.
+        CommitScratch(session, second, writer =>
+        {
+            writer.Set(TestItem.AddressA, null);
+            writer.Set(TestItem.AddressB, null);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Clears).GetAllKeys(), Is.EqualTo(new[] { TestItem.AddressA.ToAccountPath.Bytes.ToArray() }),
+                "only the account the scratch held is a removal; a read of a missing account is not, and the cleanup must not be handed a clear for it");
+            Assert.That(session.CreateReader().GetAccount(TestItem.AddressA), Is.Null);
+        }
+    }
+
     private static void ImportEmptyState(BulkFillSession session)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> source = new();

@@ -13,20 +13,27 @@ using Columns = Nethermind.State.Flat.History.Changesets.BulkFillScratchState.Co
 
 namespace Nethermind.State.Flat.History.Changesets;
 
-internal sealed class BulkFillStateWriter(IColumnsWriteBatch<Columns> batch, ulong block, bool rlpWrappedSlots)
+internal sealed class BulkFillStateWriter(IColumnsDb<Columns> db, IColumnsWriteBatch<Columns> batch, ulong block, bool rlpWrappedSlots)
     : IWorldStateScopeProvider.IWorldStateWriteBatch
 {
     public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated { add { } remove { } }
 
+    /// <summary>The block snapshot carries every account the block touched, reads included, so a null here is a
+    /// removal only when the scratch holds the account. A block that read an account which does not exist has
+    /// nothing to remove and nothing to clear: written as a removal anyway, a block probing tens of thousands of
+    /// empty addresses would hand the cleanup as many clears, each a range scan of its own.</summary>
     public void Set(Address key, Account? account)
     {
+        ValueHash256 path = key.ToAccountPath;
         IWriteBatch accounts = batch.GetColumnBatch(Columns.Accounts);
         if (account is null)
         {
-            accounts.Remove(key.ToAccountPath.Bytes);
-            new StorageWriter(batch, key.ToAccountPath, block, rlpWrappedSlots).Clear();
+            if (db.GetColumnDb(Columns.Accounts)[path.Bytes] is not { Length: > 0 }) return;
+
+            accounts.Remove(path.Bytes);
+            new StorageWriter(batch, path, block, rlpWrappedSlots).Clear();
         }
-        else accounts.Set(key.ToAccountPath.Bytes, AccountDecoder.Slim.EncodeAsBytes(account));
+        else accounts.Set(path.Bytes, AccountDecoder.Slim.EncodeAsBytes(account));
     }
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>

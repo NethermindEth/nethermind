@@ -186,7 +186,7 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
         RequireHealthy();
         if (_batch is null || _pendingBlock is null || _hasFinalState) throw new InvalidOperationException("Unexpected bulk final-state capture.");
         using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = takeSnapshot();
-        using BulkFillStateWriter writer = new(_batch, (ulong)_pendingBlock.Number, _rlpWrappedSlots);
+        using BulkFillStateWriter writer = new(_db, _batch, (ulong)_pendingBlock.Number, _rlpWrappedSlots);
         snapshot.WriteTo(writer);
         _hasFinalState = true;
     }
