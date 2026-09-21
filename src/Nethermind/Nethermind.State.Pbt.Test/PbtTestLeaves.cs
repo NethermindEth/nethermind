@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -30,4 +31,18 @@ internal static class PbtTestLeaves
 
     public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>
         into.Add(new RebuildEntry(PbtStateKey.Storage(address, slot), new ValueHash256(value.ToBigEndian())));
+
+    public static IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(this PbtReadOnlySnapshotBundle bundle, PbtStorageTreeKey prefix) =>
+        bundle.EnumerateLeaves().Where(leaf => prefix.IsPrefixOf(leaf.Key));
+
+    public static IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(this PbtReadOnlySnapshotBundle bundle)
+    {
+        SortedDictionary<PbtStorageTreeKey, ValueHash256> leaves = [];
+        foreach ((ValueHash256 addressHash, Account account) in bundle.EnumerateAccounts())
+            foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, account.HasCode ? bundle.GetCode(account.CodeHash.ValueHash256) : null))
+                leaves[(PbtStorageTreeKey)key] = value;
+        foreach ((PbtStorageTreeKey key, EvmWord value) in bundle.EnumerateStorage())
+            if (!EvmWordSlot.IsZero(value)) leaves[key] = new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
+        return leaves;
+    }
 }
