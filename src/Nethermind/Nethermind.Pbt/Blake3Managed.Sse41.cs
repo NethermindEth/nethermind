@@ -56,27 +56,120 @@ public static partial class Blake3Managed
         Vector128<uint> m2 = TShape.HighIsZero ? Vector128<uint>.Zero : Unsafe.ReadUnaligned<Vector128<uint>>(ref highRef);
         Vector128<uint> m3 = TShape.HighIsZero ? Vector128<uint>.Zero : Unsafe.ReadUnaligned<Vector128<uint>>(ref Unsafe.Add(ref highRef, 16));
 
-        // Round 1 gathers the words into the groups each half-step mixes: the even and odd words for the
-        // column steps, then the even and odd words of the second half, rotated to the diagonal row order.
-        Vector128<uint> t0 = Sse.Shuffle(m0.AsSingle(), m1.AsSingle(), Shuffle2020).AsUInt32();
-        Vector128<uint> t1 = Sse.Shuffle(m0.AsSingle(), m1.AsSingle(), Shuffle3131).AsUInt32();
-        Vector128<uint> t2 = Sse2.Shuffle(Sse.Shuffle(m2.AsSingle(), m3.AsSingle(), Shuffle2020).AsUInt32(), Shuffle2103);
-        Vector128<uint> t3 = Sse2.Shuffle(Sse.Shuffle(m2.AsSingle(), m3.AsSingle(), Shuffle3131).AsUInt32(), Shuffle2103);
+        FirstMessageGroups(m0, m1, m2, m3, out Vector128<uint> t0, out Vector128<uint> t1, out Vector128<uint> t2, out Vector128<uint> t3);
         Round(ref row0, ref row1, ref row2, ref row3, t0, t1, t2, t3);
 
         // Every later round applies the same fixed permutation to the previous round's groups.
         for (int round = 1; round < 7; round++)
         {
-            m0 = t0; m1 = t1; m2 = t2; m3 = t3;
-            t0 = Sse2.Shuffle(Sse.Shuffle(m0.AsSingle(), m1.AsSingle(), Shuffle3112).AsUInt32(), Shuffle0321);
-            t1 = Sse41.Blend(Sse2.Shuffle(m0, Shuffle0033).AsUInt16(), Sse.Shuffle(m2.AsSingle(), m3.AsSingle(), Shuffle3322).AsUInt16(), BlendLanes1And3).AsUInt32();
-            t2 = Sse2.Shuffle(Sse41.Blend(Sse2.UnpackLow(m3.AsUInt64(), m1.AsUInt64()).AsUInt16(), m2.AsUInt16(), BlendLane3).AsUInt32(), Shuffle1320);
-            t3 = Sse2.Shuffle(Sse2.UnpackLow(m2, Sse2.UnpackHigh(m1, m3)), Shuffle0132);
+            NextMessageGroups(t0, t1, t2, t3, out t0, out t1, out t2, out t3);
             Round(ref row0, ref row1, ref row2, ref row3, t0, t1, t2, t3);
         }
 
         Vector128.StoreUnsafe(row0 ^ row2, ref cvRef);
         Vector128.StoreUnsafe(row1 ^ row3, ref cvRef, 4);
+    }
+
+    /// <summary>
+    /// <see cref="CompressSse41{TShape}"/> for two independent full blocks at once, both at chunk counter 0.
+    /// </summary>
+    /// <remarks>
+    /// A single compression is one dependency chain of vector operations, whose latency leaves most of the
+    /// core's vector units idle. Interleaving the two blocks' steps gives the scheduler two independent
+    /// chains, so the pair finishes in well under twice the time of one.
+    /// </remarks>
+    private static void CompressSse41Two(Span<uint> cvA, ref byte blockA, uint blockLengthA, uint flagsA,
+        Span<uint> cvB, ref byte blockB, uint blockLengthB, uint flagsB)
+    {
+        Debug.Assert(Sse41.IsSupported);
+
+        ref uint cvRefA = ref MemoryMarshal.GetReference(cvA);
+        ref uint cvRefB = ref MemoryMarshal.GetReference(cvB);
+        Vector128<uint> rowA0 = Vector128.LoadUnsafe(ref cvRefA);
+        Vector128<uint> rowA1 = Vector128.LoadUnsafe(ref cvRefA, 4);
+        Vector128<uint> rowA2 = Vector128.Create(Iv0, Iv1, Iv2, Iv3);
+        Vector128<uint> rowA3 = Vector128.Create(0u, 0u, blockLengthA, flagsA);
+        Vector128<uint> rowB0 = Vector128.LoadUnsafe(ref cvRefB);
+        Vector128<uint> rowB1 = Vector128.LoadUnsafe(ref cvRefB, 4);
+        Vector128<uint> rowB2 = rowA2;
+        Vector128<uint> rowB3 = Vector128.Create(0u, 0u, blockLengthB, flagsB);
+
+        FirstMessageGroups(
+            Unsafe.ReadUnaligned<Vector128<uint>>(ref blockA),
+            Unsafe.ReadUnaligned<Vector128<uint>>(ref Unsafe.Add(ref blockA, 16)),
+            Unsafe.ReadUnaligned<Vector128<uint>>(ref Unsafe.Add(ref blockA, 32)),
+            Unsafe.ReadUnaligned<Vector128<uint>>(ref Unsafe.Add(ref blockA, 48)),
+            out Vector128<uint> tA0, out Vector128<uint> tA1, out Vector128<uint> tA2, out Vector128<uint> tA3);
+        FirstMessageGroups(
+            Unsafe.ReadUnaligned<Vector128<uint>>(ref blockB),
+            Unsafe.ReadUnaligned<Vector128<uint>>(ref Unsafe.Add(ref blockB, 16)),
+            Unsafe.ReadUnaligned<Vector128<uint>>(ref Unsafe.Add(ref blockB, 32)),
+            Unsafe.ReadUnaligned<Vector128<uint>>(ref Unsafe.Add(ref blockB, 48)),
+            out Vector128<uint> tB0, out Vector128<uint> tB1, out Vector128<uint> tB2, out Vector128<uint> tB3);
+        RoundTwo(ref rowA0, ref rowA1, ref rowA2, ref rowA3, tA0, tA1, tA2, tA3, ref rowB0, ref rowB1, ref rowB2, ref rowB3, tB0, tB1, tB2, tB3);
+
+        for (int round = 1; round < 7; round++)
+        {
+            NextMessageGroups(tA0, tA1, tA2, tA3, out tA0, out tA1, out tA2, out tA3);
+            NextMessageGroups(tB0, tB1, tB2, tB3, out tB0, out tB1, out tB2, out tB3);
+            RoundTwo(ref rowA0, ref rowA1, ref rowA2, ref rowA3, tA0, tA1, tA2, tA3, ref rowB0, ref rowB1, ref rowB2, ref rowB3, tB0, tB1, tB2, tB3);
+        }
+
+        Vector128.StoreUnsafe(rowA0 ^ rowA2, ref cvRefA);
+        Vector128.StoreUnsafe(rowA1 ^ rowA3, ref cvRefA, 4);
+        Vector128.StoreUnsafe(rowB0 ^ rowB2, ref cvRefB);
+        Vector128.StoreUnsafe(rowB1 ^ rowB3, ref cvRefB, 4);
+    }
+
+    // Round 1 gathers the words into the groups each half-step mixes: the even and odd words for the
+    // column steps, then the even and odd words of the second half, rotated to the diagonal row order.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void FirstMessageGroups(Vector128<uint> m0, Vector128<uint> m1, Vector128<uint> m2, Vector128<uint> m3,
+        out Vector128<uint> t0, out Vector128<uint> t1, out Vector128<uint> t2, out Vector128<uint> t3)
+    {
+        t0 = Sse.Shuffle(m0.AsSingle(), m1.AsSingle(), Shuffle2020).AsUInt32();
+        t1 = Sse.Shuffle(m0.AsSingle(), m1.AsSingle(), Shuffle3131).AsUInt32();
+        t2 = Sse2.Shuffle(Sse.Shuffle(m2.AsSingle(), m3.AsSingle(), Shuffle2020).AsUInt32(), Shuffle2103);
+        t3 = Sse2.Shuffle(Sse.Shuffle(m2.AsSingle(), m3.AsSingle(), Shuffle3131).AsUInt32(), Shuffle2103);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void NextMessageGroups(Vector128<uint> m0, Vector128<uint> m1, Vector128<uint> m2, Vector128<uint> m3,
+        out Vector128<uint> t0, out Vector128<uint> t1, out Vector128<uint> t2, out Vector128<uint> t3)
+    {
+        t0 = Sse2.Shuffle(Sse.Shuffle(m0.AsSingle(), m1.AsSingle(), Shuffle3112).AsUInt32(), Shuffle0321);
+        t1 = Sse41.Blend(Sse2.Shuffle(m0, Shuffle0033).AsUInt16(), Sse.Shuffle(m2.AsSingle(), m3.AsSingle(), Shuffle3322).AsUInt16(), BlendLanes1And3).AsUInt32();
+        t2 = Sse2.Shuffle(Sse41.Blend(Sse2.UnpackLow(m3.AsUInt64(), m1.AsUInt64()).AsUInt16(), m2.AsUInt16(), BlendLane3).AsUInt32(), Shuffle1320);
+        t3 = Sse2.Shuffle(Sse2.UnpackLow(m2, Sse2.UnpackHigh(m1, m3)), Shuffle0132);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void RoundTwo(
+        ref Vector128<uint> rowA0, ref Vector128<uint> rowA1, ref Vector128<uint> rowA2, ref Vector128<uint> rowA3,
+        Vector128<uint> tA0, Vector128<uint> tA1, Vector128<uint> tA2, Vector128<uint> tA3,
+        ref Vector128<uint> rowB0, ref Vector128<uint> rowB1, ref Vector128<uint> rowB2, ref Vector128<uint> rowB3,
+        Vector128<uint> tB0, Vector128<uint> tB1, Vector128<uint> tB2, Vector128<uint> tB3)
+    {
+        G1(ref rowA0, ref rowA1, ref rowA2, ref rowA3, tA0);
+        G1(ref rowB0, ref rowB1, ref rowB2, ref rowB3, tB0);
+        G2(ref rowA0, ref rowA1, ref rowA2, ref rowA3, tA1);
+        G2(ref rowB0, ref rowB1, ref rowB2, ref rowB3, tB1);
+        rowA0 = Sse2.Shuffle(rowA0, Shuffle2103);
+        rowA3 = Sse2.Shuffle(rowA3, Shuffle1032);
+        rowA2 = Sse2.Shuffle(rowA2, Shuffle0321);
+        rowB0 = Sse2.Shuffle(rowB0, Shuffle2103);
+        rowB3 = Sse2.Shuffle(rowB3, Shuffle1032);
+        rowB2 = Sse2.Shuffle(rowB2, Shuffle0321);
+        G1(ref rowA0, ref rowA1, ref rowA2, ref rowA3, tA2);
+        G1(ref rowB0, ref rowB1, ref rowB2, ref rowB3, tB2);
+        G2(ref rowA0, ref rowA1, ref rowA2, ref rowA3, tA3);
+        G2(ref rowB0, ref rowB1, ref rowB2, ref rowB3, tB3);
+        rowA0 = Sse2.Shuffle(rowA0, Shuffle0321);
+        rowA3 = Sse2.Shuffle(rowA3, Shuffle1032);
+        rowA2 = Sse2.Shuffle(rowA2, Shuffle2103);
+        rowB0 = Sse2.Shuffle(rowB0, Shuffle0321);
+        rowB3 = Sse2.Shuffle(rowB3, Shuffle1032);
+        rowB2 = Sse2.Shuffle(rowB2, Shuffle2103);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

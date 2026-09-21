@@ -11,9 +11,11 @@ namespace Nethermind.Benchmarks.Core
     public class Blake3Benchmarks
     {
         private byte[] _input;
+        private byte[] _secondInput;
         private readonly byte[] _output = new byte[32];
+        private readonly byte[] _secondOutput = new byte[32];
 
-        [Params(32, 64, 1024, 8192)]
+        [Params(32, 64, 67, 99, 1024, 8192)]
         public int Size { get; set; }
 
         [GlobalSetup]
@@ -21,6 +23,8 @@ namespace Nethermind.Benchmarks.Core
         {
             _input = new byte[Size];
             new Random(42).NextBytes(_input);
+            _secondInput = new byte[Size];
+            new Random(43).NextBytes(_secondInput);
         }
 
         [Benchmark(Baseline = true)]
@@ -28,5 +32,15 @@ namespace Nethermind.Benchmarks.Core
 
         [Benchmark]
         public void Managed() => Blake3Managed.Hash(_input, _output);
+
+        [Benchmark]
+        public void ManagedTwice()
+        {
+            Blake3Managed.Hash(_input, _output);
+            Blake3Managed.Hash(_secondInput, _secondOutput);
+        }
+
+        [Benchmark]
+        public void ManagedTwo() => Blake3Managed.HashTwo(_input, _output, _secondInput, _secondOutput);
     }
 }

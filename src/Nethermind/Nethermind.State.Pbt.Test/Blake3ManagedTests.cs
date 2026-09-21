@@ -34,6 +34,29 @@ public class Blake3ManagedTests
         Assert.That(actual.ToHexString(), Is.EqualTo(expected.ToHexString()));
     }
 
+    [Test]
+    public void Two_inputs_match_single_hash(
+        [Values(0, 1, 33, 64, 65, 67, 99, 128, 129, 1024, 1025)] int sizeA,
+        [Values(0, 1, 33, 64, 65, 67, 99, 128, 129, 1024, 1025)] int sizeB)
+    {
+        byte[] inputA = new byte[sizeA];
+        byte[] inputB = new byte[sizeB];
+        new Random(sizeA).NextBytes(inputA);
+        new Random(sizeB + 1).NextBytes(inputB);
+
+        byte[] expectedA = new byte[32];
+        byte[] expectedB = new byte[32];
+        Blake3Managed.Hash(inputA, expectedA);
+        Blake3Managed.Hash(inputB, expectedB);
+
+        byte[] actualA = new byte[32];
+        byte[] actualB = new byte[32];
+        Blake3Managed.HashTwo(inputA, actualA, inputB, actualB);
+
+        Assert.That(actualA.ToHexString(), Is.EqualTo(expectedA.ToHexString()));
+        Assert.That(actualB.ToHexString(), Is.EqualTo(expectedB.ToHexString()));
+    }
+
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(false, true)]

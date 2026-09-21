@@ -70,11 +70,91 @@ public static partial class Blake3Managed
             MergeParent(stack.Slice(--stackLength * 8, 8), cv, stackLength == 0 ? Root : 0);
     }
 
+    /// <summary>
+    /// Writes the digests of two independent inputs, compressing them in lock-step so that their dependency
+    /// chains overlap (see <see cref="CompressSse41Two"/>).
+    /// </summary>
+    /// <remarks>
+    /// Both inputs must be single chunks for the lanes to share a block loop; a longer input, or a platform
+    /// without SSE4.1, falls back to hashing each input on its own. When the inputs span different numbers of
+    /// blocks, the shorter lane's root block runs in the last shared step and the longer lane finishes alone.
+    /// </remarks>
+    public static void HashTwo(ReadOnlySpan<byte> inputA, Span<byte> outputA32, ReadOnlySpan<byte> inputB, Span<byte> outputB32)
+    {
+        if (!Sse41.IsSupported || inputA.Length > ChunkLength || inputB.Length > ChunkLength)
+        {
+            Hash(inputA, outputA32);
+            Hash(inputB, outputB32);
+            return;
+        }
+
+        Span<uint> cvA = stackalloc uint[8];
+        Span<uint> cvB = stackalloc uint[8];
+        Span<byte> lastA = stackalloc byte[BlockLength];
+        Span<byte> lastB = stackalloc byte[BlockLength];
+        InitialCv(cvA);
+        InitialCv(cvB);
+        uint flagsA = ChunkStart, flagsB = ChunkStart;
+        // Scoped copies so that the padding buffers may be passed by ref-returning NextBlock alongside them.
+        scoped ReadOnlySpan<byte> remainingA = inputA;
+        scoped ReadOnlySpan<byte> remainingB = inputB;
+        while (true)
+        {
+            ref byte blockA = ref NextBlock(ref remainingA, lastA, ref flagsA, out uint blockLengthA, out bool isLastA);
+            ref byte blockB = ref NextBlock(ref remainingB, lastB, ref flagsB, out uint blockLengthB, out bool isLastB);
+            CompressSse41Two(cvA, ref blockA, blockLengthA, flagsA, cvB, ref blockB, blockLengthB, flagsB);
+            if (isLastA && isLastB) break;
+            if (isLastA)
+            {
+                ContinueChunk(remainingB, 0, 0, Root, cvB);
+                break;
+            }
+            if (isLastB)
+            {
+                ContinueChunk(remainingA, 0, 0, Root, cvA);
+                break;
+            }
+            flagsA = 0;
+            flagsB = 0;
+        }
+
+        WriteWords(cvA, outputA32);
+        WriteWords(cvB, outputB32);
+    }
+
+    /// <summary>
+    /// Takes the next block off <paramref name="input"/>: a full block, or, when at most <see cref="BlockLength"/>
+    /// bytes remain, the root block zero-padded into <paramref name="last"/>, in which case <paramref name="flags"/>
+    /// gains the chunk end and root flags and <paramref name="isLast"/> is set.
+    /// </summary>
+    private static ref byte NextBlock(ref ReadOnlySpan<byte> input, Span<byte> last, ref uint flags, out uint blockLength, out bool isLast)
+    {
+        if (input.Length > BlockLength)
+        {
+            ref byte block = ref Reference(input);
+            blockLength = BlockLength;
+            isLast = false;
+            input = input[BlockLength..];
+            return ref block;
+        }
+
+        PadBlock(input, last);
+        blockLength = (uint)input.Length;
+        isLast = true;
+        flags |= ChunkEnd | Root;
+        return ref MemoryMarshal.GetReference(last);
+    }
+
     /// <summary>Compresses one whole chunk (at most <see cref="ChunkLength"/> bytes) into its chaining value.</summary>
     private static void ChunkChainingValue(ReadOnlySpan<byte> chunk, ulong counter, uint rootFlag, Span<uint> cv)
     {
         InitialCv(cv);
-        uint flags = ChunkStart;
+        ContinueChunk(chunk, counter, ChunkStart, rootFlag, cv);
+    }
+
+    /// <summary>Compresses the remaining blocks of a chunk into <paramref name="cv"/>, the first with <paramref name="flags"/>.</summary>
+    private static void ContinueChunk(ReadOnlySpan<byte> chunk, ulong counter, uint flags, uint rootFlag, Span<uint> cv)
+    {
         while (chunk.Length > BlockLength)
         {
             CompressBlock<FullBlock>(cv, chunk[..BlockLength], counter, BlockLength, flags);

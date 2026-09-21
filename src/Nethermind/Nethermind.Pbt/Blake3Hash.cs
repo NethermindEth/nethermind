@@ -15,6 +15,14 @@ public static class Blake3Hash
         return result;
     }
 
+    /// <summary>Hashes two independent inputs in lock-step; see <see cref="Blake3Managed.HashTwo"/>.</summary>
+    public static void HashTwo(ReadOnlySpan<byte> inputA, ReadOnlySpan<byte> inputB, out ValueHash256 hashA, out ValueHash256 hashB)
+    {
+        hashA = default;
+        hashB = default;
+        Blake3Managed.HashTwo(inputA, hashA.BytesAsSpan, inputB, hashB.BytesAsSpan);
+    }
+
     /// <summary>
     /// The EIP-8297 node hash: 32 zero bytes when both children are zero (an empty subtree),
     /// otherwise BLAKE3 of <paramref name="left"/> concatenated with <paramref name="right"/>.
