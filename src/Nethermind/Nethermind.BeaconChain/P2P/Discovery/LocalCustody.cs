@@ -30,11 +30,9 @@ public sealed class LocalCustody
     public IReadOnlyList<ulong> Subnets { get; }
 
     /// <param name="nodeId">
-    /// The node's discv5 node id (<c>keccak256(public_key)</c>), used byte-for-byte as
-    /// <see cref="DataAvailability.CustodyGroups"/>'s little-endian <c>uint256</c> input with no
-    /// reordering: the raw discv5 id bytes and the spec's SSZ <c>NodeID</c> (a <c>uint256</c> alias)
-    /// are the same byte string interpreted the same way, per consensus-specs
-    /// <c>get_custody_groups</c>'s use of <c>uint256(node_id)</c>.
+    /// The node's raw discv5 node id (<c>keccak256(public_key)</c>), passed through byte-for-byte;
+    /// <see cref="DataAvailability.CustodyGroups.GetCustodyGroups"/> performs the big-endian to
+    /// little-endian reordering the spec's <c>NodeID</c> integer requires.
     /// </param>
     public LocalCustody(Hash256 nodeId, ulong custodyGroupCount)
     {
