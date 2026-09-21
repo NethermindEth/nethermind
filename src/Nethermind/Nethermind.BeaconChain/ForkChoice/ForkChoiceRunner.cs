@@ -176,6 +176,19 @@ public sealed class ForkChoiceRunner
     /// Validates the block against the store, applies the proposer boost when timely, updates the
     /// realized and unrealized checkpoints, and registers the block with the proto-array.
     /// </summary>
+    /// <remarks>
+    /// This does not replay the block's body operations. The spec's <c>on_block</c> does not either:
+    /// the fork_choice test format treats an <c>on_block</c> step as implying <c>on_attestation</c>
+    /// for every body attestation and <c>on_attester_slashing</c> for every body attester slashing,
+    /// and that convention is the caller's to honour.
+    /// After this returns, the caller must feed <c>Body.Attestations</c> to
+    /// <see cref="OnAttestation"/> with <c>isFromBlock: true</c> and <c>Body.AttesterSlashings</c>
+    /// to <see cref="OnAttesterSlashing"/>, both with signature verification off (the transition
+    /// already verified them). Whether a body operation the store refuses (typically an attestation
+    /// for a head or target block this node never saw) is tolerated or fatal is the caller's policy;
+    /// the block itself is in the tree either way. A caller that skips the replay loses LMD votes
+    /// and equivocation discounts silently: <see cref="GetHead"/> keeps answering, from fewer votes.
+    /// </remarks>
     /// <param name="executionStatus">The execution layer's verdict on the block's payload, usually <see cref="ExecutionStatus.Optimistic"/> until <c>newPayload</c> completes.</param>
     /// <param name="dataColumns">
     /// The full column set retrieved for this block's blob commitments (the spec's
