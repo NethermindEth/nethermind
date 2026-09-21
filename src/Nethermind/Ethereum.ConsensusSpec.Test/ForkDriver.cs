@@ -189,13 +189,26 @@ public abstract class ForkDriver
         return new Hash256(root.ToLittleEndian());
     }
 
+    /// <summary>
+    /// Marks a lookahead slot whose epoch has no active validator. Electra asserts only when such a
+    /// proposer is read, so the pre-state is valid for operations that never read one; an out-of-range
+    /// index makes the pipeline throw at that same read instead of naming validator 0.
+    /// </summary>
+    internal const ulong NoProposer = ulong.MaxValue;
+
     /// <summary>Fills the whole lookahead from the current state, current epoch first: what Electra samples on the fly for the current epoch.</summary>
     internal static void RefillProposerLookahead(BeaconStateFulu state)
     {
         ulong epoch = state.GetCurrentEpoch();
         ulong[] lookahead = new ulong[Presets.ProposerLookaheadSlots];
         for (ulong i = 0; i <= Presets.MinSeedLookahead; i++)
-            state.ComputeProposerIndices(epoch + i).CopyTo(lookahead, (int)(i * Presets.SlotsPerEpoch));
+        {
+            int offset = (int)(i * Presets.SlotsPerEpoch);
+            if (state.GetActiveValidatorIndices(epoch + i).Length == 0)
+                Array.Fill(lookahead, NoProposer, offset, (int)Presets.SlotsPerEpoch);
+            else
+                state.ComputeProposerIndices(epoch + i).CopyTo(lookahead, offset);
+        }
         state.ProposerLookahead = lookahead;
     }
 }
