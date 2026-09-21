@@ -26,8 +26,10 @@ public class FlatSnapTrieFactoryTests
 
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
         syncConfig.EnableSnapDoubleWriteCheck.Returns(doubleWriteCheck);
+        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
+        persistenceManager.When(m => m.ClearForStateSync()).Do(_ => persistence.Clear());
 
-        FlatSnapTrieFactory factory = new(persistence, syncConfig, LimboLogs.Instance);
+        FlatSnapTrieFactory factory = new(persistence, persistenceManager, syncConfig, LimboLogs.Instance);
         return (factory, persistence);
     }
 
@@ -49,6 +51,24 @@ public class FlatSnapTrieFactoryTests
         factory.FinalizeSync();
 
         persistence.Received(1).Flush();
+    }
+
+    [Test]
+    public void FinalizeSync_EndsTheStateSync()
+    {
+        (FlatSnapTrieFactory factory, IPersistence _, IPersistenceManager manager) = BuildWithManager();
+
+        factory.FinalizeSync();
+
+        manager.Received(1).EndStateSync();
+    }
+
+    private static (FlatSnapTrieFactory factory, IPersistence persistence, IPersistenceManager manager) BuildWithManager()
+    {
+        IPersistence persistence = Substitute.For<IPersistence>();
+        ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
+        IPersistenceManager manager = Substitute.For<IPersistenceManager>();
+        return (new FlatSnapTrieFactory(persistence, manager, syncConfig, LimboLogs.Instance), persistence, manager);
     }
 
     [Test]

@@ -59,6 +59,7 @@ public class PersistenceManager(
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
     private StateId? _lastWarnedStall;
+    private volatile bool _stateSyncWriting;
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -265,7 +266,7 @@ public class PersistenceManager(
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                     CaptureHistory(toPersist.To, _cts.Token);
                     PersistSnapshot(toPersist);
-                    CurrentPersistedStateId = toPersist.To;
+                    MarkPersisted(toPersist.To);
                     snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
                 }
                 else if (persistedToPersist is not null)
@@ -275,7 +276,7 @@ public class PersistenceManager(
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                     CaptureHistory(persistedToPersist.To, _cts.Token);
                     PersistPersistedSnapshot(persistedToPersist);
-                    CurrentPersistedStateId = persistedToPersist.To;
+                    MarkPersisted(persistedToPersist.To);
                     snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
                 }
                 else if (toConvert?.Compacted is not null)
@@ -454,7 +455,7 @@ public class PersistenceManager(
                 snapshotRepository.RemoveSiblingAndDescendents(persisted.To);
                 CaptureHistory(persisted.To, cancellationToken);
                 PersistPersistedSnapshot(persisted);
-                CurrentPersistedStateId = persisted.To;
+                MarkPersisted(persisted.To);
                 currentPersistedState = CurrentPersistedStateId;
                 snapshotRepository.RemoveStatesUntil(persisted.To.BlockNumber);
                 continue;
@@ -467,7 +468,7 @@ public class PersistenceManager(
             snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
             CaptureHistory(snapshotToPersist.To, cancellationToken);
             PersistSnapshot(snapshotToPersist);
-            CurrentPersistedStateId = snapshotToPersist.To;
+            MarkPersisted(snapshotToPersist.To);
             currentPersistedState = CurrentPersistedStateId;
             snapshotRepository.RemoveStatesUntil(snapshotToPersist.To.BlockNumber);
         }
@@ -475,10 +476,71 @@ public class PersistenceManager(
         return currentPersistedState;
     }
 
-    public void ResetPersistedStateId()
+    public bool RunMaintenance(Action<IPersistence.IWriteBatch> work, CancellationToken cancellationToken)
     {
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        CurrentPersistedStateId = reader.CurrentState;
+        _persistenceLock.Wait(cancellationToken);
+        try
+        {
+            if (_stateSyncWriting) return false;
+
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+            work(batch);
+            return true;
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
+    public bool StateSyncWriting => _stateSyncWriting;
+
+    public void BeginStateSync()
+    {
+        _persistenceLock.Wait();
+        try
+        {
+            _stateSyncWriting = true;
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
+    public void ClearForStateSync()
+    {
+        _persistenceLock.Wait();
+        try
+        {
+            _stateSyncWriting = true;
+            persistence.Clear();
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
+    public void EndStateSync()
+    {
+        _persistenceLock.Wait();
+        try
+        {
+            using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+            CurrentPersistedStateId = reader.CurrentState;
+            _stateSyncWriting = false;
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
+    private void MarkPersisted(in StateId to)
+    {
+        CurrentPersistedStateId = to;
+        _stateSyncWriting = false;
     }
 
     public void DropStateNotReachableFrom(in StateId head)

@@ -11,9 +11,13 @@ public interface IPersistenceManager
     StateId GetCurrentPersistedStateId();
     Task AddToPersistence(StateId latestSnapshot);
     StateId FlushToPersistence(CancellationToken cancellationToken);
-    void ResetPersistedStateId();
-
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/>, serialized against
     /// persistence. Used when the head is force-reset so state kept for abandoned branches is released.</summary>
     void DropStateNotReachableFrom(in StateId head);
+
+    bool RunMaintenance(Action<IPersistence.IWriteBatch> work, CancellationToken cancellationToken);
+    bool StateSyncWriting { get; }
+    void BeginStateSync();
+    void ClearForStateSync();
+    void EndStateSync();
 }

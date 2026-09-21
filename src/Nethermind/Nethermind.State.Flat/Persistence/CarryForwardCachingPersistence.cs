@@ -113,7 +113,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         using (_lock.EnterScope())
         {
             _generation++;
-            _basis = to;
+            if (to != StateId.Sync) _basis = to;
 
             if (clearAll)
             {

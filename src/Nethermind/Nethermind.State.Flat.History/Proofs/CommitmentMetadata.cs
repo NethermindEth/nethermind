@@ -126,6 +126,16 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         }
     }
 
+    /// <summary>Deletes every commitment, series and checkpoint. Used after a repair rewrote the history rows
+    /// the commitments were built from, so nothing built from the old rows can be served or resumed.</summary>
+    public void DiscardAfterRowRepair()
+    {
+        lock (_lock)
+        {
+            DiscardAll();
+        }
+    }
+
     private void DiscardAll()
     {
         ReadOnlySpan<byte> first = [0x00];

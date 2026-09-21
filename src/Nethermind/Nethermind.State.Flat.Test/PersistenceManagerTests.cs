@@ -303,8 +303,8 @@ public class PersistenceManagerTests
         PersistBase(persisted, tip);
         StateId sibling = CreateStateId(1, 2);
         PersistBase(Block0, sibling);
-        _persistence.CreateReader().CurrentState.Returns(persisted);
-        _persistenceManager.ResetPersistedStateId();
+        _persistence.CreateReader(ReaderFlags.Sync).CurrentState.Returns(persisted);
+        _persistenceManager.EndStateSync();
         _snapshotRepository.SetLastCommittedStateId(tip);
         _finalizedStateProvider.SetFinalizedBlockNumber(2);
         _finalizedStateProvider.SetFinalizedStateRootAt(1, rootMatches ? new Hash256(persisted.StateRoot) : TestItem.KeccakA);
@@ -396,6 +396,90 @@ public class PersistenceManagerTests
         {
             Assert.That(_snapshotRepository.HasBasePersistedSnapshot(parent), Is.EqualTo(!reorg));
             Assert.That(_snapshotRepository.HasBasePersistedSnapshot(tip), Is.EqualTo(!reorg));
+        }
+    }
+
+    [Test]
+    public void RunMaintenance_HandsOutASyncBatchAndDisposesIt()
+    {
+        IPersistence.IWriteBatch batch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, Arg.Any<WriteFlags>()).Returns(batch);
+        IPersistence.IWriteBatch? received = null;
+
+        bool applied = _persistenceManager.RunMaintenance(b => received = b, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(applied, Is.True);
+            Assert.That(received, Is.SameAs(batch));
+            _persistence.Received(1).CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.None);
+            batch.Received(1).Dispose();
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "a sync batch never writes the state pointer, so a clear landing under it cannot be undone by the batch's dispose");
+        }
+    }
+
+    [Test]
+    public void RunMaintenance_IsRefusedWhileAStateSyncWrites_AndAllowedAgainWhenItEnds()
+    {
+        IPersistence.IPersistenceReader finalized = Substitute.For<IPersistence.IPersistenceReader>();
+        StateId pivot = CreateStateId(42);
+        finalized.CurrentState.Returns(pivot);
+        _persistence.CreateReader(ReaderFlags.Sync).Returns(finalized);
+        _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, Arg.Any<WriteFlags>()).Returns(_ => Substitute.For<IPersistence.IWriteBatch>());
+        int invoked = 0;
+
+        _persistenceManager.BeginStateSync();
+        bool announced = _persistenceManager.StateSyncWriting;
+        bool duringSync = _persistenceManager.RunMaintenance(_ => invoked++, CancellationToken.None);
+        _persistenceManager.EndStateSync();
+        bool afterSync = _persistenceManager.RunMaintenance(_ => invoked++, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(announced, Is.True);
+            Assert.That(_persistenceManager.StateSyncWriting, Is.False);
+            Assert.That(duringSync, Is.False, "a maintenance batch may never interleave with a state sync's writes");
+            Assert.That(afterSync, Is.True);
+            Assert.That(invoked, Is.EqualTo(1));
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(pivot), "the end of a sync re-reads the pointer through a sync reader, never through the cached one");
+        }
+    }
+
+    [Test]
+    public async Task A_real_persist_ends_a_state_sync_that_was_never_finalized()
+    {
+        StateId to = CreateStateId(16);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(_ => Substitute.For<IPersistence.IWriteBatch>());
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<WriteFlags>()).Returns(_ => Substitute.For<IPersistence.IWriteBatch>());
+
+        _persistenceManager.BeginStateSync();
+        bool duringSync = _persistenceManager.RunMaintenance(_ => { }, CancellationToken.None);
+        await _persistenceManager.AddToPersistence(CreateStateId(100));
+        bool afterPersist = _persistenceManager.RunMaintenance(_ => { }, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(duringSync, Is.False);
+            Assert.That(afterPersist, Is.True, "a sync that was abandoned never finalizes; the next real persist is block processing's proof that the sync is over, so the flag cannot latch for the life of the process");
+        }
+    }
+
+    [Test]
+    public void ClearForStateSync_ClearsTheBaseAndRefusesMaintenanceUntilTheSyncEnds()
+    {
+        int invoked = 0;
+
+        _persistenceManager.ClearForStateSync();
+        bool applied = _persistenceManager.RunMaintenance(_ => invoked++, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _persistence.Received(1).Clear();
+            Assert.That(applied, Is.False);
+            Assert.That(invoked, Is.Zero);
         }
     }
 
