@@ -6,6 +6,11 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
+/// <summary>Encodes and decodes block bodies.</summary>
+/// <remarks>
+/// The standard decode entry point rents transactions unless <see cref="RlpBehaviors.SkipPooledTransactions"/>
+/// is specified. Retained blocks must opt out; pooled transactions require an exclusive owner and a return path.
+/// </remarks>
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
 public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
 {
@@ -102,9 +107,9 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     /// <param name="lastPosition">Expected reader position after the body contents.</param>
     /// <param name="usePooledTransactions">
     /// Rent exclusively owned transactions. Return them to <see cref="TxDecoder.TxObjectPool"/> at most once,
-    /// after all consumers finish. Leave false for retained blocks.
+    /// after all consumers finish. Pass false for retained blocks.
     /// </param>
-    public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, bool usePooledTransactions = false)
+    public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, bool usePooledTransactions)
     {
         Transaction[] transactions = _txDecoder.DecodeNonNullArray(
             ref ctx, usePooledTransactions ? RlpBehaviors.None : RlpBehaviors.SkipPooledTransactions,

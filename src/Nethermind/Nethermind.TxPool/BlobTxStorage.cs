@@ -494,18 +494,14 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         ReadOnlySpan<byte> index = _processedBlobTxsDb.GetSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
         try
         {
-            return !index.IsEmpty && index[0] == 0 ? DecodeProcessedTransactionCount(index) : 0;
+            // Unreadable indexes must not abort head updates. Finalization cleanup reclaims any orphaned payloads.
+            return !index.IsEmpty && index[0] == 0 && TryDecodeProcessedTransactionCount(index, out int count) ? count : 0;
         }
         finally
         {
             _processedBlobTxsDb.DangerousReleaseMemory(index);
         }
     }
-
-    private static int DecodeProcessedTransactionCount(ReadOnlySpan<byte> index) =>
-        TryDecodeProcessedTransactionCount(index, out int count)
-            ? count
-            : throw new RlpException("Invalid processed blob transaction index.");
 
     private static bool TryDecodeProcessedTransactionCount(ReadOnlySpan<byte> index, out int count)
     {

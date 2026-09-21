@@ -44,8 +44,9 @@ public class BlobTxStorageTests
     }
 
     [Test]
-    public void Invalid_processed_index_is_a_cache_miss(
-        [Values("", "00", "000000", "000000000001", "0000000000", "00ffffffff", "007fffffff", "0000014587")] string encodedIndex)
+    public void Invalid_processed_index_is_a_cache_miss_and_can_be_replaced_or_deleted(
+        [Values("", "00", "000000", "000000000001", "0000000000", "00ffffffff", "007fffffff", "0000014587")] string encodedIndex,
+        [Values] bool replace)
     {
         using MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
@@ -56,10 +57,16 @@ public class BlobTxStorageTests
             Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.False);
             Assert.That(restored, Is.Null);
         }
-        if (encodedIndex.Length > 0)
+        if (replace)
         {
-            Assert.That(() => storage.DeleteBlobTransactionsFromBlock(358), Throws.TypeOf<RlpException>());
+            using ArrayPoolListRef<Transaction> transactions = new(1, CreateBlobTransaction());
+            storage.AddBlobTransactionsFromBlock(358, transactions);
+            Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+            AssertProcessedTransactions(transactions, restored);
         }
+
+        storage.DeleteBlobTransactionsFromBlock(358);
+        Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys(), Is.Empty);
     }
 
     [Test]

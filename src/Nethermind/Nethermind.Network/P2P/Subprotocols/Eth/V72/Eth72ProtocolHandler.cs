@@ -633,7 +633,7 @@ public class Eth72ProtocolHandler(
                 continue;
             }
 
-            responseHashes.Add(hash);
+            responseHashes.Add(valueHash);
             cellsByTx.Add(cells);
             hashesContentLength = nextHashesContentLength;
             cellsContentLength = nextCellsContentLength;
@@ -1077,7 +1077,7 @@ public class Eth72ProtocolHandler(
 
         ValueHash256 key = hash.ValueHash256;
         BlobCellMask sentMask = GetSentCellRequestMask(key, requestMask);
-        GetCellsMessage72 message = new([hash], sentMask.ToBytes());
+        GetCellsMessage72 message = new([hash.ValueHash256], sentMask.ToBytes());
         AddSentCellRequest(key, sentMask, message.RequestId);
         Send(message);
 
@@ -1837,7 +1837,7 @@ public class Eth72ProtocolHandler(
 
             types.Add((byte)tx.Type);
             sizes.Add(announcementSize);
-            hashes.Add(tx.Hash!);
+            hashes.Add(tx.Hash!.ValueHash256);
             TxPool.Metrics.PendingTransactionsHashesSent++;
         }
 

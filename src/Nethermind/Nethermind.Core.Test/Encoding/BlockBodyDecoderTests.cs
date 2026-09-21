@@ -13,7 +13,7 @@ public class BlockBodyDecoderTests
 {
     [Test, NonParallelizable]
     public void Transaction_pool_use_matches_decoder_ownership(
-        [Values("body", "unwrapped-body", "default-unwrapped-body", "block")] string format,
+        [Values("body", "unwrapped-body", "block")] string format,
         [Values] bool skipPooledTransactions)
     {
         BlockBody body = new([Build.A.Transaction.Signed().TestObject], []);
@@ -28,12 +28,11 @@ public class BlockBodyDecoderTests
 
         RlpReader reader = new(bytes);
         RlpBehaviors behaviors = skipPooledTransactions ? RlpBehaviors.SkipPooledTransactions : RlpBehaviors.None;
-        if (format is "unwrapped-body" or "default-unwrapped-body") reader.ReadSequenceLength();
+        if (format == "unwrapped-body") reader.ReadSequenceLength();
         BlockBody decoded = format switch
         {
             "block" => blockDecoder.DecodeGuardNotNull(ref reader, behaviors).Body,
             "body" => BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader, behaviors),
-            "default-unwrapped-body" => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length),
             _ => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions: !skipPooledTransactions)
         };
 
@@ -97,7 +96,7 @@ public class BlockBodyDecoderTests
     private static void DecodeBody(byte[] bytes)
     {
         RlpReader ctx = new(bytes);
-        BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, bytes.Length);
+        BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, bytes.Length, usePooledTransactions: false);
     }
 
     private static byte[] BuildBodyStream(int txCount, int uncleCount, int? withdrawalCount)
