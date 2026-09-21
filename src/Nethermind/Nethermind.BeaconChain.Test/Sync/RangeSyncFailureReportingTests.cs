@@ -20,10 +20,9 @@ using NUnit.Framework;
 namespace Nethermind.BeaconChain.Test.Sync;
 
 /// <summary>
-/// <see cref="RangeSync"/> reports peer failures through the closed-cardinality overload only. The
-/// free-text overload is what let the failure metric's label grow without bound, and the peer
-/// manager's fatal-session fast path keys off the typed reason, so a range-sync caller falling
-/// back to free text would both leak label cardinality and keep zombie sessions on a budget.
+/// <see cref="RangeSync"/> reports every peer failure under the <see cref="PeerFailureReason"/> that describes
+/// what the peer did. The peer manager's fatal-session fast path keys off <see cref="PeerFailureReason.SessionClosed"/>,
+/// so a misclassified dead session would stay on a failure budget it can never work off.
 /// </summary>
 public class RangeSyncFailureReportingTests
 {
@@ -41,7 +40,7 @@ public class RangeSyncFailureReportingTests
     [TestCase(BadPeerBehavior.RequestTimesOut, PeerFailureReason.RequestFailed)]
     [TestCase(BadPeerBehavior.SessionIsGone, PeerFailureReason.SessionClosed)]
     [CancelAfter(30_000)]
-    public async Task Every_failure_is_reported_with_a_typed_reason_and_never_as_free_text(BadPeerBehavior behavior, PeerFailureReason expected, CancellationToken token)
+    public async Task Every_failure_is_reported_under_the_reason_that_describes_it(BadPeerBehavior behavior, PeerFailureReason expected, CancellationToken token)
     {
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12);
         StubPeer badPeer = new("bad", headSlot: TargetSlot + 1, (startSlot, count) => behavior switch
@@ -63,7 +62,6 @@ public class RangeSyncFailureReportingTests
         {
             Assert.That(imported.Select(b => b.Message!.Slot), Is.EqualTo(chain.Select(b => b.Message!.Slot)), "the good peer still completes the range");
             Assert.That(badPeer.TypedReports, Is.Not.Empty.And.All.EqualTo(expected), "the bad peer is penalized under the reason that describes what it did");
-            Assert.That(badPeer.FreeTextReports + goodPeer.FreeTextReports, Is.Zero, "the free-text overload is legacy and must have no callers here");
             Assert.That(goodPeer.TypedReports, Is.Empty);
         });
     }
@@ -71,8 +69,6 @@ public class RangeSyncFailureReportingTests
     private sealed class StubPeer(string id, ulong headSlot, Func<ulong, ulong, SignedBeaconBlock[]> handler) : IBeaconSyncPeer
     {
         public List<PeerFailureReason> TypedReports { get; } = [];
-
-        public int FreeTextReports { get; private set; }
 
         public string Id => id;
 
@@ -88,8 +84,6 @@ public class RangeSyncFailureReportingTests
             Task.FromResult<IReadOnlyList<DataColumnSidecar>>([]);
 
         public void ReportFailure(PeerFailureReason reason, string? detail = null) => TypedReports.Add(reason);
-
-        public void ReportFailure(string reason) => FreeTextReports++;
     }
 
     private sealed class StubPool(params IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
