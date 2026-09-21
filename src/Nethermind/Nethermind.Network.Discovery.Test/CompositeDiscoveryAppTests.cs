@@ -126,6 +126,8 @@ public class CompositeDiscoveryAppTests
     {
         NetworkConfig networkConfig = new() { DiscoveryPort = GetAvailableUdpPort() };
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
+        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+        underlyingLogger.IsWarn.Returns(true);
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IEventLoop? eventLoop = null;
         discoveryApp.When(app => app.InitializeChannel(Arg.Any<IChannel>())).Do(call => eventLoop = ((IChannel)call[0]).EventLoop);
@@ -134,32 +136,35 @@ public class CompositeDiscoveryAppTests
         CompositeDiscoveryApp app = new(
             networkConfig,
             new DiscoveryConfig { UdpChannelCloseTimeout = 100 },
-            LimboLogs.Instance,
+            new OneLoggerLogManager(new ILogger(underlyingLogger)),
             listenerState,
             [discoveryApp],
             new RecordingChannelFactory());
 
-        await app.StartAsync();
-        Assert.That(eventLoop, Is.Not.Null);
-
-        // Standing in for DotNetty's shutdown livelock: an event loop that cannot reach termination.
-        ManualResetEventSlim wedge = new();
-        Task wedged = eventLoop!.SubmitAsync(() =>
-        {
-            wedge.Wait();
-            return true;
-        });
-
+        using ManualResetEventSlim wedge = new();
+        Task? wedged = null;
         try
         {
+            await app.StartAsync();
+            Assert.That(eventLoop, Is.Not.Null);
+
+            // Standing in for DotNetty's shutdown livelock: an event loop that cannot reach termination.
+            wedged = eventLoop!.SubmitAsync(() =>
+            {
+                wedge.Wait();
+                return true;
+            });
+
             // Generous against the shutdown budget, so an unbounded wait fails here instead of hanging the host.
             await app.StopAsync().WaitAsync(TimeSpan.FromSeconds(30));
+
+            underlyingLogger.Received(1).Warn(Arg.Is<string>(message =>
+                message.StartsWith("Could not shut discovery event loop down")));
         }
         finally
         {
             wedge.Set();
-            await wedged;
-            wedge.Dispose();
+            if (wedged is not null) await wedged.WaitAsync(TimeSpan.FromSeconds(30));
         }
     }
 
