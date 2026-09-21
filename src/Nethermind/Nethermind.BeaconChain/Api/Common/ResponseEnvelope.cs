@@ -3,8 +3,8 @@
 
 using System;
 using Microsoft.AspNetCore.Http;
-using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
 
@@ -34,9 +34,12 @@ internal static class ResponseEnvelope
     /// </remarks>
     public static bool ExecutionOptimistic() => Metrics.BeaconChainElInSync == 0;
 
-    /// <summary>Whether <paramref name="slot"/> is at or before the current finalized checkpoint's epoch.</summary>
-    public static bool IsFinalized(BeaconChainSpec spec, IBeaconChainStatusSource statusSource, ulong slot) =>
-        spec.GetEpoch(slot) <= statusSource.CurrentStatus.FinalizedEpoch;
+    /// <summary>Whether the block <paramref name="root"/> at <paramref name="slot"/> is part of finalized history: at or before the finalized checkpoint's epoch and canonical at its slot.</summary>
+    /// <remarks>A non-canonical block at a finalized epoch is exactly what finalization discarded, so the epoch alone must not vouch for it.</remarks>
+    public static bool IsFinalized(BeaconApiContext ctx, ulong slot, Hash256 root) =>
+        ctx.Spec.GetEpoch(slot) <= ctx.StatusSource.CurrentStatus.FinalizedEpoch
+        && ctx.Store.TryGetCanonicalRoot(slot, out Hash256? canonicalRoot)
+        && canonicalRoot == root;
 
     public static void ApplyConsensusVersionHeader(HttpContext ctx, BeaconChainSpec spec, ulong slot) =>
         ctx.Response.Headers[ConsensusVersionHeader] = ForkName(spec.ForkAtEpoch(spec.GetEpoch(slot)));

@@ -92,6 +92,32 @@ public class BeaconApiEnvelopeTests
             "slot 13,200,000 (epoch 412,500) is at or before the finalized checkpoint's epoch 500,000");
     }
 
+    [Test]
+    public async Task Header_reports_finalized_false_for_a_non_canonical_block_at_a_finalized_epoch()
+    {
+        const ulong slot = 13_200_000;
+        Hash256 root = TestRoot(9);
+        Hash256 canonicalRival = TestRoot(10);
+        _store.PutBlock(root, CreateMinimalBlock(slot));
+        _store.SetCanonicalRoot(slot, canonicalRival);
+        _statusHolder.CurrentStatus = new StatusMessageV2
+        {
+            ForkDigest = [],
+            FinalizedRoot = canonicalRival,
+            HeadRoot = canonicalRival,
+            FinalizedEpoch = 500_000,
+        };
+
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/headers/{root}");
+        string raw = await response.Content.ReadAsStringAsync();
+        JsonDocument body = JsonDocument.Parse(raw);
+
+        Assert.That((int)response.StatusCode, Is.EqualTo(200), $"unexpected status; body: {raw}");
+        Assert.That(body.RootElement.GetProperty("data").GetProperty("canonical").GetBoolean(), Is.False);
+        Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False,
+            "a block that lost to a rival at its slot is what finalization discarded, whatever its epoch");
+    }
+
     /// <summary>
     /// Mirrors the finalized-flag proof above for execution_optimistic: no assertion in this suite
     /// ever checked the envelope's execution_optimistic field before this test, so a hardcoded

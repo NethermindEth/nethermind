@@ -73,7 +73,7 @@ internal static class BeaconEndpoints
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Block.Message!.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, new[] { entry },
             ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, resolved.Block.Message.Slot),
+            ResponseEnvelope.IsFinalized(ctx, resolved.Block.Message.Slot, resolved.Root),
             c.RequestAborted);
     }
 
@@ -129,7 +129,7 @@ internal static class BeaconEndpoints
             if (slotFilter is not null && childSlot != slotFilter) continue;
 
             entries.Add(BuildHeaderEntry(ctx, new ResolvedBlock(childRoot, child)));
-            finalized &= ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, childSlot);
+            finalized &= ResponseEnvelope.IsFinalized(ctx, childSlot, childRoot);
             BeaconFork childFork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(childSlot));
             mixedForks |= fork is not null && fork != childFork;
             fork = childFork;
@@ -162,7 +162,7 @@ internal static class BeaconEndpoints
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Block.Message!.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, entry,
             ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, resolved.Block.Message.Slot),
+            ResponseEnvelope.IsFinalized(ctx, resolved.Block.Message.Slot, resolved.Root),
             c.RequestAborted);
     }
 
@@ -181,7 +181,7 @@ internal static class BeaconEndpoints
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Block.Message!.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, new RootDto(resolved.Root.ToString()),
             ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, resolved.Block.Message.Slot),
+            ResponseEnvelope.IsFinalized(ctx, resolved.Block.Message.Slot, resolved.Root),
             c.RequestAborted);
     }
 
@@ -218,7 +218,7 @@ internal static class BeaconEndpoints
 
         return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
             ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, slot),
+            ResponseEnvelope.IsFinalized(ctx, slot, resolved.Root),
             s =>
             {
                 BeaconJsonWriter.WriteSignedBeaconBlock(s.Writer, resolved.Block);

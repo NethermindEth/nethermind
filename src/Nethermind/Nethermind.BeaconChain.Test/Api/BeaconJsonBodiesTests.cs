@@ -132,8 +132,10 @@ public class BeaconJsonBodiesTests
     [Test]
     public async Task Block_json_execution_optimistic_and_finalized_flags_track_the_drivers_own_signals()
     {
+        const ulong slot = Slot + 3;
         Hash256 root = BeaconApiTestHost.TestRoot(0x11);
-        _host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(slot, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.SetCanonicalRoot(slot, root);
 
         try
         {
@@ -372,7 +374,8 @@ public class BeaconJsonBodiesTests
         Hash256 parent = BeaconApiTestHost.TestRoot(0x50);
         Hash256 child = BeaconApiTestHost.TestRoot(0x51);
         _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
-        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 1, parent));
+        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 8, parent));
+        _host.Store.SetCanonicalRoot(Slot + 8, child);
 
         _host.SetStatus(child, child, 412_500);
         JsonElement finalized = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json))).RootElement;
