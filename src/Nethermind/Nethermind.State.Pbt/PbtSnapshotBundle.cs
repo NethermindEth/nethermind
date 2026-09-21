@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -260,6 +261,7 @@ public sealed class PbtSnapshotBundle(
     public void SelfDestruct(Address address)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
+        long start = Stopwatch.GetTimestamp();
         ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
         SortedDictionary<PbtStorageTreeKey, EvmWord> changes = new(PbtStorageKeyLayout.Comparer);
         bool clearedInLayer = false;
@@ -271,6 +273,7 @@ public sealed class PbtSnapshotBundle(
         foreach ((PbtStorageTreeKey key, EvmWord value) in changes)
             if (!EvmWordSlot.IsZero(value)) SetPbtLeaf(key, null);
         WriteBuffer.ClearStorage(hash);
+        Metrics.PbtSelfDestructTime.Observe(Stopwatch.GetTimestamp() - start);
 
         void ApplyChanges(PbtSnapshotContent content)
         {

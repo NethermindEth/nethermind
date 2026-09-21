@@ -61,6 +61,11 @@ public static class Metrics
     public static IMetricObserver PbtPrepareLeafChangesTime { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
+    [Description("Time clearing a self-destructed account's storage in the pbt snapshot bundle, including the persisted slot scan (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
+    public static IMetricObserver PbtSelfDestructTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
     [Description("Time updating the pbt trie root in the world state scope (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
     public static IMetricObserver PbtTrieUpdaterTime { get; set; } = new NoopMetricObserver();
