@@ -4255,8 +4255,11 @@ namespace Nethermind.TxPool.Test
         /// transaction sorts ahead of the sender's ordinary ones and says nothing about their domain, so its own
         /// fee must not delete an ordinary transaction that can pay.
         /// </summary>
+        /// <remarks>Run through both readiness callers: the block producer reads the pool through
+        /// <see cref="ITxPool.GetPendingForProduction"/>, which must not judge a bucket on its lowest entry
+        /// either.</remarks>
         [Test]
-        public void Keyed_frame_tx_below_the_base_fee_does_not_hide_an_ordinary_tx_that_can_pay()
+        public void Keyed_frame_tx_below_the_base_fee_does_not_hide_an_ordinary_tx_that_can_pay([Values] bool forProduction)
         {
             _txPool = CreatePool(null, KeyedNonceSpecProvider());
             Address sender = TestItem.PrivateKeyA.Address;
@@ -4275,7 +4278,9 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(atAccountNonce, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee: baseFee);
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> ready = forProduction
+                ? _txPool.GetPendingForProduction(_blockTree.Head!.Header, filterToReadyTx: true, baseFee).Transactions
+                : _txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee: baseFee).AsReadOnly();
 
             using (Assert.EnterMultipleScope())
             {

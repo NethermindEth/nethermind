@@ -417,6 +417,25 @@ namespace Nethermind.TxPool
             return false;
         }
 
+        /// <summary>Keeps only the senders with something includable in the next block, leaving the snapshot intact.</summary>
+        /// <remarks>Judged by the same <see cref="HasReadyTransaction"/> bucket scan as
+        /// <see cref="DropUnreadySenders"/>, because a single-entry test on the bucket's lowest transaction cannot
+        /// answer readiness once EIP-8250 keyed sequences share the ordering. Copies rather than removes in place:
+        /// a production snapshot is shared with the pool's cache and with other callers.</remarks>
+        private IDictionary<AddressAsKey, Transaction[]> SelectReadySenders(
+            IDictionary<AddressAsKey, Transaction[]> bySender, bool filterToReadyTx, in UInt256 baseFee)
+        {
+            if (!filterToReadyTx) return bySender;
+
+            Dictionary<AddressAsKey, Transaction[]> ready = new(bySender.Count);
+            foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
+            {
+                if (bucket.Length != 0 && HasReadyTransaction(bucket, sender, baseFee)) ready.Add(sender, bucket);
+            }
+
+            return ready;
+        }
+
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
 
@@ -2596,11 +2615,10 @@ namespace Nethermind.TxPool
         public PendingTransactionsView GetPendingForProduction(BlockHeader targetBlock, bool filterToReadyTx, UInt256 baseFee)
         {
             long forkStateVersion = Volatile.Read(ref _forkStateVersion);
-            Predicate<(AddressAsKey key, Transaction first)>? filter = filterToReadyTx
-                ? data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)
-                : null;
-            IDictionary<AddressAsKey, Transaction[]> transactions = _transactions.GetProductionSnapshot(filter);
-            IDictionary<AddressAsKey, Transaction[]> blobTransactions = _blobTransactions.GetProductionSnapshot(filter);
+            IDictionary<AddressAsKey, Transaction[]> transactions =
+                SelectReadySenders(_transactions.GetProductionSnapshot(), filterToReadyTx, baseFee);
+            IDictionary<AddressAsKey, Transaction[]> blobTransactions =
+                SelectReadySenders(_blobTransactions.GetProductionSnapshot(), filterToReadyTx, baseFee);
 
             return new(transactions, blobTransactions, IsRevalidatedFor(targetBlock, forkStateVersion));
         }
