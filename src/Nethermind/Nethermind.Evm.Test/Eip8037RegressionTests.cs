@@ -523,6 +523,56 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
+    // EIP-2929 pre-warms the recipient when the top frame is prepared; an authorization halt happens before
+    // that, so nothing loads or warms `tx.To` and the reported set must stay recipient-less.
+    [Test]
+    public void Eip8037_authorization_oog_reports_access_without_recipient()
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Address authority = TestItem.AddressF;
+        AuthorizationTuple authorization = ecdsa.Sign(TestItem.PrivateKeyF, SpecProvider.ChainId, TestItem.AddressC, 0);
+
+        Transaction template = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(authorization)
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(template, Spec);
+        // One gas short of the NEW_ACCOUNT state charge for the non-existent authority, so ProcessDelegations
+        // fails on its first state charge.
+        ulong gasLimit = intrinsicGas.Standard.Value
+            + (ulong)intrinsicGas.Standard.StateReservoir
+            + (ulong)GasCostOf.NewAccountState
+            - 1;
+
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(authorization)
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            gasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(authority)), Is.False);
+            Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, authority, block.Header.GasBeneficiary! }));
+        }
+    }
+
     [Test]
     public void Eip8037_authorization_refund_excludes_existing_authority_from_block_state_gas()
     {

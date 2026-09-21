@@ -1498,6 +1498,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             goto Complete;
         CompleteWithoutFrame:
+            // The create-state-gas halt jumps here from inside the top-level `using (VmState ...)`, so the
+            // tracker outlives the Dispose: RentTopLevel leaves `_canRestore` false, so it never Restores.
             if (tracer.IsTracingAccess)
             {
                 tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
