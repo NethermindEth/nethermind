@@ -1394,8 +1394,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0123456789abcdef")).SetName("Multi_word_output"),
     ];
 
-    // Regression cover for the returndata copy-elision in the transaction processor: the bytes handed to the
-    // receipt tracer must equal the top-level RETURN / REVERT / precompile output, whether the backing array is
+    // The receipt and action callbacks must both receive the terminal frame output, whether its backing array is
     // forwarded directly or copied.
     [TestCaseSource(nameof(TopLevelOutputCases))]
     public void Return_output_reaches_receipt_tracer_verbatim(byte[] data)
@@ -1411,6 +1410,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.EqualTo(data));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { data }));
         }
     }
 
@@ -1428,6 +1428,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
             Assert.That(receipt.ReturnValue, Is.EqualTo(data));
+            Assert.That(receipt.ActionOutputs, Is.Empty);
+            Assert.That(receipt.ActionRevertOutputs, Is.EqualTo(new[] { data }));
         }
     }
 
@@ -1440,15 +1442,15 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.Empty);
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { Array.Empty<byte>() }));
         }
     }
 
     // Top-level call straight to a precompile exercises the precompile output path, where the backing array may be
     // a whole array that is forwarded without copying.
-    [Test]
-    public void Top_level_precompile_output_reaches_receipt_tracer_verbatim()
+    [TestCaseSource(nameof(TopLevelOutputCases))]
+    public void Top_level_precompile_output_reaches_receipt_and_action_tracers_verbatim(byte[] input)
     {
-        byte[] input = Bytes.FromHexString("0x00112233445566778899aabbccddeeff");
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         Transaction tx = Build.A.Transaction
             .WithTo(IdentityPrecompile.Address)
@@ -1463,6 +1465,43 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.EqualTo(input));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { input }));
+        }
+    }
+
+    [Test]
+    public void Nested_precompile_and_top_level_outputs_remain_frame_local()
+    {
+        byte[] nestedOutput = Bytes.FromHexString("0x1122334455667788");
+        byte[] topLevelOutput = Bytes.FromHexString("0xaabbccddeeff");
+        byte[] code = Prepare.EvmCode
+            .CallWithInput(IdentityPrecompile.Address, 50_000, nestedOutput)
+            .StoreDataInMemory(64, topLevelOutput)
+            .Return(topLevelOutput.Length, 64)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ReturnValue, Is.EqualTo(topLevelOutput));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { nestedOutput, topLevelOutput }));
+        }
+    }
+
+    [Test]
+    public void Exceptional_halt_does_not_report_action_output()
+    {
+        TestAllTracerWithOutput receipt = Execute((byte)Instruction.ADD);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipt.ReturnValue, Is.Empty);
+            Assert.That(receipt.ActionOutputs, Is.Empty);
+            Assert.That(receipt.ActionRevertOutputs, Is.Empty);
+            Assert.That(receipt.ReportedActionErrors, Is.EqualTo([EvmExceptionType.StackUnderflow]));
         }
     }
 }

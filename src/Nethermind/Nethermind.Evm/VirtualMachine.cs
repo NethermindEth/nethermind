@@ -1174,10 +1174,10 @@ public partial class VirtualMachine<TGasPolicy>(
                 _txTracer.ReportActionEnd(gasAvailable - codeDepositGasCost, currentState.To, outputBytes);
             }
         }
-        // For non-creation calls, report the action end using the current available gas and the standard return data.
+        // A top-level frame has no parent to populate ReturnDataBuffer, so report its terminal output directly.
         else
         {
-            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(currentState.Gas), ReturnDataBuffer);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(currentState.Gas), outputBytes);
         }
     }
 
