@@ -7,10 +7,8 @@ using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
-using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
