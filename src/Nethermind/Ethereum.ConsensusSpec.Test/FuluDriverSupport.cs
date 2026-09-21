@@ -13,18 +13,17 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using NUnit.Framework;
 using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
 
 /// <summary>
 /// Shared plumbing for the suites that actually drive this repo's state transition (operations,
-/// epoch_processing, sanity) - all scoped to the fulu fork, the only one whose beacon state this
-/// driver's BlockProcessing/EpochProcessing pipeline accepts (see ForkedStateTransition's remarks:
-/// the pipeline is typed to <see cref="BeaconStateFulu"/> specifically, and an Electra-shaped state
-/// cannot be upcast into it without risking a silently-wrong proposer index, since EIP-7917's
-/// proposer_lookahead has no pre-Fulu equivalent this driver can compute). Earlier forks are reported
-/// not-implemented by the suites themselves rather than run through this pipeline anyway.
+/// epoch_processing, sanity). The BlockProcessing/EpochProcessing pipeline is typed to
+/// <see cref="BeaconStateFulu"/> specifically (see ForkedStateTransition's remarks); the fork-specific
+/// work of getting another fork's state into and out of it honestly lives in <see cref="ForkDriver"/>,
+/// and the helpers here are fork-neutral.
 /// </summary>
 public static class FuluDriverSupport
 {
@@ -37,6 +36,27 @@ public static class FuluDriverSupport
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(path);
         BeaconStateFulu.Decode(ssz, out BeaconStateFulu state);
         return state;
+    }
+
+    /// <summary>A fork that was extracted and enumerated but has no driver is a wiring error, reported as not-implemented rather than a pass.</summary>
+    public static ForkDriver RequireForkDriver(string fork) =>
+        ForkDriver.ByName.TryGetValue(fork, out ForkDriver? driver)
+            ? driver
+            : throw new NotImplementedInDriverException($"fork '{fork}' has no ForkDriver; its vectors cannot be carried through this pipeline.");
+
+    /// <summary>
+    /// Fails the vector unless the working state's root, taken in the fork's own shape, equals the
+    /// expected post-state's; on mismatch names the diverging fields so the failure is debuggable.
+    /// </summary>
+    public static void AssertPostStateRoot(ForkDriver driver, string postPath, BeaconStateFulu actual)
+    {
+        (object expectedPost, Hash256 expectedRoot) = driver.DecodePost(postPath);
+        Hash256 actualRoot = driver.StateRoot(actual);
+        if (expectedRoot == actualRoot)
+            return;
+
+        List<string> diff = Diff(expectedPost, driver.ForDiff(actual), "state");
+        Assert.Fail($"post-state root mismatch: expected {expectedRoot}, actual {actualRoot}. Diverging fields: {(diff.Count > 0 ? string.Join("; ", diff) : "(none found - roots differ anyway)")}");
     }
 
     public static PubkeyCache BuildPubkeyCache(BeaconStateFulu state)
