@@ -14,6 +14,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Logging;
 
@@ -117,10 +118,6 @@ public sealed class PrecompileCaches
         _partitions.TryGetValue(address, out partition);
 
     /// <summary> Total per-block entries across every partition. </summary>
-    /// <remarks>
-    /// Property is for tests only unless optimized - counting on <see cref="ConcurrentDictionary{TKey,TValue}"/>
-    /// takes all locks inside, stopping any new admissions.
-    /// </remarks>
     internal int BlockCacheCount
     {
         get
@@ -138,7 +135,7 @@ public sealed class PrecompileCaches
     {
 #if !ZK_EVM
         // publishes the metrics to make occupancy gauges report each block's high point
-        PrecompileMetrics.PrecompileCacheSurvivingEntries = _survivingCache.Count;
+        if (ExecutionMetricsFlag.IsActive) PrecompileMetrics.PrecompileCacheSurvivingEntries = _survivingCache.Count;
 #endif
         foreach (KeyValuePair<AddressAsKey, Partition> partition in _partitions)
         {
@@ -173,15 +170,19 @@ public sealed class PrecompileCaches
         private readonly ClockCache<Key, Result<byte[]>> _survivingCache;
         private readonly string _name;
 
-        private long _bytes;
+        // Admission counters, written by every thread that stores into this partition.
+        private CacheLinePaddedLong _bytes;
+        private CacheLinePaddedLong _entryCount;
 
-        // Metrics, counted in fields and published on block clear - to prevent additional dictionary lookup on read path
-        private long _blockHits;
-        private long _survivingHits;
-        private long _misses;
-        private long _rejectedFull;
+        // Metrics, counted in fields and published on block clear - to prevent additional dictionary lookup on read path.
+        // Padded because a counting thread would otherwise invalidate the line the admission path is updating.
+        private CacheLinePaddedLong _blockHits;
+        private CacheLinePaddedLong _survivingHits;
+        private CacheLinePaddedLong _misses;
+        private CacheLinePaddedLong _rejectedFull;
 
-        internal int Count => _entries.Count;
+        /// <summary> Entries held by this partition. Maintained here because <see cref="ConcurrentDictionary{TKey,TValue}.Count"/> takes all locks inside, stopping any new admissions. </summary>
+        internal int Count => (int)Volatile.Read(ref _entryCount.Value);
 
         internal long MaxBytes { get; }
 
@@ -189,7 +190,7 @@ public sealed class PrecompileCaches
         /// <remarks>
         /// Admission reserves before it checks, so this may read above <see cref="MaxBytes"/> while an over-the-limit entry is being processed.
         /// </remarks>
-        internal long UsedBytes => Volatile.Read(ref _bytes);
+        internal long UsedBytes => Volatile.Read(ref _bytes.Value);
 
         internal Partition(string name, long maxBytes, ClockCache<Key, Result<byte[]>> survivingCache)
         {
@@ -229,10 +230,10 @@ public sealed class PrecompileCaches
             long entryBytes = (long)key.DataLength + (result.Data?.Length ?? 0);
             long reservation = entryBytes + EntryOverheadBytes;
 
-            bool tier1 = Interlocked.Add(ref _bytes, reservation) <= MaxBytes;
+            bool tier1 = Interlocked.Add(ref _bytes.Value, reservation) <= MaxBytes;
             if (!tier1)
             {
-                Interlocked.Add(ref _bytes, -reservation);
+                Interlocked.Add(ref _bytes.Value, -reservation);
                 Record(ref _rejectedFull);
             }
 
@@ -243,14 +244,24 @@ public sealed class PrecompileCaches
             // effective-input bounds are expected to remain the same
             Key copiedKey = key.WithCopiedData();
 
-            if (tier1 && !_entries.TryAdd(copiedKey, result))
+            if (tier1)
             {
-                // another thread computed the same result concurrently - this copy is redundant
-                Interlocked.Add(ref _bytes, -reservation);
-                tier1 = false;
+                if (_entries.TryAdd(copiedKey, result))
+                {
+                    Interlocked.Increment(ref _entryCount.Value);
+                }
+                else
+                {
+                    // another thread computed the same result concurrently - this copy is redundant
+                    Interlocked.Add(ref _bytes.Value, -reservation);
+                    tier1 = false;
+                }
             }
 
-            if (tier2) _survivingCache.Set(copiedKey, result);
+            if (tier2)
+            {
+                _survivingCache.Set(copiedKey, result);
+            }
 
             return tier1;
         }
@@ -258,7 +269,8 @@ public sealed class PrecompileCaches
         internal void Clear()
         {
             _entries.NoLockClear();
-            Volatile.Write(ref _bytes, 0);
+            Volatile.Write(ref _bytes.Value, 0);
+            Volatile.Write(ref _entryCount.Value, 0);
         }
 
         /// <summary> Copies this partition's counters into the exported metrics. </summary>
@@ -267,10 +279,10 @@ public sealed class PrecompileCaches
 #if !ZK_EVM
             if (!ExecutionMetricsFlag.IsActive) return;
 
-            PrecompileMetrics.PrecompileCacheProbes[(_name, ProbeBlockHit)] = Volatile.Read(ref _blockHits);
-            PrecompileMetrics.PrecompileCacheProbes[(_name, ProbeSurvivingHit)] = Volatile.Read(ref _survivingHits);
-            PrecompileMetrics.PrecompileCacheProbes[(_name, ProbeMiss)] = Volatile.Read(ref _misses);
-            PrecompileMetrics.PrecompileCacheRejectedFull[_name] = Volatile.Read(ref _rejectedFull);
+            PrecompileMetrics.PrecompileCacheProbes[(_name, ProbeBlockHit)] = Volatile.Read(ref _blockHits.Value);
+            PrecompileMetrics.PrecompileCacheProbes[(_name, ProbeSurvivingHit)] = Volatile.Read(ref _survivingHits.Value);
+            PrecompileMetrics.PrecompileCacheProbes[(_name, ProbeMiss)] = Volatile.Read(ref _misses.Value);
+            PrecompileMetrics.PrecompileCacheRejectedFull[_name] = Volatile.Read(ref _rejectedFull.Value);
             PrecompileMetrics.PrecompileCachePartitionMaxBytes[_name] = MaxBytes;
             PrecompileMetrics.PrecompileCacheUsedBytes[_name] = UsedBytes;
             PrecompileMetrics.PrecompileCacheEntries[_name] = Count;
@@ -278,10 +290,10 @@ public sealed class PrecompileCaches
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void Record(ref long counter)
+        private static void Record(ref CacheLinePaddedLong counter)
         {
             if (!ExecutionMetricsFlag.IsActive) return;
-            Interlocked.Increment(ref counter);
+            Interlocked.Increment(ref counter.Value);
         }
     }
 
