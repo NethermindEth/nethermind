@@ -15,7 +15,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer
+public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -23,18 +23,41 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     // attached to the current frame transaction's receipt; reset at the start of every tx trace.
     private Address? _frameTxPayer;
     private TxFrameReceipt[]? _frameTxReceipts;
+    private IFrameTxReceiptTracer? _currentFrameTxTracer;
 
     public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
     {
         _frameTxPayer = payer;
         _frameTxReceipts = frameReceipts;
+        _currentFrameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
+    }
+
+    public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) =>
+        _currentFrameTxTracer?.ReportFrameEnd(frameIndex, error);
+
+    /// <summary>The innermost tracer of <paramref name="tracer"/> that takes EIP-8141 frame reports.</summary>
+    /// <remarks>The tracing RPCs hand the processor a wrapped tracer, so the capability is reached through
+    /// the wrapper chain rather than on the outermost one. A <see cref="CompositeTxTracer"/> is not a wrapper
+    /// and ends the walk; no tracing RPC builds one, and a chain that did would need this to fan out.</remarks>
+    private static IFrameTxReceiptTracer? FrameTxTracerOf(ITxTracer tracer)
+    {
+        while (true)
+        {
+            if (tracer is IFrameTxReceiptTracer frameTxTracer) return frameTxTracer;
+            if (tracer is not ITxTracerWrapper wrapper) return null;
+            tracer = wrapper.InnerTracer;
+        }
     }
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
+    public bool IsCollectingLogs => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
     public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
     public bool IsTracingInstructions => _currentTxTracer.IsTracingInstructions;
+    public UInt256 InstructionMask => _currentTxTracer is IInstructionTracingFilter filter
+        ? filter.InstructionMask
+        : UInt256.MaxValue;
     public bool IsTracingRefunds => _currentTxTracer.IsTracingRefunds;
     public bool IsTracingReturnData => _currentTxTracer.IsTracingReturnData;
     public bool IsTracingCode => _currentTxTracer.IsTracingCode;
@@ -244,6 +267,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);
 
+    public void ReportActionRemainingGas(ulong gas) =>
+        _currentTxTracer.ReportActionRemainingGas(gas);
+
     public void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output) =>
         _currentTxTracer.ReportActionRevert(gasLeft, output);
 
@@ -352,6 +378,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         _currentIndex = 0;
         CurrentTx = null;
         _currentTxTracer = NullTxTracer.Instance;
+        _currentFrameTxTracer = null;
         int txCount = parallel ? 1 : block.Transactions.Length;
         _txReceipts.Clear();
         _txReceipts.EnsureCapacity(txCount);
@@ -391,6 +418,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     {
         _otherTracer = NullBlockTracer.Instance;
         _currentTxTracer = NullTxTracer.Instance;
+        _currentFrameTxTracer = null;
         Block = null!;
         CurrentTx = null;
         _currentIndex = 0;
@@ -409,6 +437,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         _frameTxPayer = null;
         _frameTxReceipts = null;
         _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
+        _currentFrameTxTracer = FrameTxTracerOf(_currentTxTracer);
         return _currentTxTracer;
     }
 

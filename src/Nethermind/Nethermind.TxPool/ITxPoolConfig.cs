@@ -37,20 +37,29 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "The max number of pending transactions per single sender. `0` to lift the limit.")]
     int MaxPendingTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for the transaction to be accepted into the public mempool. `0` to lift the limit. It bounds the declared-gas check only: an opaque prefix that has to be simulated is additionally capped, frame by frame, at the fixed `Eip8141Constants.MaxVerifyGas`, which raising this value does not move. Lifting this limit with `0` still caps signature verification at that same fixed `Eip8141Constants.MaxVerifyGas`, so per-signature recovery cannot be uncapped. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` to lift the limit, though a simulated prefix and per-signature recovery stay capped frame by frame at the fixed `Eip8141Constants.MaxVerifyGas` either way. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyGas { get; set; }
 
-    [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for the transaction to be accepted into the public mempool. EIP-8250 keeps this cap unchanged while charging a first use of each keyed nonce key 97,920 state gas from the approving prefix frame, so at the default value a first-use set of more than five keys does not propagate and reaches a chain only through direct submission to a builder. `0` to lift the limit. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for it to be accepted into the public mempool. EIP-8250 charges a first use of each keyed nonce key 97,920 state gas, so at the default value a first-use set of more than five keys does not propagate. `0` to lift the limit. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyStateGas { get; set; }
 
-    [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. A gossiped transaction never waits for a busy simulator; a locally submitted one waits up to this long as well, so for it the two are additive. `0` to lift the limit.")]
+    [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. A local submission may also wait this long for a busy simulator, so its ceiling is twice this value. `0` to lift the limit.")]
     int FrameTxSimulationTimeoutMs { get; set; }
 
     [ConfigItem(DefaultValue = "1000", Description = "The total time, in milliseconds, spent simulating EIP-8141 validation prefixes per chain head. Once spent, opaque frame transactions are rejected until the next head. `0` to lift the limit.")]
     int FrameTxSimulationBudgetPerHeadMs { get; set; }
 
-    [ConfigItem(DefaultValue = "1", Description = "EIP-8141: the number of distinct chain heads a frame transaction may fail to approve any payment across, during block production, before the pool evicts it. Some failures turn on head state that only a new head can clear (an out-of-range recent-root reference, a SENDER frame reached before its approval), so the budget is counted per head: repeated production passes against the same head spend a single unit. A value above `1` keeps a transiently-failing transaction for that many heads at the cost of re-simulating its validation prefix once per head; `1` (or below) evicts on the first failed attempt, the pre-budget behaviour.")]
+    [ConfigItem(DefaultValue = "1", Description = "EIP-8141: the number of distinct chain heads a frame transaction may fail to approve any payment across, during block production, before the pool evicts it. Some failures turn on head state that only a new head can clear (an out-of-range recent-root reference, a SENDER frame reached before its approval), so the budget is counted per head: repeated production passes against the same head spend a single unit. A value above `1` keeps a transiently-failing transaction for that many heads at the cost of re-simulating its validation prefix once per head; `1` (or below) evicts on the first failed attempt, the pre-budget behaviour. The budget is counted per pool residency, not per transaction: an evicted transaction may be resubmitted, and a resubmitted one is granted a fresh budget, because the failures it buys heads for turn on chain state that the time out of the pool may have cleared. Raising it therefore multiplies by that factor the production-time simulation a peer can provoke by re-gossiping a transaction that keeps failing.")]
     int FrameTxEvictionRetryBudget { get; set; }
+
+    /// <remarks>
+    /// One allowance per transaction, shared by every path that defers, so a transaction alternating between
+    /// them cannot carry for twice as long as either alone. Bounded because a carry that feeds itself never
+    /// drains; what it bounds is that self-feeding, not the transaction's total stay, since the count is
+    /// consecutive.
+    /// </remarks>
+    [ConfigItem(DefaultValue = "2", Description = "EIP-8141: the number of *consecutive* chain heads a pending frame transaction the pool deferred rather than judged may be carried across before it stops re-queuing it. Any head that revalidates it without deferring it again resets the count. `0` stops re-queuing entirely.")]
+    int FrameTxRevalidationDeferralBudget { get; set; }
 
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
     int MaxPendingBlobTxsPerSender { get; set; }

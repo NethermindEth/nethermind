@@ -28,6 +28,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -836,6 +837,19 @@ public class Eth70ProtocolHandlerTests
             Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
             Assert.That(response.LastBlockIncomplete, Is.False);
         }
+    }
+
+    [Test]
+    public void Should_bound_receipt_lookups_for_blocks_without_transactions()
+    {
+        // A block with no transactions costs a single byte of response, so the size limit alone
+        // never ends the loop.
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns([]);
+
+        ReceiptsMessage70 response = RequestReceipts(
+            Enumerable.Repeat(Keccak.Zero, NethermindSyncLimits.MaxHashesFetch).ToArray());
+
+        Assert.That(response.TxReceipts, Has.Count.EqualTo(2 * NethermindSyncLimits.MaxReceiptFetch));
     }
 
     [Test]

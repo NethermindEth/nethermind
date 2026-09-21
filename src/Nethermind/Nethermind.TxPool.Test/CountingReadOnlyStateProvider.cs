@@ -3,11 +3,11 @@
 
 #nullable enable
 
-using System;
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool.Test;
 
@@ -40,5 +40,5 @@ internal sealed class CountingReadOnlyStateProvider(IReadOnlyStateProvider inner
 
     public bool IsDeadAccount(Address address) => inner.IsDeadAccount(address);
 
-    public ReadOnlySpan<byte> Get(in StorageCell storageCell) => inner.Get(in storageCell);
+    public void Get(in StorageCell storageCell, out UInt256 value) => inner.Get(in storageCell, out value);
 }

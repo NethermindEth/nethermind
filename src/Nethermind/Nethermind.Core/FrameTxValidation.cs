@@ -67,7 +67,7 @@ public static class FrameTxValidation
     /// <param name="transaction">The frame transaction to check. Must carry <see cref="Transaction.Frames"/> and a
     /// resolved <see cref="Transaction.SenderAddress"/>; both are reported as failures rather than thrown on.</param>
     /// <param name="postTxEnabled">Whether EIP-7906 is active, which decides only whether
-    /// <see cref="TxFrame.ModePostTx"/> frames are admitted at all.</param>
+    /// <see cref="FrameMode.PostTx"/> frames are admitted at all.</param>
     /// <param name="error">On failure, the first violated constraint, always one of this type's message constants;
     /// <see langword="null"/> on success.</param>
     /// <returns><see langword="true"/> if every stateless constraint holds.</returns>
@@ -94,22 +94,22 @@ public static class FrameTxValidation
         {
             TxFrame frame = frames[i];
 
-            if (frame.Mode > TxFrame.ModePostTx)
+            if (frame.Mode > FrameMode.PostTx)
             {
                 error = InvalidMode;
                 return false;
             }
 
-            if (frame.Mode == TxFrame.ModePostTx && !postTxEnabled)
+            if (frame.Mode == FrameMode.PostTx && !postTxEnabled)
             {
                 error = PostTxNotEnabled;
                 return false;
             }
 
             // Assertions observe the finished transaction, so nothing may run after them.
-            if (frame.Mode == TxFrame.ModePostTx)
+            if (frame.Mode == FrameMode.PostTx)
             {
-                if (i + 1 < frames.Length && frames[i + 1].Mode != TxFrame.ModePostTx)
+                if (i + 1 < frames.Length && frames[i + 1].Mode != FrameMode.PostTx)
                 {
                     error = PostTxNotTrailing;
                     return false;
@@ -117,26 +117,26 @@ public static class FrameTxValidation
 
                 // A batch opened by a POST_TX frame can never unroll — the assertion path exits the
                 // frame loop first — so the flag would be inert here and clients could diverge on it.
-                if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0)
+                if ((frame.Flags & FrameFlags.AtomicBatch) != 0)
                 {
                     error = AtomicBatchOnPostTxFrame;
                     return false;
                 }
             }
 
-            if (frame.Flags > (TxFrame.ApproveScopeMask | TxFrame.AtomicBatchFlag))
+            if (frame.Flags > (TxFrame.ApproveScopeMask | FrameFlags.AtomicBatch))
             {
                 error = InvalidFlags;
                 return false;
             }
 
-            if (frame.Mode != TxFrame.ModeSender && !frame.Value.IsZero)
+            if (frame.Mode != FrameMode.Sender && !frame.Value.IsZero)
             {
                 error = ValueOutsideSenderMode;
                 return false;
             }
 
-            if ((frame.Flags & TxFrame.ApproveExecution) != 0
+            if ((frame.Flags & FrameFlags.ApproveExecution) != 0
                 && frame.Target is not null
                 && frame.Target != transaction.SenderAddress)
             {
@@ -144,22 +144,22 @@ public static class FrameTxValidation
                 return false;
             }
 
-            if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0 && i + 1 == frames.Length)
+            if ((frame.Flags & FrameFlags.AtomicBatch) != 0 && i + 1 == frames.Length)
             {
                 error = AtomicBatchOnLastFrame;
                 return false;
             }
 
             // EIP-8141: atomic batches contain only non-VERIFY frames.
-            if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0)
+            if ((frame.Flags & FrameFlags.AtomicBatch) != 0)
             {
-                if (frame.Mode == TxFrame.ModeVerify)
+                if (frame.Mode == FrameMode.Verify)
                 {
                     error = AtomicBatchOnVerifyFrame;
                     return false;
                 }
 
-                if (i + 1 < frames.Length && frames[i + 1].Mode == TxFrame.ModeVerify)
+                if (i + 1 < frames.Length && frames[i + 1].Mode == FrameMode.Verify)
                 {
                     error = AtomicBatchFollowedByVerifyFrame;
                     return false;
@@ -167,7 +167,7 @@ public static class FrameTxValidation
 
                 // An unroll moves the terminal frame onto the successor and marks it skipped. On a POST_TX
                 // successor that silently drops the assertion, which is the case it exists to catch.
-                if (i + 1 < frames.Length && frames[i + 1].Mode == TxFrame.ModePostTx)
+                if (i + 1 < frames.Length && frames[i + 1].Mode == FrameMode.PostTx)
                 {
                     error = AtomicBatchFollowedByPostTxFrame;
                     return false;
@@ -180,7 +180,7 @@ public static class FrameTxValidation
                 return false;
             }
 
-            if (frame.Mode == TxFrame.ModeVerify && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
+            if (frame.Mode == FrameMode.Verify && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
             {
                 if (frame.Flags != 0 || !frame.Value.IsZero || frame.StateGasLimit != 0 || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
                 {
@@ -262,8 +262,8 @@ public static class FrameTxValidation
         return true;
 
         static bool BelongsToAtomicBatch(TxFrame[] frames, int i) =>
-            (frames[i].Flags & TxFrame.AtomicBatchFlag) != 0
-            || (i > 0 && (frames[i - 1].Flags & TxFrame.AtomicBatchFlag) != 0);
+            (frames[i].Flags & FrameFlags.AtomicBatch) != 0
+            || (i > 0 && (frames[i - 1].Flags & FrameFlags.AtomicBatch) != 0);
     }
 
     /// <summary>The gas charged for verifying a signature of the given EIP-8141 scheme.</summary>
@@ -285,7 +285,7 @@ public static class FrameTxValidation
         ulong total = 0;
         foreach (TxFrame frame in frames ?? [])
         {
-            total = Saturating(total, Saturating(frame.ExecutionGasLimit, frame.StateGasLimit));
+            total = total.SaturatingAdd(frame.ExecutionGasLimit.SaturatingAdd(frame.StateGasLimit));
         }
 
         return total;
@@ -304,10 +304,10 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
-            total = Saturating(total, frames[i].ExecutionGasLimit);
+            total = total.SaturatingAdd(frames[i].ExecutionGasLimit);
         }
 
-        return Saturating(total, SignatureVerificationWorkGas(transaction));
+        return total.SaturatingAdd(SignatureVerificationWorkGas(transaction));
     }
 
     /// <summary>
@@ -326,7 +326,7 @@ public static class FrameTxValidation
         ulong total = 0;
         foreach (TxFrameSignature signature in signatures ?? [])
         {
-            total = Saturating(total, SignatureVerificationGas(signature.Scheme));
+            total = total.SaturatingAdd(SignatureVerificationGas(signature.Scheme));
         }
 
         return total;
@@ -345,7 +345,7 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
-            total = Saturating(total, frames[i].StateGasLimit);
+            total = total.SaturatingAdd(frames[i].StateGasLimit);
         }
 
         return total;
@@ -369,7 +369,7 @@ public static class FrameTxValidation
         int prefixEnd = -1;
         for (int i = 0; i < frames.Length; i++)
         {
-            if ((frames[i].Flags & TxFrame.ApprovePayment) != 0)
+            if ((frames[i].Flags & FrameFlags.ApprovePayment) != 0)
             {
                 prefixEnd = i;
                 break;
@@ -383,7 +383,7 @@ public static class FrameTxValidation
 
         for (int i = prefixEnd + 1; i < frames.Length; i++)
         {
-            if (frames[i].Mode == TxFrame.ModeVerify)
+            if (frames[i].Mode == FrameMode.Verify)
             {
                 return true;
             }
@@ -435,8 +435,8 @@ public static class FrameTxValidation
         for (int i = ApprovalSearchStart(frames); i < frames.Length; i++)
         {
             // A non-VERIFY frame ends the prefix, so nothing past it can install a payer.
-            if (frames[i].Mode != TxFrame.ModeVerify) break;
-            if ((frames[i].Flags & TxFrame.ApprovePayment) == 0) continue;
+            if (frames[i].Mode != FrameMode.Verify) break;
+            if ((frames[i].Flags & FrameFlags.ApprovePayment) == 0) continue;
 
             Address? resolved = frames[i].Target ?? transaction.SenderAddress;
             return resolved == transaction.SenderAddress ? null : resolved;
@@ -480,14 +480,11 @@ public static class FrameTxValidation
         return null;
     }
 
-    private static ulong Saturating(ulong total, ulong addend) =>
-        addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
-
     /// <summary>True if <paramref name="frame"/> is a well-formed EIP-8141 expiry-verifier VERIFY frame.</summary>
     /// <remarks>Position is not checked; the value and length checks let a caller read the deadline without re-validating.</remarks>
     public static bool IsExpiryVerifyFrame(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeVerify
-        && frame.Flags == TxFrame.ApproveScopeNone
+        frame.Mode == FrameMode.Verify
+        && frame.Flags == FrameFlags.None
         && frame.Target == Eip8141Constants.ExpiryVerifierAddress
         && frame.Value.IsZero
         && frame.Data.Length == Eip8141Constants.ExpiryDataLength;
@@ -495,26 +492,26 @@ public static class FrameTxValidation
     /// <summary>True if <paramref name="frame"/> is a deploy frame: any default-mode frame carrying no
     /// approval scope, so it can never approve a payer.</summary>
     public static bool IsDeployFrame(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeDefault && frame.Flags == TxFrame.ApproveScopeNone;
+        frame.Mode == FrameMode.Default && frame.Flags == FrameFlags.None;
 
     /// <summary>True if <paramref name="frame"/> is a self-relay VERIFY frame approving both execution and payment for <paramref name="sender"/>.</summary>
     public static bool IsSelfVerifyFrame(TxFrame frame, Address? sender) =>
-        IsSelfTargetedVerify(frame, TxFrame.ApproveExecutionAndPayment, sender);
+        IsSelfTargetedVerify(frame, FrameFlags.ApproveExecutionAndPayment, sender);
 
     /// <summary>True if <paramref name="frame"/> is a VERIFY frame approving execution only (not payment) for <paramref name="sender"/>.</summary>
     public static bool IsOnlyVerifyFrame(TxFrame frame, Address? sender) =>
-        IsSelfTargetedVerify(frame, TxFrame.ApproveExecution, sender);
+        IsSelfTargetedVerify(frame, FrameFlags.ApproveExecution, sender);
 
     /// <summary>True if <paramref name="frame"/> is a VERIFY frame approving payment.</summary>
     private static bool IsPayFrame(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeVerify && frame.Flags == TxFrame.ApprovePayment;
+        frame.Mode == FrameMode.Verify && frame.Flags == FrameFlags.ApprovePayment;
 
     /// <remarks>
     /// Comparing the whole <see cref="TxFrame.Flags"/> byte rather than the approve scope also enforces
     /// the EIP-8141 structural rule that no prefix frame carries <c>ATOMIC_BATCH_FLAG</c>.
     /// </remarks>
-    private static bool IsSelfTargetedVerify(TxFrame frame, byte flags, Address? sender) =>
-        frame.Mode == TxFrame.ModeVerify
+    private static bool IsSelfTargetedVerify(TxFrame frame, FrameFlags flags, Address? sender) =>
+        frame.Mode == FrameMode.Verify
         && frame.Flags == flags
         && (frame.Target is null || frame.Target == sender);
 

@@ -48,6 +48,53 @@ public class MerkleTests
         Assert.That(actual, Is.EqualTo(tree[0]));
     }
 
+    [Test]
+    public void Merkleizer_does_not_read_scratch_it_has_not_written(
+        [Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33)] int count, [Values(2, 1024)] int minimumWidth)
+    {
+        UInt256[] chunks = new UInt256[count];
+        for (int i = 0; i < count; i++) chunks[i] = (UInt256)(i + 1);
+        int width = minimumWidth;
+        while (width < count) width *= 2;
+
+        Span<UInt256> scratch = stackalloc UInt256[Merkle.NextPowerOfTwoExponent((ulong)width) + 1];
+        scratch.Fill(UInt256.MaxValue);
+        Merkleizer merkleizer = new(scratch);
+        for (int i = 0; i < count; i++) merkleizer.Feed(chunks[i]);
+        merkleizer.CalculateRoot(out UInt256 actual);
+
+        Merkle.Merkleize(out UInt256 expected, chunks, (ulong)width);
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Partial_byte_chunks_match_poisoned_scratch([Values(1, 31, 33, 65)] int length, [Values(0UL, 1024UL)] ulong limit)
+    {
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(i + 1);
+        int count = (length + 31) / 32;
+        Span<UInt256> scratch = stackalloc UInt256[Merkle.NextPowerOfTwoExponent(limit == 0 ? (ulong)count : limit) + 1];
+        scratch.Fill(UInt256.MaxValue);
+        Merkleizer merkleizer = new(scratch);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] chunk = new byte[32];
+            bytes.AsSpan(i * 32, Math.Min(32, length - i * 32)).CopyTo(chunk);
+            merkleizer.Feed(new UInt256(chunk));
+        }
+        merkleizer.CalculateRoot(out UInt256 expected);
+
+        Merkle.Merkleize(out UInt256 actual, bytes.AsSpan(), limit);
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Merkleize_empty_is_the_zero_chunk([Values(0UL, 1UL)] ulong limit)
+    {
+        Merkle.Merkleize(out UInt256 root, ReadOnlySpan<UInt256>.Empty, limit);
+        Assert.That(root, Is.EqualTo(UInt256.Zero));
+    }
+
     [TestCase(ulong.MinValue, 0UL)]
     [TestCase(1UL, 0UL)]
     [TestCase(2UL, 1UL)]
@@ -217,7 +264,7 @@ public class MerkleTests
     [TestCase(64, 6)]
     public void Feed_test(int leafs, int depth)
     {
-        Merkleizer merkleizer = new(depth);
+        Merkleizer merkleizer = new(new UInt256[depth + 1]);
         for (int i = 0; i < leafs; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -239,7 +286,7 @@ public class MerkleTests
         UInt256 result = UInt256.Zero;
         for (int j = 0; j < leafs; j++)
         {
-            Merkleizer merkleizer = new(depth);
+            Merkleizer merkleizer = new(new UInt256[depth + 1]);
             for (int i = j; i < leafs; i++)
             {
                 merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -254,7 +301,7 @@ public class MerkleTests
     [Test]
     public void Fill()
     {
-        Merkleizer merkleizer = new(6);
+        Merkleizer merkleizer = new(new UInt256[7]);
         for (int i = 0; i < 7; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -269,7 +316,7 @@ public class MerkleTests
 
     private static UInt256 MerkleizeWithConverter<T>(T value, FeedItem<T> feed)
     {
-        Merkleizer merkleizer = new(0);
+        Merkleizer merkleizer = new(new UInt256[1]);
         feed(ref merkleizer, value);
         merkleizer.CalculateRoot(out UInt256 root);
         return root;

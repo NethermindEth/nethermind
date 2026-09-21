@@ -340,8 +340,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         StorageCell cell = new(address, in slot);
         if (!sink.StillNeeded(in cell)) return;
-        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
-        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
+        _snapshotBundle.GetSlot(address, in slot, selfDestructIdx, out UInt256? value);
+        sink.OnStorageRead(in cell, value.GetValueOrDefault());
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
@@ -503,14 +503,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         public void Set(Address key, Account? account)
         {
             _dirtyAccounts[key] = account;
-            scope._snapshotBundle.SetAccount(key, account);
 
             if (account is null)
             {
                 // This may not get called by the storage write batch as the worldstate does not try to update storage
                 // at all if the end account is null. This is not a problem for trie, but is a problem for flat.
-                scope.CreateStorageTreeImpl(key).ClearStorage();
+                // Resolve the storage tree before deleting the account from the flat snapshot: creating it reads
+                // the account, and with VerifyWithTrie that read is compared against the trie, which only applies
+                // this delete on Dispose. Reading after the delete throws for any account the trie still holds,
+                // e.g. the EIP-161 clearing of a pre-existing empty account.
+                FlatStorageTree storage = scope.CreateStorageTreeImpl(key);
+                scope._snapshotBundle.SetAccount(key, account);
+                storage.ClearStorage();
+                return;
             }
+
+            scope._snapshotBundle.SetAccount(key, account);
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries) =>

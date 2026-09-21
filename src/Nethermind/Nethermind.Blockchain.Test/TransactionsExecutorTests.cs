@@ -464,7 +464,7 @@ namespace Nethermind.Blockchain.Test
                 Type = TxType.FrameTx,
                 Nonce = 0,
                 SenderAddress = TestItem.AddressA,
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, frameData)],
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, frameData)],
                 FrameSignatures = [],
                 GasLimit = frameGasLimit,
                 GasPrice = 1,
@@ -507,7 +507,7 @@ namespace Nethermind.Blockchain.Test
                 .WithGasLimit(GasCostOf.Transaction)
                 .TestObject;
             // The picker prices a frame tx through its frames, so it needs at least one to be priceable.
-            frameBlobTx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: GasCostOf.Transaction, UInt256.Zero, default)];
+            frameBlobTx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: GasCostOf.Transaction, UInt256.Zero, default)];
             frameBlobTx.FrameSignatures = [];
 
             Block block = Build.A.Block
@@ -540,7 +540,7 @@ namespace Nethermind.Blockchain.Test
             using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
             stateProvider.CreateAccount(TestItem.AddressA, 100.Ether);
             stateProvider.InsertCode(TestItem.AddressA, prefix == FramePrefix.Approves
-                    ? Prepare.EvmCode.PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done
+                    ? Prepare.EvmCode.PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done
                     : Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
                 spec);
             stateProvider.Commit(spec);
@@ -553,7 +553,7 @@ namespace Nethermind.Blockchain.Test
                 ChainId = TestBlockchainIds.ChainId,
                 Nonce = 0,
                 SenderAddress = TestItem.AddressA,
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
                 FrameSignatures = [],
                 GasLimit = verifyGas,
                 GasPrice = 1,
@@ -693,7 +693,7 @@ namespace Nethermind.Blockchain.Test
 
             public bool IsDeadAccount(Address address) => false;
 
-            public ReadOnlySpan<byte> Get(in StorageCell storageCell) => [];
+            public void Get(in StorageCell storageCell, out UInt256 value) => value = default;
         }
     }
 }

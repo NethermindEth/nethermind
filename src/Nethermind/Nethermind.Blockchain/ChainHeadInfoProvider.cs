@@ -31,6 +31,9 @@ namespace Nethermind.Blockchain
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
             HeadNumber = blockTree.BestKnownNumber;
+            // Seeded off the canonical head, not BestKnownNumber above: a known-but-unprocessed header's
+            // timestamp would expire transactions that are still valid against the head the pool validates on.
+            HeadTimestamp = blockTree.Head?.Timestamp ?? 0;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
             _blockTree = blockTree;

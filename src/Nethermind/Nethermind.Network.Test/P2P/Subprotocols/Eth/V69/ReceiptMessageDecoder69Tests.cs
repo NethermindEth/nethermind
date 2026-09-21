@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -18,6 +19,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
 public class ReceiptMessageDecoder69Tests
 {
     private const byte ShortSequenceHeaderBase = 0xc0;
+
+    private static readonly LogEntry PaddedLog = ReceiptRlpBuilder.PaddedLog();
 
     [Test]
     public void Can_roundtrip_receipt()
@@ -49,16 +52,27 @@ public class ReceiptMessageDecoder69Tests
     [Test]
     public void Decode_throws_on_null_log_entry()
     {
-        byte[] encoded = EncodeReceiptWithNullLogEntry();
-        ReceiptMessageDecoder69 decoder = new();
+        // The padding log buys the null placeholder its 24 bytes of count budget, so the log-count
+        // guard passes and the null rejection in the decode loop is what must fire.
+        byte[] encoded = EncodeReceipt([null, PaddedLog]);
 
-        Assert.That(Decode, Throws.TypeOf<RlpException>());
+        Assert.That(() => Decode(encoded), Throws.TypeOf<RlpException>());
+    }
 
-        void Decode()
-        {
-            RlpReader context = new(encoded);
-            decoder.Decode(ref context, RlpBehaviors.Eip658Receipts);
-        }
+    [Test]
+    public void Decode_rejects_a_log_count_the_message_cannot_hold()
+    {
+        byte[] encoded = EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount));
+
+        Assert.That(() => Decode(encoded), Throws.TypeOf<RlpLimitException>());
+    }
+
+    [Test]
+    public void Decode_accepts_a_log_list_of_smallest_possible_entries()
+    {
+        byte[] encoded = EncodeReceipt(ReceiptRlpBuilder.Repeat(ReceiptRlpBuilder.UnbackedLogCount, ReceiptRlpBuilder.MinimalLog()));
+
+        Assert.That(Decode(encoded)!.Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
     }
 
     [Test]
@@ -88,17 +102,18 @@ public class ReceiptMessageDecoder69Tests
     [TestCase(true, TestName = "Decode_UnderDeclaredLogsHeader_Throws")]
     public void Decode_LogsHeaderMustMatchItsContent(bool underDeclare)
     {
-        LogEntry log = new(TestItem.AddressB, [], []);
+        // A padded log, so the count guard's byte arm cannot reject the missing byte on its own and only
+        // the end-of-list check can - Core.Test's Padded_log_outlives_a_one_byte_under_declaration pins that.
         TxReceipt receipt = new()
         {
             TxType = TxType.EIP1559,
             StatusCode = 1,
             GasUsedTotal = 21000,
             Bloom = new Bloom(),
-            Logs = [log]
+            Logs = [PaddedLog]
         };
 
-        AssertHeaderMustMatchItsContent(receipt, encoded => LogsHeaderIndex(encoded, Rlp.LengthOf(log)), underDeclare,
+        AssertHeaderMustMatchItsContent(receipt, encoded => LogsHeaderIndex(encoded, Rlp.LengthOf(PaddedLog)), underDeclare,
             static decoded => Assert.That(decoded.Logs, Has.Length.EqualTo(1)));
     }
 
@@ -271,21 +286,12 @@ public class ReceiptMessageDecoder69Tests
         return decoder.Decode(ref reader, RlpBehaviors.Eip658Receipts)!;
     }
 
-    private static byte[] EncodeReceiptWithNullLogEntry()
+    private static byte[] EncodeReceipt(ReadOnlySpan<LogEntry?> logs) =>
+        ReceiptRlpBuilder.EncodeReceipt69(TxType.EIP1559, logs);
+
+    private static TxReceipt? Decode(byte[] encoded)
     {
-        int logsLength = Rlp.OfEmptyList.Length;
-        int contentLength = Rlp.LengthOf((byte)TxType.EIP1559)
-            + Rlp.LengthOf((byte)1)
-            + Rlp.LengthOf(21000UL)
-            + Rlp.LengthOfSequence(logsLength);
-        byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(encoded);
-        writer.StartSequence(contentLength);
-        writer.Encode((byte)TxType.EIP1559);
-        writer.Encode((byte)1);
-        writer.Encode(21000UL);
-        writer.StartSequence(logsLength);
-        writer.EncodeNullObject();
-        return encoded;
+        RlpReader context = new(encoded);
+        return new ReceiptMessageDecoder69().Decode(ref context, RlpBehaviors.Eip658Receipts);
     }
 }

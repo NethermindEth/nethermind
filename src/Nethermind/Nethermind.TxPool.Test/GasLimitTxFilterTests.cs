@@ -67,7 +67,7 @@ public class GasLimitTxFilterTests
     /// <summary>A frame transaction whose SENDER frame moves wei to a third party, which EIP-2780 prices.</summary>
     private static Transaction ValueBearingFrameTx() => FrameTxTestFrames.FrameTx(
         FrameTxTestFrames.SelfVerify(),
-        new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressC, OrdinaryGasLimit, UInt256.One, default));
+        new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressC, OrdinaryGasLimit, UInt256.One, default));
 
     private static AcceptTxResult Accept(Transaction tx, ulong blockGasLimit, IReleaseSpec pinnedSpec, IReleaseSpec headSpec)
     {

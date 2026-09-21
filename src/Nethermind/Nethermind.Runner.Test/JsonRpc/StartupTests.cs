@@ -27,6 +27,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Memory;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -47,7 +48,11 @@ public class StartupTests
     private const string GetBlobsV1Method = "engine_getBlobsV1";
     private const string GetBlobsV2Method = "engine_getBlobsV2";
 
+    private static readonly GCKeeper GcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
     private static readonly Startup Startup;
+
+    [OneTimeTearDown]
+    public void DisposeGcKeeper() => GcKeeper.Dispose();
 
     static StartupTests() => Startup = CreateStartup();
 
@@ -65,7 +70,7 @@ public class StartupTests
 
         EthereumJsonSerializer jsonSerializer = new();
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
-        JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig);
+        JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig, GcKeeper);
         JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), LimboLogs.Instance);
 
         return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication);
@@ -170,6 +175,44 @@ public class StartupTests
         string response = await ProcessJsonRpcRequest(request);
 
         AssertBatchArrayResultResponse(response, 2);
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_ContinuesBatchAfterMalformedItem()
+    {
+        string request = $"[{CreateJsonRpcRequest(idJson: "1")},1,{CreateJsonRpcRequest(idJson: "2")}]";
+
+        string response = await ProcessJsonRpcRequest(request);
+
+        AssertJsonResponse(response, static root =>
+        {
+            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(root.GetArrayLength(), Is.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root[0].GetProperty("id").GetInt32(), Is.EqualTo(1));
+                Assert.That(root[1].GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(root[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidRequest));
+                Assert.That(root[2].GetProperty("id").GetInt32(), Is.EqualTo(2));
+                Assert.That(root[2].GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Array));
+            }
+        });
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_EmptyBatchReturnsInvalidRequest()
+    {
+        string response = await ProcessJsonRpcRequest("[]");
+
+        AssertJsonResponse(response, static root =>
+        {
+            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Object));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(root.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidRequest));
+            }
+        });
     }
 
     [Test]

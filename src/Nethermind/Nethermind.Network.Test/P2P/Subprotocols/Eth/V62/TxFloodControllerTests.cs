@@ -515,7 +515,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             for (int start = 0; start < hashes.Length; start += maxHashesPerRequest)
             {
                 int count = Math.Min(maxHashesPerRequest, hashes.Length - start);
-                _controller.ReportPooledTransactionRequest(hashes.Slice(start, count));
+                ValueHash256[] values = new ValueHash256[count];
+                for (int i = 0; i < count; i++) values[i] = hashes[start + i];
+                _controller.ReportPooledTransactionRequest(values);
             }
         }
 

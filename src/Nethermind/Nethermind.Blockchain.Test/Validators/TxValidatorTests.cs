@@ -707,7 +707,7 @@ public class TxValidatorTests
             // reservation that does bound a frame transaction stays well under it.
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                     executionGasLimit: PrefixFrameGas, stateGasLimit: Eip7825Constants.DefaultTxGasLimitCap, UInt256.Zero, Array.Empty<byte>())
             ],
             FrameSignatures = [],
@@ -728,10 +728,10 @@ public class TxValidatorTests
 
     // A wrapper that forwards only the two-argument overload silently drops the caller's block gas limit.
     [Test]
-    public void ExceptFrameTxValidator_ForwardsEveryOverload_ForNonFrameTransactions()
+    public void NonFrameTxValidator_ForwardsEveryOverload_ForNonFrameTransactions()
     {
         RecordingTxValidator inner = new();
-        ITxValidator wrapped = new ExceptFrameTxValidator(inner);
+        ITxValidator wrapped = new NonFrameTxValidator(inner);
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).TestObject;
 
         wrapped.IsWellFormed(tx, Prague.Instance);
@@ -903,7 +903,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
             FrameSignatures = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 100,
@@ -941,7 +941,7 @@ public class TxValidatorTests
     }
 
     [Test]
-    public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse()
+    public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse([Values] bool skipErrorDetails, [Values] bool skipMemo)
     {
         byte[] data = new byte[262_000];
         Array.Fill(data, (byte)0xff);
@@ -952,13 +952,19 @@ public class TxValidatorTests
             .SignedAndResolved().TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance);
+        TxValidationOptions options = skipErrorDetails ? TxValidationOptions.SkipErrorDetails : TxValidationOptions.None;
+        if (skipMemo) options |= TxValidationOptions.SkipIntrinsicGasMemo;
+        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance, blockGasLimit: 0, options);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
             Assert.That(result.IsIntrinsicGasError, Is.True);
+            Assert.That(tx.IntrinsicGasMemo, skipMemo ? Is.Null : Is.Not.Null);
+            Assert.That(result.Error, skipErrorDetails
+                ? Is.SameAs(TxErrorMessages.IntrinsicGasTooLow)
+                : Does.Contain("exceeded cap of 16777216"));
         }
     }
 
@@ -1362,7 +1368,7 @@ public class TxValidatorTests
             SenderAddress = TestItem.AddressA,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                     Eip7825Constants.DefaultTxGasLimitCap - 100_000, Eip7825Constants.DefaultTxGasLimitCap, UInt256.Zero, default),
             ],
             FrameSignatures = [],
@@ -1373,7 +1379,7 @@ public class TxValidatorTests
 
         tx.Frames =
         [
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                 Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default),
         ];
 
@@ -1391,7 +1397,7 @@ public class TxValidatorTests
             SenderAddress = TestItem.AddressA,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                     Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default),
             ],
             FrameSignatures = [],

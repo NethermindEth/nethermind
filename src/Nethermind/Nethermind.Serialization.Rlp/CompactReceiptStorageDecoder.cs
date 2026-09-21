@@ -21,13 +21,13 @@ namespace Nethermind.Serialization.Rlp
         protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
             TxReceipt txReceipt = new();
-            position = RlpHelpers.ReadSequenceLength(rlp, position, out int receiptLength);
+            rlp.ReadSequenceLength(ref position, out int receiptLength);
             int receiptEnd = position + receiptLength;
 
-            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] firstItem);
+            rlp.DecodeByteArray(ref position, out byte[] firstItem);
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -37,12 +37,12 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            (position, txReceipt.Sender) = RlpHelpers.DecodeAddressOrNull(rlp, position);
-            (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
+            txReceipt.Sender = rlp.DecodeAddressOrNull(ref position);
+            txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
 
-            int sequenceStart = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
-            int lastCheck = sequenceStart + sequenceLength;
-            decoderContext.Position = sequenceStart;
+            rlp.ReadSequenceLength(ref position, out int sequenceLength);
+            int lastCheck = position + sequenceLength;
+            decoderContext.Position = position;
 
             // Don't know the size exactly, I'll just assume its just an address and add some margin
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);

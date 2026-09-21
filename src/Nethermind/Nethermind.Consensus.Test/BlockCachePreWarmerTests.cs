@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -72,21 +73,21 @@ public class BlockCachePreWarmerTests
             worldState.CreateAccount(TestItem.AddressA, 1_000_000.Ether);
             worldState.CreateAccount(TestItem.AddressB, 1_000_000.Ether);
             // Seed storage for BAL-based prewarming tests
-            worldState.Set(new StorageCell(TestItem.AddressA, 1), new byte[] { 0x42 });
-            worldState.Set(new StorageCell(TestItem.AddressA, 2), new byte[] { 0x43 });
-            worldState.Set(new StorageCell(TestItem.AddressB, 10), new byte[] { 0x99 });
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), new UInt256(new byte[] { 0x42 }, isBigEndian: true));
+            worldState.Set(new StorageCell(TestItem.AddressA, 2), new UInt256(new byte[] { 0x43 }, isBigEndian: true));
+            worldState.Set(new StorageCell(TestItem.AddressB, 10), new UInt256(new byte[] { 0x99 }, isBigEndian: true));
             // Contract reading a slot whose index is the value of slot 0: PUSH0 SLOAD SLOAD POP STOP
             byte[] sloadChainCode = [0x5F, 0x54, 0x54, 0x50, 0x00];
             worldState.CreateAccount(TestItem.AddressE, 0);
             worldState.InsertCode(TestItem.AddressE, Keccak.Compute(sloadChainCode), sloadChainCode, Osaka.Instance);
-            worldState.Set(new StorageCell(TestItem.AddressE, 0), [5]);
-            worldState.Set(new StorageCell(TestItem.AddressE, 5), [7]);
+            worldState.Set(new StorageCell(TestItem.AddressE, 0), (UInt256)5);
+            worldState.Set(new StorageCell(TestItem.AddressE, 5), (UInt256)7);
             // Contract reading more distinct slots than the discovery cell budget allows
             byte[] sloadManyCode = BuildSloadManyCode(SloadManySlotCount);
             worldState.CreateAccount(TestItem.AddressF, 0);
             worldState.InsertCode(TestItem.AddressF, Keccak.Compute(sloadManyCode), sloadManyCode, Osaka.Instance);
             // Non-empty storage root, or reads short-circuit to defaults without touching the tree
-            worldState.Set(new StorageCell(TestItem.AddressF, 0), [1]);
+            worldState.Set(new StorageCell(TestItem.AddressF, 0), (UInt256)1);
             worldState.Commit(Osaka.Instance);
             worldState.CommitTree(0);
             _genesisStateRoot = worldState.StateRoot;
@@ -314,6 +315,109 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA should be warmed via speculative execution even without BAL path");
     }
 
+    /// <summary>
+    /// Withdrawals are credited at block end, so their recipients must be warmed in the address warmer's
+    /// immediate phase, not in a pass that can only start once every transaction has been warmed.
+    /// </summary>
+    /// <remarks>
+    /// Cache presence after the prewarm completes cannot tell the two apart. The transaction warmers are
+    /// therefore parked inside their scope setup, which a pass sequenced after them could never outlive,
+    /// and the recipient must already be warm while they are still in flight.
+    /// </remarks>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_WarmsWithdrawalRecipients_WhileTransactionWarmingIsStillInFlight(CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        using ManualResetEventSlim gate = new(initialState: false);
+        using CountdownEvent txScopesInFlight = new(2);
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
+            onTxScope: static () => { },
+            onWarmup: static () => { });
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            minPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        // Four senders so both warm workers claim a job and park; the recipient is touched by nothing else.
+        Transaction[] txs =
+        [
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000),
+        ];
+        Block block = Build.A.Block
+            .WithTransactions(txs)
+            .WithWithdrawals(Build.A.Withdrawal.WithRecipient(TestItem.AddressE).WithAmount(1).TestObject)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        bool warmedWhileTxsParked;
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: both warm workers must be parked inside their first job's scope setup");
+
+                warmedWhileTxsParked = SpinWait.SpinUntil(
+                    () => preBlockCaches.StateCache.TryGetValue(TestItem.AddressE, out _),
+                    TimeSpan.FromSeconds(10));
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        Assert.That(warmedWhileTxsParked, Is.True,
+            "withdrawal recipients are warmed in the address warmer's immediate phase, not after the transaction pass");
+    }
+
+    /// <summary>
+    /// The system access lists are registered through an <c>as IHasAccessList</c> cast, so a decorator over
+    /// <see cref="IExecutionRequestsProcessor"/> that stops implementing it would drop the hint with no error.
+    /// </summary>
+    [Test]
+    public void SystemAccessLists_ResolvedFromTheProcessingScope_CoverTheRequestQueueContracts()
+    {
+        IHasAccessList[] systemAccessLists = _processingScope.Resolve<IHasAccessList[]>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).TestObject;
+
+        List<Address> hintedAddresses = [];
+        using (worldState.BeginScope(BuildParentHeader()))
+        {
+            foreach (IHasAccessList systemAccessList in systemAccessLists)
+            {
+                AccessList? accessList = systemAccessList.GetAccessList(block, Amsterdam.Instance);
+                if (accessList is null) continue;
+
+                foreach ((Address address, _) in accessList)
+                {
+                    hintedAddresses.Add(address);
+                }
+            }
+        }
+
+        Assert.That(hintedAddresses, Does.Contain(Eip7002Constants.WithdrawalRequestPredeployAddress)
+            .And.Contains(Eip7251Constants.ConsolidationRequestPredeployAddress));
+    }
+
     /// <summary>Prewarming warms a transaction's declared EIP-2930 access-list slots for the main thread.</summary>
     [Test]
     public async Task PreWarmCaches_WarmsAccessList_AndHonorsCancellation()
@@ -510,7 +614,7 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _), Is.True);
 
         preBlockCaches.StateCache.Set(in warmedAddress, new Account(777UL));
-        preBlockCaches.StorageCache.Set(in warmedCell, [0x24]);
+        preBlockCaches.StorageCache.Set(in warmedCell, (UInt256)0x24);
 
         AddressAsKey missedAddress = TestItem.AddressB;
         StorageCell missedCell = new(TestItem.AddressB, 10);
@@ -522,16 +626,18 @@ public class BlockCachePreWarmerTests
         using IReadOnlyTxProcessingScope scope = source.Build(BuildParentHeader());
 
         Assert.That(scope.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)777));
-        Assert.That(new UInt256(scope.WorldState.Get(warmedCell), isBigEndian: true), Is.EqualTo((UInt256)0x24));
+        scope.WorldState.Get(warmedCell, out UInt256 storageValue1);
+        Assert.That(storageValue1, Is.EqualTo((UInt256)0x24));
 
         Assert.That(scope.WorldState.GetBalance(TestItem.AddressB), Is.EqualTo(1_000_000.Ether));
-        Assert.That(new UInt256(scope.WorldState.Get(missedCell), isBigEndian: true), Is.EqualTo((UInt256)0x99));
+        scope.WorldState.Get(missedCell, out UInt256 storageValue2);
+        Assert.That(storageValue2, Is.EqualTo((UInt256)0x99));
 
         Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True,
             "parallel validation parent readers must populate cache misses");
         Assert.That(populatedAccount!.Balance, Is.EqualTo(1_000_000.Ether));
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage), Is.True);
-        Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out UInt256 populatedStorage), Is.True);
+        Assert.That(populatedStorage, Is.EqualTo((UInt256)0x99));
     }
 
     [TestCase(false, true, false, TestName = "PreWarmCaches_TinyBlockWithoutSpeculativePass_Clears")]
@@ -993,12 +1099,12 @@ public class BlockCachePreWarmerTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out byte[]? slot0), Is.True,
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out UInt256 slot0), Is.True,
                     "the directly-read slot is warmed");
-                Assert.That(slot0, Is.EqualTo(new byte[] { 5 }), "the warmed value must be the real one, never the speculative placeholder");
-                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out byte[]? slot5), Is.True,
+                Assert.That(slot0, Is.EqualTo((UInt256)5), "the warmed value must be the real one, never the speculative placeholder");
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out UInt256 slot5), Is.True,
                     "the slot whose index is slot 0's value requires a second discovery round");
-                Assert.That(slot5, Is.EqualTo(new byte[] { 7 }), "the warmed value must be the real one, never the speculative placeholder");
+                Assert.That(slot5, Is.EqualTo((UInt256)7), "the warmed value must be the real one, never the speculative placeholder");
             }
         }
     }
@@ -1157,10 +1263,10 @@ public class BlockCachePreWarmerTests
         {
             Assert.That(policy.DiscoveryBuilds, Is.GreaterThan(0),
                 "the heavy transaction must be routed through storage discovery");
-            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out byte[]? slot0), Is.True);
-            Assert.That(slot0, Is.EqualTo(new byte[] { 5 }), "the warmed value must be the real one, never the speculative placeholder");
-            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out byte[]? slot5), Is.True);
-            Assert.That(slot5, Is.EqualTo(new byte[] { 7 }), "the warmed value must be the real one, never the speculative placeholder");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out UInt256 slot0), Is.True);
+            Assert.That(slot0, Is.EqualTo((UInt256)5), "the warmed value must be the real one, never the speculative placeholder");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out UInt256 slot5), Is.True);
+            Assert.That(slot5, Is.EqualTo((UInt256)7), "the warmed value must be the real one, never the speculative placeholder");
         }
     }
 

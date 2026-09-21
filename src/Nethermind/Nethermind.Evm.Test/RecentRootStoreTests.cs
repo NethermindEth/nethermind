@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
@@ -42,6 +41,25 @@ public class RecentRootStoreTests
         Salt.Bytes.CopyTo(preimage[Address.Size..]);
 
         Assert.That(RecentRootStore.SourceId(Source, Salt), Is.EqualTo(ValueKeccak.Compute(preimage)));
+    }
+
+    // Independently computed vectors, so a change to how any of the three preimage buffers is filled cannot
+    // silently move a consensus-visible source id, entry commitment or ring-buffer storage key.
+    [Test]
+    public void Derivations_match_known_vectors()
+    {
+        Address source = new("0x0f1e2d3c4b5a69788796a5b4c3d2e1f001122334");
+        ValueHash256 salt = new("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
+        ValueHash256 root = new("0xaabbccddeeff00112233445566778899aabbccddeeff00112233445566778899");
+
+        ValueHash256 sourceId = RecentRootStore.SourceId(source, salt);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sourceId, Is.EqualTo(new ValueHash256("0x1d66905c1b538690493aef5321db9b8f2fa27356d2b61fddcc3d6d4545a464fc")));
+            Assert.That(RecentRootStore.EntryHash(sourceId, 1234, root), Is.EqualTo(new ValueHash256("0xd3fe50127a6be718dec03d5d2654afe64877d2652e4c79fadd5fab013ac444c5")));
+            Assert.That(RecentRootStore.StorageKey(sourceId, 1111), Is.EqualTo(new ValueHash256("0x22a1ba46a5a904217f21d93150fcad98454d19c8d1e13aea70c3cb27e46716a4")));
+        }
     }
 
     [Test]
@@ -144,9 +162,12 @@ public class RecentRootStoreTests
             Write(state, Source, Salt, Root, writtenSlot);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
+            // Through ReferenceCell, which is what applies the modulo: folding the slots here first would
+            // hand StorageKey the same ring index twice and assert nothing about the ring.
             Assert.That(
-                RecentRootStore.StorageKey(sourceId, aliasedSlot % Eip8272Constants.RecentRootLength),
-                Is.EqualTo(RecentRootStore.StorageKey(sourceId, writtenSlot % Eip8272Constants.RecentRootLength)));
+                RecentRootStore.ReferenceCell(sourceId, aliasedSlot),
+                Is.EqualTo(RecentRootStore.ReferenceCell(sourceId, writtenSlot)),
+                "a slot a full ring later must land on the cell it aliases");
 
             // The stored entry commits to writtenSlot, so a reference to the aliased slot cannot match.
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, aliasedSlot, Root, aliasedSlot + 1), Is.False);
@@ -256,7 +277,7 @@ public class RecentRootStoreTests
     {
         ValueHash256 sourceId = RecentRootStore.SourceId(source, salt);
         StorageCell cell = RecentRootStore.ReferenceCell(sourceId, slot);
-        state.Set(cell, RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
+        state.Set(cell, RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
     }
 
     private static IWorldState CreateState(out IDisposable scope)

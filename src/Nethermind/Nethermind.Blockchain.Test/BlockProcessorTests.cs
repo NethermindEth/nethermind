@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Module = Autofac.Module;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Container;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
@@ -9,12 +12,15 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -22,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -53,6 +60,305 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
+    public static IEnumerable<TestCaseData> TransactionTraceBoundaryCases()
+    {
+        foreach (string tracerName in new[] { "callTracer", "prestateTracer" })
+        {
+            for (int targetIndex = -1; targetIndex <= 2; targetIndex++)
+            {
+                yield return new TestCaseData(targetIndex, tracerName, false, false);
+                yield return new TestCaseData(targetIndex, tracerName, true, false);
+            }
+        }
+
+        yield return new TestCaseData(0, "callTracer", false, true);
+        yield return new TestCaseData(0, "callTracer", true, true);
+    }
+
+    [TestCaseSource(nameof(TransactionTraceBoundaryCases))]
+    public async Task TransactionTraceBoundary_WhenTargetCompletes_PreservesTraceAndSkipsSuffix(
+        int targetIndex, string tracerName, bool useBal, bool forceFullBal)
+    {
+        IReleaseSpec spec = useBal ? Amsterdam.Instance : Prague.Instance;
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        Hash256 target = targetIndex < 0 ? TestItem.KeccakA : block.Transactions[targetIndex].Hash!;
+        GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
+
+        string expected = Replay(false, out int fullCount);
+        using StampedExecutionArtifacts artifacts = new(block);
+        string actual = Replay(true, out int prefixCount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fullCount, Is.EqualTo(3), "the unbounded replay is the full-block oracle");
+            Assert.That(prefixCount, Is.EqualTo(targetIndex < 0 || forceFullBal ? 3 : targetIndex + 1), "replay must stop only after the target completes unless full BAL construction is required");
+            Assert.That(actual, Is.EqualTo(expected), "the selected trace must match full-block replay including its prestate");
+            Assert.That(block.Transactions.Length, Is.EqualTo(3), "the original block body must not be truncated");
+            artifacts.AssertUntouched(block);
+        }
+
+        string Replay(bool stopAtTarget, out int count)
+        {
+            using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+            IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, chain.MainWorldState, chain.SpecProvider);
+            RecordingPrefixTracer recording = new(tracer);
+            IBlockTracer executionTracer = stopAtTarget ? TransactionTraceBoundary.Wrap(recording, target) : recording;
+            ((MainProcessingContext)chain.MainProcessingContext).LifetimeScope.Resolve<IBlockAccessListManager>()
+                .ForceConstructGeneratedBlockAccessList = forceFullBal;
+            chain.BlockProcessor.ProcessOne(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList,
+                executionTracer, spec, CancellationToken.None);
+            count = recording.Started;
+            Assert.That(recording.Ended, Is.EqualTo(count), "each executed transaction must finish its tracer lifecycle");
+            Assert.That(recording.BlockEnded, Is.True, "early completion must still close the block tracer");
+            using GethLikeTxTraceCollection result = new(tracer.BuildResult());
+            return chain.JsonSerializer.Serialize(result);
+        }
+    }
+
+    [TestCase(ProcessingOptions.None, false, TestName = "None")]
+    [TestCase(ProcessingOptions.NoValidation, false, TestName = "NoValidation")]
+    [TestCase(ProcessingOptions.ReadOnlyChain, false, TestName = "ReadOnlyChain")]
+    [TestCase(ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.LoadNonceFromState, false, TestName = "ReplayWithoutReadOnlyChain")]
+    [TestCase(TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.StoreReceipts, false, TestName = "ReadOnlyReplayWithStoreReceipts")]
+    [TestCase(ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, true, TestName = "ReadOnlyChainWithoutValidation")]
+    [TestCase(ProcessingOptions.ProducingBlock, true, TestName = "ProducingBlock")]
+    [TestCase(TraceProcessingOptions.ReadOnlyReplay, true, TestName = "ReadOnlyReplay")]
+    public void TransactionTraceBoundary_Get_ReturnsBoundaryOnlyForUnvalidatedReadOnlyReplayWithoutReceiptPersistence(ProcessingOptions options, bool expectBoundary)
+    {
+        IBlockTracer tracer = TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, TestItem.KeccakA);
+        Assert.That(TransactionTraceBoundary.Get(tracer, options), expectBoundary ? Is.SameAs(tracer) : Is.Null,
+            "an unfinalized prefix is only acceptable when the chain is read-only, the block is not validated and receipts are not persisted");
+    }
+
+    [TestCase(ProcessingOptions.None, TestName = "Process_None")]
+    [TestCase(ProcessingOptions.NoValidation, TestName = "Process_NoValidation")]
+    [TestCase(TraceProcessingOptions.ReadOnlyReplay, TestName = "Process_ReadOnlyReplay")]
+    public async Task TransactionTraceBlockProcessor_NeverCopiesArtifactsOntoSuggestedBlock(ProcessingOptions options)
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        using StampedExecutionArtifacts artifacts = new(block);
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        chain.BlockProcessor.ProcessOne(block, options, NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
+
+        artifacts.AssertUntouched(block);
+    }
+
+    private static Task<BasicTestBlockchain> CreatePrefixReplayChain(IReleaseSpec spec) =>
+        BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
+
+    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain)
+    {
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)i)
+                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(3), "precondition: the block must contain the complete test sequence");
+        return block;
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenReused_ResetsCompletion()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, tx.Hash!);
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        boundary.StartNewBlockTrace(block);
+        boundary.StartNewTxTrace(tx);
+        Assert.That(boundary.IsComplete, Is.False, "starting the target is not completion");
+        boundary.EndTxTrace();
+        Assert.That(boundary.IsComplete, Is.True, "completion follows EndTxTrace");
+        boundary.StartNewBlockTrace(block);
+        Assert.That(boundary.IsComplete, Is.False, "a new block must reset the boundary");
+    }
+
+    private sealed class PrefixReplayValidationModule : Module, IBlockValidationModule
+    {
+        public bool SupportsTransactionTracePrefix => true;
+
+        protected override void Load(ContainerBuilder builder) => builder
+            .AddScoped<IBlockProcessor, TransactionTraceBlockProcessor>()
+            .AddScoped<TransactionTraceExecutor>();
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenRewardsEnabledAfterWrapping_DoesNotComplete()
+    {
+        CancellationBlockTracer tracer = new(NullBlockTracer.Instance);
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(tracer, tx.Hash!);
+        boundary.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+        boundary.StartNewTxTrace(tx);
+        tracer.IsTracingRewards = true;
+        boundary.EndTxTrace();
+        Assert.That(boundary.IsComplete, Is.False);
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenRewardsAreRequested_LeavesTracerUnwrapped()
+    {
+        IBlockTracer tracer = Substitute.For<IBlockTracer>();
+        tracer.IsTracingRewards.Returns(true);
+        Assert.That(TransactionTraceBoundary.Wrap(tracer, TestItem.KeccakA), Is.SameAs(tracer),
+            "reward traces depend on processing the complete block");
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenCancelledAtEnd_DoesNotComplete()
+    {
+        using CancellationTokenSource cancellation = new();
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(
+            NullBlockTracer.Instance.WithCancellation(cancellation.Token), tx.Hash!);
+        boundary.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+        boundary.StartNewTxTrace(tx);
+        cancellation.Cancel();
+        Assert.That(boundary.EndTxTrace, Throws.InstanceOf<OperationCanceledException>(), "cancellation must not become successful completion");
+        Assert.That(boundary.IsComplete, Is.False, "a failed inner callback must not mark completion");
+    }
+
+    [Test]
+    public void Read_coverage_validates_system_slices_and_preserves_read_budget(
+        [Values] bool omitRead, [Values] bool revertWrite, [ValueSource(nameof(ReadCoverageBlockCounts))] int blockCount)
+    {
+        List<TracedAccessWorldState> workers = [];
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Amsterdam.Instance))
+            .AddDecorator<CodeInfoRepositoryFactory>((_, factory) => state =>
+            {
+                if (state is TracedAccessWorldState traced) workers.Add(traced);
+                return factory(state);
+            })
+            .Build();
+        using ILifetimeScope lifetime = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
+        IWorldState state = lifetime.Resolve<IWorldState>();
+        BlockHeader parent;
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            state.CreateAccount(TestItem.AddressA, 100);
+            state.Commit(Amsterdam.Instance, isGenesis: true);
+            state.CommitTree(0);
+            parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(state.StateRoot).TestObject;
+        }
+        using IDisposable scope = state.BeginScope(parent);
+        BlockAccessListManager manager = (BlockAccessListManager)lifetime.Resolve<IBlockAccessListManager>();
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads((UInt256)1, (UInt256)2)
+                .WithStorageChanges(3, new StorageChange(1, 7u)).TestObject).TestObject;
+        BalReadCoverage? previousCoverage = null;
+        Dictionary<TracedAccessWorldState, (BalReadCoverage Coverage, int Block)> previousWorkers = [];
+        bool reusedWorkerInBlock = false;
+        for (int blockNumber = 1; blockNumber <= blockCount; blockNumber++)
+        {
+            reusedWorkerInBlock = false;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithGasUsed(0).WithBlockAccessList(bal).TestObject;
+            PrepareSetup(manager, block, Amsterdam.Instance);
+            if (previousCoverage is not null) Assert.That(previousCoverage.Plan, Is.Null);
+            Assert.That(manager.ParallelExecutionEnabled, Is.True);
+            manager.NextTransaction();
+            Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0, validateStorageReads: false));
+            manager.GetTxProcessor(0);
+            TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
+            CheckWorkerCoverage(pre, blockNumber);
+            previousCoverage = pre.ReadCoverage;
+            pre.Get(new StorageCell(TestItem.AddressA, 1), out _);
+            pre.Get(new StorageCell(TestItem.AddressA, 3), out _);
+            if (revertWrite)
+            {
+                Snapshot snapshot = pre.TakeSnapshot();
+                pre.Set(new StorageCell(TestItem.AddressA, 1), (UInt256)99);
+                pre.Restore(snapshot);
+            }
+            manager.NextTransaction();
+            // A read of a slot written later still pays for a surplus declared read at this index.
+            Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0));
+            manager.GetTxProcessor(uint.MaxValue);
+            TracedAccessWorldState post = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
+            CheckWorkerCoverage(post, blockNumber);
+            post.Set(new StorageCell(TestItem.AddressA, 3), (UInt256)7);
+            bool skipRead = omitRead && blockNumber == blockCount;
+            if (!skipRead) post.Get(new StorageCell(TestItem.AddressA, 2), out _);
+            if (skipRead)
+                Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => manager.SetBlockAccessList(block));
+            else
+                Assert.DoesNotThrow(() => manager.SetBlockAccessList(block));
+
+            if (blockNumber < blockCount)
+            {
+                state.Commit(Amsterdam.Instance);
+                state.CommitTree((ulong)blockNumber);
+            }
+        }
+
+        if (blockCount > RuntimeInformation.ProcessorCount)
+            Assert.That(reusedWorkerInBlock, Is.True, "The final block must reuse a worker from an earlier block.");
+
+        Block disabledBlock = Build.A.Block.WithNumber(blockCount + 1).TestObject;
+        manager.PrepareForProcessing(disabledBlock, Prague.Instance, ProcessingOptions.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.Enabled, Is.False);
+            Assert.That(previousCoverage!.Plan, Is.Null);
+        }
+
+        void CheckWorkerCoverage(TracedAccessWorldState worker, int blockNumber)
+        {
+            Assert.That(worker.ReadCoverage, Is.Not.Null);
+            if (previousWorkers.TryGetValue(worker, out (BalReadCoverage Coverage, int Block) previous)
+                && previous.Block < blockNumber)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(worker.ReadCoverage, Is.Not.SameAs(previous.Coverage));
+                    Assert.That(previous.Coverage.Plan, Is.Null);
+                }
+                reusedWorkerInBlock = true;
+            }
+            previousWorkers[worker] = (worker.ReadCoverage!, blockNumber);
+        }
+    }
+
+    private static IEnumerable<int> ReadCoverageBlockCounts()
+    {
+        yield return 1;
+        yield return 2;
+        if (RuntimeInformation.ProcessorCount > 1)
+            yield return RuntimeInformation.ProcessorCount + 1;
+    }
+
+    [Test]
+    public async Task Block_processing_preserves_receipt_logs_without_a_log_tracer()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
+        Transaction tx = Build.A.Transaction.WithTo(null)
+            .WithCode(Prepare.EvmCode.Log(32, 0, [TestItem.KeccakA]).STOP().Done)
+            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        Block block = await chain.AddBlock(tx);
+
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        Assert.That(receipts[0].Logs, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipts[0].Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
+            Assert.That(receipts[0].Bloom, Is.Not.EqualTo(Bloom.Empty));
+            Assert.That(block.Header.Bloom, Is.Not.EqualTo(Bloom.Empty));
+        }
+    }
+
     [Test]
     public void ApplyStateChanges_uses_parent_state_without_prestate_sentinels()
     {
@@ -75,7 +381,8 @@ public class BlockProcessorTests
                 {
                     Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)150));
                     Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(3ul));
-                    Assert.That(new UInt256(stateProvider.Get(storageCell), isBigEndian: true), Is.EqualTo((UInt256)0x2Au));
+                    stateProvider.Get(storageCell, out UInt256 storageValue1);
+                    Assert.That(storageValue1, Is.EqualTo((UInt256)0x2Au));
                 }
             });
     }
@@ -1962,6 +2269,60 @@ public class BlockProcessorTests
         }
 
         public void Dispose() => _parallelExecutionStarted.Dispose();
+    }
+
+    private sealed class StampedExecutionArtifacts : IDisposable
+    {
+        private readonly ArrayPoolList<AddressAsKey> _accountChanges = new(1) { TestItem.AddressA };
+        private readonly byte[][] _executionRequests = [[0, 1, 2]];
+        private readonly GeneratedBlockAccessList _generatedBlockAccessList = new();
+        private readonly byte[] _encodedBlockAccessList = [0xc0];
+
+        public StampedExecutionArtifacts(Block block)
+        {
+            block.AccountChanges = _accountChanges;
+            block.ExecutionRequests = _executionRequests;
+            block.GeneratedBlockAccessList = _generatedBlockAccessList;
+            block.EncodedBlockAccessList = _encodedBlockAccessList;
+        }
+
+        public void AssertUntouched(Block block)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block.AccountChanges, Is.SameAs(_accountChanges), "read-only replay must not overwrite cached account changes");
+                Assert.That(block.ExecutionRequests, Is.SameAs(_executionRequests), "read-only replay must not overwrite cached execution requests");
+                Assert.That(block.GeneratedBlockAccessList, Is.SameAs(_generatedBlockAccessList), "read-only replay must not overwrite the cached generated BAL");
+                Assert.That(block.EncodedBlockAccessList, Is.SameAs(_encodedBlockAccessList), "read-only replay must not overwrite the cached encoded BAL");
+            }
+        }
+
+        public void Dispose() => _accountChanges.Dispose();
+    }
+
+    private sealed class RecordingPrefixTracer(IBlockTracer inner) : IBlockTracer
+    {
+        public int Started { get; private set; }
+        public int Ended { get; private set; }
+        public bool BlockEnded { get; private set; }
+        public bool IsTracingRewards => inner.IsTracingRewards;
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue) => inner.ReportReward(author, rewardType, rewardValue);
+        public void StartNewBlockTrace(Block block) => inner.StartNewBlockTrace(block);
+        public ITxTracer StartNewTxTrace(Transaction? tx)
+        {
+            Started++;
+            return inner.StartNewTxTrace(tx);
+        }
+        public void EndTxTrace()
+        {
+            inner.EndTxTrace();
+            Ended++;
+        }
+        public void EndBlockTrace()
+        {
+            inner.EndBlockTrace();
+            BlockEnded = true;
+        }
     }
 
     private sealed class RecordingParallelSafeBlockTracer : IParallelSafeBlockTracer

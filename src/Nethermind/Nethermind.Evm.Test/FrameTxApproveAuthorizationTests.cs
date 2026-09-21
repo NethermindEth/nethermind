@@ -125,13 +125,13 @@ public class FrameTxApproveAuthorizationTests
 
     private static byte[] StaticApprove() =>
         Prepare.EvmCode
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0)
             .Op(Instruction.APPROVE).Done;
 
     private static byte[] StorageGatedApprove() =>
         Prepare.EvmCode
             .PushData(ObservedSlot).Op(Instruction.SLOAD).Op(Instruction.ISZERO)
-            .PushData(TxFrame.ApproveExecutionAndPayment).Op(Instruction.MUL)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).Op(Instruction.MUL)
             .PushData(0).PushData(0)
             .Op(Instruction.APPROVE).Done;
 
@@ -139,7 +139,7 @@ public class FrameTxApproveAuthorizationTests
         Prepare.EvmCode
             .PushData(0).PushData(2).Op(Instruction.RECENTROOTREFLOAD)
             .PushData(expectedRoot.Bytes.ToArray()).Op(Instruction.EQ)
-            .PushData(TxFrame.ApproveExecutionAndPayment).Op(Instruction.MUL)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).Op(Instruction.MUL)
             .PushData(0).PushData(0)
             .Op(Instruction.APPROVE).Done;
 
@@ -156,7 +156,7 @@ public class FrameTxApproveAuthorizationTests
 
     private void SetObservedSlot()
     {
-        _state.Set(new StorageCell(Account, ObservedSlot), [1]);
+        _state.Set(new StorageCell(Account, ObservedSlot), UInt256.One);
         _state.Commit(Spec);
     }
 
@@ -165,16 +165,20 @@ public class FrameTxApproveAuthorizationTests
         if (!_state.AccountExists(Eip8272Constants.RecentRootAddress))
             _state.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, 1);
         _state.Set(RecentRootStore.ReferenceCell(sourceId, slot),
-            RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
+            RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
         _state.Commit(Spec);
     }
 
-    private UInt256 RecordedCaller() => new(_state.Get(new StorageCell(Target, CallerSlot)), isBigEndian: true);
+    private UInt256 RecordedCaller()
+    {
+        _state.Get(new StorageCell(Target, CallerSlot), out UInt256 caller);
+        return caller;
+    }
 
     private static UInt256 AsWord(Address address) => new(address.Bytes, isBigEndian: true);
 
     private static TxFrame SenderFrameTo(Address target) =>
-        new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, target, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, Array.Empty<byte>());
+        new(FrameMode.Sender, FrameFlags.None, target, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, Array.Empty<byte>());
 
     private static Transaction FrameTx(params TxFrame[] frames) =>
         new()

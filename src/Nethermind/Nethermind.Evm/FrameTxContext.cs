@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -188,13 +189,13 @@ public sealed class FrameTxContext(
     /// a charge that cannot be met must not leave a half-applied approval behind.</remarks>
     /// <param name="plan">The effects an admitted approval will apply; meaningless unless the outcome is
     /// <see cref="FrameApprovalOutcome.Approved"/>.</param>
-    internal FrameApprovalOutcome PlanApproval(byte scope, Address resolvedTarget, IWorldState worldState, out FrameApprovalPlan plan)
+    internal FrameApprovalOutcome PlanApproval(FrameFlags scope, Address resolvedTarget, IWorldState worldState, out FrameApprovalPlan plan)
     {
         plan = default;
         if (scope == 0 || (scope & ~CurrentFrame.AllowedApproveScope) != 0) return FrameApprovalOutcome.Rejected;
 
-        bool approvesExecution = (scope & TxFrame.ApproveExecution) != 0;
-        bool approvesPayment = (scope & TxFrame.ApprovePayment) != 0;
+        bool approvesExecution = (scope & FrameFlags.ApproveExecution) != 0;
+        bool approvesPayment = (scope & FrameFlags.ApprovePayment) != 0;
 
         if (approvesExecution && (SenderApproved || resolvedTarget != Sender)) return FrameApprovalOutcome.Rejected;
 
@@ -356,6 +357,7 @@ public sealed class FrameTxContext(
 
     /// <exception cref="ArgumentOutOfRangeException">The set is longer than a well-formed one, which the
     /// fixed-size preimage buffer cannot hold.</exception>
+    [SkipLocalsInit]
     private static ValueHash256 ComputeNonceKeysHash(UInt256[] nonceKeys)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(nonceKeys.Length, Eip8250Constants.MaxNonceKeys);

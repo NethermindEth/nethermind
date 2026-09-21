@@ -31,19 +31,19 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private int _systemAccountReadSuppressionDepth;
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
-    // Scratch buffer for intra-tx SLOAD on the parallel path (see GetInternal). Per-worker —
-    // the returned span is consumed by the EVM stack push before another GetInternal runs.
-    private readonly byte[] _scratchStorage = new byte[32];
     // Single-slot cache for the last storage cell read: a repeated same-cell SLOAD skips the BAL
     // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
     private StorageCell _lastReadStorageCell;
     private AccountChangesAtIndex? _lastReadStorageChanges;
-    private bool _hasLastReadCell;
+
+    /// <summary>Optional worker coverage replacing materialization of declared read-only slots.</summary>
+    /// <remarks>Set only between execution slices, with the same coverage used by the BAL-backed state.</remarks>
+    public BalReadCoverage? ReadCoverage { get; set; }
+
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal)
     {
         // The cached entry belongs to the outgoing slice, so it cannot survive the swap.
-        _hasLastReadCell = false;
         _lastReadStorageChanges = null;
         _generatingBlockAccessList = bal;
     }
@@ -84,24 +84,41 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 
-    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override void Get(in StorageCell storageCell, out UInt256 value)
     {
-        if (_generatingBlockAccessList is null) return base.Get(in storageCell);
+        if (_generatingBlockAccessList is null)
+        {
+            base.Get(in storageCell, out value);
+            return;
+        }
 
-        AccountChangesAtIndex accountChanges;
-        if (_hasLastReadCell && _lastReadStorageCell.Equals(storageCell))
+        // Already recorded this exact cell; reuse its entry and skip the read-recording.
+        if (_lastReadStorageChanges is { } cached && _lastReadStorageCell.Equals(storageCell))
         {
-            // Already recorded this exact cell; reuse its entry and skip the read-recording.
-            accountChanges = _lastReadStorageChanges!;
+            GetInternal(cached, in storageCell, out value);
+            return;
         }
-        else
+
+        GetStorageSlow(in storageCell, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void GetStorageSlow(in StorageCell storageCell, out UInt256 value)
+    {
+        bool covered = ReadCoverage?.TryMark(storageCell) == true;
+        AccountChangesAtIndex accountChanges = GeneratingBlockAccessList.RecordReadAndGet(storageCell.Address);
+        ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
+        bool hasChange = !Unsafe.IsNullRef(ref change);
+        if (!covered && !hasChange) accountChanges.AddStorageRead(in storageCell.Index);
+        _lastReadStorageCell = storageCell;
+        _lastReadStorageChanges = accountChanges;
+
+        if (parallel && hasChange)
         {
-            accountChanges = _generatingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
-            _lastReadStorageCell = storageCell;
-            _lastReadStorageChanges = accountChanges;
-            _hasLastReadCell = true;
+            value = change.Value;
+            return;
         }
-        return GetInternal(accountChanges, in storageCell);
+        base.Get(in storageCell, out value);
     }
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
@@ -137,14 +154,36 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return base.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
-    public override void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
-        if (_generatingBlockAccessList is not null)
+        if (_generatingBlockAccessList is null)
         {
-            ReadOnlySpan<byte> oldValue = GetInternal(storageCell);
-            _generatingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
+            base.Set(in storageCell, in newValue);
+            return;
         }
-        base.Set(storageCell, newValue);
+
+        GetInternal(in storageCell, out UInt256 oldValue);
+        Set(in storageCell, in newValue, in oldValue);
+    }
+
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+    {
+        if (_generatingBlockAccessList is null)
+        {
+            base.Set(in storageCell, in newValue, in currentValue);
+            return;
+        }
+
+        AssertCurrentStorageValue(in storageCell, in currentValue);
+        _generatingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
+        State.Set(in storageCell, in newValue, in currentValue);
+    }
+
+    [Conditional("DEBUG")]
+    private void AssertCurrentStorageValue(in StorageCell cell, in UInt256 expected)
+    {
+        GetInternal(in cell, out UInt256 actual);
+        Debug.Assert(actual == expected, "Storage must not change between reading the current value and recording the write.");
     }
 
     public override ref readonly UInt256 GetBalance(Address address)
@@ -283,7 +322,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         GeneratingBlockAccessList.Clear();
         _systemAccountReadSuppressionDepth = 0;
-        _hasLastReadCell = false;
         _lastReadStorageChanges = null;
     }
 
@@ -292,7 +330,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void Restore(Snapshot snapshot)
     {
         // A revert can un-record the last cell's slot, so drop the single-slot cache.
-        _hasLastReadCell = false;
         _lastReadStorageChanges = null;
         _generatingBlockAccessList?.Restore(snapshot.BlockAccessListSnapshot);
         base.Restore(snapshot);
@@ -395,20 +432,22 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private ValueHash256 GetCodeHashInternal(Address address)
         => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : base.GetCodeHash(address);
 
-    private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
-        => GetInternal(parallel ? _generatingBlockAccessList?.GetAccountChanges(storageCell.Address) : null, in storageCell);
+    private void GetInternal(in StorageCell storageCell, out UInt256 value)
+        => GetInternal(parallel ? _generatingBlockAccessList?.GetAccountChanges(storageCell.Address) : null, in storageCell, out value);
 
-    private ReadOnlySpan<byte> GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell)
+    private void GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell, out UInt256 value)
     {
-        if (parallel && accountChanges?.TryGetStorageChange(storageCell.Index, out StorageChange? change) == true)
+        if (parallel && accountChanges is not null)
         {
-            // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
-            // frame without allocating a new byte[32] per SLOAD.
-            Unsafe.WriteUnaligned(ref MemoryMarshal.GetArrayDataReference(_scratchStorage), change.Value.Value);
-            return _scratchStorage;
+            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
+            if (!Unsafe.IsNullRef(ref change))
+            {
+                value = change.Value;
+                return;
+            }
         }
 
-        return base.Get(storageCell);
+        base.Get(in storageCell, out value);
     }
 
     private bool AccountExistsInternal(Address address)

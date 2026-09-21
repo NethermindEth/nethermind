@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain
@@ -32,8 +33,8 @@ namespace Nethermind.Blockchain
 
         public bool AccountExists(Address address) => _stateReader.TryGetAccount(BaseBlock, address, out _);
 
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell) =>
-            _stateReader.GetStorage(BaseBlock, storageCell.Address, storageCell.Index);
+        public void Get(in StorageCell storageCell, out UInt256 value) =>
+            _stateReader.GetStorage(BaseBlock, storageCell.Address, storageCell.Index, out value);
 
         [SkipLocalsInit]
         public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;

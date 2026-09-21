@@ -55,14 +55,18 @@ namespace Nethermind.TxPool.Collections
             return true;
         }
 
-        protected override bool Remove(ValueHash256 key, out Transaction? value)
+        /// <inheritdoc/>
+        /// <remarks>The keyed count tracks bucket membership rather than the pool's removal attempt: a removal the
+        /// group comparer cannot locate leaves the entry in the bucket, and capacity eviction drops one from the
+        /// bucket without raising <see cref="SortedPool{TKey, TValue, TGroupKey}.Removed"/>.</remarks>
+        protected override bool RemoveFromBucket(Transaction value, out EnhancedSortedSet<Transaction>? bucketSet)
         {
-            if (!base.Remove(key, out value))
+            if (!base.RemoveFromBucket(value, out bucketSet))
             {
                 return false;
             }
 
-            if (value is not null && KeyedNonceManager.UsesKeyedNonce(value))
+            if (KeyedNonceManager.UsesKeyedNonce(value))
             {
                 AddressAsKey groupKey = MapToGroup(value);
                 if (_keyedNonceCounts.TryGetValue(groupKey, out int keyedCount))

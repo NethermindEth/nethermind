@@ -82,7 +82,7 @@ public class InclusionListSnapshotMeasurement
                 {
                     for (int k = 0; k < Eip8250Constants.MaxNonceKeys; k++)
                     {
-                        world.Set(KeyedNonceManager.StorageSlot(key.Address, KeyOf(key.Address, k)), [(byte)KeyedSeq]);
+                        world.Set(KeyedNonceManager.StorageSlot(key.Address, KeyOf(key.Address, k)), KeyedSeq);
                     }
                 }
             }

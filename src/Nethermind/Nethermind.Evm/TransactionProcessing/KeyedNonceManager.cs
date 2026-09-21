@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -22,12 +21,14 @@ public static class KeyedNonceManager
     /// <summary>Batch width of <see cref="KeccakHash.ComputeHash64Bytes8Avx512"/>.</summary>
     private const int HashBatchSize = 8;
 
+    [SkipLocalsInit]
     public static StorageCell StorageSlot(Address sender, in UInt256 nonceKey)
     {
         Span<byte> preimage = stackalloc byte[SlotPreimageLength];
-        preimage.Clear();
-        sender.Bytes.CopyTo(preimage.Slice(32 - Address.Size, Address.Size));
-        nonceKey.ToBigEndian(preimage.Slice(32));
+        // Only the address's zero padding needs clearing; the rest of the preimage is fully overwritten.
+        preimage[..(32 - Address.Size)].Clear();
+        sender.Bytes.CopyTo(preimage[(32 - Address.Size)..32]);
+        nonceKey.ToBigEndian(preimage[32..]);
         UInt256 index = new(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true);
         return new StorageCell(Eip8250Constants.NonceManagerAddress, index);
     }
@@ -44,7 +45,7 @@ public static class KeyedNonceManager
 
     private static ulong CurrentNonceSeq(IReadOnlyStateProvider state, in StorageCell slot)
     {
-        UInt256 stored = new(state.Get(slot), isBigEndian: true);
+        state.Get(slot, out UInt256 stored);
         // Clamp so a crafted high-bit slot cannot false-match a valid nonce_seq < MAX_NONCE_SEQ.
         return stored > Eip8250Constants.MaxNonceSeq ? ulong.MaxValue : (ulong)stored;
     }
@@ -61,6 +62,7 @@ public static class KeyedNonceManager
     /// Counted slot by slot rather than inferred from the shared sequence: gas estimation reaches payment
     /// approval with nonce validation skipped, so there a partially used set is observable.
     /// </remarks>
+    [SkipLocalsInit]
     public static int FirstUseCount(IReadOnlyStateProvider state, Address sender, ReadOnlySpan<UInt256> nonceKeys)
     {
         int firstUseCount = 0;
@@ -87,6 +89,7 @@ public static class KeyedNonceManager
         return firstUseCount;
     }
 
+    [SkipLocalsInit]
     public static void ConsumeNonceSet(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
     {
         if (nonceKeys.Length == 1 && nonceKeys[0].IsZero)
@@ -95,9 +98,7 @@ public static class KeyedNonceManager
             return;
         }
 
-        Span<byte> buffer = stackalloc byte[32];
-        ((UInt256)nonceSeq + UInt256.One).ToBigEndian(buffer);
-        byte[] nextSeq = buffer.WithoutLeadingZeros().ToArray();
+        UInt256 nextSeq = (UInt256)nonceSeq + UInt256.One;
 
         if (Avx512F.IsSupported && nonceKeys.Length is >= HashBatchSize and <= Eip8250Constants.MaxNonceKeys)
         {
@@ -165,6 +166,7 @@ public static class KeyedNonceManager
     /// <paramref name="nonceSeq"/> is below <see cref="Eip8250Constants.MaxNonceSeq"/>, and every key in the set is
     /// currently at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>). Safe to call on undecoded/untrusted input.
     /// </remarks>
+    [SkipLocalsInit]
     public static bool IsNonceSetValid(IReadOnlyStateProvider state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
     {
         if (!AreNonceKeysWellFormed(nonceKeys))

@@ -46,6 +46,7 @@ namespace Nethermind.TxPool.Collections
         protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
         protected KeyValuePair<TValue, TKey>? _worstValue = null;
         private TValue[]? _snapshot;
+        private SnapshotDictionary<TGroupKey, TValue[]>? _productionSnapshot;
 
         /// <summary>
         /// Constructor
@@ -121,11 +122,8 @@ namespace Nethermind.TxPool.Collections
             int index = 0;
             foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
             {
-                foreach (TValue value in bucket.Value)
-                {
-                    snapshot[index] = value;
-                    index++;
-                }
+                CopyBucketTo(bucket.Value, snapshot.AsSpan(index, bucket.Value.Count));
+                index += bucket.Value.Count;
             }
 
             Volatile.Write(ref _snapshot, snapshot);
@@ -135,24 +133,45 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
-        /// <param name="where">Runs once per bucket while the pool lock is held, so whatever it costs is paid
-        /// across the whole pool, and it must not call back into the pool.</param>
-        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, IReadOnlySortedSet<TValue> bucket)>? where = null)
+        /// <remarks>Takes the pool lock for the whole walk, so callers that want only some of the groups filter
+        /// the returned snapshot rather than being handed a predicate to pay for under that lock.</remarks>
+        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot()
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
-
             Dictionary<TGroupKey, TValue[]> snapshots = new(_buckets.Count);
             foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
-                if (where is not null && (bucket.Count == 0 || !where.Invoke((key, bucket))))
-                {
-                    continue;
-                }
-
                 snapshots[key] = CopyBucketToArray(bucket);
             }
-
             return snapshots;
+        }
+
+        /// <summary>Gets a production snapshot whose bucket arrays must not be modified by callers.</summary>
+        /// <remarks>
+        /// Membership changes invalidate cached arrays. In-place value updates remain visible through their
+        /// references and must not reorder a bucket without invalidating its snapshot.
+        /// Unfiltered calls also cache the dictionary; filtered calls reuse only the bucket arrays.
+        /// </remarks>
+        internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
+        {
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+            if (where is null && _productionSnapshot is not null) return _productionSnapshot;
+            if (_buckets.Count == 0) return _productionSnapshot ??= new([], 0);
+
+            KeyValuePair<TGroupKey, TValue[]>[] entries = new KeyValuePair<TGroupKey, TValue[]>[_buckets.Count];
+            int count = 0;
+            foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
+            {
+                if (where is not null && (bucket.Count == 0 || !where((key, bucket.Min!)))) continue;
+                TValue[] values = bucket is SnapshotBucket cached
+                    ? cached.Snapshot ??= CopyBucketToArray(bucket)
+                    : CopyBucketToArray(bucket);
+                entries[count++] = new(key, values);
+            }
+
+            SnapshotDictionary<TGroupKey, TValue[]> snapshot = new(entries, count);
+            if (where is null) _productionSnapshot = snapshot;
+            return snapshot;
         }
 
         /// <summary>
@@ -166,16 +185,38 @@ namespace Nethermind.TxPool.Collections
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? CopyBucketToArray(bucket) : [];
         }
 
+        private sealed class SnapshotBucket(IComparer<TValue> comparer) : EnhancedSortedSet<TValue>(comparer)
+        {
+            public TValue[]? Snapshot;
+        }
+
         private static TValue[] CopyBucketToArray(EnhancedSortedSet<TValue> bucket)
         {
             TValue[] snapshot = new TValue[bucket.Count];
+            CopyBucketTo(bucket, snapshot);
+            return snapshot;
+        }
+
+        private static void CopyBucketTo(EnhancedSortedSet<TValue> bucket, Span<TValue> destination)
+        {
+            if (bucket is SnapshotBucket { Snapshot: not null } cached)
+            {
+                cached.Snapshot.AsSpan().CopyTo(destination);
+                return;
+            }
+
+            // Avoid allocating the SortedSet enumerator's traversal stack for a single item.
+            if (bucket.Count == 1)
+            {
+                destination[0] = bucket.Min!;
+                return;
+            }
+
             int index = 0;
             foreach (TValue value in bucket)
             {
-                snapshot[index++] = value;
+                destination[index++] = value;
             }
-
-            return snapshot;
         }
 
         /// <summary>
@@ -294,7 +335,13 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        private bool RemoveFromBucket([DisallowNull] TValue value, out EnhancedSortedSet<TValue>? bucketSet)
+        /// <summary>Removes <paramref name="value"/> from its group bucket.</summary>
+        /// <remarks>The only place bucket membership shrinks, so per-bucket accounting belongs here rather than on
+        /// <see cref="Removed"/>, which <see cref="RemoveLast"/> bypasses when it falls back to the bucket.</remarks>
+        /// <param name="value">Element to remove.</param>
+        /// <param name="bucketSet">Bucket the element was mapped to, or null when the group is unknown.</param>
+        /// <returns>Whether the bucket held the element.</returns>
+        protected virtual bool RemoveFromBucket([DisallowNull] TValue value, out EnhancedSortedSet<TValue>? bucketSet)
         {
             TGroupKey groupMapping = MapToGroup(value);
             if (_buckets.TryGetValue(groupMapping, out bucketSet))
@@ -302,6 +349,8 @@ namespace Nethermind.TxPool.Collections
                 TValue? last = bucketSet.Max;
                 if (bucketSet.Remove(value))
                 {
+                    _productionSnapshot = null;
+                    if (bucketSet is SnapshotBucket cached) cached.Snapshot = null;
                     if (bucketSet.Count == 0)
                     {
                         _buckets.Remove(groupMapping);
@@ -483,12 +532,14 @@ namespace Nethermind.TxPool.Collections
         {
             if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
-                _buckets[groupKey] = bucket = new EnhancedSortedSet<TValue>(_groupComparer);
+                _buckets[groupKey] = bucket = new SnapshotBucket(_groupComparer);
             }
 
             TValue? last = bucket.Max;
             if (bucket.Add(value))
             {
+                _productionSnapshot = null;
+                if (bucket is SnapshotBucket cached) cached.Snapshot = null;
                 _cacheMap[key] = value;
                 UpdateIsFull();
                 UpdateSortedValues(bucket, last);
@@ -593,6 +644,18 @@ namespace Nethermind.TxPool.Collections
 
             if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
+                return;
+            }
+
+            if (bucket is SnapshotBucket { Snapshot: { } snapshot })
+            {
+                foreach (TValue value in snapshot)
+                {
+                    if (!visitor(value, ref state))
+                    {
+                        break;
+                    }
+                }
                 return;
             }
 

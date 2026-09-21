@@ -90,7 +90,7 @@ public class LongFinalityIntegrationTests
         {
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(500).TestObject;
             byte[] slotVal = new byte[32]; slotVal[31] = 0xFF;
-            c.Storages[(TestItem.AddressA, (UInt256)42)] = new SlotValue(slotVal);
+            c.Storages[(TestItem.AddressA, (UInt256)42)] = new UInt256(slotVal, isBigEndian: true);
             c.SelfDestructedStorageAddresses[TestItem.AddressB] = false;
             c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, stateRlp);
             c.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Branch, storageRlp);
@@ -491,7 +491,9 @@ public class LongFinalityIntegrationTests
         FlatDbConfig config = new()
         {
             CompactSize = 4,
-            MinReorgDepth = 2,
+            // Not a subject here: a non-zero floor would hold the fold until the head is that far above
+            // the boundary, which is exercised in PersistenceManagerTests instead.
+            MinReorgDepth = 0,
             MaxInMemoryBaseSnapshotCount = 100000,
             LongFinalityMaxReorgDepth = 90000,
             EnableLongFinality = true

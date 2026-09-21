@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -182,6 +183,30 @@ public class Eip8037BlockGasInclusionCheckTests
             Assert.That(execution, Is.EqualTo(200_000UL));
             Assert.That(state, Is.Zero);
         }
+    }
+
+    // Pins the cases that return false, which is what keeps the fallback arm in
+    // BlockAccessListManager.CheckPerTxInclusion reachable rather than dead.
+    [TestCase(false, TestName = "TryGetBlockGasReservations_declines_a_frame_tx_reloaded_without_its_frames")]
+    [TestCase(true, TestName = "TryGetBlockGasReservations_declines_a_frame_tx_whose_gas_budget_overflows")]
+    public void TryGetBlockGasReservations_declines_an_unpriceable_frame_tx(bool overflowingBudget)
+    {
+        TxFrame[]? frames = overflowingBudget
+            ? [UnlimitedFrame(), UnlimitedFrame()]
+            : null;
+        Transaction tx = new() { Type = TxType.FrameTx, GasLimit = 200_000, Frames = frames };
+
+        bool computed = Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, Amsterdam.Instance, out ulong execution, out ulong state);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(computed, Is.False);
+            Assert.That(execution, Is.Zero);
+            Assert.That(state, Is.Zero);
+        }
+
+        static TxFrame UnlimitedFrame()
+            => new(FrameMode.Default, FrameFlags.None, null, ulong.MaxValue, UInt256.Zero, default);
     }
 
     [TestCase(379_970UL, 281_520UL, 0UL, 98_450UL, TestName = "Calculate_block_execution_gas_subtracts_state_component")]

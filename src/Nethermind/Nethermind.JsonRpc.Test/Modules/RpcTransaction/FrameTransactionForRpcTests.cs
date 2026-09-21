@@ -69,7 +69,7 @@ public class FrameTransactionForRpcTests
     public void FrameTransactionForRpc_SerializesFrames()
     {
         Transaction tx = BuildMinimalFrameTx();
-        tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB, 50_000, (UInt256)1, default)];
+        tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, TestItem.AddressB, 50_000, (UInt256)1, default)];
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
         using JsonDocument doc = SerializeToJson(rpc);
@@ -78,8 +78,8 @@ public class FrameTransactionForRpcTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(frames.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(frames[0].GetProperty("mode").GetInt32(), Is.EqualTo(TxFrame.ModeVerify));
-            Assert.That(frames[0].GetProperty("flags").GetInt32(), Is.EqualTo(TxFrame.ApproveExecutionAndPayment));
+            Assert.That(frames[0].GetProperty("mode").GetInt32(), Is.EqualTo((byte)FrameMode.Verify));
+            Assert.That(frames[0].GetProperty("flags").GetInt32(), Is.EqualTo((byte)FrameFlags.ApproveExecutionAndPayment));
             Assert.That(frames[0].GetProperty("target").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
             Assert.That(frames[0].GetProperty("executionGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
             Assert.That(frames[0].GetProperty("stateGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
@@ -221,8 +221,8 @@ public class FrameTransactionForRpcTests
             To = TestItem.AddressB,
             Frames =
             [
-                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, ExecutionGasLimit = frameGasLimit },
-                new FrameForRpc { Mode = TxFrame.ModeSender, Target = TestItem.AddressC },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = frameGasLimit },
+                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressC },
             ],
         };
 
@@ -245,8 +245,8 @@ public class FrameTransactionForRpcTests
             Gas = 12,
             Frames =
             [
-                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, ExecutionGasLimit = 30_000 },
-                new FrameForRpc { Mode = TxFrame.ModeSender, Target = TestItem.AddressC, ExecutionGasLimit = 40_000 },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = 30_000 },
+                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressC, ExecutionGasLimit = 40_000 },
             ],
         };
 
@@ -265,7 +265,7 @@ public class FrameTransactionForRpcTests
             To = TestItem.AddressB,
             Frames =
             [
-                new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = ulong.MaxValue, StateGasLimit = 1 },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGasLimit = ulong.MaxValue, StateGasLimit = 1 },
             ],
         };
 
@@ -280,7 +280,7 @@ public class FrameTransactionForRpcTests
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
-            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = ulong.MaxValue }],
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGasLimit = ulong.MaxValue }],
         };
 
         Assert.That(rpc.ToTransaction(validateUserInput: true).IsError, Is.False);
@@ -321,7 +321,7 @@ public class FrameTransactionForRpcTests
         {
             To = TestItem.AddressB,
             // Deliberately free of frame gas, so only the signature list can breach the cap.
-            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment }],
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment }],
             Signatures = Secp256k1Signatures(entries),
         };
 
@@ -341,7 +341,7 @@ public class FrameTransactionForRpcTests
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
-            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, ExecutionGasLimit = GasCap + 1 }],
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = GasCap + 1 }],
             Signatures = Secp256k1Signatures(entries),
         };
 
@@ -360,7 +360,7 @@ public class FrameTransactionForRpcTests
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
-            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = frameGas }],
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGasLimit = frameGas }],
             Signatures = Secp256k1Signatures(1),
         };
 
@@ -706,5 +706,49 @@ public class FrameTransactionForRpcTests
         }
 
         return logs;
+    }
+
+    /// <summary>The frames wire form, captured from the serializer and pinned verbatim.</summary>
+    /// <remarks><c>mode</c> and <c>flags</c> carry no quantity converter, so they are plain JSON numbers where
+    /// every other scalar is a hex quantity; <c>eth_sendTransaction</c> callers and t8n fixture input both rely
+    /// on that. Pinning the string rather than round-tripping catches a change that moved both ends together.</remarks>
+    private const string PinnedFramesJson =
+        """[{"mode":1,"flags":3,"executionGasLimit":"0xc350","stateGasLimit":"0x3e8","value":"0x0","data":"0x"},{"mode":2,"flags":4,"target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGasLimit":"0x5208","stateGasLimit":"0x0","value":"0x7","data":"0xdead"},{"mode":3,"flags":0,"target":"0x76e68a8696537e4141926f3e528733af9e237d69","executionGasLimit":"0x3e8","stateGasLimit":"0x7d0","value":"0x0","data":"0x"}]""";
+
+    /// <summary>The frames <see cref="PinnedFramesJson"/> was captured from: every mode, an approval scope, the
+    /// atomic-batch bit, an omitted target and a present one, both gas limits, a value and calldata.</summary>
+    private static TxFrame[] PinnedFrames() =>
+    [
+        new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, 50_000, 1_000, UInt256.Zero, default),
+        new TxFrame(FrameMode.Sender, FrameFlags.AtomicBatch, TestItem.AddressB, 21_000, 0, (UInt256)7, new byte[] { 0xde, 0xad }),
+        new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressC, 1_000, 2_000, UInt256.Zero, default),
+    ];
+
+    [Test]
+    public void FrameForRpc_SerializedForm_IsUnchanged() =>
+        Assert.That(Serializer.Serialize(FrameForRpc.FromFrames(PinnedFrames())), Is.EqualTo(PinnedFramesJson));
+
+    [Test]
+    public void FrameForRpc_DeserializedFromThePinnedForm_YieldsTheSameFrames()
+    {
+        FrameForRpc[]? parsed = Serializer.Deserialize<FrameForRpc[]>(PinnedFramesJson);
+
+        Assert.That(FrameForRpc.TryToFrames(parsed, out TxFrame[]? frames), Is.True);
+
+        TxFrame[] expected = PinnedFrames();
+        Assert.That(frames, Has.Length.EqualTo(expected.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.That(frames![i].Mode, Is.EqualTo(expected[i].Mode));
+                Assert.That(frames[i].Flags, Is.EqualTo(expected[i].Flags));
+                Assert.That(frames[i].Target, Is.EqualTo(expected[i].Target));
+                Assert.That(frames[i].ExecutionGasLimit, Is.EqualTo(expected[i].ExecutionGasLimit));
+                Assert.That(frames[i].StateGasLimit, Is.EqualTo(expected[i].StateGasLimit));
+                Assert.That(frames[i].Value, Is.EqualTo(expected[i].Value));
+                Assert.That(frames[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()));
+            }
+        }
     }
 }

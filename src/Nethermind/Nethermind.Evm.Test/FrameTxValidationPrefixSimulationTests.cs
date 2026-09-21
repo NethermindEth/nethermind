@@ -60,7 +60,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_DeployedCodeSenderApprovesExecutionAndPayment_ResolvesSenderAsPayer()
     {
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
@@ -79,13 +79,13 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_DeployedCodeSponsorPaysAfterExecutionApproval_ResolvesSponsorAsPayer()
     {
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution), 1.Ether);
-        DeployContract(Sponsor, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecution), 1.Ether);
+        DeployContract(Sponsor, ApproveCode(FrameFlags.ApprovePayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Sponsor, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Sponsor, gasLimit: 200_000, UInt256.Zero, default),
             // An execution frame after the prefix: simulation must halt before reaching it.
-            new TxFrame(TxFrame.ModeSender, flags: 0, target: TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Sender, flags: FrameFlags.None, target: TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default));
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
 
@@ -99,9 +99,9 @@ public class FrameTxValidationPrefixSimulationTests
 
     private static IEnumerable<TestCaseData> UnrecognizedPrefixCases()
     {
-        TxFrame extraVerify = new(TxFrame.ModeVerify, flags: 0, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default);
-        TxFrame deploy = new(TxFrame.ModeDefault, flags: 0, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default);
-        TxFrame trailingVerify = new(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default);
+        TxFrame extraVerify = new(FrameMode.Verify, flags: FrameFlags.None, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default);
+        TxFrame deploy = new(FrameMode.Default, flags: FrameFlags.None, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default);
+        TxFrame trailingVerify = new(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
         yield return new TestCaseData(new[] { extraVerify, SelfVerifyFrame(), trailingVerify }, true)
             .SetName("Simulate_ExtraLeadingVerifyFrame_ResolvesPayerBehindAnUnrecognizedLayout");
@@ -116,7 +116,7 @@ public class FrameTxValidationPrefixSimulationTests
     public void Simulate_LayoutOutsideTheRecognizedGrammar_ResolvesAPayerOnlyFromALeadingVerifyRun(TxFrame[] frames, bool expectedPayer)
     {
         DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, frames);
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
@@ -143,11 +143,11 @@ public class FrameTxValidationPrefixSimulationTests
     [TestCaseSource(nameof(PrefixVerdictParityCases))]
     public void SimulationAndExecution_SponsorReadsThePrecedingFrame_ReachTheSameVerdict(byte param, bool approveWhenZero, bool expectedValid)
     {
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution), 1.Ether);
-        DeployContract(Sponsor, ApprovesOnFrameReading(param, approveWhenZero, TxFrame.ApprovePayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecution), 1.Ether);
+        DeployContract(Sponsor, ApprovesOnFrameReading(param, approveWhenZero, FrameFlags.ApprovePayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Sponsor, gasLimit: 200_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Sponsor, gasLimit: 200_000, UInt256.Zero, default));
 
         AssertPrefixVerdictParity(tx, expectedValid);
     }
@@ -159,7 +159,7 @@ public class FrameTxValidationPrefixSimulationTests
         // shape from which a following frame reads a non-zero gas_used.state.
         byte[] initCode = Prepare.EvmCode
             .PushData(1).PushData(0).Op(Instruction.SSTORE)
-            .ForInitOf(ApprovesOnFrameReading(0x0B, approveWhenZero: false, TxFrame.ApproveExecutionAndPayment)).Done;
+            .ForInitOf(ApprovesOnFrameReading(0x0B, approveWhenZero: false, FrameFlags.ApproveExecutionAndPayment)).Done;
         Address deployed = InstallFactory(initCode);
         FundAccount(deployed, 1.Ether);
 
@@ -171,11 +171,11 @@ public class FrameTxValidationPrefixSimulationTests
     {
         // Budgeted between warm and cold access, so the frame succeeds only where the coinbase is pre-warmed:
         // the two paths have to run against the same block beneficiary to agree.
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution), 1.Ether);
-        DeployContract(Beneficiary, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecution), 1.Ether);
+        DeployContract(Beneficiary, ApproveCode(FrameFlags.ApprovePayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Beneficiary, gasLimit: 2_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Beneficiary, gasLimit: 2_000, UInt256.Zero, default));
 
         AssertPrefixVerdictParity(tx, expectedValid: true);
     }
@@ -192,17 +192,22 @@ public class FrameTxValidationPrefixSimulationTests
         BinaryPrimitives.WriteUInt64BigEndian(deadline, ulong.MaxValue);
 
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, expiryGasLimit, UInt256.Zero, deadline),
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, expiryGasLimit, UInt256.Zero, deadline),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess, UInt256.Zero, default));
         FrameTxTestFrames.SignSecp256k1(tx, TestItem.PrivateKeyA, null);
 
         AssertPrefixVerdictParity(tx, expectedValid);
     }
 
-    [Test]
-    public void Simulate_PrefixNeverSetsPayer_Rejected()
+    // The prefix leaves no payer either way: one halts without approving, the other reverts.
+    [TestCase(false, TestName = "Simulate_PrefixNeverSetsPayer_Rejected")]
+    [TestCase(true, TestName = "Simulate_PrefixReverts_Rejected")]
+    public void Simulate_PrefixResolvingNoPayer_Rejected(bool reverts)
     {
-        DeployContract(Sender, Prepare.EvmCode.Op(Instruction.STOP).Done, 1.Ether);
+        byte[] prefix = reverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done;
+        DeployContract(Sender, prefix, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
@@ -215,29 +220,13 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_PrefixReverts_Rejected()
-    {
-        DeployContract(Sender, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done, 1.Ether);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-
-        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(tracer.Payer, Is.Null);
-        }
-    }
-
-    [TestCase(Instruction.ORIGIN)]
-    [TestCase(Instruction.BLOBHASH)]
-    [TestCase(Instruction.TLOAD)]
-    public void Simulate_PrefixUsesRelaxedOpcode_ResolvesPayer(Instruction opcode)
+    public void Simulate_PrefixUsesRelaxedOpcode_ResolvesPayer(
+        [Values(Instruction.ORIGIN, Instruction.BLOBHASH, Instruction.TLOAD)] Instruction opcode)
     {
         // Each reads the frame or transaction payload, not the block environment, so none makes the
         // prefix depend on state that could differ between simulation and inclusion.
         byte[] probe = Prepare.EvmCode.PushData(0).Op(opcode).Op(Instruction.POP).Done;
-        DeployContract(Sender, [.. probe, .. ApproveCode(TxFrame.ApproveExecutionAndPayment)], 1.Ether);
+        DeployContract(Sender, [.. probe, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
@@ -255,7 +244,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         // 0xF6 is undefined on every fork we ship, so the EVM's own halt fails the prefix and the tracer
         // needs no rule for it.
-        byte[] code = [0xf6, .. ApproveCode(TxFrame.ApproveExecutionAndPayment)];
+        byte[] code = [0xf6, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)];
         DeployContract(Sender, code, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
 
@@ -275,7 +264,7 @@ public class FrameTxValidationPrefixSimulationTests
         byte[] code = Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done;
         DeployContract(Sender, code, 1.Ether);
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 10_000_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 10_000_000, UInt256.Zero, default));
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
 
@@ -293,7 +282,7 @@ public class FrameTxValidationPrefixSimulationTests
         // Validity would otherwise depend on the target staying codeless — an unindexed dependency.
         byte[] code = Prepare.EvmCode
             .StaticCall(TestItem.AddressC, 50_000)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
@@ -308,7 +297,7 @@ public class FrameTxValidationPrefixSimulationTests
         DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
         byte[] code = Prepare.EvmCode
             .StaticCall(TestItem.AddressC, 50_000)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
 
@@ -353,7 +342,7 @@ public class FrameTxValidationPrefixSimulationTests
         Prepare prologue = Prepare.EvmCode;
         for (int i = 0; i < extraOperands; i++) prologue = prologue.PushData(0);
         byte[] code = prologue.PushData(TestItem.AddressC).Op(opcode)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
@@ -366,7 +355,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         byte[] code = Prepare.EvmCode
             .StaticCall(target, 50_000)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
@@ -406,7 +395,7 @@ public class FrameTxValidationPrefixSimulationTests
         Prepare code = Prepare.EvmCode;
         for (int i = 0; i < operands; i++) code = code.PushData(0);
         byte[] deployed = code.Op((Instruction)banned)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, deployed, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
@@ -426,7 +415,7 @@ public class FrameTxValidationPrefixSimulationTests
                 .Op(Instruction.GAS).Op(Instruction.STATICCALL).Op(Instruction.POP)
             : code.Op(Instruction.GAS).Op(Instruction.POP);
         DeployContract(Sender, code
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, 1.Ether);
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
@@ -438,7 +427,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         byte[] code = Prepare.EvmCode
             .PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
@@ -458,7 +447,7 @@ public class FrameTxValidationPrefixSimulationTests
         DeployContract(TestItem.AddressC, Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP).Op(Instruction.STOP).Done);
         byte[] code = Prepare.EvmCode
             .StaticCall(TestItem.AddressC, 50_000).Op(Instruction.POP)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
@@ -470,11 +459,11 @@ public class FrameTxValidationPrefixSimulationTests
     public void Simulate_TimestampInCanonicalExpiryVerifier_Allowed()
     {
         DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         byte[] deadline = new byte[Eip8141Constants.ExpiryDataLength];
         BinaryPrimitives.WriteUInt64BigEndian(deadline, ulong.MaxValue);
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, deadline),
+            new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, deadline),
             SelfVerifyFrame());
 
         (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
@@ -509,7 +498,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_DeployFrameInstallsCodeAtTheSender_ResolvesTheDeployedAccountAsPayer()
     {
-        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         Address deployed = InstallFactory(initCode);
         FundAccount(deployed, 1.Ether);
         Transaction tx = DeployTx(deployed);
@@ -531,7 +520,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         // The carve-out covers code installed at tx.sender only; the sender already carrying code
         // leaves the created address as the sole thing under test.
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         InstallFactory(Prepare.EvmCode.ForInitOf(Prepare.EvmCode.Op(Instruction.STOP).Done).Done);
         Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
 
@@ -545,7 +534,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         byte[] initCode = Prepare.EvmCode
             .PushData(1).PushData(0).Op(Instruction.SSTORE)
-            .ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+            .ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         Address deployed = InstallFactory(initCode);
         FundAccount(deployed, 1.Ether);
         Transaction tx = DeployTx(deployed);
@@ -564,7 +553,7 @@ public class FrameTxValidationPrefixSimulationTests
     public void Simulate_DeployFrameStoresToTheFactoryStorage_RecordsViolation()
     {
         // Per-deploy factory storage would make the deployment depend on chain state.
-        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         byte[] prologue = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done;
         Address deployed = InstallFactory(initCode, prologue);
         FundAccount(deployed, 1.Ether);
@@ -580,9 +569,9 @@ public class FrameTxValidationPrefixSimulationTests
     {
         // A create that opens no frame returned zero on a collision the prefix must not turn on —
         // here a front-run of the very deployment the frame intends.
-        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         Address deployed = InstallFactory(initCode);
-        DeployContract(deployed, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(deployed, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = DeployTx(deployed);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(tx);
@@ -596,7 +585,7 @@ public class FrameTxValidationPrefixSimulationTests
         // The carve-out belongs to the opening deploy frame alone.
         byte[] code = Prepare.EvmCode
             .Create(Prepare.EvmCode.Op(Instruction.STOP).Done, 0).Op(Instruction.POP)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
 
@@ -611,7 +600,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         // The processor dispatches the deploy frame's target, so it never meets the CALL* target rule; a
         // delegated factory is mutable by its authority, which is what that rule exists to close.
-        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         Address deployed = InstallFactory(initCode);
         FundAccount(deployed, 1.Ether);
         if (delegated)
@@ -641,8 +630,8 @@ public class FrameTxValidationPrefixSimulationTests
         // the interpreter at the first violation and one before the create would stop it happening at all.
         byte[] deployedCode = violates
             ? Prepare.EvmCode.Op(Instruction.SELFBALANCE).Op(Instruction.POP)
-                .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done
-            : ApproveCode(TxFrame.ApproveExecutionAndPayment);
+                .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done
+            : ApproveCode(FrameFlags.ApproveExecutionAndPayment);
         byte[] initCode = Prepare.EvmCode.ForInitOf(deployedCode).Done;
         Address deployed = InstallFactory(initCode);
         FundAccount(deployed, 1.Ether);
@@ -689,7 +678,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_DeployFrameUsingPlainCreate_RecordsViolation()
     {
-        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         DeployContract(Factory, Prepare.EvmCode.Create(initCode, 0).Done);
         Address deployed = ContractAddress.From(Factory, 0);
         FundAccount(deployed, 1.Ether);
@@ -705,7 +694,7 @@ public class FrameTxValidationPrefixSimulationTests
     [TestCase(1, true, TestName = "an endowed CREATE2 is refused")]
     public void Simulate_DeployFrameCreateEndowment_IsRefused(int endowment, bool violates)
     {
-        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         DeployContract(Factory, Prepare.EvmCode.Create2(initCode, Salt, (UInt256)endowment).Done, 1.Ether);
         Address deployed = ContractAddress.From(Factory, Salt, initCode);
         FundAccount(deployed, 1.Ether);
@@ -744,7 +733,7 @@ public class FrameTxValidationPrefixSimulationTests
     public void Simulate_DeployFrameCallCarryingValue_IsRefused(int value, bool violates, bool callCode)
     {
         DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
-        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         byte[] prologue = (callCode
                 ? Prepare.EvmCode.CallCode(TestItem.AddressC, 50_000, (UInt256)value)
                 : Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, (UInt256)value))
@@ -766,7 +755,7 @@ public class FrameTxValidationPrefixSimulationTests
         DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
         byte[] initCode = Prepare.EvmCode
             .PushData(1).PushData(0).Op(Instruction.SSTORE)
-            .ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+            .ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
         Address deployed = InstallFactory(initCode);
         FundAccount(deployed, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, ExpiryVerifyFrame(), DeployFrame(), SelfVerifyFrame());
@@ -788,7 +777,7 @@ public class FrameTxValidationPrefixSimulationTests
         // The guard is that tx.sender carries code once the deploy frame is done, so a deploy frame that
         // creates nothing passes it vacuously when the sender is already deployed. That is intended: the
         // VERIFY frames behind it run the sender's real code either way.
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         DeployContract(Factory, Prepare.EvmCode.Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
 
@@ -813,7 +802,7 @@ public class FrameTxValidationPrefixSimulationTests
             .PushData(0).Op(Instruction.JUMP).Done);
         byte[] code = Prepare.EvmCode
             .StaticCall(TestItem.AddressC, 50_000).Op(Instruction.POP)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         FrameTxValidationTracer tracer = Tracer(tx);
@@ -839,7 +828,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         // RECENTROOTREFLOAD reads the envelope on the strength of the pre-state check, so a prefix must
         // not run against references the main path would reject.
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.RecentRootReferences = [new RecentRootReference(TestItem.KeccakA, slot: 9, TestItem.KeccakB)];
 
@@ -858,10 +847,10 @@ public class FrameTxValidationPrefixSimulationTests
     {
         // RecognizedPrefixLength reaches index 1 only past an expiry-verify frame, so a deploy frame
         // behind any other frame is not the shape the decline describes.
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecution), 1.Ether);
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default),
             SelfVerifyFrame());
 
         (TransactionResult result, _) = Simulate(tx);
@@ -890,12 +879,12 @@ public class FrameTxValidationPrefixSimulationTests
         // A calldata-heavy prefix prices on the EIP-7623 floor, so the simulated APPROVE gate must use
         // the budget the main path escrows on.
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero,
                 CalldataOf(30_000)));
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out ulong floorGas, out ulong maxGas), Is.True);
         Assert.That(maxGas, Is.EqualTo(floorGas), "the fixture must be a shape where the floor binds");
 
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), (UInt256)(maxGas + (ulong)(long)balanceDelta));
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxGas + (ulong)(long)balanceDelta));
 
         (_, FrameTxValidationTracer tracer) = Simulate(tx);
 
@@ -907,10 +896,10 @@ public class FrameTxValidationPrefixSimulationTests
     {
         // A scope-less DEFAULT frame is also the ordinary execution frame, so the deploy decline must
         // not claim this permanently-invalid shape.
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecution), 1.Ether);
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default));
 
         (TransactionResult result, _) = Simulate(tx);
 
@@ -924,7 +913,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_PrefixCarriesAMismatchedSigner_RejectedByTheSignatureCheck()
     {
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.FrameSignatures = [MismatchedSignerSignature()];
 
@@ -936,7 +925,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_CallerAssertsSignaturesPreValidated_SkipsTheDuplicateCheckAndResolvesThePayer()
     {
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.FrameSignatures = [MismatchedSignerSignature()];
 
@@ -954,7 +943,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         // The assertion is only legible to the prefix simulation, so a caller that sets it on any other
         // path — block execution, eth_call, eth_estimateGas, eth_simulate, debug_traceCall — gains nothing.
-        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.FrameSignatures = [MismatchedSignerSignature()];
         Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
@@ -1009,12 +998,12 @@ public class FrameTxValidationPrefixSimulationTests
     /// <summary>Code approving <paramref name="scope"/> only when <c>FRAMEPARAM</c> field
     /// <paramref name="param"/> of frame 0 reads as zero, or only when it does not.</summary>
     /// <remarks>An approval the context refuses reverts the frame, so a scope of zero is the rejection.</remarks>
-    private static byte[] ApprovesOnFrameReading(byte param, bool approveWhenZero, byte scope)
+    private static byte[] ApprovesOnFrameReading(byte param, bool approveWhenZero, FrameFlags scope)
     {
         Prepare code = Prepare.EvmCode.PushData(param).PushData(0).Op(Instruction.FRAMEPARAM).Op(Instruction.ISZERO);
         if (!approveWhenZero) code = code.Op(Instruction.ISZERO);
         // APPROVE stack order (top to bottom): offset, length, scope.
-        return code.PushData(scope).Op(Instruction.MUL).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        return code.PushData((byte)scope).Op(Instruction.MUL).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
     }
 
     private TransactionResult Execute(Transaction tx)
@@ -1034,7 +1023,7 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default, TimeProvider? time = null) =>
-        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, default, timeout, time);
+        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, timeout, time);
 
     private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)
     {
@@ -1084,19 +1073,19 @@ public class FrameTxValidationPrefixSimulationTests
     {
         byte[] data = new byte[Eip8141Constants.ExpiryDataLength];
         BinaryPrimitives.WriteUInt64BigEndian(data, ulong.MaxValue);
-        return new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress,
+        return new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress,
             gasLimit: 50_000, UInt256.Zero, data);
     }
 
     // A deploy frame is the one prefix frame that writes state, so it needs a limits.state budget.
     private static TxFrame DeployFrame() =>
-        new(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, Factory, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default);
+        new(FrameMode.Default, FrameFlags.None, Factory, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default);
 
-    private static byte[] ApproveCode(byte scope) =>
-        Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+    private static byte[] ApproveCode(FrameFlags scope) =>
+        Prepare.EvmCode.PushData((byte)scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
 
     private static TxFrame SelfVerifyFrame() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
     /// <summary>A clock that stands still until <see cref="StartTicking"/>, then advances one tick per
     /// reading, so elapsed time is a function of the interpreter's cancellation polling rather than of

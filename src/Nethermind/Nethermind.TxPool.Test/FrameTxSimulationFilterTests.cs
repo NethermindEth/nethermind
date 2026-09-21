@@ -155,7 +155,7 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
@@ -170,7 +170,7 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectTimedOut("timed out"));
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.RejectTimedOut("timed out"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
@@ -186,12 +186,12 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
 
         Accept(state, simulator, tx, options: options);
 
-        simulator.Received(1).Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), local: expected);
+        simulator.Received(1).Simulate(tx, Arg.Any<bool>(), local: expected, token: Arg.Any<CancellationToken>());
     }
 
     private static AcceptTxResult Accept(

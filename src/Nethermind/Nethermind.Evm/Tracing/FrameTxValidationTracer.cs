@@ -12,17 +12,17 @@ namespace Nethermind.Evm.Tracing;
 
 /// <summary>Enforces the EIP-8141 validation-prefix opcode rules during mempool prefix simulation,
 /// and captures the resolved payer.</summary>
-/// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
 /// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
+/// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
 public sealed class FrameTxValidationTracer(
     Address sender,
     Address expiryVerifier,
     IReadOnlyStateProvider state,
     IReleaseSpec spec,
-    CancellationToken token = default,
     TimeSpan timeout = default,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    CancellationToken token = default)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;

@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -85,6 +86,42 @@ internal class FrameTxCalldataStatsFilterTests
 
         Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
         Assert.That(tx.FrameCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)));
+    }
+
+    // Both sets reach this filter straight off an RPC-built transaction the decoder never bounded, and the
+    // measurement refuses an out-of-range length rather than sizing a buffer by it. Left unmeasured here,
+    // MalformedTxFilter rejects them for the same bound further down.
+    [TestCase(true, TestName = "Accept_LeavesAnOverLongNonceKeySetUnmeasured")]
+    [TestCase(false, TestName = "Accept_LeavesAnOverLongRecentRootReferenceSetUnmeasured")]
+    public void Accept_LeavesAnOverLongCalldataSetUnmeasured(bool nonceKeys)
+    {
+        // The set that is not over-long carries a measurable value either way, so each bound is read
+        // against a measurement that did happen rather than against a field left null.
+        Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
+        if (nonceKeys)
+        {
+            // Full-width keys, or the over-long set still measures inside the bound and proves nothing.
+            UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
+            for (int i = 0; i < keys.Length; i++) keys[i] = UInt256.MaxValue - (UInt256)i;
+            tx.NonceKeys = keys;
+            tx.RecentRootReferences = [Reference()];
+        }
+        else
+        {
+            RecentRootReference[] references = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1];
+            Array.Fill(references, new RecentRootReference(ValueKeccak.MaxValue, slot: ulong.MaxValue, ValueKeccak.MaxValue));
+            tx.RecentRootReferences = references;
+            tx.NonceKeys = [UInt256.One];
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.FrameCalldataStats,
+                Is.EqualTo(nonceKeys ? (ZeroBytes: 0, NonZeroBytes: 0) : (ZeroBytes: 0, NonZeroBytes: 3)));
+            Assert.That(tx.ReferenceCalldataStats,
+                Is.EqualTo(nonceKeys ? (ZeroBytes: 0, NonZeroBytes: 71) : (ZeroBytes: 0, NonZeroBytes: 0)));
+        }
     }
 
     [Test]

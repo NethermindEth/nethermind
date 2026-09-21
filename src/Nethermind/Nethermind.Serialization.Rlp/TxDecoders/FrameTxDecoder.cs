@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -94,18 +95,9 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
             if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transactionSequence);
+                transaction.Hash = NetworkPayloadFormHash.Calculate(TxType.FrameTx, transactionSequence);
             }
         }
-    }
-
-    private static Hash256 CalculateHashForNetworkPayloadForm(ReadOnlySpan<byte> transactionSequence)
-    {
-        KeccakHash hash = KeccakHash.Create();
-        Span<byte> txType = [(byte)TxType.FrameTx];
-        hash.Update(txType);
-        hash.Update(transactionSequence);
-        return new Hash256(hash.GenerateValueHash());
     }
 
     /// <inheritdoc/>
@@ -343,6 +335,7 @@ public static class FrameTxNonceCalldata
     /// <summary>Reads <c>nonce_keys</c> as a list of integers.</summary>
     /// <remarks>Not <c>DecodeArray</c>: it substitutes the default for an empty-list element, turning the wire bytes
     /// <c>c1 c0</c> into the key set <c>[0]</c> instead of rejecting them.</remarks>
+    [SkipLocalsInit]
     public static UInt256[] DecodeKeys(ref RlpReader decoderContext)
     {
         int contentLength = decoderContext.ReadSequenceLength();

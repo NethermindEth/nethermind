@@ -785,7 +785,7 @@ public unsafe class EvmOpcodesBenchmark
             // Seed a larger storage keyspace so SLOAD/SSTORE do not benchmark an empty trie
             // or repeatedly hit the same small hot subset across benchmark iterations.
             UInt256 initialValue = (i & 1) == 0 ? ValueA : ValueB;
-            _stateProvider.Set(new StorageCell(executingAddress, key), ToStorageBytes(initialValue));
+            _stateProvider.Set(new StorageCell(executingAddress, key), initialValue);
         }
     }
 
@@ -814,13 +814,6 @@ public unsafe class EvmOpcodesBenchmark
         }
     }
 
-    private static byte[] ToStorageBytes(in UInt256 value)
-    {
-        byte[] bytes = new byte[KeccakWordSize];
-        value.ToBigEndian(bytes);
-        return bytes;
-    }
-
     /// <summary>
     /// Pre-populates transient storage with the keys that will be accessed in this iteration.
     /// For TLOAD, entries remain so reads hit populated slots.
@@ -830,14 +823,13 @@ public unsafe class EvmOpcodesBenchmark
     private void PreSeedTransientStorageForIteration()
     {
         Address address = _env.ExecutingAccount;
-        byte[] seedValue = ToStorageBytes(ValueA);
         for (int i = 0; i < InnerCount; i++)
         {
             long sequence = ((long)_iterationId * InnerCount) + i;
             int index = (int)(sequence % _dynamicStorageKeys.Length);
             UInt256 key = _dynamicStorageKeys[index];
             StorageCell cell = new(address, key);
-            _stateProvider.SetTransientState(in cell, seedValue);
+            _stateProvider.SetTransientState(in cell, ValueA);
         }
     }
 
@@ -984,12 +976,12 @@ public unsafe class EvmOpcodesBenchmark
         => WriteStackSlot(GetAlignedStackSpan(), slotIndex, in value);
 
     /// <summary>
-    /// Writes a UInt256 value to stack slot in big-endian format.
+    /// Writes a UInt256 value to a stack slot in the layout the stack stores words in.
     /// </summary>
     private static void WriteStackSlot(Span<byte> buffer, int slotIndex, in UInt256 value)
     {
-        Span<byte> slot = buffer.Slice(slotIndex * 32, 32);
-        value.ToBigEndian(slot);
+        Span<byte> slot = buffer.Slice(slotIndex * EvmStack.WordSize, EvmStack.WordSize);
+        EvmStack.WriteUInt256ToSlot(ref MemoryMarshal.GetReference(slot), in value);
     }
 
     private unsafe static int GetAlignmentOffset(byte[] array, uint alignment)

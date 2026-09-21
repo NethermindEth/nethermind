@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -15,21 +14,19 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
     public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpDecoder<TxReceipt>
     {
-        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(FrameReceiptRlp.MaxReceiptLogs, nameof(TxReceipt.Logs));
-
         [return: MaybeNull]
         protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (RlpHelpers.TryConsumeNull(ref ctx, out ReadOnlySpan<byte> rlp, out int position)) return null;
+            if (ctx.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
             TxReceipt txReceipt = new();
-            if (!RlpHelpers.IsSequenceNext(rlp, position))
+            if (!rlp.IsSequenceNext(position))
             {
-                position = RlpHelpers.SkipLength(rlp, position);
-                txReceipt.TxType = (TxType)rlp[position++];
+                rlp.SkipLength(ref position);
+                txReceipt.TxType = (TxType)rlp.Data[position++];
             }
 
-            position = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
+            rlp.ReadSequenceLength(ref position, out int sequenceLength);
             int receiptEnd = position + sequenceLength;
 
             if (txReceipt.TxType == TxType.FrameTx)
@@ -39,11 +36,11 @@ namespace Nethermind.Serialization.Rlp
                 return txReceipt;
             }
 
-            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] firstItem);
+            rlp.DecodeByteArray(ref position, out byte[] firstItem);
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
                 txReceipt.StatusCode = firstItem[0];
-                (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
+                txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
             }
             else if (firstItem.Length is >= 1 and <= 4)
             {
@@ -52,29 +49,24 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-                (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
+                txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
             }
 
             // When skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
             if (!skipBloom)
             {
-                (position, txReceipt.Bloom) = RlpHelpers.DecodeBloomNonNull(rlp, position);
+                txReceipt.Bloom = rlp.DecodeBloomNonNull(ref position);
             }
 
-            position = RlpHelpers.ReadSequenceLength(rlp, position, out int logsLength);
+            rlp.ReadSequenceLength(ref position, out int logsLength);
             int lastCheck = position + logsLength;
 
-            int numberOfReceipts = RlpHelpers.CountItems(rlp, position, lastCheck, LogsRlpLimit.Limit + 1);
-            Rlp.GuardLimit(numberOfReceipts, rlp.Length - position, LogsRlpLimit);
-            LogEntry[] entries = new LogEntry[numberOfReceipts];
             ctx.Position = position;
-            for (int i = 0; i < numberOfReceipts; i++)
-            {
-                entries[i] = LogEntryDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.AllowExtraBytes);
-            }
+            txReceipt.Logs = LogEntryDecoder.DecodeLogs(ref ctx, lastCheck);
 
+            // The item count only requires a log to start before the declared end, so an under-declared
+            // logs header is only caught here; the logs are last, so the receipt end lands on it.
             ctx.Check(lastCheck);
-            txReceipt.Logs = entries;
 
             // Handle any remaining extra bytes
             bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;

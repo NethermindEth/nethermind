@@ -168,7 +168,7 @@ public class InclusionListTxSourceTests
         ChainId = MainnetSpecProvider.Instance.ChainId,
         Nonce = nonce,
         SenderAddress = TestItem.AddressC,
-        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
         FrameSignatures = [],
         GasPrice = 1.GWei,
         DecodedMaxFeePerGas = 30.GWei,

@@ -76,6 +76,10 @@ namespace Nethermind.TxPool
         [Description("Number of EIP-8141 frame-transaction payers currently holding a pending-cost reservation.")]
         public static long FrameTxPayersWithReservedExposure;
 
+        [GaugeMetric]
+        [Description("Number of entries in the EIP-8141 frame-transaction eviction retry ledger, one per pending frame transaction while `TxPool.FrameTxEvictionRetryBudget` is above its default of `1` and zero otherwise. Entries are opened on pool insert and dropped on pool removal or pool disposal, so a floor above zero with no frame transactions pending is a leak.")]
+        public static long FrameTxEvictionRetryLedgerEntries;
+
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because their non-canonical paymaster already sponsors the maximum number of pending transactions.")]
         public static long PendingTransactionsFrameTxPaymasterLimitReached;
@@ -89,16 +93,20 @@ namespace Nethermind.TxPool
         public static long FrameTxSimulations;
 
         [CounterMetric]
-        [Description("Number of pending EIP-8141 frame transactions revalidated because a new head touched their tracked dependencies.")]
+        [Description("Number of EIP-8141 frame-transaction revalidations run against a new chain head.")]
         public static long FrameTxRevalidations;
 
         [CounterMetric]
-        [Description("Number of pending EIP-8141 frame transactions evicted because they no longer satisfy the public mempool rules against the new head.")]
+        [Description("Number of pending EIP-8141 frame transactions evicted by the new-head revalidation sweep.")]
         public static long FrameTxRevalidationEvictions;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidations, that reached no verdict because this node's own simulation bounds were spent; each is retried on the next head. A sustained count means revalidation is not keeping up.")]
+        [Description("Number of EIP-8141 frame-transaction revalidations that reached no verdict on a bound or fault of this node's own, and were deferred to the next chain head.")]
         public static long FrameTxRevalidationsDeferred;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 frame-transaction revalidations that reached no verdict on a bound or fault of this node's own and were not deferred, having already been carried across `TxPool.FrameTxRevalidationDeferralBudget` consecutive chain heads.")]
+        public static long FrameTxRevalidationDeferralsExhausted;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions shed because they were close to expiry while the pool was full.")]

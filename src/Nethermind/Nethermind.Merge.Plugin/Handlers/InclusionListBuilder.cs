@@ -65,46 +65,64 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
             (drawn[i], drawn[j]) = (drawn[j], drawn[i]);
         }
 
-        using ArrayPoolListRef<Transaction[]> runs = new(capacity);
-        foreach (Transaction[] pending in drawn)
+        // Runs are held as ranges: one over the sender's own bucket where nothing had to be filtered out,
+        // and otherwise over a single shared buffer the filtered entries are appended to.
+        ArrayPoolListRef<Transaction> filtered = new(capacity);
+        try
         {
-            Transaction[] run = AppendableRun(pending, in baseFee);
-            if (run.Length > 0) runs.Add(run);
-        }
-
-        // Take one nonce per sender per round rather than draining each run in turn, so a single account
-        // with a long ready run cannot spend the byte cap before the other drawn senders are represented.
-        ArrayPoolListRef<Transaction> sample = new(capacity);
-        for (int round = 0; ; round++)
-        {
-            bool advanced = false;
-            foreach (Transaction[] run in runs)
+            using ArrayPoolListRef<Run> runs = new(capacity);
+            foreach (Transaction[] pending in drawn)
             {
-                if (round >= run.Length) continue;
-
-                sample.Add(run[round]);
-                advanced = true;
-                if (sample.Count == capacity) return sample;
+                Run run = AppendableRun(pending, in baseFee, ref filtered);
+                if (run.Length > 0) runs.Add(run);
             }
-            if (!advanced) return sample;
+
+            // Take one nonce per sender per round rather than draining each run in turn, so a single account
+            // with a long ready run cannot spend the byte cap before the other drawn senders are represented.
+            ArrayPoolListRef<Transaction> sample = new(capacity);
+            for (int round = 0; ; round++)
+            {
+                bool advanced = false;
+                foreach (Run run in runs)
+                {
+                    if (round >= run.Length) continue;
+
+                    sample.Add(run.Bucket is null ? filtered[run.Start + round] : run.Bucket[run.Start + round]);
+                    advanced = true;
+                    if (sample.Count == capacity) return sample;
+                }
+                if (!advanced) return sample;
+            }
+        }
+        finally
+        {
+            // A ref struct cannot be a using variable and a ref argument both.
+            filtered.Dispose();
         }
     }
+
+    /// <summary>A sender's appendable run, as a range over its bucket or over the shared filtered buffer.</summary>
+    private readonly record struct Run(Transaction[]? Bucket, int Start, int Length);
 
     /// <summary>The transactions of <paramref name="pending"/> the next block could append, in order.</summary>
     /// <remarks>The pool vouches only that some bucket entry is ready, so the run is rebuilt here against the
     /// account: frame transactions removed, spent nonces skipped, anchored at the account's next nonce, cut at the
     /// first nonce gap or unpayable base fee.</remarks>
-    private Transaction[] AppendableRun(Transaction[] pending, in UInt256 baseFee)
+    /// <param name="filtered">Buffer a run that had frame transactions removed is appended to.</param>
+    private Run AppendableRun(Transaction[] pending, in UInt256 baseFee, ref ArrayPoolListRef<Transaction> filtered)
     {
-        Transaction[] bySender = WithoutFrameTxs(pending);
-        if (bySender.Length == 0) return [];
+        int filteredStart = filtered.Count;
+        ReadOnlySpan<Transaction> bySender = WithoutFrameTxs(pending, ref filtered);
+        if (bySender.Length == 0) return default;
+        // A filtered run is held as indices, not as the span: a later sender's appends may move the buffer.
+        Transaction[]? bucket = bySender.Length == pending.Length ? pending : null;
 
         ulong anchor = headState.GetNonce(bySender[0].SenderAddress!);
         int start = 0;
         // The pool reads an entry under the account nonce as spent rather than blocking, so one can head the
         // bucket while a later entry is what got it admitted.
         while (start < bySender.Length && bySender[start].Nonce < anchor) start++;
-        if (start == bySender.Length || bySender[start].Nonce != anchor) return [];
+        if (start == bySender.Length || bySender[start].Nonce != anchor) return default;
 
         int length = 0;
         // Buckets are nonce-ordered, so a broken offset can never realign: nothing behind a gap is appendable,
@@ -116,26 +134,26 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
             length++;
         }
 
-        return start == 0 && length == bySender.Length ? bySender : bySender[start..(start + length)];
+        return new Run(bucket, bucket is null ? filteredStart + start : start, length);
     }
 
     /// <summary>The sender's pending run with its EIP-8141 frame transactions removed.</summary>
     /// <remarks>
     /// Listing one spends the byte cap without buying censorship resistance, and its EIP-8250 keyed nonce
     /// shares <see cref="Transaction.Nonce"/> while counting per key, breaking the offsets behind it.
+    /// A bucket holding none is returned as a span over itself, so only a bucket that holds one is copied.
     /// </remarks>
-    private static Transaction[] WithoutFrameTxs(Transaction[] bySender)
+    private static ReadOnlySpan<Transaction> WithoutFrameTxs(Transaction[] bySender, ref ArrayPoolListRef<Transaction> filtered)
     {
         int kept = 0;
         foreach (Transaction tx in bySender)
             if (!tx.SupportsFrames) kept++;
         if (kept == bySender.Length) return bySender;
 
-        Transaction[] result = new Transaction[kept];
-        int j = 0;
+        int start = filtered.Count;
         foreach (Transaction tx in bySender)
-            if (!tx.SupportsFrames) result[j++] = tx;
-        return result;
+            if (!tx.SupportsFrames) filtered.Add(tx);
+        return filtered.AsSpan().Slice(start, kept);
     }
 
     /// <summary>The base fee the next block will charge.</summary>

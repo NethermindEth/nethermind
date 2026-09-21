@@ -3,9 +3,12 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
@@ -19,6 +22,7 @@ public static class RecentRootStore
 
     /// <summary>The <c>source_id</c> keying a root source's ring buffer: <c>keccak256(source_address || salt)</c>.</summary>
     /// <remarks>EIP-8272 hashes the address unpadded (20 bytes); a left-padded preimage would fork from the predeploy.</remarks>
+    [SkipLocalsInit]
     public static ValueHash256 SourceId(Address sourceAddress, in ValueHash256 salt)
     {
         Span<byte> input = stackalloc byte[AddressLength + HashLength];
@@ -27,6 +31,7 @@ public static class RecentRootStore
         return ValueKeccak.Compute(input);
     }
 
+    [SkipLocalsInit]
     public static ValueHash256 EntryHash(in ValueHash256 sourceId, ulong slot, in ValueHash256 root)
     {
         Span<byte> input = stackalloc byte[HashLength + HashLength + SlotLength + HashLength];
@@ -37,6 +42,7 @@ public static class RecentRootStore
         return ValueKeccak.Compute(input);
     }
 
+    [SkipLocalsInit]
     public static ValueHash256 StorageKey(in ValueHash256 sourceId, ulong ringIndex)
     {
         Span<byte> input = stackalloc byte[HashLength + HashLength + SlotLength];
@@ -59,16 +65,8 @@ public static class RecentRootStore
             return false;
         }
 
-        ReadOnlySpan<byte> stored = state.Get(cell);
-        if (stored.Length > HashLength)
-        {
-            return false;
-        }
-
-        // Storage values are minimal big-endian; pad to a full word before comparing.
-        Span<byte> padded = stackalloc byte[HashLength];
-        stored.CopyTo(padded.Slice(HashLength - stored.Length));
-        return new ValueHash256(padded) == EntryHash(sourceId, slot, root);
+        state.Get(cell, out UInt256 stored);
+        return stored.ToValueHash() == EntryHash(sourceId, slot, root);
     }
 
     /// <summary>The predeploy storage cell a reference to <paramref name="slot"/> reads.</summary>
