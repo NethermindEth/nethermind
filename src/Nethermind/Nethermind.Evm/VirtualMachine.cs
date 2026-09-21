@@ -161,6 +161,9 @@ public partial class VirtualMachine<TGasPolicy>(
     internal bool IsTracingActions { get => DispatchFlags.Tracing(field); private set; }
     internal bool IsTracingRefunds { get => DispatchFlags.Tracing(field); private set; }
     private bool _isCancelableCached;
+    /// <summary>The tracer that defers cancellation across an instruction's callbacks, when one is in the graph.</summary>
+    /// <remarks>Resolved once per execution so the per-instruction re-check costs no tracer-graph walk.</remarks>
+    private CancellationTxTracer? _deferringCancellationTracer;
     internal bool IsTracingAccess { get => DispatchFlags.Tracing(field); private set; }
     internal bool IsTracingOpLevelStorage { get => DispatchFlags.Tracing(field); private set; }
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
@@ -216,6 +219,7 @@ public partial class VirtualMachine<TGasPolicy>(
         IsTracingActions = txTracer.IsTracingActions;
         IsTracingRefunds = txTracer.IsTracingRefunds;
         _isCancelableCached = txTracer.IsCancelable;
+        _deferringCancellationTracer = _isCancelableCached ? txTracer.GetTracer<CancellationTxTracer>() : null;
         IsTracingAccess = txTracer.IsTracingAccess;
         IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
         IsTracingImplicitStop = txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
@@ -1566,7 +1570,8 @@ public partial class VirtualMachine<TGasPolicy>(
         tracer.ReportOperationRemainingGas(gasAvailable);
         if (evmExceptionType is not null)
             tracer.ReportOperationError(evmExceptionType.Value);
-        if (_isCancelableCached && _txTracer.Any<CancellationTxTracer>(static cancellationTracer => cancellationTracer.IsCancelled))
+        // Only the deferring tracer holds a cancellation back across a pair, so only it is re-checked here.
+        if (_deferringCancellationTracer?.IsCancelled == true)
             ThrowOperationCanceledException();
     }
 

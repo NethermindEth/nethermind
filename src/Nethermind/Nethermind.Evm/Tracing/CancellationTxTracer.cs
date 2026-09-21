@@ -30,7 +30,9 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
 
-    // Once a start is delivered, defer cancellation until the instruction's completion and error callbacks are paired.
+    // Once a start is delivered, defer cancellation until the instruction's completion and error callbacks are
+    // paired. Callbacks that cannot belong to a pair keep the unconditional check, so a start that never completes
+    // cannot leave a transaction uncancellable.
     private bool _isInstructionOperationActive;
     private bool _canReportOperationError;
 
@@ -193,7 +195,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        ThrowIfCancellationRequestedOutsideOperation();
+        token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
         {
             innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
@@ -202,7 +204,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
-        ThrowIfCancellationRequestedOutsideOperation();
+        token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
         {
             innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
@@ -443,7 +445,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
     {
-        ThrowIfCancellationRequestedOutsideOperation();
+        token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingCode)
         {
             innerTracer.ReportByteCode(byteCode);
@@ -479,7 +481,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
-        ThrowIfCancellationRequestedOutsideOperation();
+        token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingAccess)
         {
             innerTracer.ReportAccess(accessedAddresses, accessedStorageCells);
@@ -488,7 +490,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportFees(UInt256 fees, UInt256 burntFees)
     {
-        ThrowIfCancellationRequestedOutsideOperation();
+        token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingFees)
         {
             innerTracer.ReportFees(fees, burntFees);

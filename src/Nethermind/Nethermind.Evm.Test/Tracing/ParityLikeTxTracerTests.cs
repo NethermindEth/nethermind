@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
@@ -375,6 +377,87 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             Assert.That(trace.VmTrace.Operations.Last().Cost, Is.EqualTo(59700));
             Assert.That(trace.VmTrace.Operations.Last().Used, Is.EqualTo(71579));
         }
+    }
+
+    /// <summary>
+    /// Leaving a call/create frame latches the parity-style gas flag for the resume-time update of the parent
+    /// operation. If the resume does not consume it, the flag suppresses the cost subtraction of the next
+    /// operation, which then reports the gas remaining at its start instead of what it spent.
+    /// </summary>
+    [Test]
+    public void Operation_after_frame_return_reports_its_own_cost([Values] bool isCreate, [Values] bool streaming)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .ForInitOf(new byte[3])
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        byte[] code = (isCreate
+                ? Prepare.EvmCode.Create(initCode, 0)
+                : Prepare.EvmCode.Call(TestItem.AddressC, 40000))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        IReadOnlyList<(ulong Cost, bool HasSubtrace)> operations =
+            streaming ? StreamVmTraceOperations(code) : CollectVmTraceOperations(code);
+
+        int frameIndex = 0;
+        while (frameIndex < operations.Count && !operations[frameIndex].HasSubtrace)
+        {
+            frameIndex++;
+        }
+
+        Assert.That(frameIndex, Is.InRange(0, operations.Count - 3), "index of the call/create operation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(operations[frameIndex + 1].Cost, Is.EqualTo(GasCostOf.Base), "POP cost");
+            Assert.That(operations[frameIndex + 2].Cost, Is.EqualTo(GasCostOf.Free), "STOP cost");
+        }
+    }
+
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace)> CollectVmTraceOperations(byte[] code)
+    {
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+        List<(ulong, bool)> operations = [];
+        foreach (ParityVmOperationTrace operation in trace.VmTrace.Operations)
+        {
+            operations.Add((operation.Cost, operation.Sub is not null));
+        }
+
+        return operations;
+    }
+
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace)> StreamVmTraceOperations(byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer tracer = new(
+            block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace,
+            writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: true);
+        try
+        {
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+            tracer.BuildResult();
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+
+        writer.Flush();
+        using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+        List<(ulong, bool)> operations = [];
+        foreach (JsonElement operation in document.RootElement.GetProperty("ops").EnumerateArray())
+        {
+            operations.Add((operation.GetProperty("cost").GetUInt64(),
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null));
+        }
+
+        return operations;
     }
 
     [Test]

@@ -417,11 +417,19 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     void ReportByteCode(ReadOnlyMemory<byte> byteCode);
 
     /// <summary>
-    /// Special case for VM trace in Parity but we consider removing support for it
+    /// Reports gas remaining for an instruction that is not currently open, so
+    /// <see cref="ReportOperationRemainingGas"/> would pair with no <see cref="StartOperation"/>.
     /// </summary>
-    /// <param name="refund"></param>
-    /// <param name="gasAvailable"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    /// <param name="refund">Gas credited back to the frame, or <c>0</c> when the update carries no refund.</param>
+    /// <param name="gasAvailable">Gas remaining once the update is applied.</param>
+    /// <remarks>
+    /// Raised when a call or create frame returns and the parent instruction resumes, when gas is credited back to a
+    /// call that could not proceed, and for an instruction whose start <see cref="IInstructionTracingFilter"/>
+    /// filtered out. A tracer that follows gas checkpoints has to observe this alongside
+    /// <see cref="ReportOperationRemainingGas"/>; the parity <c>vmTrace</c> uses it to amend the operation's
+    /// recorded gas without recomputing its cost.
+    /// <para>Depends on <see cref="IsTracingInstructions"/>.</para>
+    /// </remarks>
     void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable);
 
     /// <summary>

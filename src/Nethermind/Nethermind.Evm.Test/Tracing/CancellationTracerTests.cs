@@ -38,6 +38,40 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
+        public void Defers_cancellation_only_until_the_started_instruction_completes()
+        {
+            using CancellationTokenSource cancellationTokenSource = new();
+            CancellationTxTracer tracer = CancellableInstructionTracer(cancellationTokenSource.Token);
+
+            tracer.StartOperation(0, Instruction.STOP, 1, default);
+            cancellationTokenSource.Cancel();
+
+            Assert.DoesNotThrow(() => tracer.ReportRefund(1), "callback of a started instruction");
+            Assert.DoesNotThrow(() => tracer.ReportOperationRemainingGas(1), "completion of a started instruction");
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportRefund(1), "callback after the completion");
+        }
+
+        [Test]
+        public void Throws_operation_canceled_when_an_instruction_never_completes()
+        {
+            using CancellationTokenSource cancellationTokenSource = new();
+            CancellationTxTracer tracer = CancellableInstructionTracer(cancellationTokenSource.Token);
+
+            tracer.StartOperation(0, Instruction.STOP, 1, default);
+            cancellationTokenSource.Cancel();
+
+            Assert.Throws<OperationCanceledException>(() => tracer.MarkAsFailed(TestItem.AddressA, default, [], "error"));
+            Assert.Throws<OperationCanceledException>(() => tracer.MarkAsSuccess(TestItem.AddressA, default, [], []));
+        }
+
+        private static CancellationTxTracer CancellableInstructionTracer(CancellationToken token)
+        {
+            ITxTracer innerTracer = Substitute.For<ITxTracer>();
+            innerTracer.IsTracingInstructions.Returns(true);
+            return new CancellationTxTracer(innerTracer, token) { IsTracingReceipt = true, IsTracingRefunds = true };
+        }
+
+        [Test]
         public void Creates_inner_tx_cancellation_tracers()
         {
             CancellationBlockTracer blockTracer = new(Substitute.For<IBlockTracer>());
