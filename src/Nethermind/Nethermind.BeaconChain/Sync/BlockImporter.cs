@@ -62,6 +62,7 @@ public sealed class BlockImporter : IBlockImporter
 
     private readonly PostStateCache _states;
     private readonly ForkChoiceRunner _runner;
+    private readonly ForkChoiceSnapshotHolder? _forkChoiceSnapshots;
 
     /// <summary>Imported-but-not-finalized block roots and their slots, for store pruning at finalization.</summary>
     private readonly Dictionary<Hash256, ulong> _unfinalized = [];
@@ -74,6 +75,7 @@ public sealed class BlockImporter : IBlockImporter
     private Hash256 _canonicalHead;
     private ulong _lastSnapshotEpoch;
 
+    /// <param name="forkChoiceSnapshots">Where <see cref="ComputeHead"/> publishes a copy of the fork-choice store for readers off the import thread; <c>null</c> publishes nothing.</param>
     public BlockImporter(
         BeaconChainSpec spec,
         BeaconChainStore store,
@@ -84,7 +86,8 @@ public sealed class BlockImporter : IBlockImporter
         IDataAvailabilityRule availability,
         BeaconStateFulu anchorState,
         SignedBeaconBlock anchorBlock,
-        Hash256 anchorRoot)
+        Hash256 anchorRoot,
+        ForkChoiceSnapshotHolder? forkChoiceSnapshots = null)
     {
         _spec = spec;
         _store = store;
@@ -93,6 +96,7 @@ public sealed class BlockImporter : IBlockImporter
         _config = config;
         _logger = logManager.GetClassLogger<BlockImporter>();
         _availability = availability;
+        _forkChoiceSnapshots = forkChoiceSnapshots;
 
         _states = new PostStateCache(store, spec, anchorRoot, anchorState);
         _runner = new ForkChoiceRunner(spec, anchorState, anchorBlock.Message!, _states, pubkeys);
@@ -270,6 +274,8 @@ public sealed class BlockImporter : IBlockImporter
     public HeadView ComputeHead()
     {
         Hash256 head = _runner.GetHead();
+        // After GetHead, so the copy carries the weights this head was chosen by.
+        _forkChoiceSnapshots?.Current = _runner.Snapshot();
         AdoptHeadLineage(head);
         UpdateCanonicalIndex(head);
         return new HeadView(
@@ -516,6 +522,7 @@ public sealed class BlockImporter : IBlockImporter
 /// The wall clock the <see cref="DataAvailabilityBoundary"/> is measured against; <c>null</c> (tests
 /// that construct the factory by hand) means the system clock, which is what the container supplies.
 /// </param>
+/// <param name="forkChoiceSnapshots">Where every importer publishes its fork-choice snapshots; <c>null</c> publishes nothing.</param>
 public sealed class BlockImporterFactory(
     BeaconChainSpec spec,
     BeaconChainStore store,
@@ -525,7 +532,8 @@ public sealed class BlockImporterFactory(
     ILogManager logManager,
     DataColumnSidecarPool pool,
     BeaconDiscovery? discovery = null,
-    SlotClock? clock = null) : IBlockImporterFactory
+    SlotClock? clock = null,
+    ForkChoiceSnapshotHolder? forkChoiceSnapshots = null) : IBlockImporterFactory
 {
     private readonly SlotClock _clock = clock ?? new SlotClock(spec, Timestamper.Default);
 
@@ -540,6 +548,7 @@ public sealed class BlockImporterFactory(
             new CustodySamplingAvailability(new DiscoveryNodeCustodySource(discovery), new DataColumnPoolSource(pool), _clock),
             anchorState,
             anchorBlock,
-            anchorRoot);
+            anchorRoot,
+            forkChoiceSnapshots);
 
 }
