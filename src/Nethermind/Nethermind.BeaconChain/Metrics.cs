@@ -90,6 +90,10 @@ public class Metrics
     [Description("Eth2 req/resp failures per protocol id and reason: timeouts, peer-attributable invalid messages, limit violations (chunk cap, concurrent-request cap), and peer error responses.")]
     public static ConcurrentDictionary<ReqRespFailureKey, long> BeaconChainReqRespFailures { get; } = new();
 
+    [KeyIsLabel("operation")]
+    [Description("Attestations and attester slashings refused by fork choice after the state transition or gossip validation accepted them, by source: block body operations (tolerated, the block still imports) and gossip messages (dropped).")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainForkChoiceRejections { get; } = new();
+
     [CounterMetric]
     [Description("In-process engine_newPayload calls issued by the embedded driver.")]
     public static ulong BeaconChainNewPayloadCalls { get; set; }
