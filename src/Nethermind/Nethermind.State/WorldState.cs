@@ -20,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Nethermind.State.Flat")]
 [assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]

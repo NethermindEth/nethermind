@@ -187,6 +187,12 @@ public interface IWorldStateScopeProvider
         /// trie warm-up for the slot path.
         /// </summary>
         void HintSet(in UInt256 index);
+
+        /// <summary>
+        /// Hint that a slot write has been committed with <paramref name="value"/>. Backends that build the
+        /// storage trie incrementally during execution consume the value; others fall back to <see cref="HintSet(in UInt256)"/>.
+        /// </summary>
+        void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
     }
 
     /// <summary>

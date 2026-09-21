@@ -112,6 +112,18 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
+    [ConfigItem(Description = "Apply committed storage writes into the storage tries on a background thread while the block's transactions are still executing, so the block-end storage root computation only commits already-built tries. Ignored when VerifyWithTrie is enabled.", DefaultValue = "false")]
+    bool ParallelStorageRoot { get; set; }
+
+    [ConfigItem(Description = "With ParallelStorageRoot, hash the dirty storage trie paths whenever the background builder has no pending writes, moving most of the hashing into the execution window. Disable to only pre-apply writes.", DefaultValue = "true")]
+    bool ParallelStorageRootEagerHash { get; set; }
+
+    [ConfigItem(Description = "With ParallelStorageRoot, the maximum number of storage tries being built concurrently by background jobs. Each trie has a single writer.", DefaultValue = "2")]
+    int ParallelStorageRootThreads { get; set; }
+
+    [ConfigItem(Description = "With ParallelStorageRoot, the number of pending committed writes a contract accumulates before a background job applies them. Contracts below it are handled by the normal block-end flush.", DefaultValue = "128")]
+    int ParallelStorageRootBatchSize { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 

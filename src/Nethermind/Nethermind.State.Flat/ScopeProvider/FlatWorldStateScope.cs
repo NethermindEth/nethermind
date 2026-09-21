@@ -33,6 +33,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private StorageRootBuilder? _storageRootBuilder;
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
 
@@ -94,12 +95,35 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+
+        _storageRootBuilder = CreateStorageRootBuilder();
+    }
+
+    // VerifyWithTrie reads the tries on the block thread during execution, which the builder jobs must own exclusively.
+    private StorageRootBuilder? CreateStorageRootBuilder() =>
+        _configuration.ParallelStorageRoot && !_configuration.VerifyWithTrie && !_isReadOnly && !_trieless
+            ? new StorageRootBuilder(_configuration.ParallelStorageRootThreads, _configuration.ParallelStorageRootBatchSize, _configuration.ParallelStorageRootEagerHash, _logManager)
+            : null;
+
+    /// <summary>The builder to hand committed storage writes to, or null once it is closed or faulted.</summary>
+    internal StorageRootBuilder? StorageRootBuilder =>
+        _storageRootBuilder is { IsFaulted: false, IsClosed: false } ? _storageRootBuilder : null;
+
+    /// <summary>The builder the flush finalizes each storage trie against, or null when the feature is off.</summary>
+    internal StorageRootBuilder? StorageRootBuilderForFinalization => _storageRootBuilder;
+
+    private void WaitForBuilderJobs()
+    {
+        if (_storageRootBuilder is null) return;
+        foreach (FlatStorageTree storage in _storages.Values) storage.WaitForJob();
     }
 
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
+        _storageRootBuilder?.Close();
+        WaitForBuilderJobs();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -452,12 +476,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
+        // From here on the flush owns the tries: no new job starts, each contract's write batch joins its own job.
+        _storageRootBuilder?.Close();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        _storageRootBuilder?.Close();
+        WaitForBuilderJobs();
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
@@ -484,6 +512,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         _currentStateId = newStateId;
+        _storageRootBuilder = CreateStorageRootBuilder();
         _pausePrewarmer = false;
     }
 

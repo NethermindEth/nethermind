@@ -142,6 +142,42 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _storageSkippedWrites;
         internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites.Value, value);
 
+        [CounterMetric]
+        [Description("Committed storage slot writes applied by background builder jobs and their flush-time tails; includes work after transaction execution.")]
+        public static long ParallelStorageRootWrites => _parallelStorageRootWrites.Value;
+        private static CacheLinePaddedLong _parallelStorageRootWrites;
+        public static void AddParallelStorageRootWrites(long value) => Interlocked.Add(ref _parallelStorageRootWrites.Value, value);
+
+        [CounterMetric]
+        [Description("Microseconds flush workers spent waiting for an in-flight parallel storage root builder job before finalizing that contract's trie.")]
+        public static long ParallelStorageRootDrainWaitMicros => _parallelStorageRootDrainWaitMicros.Value;
+        private static CacheLinePaddedLong _parallelStorageRootDrainWaitMicros;
+        public static void AddParallelStorageRootDrainWaitMicros(long value) => Interlocked.Add(ref _parallelStorageRootDrainWaitMicros.Value, value);
+
+        [CounterMetric]
+        [Description("Committed storage writes still pending for a builder-built trie when its flush finalization started, applied by the flush worker.")]
+        public static long ParallelStorageRootDrainBacklog => _parallelStorageRootDrainBacklog.Value;
+        private static CacheLinePaddedLong _parallelStorageRootDrainBacklog;
+        public static void AddParallelStorageRootDrainBacklog(long value) => Interlocked.Add(ref _parallelStorageRootDrainBacklog.Value, value);
+
+        [CounterMetric]
+        [Description("Storage tries committed straight from the parallel storage root builder's output instead of being rebuilt at commit.")]
+        public static long ParallelStorageRootPrebuiltTrees => _parallelStorageRootPrebuiltTrees.Value;
+        private static CacheLinePaddedLong _parallelStorageRootPrebuiltTrees;
+        public static void IncrementParallelStorageRootPrebuiltTrees() => Interlocked.Increment(ref _parallelStorageRootPrebuiltTrees.Value);
+
+        [CounterMetric]
+        [Description("Elapsed microseconds applying builder writes, including flush-time tails, scheduling and blocking; not CPU time.")]
+        public static long ParallelStorageRootApplyMicros => _parallelStorageRootApplyMicros.Value;
+        private static CacheLinePaddedLong _parallelStorageRootApplyMicros;
+        public static void AddParallelStorageRootApplyMicros(long value) => Interlocked.Add(ref _parallelStorageRootApplyMicros.Value, value);
+
+        [CounterMetric]
+        [Description("Elapsed microseconds hashing dirty storage trie paths between pending batches; not CPU time.")]
+        public static long ParallelStorageRootHashMicros => _parallelStorageRootHashMicros.Value;
+        private static CacheLinePaddedLong _parallelStorageRootHashMicros;
+        public static void AddParallelStorageRootHashMicros(long value) => Interlocked.Add(ref _parallelStorageRootHashMicros.Value, value);
+
         [GaugeMetric]
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
