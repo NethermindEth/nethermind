@@ -667,6 +667,16 @@ jobs:
               if [ -n "$COVERAGE_GAP" ]; then
                 echo "::error::$COVERAGE_GAP"
               fi
+            elif [ -n "$MIN_IL_ASSERTIONS" ]; then
+              # nethtest writes those lines last, so their absence means the run died before them or stderr
+              # was still draining — never that coverage was fine.
+              {
+                echo ""
+                echo "### EIP-7805 fork-choice assertion coverage"
+                echo ""
+                echo "Not reported, although \`--minFcuInclusionListAssertions $MIN_IL_ASSERTIONS\` was requested."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning::nethtest reported no inclusion-list assertion count, although it was required to"
             fi
 
             if [ "$FAILED" -gt 0 ]; then

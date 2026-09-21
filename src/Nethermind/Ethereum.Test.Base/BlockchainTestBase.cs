@@ -490,8 +490,9 @@ public abstract class BlockchainTestBase
 
                 if (expectWitness)
                 {
-                    // The witness result has no PayloadStatusV2, so a payload-side expectation would be
-                    // skipped silently; the fork-choice update below still carries one.
+                    // The witness result has no PayloadStatusV2, and engine_newPayloadWithWitnessV6 retains no
+                    // compliance for the fork-choice update either, so only an explicit
+                    // forkchoiceUpdatedInclusionListSatisfied can state an expectation on this path.
                     Assert.That(enginePayload.InclusionListSatisfied, Is.Null,
                         $"engine_newPayloadWithWitnessV{newPayloadVersion} cannot report inclusionListSatisfied, which this fixture states");
 
