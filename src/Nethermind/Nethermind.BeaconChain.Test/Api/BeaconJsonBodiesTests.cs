@@ -420,6 +420,31 @@ public class BeaconJsonBodiesTests
         Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(1));
         Assert.That(body.GetProperty("data")[0].GetProperty("root").GetString(), Is.EqualTo(root.ToString()));
     }
+
+    /// <summary>
+    /// A state is keyed by the root of the block it came from, and slot processing advances it past
+    /// that block, so the canonical lookup behind the finalized flag has to use the block's slot.
+    /// A checkpoint-synced node's anchor state is exactly this shape, so reading the state's own
+    /// slot reports finalized:false on the one state such a node is certain about.
+    /// </summary>
+    [Test]
+    public async Task State_finalized_flag_uses_the_slot_of_the_block_the_state_is_keyed_by()
+    {
+        Hash256 root = BeaconApiTestHost.TestRoot(0x21);
+        BeaconStateFulu state = BeaconApiTestHost.RichState(BeaconChainSpec.Mainnet, Slot);
+        _host.Store.PutState(root, BeaconStateFulu.Encode(state));
+
+        // Canonical at the block's slot only; the state's own slot is left empty, as it is after
+        // slot processing advances a state past its block.
+        _host.Store.SetCanonicalRoot(state.LatestBlockHeader!.Slot, root);
+        _host.SetStatus(root, root, BeaconChainSpec.Mainnet.GetEpoch(Slot));
+
+        HttpResponseMessage response = await _host.GetAsync("/eth/v2/debug/beacon/states/head", Json);
+        string raw = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw.Length > 500 ? raw[..500] : raw);
+        Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("finalized").GetBoolean(), Is.True,
+            "the state is canonical at its block's slot, which is what finalization vouches for");
+    }
 }
 
 /// <summary>Sepolia schedules Gloas, so a block in a Gloas epoch can exist there; its body layout is not the one this writer serializes.</summary>
@@ -470,4 +495,5 @@ public class BeaconJsonBodiesGloasTests
         Assert.That(gloasOnly.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         Assert.That(gloasOnly.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"), "the fork is named for the listed children, not for every child in the index");
     }
+
 }
