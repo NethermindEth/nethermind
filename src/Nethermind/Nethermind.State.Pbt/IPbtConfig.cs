@@ -100,8 +100,8 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "The persisted node-group key layout: Padded (the group path zero-padded to the column key length, then its nibble count) or Variable (the group path bytes, then 0 for a byte-aligned path or 1 for a nibble-aligned one). Fixed when the pbt database is created; a populated database created with the other layout is rejected.", DefaultValue = "Padded", HiddenFromDocs = true)]
     PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; }
 
-    [ConfigItem(Description = "Leave prefixless branches at relative depths 1-3 out of stored node groups and recompute them from their children on read. Off stores every node. Both layouts are readable, so the setting can change on an existing database; groups convert as they are rewritten.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool OmitPrefixlessBranches { get; set; }
+    [ConfigItem(Description = "Which prefixless branches without inline leaves are left out of stored node groups and recomputed from their children on read: Interior (relative depths 1-3), OddLevels (relative depths 1 and 3, keeping depth 2) or None (store every node). All layouts are readable, so the setting can change on an existing database; groups convert as they are rewritten.", DefaultValue = "Interior", HiddenFromDocs = true)]
+    PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; set; }
 
     [ConfigItem(Description = "Keep node-group payloads in slab-allocated native memory sized to jemalloc-style classes. Off rents pooled managed arrays in power-of-two buckets instead.", DefaultValue = "true", HiddenFromDocs = true)]
     bool NativeNodeGroupMemory { get; set; }

@@ -24,7 +24,7 @@ namespace Nethermind.Pbt;
 /// offset or the footer's beginning. Position 30 is reserved for the root and may only be present in
 /// the depth-zero root group. The group key is deliberately kept outside this payload. Prefixless
 /// branches at relative depths 1–3 may be omitted when neither child is an inline leaf: only their
-/// descendants need be stored. Availability describes physical entries.
+/// descendants need be stored (see <see cref="PbtPrefixlessBranchOmission"/>). Availability describes physical entries.
 /// </remarks>
 public static class PbtNodeGroupCodec
 {
@@ -151,7 +151,7 @@ public static class PbtNodeGroupCodec
             ReadOnlySpan<byte> encoding = record.Encoding.Span;
             PbtNodeReader node = new(encoding);
             ValidateNodePath(node, record.Path);
-            if (ShouldOmit(location.Position, encoding)) continue;
+            if (ShouldOmit(PbtPrefixlessBranchOmission.Interior, location.Position, encoding)) continue;
             entriesLength = checked(entriesLength + encoding.Length);
             if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
             recordIndices[location.Position] = index;
@@ -206,7 +206,7 @@ public static class PbtNodeGroupCodec
                 throw new InvalidDataException("The group contains a reserved node position.");
             PbtNodeReader node = new(encoding);
             ValidateNodePath(node, PbtFourLevelGroupGeometry.PathOf(groupKey, position));
-            if (ShouldOmit(position, encoding)) continue;
+            if (ShouldOmit(PbtPrefixlessBranchOmission.Interior, position, encoding)) continue;
             entriesLength = checked(entriesLength + encoding.Length);
             if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
             availability |= 1u << position;
@@ -284,8 +284,14 @@ public static class PbtNodeGroupCodec
     private static readonly int PrefixlessBranchLength = PbtNodeCodec.BranchLength(0, 0, 0);
 
     /// <summary>A prefixless interior branch without inline leaves is reconstructed from its children, so it need not be stored.</summary>
-    internal static bool ShouldOmit(int position, ReadOnlySpan<byte> encoding) =>
-        PbtFourLevelGroupGeometry.WidthOf(position) is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots
+    /// <remarks>Relative depth 1 is width 8, depth 2 width 4 and depth 3 width 2 in <see cref="PbtFourLevelGroupGeometry.WidthOf"/>.</remarks>
+    internal static bool ShouldOmit(PbtPrefixlessBranchOmission omission, int position, ReadOnlySpan<byte> encoding) =>
+        omission switch
+        {
+            PbtPrefixlessBranchOmission.Interior => PbtFourLevelGroupGeometry.WidthOf(position) is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots,
+            PbtPrefixlessBranchOmission.OddLevels => PbtFourLevelGroupGeometry.WidthOf(position) is 2 or 8,
+            _ => false,
+        }
         && encoding.Length == PrefixlessBranchLength && encoding[0] == 1 && encoding[1] == 0 && encoding[2] == 0
         && encoding[PrefixlessBranchLength - 2] == 0 && encoding[PrefixlessBranchLength - 1] == 0;
 

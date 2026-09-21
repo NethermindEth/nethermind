@@ -132,13 +132,13 @@ internal static partial class TrieUpdater<TKey, TPath>
     private static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, Span<PbtWriteOperation<TKey>> operations, BucketPlan plan, TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider)
     {
         if (operations.IsEmpty) return currentRoot;
-        FoldContext context = new(store, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, null, null, default, true);
+        FoldContext context = new(store, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, null, null, default, PbtPrefixlessBranchOmission.Interior);
         Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
         PbtTraversalPath path = new(pathBuffer);
         GroupFrameReader<TKey, TPath> reader = new(store, 0, currentRoot, metrics);
         using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
-            using PbtNodeGroupWriter<TPath> writer = new(0, context.MemoryProvider, context.OmitPrefixlessBranches);
+            using PbtNodeGroupWriter<TPath> writer = new(0, context.MemoryProvider, context.PrefixlessBranchOmission);
             TraversalSubtree root = new(path, reader.Take(path, writer, PbtFourLevelGroupGeometry.RootPosition, allowAbsent: true));
             OwnedSubtree result = FoldMutations(context, ref reader, writer, root, operations, ref path, 0, plan);
             TraversalSubtree resolved = result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]);
@@ -285,7 +285,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         GroupFrameReader<TKey, TPath> reader = new(context.Store, bitDepth, current.Hash(bitDepth, metrics), metrics);
         using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
-            using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider, context.OmitPrefixlessBranches);
+            using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
             InheritDescendants(ref reader, in ownerReader, path, current);
             OwnedSubtree result = FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, partition);
             TraversalSubtree resolved = result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]);
@@ -492,7 +492,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// and <see cref="FanOut"/> gives how many operations each concurrent run of buckets holds at least.
     /// <see cref="Metrics"/> is not thread-safe, so each concurrent bucket folds under <see cref="WithMetrics"/> and is merged afterwards.
     /// </remarks>
-    internal sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, TrieUpdaterMetrics? metrics, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut, bool omitPrefixlessBranches)
+    internal sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, TrieUpdaterMetrics? metrics, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut, PbtPrefixlessBranchOmission prefixlessBranchOmission)
     {
         internal IPbtStore Store { get; } = store;
         internal IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
@@ -500,9 +500,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal ConcurrencyController? FoldQuota { get; } = foldQuota;
         internal PbtWriteOperation<TKey>[]? Operations { get; } = operations;
         internal FoldFanOut FanOut { get; } = fanOut;
-        internal bool OmitPrefixlessBranches { get; } = omitPrefixlessBranches;
+        internal PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; } = prefixlessBranchOmission;
 
-        internal FoldContext WithMetrics(TrieUpdaterMetrics metrics) => new(Store, MemoryProvider, metrics, FoldQuota, Operations, FanOut, OmitPrefixlessBranches);
+        internal FoldContext WithMetrics(TrieUpdaterMetrics metrics) => new(Store, MemoryProvider, metrics, FoldQuota, Operations, FanOut, PrefixlessBranchOmission);
     }
 
     private struct BucketFold(int slot, int offset, int count, OwnedSubtree current, long descendantBytes, FoldContext context)
@@ -521,7 +521,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             // carrying that size replaces the parent's frame, which must not be shared across threads.
             GroupFrameReader<TKey, TPath> owner = new(Context.Store, bitDepth, default, null);
             owner.InheritDescendants(Slot, descendantBytes);
-            using PbtNodeGroupWriter<TPath> ownerWriter = new(bitDepth, Context.MemoryProvider, Context.OmitPrefixlessBranches);
+            using PbtNodeGroupWriter<TPath> ownerWriter = new(bitDepth, Context.MemoryProvider, Context.PrefixlessBranchOmission);
             TraversalSubtree boundary = current.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]);
             Result = FoldMutations(Context, ref owner, ownerWriter, boundary, Context.Operations!.AsSpan(offset, count),
                 ref path, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, new BucketPlan(default, knownCommonPrefixLength, isSorted));

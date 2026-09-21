@@ -53,7 +53,7 @@ public static partial class TrieUpdater
     /// the parts still left, whose workers charge themselves as they start; a quota of one folds everything
     /// serially. Each zone's fold time is observed on <paramref name="partitionFoldTime"/> labelled by partition, so
     /// an imbalance between them is visible. Groups rewritten by this fold leave prefixless interior branches
-    /// implicit only when <paramref name="omitPrefixlessBranches"/> is set; untouched groups keep their layout.
+    /// implicit as <paramref name="prefixlessBranchOmission"/> selects; untouched groups keep their layout.
     /// The supplied store must support concurrent reads and writes. Failed
     /// folds may leave partial writes; the caller owns failure isolation and must not reuse that state without
     /// recovery.
@@ -65,7 +65,7 @@ public static partial class TrieUpdater
         PbtPartitionBatches changes,
         ConcurrencyController foldQuota,
         FoldFanOut fanOut,
-        bool omitPrefixlessBranches,
+        PbtPrefixlessBranchOmission prefixlessBranchOmission,
         IMetricObserver? partitionFoldTime,
         TrieUpdaterMetrics? metrics = null,
         IRefCountingMemoryProvider? memoryProvider = null)
@@ -93,7 +93,7 @@ public static partial class TrieUpdater
                 GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> rootReader = new(store, 0, currentRoot, metrics);
                 using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
                 {
-                    using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = new(0, memoryProvider, omitPrefixlessBranches);
+                    using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = new(0, memoryProvider, prefixlessBranchOmission);
                     PbtTraversalPath rootPath = new(Span<byte>.Empty);
                     Span<byte> sharedPathBuffer = stackalloc byte[1];
                     Span<byte> sourceBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
@@ -115,7 +115,7 @@ public static partial class TrieUpdater
                         {
                             TraversalSubtree boundary = TakeBoundary(ref rootReader, rootWriter, rootPath, ref rootFrontier, slot, sourceBuffer);
                             sharedReader = new(store, 4, boundary.Hash(4, metrics), metrics);
-                            sharedWriter = new(4, memoryProvider, omitPrefixlessBranches);
+                            sharedWriter = new(4, memoryProvider, prefixlessBranchOmission);
                             sharedWriters[slot] = sharedWriter;
                             InheritDescendants(ref sharedReader, in rootReader, sharedPath, boundary);
                             Decompose(ref sharedReader, sharedWriter, sharedPath, ref boundary, 4, ref zoneFrontiers.AsSpan()[slot], touchedZoneMasks[slot]);
@@ -199,7 +199,7 @@ public static partial class TrieUpdater
                 if (batch is null) return;
                 ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
                 batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
-                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldQuota, fanOut, omitPrefixlessBranches, partitionFoldTime, foldLabel);
+                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldQuota, fanOut, prefixlessBranchOmission, partitionFoldTime, foldLabel);
                 if (operations.Count != 0) workers.Add(worker);
                 else worker.Dispose();
             }
@@ -223,7 +223,7 @@ public static partial class TrieUpdater
     private sealed class PartitionFold<TKey, TPath>(IPbtStore store, byte zone,
         ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table,
         bool collectMetrics, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, FoldFanOut fanOut,
-        bool omitPrefixlessBranches, IMetricObserver? foldTime, StringLabel foldLabel) : PartitionFold(zone, collectMetrics)
+        PbtPrefixlessBranchOmission prefixlessBranchOmission, IMetricObserver? foldTime, StringLabel foldLabel) : PartitionFold(zone, collectMetrics)
         where TKey : struct, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
@@ -239,12 +239,12 @@ public static partial class TrieUpdater
             GroupFrameReader<TKey, TPath> reader = new(store, 8, Current.Borrow(sourceBuffer).Hash(8, Metrics), Metrics);
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
             {
-                using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider, omitPrefixlessBranches);
+                using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider, prefixlessBranchOmission);
                 TrieUpdater<TKey, TPath>.OwnedSubtree ownedCurrent = TrieUpdater<TKey, TPath>.OwnedSubtree.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(ref Current);
                 TrieUpdater<TKey, TPath>.TraversalSubtree current = ownedCurrent.Borrow(sourceBuffer);
                 TrieUpdater<TKey, TPath>.OwnedSubtree result = default;
                 TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, Metrics,
-                    foldQuota, operations.UnsafeGetInternalArray(), fanOut, omitPrefixlessBranches);
+                    foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
                 if (TrieUpdater<TKey, TPath>.IsAbsentGroupBelow(current, 8))
                     reader.InheritDescendants(TrieUpdater<TKey, TPath>.BranchSlot(current, 8), InheritedDescendantBytes);
                 // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
