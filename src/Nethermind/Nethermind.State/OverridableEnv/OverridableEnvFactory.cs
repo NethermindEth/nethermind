@@ -101,7 +101,6 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             }
         }
 
-        /// <summary>Resets, applies the spec override and opens the world scope through <paramref name="beginScope"/>, resetting again when that fails.</summary>
         private bool TryOpen(IReleaseSpec? specOverride, Func<bool> beginScope)
         {
             if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");

@@ -25,9 +25,10 @@ public class WitnessCollector(
     /// </remarks>
     public Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block)
     {
-        if (!worldState.TryBeginScopeAtTarget(block.Header, out IDisposable? scope))
+        // The scope and the witness must share one parent: the witness walks the pre-state at parentHeader's root.
+        if (!worldState.TryBeginScope(parentHeader, out IDisposable? scope))
         {
-            throw new InvalidOperationException($"Parent state is unavailable for target block {block.ToString(Block.Format.FullHashAndNumber)}.");
+            throw new InvalidOperationException($"State is unavailable for parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}.");
         }
 
         using IDisposable _ = scope;

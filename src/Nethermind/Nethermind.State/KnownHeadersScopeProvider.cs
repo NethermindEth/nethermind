@@ -35,10 +35,14 @@ public sealed class KnownHeadersScopeProvider : IWorldStateScopeProvider
         _baseProvider = createBaseProvider(_headerProvider);
     }
 
+    /// <inheritdoc/>
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
 
+    /// <inheritdoc/>
     public bool HasStateForTargetBlock(BlockHeader targetBlock) => _baseProvider.HasStateForTargetBlock(targetBlock);
 
+    /// <inheritdoc/>
+    /// <remarks>On success the target header is remembered, so a later target whose parent it is resolves to it.</remarks>
     public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         if (!_baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out scope)) return false;
@@ -46,6 +50,8 @@ public sealed class KnownHeadersScopeProvider : IWorldStateScopeProvider
         return true;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>On success the base header is remembered, so a later target whose parent it is resolves to it.</remarks>
     public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         if (!_baseProvider.TryBeginScope(baseBlock, metrics, out scope)) return false;
@@ -53,6 +59,7 @@ public sealed class KnownHeadersScopeProvider : IWorldStateScopeProvider
         return true;
     }
 
+    /// <summary>Forgets every remembered header; parents resolve through the block tree again until a scope opens.</summary>
     public void Clear() => _headerProvider.Clear();
 
     private sealed class KnownHeadersProvider(IStateHeaderProvider stateHeaderProvider) : IStateHeaderProvider

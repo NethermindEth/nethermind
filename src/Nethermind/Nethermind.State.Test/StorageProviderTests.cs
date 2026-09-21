@@ -2198,7 +2198,7 @@ public class StorageProviderTests(bool useFlat)
             {
                 scopeProvider = new TrieStoreScopeProvider(
                     TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
-                    new MemDb(), TestStateHeaderProvider.Unavailable, LimboLogs.Instance);
+                    new MemDb(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
             }
 
             if (preBlockCaches is not null)
@@ -2246,6 +2246,20 @@ public class StorageProviderTests(bool useFlat)
     {
 
         public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
+
+        public bool HasStateForTargetBlock(BlockHeader targetBlock) => scopeProvider.HasStateForTargetBlock(targetBlock);
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
+        {
+            if (!scopeProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope baseScope))
+            {
+                scope = null;
+                return false;
+            }
+
+            scope = new ScopeDecorator(baseScope, writtenData);
+            return true;
+        }
 
         public bool TryBeginScope(BlockHeader baseBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
         {

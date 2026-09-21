@@ -186,14 +186,20 @@ public class GethStyleTracer(
             block = block.WithReplacedBodyCloned(block.Body);
         }
 
-        options.BlockOverrides?.ApplyOverrides(block.Header);
+        // The scope is opened before the block override lands on the header: the parent lookup keys on the
+        // header's number, and an overridden number (zero included) would resolve the wrong state, or none.
+        using Scope<BlockProcessingComponents> scope = useBlockAsBase
+            ? blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides, blockOverride: options.BlockOverrides)
+            : blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
+
+        if (!useBlockAsBase)
+        {
+            options.BlockOverrides?.ApplyOverrides(block.Header);
+        }
         if (options.NoBaseFee)
         {
             block.Header.BaseFeePerGas = UInt256.Zero;
         }
-        using Scope<BlockProcessingComponents> scope = useBlockAsBase
-            ? blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides)
-            : blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         GethTraceOptions filtered = options with { TxHash = txHash };
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;

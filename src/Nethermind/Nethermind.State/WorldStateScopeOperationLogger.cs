@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -25,7 +26,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
         baseScopeProvider.HasStateForTargetBlock(targetBlock);
 
-    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         if (!baseScopeProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
         {
@@ -38,7 +39,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         return true;
     }
 
-    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         if (!baseScopeProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
         {

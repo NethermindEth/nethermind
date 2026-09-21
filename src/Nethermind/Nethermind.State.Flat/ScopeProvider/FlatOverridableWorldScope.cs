@@ -142,13 +142,13 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public bool HasStateForTargetBlock(BlockHeader targetBlock)
         {
             ArgumentNullException.ThrowIfNull(targetBlock);
-            return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+            return _stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
         }
 
         public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
             ArgumentNullException.ThrowIfNull(targetBlock);
-            if (!TryGetBaseBlock(targetBlock, out BlockHeader? parent))
+            if (!_stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent))
             {
                 scope = null;
                 return false;
@@ -157,17 +157,6 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             return TryBeginScope(parent, metrics, out scope);
         }
 
-        private bool TryGetBaseBlock(BlockHeader targetBlock, out BlockHeader? parent)
-        {
-            if (targetBlock.IsGenesis)
-            {
-                parent = null;
-                return true;
-            }
-
-            parent = _stateHeaderProvider.FindParentHeader(targetBlock);
-            return parent is not null;
-        }
 
         public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {

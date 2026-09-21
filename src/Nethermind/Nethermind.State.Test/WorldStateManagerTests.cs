@@ -38,14 +38,14 @@ public class WorldStateManagerTests
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         IDbProvider dbProvider = TestMemDbProvider.Init();
         StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
-        WorldStateManager manager = new(worldState, trieStore, dbProvider, boundary, stateHeaderProvider ?? TestStateHeaderProvider.Unavailable, LimboLogs.Instance);
+        WorldStateManager manager = new(worldState, trieStore, dbProvider, boundary, stateHeaderProvider, LimboLogs.Instance);
         return (worldState, trieStore, manager, boundary);
     }
 
     [Test]
     public void ShouldProxyGlobalWorldState()
     {
-        (IWorldStateScopeProvider worldState, _, WorldStateManager manager, _) = CreateWorldStateManager(TestStateHeaderProvider.Unavailable);
+        (IWorldStateScopeProvider worldState, _, WorldStateManager manager, _) = CreateWorldStateManager(UnavailableStateHeaderProvider.Instance);
         Assert.That(manager.GlobalWorldState, Is.EqualTo(worldState));
     }
 
@@ -122,7 +122,7 @@ public class WorldStateManagerTests
         IDbProvider dbProvider = TestMemDbProvider.Init();
         StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
-        _ = new WorldStateManager(Substitute.For<IWorldStateScopeProvider>(), trieStore, dbProvider, boundary, TestStateHeaderProvider.Unavailable, LimboLogs.Instance);
+        _ = new WorldStateManager(Substitute.For<IWorldStateScopeProvider>(), trieStore, dbProvider, boundary, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
 
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
@@ -135,7 +135,7 @@ public class WorldStateManagerTests
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        (_, IPruningTrieStore trieStore, WorldStateManager manager, _) = CreateWorldStateManager(TestStateHeaderProvider.Unavailable);
+        (_, IPruningTrieStore trieStore, WorldStateManager manager, _) = CreateWorldStateManager(UnavailableStateHeaderProvider.Instance);
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);

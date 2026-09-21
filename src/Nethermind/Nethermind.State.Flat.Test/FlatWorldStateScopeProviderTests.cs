@@ -56,8 +56,11 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(provider.HasStateForTargetBlock(target), Is.True);
 
         stateAvailable = false;
-        Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
-        Assert.That(scope, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
+            Assert.That(scope, Is.Null);
+        }
     }
 
     [Test]

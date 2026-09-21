@@ -548,7 +548,7 @@ public class BlockProcessorTests
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).TestObject).TestObject;
 
         Assert.DoesNotThrow(() => branchProcessor.Process(null, [block], options, NullBlockTracer.Instance));
-        Assert.That(stateHeaderProvider.LastTarget, Is.SameAs(block.Header));
+        Assert.That(stateHeaderProvider.LookupCalls, Is.EqualTo(1), "the branch scope resolves its parent through the header provider");
     }
 
     [Test]

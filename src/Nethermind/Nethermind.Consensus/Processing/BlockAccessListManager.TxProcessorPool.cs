@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -10,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -64,6 +66,7 @@ public partial class BlockAccessListManager
         }
 
         private Block? _currentBlock;
+        private Hash256? _parentStateRoot;
         private BlockExecutionContext _currentCtx;
         private int _lastBalIndex;
         private BalReadStoragePlan? _readPlan;
@@ -106,6 +109,8 @@ public partial class BlockAccessListManager
             _readPlan = readPlan;
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
+            // Setup runs before any in-block mutation, so the open root is the pre-state the parent readers must match.
+            _parentStateRoot = _parentReaderEnvPool is null ? null : _stateProvider.StateRoot;
 
             int previousSize = _lastBalIndex + 1;
             int newLastBalIndex = block.Transactions.Length + 1;
@@ -251,6 +256,7 @@ public partial class BlockAccessListManager
                 ThrowParentStateUnavailable(targetBlock);
             }
 
+            Debug.Assert(scope.WorldState.StateRoot == _parentStateRoot, "parent readers must read the pre-state the block executes on");
             return new ParentReaderLease(source, _parentReaderEnvPool, scope);
         }
 

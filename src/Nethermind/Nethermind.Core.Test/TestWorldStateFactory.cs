@@ -74,10 +74,10 @@ public static class TestWorldStateFactory
     {
         ConfigProvider configProvider = new();
         configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
-        ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider));
-        if (stateHeaderProvider is not null) builder.AddSingleton(stateHeaderProvider);
-        return builder.Build();
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton(stateHeaderProvider)
+            .Build();
     }
 
     public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager) =>

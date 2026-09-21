@@ -79,7 +79,10 @@ internal sealed class XdcMasternodeEthModule(
 
         XdcCandidatesResult result = new() { Epoch = (long)resolved.EpochNumber };
 
-        CandidateStake[] candidates = GetCandidateStakes(resolved.CandidateStateHeader);
+        if (!TryGetCandidateStakes(resolved.CandidateStateHeader, out CandidateStake[] candidates))
+        {
+            return ResultWrapper<XdcCandidatesResult>.Fail(NoStateAvailable(resolved.CandidateStateHeader), ErrorCodes.ResourceUnavailable);
+        }
         Address[] masternodes = GetCheckpointMasternodes(resolved.Header);
         if (candidates.Length == 0 || masternodes.Length == 0)
         {
@@ -158,7 +161,10 @@ internal sealed class XdcMasternodeEthModule(
 
         XdcCandidateStatusResult result = new() { Epoch = (long)resolved.EpochNumber };
 
-        CandidateStake[] candidates = GetCandidateStakes(resolved.CandidateStateHeader);
+        if (!TryGetCandidateStakes(resolved.CandidateStateHeader, out CandidateStake[] candidates))
+        {
+            return ResultWrapper<XdcCandidateStatusResult>.Fail(NoStateAvailable(resolved.CandidateStateHeader), ErrorCodes.ResourceUnavailable);
+        }
         Address[] masternodes = GetCheckpointMasternodes(resolved.Header);
         if (candidates.Length == 0 || masternodes.Length == 0)
         {
@@ -249,8 +255,13 @@ internal sealed class XdcMasternodeEthModule(
             return ResultWrapper<double>.Success(0);
         }
 
+        if (!TryGetCandidateStakes(rewardedCheckpoint, out CandidateStake[] candidates))
+        {
+            return ResultWrapper<double>.Fail(NoStateAvailable(rewardedCheckpoint), ErrorCodes.ResourceUnavailable);
+        }
+
         UInt256 totalCap = UInt256.Zero;
-        foreach (CandidateStake candidate in GetCandidateStakes(rewardedCheckpoint))
+        foreach (CandidateStake candidate in candidates)
         {
             totalCap += candidate.Stake;
         }
@@ -291,8 +302,12 @@ internal sealed class XdcMasternodeEthModule(
             }
         }
 
-        return ResultWrapper<double>.Success(
-            CalculateRoi(masternodeReward, GetTotalVoterStake(currentCheckpoint, masternode), currentEpoch));
+        if (!TryGetTotalVoterStake(currentCheckpoint, masternode, out UInt256 totalVoterStake))
+        {
+            return ResultWrapper<double>.Fail(NoStateAvailable(currentCheckpoint), ErrorCodes.ResourceUnavailable);
+        }
+
+        return ResultWrapper<double>.Success(CalculateRoi(masternodeReward, totalVoterStake, currentEpoch));
     }
 
     public ResultWrapper<XdcTokenSupply> eth_getTokenStats(XdcEpochParameter? epoch = null)
@@ -305,7 +320,7 @@ internal sealed class XdcMasternodeEthModule(
         using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
         if (!source.TryBuild(head.Header, out IReadOnlyTxProcessingScope? scope))
         {
-            return ResultWrapper<XdcTokenSupply>.Fail($"No state available for block {head.Header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            return ResultWrapper<XdcTokenSupply>.Fail(NoStateAvailable(head.Header), ErrorCodes.ResourceUnavailable);
         }
 
         using IReadOnlyTxProcessingScope _ = scope;
@@ -544,10 +559,16 @@ internal sealed class XdcMasternodeEthModule(
     /// read-only environment per call, which on a candidate list in the hundreds turns a sharable RPC method
     /// into an easy way to burn CPU.
     /// </remarks>
-    private CandidateStake[] GetCandidateStakes(BlockHeader stateHeader)
+    private bool TryGetCandidateStakes(BlockHeader stateHeader, out CandidateStake[] candidateStakes)
     {
         using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = source.Build(stateHeader);
+        if (!source.TryBuild(stateHeader, out IReadOnlyTxProcessingScope? scope))
+        {
+            candidateStakes = [];
+            return false;
+        }
+
+        using IReadOnlyTxProcessingScope _ = scope;
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         Address[] candidates = masternodeVotingContract.GetCandidates(processor, stateHeader) ?? [];
@@ -566,7 +587,8 @@ internal sealed class XdcMasternodeEthModule(
             });
         }
 
-        return [.. stakes];
+        candidateStakes = [.. stakes];
+        return true;
     }
 
     /// <remarks>
@@ -578,13 +600,18 @@ internal sealed class XdcMasternodeEthModule(
     /// address, and summing per entry here would inflate the staked total and depress the reported return.
     /// </para>
     /// </remarks>
-    private UInt256 GetTotalVoterStake(BlockHeader stateHeader, Address masternode)
+    private bool TryGetTotalVoterStake(BlockHeader stateHeader, Address masternode, out UInt256 totalStake)
     {
+        totalStake = UInt256.Zero;
         using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = source.Build(stateHeader);
+        if (!source.TryBuild(stateHeader, out IReadOnlyTxProcessingScope? scope))
+        {
+            return false;
+        }
+
+        using IReadOnlyTxProcessingScope _ = scope;
         IWorldState worldState = scope.WorldState;
 
-        UInt256 totalStake = UInt256.Zero;
         HashSet<Address> counted = [];
         foreach (Address voter in masternodeVotingContract.GetVoters(worldState, masternode))
         {
@@ -594,8 +621,11 @@ internal sealed class XdcMasternodeEthModule(
             }
         }
 
-        return totalStake;
+        return true;
     }
+
+    private static string NoStateAvailable(BlockHeader header) =>
+        $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}";
 
     private static BigInteger ToCapacity(in UInt256 stake) => new(stake.ToBigEndian(), isUnsigned: true, isBigEndian: true);
 
