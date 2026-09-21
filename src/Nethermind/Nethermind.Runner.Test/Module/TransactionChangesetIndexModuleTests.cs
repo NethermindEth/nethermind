@@ -31,7 +31,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.History.Changesets;
@@ -122,14 +121,10 @@ public class TransactionChangesetIndexModuleTests
             Assert.That(session.ImportPage((ISortedKeyValueStore)history.GetColumnDb(column), format, column, CancellationToken.None), Is.True);
         session.VerifyAnchor(CancellationToken.None);
         BulkFillScopeProvider provider = new(session, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
-        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
-            .AddModule(container.Resolve<IBlockValidationModule[]>())
-            .AddSingleton<IWorldStateScopeProvider>(provider)
-            .AddSingleton<IStateReader>(provider)
-            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>());
+        using ILifetimeScope scope = ProcessingTransactionIndexBulkFill.BuildReplayScope(container, provider, container.Resolve<IBlockValidationModule[]>());
         IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
-        Block? originalHead = tree.Head;
-        IReceiptStorage receipts = container.Resolve<IReceiptStorage>();
+        Block originalHead = tree.Head;
+        IReceiptStorage receipts = scope.Resolve<IReceiptStorage>();
         TransactionChangesetIndex index = new(history, config);
         Withdrawal withdrawal = new() { Address = TestItem.AddressA, AmountInGwei = 1 };
         Block first = Build.A.Block.WithNumber(1).WithParent(genesis).WithPostMergeFlag(true)
