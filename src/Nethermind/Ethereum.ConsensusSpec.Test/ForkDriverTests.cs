@@ -68,6 +68,23 @@ public class ForkDriverTests
         });
     }
 
+    // The withdrawals vectors whose every validator has fully exited decode into a state with no
+    // active validator; Electra accepts them because nothing in process_withdrawals reads a proposer.
+    [Test]
+    public void Refilling_the_lookahead_over_an_empty_active_set_marks_every_slot_as_having_no_proposer()
+    {
+        BeaconStateFulu working = new()
+        {
+            Slot = 3 * 32,
+            Validators = [new Validator { EffectiveBalance = 32_000_000_000, ActivationEpoch = 0, ExitEpoch = 1, WithdrawableEpoch = 2 }],
+        };
+
+        ForkDriver.RefillProposerLookahead(working);
+
+        Assert.That(working.ProposerLookahead, Has.Length.EqualTo(64).And.All.EqualTo(ForkDriver.NoProposer),
+            "a slot without a proposer must not name validator 0, which an operation reading it would then accept");
+    }
+
     /// <summary>Null lists and fixed-size fields merkleize as zero, but the generated merkleizer rejects a null variable-size container.</summary>
     private static BeaconStateElectra MerkleizableElectra() => new() { LatestExecutionPayloadHeader = new ExecutionPayloadHeader() };
 }
