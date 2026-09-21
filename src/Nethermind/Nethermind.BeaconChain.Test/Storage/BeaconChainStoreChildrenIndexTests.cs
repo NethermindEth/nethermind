@@ -258,6 +258,54 @@ public class BeaconChainStoreChildrenIndexTests
         Assert.That(children, Is.EqualTo(new[] { child }));
     }
 
+    [Test]
+    public void Opening_a_database_from_before_the_index_rebuilds_every_child_list_as_complete()
+    {
+        Hash256 grandparent = TestRoot(0);
+        Hash256 parent = TestRoot(1);
+        Hash256 legacyChild = TestRoot(2);
+        Hash256 indexedChild = TestRoot(3);
+        Hash256 deletedLegacy = TestRoot(4);
+        WriteLegacyBlock(parent, CreateBlock(100, grandparent));
+        WriteLegacyBlock(legacyChild, CreateBlock(101, parent));
+        _store.PutBlock(indexedChild, CreateBlock(102, parent)); // a build that had the index but not yet the rebuild
+        WriteLegacyBlock(deletedLegacy, CreateBlock(103, parent));
+        _store.DeleteBlock(deletedLegacy); // leaves a tombstone that pins the block incomplete
+        _store.SetCanonicalRoot(100, parent);
+        _store.SetSchemaVersion(BeaconChainStore.CurrentSchemaVersion - 1);
+
+        BeaconChainStore reopened = new(_db);
+        reopened.EnsureSchemaVersion();
+
+        Assert.That(reopened.TryGetSchemaVersion(out uint version), Is.True);
+        Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+        Assert.That(reopened.TryGetChildren(parent, out Hash256[] children, out bool complete), Is.True);
+        Assert.That(children, Is.EquivalentTo(new[] { legacyChild, indexedChild }), "the rebuild sees every stored block, indexed or not");
+        Assert.That(complete, Is.True, "after the rebuild the list holds every stored child, so the API may answer with it");
+        Assert.That(reopened.TryGetChildren(legacyChild, out Hash256[] leafChildren, out bool leafComplete), Is.True);
+        Assert.That(leafChildren, Is.Empty);
+        Assert.That(leafComplete, Is.True, "a legacy block with no stored children has a complete empty list, not a pinned-incomplete one");
+        Assert.That(reopened.TryGetChildren(grandparent, out Hash256[] grandchildren, out bool grandparentComplete), Is.True);
+        Assert.That(grandchildren, Is.EqualTo(new[] { parent }));
+        Assert.That(grandparentComplete, Is.False, "a parent that is not stored is tracked for its children but cannot vouch for them");
+        Assert.That(reopened.TryGetChildren(deletedLegacy, out _, out _), Is.False, "a tombstone describes a block the rebuild proves absent");
+        Assert.That(reopened.TryGetCanonicalRoot(100, out Hash256? canonical), Is.True);
+        Assert.That(canonical, Is.EqualTo(parent), "the canonical slot index shares the column and must survive the rebuild");
+    }
+
+    [Test]
+    public void A_database_already_at_the_current_schema_version_keeps_its_index_as_is()
+    {
+        Hash256 legacy = TestRoot(1);
+        WriteLegacyBlock(legacy, CreateBlock(100, parent: TestRoot(0)));
+        _store.SetSchemaVersion(BeaconChainStore.CurrentSchemaVersion);
+
+        BeaconChainStore reopened = new(_db);
+        reopened.EnsureSchemaVersion();
+
+        Assert.That(reopened.TryGetChildren(legacy, out _, out _), Is.False, "the rebuild scans every stored block, so it must run only on the upgrade that introduced it");
+    }
+
     /// <summary>Writes a block exactly as the pre-index store did: the compressed SSZ under the bare root, nothing else.</summary>
     private void WriteLegacyBlock(Hash256 root, SignedBeaconBlock block) =>
         _db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
