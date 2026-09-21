@@ -115,6 +115,9 @@ public class GloasOperationsTests
     }
 
     [TestCase("identical headers", "identical")]
+    [TestCase("different slots", "header slots do not match")]
+    [TestCase("different proposers", "proposer indices do not match")]
+    [TestCase("index out of range", "is out of range")]
     [TestCase("bad signature", "Invalid proposer slashing signature")]
     [TestCase("already slashed", "not slashable")]
     public void ProcessProposerSlashing_rejects_an_invalid_slashing_and_mutates_nothing(string defect, string expectedMessage)
@@ -127,6 +130,17 @@ public class GloasOperationsTests
         {
             case "identical headers":
                 slashing.SignedHeader2 = slashing.SignedHeader1;
+                break;
+            case "different slots":
+                // Two honest proposals at consecutive slots, each validly signed: not an equivocation.
+                slashing.SignedHeader2 = SignedHeader(state, slot: 33, proposer, Hash(0x22));
+                break;
+            case "different proposers":
+                // Each header is validly signed by the validator it names; only the index check rejects the pair.
+                slashing.SignedHeader2 = SignedHeader(state, slot: 32, proposer + 1, Hash(0x22));
+                break;
+            case "index out of range":
+                slashing = Equivocation(state, slot: 32, ValidatorCount);
                 break;
             case "bad signature":
                 slashing.SignedHeader2!.Signature = Corrupt(slashing.SignedHeader2.Signature);
@@ -171,7 +185,36 @@ public class GloasOperationsTests
         });
     }
 
+    [Test]
+    public void ProcessAttesterSlashing_skips_a_validator_in_both_votes_that_was_already_slashed()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        EpochCache cache = new();
+        const int alreadySlashed = 2;
+        const int stillSlashable = 3;
+        state.SlashValidator(alreadySlashed, cache);
+        ulong slashedBalanceBefore = state.Balances![alreadySlashed];
+        ulong slashingsBefore = state.Slashings![1];
+        Assert.That(slashingsBefore, Is.EqualTo(32 * Gwei), "fixture bug: the first slashing must have been accounted");
+        AttesterSlashingGloas slashing = new()
+        {
+            Attestation1 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xA0), [1, alreadySlashed, stillSlashable]),
+            Attestation2 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xB0), [alreadySlashed, stillSlashable, 4]),
+        };
+
+        GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Validators![stillSlashable].Slashed, Is.True);
+            Assert.That(state.Balances[alreadySlashed], Is.EqualTo(slashedBalanceBefore), "a validator slashed once must not be penalized again");
+            Assert.That(state.Slashings[1], Is.EqualTo(slashingsBefore + 32 * Gwei), "only the newly slashed validator's balance joins the slashings accounting");
+        });
+    }
+
     [TestCase("no intersection", "slashed no validator")]
+    [TestCase("every common validator already slashed", "slashed no validator")]
     [TestCase("same vote twice", "not slashable")]
     [TestCase("unsorted indices", "attestation 1 is invalid")]
     [TestCase("bad signature", "attestation 2 is invalid")]
@@ -184,6 +227,7 @@ public class GloasOperationsTests
         AttesterSlashingGloas slashing = defect switch
         {
             "no intersection" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote2, [3, 4]) },
+            "every common validator already slashed" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote2, [2, 3]) },
             "same vote twice" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote1, [2, 3]) },
             "unsorted indices" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [2, 1]), Attestation2 = SignedIndexedAttestation(state, vote2, [2, 3]) },
             "bad signature" => new() { Attestation1 = SignedIndexedAttestation(state, vote1, [1, 2]), Attestation2 = SignedIndexedAttestation(state, vote2, [2, 3]) },
@@ -191,6 +235,8 @@ public class GloasOperationsTests
         };
         if (defect == "bad signature")
             slashing.Attestation2!.Signature = Corrupt(slashing.Attestation2.Signature);
+        if (defect == "every common validator already slashed")
+            state.SlashValidator(2, new EpochCache());
         Hash256 rootBefore = SszRoots.HashTreeRoot(state);
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
@@ -299,6 +345,37 @@ public class GloasOperationsTests
 
         Assert.That(ex.Message, Does.Contain(expectedMessage));
         Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+    }
+
+    [TestCase("target two epochs back", "not the previous or current epoch")]
+    [TestCase("target epoch not the slot's", "does not match its slot")]
+    [TestCase("included in its own slot", "included too early")]
+    [TestCase("source not the justified checkpoint", "does not match the justified checkpoint")]
+    public void ProcessAttestation_rejects_a_vote_whose_data_fails_a_structural_check_and_mutates_nothing(string defect, string expectedMessage)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        EpochCache cache = new();
+        // Epoch 2 for the two-epochs-back case (epoch 0 is then out of range); slot 33 otherwise.
+        GloasSlotProcessing.ProcessSlots(state, defect == "target two epochs back" ? 2 * SlotsPerEpoch + 1 : 33, cache);
+        AttestationData data = defect switch
+        {
+            "target two epochs back" => VoteFor(state, slot: 8, targetEpoch: 0, state.GetBlockRootAtSlot(8)),
+            "target epoch not the slot's" => VoteFor(state, slot: 31, targetEpoch: 1, state.GetBlockRootAtSlot(31)),
+            "included in its own slot" => VoteFor(state, slot: 33, targetEpoch: 1, Hash(0x33)),
+            "source not the justified checkpoint" => VoteFor(state, slot: 32, targetEpoch: 1, state.GetBlockRootAtSlot(32)),
+            _ => throw new ArgumentOutOfRangeException(nameof(defect)),
+        };
+        if (defect == "source not the justified checkpoint")
+            data.Source = new Checkpoint { Epoch = data.Source!.Epoch, Root = Hash(0x55) };
+        CommitteeCache committees = cache.GetCommitteeCache(state, BeaconStateAccessors.ComputeEpochAtSlot(data.Slot));
+        AttestationGloas attestation = CommitteeAttestation(state, data, committees, committeeIndex: 0, sign: false);
+        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
+
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: state.LatestBlockHeader!.Slot, cache, new PubkeyCache(), verifySignature: false))!;
+
+        Assert.That(ex.Message, Does.Contain(expectedMessage));
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected attestation must leave the state untouched");
     }
 
     [Test]
@@ -471,6 +548,34 @@ public class GloasOperationsTests
         Assert.That(ex.Message, Does.Contain(expectedMessage));
     }
 
+    /// <summary>
+    /// The pinned spec's <c>is_valid_indexed_payload_attestation</c> requires <c>list(indices) == sorted(indices)</c>:
+    /// sorted, but not unique, unlike <c>is_valid_indexed_attestation</c>'s <c>sorted(set(indices))</c>.
+    /// A PTC is sampled with replacement, so a member that holds two seats legitimately appears twice.
+    /// </summary>
+    [TestCase(new ulong[] { 4, 5 }, true)]
+    [TestCase(new ulong[] { 5, 5 }, true)]
+    [TestCase(new ulong[] { 5, 4 }, false)]
+    [TestCase(new ulong[0], false)]
+    [TestCase(new ulong[] { ValidatorCount }, false)]
+    public void IsValidIndexedPayloadAttestation_requires_sorted_in_range_indices_but_allows_a_member_holding_several_seats(ulong[] indices, bool expected)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        PayloadAttestationData data = new() { BeaconBlockRoot = Hash(0x31), Slot = 32, PayloadPresent = true, BlobDataAvailable = true };
+        Hash256 domain = state.GetDomain(DomainType.PtcAttester, BeaconStateAccessors.ComputeEpochAtSlot(data.Slot));
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain);
+        IndexedPayloadAttestation attestation = new()
+        {
+            AttestingIndices = indices,
+            Data = data,
+            // Signed once per listed seat, which is what a repeated member's aggregate carries.
+            Signature = indices.Length == 0 ? default : AggregateSignature(signingRoot, [.. indices.Select(i => (int)i)]),
+        };
+
+        Assert.That(GloasBlockProcessing.IsValidIndexedPayloadAttestation(state, attestation, pubkeys, verifySignature: true), Is.EqualTo(expected));
+    }
+
     [Test]
     public void GetIndexedPayloadAttestation_resolves_a_vote_for_a_pre_fork_slot_against_the_default_committee_instead_of_crashing()
     {
@@ -571,6 +676,8 @@ public class GloasOperationsTests
     [TestCase("bad signature", "Invalid voluntary exit signature")]
     [TestCase("pending partial withdrawal", "pending partial withdrawals")]
     [TestCase("already exiting", "already initiated an exit")]
+    [TestCase("not yet activated", "is not active")]
+    [TestCase("index out of range", "is out of range")]
     [TestCase("too recently activated", "not been active long enough")]
     [TestCase("exit epoch in the future", "not valid before epoch")]
     public void ProcessVoluntaryExit_rejects_an_invalid_exit_and_mutates_nothing(string defect, string expectedMessage)
@@ -590,6 +697,10 @@ public class GloasOperationsTests
                 state.Slot = ExitEligibleSlot;
                 exit = SignedExit(state, exiting, epoch: Presets.ShardCommitteePeriod + 5);
                 break;
+            case "index out of range":
+                state.Slot = ExitEligibleSlot;
+                exit = SignedExit(state, ValidatorCount, epoch: 3);
+                break;
             default:
                 state.Slot = ExitEligibleSlot;
                 exit = SignedExit(state, exiting, epoch: 3);
@@ -599,6 +710,13 @@ public class GloasOperationsTests
         {
             case "bad signature":
                 exit.Signature = Corrupt(exit.Signature);
+                break;
+            case "not yet activated":
+                // Deposited but still queued: the only inactive validator the exit-epoch check does not already catch.
+                Validator pending = state.Validators![exiting].Clone();
+                pending.ActivationEligibilityEpoch = Presets.FarFutureEpoch;
+                pending.ActivationEpoch = Presets.FarFutureEpoch;
+                state.Validators[exiting] = pending;
                 break;
             case "pending partial withdrawal":
                 state.PendingPartialWithdrawals = [new PendingPartialWithdrawal { ValidatorIndex = exiting, Amount = Gwei, WithdrawableEpoch = 1 }];
@@ -651,6 +769,7 @@ public class GloasOperationsTests
     [TestCase("bad signature", "Invalid BLS to execution change signature")]
     [TestCase("credentials of another key", "does not match the withdrawal credentials")]
     [TestCase("execution credentials already", "does not have BLS withdrawal credentials")]
+    [TestCase("index out of range", "is out of range")]
     public void ProcessBlsToExecutionChange_rejects_an_invalid_change_and_mutates_nothing(string defect, string expectedMessage)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
@@ -664,7 +783,7 @@ public class GloasOperationsTests
             _ => BlsWithdrawalCredentials(new BlsPublicKey(new Bls.P1(fromKey).Compress())),
         };
         state.Validators[changing] = validator;
-        SignedBlsToExecutionChange change = SignedBlsChange(state, changing, fromKey, new Address(Hash(0xE7).Bytes[12..]));
+        SignedBlsToExecutionChange change = SignedBlsChange(state, defect == "index out of range" ? ValidatorCount : changing, fromKey, new Address(Hash(0xE7).Bytes[12..]));
         if (defect == "bad signature")
             change.Signature = Corrupt(change.Signature);
         Hash256 rootBefore = SszRoots.HashTreeRoot(state);
