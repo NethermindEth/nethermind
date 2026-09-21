@@ -34,8 +34,11 @@ public interface IBranchProcessor
     /// on <see cref="BlockProcessed"/>.
     /// </summary>
     /// <remarks>
-    /// The block is not readable through the chain yet: the block tree marks it processed and moves the head only
-    /// after this. A consumer that needs the committed block waits for the processing queue to remove it.
+    /// Raised for the last block of a branch only, since an earlier one can still be discarded with the branch, and
+    /// with the suggested block, which is what the processing queue knows the branch by. The block is not readable
+    /// through the chain yet: the block tree marks it processed and moves the head only after this, and a consumer
+    /// that needs the committed block waits for the processing queue to remove it. Handlers run synchronously on
+    /// the block-processing thread, ahead of the commit: whatever they do is on the block's critical path.
     /// </remarks>
     event EventHandler<BlockProcessedEventArgs> BlockExecuted;
 

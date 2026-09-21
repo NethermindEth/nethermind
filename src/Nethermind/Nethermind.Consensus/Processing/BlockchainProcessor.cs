@@ -76,9 +76,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private bool _recoveryComplete = false;
     private int _queueCount;
     private bool _disposed;
-    // Every block between Enqueue and its BlockRemoved. The value is created only by a waiter, so a block nobody
-    // waits for costs an entry and nothing else.
-    private readonly ConcurrentDictionary<Hash256, TaskCompletionSource?> _inFlight = new();
+    // Every block between Enqueue and its BlockRemoved, counted per copy: the engine API and sync can queue the
+    // same hash twice, and a waiter is released only once the last copy is gone.
+    private readonly ConcurrentDictionary<Hash256, InFlightBlock> _inFlight = new();
 
     private readonly IProcessingStats _stats;
 
@@ -140,23 +140,78 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     }
 
     public ValueTask WaitUntilRemovedAsync(Hash256 blockHash)
-    {
-        if (!_inFlight.TryGetValue(blockHash, out TaskCompletionSource? removed)) return ValueTask.CompletedTask;
-        if (removed is null)
-        {
-            TaskCompletionSource created = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            // Lost the race to another waiter, or to the removal itself: re-read, and a missing entry means removed.
-            if (!_inFlight.TryUpdate(blockHash, created, null) && !_inFlight.TryGetValue(blockHash, out removed)) return ValueTask.CompletedTask;
-            removed ??= created;
-        }
+        => _inFlight.TryGetValue(blockHash, out InFlightBlock? inFlight) ? new ValueTask(inFlight.Removed) : ValueTask.CompletedTask;
 
-        return new ValueTask(removed.Task);
+    private void TrackInFlight(Hash256 blockHash)
+    {
+        // An entry whose last copy has just left refuses the copy while its removal is still under way; the next
+        // lookup creates a fresh one.
+        while (!_inFlight.GetOrAdd(blockHash, static _ => new InFlightBlock()).TryAddCopy()) { }
     }
 
     private void OnBlockRemoved(BlockRemovedEventArgs e)
     {
-        if (_inFlight.TryRemove(e.BlockHash, out TaskCompletionSource? removed)) removed?.TrySetResult();
+        if (_inFlight.TryGetValue(e.BlockHash, out InFlightBlock? inFlight) && inFlight.RemoveCopy())
+        {
+            _inFlight.TryRemove(new KeyValuePair<Hash256, InFlightBlock>(e.BlockHash, inFlight));
+        }
+
         BlockRemoved?.Invoke(this, e);
+    }
+
+    /// <summary>
+    /// The copies of one block hash between enqueue and removal, and the waiters for the last of them to go. A
+    /// waiter's source is created only when someone waits; once the last copy is removed the slot holds a
+    /// completed sentinel, so a waiter arriving later finds it done.
+    /// </summary>
+    private sealed class InFlightBlock
+    {
+        private static readonly TaskCompletionSource Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _copies;
+        private TaskCompletionSource? _removed;
+
+        static InFlightBlock() => Done.SetResult();
+
+        public Task Removed
+        {
+            get
+            {
+                TaskCompletionSource? removed = Volatile.Read(ref _removed);
+                if (removed is null)
+                {
+                    TaskCompletionSource created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    removed = Interlocked.CompareExchange(ref _removed, created, null) ?? created;
+                }
+
+                return removed.Task;
+            }
+        }
+
+        /// <summary><c>false</c> once the last copy has been removed; the entry is then being taken out.</summary>
+        public bool TryAddCopy()
+        {
+            int copies = Volatile.Read(ref _copies);
+            while (copies >= 0)
+            {
+                int seen = Interlocked.CompareExchange(ref _copies, copies + 1, copies);
+                if (seen == copies) return true;
+                copies = seen;
+            }
+
+            return false;
+        }
+
+        /// <summary><c>true</c> when this was the last copy, so the entry is to be removed and its waiters are released.</summary>
+        public bool RemoveCopy()
+        {
+            if (Interlocked.Decrement(ref _copies) != 0) return false;
+            // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
+            if (Interlocked.CompareExchange(ref _copies, -1, 0) != 0) return false;
+            Release();
+            return true;
+        }
+
+        public void Release() => Interlocked.Exchange(ref _removed, Done)?.TrySetResult();
     }
 
     private void Preprocess(Block block) => _branchBuilder.PreprocessQueued(block);
@@ -194,7 +249,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (!_recoveryComplete)
         {
             Interlocked.Increment(ref _queueCount);
-            _inFlight.TryAdd(blockHash, null);
+            TrackInFlight(blockHash);
             BlockAdded?.Invoke(this, new BlockEventArgs(block));
 
             _lastProcessedBlock = DateTime.UtcNow;
@@ -292,15 +347,23 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _blockQueue.Writer.TryComplete();
         }
 
-        await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
-        _branchProcessor.BlockExecuted -= OnBlockExecuted;
-        // Blocks still queued when the loops ended get no BlockRemoved; whoever waits for them is let go here.
-        foreach (KeyValuePair<Hash256, TaskCompletionSource?> inFlight in _inFlight)
+        try
         {
-            inFlight.Value?.TrySetResult();
+            await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
+        }
+        finally
+        {
+            _branchProcessor.BlockExecuted -= OnBlockExecuted;
+            // Blocks still queued when the loops ended get no BlockRemoved; whoever waits for them is let go here,
+            // whether or not a loop faulted, since a waiter may be holding the engine API's lock.
+            foreach (KeyValuePair<Hash256, InFlightBlock> inFlight in _inFlight)
+            {
+                inFlight.Value.Release();
+            }
+
+            _inFlight.Clear();
         }
 
-        _inFlight.Clear();
         if (isStarted && _logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} shutdown complete.");
     }
 

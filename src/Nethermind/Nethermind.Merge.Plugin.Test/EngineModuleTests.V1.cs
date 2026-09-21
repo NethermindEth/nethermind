@@ -929,6 +929,50 @@ public partial class EngineModuleTests
         AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
 
+    /// <summary>
+    /// newPayload answers VALID once the block is executed, before it is committed and marked processed. The
+    /// forkchoiceUpdated that follows at once must wait for that commit rather than answer SYNCING.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task forkChoiceUpdatedV1_waits_for_the_commit_of_a_block_answered_valid_before_it()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+
+        // Parks the processing thread between the verdict and the commit; the engine handler has already been told.
+        using ManualResetEventSlim verdictGiven = new(false);
+        using ManualResetEventSlim commitReleased = new(false);
+        chain.BranchProcessor.BlockExecuted += (_, _) =>
+        {
+            verdictGiven.Set();
+            commitReleased.Wait(TimeSpan.FromSeconds(10));
+        };
+
+        try
+        {
+            ResultWrapper<PayloadStatusV1> newPayload = await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
+
+            Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the verdict is answered before the commit");
+            Assert.That(verdictGiven.IsSet, Is.True);
+            Assert.That(chain.BlockTree.WasProcessed(block.Number, block.Hash!), Is.False, "precondition: the block is answered but not committed yet");
+
+            Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
+            Assert.That(await Task.WhenAny(forkchoice, Task.Delay(200)), Is.Not.SameAs(forkchoice), "forkchoice must wait for the commit rather than answer SYNCING");
+
+            commitReleased.Set();
+            ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
+
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(block.Hash));
+        }
+        finally
+        {
+            commitReleased.Set();
+        }
+    }
+
     [Test, NonParallelizable]
     public async Task AlreadyKnown_not_cached_block_should_return_valid()
     {

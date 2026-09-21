@@ -49,6 +49,9 @@ public class ForkchoiceUpdatedHandler(
     IMergeConfig mergeConfig,
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
+    /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING; the commit takes milliseconds.</summary>
+    internal static readonly TimeSpan CommitWait = TimeSpan.FromSeconds(1);
+
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
@@ -177,13 +180,20 @@ public class ForkchoiceUpdatedHandler(
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
-        if (!blockInfo.WasProcessed)
+        if (!blockInfo.WasProcessed && processingQueue.Count <= 1)
         {
-            // newPayload answers VALID once the block is executed, before it is committed and marked processed; the
-            // CL's forkchoice follows at once and must see the committed block, not SYNCING. The wait is bounded by
-            // the block's own processing: a block that is not in the queue returns immediately.
-            await processingQueue.WaitUntilRemovedAsync(newHeadHeader.Hash!);
-            blockInfo = _blockTree.GetInfo(newHeadHeader.Number, newHeadHeader.Hash!).Info ?? blockInfo;
+            // newPayload answers VALID once the block is executed, before it is committed and marked processed, and the
+            // CL's forkchoice follows at once: give that commit its moment rather than answer SYNCING and make the CL
+            // retry. Only when nothing is queued ahead of the block, and bounded, because this wait holds the engine
+            // API's lock: a backlog or a slow commit gets the SYNCING it always got.
+            Task removed = processingQueue.WaitUntilRemovedAsync(newHeadHeader.Hash!).AsTask();
+            if (!removed.IsCompleted)
+            {
+                using CancellationTokenSource bound = new();
+                if (await Task.WhenAny(removed, Task.Delay(CommitWait, bound.Token)) == removed) bound.Cancel();
+            }
+
+            if (removed.IsCompleted) blockInfo = _blockTree.GetInfo(newHeadHeader.Number, newHeadHeader.Hash!).Info ?? blockInfo;
         }
 
         if (!blockInfo.WasProcessed)

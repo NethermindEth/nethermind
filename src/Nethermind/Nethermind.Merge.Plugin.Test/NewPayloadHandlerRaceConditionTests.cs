@@ -161,7 +161,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// do not change it, so newPayload answers on <see cref="IBlockProcessingQueue.BlockExecuted"/> and does not
     /// wait for <see cref="IBlockProcessingQueue.BlockRemoved"/>.
     /// </summary>
-    [Test]
+    [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_answers_on_the_verdict_without_waiting_for_removal()
     {
         Block block = Build.A.Block
@@ -201,8 +201,45 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// marked processed. Queued again it would be skipped as not better than head and answered INVALID, so the
     /// handler waits for the first copy instead of enqueueing.
     /// </summary>
-    [Test]
+    [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_waits_for_a_known_copy_still_in_the_queue_instead_of_enqueueing_again()
+    {
+        Block block = Build.A.Block
+            .WithParentHash(TestItem.KeccakC)
+            .WithNumber(1)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .TestObject;
+        block.Header.IsPostMerge = true;
+
+        // The first copy is between verdict and commit: the tree knows the block but has not marked it processed.
+        bool committed = false;
+        TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.Hash!).Returns(new ValueTask(firstCopyRemoved.Task));
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 5_000,
+            wasProcessedNow: () => committed);
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        Assert.That(request.IsCompleted, Is.False, "the request must wait for the first copy rather than answer");
+
+        committed = true;
+        firstCopyRemoved.SetResult();
+        ResultWrapper<PayloadStatusV1> result = await request;
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), "once the first copy is committed the tree's answer is the block's");
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    [Test, MaxTime(10_000)]
+    public async Task ValidateBlockAndProcess_gives_up_on_a_known_copy_that_never_finishes()
     {
         Block block = Build.A.Block
             .WithParentHash(TestItem.KeccakC)
@@ -225,7 +262,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first copy has not finished, so the request times out the way a pending block does");
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the request times out the way a pending block does");
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
@@ -244,7 +281,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         bool wasProcessed,
         bool validateSuggestedBlock,
         IBlockProcessingQueue? processingQueue = null,
-        int timeoutMs = 50)
+        int timeoutMs = 50,
+        Func<bool>? wasProcessedNow = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -275,7 +313,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Returns((new BlockInfo(parent.Hash!, UInt256.Zero) { WasProcessed = true, BlockNumber = parent.Number }, null));
         blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
             .Returns(ValueTask.FromResult(suggestBlockResult));
-        blockTree.WasProcessed(block.Number, block.Hash!).Returns(wasProcessed);
+        blockTree.WasProcessed(block.Number, block.Hash!).Returns(_ => wasProcessedNow?.Invoke() ?? wasProcessed);
 
         blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), false)
             .Returns(callInfo =>

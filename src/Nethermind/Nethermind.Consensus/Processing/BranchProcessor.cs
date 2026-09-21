@@ -168,10 +168,12 @@ public class BranchProcessor(
 
                 // The verdict is final here: the roots matched and the inclusion list is judged. The prewarm join,
                 // the commit and the chain update below are what the block's readers need, not its validity, so
-                // whoever only waits for the verdict is told now rather than after them.
-                if (notReadOnly)
+                // whoever only waits for the verdict is told now rather than after them. Only the last block of the
+                // branch: an earlier one can still be discarded with the branch if a later one is invalid, and it
+                // is the last one the queue answers for. The suggested block is what the queue knows the branch by.
+                if (notReadOnly && i == blocksCount - 1)
                 {
-                    BlockExecuted?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
+                    BlockExecuted?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, receipts));
                 }
 
                 QueueClearCaches(preWarmTask);
