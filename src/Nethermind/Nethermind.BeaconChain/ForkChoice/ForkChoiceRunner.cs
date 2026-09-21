@@ -116,6 +116,29 @@ public sealed class ForkChoiceRunner
     /// <inheritdoc cref="ProtoArrayForkChoice.EnumerateAncestorNodes"/>
     public IEnumerable<ProtoNode> EnumerateAncestors(Hash256 blockRoot) => _protoArray.EnumerateAncestorNodes(blockRoot);
 
+    /// <summary>An immutable copy of the store for readers off the import thread; see <see cref="ForkChoiceSnapshot"/>.</summary>
+    /// <remarks>O(nodes): the tree is pruned at finalization, so this stays a few hundred entries and is taken on every head computation.</remarks>
+    public ForkChoiceSnapshot Snapshot()
+    {
+        IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
+        ForkChoiceSnapshotNode[] copy = new ForkChoiceSnapshotNode[nodes.Count];
+        for (int i = 0; i < copy.Length; i++)
+        {
+            ProtoNode node = nodes[i];
+            copy[i] = new ForkChoiceSnapshotNode(
+                node.Slot,
+                node.Root,
+                node.Parent is int parent ? nodes[parent].Root : null,
+                node.JustifiedCheckpoint.Epoch,
+                node.FinalizedCheckpoint.Epoch,
+                node.Weight,
+                node.ExecutionStatus,
+                node.ExecutionBlockHash);
+        }
+
+        return new ForkChoiceSnapshot(_store.JustifiedCheckpoint, _store.FinalizedCheckpoint, _store.ProposerBoostRoot, copy);
+    }
+
     /// <summary>
     /// Prunes fork-choice state below the finalized checkpoint: the proto-array block tree (subject
     /// to its prune threshold) and the cached checkpoint states and justified balances of epochs

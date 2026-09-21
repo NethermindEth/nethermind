@@ -94,6 +94,42 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
+    /// The snapshot is what the debug API serves from another thread, so it must be a complete copy
+    /// (checkpoints, boost root, every node with its parent resolved to a root) that later imports
+    /// leave untouched: a live view would race the import worker.
+    /// </summary>
+    [Test]
+    public void Snapshot_copies_the_store_and_later_blocks_do_not_change_an_earlier_copy()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        (ForkChoiceRunner runner, BeaconStateFulu postState) = RunnerAt(chain);
+        ForkChoiceSnapshot anchorOnly = runner.Snapshot();
+
+        runner.OnBlock(chain.Block, postState, ExecutionStatus.Optimistic, chain.Columns);
+        ForkChoiceSnapshot withBlock = runner.Snapshot();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(anchorOnly.Nodes, Has.Count.EqualTo(1), "the copy taken before the block still holds the anchor alone");
+            Assert.That(anchorOnly.Nodes[0].ParentRoot, Is.Null, "the tree root's parent is outside the tree");
+            Assert.That(anchorOnly.Nodes[0].Root, Is.EqualTo(chain.AnchorRoot));
+
+            Assert.That(withBlock.Nodes.Select(n => n.Root), Is.EqualTo(new[] { chain.AnchorRoot, chain.BlockRoot }), "proto-array order, parent first");
+            ForkChoiceSnapshotNode block = withBlock.Nodes[1];
+            Assert.That(block.ParentRoot, Is.EqualTo(chain.AnchorRoot), "the parent index is resolved to its root");
+            Assert.That(block.Slot, Is.EqualTo(chain.Block.Message!.Slot));
+            Assert.That(block.ExecutionStatus, Is.EqualTo(ExecutionStatus.Optimistic));
+            Assert.That(block.ExecutionBlockHash, Is.EqualTo(chain.Block.Message.Body!.ExecutionPayload!.BlockHash));
+            Assert.That(block.JustifiedEpoch, Is.EqualTo(runner.JustifiedCheckpoint.Epoch));
+            Assert.That(block.FinalizedEpoch, Is.EqualTo(runner.FinalizedCheckpoint.Epoch));
+
+            Assert.That(withBlock.JustifiedCheckpoint, Is.EqualTo(runner.JustifiedCheckpoint));
+            Assert.That(withBlock.FinalizedCheckpoint, Is.EqualTo(runner.FinalizedCheckpoint));
+            Assert.That(withBlock.ProposerBoostRoot, Is.EqualTo(chain.BlockRoot), "a block imported at the start of its own slot holds the boost, and the copy says so");
+        });
+    }
+
+    /// <summary>
     /// Two validators vote block A onto the head over block B's one; a later block on A's branch
     /// carries a slashing of those two for a double vote. Replayed the way the callers do (after
     /// OnBlock, signatures unverified), the slashing must pull their votes out of the weight so B

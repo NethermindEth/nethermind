@@ -7,6 +7,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -63,6 +64,7 @@ public class BeaconChainModule : Module
             .Bind<IBeaconSyncPeerPool, PeerManager>()
             .AddSingleton<RangeSync>()
             .AddSingleton<BeaconSyncOrchestrator>()
+            .AddSingleton<ForkChoiceSnapshotHolder>()
             .AddSingleton<IBlockImporterFactory, BlockImporterFactory>()
             .AddSingleton<ExternalClDetector>()
             .AddSingleton<EngineDriver>()
