@@ -441,16 +441,15 @@ namespace Nethermind.Db.Test
             file.Exists(repairedMarker).Returns(true);
             file.Exists(corruptMarker).Returns(false);
 
-            RocksDbSharp.Native native = Substitute.For<RocksDbSharp.Native>();
-
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "test"), config, _rocksdbConfigFactory,
+            bool didRepair = false;
+            using RepairTrackingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "test"), config, _rocksdbConfigFactory,
                 LimboLogs.Instance,
                 fileSystem: fileSystem,
-                rocksDbNative: native);
+                onRepair: () => didRepair = true);
 
             using (Assert.EnterMultipleScope())
             {
-                native.DidNotReceive().rocksdb_repair_db(Arg.Any<IntPtr>(), Arg.Any<string>(), out Arg.Any<IntPtr>());
+                Assert.That(didRepair, Is.False);
                 Assert.That(db.WasRepairedOnOpen, Is.True);
             }
         }
@@ -468,12 +467,10 @@ namespace Nethermind.Db.Test
             string repairedMarker = Path.Join(fullPath, "repaired.marker");
             file.Exists(repairedMarker).Returns(true);
 
-            RocksDbSharp.Native native = Substitute.For<RocksDbSharp.Native>();
-
-            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "test"), config, _rocksdbConfigFactory,
+            using RepairTrackingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "test"), config, _rocksdbConfigFactory,
                 LimboLogs.Instance,
                 fileSystem: fileSystem,
-                rocksDbNative: native);
+                onRepair: static () => { });
 
             ((IDbMeta)db).AcknowledgeRepair();
 
