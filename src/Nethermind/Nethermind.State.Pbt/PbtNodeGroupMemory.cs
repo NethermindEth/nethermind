@@ -9,14 +9,15 @@ namespace Nethermind.State.Pbt;
 
 /// <summary>The native allocator behind PBT node-group payloads, which the trie node cache retains long-term.</summary>
 /// <remarks>
-/// Four classes per doubling keep a typical ~1.2 KB group within a few percent of its class instead of
-/// a power-of-two bucket, and the explicit top class holds the writer's largest possible payload so it
-/// never falls through to a dedicated allocation.
+/// Mainnet groups cluster between ~200 B (single account branches) and ~1.5 KB (dense trie heads), so
+/// the classes run 32 B apart up to 1 KiB and 64 B apart to 2 KiB, bounding the rounding loss to a few
+/// percent across that whole band; the explicit top class holds the writer's largest possible payload
+/// so it never falls through to a dedicated allocation.
 /// </remarks>
 public static class PbtNodeGroupMemory
 {
-    private const int Quantum = 64;
-    private const int ClassesPerDoubling = 4;
+    private const int Quantum = 32;
+    private const int ClassesPerDoubling = 16;
     private const int MaxGeneratedClass = 64 * 1024;
     private const int MaxPayloadClass = (PbtNodeGroupCodec.MaxPayloadLength + Quantum - 1) / Quantum * Quantum;
 
