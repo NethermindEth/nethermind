@@ -104,8 +104,14 @@ public static class PbtKeyDerivation
     /// <see cref="HeaderStorageOffset"/>): the storage high bit, a 60-bit address prefix and a
     /// 187-bit suffix bound to the address and tree index.
     /// </summary>
-    public static Stem StorageStem(Address address, in UInt256 slot, out byte subIndex) =>
-        StorageStem(address, AddressKeyHash(address), slot, out subIndex);
+    public static Stem StorageStem(Address address, in UInt256 slot, out byte subIndex)
+    {
+        // The address hash and the suffix hash are independent, so both run in one two-lane call.
+        Span<byte> suffixInput = stackalloc byte[64];
+        WriteSuffixInput(address, slot, suffixInput, out subIndex);
+        Blake3Hash.HashTwo(suffixInput[..32], suffixInput, out ValueHash256 addressPrefix, out ValueHash256 suffix);
+        return StorageStem(addressPrefix, suffix);
+    }
 
     /// <summary>
     /// <see cref="StorageStem(Address, in UInt256, out byte)"/> reusing a precomputed
@@ -114,15 +120,22 @@ public static class PbtKeyDerivation
     /// </summary>
     public static Stem StorageStem(Address address, in ValueHash256 addressPrefix, in UInt256 slot, out byte subIndex)
     {
+        Span<byte> suffixInput = stackalloc byte[64];
+        WriteSuffixInput(address, slot, suffixInput, out subIndex);
+        return StorageStem(addressPrefix, Blake3Hash.Hash(suffixInput));
+    }
+
+    /// <summary>Writes the suffix preimage, which binds the 32-byte address to the tree index.</summary>
+    private static void WriteSuffixInput(Address address, in UInt256 slot, Span<byte> suffixInput, out byte subIndex)
+    {
         subIndex = (byte)(slot.u0 & 0xFF);
         UInt256 treeIndex = slot >> 8;
-
-        // the suffix binds the address to the tree index
-        Span<byte> suffixInput = stackalloc byte[64];
         Address32(address, suffixInput[..32]);
         treeIndex.ToBigEndian(suffixInput[32..]);
-        ValueHash256 suffix = Blake3Hash.Hash(suffixInput);
+    }
 
+    private static Stem StorageStem(in ValueHash256 addressPrefix, in ValueHash256 suffix)
+    {
         Span<byte> stem = stackalloc byte[Stem.Length];
         stem[0] = 0x80;
         CopyBits(addressPrefix.Bytes, StorageAddressPrefixBits, stem, 1);

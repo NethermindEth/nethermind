@@ -34,7 +34,16 @@ public static class Eip8297KeyDerivation
     public static PbtStorageTreeKey StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
     {
         Validate32(address32, nameof(address32));
-        return StorageKey(address32, Blake3Hash.Hash(address32), slot);
+        if (slot < PbtKeyDerivation.HeaderStorageOffset)
+        {
+            return StorageKey(address32, Blake3Hash.Hash(address32), slot);
+        }
+
+        // The address hash and the suffix hash are independent, so both run in one two-lane call.
+        Span<byte> suffixInput = stackalloc byte[64];
+        WriteSuffixInput(address32, slot, suffixInput);
+        Blake3Hash.HashTwo(address32, suffixInput, out ValueHash256 addressHash, out ValueHash256 suffixHash);
+        return StorageKey(addressHash, suffixHash, slot);
     }
 
     /// <summary>
@@ -49,11 +58,20 @@ public static class Eip8297KeyDerivation
             return (PbtStorageTreeKey)AccountKey(addressHash, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
         }
 
-        UInt256 treeIndex = slot >> 8;
         Span<byte> suffixInput = stackalloc byte[64];
+        WriteSuffixInput(address32, slot, suffixInput);
+        return StorageKey(addressHash, Blake3Hash.Hash(suffixInput), slot);
+    }
+
+    private static void WriteSuffixInput(ReadOnlySpan<byte> address32, in UInt256 slot, Span<byte> suffixInput)
+    {
+        UInt256 treeIndex = slot >> 8;
         address32.CopyTo(suffixInput);
         treeIndex.ToBigEndian(suffixInput[32..]);
-        ValueHash256 suffixHash = Blake3Hash.Hash(suffixInput);
+    }
+
+    private static PbtStorageTreeKey StorageKey(in ValueHash256 addressHash, in ValueHash256 suffixHash, in UInt256 slot)
+    {
         Span<byte> key = stackalloc byte[StorageKeyLength];
         key[0] = StorageZone;
         addressHash.Bytes.CopyTo(key[1..]);
