@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -189,7 +190,10 @@ public static class GloasBlockProcessing
         {
             ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures);
         }
-        RejectIfPresent(body.Attestations, "attestations");
+        foreach (AttestationGloas attestation in body.Attestations ?? [])
+        {
+            ProcessAttestation(state, attestation, parentSlot, cache, pubkeys, verifySignatures);
+        }
         foreach (SignedVoluntaryExit exit in body.VoluntaryExits ?? [])
         {
             ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures);
@@ -319,6 +323,128 @@ public static class GloasBlockProcessing
                 return false;
         }
         return !verifySignature || GloasSignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys);
+    }
+
+    /// <summary>
+    /// Spec <c>process_attestation</c> (Gloas): the Electra aggregate validation, participation
+    /// flags and proposer reward, with two EIP-7732 changes - <c>data.index</c> now encodes the
+    /// attested block's payload status (0 absent, 1 present) instead of a committee index, and a
+    /// validator's first participation in the target epoch, when it votes for the block proposed
+    /// at the attestation slot, adds its effective balance to the weight of that slot's pending
+    /// builder payment (the PTC-quorum the epoch transition honors the payment against).
+    /// </summary>
+    /// <param name="parentSlot">The slot of the block's parent, where the attested block's payload availability is tracked.</param>
+    public static void ProcessAttestation(BeaconStateGloas state, AttestationGloas attestation, ulong parentSlot, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true)
+    {
+        AttestationData data = attestation.Data!;
+        ulong currentEpoch = state.GetCurrentEpoch();
+        if (data.Target!.Epoch != state.GetPreviousEpoch() && data.Target.Epoch != currentEpoch)
+            throw new BeaconStateException($"Attestation target epoch {data.Target.Epoch} is not the previous or current epoch");
+        if (data.Target.Epoch != BeaconStateAccessors.ComputeEpochAtSlot(data.Slot))
+            throw new BeaconStateException("Attestation target epoch does not match its slot");
+        if (data.Slot + Presets.MinAttestationInclusionDelay > state.Slot)
+            throw new BeaconStateException($"Attestation for slot {data.Slot} is included too early at slot {state.Slot}");
+        if (data.Index >= 2)
+            throw new BeaconStateException($"Attestation data index {data.Index} must encode a payload status (0 or 1)");
+
+        // GetAttestingIndices performs the spec's committee/aggregation-bits structural asserts.
+        CommitteeCache committees = cache.GetCommitteeCache(state, data.Target.Epoch);
+        ulong[] attestingIndices = state.GetAttestingIndices(attestation, committees);
+
+        byte participationFlags = GetAttestationParticipationFlagIndices(state, data, state.Slot - data.Slot, parentSlot);
+
+        IndexedAttestationGloas indexed = new()
+        {
+            AttestingIndices = attestingIndices,
+            Data = data,
+            Signature = attestation.Signature,
+        };
+        if (!IsValidIndexedAttestation(state, indexed, pubkeys, verifySignature))
+            throw new BeaconStateException("Invalid indexed attestation");
+
+        bool currentEpochTarget = data.Target.Epoch == currentEpoch;
+        byte[] epochParticipation = currentEpochTarget ? state.CurrentEpochParticipation! : state.PreviousEpochParticipation!;
+        int paymentIndex = (int)(currentEpochTarget ? Presets.SlotsPerEpoch + data.Slot % Presets.SlotsPerEpoch : data.Slot % Presets.SlotsPerEpoch);
+        BuilderPendingPayment payment = state.BuilderPendingPayments![paymentIndex];
+        bool weighsForPayment = payment.Withdrawal!.Amount > 0 && state.IsAttestationSameSlot(data);
+
+        ulong proposerRewardNumerator = 0;
+        ulong addedWeight = 0;
+        foreach (ulong index in attestingIndices)
+        {
+            bool hadNoParticipation = epochParticipation[index] == 0;
+            bool willSetNewFlag = false;
+            for (int flagIndex = 0; flagIndex < Presets.ParticipationFlagWeights.Length; flagIndex++)
+            {
+                byte flag = (byte)(1 << flagIndex);
+                if ((participationFlags & flag) != 0 && (epochParticipation[index] & flag) == 0)
+                {
+                    epochParticipation[index] |= flag;
+                    proposerRewardNumerator += state.GetBaseReward((int)index, cache) * Presets.ParticipationFlagWeights[flagIndex];
+                    willSetNewFlag = true;
+                }
+            }
+            if (willSetNewFlag && hadNoParticipation && weighsForPayment)
+                addedWeight += state.Validators![(int)index].EffectiveBalance;
+        }
+
+        ulong proposerRewardDenominator = (Presets.WeightDenominator - Presets.ProposerWeight) * Presets.WeightDenominator / Presets.ProposerWeight;
+        state.IncreaseBalance((int)state.GetBeaconProposerIndex(), proposerRewardNumerator / proposerRewardDenominator);
+
+        // Written back as a new entry (the spec reassigns the payment) rather than in place: a
+        // cloned state shares the entry objects, only the vector is copied.
+        if (addedWeight > 0)
+        {
+            state.BuilderPendingPayments[paymentIndex] = new BuilderPendingPayment
+            {
+                Weight = payment.Weight + addedWeight,
+                Withdrawal = payment.Withdrawal,
+                ProposerIndex = payment.ProposerIndex,
+            };
+        }
+    }
+
+    /// <summary>
+    /// Spec <c>get_attestation_participation_flag_indices</c> (Gloas), returned as a bitmask over
+    /// the participation flag indices. The head flag additionally requires the attestation's
+    /// payload status to match: trivially for a vote for the block proposed at the attestation
+    /// slot (which must then carry index 0), otherwise against the availability recorded at
+    /// <paramref name="parentSlot"/>.
+    /// </summary>
+    /// <exception cref="BeaconStateException">The source does not match the justified checkpoint, or a same-slot vote carries a non-zero index.</exception>
+    private static byte GetAttestationParticipationFlagIndices(BeaconStateGloas state, AttestationData data, ulong inclusionDelay, ulong parentSlot)
+    {
+        Checkpoint justifiedCheckpoint = data.Target!.Epoch == state.GetCurrentEpoch()
+            ? state.CurrentJustifiedCheckpoint!
+            : state.PreviousJustifiedCheckpoint!;
+        if (data.Source!.Epoch != justifiedCheckpoint.Epoch || data.Source.Root != justifiedCheckpoint.Root)
+            throw new BeaconStateException("Attestation source does not match the justified checkpoint");
+
+        bool isMatchingTarget = data.Target.Root == state.GetBlockRoot(data.Target.Epoch);
+
+        bool payloadMatches;
+        if (state.IsAttestationSameSlot(data))
+        {
+            if (data.Index != 0)
+                throw new BeaconStateException("An attestation for the block proposed at its own slot must carry index 0");
+            payloadMatches = true;
+        }
+        else
+        {
+            bool payloadAvailable = state.ExecutionPayloadAvailability![(int)(parentSlot % Presets.SlotsPerHistoricalRoot)];
+            payloadMatches = data.Index == (payloadAvailable ? 1UL : 0UL);
+        }
+
+        bool isMatchingHead = isMatchingTarget && data.BeaconBlockRoot == state.GetBlockRootAtSlot(data.Slot) && payloadMatches;
+
+        byte flags = 0;
+        if (inclusionDelay <= BeaconStateAccessors.IntegerSquareRoot(Presets.SlotsPerEpoch))
+            flags |= 1 << Presets.TimelySourceFlagIndex;
+        if (isMatchingTarget)
+            flags |= 1 << Presets.TimelyTargetFlagIndex;
+        if (isMatchingHead && inclusionDelay == Presets.MinAttestationInclusionDelay)
+            flags |= 1 << Presets.TimelyHeadFlagIndex;
+        return flags;
     }
 
     /// <summary>Spec <c>process_voluntary_exit</c> (Electra, unmodified in Gloas); the exit it initiates draws on the EIP-8061 exit churn.</summary>
