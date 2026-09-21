@@ -31,6 +31,8 @@ public sealed class PbtSnapshotBundle(
     private readonly Dictionary<ValueHash256, ValueHash256> _accountsAwaitingCode = [];
     // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
     private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
+    // Accounts the layer above read past this bundle for the block in the write buffer, so a write never re-reads them.
+    private readonly ConcurrentDictionary<ValueHash256, Account?> _hintedAccounts = new();
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
     // Storage commits may write one run from several threads. Replacing a run is a read-modify-replace of a
     // pooled instance across three dictionary operations, so the dictionary's own atomicity cannot keep two
@@ -173,10 +175,14 @@ public sealed class PbtSnapshotBundle(
     private Account? GetAccount(in ValueHash256 addressHash)
     {
         if (WriteBuffer.Accounts.TryGetValue(addressHash, out Account? account)) return account;
+        if (_hintedAccounts.TryGetValue(addressHash, out account)) return account;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out account)) return account;
         return readOnlyBundle.GetAccount(addressHash);
     }
+
+    /// <summary>Records an account the layer above read past this bundle; a value already written or hinted here wins, and the memo is dropped with the write buffer at snapshot collection.</summary>
+    public void HintAccount(Address address, Account? account) => _hintedAccounts.TryAdd(PbtKeyDerivation.AddressKeyHash(address), account);
 
     public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(address, PbtKeyDerivation.AddressKeyHash(address), slot);
 
@@ -398,6 +404,7 @@ public sealed class PbtSnapshotBundle(
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
+        _hintedAccounts.Clear();
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
         retired = _transientResource;
         Volatile.Write(ref _transientResource, resourcePool.GetCachedResource(usage));
@@ -409,6 +416,7 @@ public sealed class PbtSnapshotBundle(
         if (Interlocked.Exchange(ref _isDisposed, true)) return;
         _accountsAwaitingCode.Clear();
         _codeMemo.Clear();
+        _hintedAccounts.Clear();
         ReadCode = null;
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;

@@ -1436,6 +1436,33 @@ public class PbtSnapshotBundleTests
         }
     }
 
+    [Test]
+    public void Hinted_account_serves_the_write_path_without_a_persistence_read_and_never_shadows_a_write()
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        Account persisted = Build.An.Account.WithBalance(1).TestObject;
+        Reader reader = new(default, null) { Accounts = [new(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), persisted)] };
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        bundle.HintAccount(TestItem.AddressA, persisted);
+        Account written = persisted.WithChangedBalance(2);
+        bundle.SetAccount(TestItem.AddressA, written);
+        bundle.HintAccount(TestItem.AddressA, persisted);
+        bundle.HintAccount(TestItem.AddressB, null);
+        Account? hintedA = bundle.GetAccount(TestItem.AddressA);
+        Account? hintedB = bundle.GetAccount(TestItem.AddressB);
+        int readsBeforeCollect = reader.AccountReadCount;
+        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), Fold(bundle, default));
+        bundle.GetAccount(TestItem.AddressB);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readsBeforeCollect, Is.Zero, "hinted accounts are not read from persistence");
+            Assert.That(hintedA, Is.SameAs(written), "a later hint never shadows a write");
+            Assert.That(hintedB, Is.Null, "a null hint is served as an absent account");
+            Assert.That(reader.AccountReadCount, Is.EqualTo(1), "hints are dropped with the write buffer");
+        }
+    }
+
     [TestCase(0x00)]
     [TestCase(0x01)]
     [TestCase(0xFF)]
@@ -1580,9 +1607,16 @@ public class PbtSnapshotBundleTests
         public int GroupReadCount { get; private set; }
         public Dictionary<ValueHash256, CodeInfo> Codes { get; } = [];
         public int CodeReadCount { get; private set; }
+        public int AccountReadCount { get; private set; }
         public StateId CurrentState => StateId.PreGenesis;
         public ValueHash256 CurrentRoot { get; set; }
-        public Account? GetAccount(in ValueHash256 addressHash) => null;
+        public Account? GetAccount(in ValueHash256 addressHash)
+        {
+            AccountReadCount++;
+            foreach ((ValueHash256 hash, Account account) in Accounts)
+                if (hash == addressHash) return account;
+            return null;
+        }
         public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey)
         {
             PbtStorageTreeKey wanted = runKey;
