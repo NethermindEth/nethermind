@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -216,6 +217,195 @@ public class GloasOperationsTests
             Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound), new PubkeyCache(), verifySignature: false), Is.True);
             Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound + 1), new PubkeyCache(), verifySignature: false), Is.False);
         });
+    }
+
+    // ---- Attestations ----
+
+    [Test]
+    public void ProcessAttestation_sets_the_same_flags_and_proposer_reward_as_the_fulu_pipeline_for_a_same_slot_vote()
+    {
+        BeaconStateFulu pre = CreateFuluStateAtBoundary(ValidatorCount);
+        BeaconStateFulu fulu = pre.Clone();
+        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
+        // Both twins: a block landed at slot 32 (its root breaks the skipped-slot run), the state
+        // is at slot 33, and validator 11 proposes there.
+        const int proposer = 11;
+        Hash256 blockRoot = Hash(0xB1);
+        foreach ((ulong[] lookahead, Hash256[] blockRoots) in new[] { (fulu.ProposerLookahead!, fulu.BlockRoots!), (gloas.ProposerLookahead!, gloas.BlockRoots!) })
+        {
+            lookahead[1] = proposer;
+            blockRoots[32] = blockRoot;
+        }
+        fulu.Slot = 33;
+        gloas.Slot = 33;
+        EpochCache cache = new();
+        CommitteeCache committees = cache.GetCommitteeCache(gloas, 1);
+        AttestationGloas attestation = CommitteeAttestation(gloas, VoteFor(gloas, slot: 32, targetEpoch: 1, blockRoot), committees, committeeIndex: 0, sign: false);
+        Assert.That(gloas.IsAttestationSameSlot(attestation.Data!), Is.True, "fixture bug: the vote must be for the block proposed at its slot");
+
+        GloasBlockProcessing.ProcessAttestation(gloas, attestation, parentSlot: 32, cache, new PubkeyCache(), verifySignature: false);
+        BlockProcessing.ProcessAttestation(fulu, ToFuluAttestation(attestation), new EpochCache(), new PubkeyCache(), verifySignature: false);
+
+        ulong[] attesters = gloas.GetAttestingIndices(attestation, committees);
+        Assert.Multiple(() =>
+        {
+            Assert.That(attesters, Has.Length.GreaterThan(1), "fixture bug");
+            Assert.That(attesters.Select(i => gloas.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111), "a timely same-slot vote earns all three flags");
+            Assert.That(gloas.CurrentEpochParticipation, Is.EqualTo(fulu.CurrentEpochParticipation).AsCollection);
+            Assert.That(gloas.Balances![proposer], Is.GreaterThan(32 * Gwei), "the proposer must actually have been rewarded");
+            Assert.That(gloas.Balances, Is.EqualTo(fulu.Balances).AsCollection);
+        });
+    }
+
+    [TestCase(0UL, true, 0b011)]
+    [TestCase(1UL, true, 0b111)]
+    [TestCase(0UL, false, 0b111)]
+    [TestCase(1UL, false, 0b011)]
+    public void ProcessAttestation_grants_the_head_flag_only_when_the_index_matches_the_parents_payload_availability(ulong index, bool payloadAvailable, int expectedFlags)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        EpochCache cache = new();
+        // Slot 32 is skipped, so its root repeats slot 31's: a vote for it is not a same-slot vote
+        // and the payload status it claims is checked against the parent block's slot instead.
+        GloasSlotProcessing.ProcessSlots(state, 33, cache);
+        const ulong parentSlot = 0;
+        Assert.That(state.LatestBlockHeader!.Slot, Is.EqualTo(parentSlot), "fixture bug");
+        state.ExecutionPayloadAvailability![(int)parentSlot] = payloadAvailable;
+        AttestationData data = VoteFor(state, slot: 32, targetEpoch: 1, state.GetBlockRootAtSlot(32), index);
+        Assert.That(state.IsAttestationSameSlot(data), Is.False, "fixture bug");
+        CommitteeCache committees = cache.GetCommitteeCache(state, 1);
+        AttestationGloas attestation = CommitteeAttestation(state, data, committees, committeeIndex: 0, sign: false);
+
+        GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot, cache, new PubkeyCache(), verifySignature: false);
+
+        ulong[] attesters = state.GetAttestingIndices(attestation, committees);
+        Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(expectedFlags));
+    }
+
+    [TestCase(1UL, "must carry index 0")]
+    [TestCase(2UL, "must encode a payload status")]
+    public void ProcessAttestation_rejects_a_same_slot_vote_whose_index_is_not_zero(ulong index, string expectedMessage)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        EpochCache cache = new();
+        ApplyBlock(state, MinimalBlock(state, SelfBuildBid(state, state.LatestBlockHash!, Hash(0x99))), cache);
+        GloasSlotProcessing.ProcessSlots(state, 33, cache);
+        AttestationData data = VoteFor(state, slot: 32, targetEpoch: 1, state.GetBlockRootAtSlot(32), index);
+        Assert.That(state.IsAttestationSameSlot(data), Is.True, "fixture bug");
+        AttestationGloas attestation = CommitteeAttestation(state, data, cache.GetCommitteeCache(state, 1), committeeIndex: 0, sign: false);
+
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, new PubkeyCache(), verifySignature: false))!;
+
+        Assert.That(ex.Message, Does.Contain(expectedMessage));
+        Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+    }
+
+    [Test]
+    public void ProcessAttestation_adds_each_first_time_participants_effective_balance_to_the_same_slot_builder_payment_weight()
+    {
+        BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        EpochCache cache = new();
+        const int paymentIndex = 32;
+        ApplyBlock(state, MinimalBlock(state, ValidBuilderBid(state, builderSk, builderIndex: 0, value: 5 * Gwei)), cache);
+        GloasSlotProcessing.ProcessSlots(state, 33, cache);
+        Assert.That(state.BuilderPendingPayments![paymentIndex].Weight, Is.EqualTo(0ul), "fixture bug");
+
+        CommitteeCache committees = cache.GetCommitteeCache(state, 1);
+        AttestationData data = VoteFor(state, slot: 32, targetEpoch: 1, state.GetBlockRootAtSlot(32));
+        Assert.That(state.IsAttestationSameSlot(data), Is.True, "fixture bug");
+        AttestationGloas attestation = CommitteeAttestation(state, data, committees, committeeIndex: 0, sign: true);
+        ulong[] attesters = state.GetAttestingIndices(attestation, committees);
+        ulong expectedWeight = attesters.Aggregate(0ul, (sum, i) => sum + state.Validators![i].EffectiveBalance);
+
+        GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, pubkeys, verifySignature: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.BuilderPendingPayments[paymentIndex].Weight, Is.EqualTo(expectedWeight));
+            Assert.That(state.BuilderPendingPayments[paymentIndex].Withdrawal!.Amount, Is.EqualTo(5 * Gwei), "weighing the payment must not disturb the payment itself");
+            Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111));
+        });
+
+        // The same participants again set no new flag, so they weigh nothing more.
+        GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, pubkeys, verifySignature: true);
+        Assert.That(state.BuilderPendingPayments[paymentIndex].Weight, Is.EqualTo(expectedWeight));
+    }
+
+    [Test]
+    public void ProcessAttestation_weighs_the_payment_only_for_a_same_slot_vote_from_a_validator_with_no_prior_participation()
+    {
+        BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
+        EpochCache cache = new();
+        const int paymentIndex = 32;
+        ApplyBlock(state, MinimalBlock(state, ValidBuilderBid(state, builderSk, builderIndex: 0, value: 5 * Gwei)), cache);
+        GloasSlotProcessing.ProcessSlots(state, 33, cache);
+        CommitteeCache committees = cache.GetCommitteeCache(state, 1);
+
+        // A wrong-head vote: new source and target flags, but not a same-slot vote.
+        AttestationGloas wrongHead = CommitteeAttestation(state, VoteFor(state, slot: 32, targetEpoch: 1, Hash(0x33)), committees, committeeIndex: 0, sign: false);
+        GloasBlockProcessing.ProcessAttestation(state, wrongHead, parentSlot: 32, cache, new PubkeyCache(), verifySignature: false);
+        ulong[] attesters = state.GetAttestingIndices(wrongHead, committees);
+        Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b011), "fixture bug: the flags must have been newly set");
+        Assert.That(state.BuilderPendingPayments![paymentIndex].Weight, Is.EqualTo(0ul), "a vote that is not for the slot's own block weighs nothing");
+
+        // The correct same-slot vote from the same validators sets a new (head) flag, but they had participated already.
+        AttestationGloas sameSlot = CommitteeAttestation(state, VoteFor(state, slot: 32, targetEpoch: 1, state.GetBlockRootAtSlot(32)), committees, committeeIndex: 0, sign: false);
+        Assert.That(state.IsAttestationSameSlot(sameSlot.Data!), Is.True, "fixture bug");
+        GloasBlockProcessing.ProcessAttestation(state, sameSlot, parentSlot: 32, cache, new PubkeyCache(), verifySignature: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111), "fixture bug: the head flag must have been newly set");
+            Assert.That(state.BuilderPendingPayments[paymentIndex].Weight, Is.EqualTo(0ul), "only a validator's first participation in the epoch weighs the payment");
+        });
+    }
+
+    [Test]
+    public void ProcessAttestation_for_a_previous_epoch_target_records_participation_and_weight_in_the_previous_epoch_halves()
+    {
+        BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        EpochCache cache = new();
+        ApplyBlock(state, MinimalBlock(state, ValidBuilderBid(state, builderSk, builderIndex: 0, value: 5 * Gwei)), cache);
+        // Epoch 2: the slot-32 payment has rotated to index 0 and epoch 1's participation is now "previous".
+        GloasSlotProcessing.ProcessSlots(state, 2 * SlotsPerEpoch, cache);
+        Assert.That(state.BuilderPendingPayments![0].Withdrawal!.Amount, Is.EqualTo(5 * Gwei), "fixture bug");
+
+        CommitteeCache committees = cache.GetCommitteeCache(state, 1);
+        AttestationData data = VoteFor(state, slot: 32, targetEpoch: 1, state.GetBlockRootAtSlot(32));
+        AttestationGloas attestation = CommitteeAttestation(state, data, committees, committeeIndex: 0, sign: true);
+        ulong[] attesters = state.GetAttestingIndices(attestation, committees);
+        ulong expectedWeight = attesters.Aggregate(0ul, (sum, i) => sum + state.Validators![i].EffectiveBalance);
+
+        GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, pubkeys, verifySignature: true);
+
+        Assert.Multiple(() =>
+        {
+            // Included 32 slots late: the target flag alone is still earned.
+            Assert.That(attesters.Select(i => state.PreviousEpochParticipation![i]), Has.All.EqualTo(0b010));
+            Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+            Assert.That(state.BuilderPendingPayments[0].Weight, Is.EqualTo(expectedWeight));
+            Assert.That(state.BuilderPendingPayments[32].Weight, Is.EqualTo(0ul));
+        });
+    }
+
+    [Test]
+    public void ProcessAttestation_rejects_a_bad_aggregate_signature()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        EpochCache cache = new();
+        GloasSlotProcessing.ProcessSlots(state, 33, cache);
+        AttestationGloas attestation = CommitteeAttestation(state, VoteFor(state, slot: 32, targetEpoch: 1, state.GetBlockRootAtSlot(32)), cache.GetCommitteeCache(state, 1), committeeIndex: 0, sign: true);
+        attestation.Signature = Corrupt(attestation.Signature);
+
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 0, cache, pubkeys, verifySignature: true))!;
+
+        Assert.That(ex.Message, Does.Contain("Invalid indexed attestation"));
+        Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
     }
 
     // ---- Voluntary exits ----
