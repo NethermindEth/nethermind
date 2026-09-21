@@ -116,7 +116,7 @@ public class XdcBlockHeader(
         {
             MixHash = Hash256.Zero,
             RequestsHash = requestsHash,
-            SlotNumber = SlotNumber,
+            SlotNumber = SlotNumber + 1,
         };
     }
 
