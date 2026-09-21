@@ -24,6 +24,14 @@ public enum BlockImportResult
     /// invalid and must be retried once the engine answers; nothing about it has been recorded.
     /// </summary>
     EngineUnavailable,
+
+    /// <summary>
+    /// The block's blob data is not (yet) available under the caller's <c>is_data_available</c>
+    /// rule. The block is not invalid and nothing about it has been recorded, but unlike
+    /// <see cref="EngineUnavailable"/> a blind retry will not help: it must be retried once the
+    /// missing columns are held, not merely on the next tick.
+    /// </summary>
+    DataUnavailable,
 }
 
 /// <summary>The current fork-choice head and checkpoints mapped to execution block hashes for <c>forkchoiceUpdated</c>.</summary>
