@@ -11,9 +11,11 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.DataAvailability;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -37,7 +39,31 @@ internal sealed class ImportableBlobBlock
     private const int ValidatorCount = 16;
     private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
 
-    public BeaconChainSpec Spec => BeaconChainSpec.Mainnet;
+    /// <summary>
+    /// Mainnet parameters with Electra and Fulu live from genesis, so the spec agrees that the slot-0
+    /// anchor is a Fulu state. Under mainnet's own fork epochs every slot of this fixture sits below
+    /// the <see cref="DataAvailabilityBoundary"/> (floored at <c>FULU_FORK_EPOCH</c>) and no column
+    /// would ever be demanded for <see cref="Block"/>.
+    /// </summary>
+    public static BeaconChainSpec FuluFromGenesis { get; } = new()
+    {
+        ChainId = BeaconChainSpec.Mainnet.ChainId,
+        CheckpointSyncUrl = BeaconChainSpec.Mainnet.CheckpointSyncUrl,
+        Bootnodes = BeaconChainSpec.Mainnet.Bootnodes,
+        SecondsPerSlot = BeaconChainSpec.Mainnet.SecondsPerSlot,
+        SlotsPerEpoch = BeaconChainSpec.Mainnet.SlotsPerEpoch,
+        GenesisTime = BeaconChainSpec.Mainnet.GenesisTime,
+        GenesisValidatorsRoot = BeaconChainSpec.Mainnet.GenesisValidatorsRoot,
+        Forks = BeaconChainSpec.Mainnet.Forks,
+        BlobSchedule = BeaconChainSpec.Mainnet.BlobSchedule,
+        ElectraForkEpoch = 0,
+        FuluForkEpoch = 0,
+        MaxBlobsPerBlockElectra = BeaconChainSpec.Mainnet.MaxBlobsPerBlockElectra,
+        GloasForkEpoch = BeaconChainSpec.Mainnet.GloasForkEpoch,
+        GloasForkVersion = BeaconChainSpec.Mainnet.GloasForkVersion,
+    };
+
+    public BeaconChainSpec Spec => FuluFromGenesis;
 
     public required BeaconStateFulu AnchorState { get; init; }
 
@@ -54,6 +80,10 @@ internal sealed class ImportableBlobBlock
 
     /// <summary>All <see cref="Eip7594DasConstants.NumberOfColumns"/> sidecars of <see cref="Block"/>, indexed by column.</summary>
     public required DataColumnSidecar[] Columns { get; init; }
+
+    /// <summary>A wall clock stopped at the first slot of <paramref name="epoch"/> under <see cref="Spec"/>, for placing <see cref="Block"/> inside or below the data availability window.</summary>
+    public SlotClock ClockAtEpoch(ulong epoch) =>
+        new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + epoch * Spec.SlotsPerEpoch * Spec.SecondsPerSlot)).UtcDateTime));
 
     public static ImportableBlobBlock Create(int blobCount = 2)
     {
@@ -103,7 +133,7 @@ internal sealed class ImportableBlobBlock
         payload.BlockHash = Hash(0x81);
 
         BeaconStateFulu postState = anchorState.Clone();
-        FuluStateTransition.Apply(postState, new SignedBeaconBlock { Message = block }, new EpochCache(), pubkeyCache, new AcceptingNotifier(), BeaconChainSpec.Mainnet, validateResult: false, verifySignatures: false);
+        FuluStateTransition.Apply(postState, new SignedBeaconBlock { Message = block }, new EpochCache(), pubkeyCache, new AcceptingNotifier(), FuluFromGenesis, validateResult: false, verifySignatures: false);
         block.StateRoot = SszRoots.HashTreeRoot(postState);
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
         BlsSignature signature = Sign(proposerKey, blockRoot, anchorState.GetDomain(DomainType.BeaconProposer, 0));
