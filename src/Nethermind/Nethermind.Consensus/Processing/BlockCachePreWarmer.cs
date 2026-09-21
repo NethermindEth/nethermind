@@ -748,12 +748,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int pending = jobs.Count + CountUnclaimed(claimed.AsSpan(0, txCount));
             if (pending > 0)
             {
+                int degree = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : _concurrencyLevel;
+                WarmupQueue queue = new(blockState, jobs, claimed, txCount, degree);
                 try
                 {
-                    WarmupQueue queue = new(blockState, jobs, claimed, txCount);
-                    int degree = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : _concurrencyLevel;
                     // Each iteration is one worker that runs until the block has nothing left for it; the range
-                    // only bounds how many are started.
+                    // only bounds how many are started. A worker that runs dry returns to the pool, and the one
+                    // that stays behind recruits helpers when a wave of senders lands, so the wave is warmed with
+                    // the fan-out's full degree rather than one transaction at a time.
                     ParallelUnbalancedWork.For(
                         0,
                         Math.Clamp(degree, 1, pending),
@@ -768,6 +770,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 }
                 finally
                 {
+                    // Helpers are pool items outside the fan-out's own join.
+                    queue.WaitForHelpers();
                     foreach (WarmupJob job in jobs.AsSpan())
                         job.Transactions.Dispose();
                 }
@@ -1258,18 +1262,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
 
     /// <summary>
-    /// What the transaction-warming workers of one block share: the jobs grouped up front, taken in order, and
-    /// the claim table that hands each late-recovered transaction to exactly one of them.
+    /// What the transaction-warming workers of one block share: the jobs grouped up front, taken in order, the claim
+    /// table that hands each late-recovered transaction to exactly one of them, and the worker count that bounds how
+    /// many helpers a wave of late senders may add.
     /// </summary>
-    private sealed class WarmupQueue(BlockState blockState, ArrayPoolList<WarmupJob> jobs, int[] claimed, int txCount)
+    private sealed class WarmupQueue(BlockState blockState, ArrayPoolList<WarmupJob> jobs, int[] claimed, int txCount, int degree)
     {
         public readonly BlockState BlockState = blockState;
         private readonly ArrayPoolList<WarmupJob> _jobs = jobs;
         private readonly int[] _claimed = claimed;
         private readonly int _txCount = txCount;
+        private readonly int _degree = degree;
+        private readonly ManualResetEventSlim _helpersDone = new(initialState: false);
         private int _nextJob;
         private int _firstUnclaimed;
         private int _waiter;
+        private int _active;
+        private int _helpers;
 
         public bool TryTakeJob(out WarmupJob job)
         {
@@ -1287,21 +1296,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// <summary>
         /// Claims the lowest transaction whose sender has landed since the jobs were grouped, then every later ready
         /// one with the same sender, so a late chain still warms in order in a single scope; <c>false</c> when
-        /// nothing is ready right now. A ready transaction the main thread has already started is claimed too, but
-        /// not returned: warming it would only contend with the main thread, and left unclaimed it would read as
-        /// an arrival on every scan that nothing could ever act on.
+        /// nothing is ready right now. <paramref name="readyElsewhere"/> is how many runs of other senders were ready
+        /// and passed over on the way, which is how many more workers the wave could use. A ready transaction the
+        /// main thread has already started is claimed too, but not returned: warming it would only contend with the
+        /// main thread, and left unclaimed it would read as an arrival on every scan that nothing could ever act on.
         /// </summary>
         /// <remarks>
-        /// The claim table is only ever read here and in <see cref="WaitForArrival"/>, and a claim is never
-        /// released, so plain reads are enough on the scan: a stale zero costs one failed exchange, and the
-        /// exchange is what decides who owns the transaction.
+        /// A claim is never released, so plain reads are enough on this scan: a stale zero costs one failed exchange,
+        /// and the exchange is what decides who owns the transaction. <see cref="WaitForArrival"/> reads the table
+        /// volatile instead, because there the read is what ends a spin.
         /// </remarks>
-        public bool TryClaimLate(ArrayPoolList<(int Index, Transaction Tx)> run)
+        public bool TryClaimLate(ArrayPoolList<(int Index, Transaction Tx)> run, out int readyElsewhere)
         {
             Transaction[] txs = BlockState.Block.Transactions;
             ISet<Hash256>? speculativelyWarmed = BlockState.SpeculativelyWarmed;
             int[] claimed = _claimed;
             Address? sender = null;
+            Address? passedOver = null;
+            readyElsewhere = 0;
             for (int i = FirstUnclaimed(); i < _txCount; i++)
             {
                 if (claimed[i] != 0) continue;
@@ -1310,7 +1322,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (txSender is null) continue;
 
                 bool overtaken = i <= BlockState.PreWarmer.MainThreadTxIndex;
-                if (!overtaken && sender is not null && !txSender.Equals(sender)) continue;
+                if (!overtaken && sender is not null && !txSender.Equals(sender))
+                {
+                    // Adjacent transactions of one sender are the one run a claim would take.
+                    if (!txSender.Equals(passedOver))
+                    {
+                        passedOver = txSender;
+                        readyElsewhere++;
+                    }
+
+                    continue;
+                }
+
                 if (Interlocked.CompareExchange(ref claimed[i], 1, 0) != 0) continue;
                 if (overtaken) continue;
                 // Already warmed speculatively — a job for it would do no work.
@@ -1325,6 +1348,52 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         /// <summary>The one worker that stays behind for stragglers; the rest return to the pool.</summary>
         public bool TryBecomeWaiter() => Interlocked.CompareExchange(ref _waiter, 1, 0) == 0;
+
+        /// <summary>A worker of the fan-out is draining; it counts against the degree until it leaves.</summary>
+        public void Enter() => Interlocked.Increment(ref _active);
+
+        public void Leave() => Interlocked.Decrement(ref _active);
+
+        /// <summary>
+        /// Queues a helper for each run that is ready with no worker free for it, never beyond the degree the fan-out
+        /// was given. The fan-out's own workers leave as soon as they run dry and its range is spent once they have,
+        /// so this is what gives a wave of late senders its parallelism back. A helper is gone again as soon as
+        /// nothing is ready, so no thread parks on the pool that recovery needs.
+        /// </summary>
+        public void Recruit(int wanted, CancellationToken cancellationToken)
+        {
+            while (wanted-- > 0)
+            {
+                if (Interlocked.Increment(ref _active) > _degree)
+                {
+                    Interlocked.Decrement(ref _active);
+                    return;
+                }
+
+                Interlocked.Increment(ref _helpers);
+                ThreadPool.UnsafeQueueUserWorkItem(new TxWarmupWorker(this, cancellationToken), preferLocal: false);
+            }
+        }
+
+        public void HelperExited()
+        {
+            Interlocked.Decrement(ref _active);
+            if (Interlocked.Decrement(ref _helpers) == 0) _helpersDone.Set();
+        }
+
+        /// <summary>
+        /// Joins the helpers, which are pool items outside the fan-out's own join. The reset precedes the re-check, so
+        /// a helper that exits in between sets the event after the reset and no exit is missed.
+        /// </summary>
+        public void WaitForHelpers()
+        {
+            while (Volatile.Read(ref _helpers) > 0)
+            {
+                _helpersDone.Reset();
+                if (Volatile.Read(ref _helpers) == 0) return;
+                _helpersDone.Wait();
+            }
+        }
 
         /// <summary>
         /// Waits until a transaction no worker has claimed has its sender; <c>false</c> once the main thread has
@@ -1348,7 +1417,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 int lastPending = -1;
                 for (int i = FirstUnclaimed(); i < _txCount; i++)
                 {
-                    if (claimed[i] != 0) continue;
+                    if (Volatile.Read(ref claimed[i]) != 0) continue;
                     if (txs[i].SenderAddress is not null) return true;
                     lastPending = i;
                 }
@@ -1381,10 +1450,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <summary>
-    /// A transaction-warming worker: one env rented for its lifetime and returned exactly once by the loop
-    /// finalizer, draining the shared queue until the block has nothing left for it.
+    /// A transaction-warming worker: one env rented for its lifetime and returned exactly once, draining the shared
+    /// queue until the block has nothing left for it. The fan-out's own workers run <see cref="Drain"/> and are
+    /// released by its loop finalizer; a helper recruited for a wave of late senders is queued to the pool directly
+    /// and runs <see cref="Execute"/>.
     /// </summary>
-    private sealed class TxWarmupWorker(WarmupQueue queue, CancellationToken token)
+    private sealed class TxWarmupWorker(WarmupQueue queue, CancellationToken token) : IThreadPoolWorkItem
     {
         public readonly IReadOnlyTxProcessorSource Env = queue.BlockState.PreWarmer._envPool.Get();
         // Reused for every late run this worker claims, so claiming allocates nothing per job.
@@ -1392,6 +1463,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         public void Drain()
         {
+            queue.Enter();
             while (!token.IsCancellationRequested && queue.TryTakeJob(out WarmupJob job))
             {
                 Warm(job.Transactions.AsSpan(), job.LastIndex);
@@ -1400,18 +1472,51 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             bool waiter = false;
             while (!token.IsCancellationRequested)
             {
-                _run.Clear();
-                if (queue.TryClaimLate(_run))
-                {
-                    Warm(_run.AsSpan(), _run[^1].Index);
-                    continue;
-                }
+                if (WarmLate()) continue;
 
                 // Nothing is ready: one worker stays for stragglers, the rest go back to the pool rather than
                 // park on it while the recovery they would wait for needs it.
-                if (!waiter && !(waiter = queue.TryBecomeWaiter())) return;
-                if (!queue.WaitForArrival(token)) return;
+                if (!waiter && !(waiter = queue.TryBecomeWaiter())) break;
+                if (!queue.WaitForArrival(token)) break;
             }
+
+            queue.Leave();
+        }
+
+        public void Execute()
+        {
+            try
+            {
+                while (!token.IsCancellationRequested && WarmLate()) { }
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignore, block completed cancel
+            }
+            catch (Exception ex)
+            {
+                queue.BlockState.PreWarmer._logger.DebugError("Error pre-warming late transactions", ex);
+            }
+            finally
+            {
+                // What the fan-out's loop finalizer does for its own workers: the env goes back and the helper is
+                // counted out however it ended, because the block joins helpers on that count.
+                Release();
+                queue.HelperExited();
+            }
+        }
+
+        /// <summary>
+        /// Claims and warms the next late run; <c>false</c> when nothing is ready. Every run of another sender that
+        /// was ready at the same time gets a helper, up to the fan-out's degree.
+        /// </summary>
+        private bool WarmLate()
+        {
+            _run.Clear();
+            if (!queue.TryClaimLate(_run, out int readyElsewhere)) return false;
+            if (readyElsewhere > 0) queue.Recruit(readyElsewhere, token);
+            Warm(_run.AsSpan(), _run[^1].Index);
+            return true;
         }
 
         private void Warm(ReadOnlySpan<(int Index, Transaction Tx)> transactions, int lastIndex)

@@ -1572,26 +1572,73 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// Runs a reactive warm with two workers, parks both inside their first job's scope, runs
-    /// <paramref name="whileParked"/>, releases them and returns how many transactions were warmed.
+    /// Once the fan-out's own workers have run dry and returned to the pool, a wave of late senders is still warmed in
+    /// parallel: the worker that stayed behind recruits a helper for every further run that is ready, instead of
+    /// warming the wave one transaction at a time for the rest of the block.
     /// </summary>
-    private int RunGatedFanOut(Block block, CancellationToken testToken, Action whileParked, Action<BlockCachePreWarmer>? created = null)
+    [Test]
+    [CancelAfter(15_000)]
+    public void PreWarmCaches_AWaveOfLateSendersAfterTheWorkersRanDry_IsWarmedInParallel(CancellationToken testToken)
+    {
+        Transaction lateB = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        Transaction lateC = GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000);
+        lateB.SenderAddress = null;
+        lateC.SenderAddress = null;
+        Block block = Build.A.Block
+            .WithTransactions(GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000), lateB, lateC)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        // Three workers for one job and two unrecovered senders: one parks in the job, one stays as the waiter, and
+        // one finds nothing and leaves. Only then does the wave land, so the waiter is all the fan-out has left.
+        using ManualResetEventSlim workerLeftDry = new(initialState: false);
+        int warmedTxs = RunGatedFanOut(block, testToken, whileParked: static () => { }, concurrency: 3, parkedScopes: 3,
+            beforeParked: () =>
+            {
+                Assert.That(workerLeftDry.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: a worker must have run dry and left before the wave lands");
+                lateB.SenderAddress = TestItem.AddressB;
+                lateC.SenderAddress = TestItem.AddressC;
+            },
+            workerLeftDry: workerLeftDry);
+
+        Assert.That(warmedTxs, Is.EqualTo(3),
+            "both late transactions must be warmed at once: the first is parked until the second is too, so one worker alone never gets there");
+    }
+
+    /// <summary>
+    /// Runs a reactive warm with <paramref name="concurrency"/> workers, runs <paramref name="beforeParked"/> once the
+    /// warm has started, waits until <paramref name="parkedScopes"/> workers are parked inside a job's scope, runs
+    /// <paramref name="whileParked"/>, releases them and returns how many transactions were warmed. A worker that
+    /// returns its env without ever building a scope ran dry and left; <paramref name="workerLeftDry"/> is set when
+    /// one does.
+    /// </summary>
+    private int RunGatedFanOut(
+        Block block,
+        CancellationToken testToken,
+        Action whileParked,
+        Action<BlockCachePreWarmer>? created = null,
+        int concurrency = 2,
+        int parkedScopes = 2,
+        Action? beforeParked = null,
+        ManualResetEventSlim? workerLeftDry = null)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
 
         using ManualResetEventSlim gate = new(initialState: false);
-        using CountdownEvent txScopesInFlight = new(2);
+        using CountdownEvent txScopesInFlight = new(parkedScopes);
         int warmedTxs = 0;
         TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
             onTxScope: static () => { },
-            onWarmup: () => Interlocked.Increment(ref warmedTxs));
+            onWarmup: () => Interlocked.Increment(ref warmedTxs),
+            onIdleEnvReturn: () => workerLeftDry?.Set());
 
         using BlockCachePreWarmer preWarmer = new(
             policy,
             minPoolSize: 4,
-            concurrency: 2,
+            concurrency: concurrency,
             parallelExecutionBatchRead: true,
             nodeStorageCache,
             preBlockCaches,
@@ -1605,8 +1652,9 @@ public class BlockCachePreWarmerTests
             Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
             try
             {
+                beforeParked?.Invoke();
                 Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
-                    "precondition: two workers must be parked inside their first job's scope setup");
+                    $"precondition: {parkedScopes} workers must be parked inside a job's scope setup");
                 whileParked();
             }
             finally
@@ -1620,7 +1668,7 @@ public class BlockCachePreWarmerTests
         return warmedTxs;
     }
 
-
+    /// <summary>
     /// Verifies that warm workers rent one environment for their whole lifetime instead of one
     /// per job: two workers parked on their first jobs then draining four jobs must produce
     /// exactly two tx-warm env returns, not four.
@@ -2154,7 +2202,8 @@ public class BlockCachePreWarmerTests
         CountdownEvent txScopesInFlight,
         Action onTxScope,
         Action onWarmup,
-        Action? onTxWarmEnvReturn = null)
+        Action? onTxWarmEnvReturn = null,
+        Action? onIdleEnvReturn = null)
         : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
         private readonly ManualResetEventSlim _gate = gate;
@@ -2162,17 +2211,28 @@ public class BlockCachePreWarmerTests
         private readonly Action _onTxScope = onTxScope;
         private readonly Action _onWarmup = onWarmup;
         private readonly Action? _onTxWarmEnvReturn = onTxWarmEnvReturn;
+        private readonly Action? _onIdleEnvReturn = onIdleEnvReturn;
 
         public IReadOnlyTxProcessorSource Create() => new GateEnv(factory.Create(caches), this);
 
         public bool Return(IReadOnlyTxProcessorSource obj)
         {
-            // The address warmer shares the pool; count only envs that built a tx-warm scope,
-            // and clear the mark so pooled reuse by another section does not double-count.
-            if (obj is GateEnv { BuiltTxWarmScope: true } env)
+            // The address warmer shares the pool; count only envs that built a tx-warm scope, and clear the marks
+            // so pooled reuse by another section does not double-count. Every other renter builds a scope, so an
+            // env returned without one was a tx worker that found nothing to do.
+            if (obj is GateEnv env)
             {
-                env.BuiltTxWarmScope = false;
-                _onTxWarmEnvReturn?.Invoke();
+                if (env.BuiltTxWarmScope)
+                {
+                    env.BuiltTxWarmScope = false;
+                    _onTxWarmEnvReturn?.Invoke();
+                }
+                else if (!env.BuiltScope)
+                {
+                    _onIdleEnvReturn?.Invoke();
+                }
+
+                env.BuiltScope = false;
             }
             return true;
         }
@@ -2180,7 +2240,14 @@ public class BlockCachePreWarmerTests
         private sealed class GateEnv(IReadOnlyTxProcessorSource inner, TxWarmGatePolicy owner) : IReadOnlyTxProcessorSource
         {
             public bool BuiltTxWarmScope;
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => new GateScope(inner.Build(baseBlock), owner, this);
+            public bool BuiltScope;
+
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            {
+                BuiltScope = true;
+                return new GateScope(inner.Build(baseBlock), owner, this);
+            }
+
             public void Dispose() => inner.Dispose();
         }
 
