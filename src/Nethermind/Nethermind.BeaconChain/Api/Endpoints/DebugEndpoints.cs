@@ -79,7 +79,7 @@ internal static class DebugEndpoints
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
         return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, state.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             s => BeaconJsonWriter.WriteBeaconStateAsync(s, state));
     }
 }

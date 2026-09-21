@@ -5,6 +5,7 @@ using System;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
@@ -39,6 +40,15 @@ internal static class ResponseEnvelope
         ctx.Spec.GetEpoch(slot) <= ctx.StatusSource.CurrentStatus.FinalizedEpoch
         && ctx.Store.TryGetCanonicalRoot(slot, out Hash256? canonicalRoot)
         && canonicalRoot == root;
+
+    /// <summary>Whether the state stored under <paramref name="root"/> is part of finalized history.</summary>
+    /// <remarks>
+    /// A state is keyed by the root of the block it came from, but slot processing can advance it past
+    /// that block, so its own <c>Slot</c> may name an empty slot or one filled by a different block.
+    /// The canonical lookup must use the slot of the block the state is keyed by.
+    /// </remarks>
+    public static bool IsFinalized(BeaconApiContext ctx, BeaconStateFulu state, Hash256 root) =>
+        IsFinalized(ctx, state.LatestBlockHeader!.Slot, root);
 
     public static void ApplyConsensusVersionHeader(HttpContext ctx, BeaconChainSpec spec, ulong slot) =>
         ctx.Response.Headers[ConsensusVersionHeader] = ForkName(spec.ForkAtEpoch(spec.GetEpoch(slot)));

@@ -53,7 +53,7 @@ internal static class BeaconStatesEndpoints
 
         return BeaconApiJson.WriteEnvelopeAsync(c, dto,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, resolved.State.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
             c.RequestAborted);
     }
 
@@ -97,7 +97,7 @@ internal static class BeaconStatesEndpoints
 
         return BeaconApiJson.WriteEnvelopeAsync(c, dto,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, resolved.State.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
             c.RequestAborted);
     }
 
@@ -153,7 +153,7 @@ internal static class BeaconStatesEndpoints
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, state.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
 
@@ -189,7 +189,7 @@ internal static class BeaconStatesEndpoints
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entry,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, state.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
 
@@ -238,7 +238,7 @@ internal static class BeaconStatesEndpoints
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, state.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
 
@@ -334,7 +334,7 @@ internal static class BeaconStatesEndpoints
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, state.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
 
