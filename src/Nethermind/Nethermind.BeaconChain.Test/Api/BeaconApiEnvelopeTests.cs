@@ -7,8 +7,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Api;
-using Nethermind.BeaconChain.Engine;
-using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -16,11 +14,8 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
@@ -71,7 +66,7 @@ public class BeaconApiEnvelopeTests
         // so ForkAtEpoch can resolve it); FinalizedEpoch 500,000 is strictly past that epoch, so
         // IsFinalized's "<=" must resolve true here, not merely "not yet false".
         const ulong slot = 13_200_000;
-        SignedBeaconBlock block = CreateMinimalBlock(slot);
+        SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(slot);
         Hash256 root = TestRoot(7);
         _store.PutBlock(root, block);
         _store.SetCanonicalRoot(slot, root);
@@ -98,7 +93,7 @@ public class BeaconApiEnvelopeTests
         const ulong slot = 13_200_000;
         Hash256 root = TestRoot(9);
         Hash256 canonicalRival = TestRoot(10);
-        _store.PutBlock(root, CreateMinimalBlock(slot));
+        _store.PutBlock(root, BeaconApiTestHost.MinimalBlock(slot));
         _store.SetCanonicalRoot(slot, canonicalRival);
         _statusHolder.CurrentStatus = new StatusMessageV2
         {
@@ -127,7 +122,7 @@ public class BeaconApiEnvelopeTests
     public async Task Header_execution_optimistic_tracks_the_status_sources_el_in_sync_flag_both_ways()
     {
         const ulong slot = 13_200_000;
-        SignedBeaconBlock block = CreateMinimalBlock(slot);
+        SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(slot);
         Hash256 root = TestRoot(8);
         _store.PutBlock(root, block);
         _store.SetCanonicalRoot(slot, root);
@@ -171,68 +166,5 @@ public class BeaconApiEnvelopeTests
         byte[] bytes = new byte[32];
         bytes[31] = marker;
         return new Hash256(bytes);
-    }
-
-    private static SignedBeaconBlock CreateMinimalBlock(ulong slot) => new()
-    {
-        Message = new BeaconBlock
-        {
-            Slot = slot,
-            ProposerIndex = 3,
-            ParentRoot = Hash256.Zero,
-            StateRoot = Hash256.Zero,
-            Body = new BeaconBlockBody
-            {
-                Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-                Graffiti = Hash256.Zero,
-                ProposerSlashings = [],
-                AttesterSlashings = [],
-                Attestations = [],
-                Deposits = [],
-                VoluntaryExits = [],
-                SyncAggregate = new SyncAggregate { SyncCommitteeBits = new System.Collections.BitArray(512) },
-                ExecutionPayload = new Nethermind.BeaconChain.Types.ExecutionPayload
-                {
-                    ParentHash = Hash256.Zero,
-                    FeeRecipient = Address.Zero,
-                    StateRoot = Hash256.Zero,
-                    ReceiptsRoot = Hash256.Zero,
-                    LogsBloom = Bloom.Empty,
-                    PrevRandao = Hash256.Zero,
-                    BlockNumber = 1,
-                    GasLimit = 30_000_000,
-                    GasUsed = 0,
-                    Timestamp = 1_606_824_023,
-                    ExtraData = Bytes.FromHexString("0x"),
-                    BaseFeePerGas = 7,
-                    BlockHash = Hash256.Zero,
-                    Transactions = [],
-                    Withdrawals = [],
-                    BlobGasUsed = 0,
-                    ExcessBlobGas = 0,
-                },
-                BlsToExecutionChanges = [],
-                BlobKzgCommitments = [],
-                ExecutionRequests = new ExecutionRequests { Deposits = [], Withdrawals = [], Consolidations = [] },
-            },
-        },
-    };
-
-    private sealed class NoOpEngineDriver : IEngineDriver
-    {
-        public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload => false;
-
-        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid });
-
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
-    }
-
-    private sealed class NoOpProcessExitSource : IProcessExitSource
-    {
-        private readonly CancellationTokenSource _cts = new();
-        public void Exit(int exitCode) => _cts.Cancel();
-        public CancellationToken Token => _cts.Token;
     }
 }
