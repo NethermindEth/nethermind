@@ -481,15 +481,16 @@ public class PbtDbManagerTests
             bool firstHeld = mode == TransientHandOff.ChannelFull && first.TryAcquireLease();
             manager.AddSnapshot(PersistenceSnapshot(0, 1, pool), first);
             manager.AddSnapshot(PersistenceSnapshot(mode == TransientHandOff.Duplicate ? 0 : 1, mode == TransientHandOff.Duplicate ? 1 : 2, pool), second);
-            if (mode == TransientHandOff.ChannelFull) manager.AddSnapshot(PersistenceSnapshot(2, 3, pool), third);
-            else third.ReleaseLease();
-            using (Assert.EnterMultipleScope())
+            if (mode == TransientHandOff.ChannelFull)
             {
-                if (mode is TransientHandOff.NoCache or TransientHandOff.Duplicate) Assert.That(IsReturned(second), Is.True, "a transient that cannot reach the populator returns to the pool at once");
-                if (mode == TransientHandOff.ChannelFull) Assert.That(IsReturned(third), Is.True, "a transient refused by the full queue returns to the pool at once");
+                Task stalledCommit = Task.Run(() => manager.AddSnapshot(PersistenceSnapshot(2, 3, pool), third));
+                Assert.That(stalledCommit.Wait(200), Is.False, "a full queue stalls the commit instead of dropping the staged groups");
+                if (firstHeld) first.ReleaseLease();
+                Assert.That(stalledCommit.Wait(5000), Is.True, "the stalled commit resumes once the populator drains the queue");
             }
-            if (firstHeld) first.ReleaseLease();
-            Assert.That(() => cache.EntryCount, Is.EqualTo(mode switch { TransientHandOff.NoCache => 0, TransientHandOff.Duplicate => 1, _ => 2 }).After(5000, 10));
+            else third.ReleaseLease();
+            if (mode is TransientHandOff.NoCache or TransientHandOff.Duplicate) Assert.That(IsReturned(second), Is.True, "a transient that cannot reach the populator returns to the pool at once");
+            Assert.That(() => cache.EntryCount, Is.EqualTo(mode switch { TransientHandOff.NoCache => 0, TransientHandOff.Duplicate => 1, TransientHandOff.Admitted => 2, _ => 3 }).After(5000, 10));
             Assert.That(() => IsReturned(first) && IsReturned(second) && IsReturned(third), Is.True.After(5000, 10), "every transient returns to the pool once ingested or refused");
             Assert.That(first.NodeGroups.Count + second.NodeGroups.Count + third.NodeGroups.Count, Is.Zero);
         }
