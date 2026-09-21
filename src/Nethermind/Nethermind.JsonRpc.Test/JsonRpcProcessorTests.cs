@@ -74,16 +74,19 @@ public class JsonRpcProcessorTests
     private static JsonRpcProcessor CreateProcessorWithLogger(IJsonRpcService service, TestLogger logger) =>
         new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
 
-    // #13156: the JSON-RPC 2.0 request-error codes (-32700..-32600 and -32601/-32602) are the caller's fault and are
-    // triggered by one unauthenticated request each, so they must not reach WARN; server-side codes keep their level.
-    // The demotion is scoped to unauthenticated callers - see Engine_api_request_errors_keep_warn below.
+    // Two classes of error cost one unauthenticated request each, so neither may reach WARN: the JSON-RPC 2.0
+    // request-error codes, which say the request was wrong (#13156), and the guard-rail rejections, which say the
+    // node refused work the caller asked for (#13602). Codes for what the node failed at, rather than refused, keep
+    // their level, and the demotion is scoped to unauthenticated callers - see Engine_api_request_errors_keep_warn.
     [TestCase(ErrorCodes.ParseError, false, TestName = "ParseError (-32700) is not WARN")]
     [TestCase(ErrorCodes.InvalidRequest, false, TestName = "InvalidRequest (-32600) is not WARN")]
     [TestCase(ErrorCodes.MethodNotFound, false, TestName = "MethodNotFound (-32601) is not WARN")]
     [TestCase(ErrorCodes.InvalidParams, false, TestName = "InvalidParams (-32602) is not WARN")]
+    [TestCase(ErrorCodes.ResourceUnavailable, false, TestName = "ResourceUnavailable (-32002) is not WARN")]
+    [TestCase(ErrorCodes.LimitExceeded, false, TestName = "LimitExceeded (-32005) is not WARN")]
+    [TestCase(ErrorCodes.PrunedHistoryUnavailable, false, TestName = "PrunedHistoryUnavailable (4444) is not WARN")]
     [TestCase(ErrorCodes.InternalError, true, TestName = "InternalError (-32603) keeps WARN")]
     [TestCase(ErrorCodes.Default, true, TestName = "Default (-32000) keeps WARN")]
-    [TestCase(ErrorCodes.LimitExceeded, true, TestName = "LimitExceeded (-32005) without suppression keeps WARN")]
     public async Task Error_response_log_level_follows_error_class(int errorCode, bool expectWarn)
     {
         IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
@@ -113,11 +116,14 @@ public class JsonRpcProcessorTests
     // The #13156 rationale is that a client fault costs one unauthenticated request, so it must not dictate the
     // operator's log volume. That does not hold for the JWT-authenticated Engine endpoint: -32601 is the canonical
     // CL/EL version-mismatch signal and -32602 means the consensus client sent a payload this node could not bind.
-    // Both are the operator's problem and must stay visible at default level on a node running at Info.
+    // Both are the operator's problem and must stay visible at default level on a node running at Info. The same
+    // holds for a guard-rail code reached through this channel: LimitExceeded from the CL means the configured cap
+    // is wrong for this deployment, which is again this operator's problem to size, not a one-off client mistake.
     [TestCase(ErrorCodes.MethodNotFound, TestName = "MethodNotFound (-32601) keeps WARN when authenticated")]
     [TestCase(ErrorCodes.InvalidParams, TestName = "InvalidParams (-32602) keeps WARN when authenticated")]
     [TestCase(ErrorCodes.InvalidRequest, TestName = "InvalidRequest (-32600) keeps WARN when authenticated")]
     [TestCase(ErrorCodes.ParseError, TestName = "ParseError (-32700) keeps WARN when authenticated")]
+    [TestCase(ErrorCodes.LimitExceeded, TestName = "LimitExceeded (-32005) keeps WARN when authenticated")]
     public async Task Engine_api_request_errors_keep_warn(int errorCode)
     {
         IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse

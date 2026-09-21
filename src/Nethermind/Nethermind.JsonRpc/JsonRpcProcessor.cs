@@ -829,8 +829,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}";
 
     /// <summary>
-    /// Whether this error response describes a fault in the request rather than a condition of the node, and so must
-    /// not be able to dictate the operator's WARN volume (#13156). Demoted lines stay available at Debug.
+    /// Whether this error response is an expected, self-inflicted outcome of the request as sent, and so must not
+    /// be able to dictate the operator's WARN volume (#13156, #13602). Demoted lines stay available at Debug.
     /// </summary>
     /// <remarks>
     /// Only unauthenticated callers are demoted. The rationale for #13156 is that a client fault costs one
@@ -838,14 +838,21 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// canonical consensus-client/execution-client version-mismatch signal and -32602 means the CL sent a payload
     /// this node could not bind, both of which are the operator's problem and have to stay visible at default level.
     /// <para>
-    /// Server-side codes (-32603, -32000, timeouts, unsuppressed limits) keep WARN for every caller, and
+    /// The guard-rail rejections of <see cref="ErrorCodes.IsClientGuardRailError(int)"/> are demoted on the same
+    /// grounds (#13602): the node refused work a caller asked for, and one request still buys one line. The
+    /// batch-size and response-body caps answer -32005 too, but never through this method, so this change does
+    /// not touch them: the batch-size cap keeps its own WARN and the response-body cap stays silent as it is
+    /// today.
+    /// </para>
+    /// <para>
+    /// Server-side codes (-32603, -32000, timeouts) keep WARN for every caller, and
     /// <see cref="Error.OperatorActionable"/> overrides the code: -32600 also carries "namespace X is disabled for
     /// this URL", which is a statement about this node's configuration.
     /// </para>
     /// </remarks>
     private static bool IsDemotableRequestError(Error responseError, JsonRpcContext context) =>
         !context.IsAuthenticated
-        && ErrorCodes.IsRequestError(responseError.Code)
+        && (ErrorCodes.IsRequestError(responseError.Code) || ErrorCodes.IsClientGuardRailError(responseError.Code))
         && !responseError.OperatorActionable;
 
     private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, JsonRpcContext context, long startTime)

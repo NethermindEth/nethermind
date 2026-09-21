@@ -188,5 +188,20 @@ namespace Nethermind.JsonRpc
         /// </summary>
         public static bool IsRequestError(int code) =>
             code is ParseError or InvalidRequest or MethodNotFound or InvalidParams;
+
+        /// <summary>
+        /// True for the guard-rail rejections a caller can provoke (<see cref="ResourceUnavailable"/>,
+        /// <see cref="LimitExceeded"/>, <see cref="PrunedHistoryUnavailable"/>): the node deliberately refused the
+        /// work that was asked of it rather than failing at it.
+        /// </summary>
+        /// <remarks>
+        /// A sibling of <see cref="IsRequestError(int)"/>, not a widening of it: those codes say the request itself
+        /// was wrong, while these say a well-formed request asked about a condition of this node - state that is not
+        /// retained, history that has expired, a limit that is configured. Both classes cost one request to provoke,
+        /// so neither should dictate the operator's log volume, but only this one describes the node.
+        /// <see cref="InternalError"/> is deliberately excluded: an unhandled failure is not a guard rail.
+        /// </remarks>
+        public static bool IsClientGuardRailError(int code) =>
+            code is ResourceUnavailable or LimitExceeded or PrunedHistoryUnavailable;
     }
 }
