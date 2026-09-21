@@ -209,8 +209,18 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
     protected abstract int MaxRequestSize { get; }
     protected abstract int MaxResponseSize { get; }
     protected abstract byte[] EncodeRequest(TRequest request);
+
+    /// <exception cref="Eth2ReqRespException">Implementations must throw this, not a decode-library
+    /// exception, when <paramref name="ssz"/> fails length or structural validation; <see cref="ListenAsync"/>
+    /// catches only this type to answer with an error chunk instead of letting the failure escape the
+    /// session.</exception>
     protected abstract TRequest DecodeRequest(byte[] ssz);
     protected abstract byte[] EncodeResponse(TResponse response);
+
+    /// <exception cref="Eth2ReqRespException">Implementations must throw this, not a decode-library
+    /// exception, when <paramref name="ssz"/> fails length or structural validation, matching every
+    /// other failure <see cref="DialAsync"/> can raise (a truncated read, an error-code response) so
+    /// callers see one exception type for a failed exchange.</exception>
     protected abstract TResponse DecodeResponse(byte[] ssz);
 
     /// <summary>Produces the listen-side response for a decoded request.</summary>
