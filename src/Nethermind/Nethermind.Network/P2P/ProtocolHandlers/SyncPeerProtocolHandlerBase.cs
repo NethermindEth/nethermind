@@ -10,7 +10,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -57,8 +56,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
-        protected AssociativeKeyCache<ValueHash256>? _notifiedTransactions;
-        protected AssociativeKeyCache<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
+        private TransactionHashCache.PeerCache? _notifiedTransactions;
+        private object? _notifiedTransactionsLock;
+        private protected TransactionHashCache.PeerCache NotifiedTransactions =>
+            LazyInitializer.EnsureInitialized(ref _notifiedTransactions, ref _notifiedTransactionsLock, static () => SharedTransactionHashes.Cache.CreatePeerCache());
+
+        private static class SharedTransactionHashes
+        {
+            // Allow for different inbound histories across peers as well as the current pool.
+            // TxPool sets MemPoolSize before peers start; this process-wide capacity is fixed on first use.
+            internal static readonly TransactionHashCache Cache = new(4 * MemoryAllowance.MemPoolSize);
+        }
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,

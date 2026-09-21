@@ -22,6 +22,82 @@ public class ExecutionPayloadTests
 {
     private static TxType[] TxTypes() => [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
 
+    [Test, NonParallelizable]
+    public void Payload_decoding_leaves_pooled_transactions_available(
+        [Values(1, 64)] int count, [Values] bool malformed, [Values] bool borrowMemory)
+    {
+        byte[][] encoded = BuildDiverseBatch(count);
+        byte[] control = EncodeTx(TxType.Legacy);
+        if (malformed) encoded[^1] = [.. encoded[^1], 0xDC, 0xAF];
+        Transaction[] held = new Transaction[2048];
+        for (int i = 0; i < held.Length; i++) held[i] = TxDecoder.TxObjectPool.Get();
+        Transaction marker = held[0];
+        TxDecoder.TxObjectPool.Return(marker);
+        Transaction? rented = null;
+        try
+        {
+            string? error;
+            Transaction[]? transactions;
+            if (borrowMemory)
+            {
+                Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+                error = result.Error;
+                transactions = result.Data;
+            }
+            else
+            {
+                TransactionDecodingResult result = TxsDecoder.DecodeTxs(encoded, skipErrors: false);
+                error = result.Error;
+                transactions = result.Transactions;
+            }
+            RlpReader reader = new(control);
+            rented = TxDecoder.Instance.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error is not null, Is.EqualTo(malformed));
+                Assert.That(rented, Is.SameAs(marker), "Payload decoding must leave the reusable P2P transaction in the pool.");
+                if (!malformed)
+                {
+                    Assert.That(transactions!, Has.Length.EqualTo(count));
+                    Assert.That(transactions!, Does.Not.Contain(marker));
+                }
+            }
+        }
+        finally
+        {
+            if (rented is not null) TxDecoder.TxObjectPool.Return(rented);
+            for (int i = 1; i < held.Length; i++) TxDecoder.TxObjectPool.Return(held[i]);
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Payload_decoding_uses_registered_decoder([Values(1, 64)] int count)
+    {
+        byte[][] encoded = EncodeTxs(count);
+        IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
+        Rlp.RegisterDecoder(typeof(Transaction), new PayloadTestDecoder());
+        try
+        {
+            Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
+        }
+        finally
+        {
+            Rlp.RegisterDecoder(typeof(Transaction), original);
+        }
+    }
+
+    private sealed class PayloadTestDecoder : TxDecoder<Transaction>
+    {
+        protected override Transaction? DecodeInternal(ref RlpReader reader, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            Transaction? tx = base.DecodeInternal(ref reader, behaviors);
+            if (tx is not null) tx.Nonce += 1000;
+            return tx;
+        }
+    }
+
     [Test]
     public void Payload_decoding_borrows_data_and_preserves_hash_after_replacement(
         [ValueSource(nameof(TxTypes))] TxType type,

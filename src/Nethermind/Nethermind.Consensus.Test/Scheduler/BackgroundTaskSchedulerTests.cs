@@ -56,6 +56,54 @@ public class BackgroundTaskSchedulerTests
             "DisposeAsync did not complete within timeout - possible deadlock in background task scheduler");
     }
 
+    public enum CancellationCause
+    {
+        Deadline,
+        BlockProcessing,
+        Shutdown
+    }
+
+    [Test]
+    public async Task Completed_request_token_is_not_cancelled_by_later_request([Values] CancellationCause cause)
+    {
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 16, LimboLogs.Instance);
+        System.Threading.Tasks.TaskCompletionSource<CancellationToken> firstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        System.Threading.Tasks.TaskCompletionSource<CancellationToken> secondStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        System.Threading.Tasks.TaskCompletionSource secondFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
+        {
+            firstStarted.SetResult(token);
+            return Task.CompletedTask;
+        }), Is.True);
+        CancellationToken firstToken = await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(scheduler.TryScheduleTask(default(TestRequest), async (_, token) =>
+        {
+            secondStarted.SetResult(token);
+            await Task.Delay(Timeout.InfiniteTimeSpan, token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            secondFinished.SetResult();
+        }, cause == CancellationCause.Deadline ? TimeSpan.FromSeconds(1) : TimeSpan.FromSeconds(30)), Is.True);
+        CancellationToken secondToken = await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(secondToken.IsCancellationRequested, Is.False);
+
+        if (cause == CancellationCause.BlockProcessing)
+        {
+            RaiseBlocksProcessing();
+        }
+        else if (cause == CancellationCause.Shutdown)
+        {
+            await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        await secondFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondToken.IsCancellationRequested, Is.True);
+            Assert.That(firstToken.IsCancellationRequested, Is.False);
+        }
+    }
+
     [Test]
     public async Task Scheduling_after_dispose_does_not_warn_queue_is_full()
     {
