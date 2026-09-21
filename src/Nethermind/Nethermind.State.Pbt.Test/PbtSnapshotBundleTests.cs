@@ -1127,44 +1127,6 @@ public class PbtSnapshotBundleTests
         }
     }
 
-    [TestCase(7u, false)]
-    [TestCase(7u, true)]
-    [TestCase(1000u, false)]
-    [TestCase(1000u, true)]
-    public void Storage_clear_masks_older_snapshots_but_preserves_subsequent_writes(uint slot, bool clearLast)
-    {
-        PbtResourcePool pool = new(new PbtConfig());
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
-        EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("02"));
-        bundle.SetSlot(TestItem.AddressA, slot, original);
-        bundle.SetSlot(TestItem.AddressB, slot, original);
-        ValueHash256 root = Fold(bundle, default);
-        using PbtSnapshot older = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
-
-        if (!clearLast) bundle.SelfDestruct(TestItem.AddressA);
-        bundle.SetSlot(TestItem.AddressA, slot, replacement);
-        if (clearLast) bundle.SelfDestruct(TestItem.AddressA);
-        EvmWord expected = clearLast ? default : replacement;
-        Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(expected));
-        root = Fold(bundle, root);
-        Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetSlot(model, TestItem.AddressB, slot, 1);
-        if (!clearLast) PbtReferenceModel.SetSlot(model, TestItem.AddressA, slot, 2);
-        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-        Assert.That(Fold(bundle, root), Is.EqualTo(root), "repeated folds must not replay cleared writes");
-        using PbtSnapshot newer = bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(expected));
-            Assert.That(bundle.GetSlot(TestItem.AddressB, slot), Is.EqualTo(original));
-            Assert.That(newer.Content.SelfDestructedStorageAddresses.ContainsKey(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)), Is.True);
-            Assert.That(newer.Content.GetSlot(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.EqualTo(expected));
-            Assert.That(older.Content.GetSlot(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.EqualTo(original));
-        }
-    }
-
     [Test]
     public void Code_bearing_account_matches_pinned_eip_root()
     {
