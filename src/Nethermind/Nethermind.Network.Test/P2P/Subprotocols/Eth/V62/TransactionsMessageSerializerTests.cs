@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
@@ -23,6 +24,58 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class TransactionsMessageSerializerTests
 {
+    public enum BlobReturnMode { Retained, Returned, MalformedList, MalformedWrapper }
+
+    [Test, NonParallelizable]
+    public void Blob_buffers_are_reused_only_after_returning_the_transaction(
+        [Values(131071, 131072, 131073)] int blobSize, [Values] BlobReturnMode returnMode)
+    {
+        TransactionsMessageSerializer serializer = new();
+        byte[] blob = new byte[blobSize];
+        Array.Fill(blob, (byte)0x11);
+        Transaction source = Build.A.Transaction.WithType(TxType.Blob)
+            .WithMaxFeePerBlobGas(1).WithBlobVersionedHashes(1).TestObject;
+        source.Signature = new Signature(1, 2, 27);
+        source.NetworkWrapper = new ShardBlobNetworkWrapper([blob], [], [], ProofVersion.V0);
+        using TransactionsMessage message = new(new ArrayPoolList<Transaction>(1) { source });
+        using DisposableByteBuffer buffer = Unpooled.Buffer().AsDisposable();
+        serializer.Serialize(buffer, message);
+        using TransactionsMessage first = serializer.Deserialize(buffer);
+        Transaction tx = first.Transactions[0];
+        byte[] original = ((ShardBlobNetworkWrapper)tx.NetworkWrapper).Blobs[0];
+        first.Dispose();
+        if (returnMode != BlobReturnMode.Retained) TxDecoder.TxObjectPool.Return(tx);
+        if (returnMode == BlobReturnMode.MalformedList)
+        {
+            buffer.Clear();
+            buffer.WriteBytes(Rlp.Encode(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm), Rlp.OfEmptyList).Bytes);
+            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        }
+        if (returnMode == BlobReturnMode.MalformedWrapper)
+        {
+            buffer.Clear();
+            serializer.Serialize(buffer, message);
+            // Replace the empty commitments list with a byte string, after the blob was decoded.
+            buffer.SetByte(buffer.WriterIndex - 2, 0x80);
+            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        }
+
+        Array.Fill(blob, (byte)0x22);
+        buffer.Clear();
+        serializer.Serialize(buffer, message);
+        using TransactionsMessage second = serializer.Deserialize(buffer);
+        byte[] next = ((ShardBlobNetworkWrapper)second.Transactions[0].NetworkWrapper).Blobs[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.Length, Is.EqualTo(blobSize));
+            Assert.That(next, Is.All.EqualTo(0x22));
+            Assert.That(ReferenceEquals(next, original), Is.EqualTo(returnMode != BlobReturnMode.Retained && blobSize == 131072));
+            if (returnMode == BlobReturnMode.Retained) Assert.That(original, Is.All.EqualTo(0x11));
+        }
+        if (returnMode == BlobReturnMode.Retained) TxDecoder.TxObjectPool.Return(tx);
+        TxDecoder.TxObjectPool.Return(second.Transactions[0]);
+    }
+
     [Test]
     public void Roundtrip_init()
     {
@@ -335,6 +388,35 @@ public class TransactionsMessageSerializerTests
             offset += item.Length;
         }
         return result;
+    }
+
+    [Test, NonParallelizable]
+    public void Malformed_list_returns_previously_decoded_transaction()
+    {
+        TransactionsMessageSerializer serializer = new();
+        // A valid signed legacy transaction followed by a null transaction.
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(Bytes.FromHexString(
+            "d2d08203e8640a80822710830405061b0102c0")).AsDisposable();
+        Transaction reusable = TxDecoder.TxObjectPool.Get();
+        TxDecoder.TxObjectPool.Return(reusable);
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+
+        Transaction returned = TxDecoder.TxObjectPool.Get();
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(returned, Is.SameAs(reusable));
+                Assert.That(returned.Signature, Is.Null);
+                Assert.That(returned.Data.IsEmpty, Is.True);
+                Assert.That(returned.Hash, Is.Null);
+            }
+        }
+        finally
+        {
+            TxDecoder.TxObjectPool.Return(returned);
+        }
     }
 
     private static IEnumerable<TransactionsMessage> GetTransactionMessages() =>

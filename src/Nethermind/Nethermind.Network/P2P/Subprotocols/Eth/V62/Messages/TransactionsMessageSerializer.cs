@@ -11,13 +11,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.TxPool;
+using TransactionDecoder = Nethermind.Serialization.Rlp.TxDecoder;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
-        private static readonly Nethermind.Serialization.Rlp.TxDecoder TxDecoder = Nethermind.Serialization.Rlp.TxDecoder.Instance;
+        private static readonly TransactionDecoder TxDecoder = TransactionDecoder.Instance;
 
         /// <summary>The largest measure <see cref="IsOverSizeLimit"/> can read off an RLP short-form item.</summary>
         /// <remarks>
@@ -150,7 +151,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                         continue;
                     }
 
-                    result.Add(TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm));
+                    result.Add(TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers));
                 }
                 ctx.Check(checkPosition);
                 return result;
@@ -158,7 +159,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             catch
             {
                 foreach (Transaction tx in result)
+                {
                     tx.ClearPreHash();
+                    TransactionDecoder.TxObjectPool.Return(tx);
+                }
                 result.Dispose();
                 throw;
             }
