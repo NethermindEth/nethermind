@@ -58,6 +58,7 @@ public class PersistenceManager(
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
+    private StateId? _lastWarnedStall;
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -103,7 +104,7 @@ public class PersistenceManager(
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
     ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
-    ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head.</item>
+    ///   <c>MinReorgDepth + CompactSize</c>) -> seed = the committed head.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
@@ -171,10 +172,18 @@ public class PersistenceManager(
         }
 
         // ---- Phase 2: conversion to the persisted-snapshot tier ----
-        if (!_enableLongFinality) return (null, null, null);
-        if (snapshotRepository.SnapshotCount <= _maxInMemoryBaseSnapshotCount) return (null, null, null);
+        ConversionCandidate? conversion = _enableLongFinality && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount
+            ? TryFindSnapshotToConvert(currentPersistedState) : null;
+        if (conversion is null && snapshotsDepth > _backstopReorgDepth && _logger.IsWarn
+            && _lastWarnedStall != currentPersistedState)
+        {
+            _lastWarnedStall = currentPersistedState;
+            _logger.Warn($"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}, " +
+                $"but neither persistence nor conversion found a candidate (persisted {currentPersistedState}, " +
+                $"latest {latestSnapshot}, finalized block {finalizedBlockNumber}).");
+        }
 
-        return (null, null, TryFindSnapshotToConvert(currentPersistedState));
+        return (null, null, conversion);
     }
 
     /// <summary>
@@ -250,6 +259,9 @@ public class PersistenceManager(
                 if (toPersist is not null)
                 {
                     using Snapshot _ = toPersist;
+                    // The span tells a per-block chunk from a multi-block one, which is what the history capture
+                    // walking on top of this can and cannot follow.
+                    if (_logger.IsDebug) _logger.Debug($"Persisting in-memory chunk {toPersist.From.BlockNumber}->{toPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                     CaptureHistory(toPersist.To, _cts.Token);
                     PersistSnapshot(toPersist);
@@ -259,6 +271,7 @@ public class PersistenceManager(
                 else if (persistedToPersist is not null)
                 {
                     using PersistedSnapshot _ = persistedToPersist;
+                    if (_logger.IsDebug) _logger.Debug($"Persisting persisted-tier chunk {persistedToPersist.From.BlockNumber}->{persistedToPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                     CaptureHistory(persistedToPersist.To, _cts.Token);
                     PersistPersistedSnapshot(persistedToPersist);
