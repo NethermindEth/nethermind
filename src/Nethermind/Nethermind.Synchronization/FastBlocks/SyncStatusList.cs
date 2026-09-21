@@ -64,27 +64,27 @@ namespace Nethermind.Synchronization.FastBlocks
         /// claimed for, so a batch slot that is dropped before it reaches the feed pins the frontier for good:
         /// everything below it still downloads and the feed then idles on a full queue that can never drain.
         /// Handing the block back to the next scan costs at worst a duplicate request.
+        /// Only the dispatch loop calls this, so the watch fields need no synchronisation.
         /// </remarks>
         private void RequeueStuckFrontier()
         {
             ulong frontier = Volatile.Read(ref _lowestInsertWithoutGaps);
-            if (frontier != _watchedFrontier)
+            if (frontier != _watchedFrontier || _statuses[frontier] != FastBlockStatus.Sent)
             {
+                // A frontier no batch holds is not orphaned: the scan that follows either claims it or
+                // walks past it, so only an uninterrupted stretch of `Sent` is worth timing.
                 _watchedFrontier = frontier;
                 _watchedFrontierSince = Stopwatch.GetTimestamp();
                 return;
             }
 
-            if (Stopwatch.GetElapsedTime(_watchedFrontierSince) < _stuckFrontierThreshold) return;
+            TimeSpan heldFor = Stopwatch.GetElapsedTime(_watchedFrontierSince);
+            if (heldFor < _stuckFrontierThreshold) return;
 
             _watchedFrontierSince = Stopwatch.GetTimestamp();
-            if (_statuses.TrySet(frontier, FastBlockStatus.Pending))
+            if (_statuses.TrySet(frontier, FastBlockStatus.Pending) && _logger.IsWarn)
             {
-                if (_logger.IsWarn) _logger.Warn($"Requeued block {frontier}, which held the fast blocks frontier for {_stuckFrontierThreshold.TotalSeconds:N0}s without a response.");
-            }
-            else if (_logger.IsWarn)
-            {
-                _logger.Warn($"Fast blocks frontier stuck on block {frontier} ({_statuses[frontier]}) for {_stuckFrontierThreshold.TotalSeconds:N0}s.");
+                _logger.Warn($"Requeued block {frontier}, which held the fast blocks insert frontier for {heldFor.TotalSeconds:N0}s without a response.");
             }
         }
 

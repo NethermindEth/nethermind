@@ -262,6 +262,7 @@ namespace Nethermind.Synchronization.FastBlocks
             int validResponsesCount = 0;
             MissedBlocks missingHeaders = new();
             MissedBlocks missingBlocks = new();
+            MissedBlocks rejectedBlocks = new();
 
             BlockInfo?[] blockInfos = batch.Infos;
             for (int i = 0; i < blockInfos.Length; i++)
@@ -307,7 +308,8 @@ namespace Nethermind.Synchronization.FastBlocks
                             {
                                 // Receipts the header vouched for that the store still rejects are retried forever,
                                 // so this holds the frontier rather than costing one block.
-                                if (_logger.IsWarn) _logger.Warn($"Could not store the receipts of block {blockInfo.BlockNumber}. {e}");
+                                rejectedBlocks.Add(blockInfo.BlockNumber);
+                                if (_logger.IsDebug) _logger.Debug($"Receipt store rejected block {blockInfo.BlockNumber}. {e}");
                                 _syncStatusList.MarkPending(blockInfo);
                             }
                         }
@@ -344,6 +346,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (missingHeaders.Count > 0) _logger.Warn($"Could not find headers of {missingHeaders}");
                 if (missingBlocks.Count > 0) _logger.Warn($"Could not find {missingBlocks}");
+                if (rejectedBlocks.Count > 0) _logger.Warn($"Could not store the receipts of {rejectedBlocks}");
             }
 
             UpdateSyncReport();

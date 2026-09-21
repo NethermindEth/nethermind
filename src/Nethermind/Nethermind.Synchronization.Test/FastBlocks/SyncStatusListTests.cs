@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastBlocks;
@@ -128,22 +129,47 @@ public class SyncStatusListTests
     }
 
     [Test]
-    public void Frontier_block_orphaned_in_sent_is_requeued()
+    public void Frontier_block_orphaned_in_sent_is_requeued_only_once_stuck([Values] bool stuckLongEnough)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>())
             .Returns(ci => new BlockInfo(TestItem.KeccakA, 0) { BlockNumber = ci.ArgAt<ulong>(0) });
 
-        // Zero threshold: the frontier counts as stuck on the scan after the one that first observed it.
-        SyncStatusList syncStatusList = new(blockTree, 100, null, 90, LimboLogs.Instance.GetClassLogger<SyncStatusListTests>(), TimeSpan.Zero);
+        TestLogger logger = new();
+        // Stopwatch is not injectable, so the two sides of the threshold are picked to make it unambiguous.
+        SyncStatusList syncStatusList = new(blockTree, 100, null, 90, new ILogger(logger),
+            stuckLongEnough ? TimeSpan.Zero : TimeSpan.FromHours(1));
 
         // Take the pivot into a batch and drop it, as a dispatch abandoned before the feed sees a response does.
         syncStatusList.TryGetInfosForBatch(1, new AlwaysDownloadStrategy(), out BlockInfo?[] orphaned);
         Assert.That(orphaned[0]!.BlockNumber, Is.EqualTo(100));
 
-        syncStatusList.TryGetInfosForBatch(1, new AlwaysDownloadStrategy(), out BlockInfo?[] requeued);
+        syncStatusList.TryGetInfosForBatch(1, new AlwaysDownloadStrategy(), out BlockInfo?[] next);
 
-        Assert.That(requeued[0]?.BlockNumber, Is.EqualTo(100));
+        using (Assert.EnterMultipleScope())
+        {
+            // A batch that may still answer keeps its block; only a stuck one is handed back.
+            Assert.That(next[0]?.BlockNumber, Is.EqualTo(stuckLongEnough ? 100UL : 99UL));
+            Assert.That(logger.LogList, stuckLongEnough
+                ? Has.Exactly(1).Contains("Requeued block 100")
+                : Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Frontier_that_no_batch_holds_is_not_reported_as_stuck()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>()).Returns((BlockInfo?)null);
+
+        TestLogger logger = new();
+        SyncStatusList syncStatusList = new(blockTree, 100, null, 90, new ILogger(logger), TimeSpan.Zero);
+
+        // No canonical info, so every scan leaves the frontier pending rather than sent.
+        syncStatusList.TryGetInfosForBatch(1, new AlwaysDownloadStrategy(), out _);
+        syncStatusList.TryGetInfosForBatch(1, new AlwaysDownloadStrategy(), out _);
+
+        Assert.That(logger.LogList, Is.Empty);
     }
 
     [Test]
