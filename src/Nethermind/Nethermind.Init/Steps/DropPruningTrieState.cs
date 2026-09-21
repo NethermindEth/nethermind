@@ -12,8 +12,13 @@ namespace Nethermind.Init.Steps;
 /// <summary>
 /// Opens the state DB during init, so dropping the patricia trie happens here and not mid-processing.
 /// </summary>
+/// <remarks>
+/// Ordered after <see cref="ImportFlatDb"/> so the drop can never run while the import is still
+/// reading the trie. The gate in PruningTrieStoreModule already ensures that by requiring a populated
+/// flat store, which the import only produces at its end; the edge keeps it from resting on the gate alone.
+/// </remarks>
 [RunnerStepDependencies(
-    dependencies: [typeof(InitializeBlockTree)],
+    dependencies: [typeof(InitializeBlockTree), typeof(ImportFlatDb)],
     dependents: [typeof(InitializeBlockchain)]
 )]
 public class DropPruningTrieState(ILifetimeScope rootScope) : IStep

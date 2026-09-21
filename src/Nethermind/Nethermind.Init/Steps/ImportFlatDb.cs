@@ -19,7 +19,9 @@ namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockTree)],
-    dependents: [typeof(InitializeBlockchain)]
+    dependents: [typeof(InitializeBlockchain)],
+    // Registered only when importing, so steps ordering themselves after it must tolerate its absence.
+    Optional = true
 )]
 public class ImportFlatDb(
     IBlockTree blockTree,
