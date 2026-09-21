@@ -223,11 +223,6 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
         }
 
         Hash256 parentRoot = new(ownEntry.AsSpan(1, Hash256.Size));
-        if (parentRoot == Hash256.Zero)
-        {
-            return;
-        }
-
         Span<byte> parentKey = stackalloc byte[ChildrenKeyLength];
         ChildrenKey(parentRoot, parentKey);
         byte[]? parentEntry = ReadChildrenEntry(parentKey);
