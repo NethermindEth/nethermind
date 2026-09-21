@@ -1178,21 +1178,26 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void GroupTransactionsBySender_HoistsHeavyGroupsAndKeepsRestInBlockOrder()
+    public void GroupTransactionsBySender_HeadJobsFirstThenHoistsHeavyGroupsAndKeepsRestInBlockOrder()
     {
-        Block block = Build.A.Block.WithTransactions(
+        // One light sender fills the head window, so the jobs that follow it sit past it.
+        Transaction[] head = new Transaction[32];
+        for (uint nonce = 0; nonce < head.Length; nonce++) head[nonce] = GroupingTx(TestItem.PrivateKeyD, nonce, gasLimit: 100_000);
+        Block block = Build.A.Block.WithTransactions([
+            .. head,
             GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
             GroupingTx(TestItem.PrivateKeyB, nonce: 1, gasLimit: 100_000),
             GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 1_000_000),
-            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)]).TestObject;
 
         ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
         try
         {
-            Assert.That(groups.Count, Is.EqualTo(3));
-            Assert.That(groups[0].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "heavy group is hoisted to the front");
-            Assert.That(groups[1].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "light groups keep block order");
-            Assert.That(groups[2].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
+            Assert.That(groups.Count, Is.EqualTo(4));
+            Assert.That(groups[0].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressD), "the job holding the block's first transactions goes first");
+            Assert.That(groups[1].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "heavy group is hoisted ahead of the rest");
+            Assert.That(groups[2].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "light groups keep block order");
+            Assert.That(groups[3].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
         }
         finally
         {

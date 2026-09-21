@@ -986,12 +986,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        // Hoist heavy jobs to the front (heaviest first): they take the longest to warm and gain
-        // the most from lead time. The rest keep block order, which streams just ahead of the main
-        // thread on transaction-dense blocks. First-index tie-breaks keep equal-estimate ordering
-        // deterministic under the unstable span sort.
+        // Jobs holding the block's first transactions go first: the main thread starts on tx 0 the moment the
+        // block is enqueued and executes light transactions faster than a worker can be scheduled and open a
+        // scope, so without this those transactions run cold in nearly every block. Then heavy jobs (heaviest
+        // first): they take the longest to warm and gain the most from lead time. The rest keep block order,
+        // which streams just ahead of the main thread on transaction-dense blocks. First-index tie-breaks keep
+        // equal-estimate ordering deterministic under the unstable span sort.
         result.AsSpan().Sort(static (a, b) =>
         {
+            bool aHead = a.FirstIndex < HeadJobWindow;
+            bool bHead = b.FirstIndex < HeadJobWindow;
+            if (aHead != bHead) return aHead ? -1 : 1;
+            if (aHead) return a.FirstIndex.CompareTo(b.FirstIndex);
             if (a.IsHoisted != b.IsHoisted) return a.IsHoisted ? -1 : 1;
             if (a.IsHoisted)
             {
@@ -1054,6 +1060,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Total gas limit above which a multi-tx sender group is warmed per-tx in parallel instead of sequentially.</summary>
     private const ulong SplitSenderGroupGasThreshold = 4_000_000;
+
+    /// <summary>Jobs whose first transaction index is below this are dispatched before every other job.</summary>
+    private const int HeadJobWindow = 32;
 
     private static ulong TotalGasLimit(ArrayPoolList<(int Index, Transaction Tx)> group)
     {
