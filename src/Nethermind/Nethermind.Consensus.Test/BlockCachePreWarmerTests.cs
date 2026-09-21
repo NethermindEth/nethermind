@@ -91,6 +91,12 @@ public class BlockCachePreWarmerTests
             worldState.InsertCode(TestItem.AddressF, Keccak.Compute(sloadManyCode), sloadManyCode, Osaka.Instance);
             // Non-empty storage root, or reads short-circuit to defaults without touching the tree
             worldState.Set(new StorageCell(TestItem.AddressF, 0), (UInt256)1);
+            // The EIP-4788 ring buffer: BeaconBlockRootHandler hints nothing unless the account exists, an empty one is
+            // dropped on commit, and the cells are only read through the tree while the storage root is non-empty.
+            byte[] beaconRootsCode = [0x00];
+            worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0);
+            worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Keccak.Compute(beaconRootsCode), beaconRootsCode, Osaka.Instance);
+            worldState.Set(new StorageCell(Eip4788Constants.BeaconRootsAddress, 0), (UInt256)1);
             worldState.Commit(Osaka.Instance);
             worldState.CommitTree(0);
             _genesisStateRoot = worldState.StateRoot;
@@ -113,14 +119,14 @@ public class BlockCachePreWarmerTests
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
 
-        ConcurrentBag<IReadOnlyTxProcessorSource> created = [];
-        ConcurrentBag<IReadOnlyTxProcessorSource> disposed = [];
+        ConcurrentBag<IPrewarmerEnv> created = [];
+        ConcurrentBag<IPrewarmerEnv> disposed = [];
         DisposalTrackingPolicy trackingPolicy = new(envFactory, preBlockCaches, created, disposed);
 
-        ObjectPool<IReadOnlyTxProcessorSource> envPool = new DefaultObjectPoolProvider { MaximumRetained = 1 }.Create(trackingPolicy);
+        ObjectPool<IPrewarmerEnv> envPool = new DefaultObjectPoolProvider { MaximumRetained = 1 }.Create(trackingPolicy);
 
-        IReadOnlyTxProcessorSource first = envPool.Get();
-        IReadOnlyTxProcessorSource second = envPool.Get();
+        IPrewarmerEnv first = envPool.Get();
+        IPrewarmerEnv second = envPool.Get();
         Assert.That(created.Count, Is.EqualTo(2), "precondition: an empty pool must create one env per overlapping rental");
 
         envPool.Return(first);
@@ -143,8 +149,8 @@ public class BlockCachePreWarmerTests
     [Test]
     public async Task Dispose_WhenCalled_DisposesRetainedEnvsInPool()
     {
-        (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
-            ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(minPoolSize: 10);
+        (BlockCachePreWarmer preWarmer, ConcurrentBag<IPrewarmerEnv> created,
+            ConcurrentBag<IPrewarmerEnv> disposed) = CreatePreWarmer(minPoolSize: 10);
 
         await RunPreWarmCaches(preWarmer, BuildReactiveWarmBlock(), BuildParentHeader(), Osaka.Instance);
 
@@ -159,7 +165,7 @@ public class BlockCachePreWarmerTests
     [Test]
     public async Task PreWarmCaches_TinyBlock_SkipsReactiveWarming()
     {
-        (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created, _) = CreatePreWarmer(minPoolSize: 10);
+        (BlockCachePreWarmer preWarmer, ConcurrentBag<IPrewarmerEnv> created, _) = CreatePreWarmer(minPoolSize: 10);
         using (preWarmer)
         {
             await RunPreWarmCaches(preWarmer, BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
@@ -625,7 +631,7 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out _), Is.False);
 
         BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy validationPolicy = new(envFactory, preBlockCaches);
-        using IReadOnlyTxProcessorSource source = validationPolicy.Create();
+        using IPrewarmerEnv source = validationPolicy.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(BuildParentHeader());
 
         Assert.That(scope.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)777));
@@ -716,6 +722,189 @@ public class BlockCachePreWarmerTests
             Assert.That(account!.Nonce, Is.EqualTo(1UL), "the committed value replaces the pre-block one");
             Assert.That(preBlockCaches.StateCache.TryGetValue(in untouched, out _), Is.True, "entries the block did not touch carry over");
             Assert.That(preBlockCaches.ValidFor, Is.EqualTo(parent.StateRoot));
+        }
+    }
+
+    /// <summary>
+    /// The block-start system calls race the reactive warm of their own slots; warming them in the idle gap, for the
+    /// predicted next header, is the only way they are warm when the block arrives. The hints read state to decide
+    /// whether the system contract is deployed, and between blocks the main world state has no scope open, so this
+    /// also covers them being evaluated against the prewarmer env.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_WarmsTheBeaconRootCellsOfThePredictedTimestamp()
+    {
+        const ulong predictedTimestamp = 12;
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+
+        BlockHeader head = BuildParentHeader();
+        // No transactions: an idle node must still warm the system slots and the beneficiary for the predicted block.
+        Block delta = Build.A.Block
+            .WithNumber(head.Number + 1)
+            .WithGasLimit(30_000_000)
+            .WithParentHash(head.Hash!)
+            .WithTimestamp(predictedTimestamp)
+            .WithParentBeaconBlockRoot(TestItem.KeccakA)
+            .TestObject;
+        RunSpeculativePreWarm(preWarmer, head, Osaka.Instance, delta);
+
+        // https://eips.ethereum.org/EIPS/eip-4788 — timestamp % 8191 holds the timestamp, + 8191 the root.
+        StorageCell timestampCell = new(Eip4788Constants.BeaconRootsAddress, predictedTimestamp % Eip4788HistoryBufferLength);
+        StorageCell rootCell = new(Eip4788Constants.BeaconRootsAddress, predictedTimestamp % Eip4788HistoryBufferLength + Eip4788HistoryBufferLength);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(in timestampCell, out _), Is.True,
+                "the idle pass must warm the ring-buffer cell the block-start call writes the timestamp to");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(in rootCell, out _), Is.True,
+                "the idle pass must warm the ring-buffer cell the block-start call writes the root to");
+        }
+    }
+
+    /// <summary>
+    /// The hints are fixed for a predicted header, so re-evaluating them on every idle pass is pure waste; only a
+    /// missed slot moves the prediction, and with it the EIP-4788 cells the block-start call will read.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_ReEvaluatesTheSystemAccessListsOnlyWhenThePredictionMovesSlot()
+    {
+        CountingAccessListHint hint = new();
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
+
+        BlockHeader head = BuildParentHeader();
+        Block sameSlot = BuildEmptyChild(head, timestamp: 12);
+        Block missedSlot = BuildEmptyChild(head, timestamp: 24);
+
+        const int sameSlotPasses = 5;
+        int passes = 0;
+        // Stopping on the hint count would end the session the moment it reached two, which an evaluate-every-pass
+        // implementation reaches just as fast; stopping on the pass count runs both predicted slots to the end.
+        Assert.That(
+            RunIdleSession(preWarmer, head,
+                _ => (Interlocked.Increment(ref passes) <= sameSlotPasses ? sameSlot : missedSlot, Osaka.Instance),
+                () => Volatile.Read(ref passes) > sameSlotPasses * 2),
+            Is.True, "the idle session must keep running past the pass that moves the prediction");
+
+        Assert.That(hint.Calls, Is.EqualTo(2), "the passes sharing a predicted timestamp must reuse the first warm");
+    }
+
+    /// <summary>
+    /// A pass whose hints threw warmed nothing, and the address warmer swallows that failure; retiring the predicted
+    /// slot on it would leave the system cells cold for the rest of the gap.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_APassWhoseHintsFailed_DoesNotRetireThePredictedSlot()
+    {
+        CountingAccessListHint hint = new(failCalls: 1);
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
+
+        BlockHeader head = BuildParentHeader();
+        Block sameSlot = BuildEmptyChild(head, timestamp: 12);
+
+        int passes = 0;
+        Assert.That(
+            RunIdleSession(preWarmer, head,
+                _ =>
+                {
+                    Interlocked.Increment(ref passes);
+                    return (sameSlot, Osaka.Instance);
+                },
+                () => Volatile.Read(ref passes) > BlockCachePreWarmer.MaxSystemWarmAttempts * 2),
+            Is.True, "the idle session must keep running past the retry and the passes that reuse its warm");
+
+        Assert.That(hint.Calls, Is.EqualTo(2),
+            "a pass that never reached its hints must leave the slot open for exactly one retry");
+    }
+
+    /// <summary>
+    /// The inverse of the case above: a hint that never recovers must not charge a warm pass to every idle pass for
+    /// the rest of the gap.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_APassWhoseHintsKeepFailing_RetiresThePredictedSlotAfterAFewTries()
+    {
+        CountingAccessListHint hint = new(failCalls: int.MaxValue);
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
+
+        BlockHeader head = BuildParentHeader();
+        Block sameSlot = BuildEmptyChild(head, timestamp: 12);
+
+        int passes = 0;
+        Assert.That(
+            RunIdleSession(preWarmer, head,
+                _ =>
+                {
+                    Interlocked.Increment(ref passes);
+                    return (sameSlot, Osaka.Instance);
+                },
+                () => Volatile.Read(ref passes) > BlockCachePreWarmer.MaxSystemWarmAttempts * 2),
+            Is.True, "the idle session must keep running well past the attempt cap");
+
+        Assert.That(hint.Calls, Is.EqualTo(BlockCachePreWarmer.MaxSystemWarmAttempts),
+            "a slot whose hints keep failing must be retired rather than retried for the rest of the gap");
+    }
+
+    /// <summary>
+    /// The idle session only runs on a node with a gap to fill; the reactive pass must warm the same hints for the
+    /// block it is about to process, for every node that never had one.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WarmsTheSystemAccessListsOfTheBlockBeingProcessed()
+    {
+        CountingAccessListHint hint = new();
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
+
+        await RunPreWarmCaches(preWarmer, BuildReactiveWarmBlock(), BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(hint.Calls, Is.EqualTo(1), "the reactive pass must warm the system-contract slots of its own block");
+    }
+
+    private const ulong Eip4788HistoryBufferLength = 8191;
+
+    private static Block BuildEmptyChild(BlockHeader head, ulong timestamp) =>
+        Build.A.Block.WithGasLimit(30_000_000).WithParentHash(head.Hash!).WithTimestamp(timestamp).TestObject;
+
+    private static BlockCachePreWarmer CreatePreWarmerWithHints(ILifetimeScope hintScope) =>
+        new(hintScope.Resolve<PrewarmerEnvFactory>(),
+            new BlocksConfig { PreWarming = PreWarmMode.BlockAndMempool, PreWarmStateConcurrency = 2 },
+            hintScope.Resolve<NodeStorageCache>(),
+            hintScope.Resolve<PreBlockCaches>(),
+            LimboLogs.Instance);
+
+    /// <summary>Runs an idle session over <paramref name="nextDelta"/> until <paramref name="until"/> holds, then joins it.</summary>
+    /// <returns>Whether <paramref name="until"/> held before the wait timed out.</returns>
+    private static bool RunIdleSession(BlockCachePreWarmer preWarmer, BlockHeader head, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, Func<bool> until)
+    {
+        using CancellationTokenSource cancellation = new();
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, nextDelta, idlePassDelayMs: 1, cancellation.Token);
+        try
+        {
+            return SpinWait.SpinUntil(until, TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            cancellation.Cancel();
+            session.GetAwaiter().GetResult();
+        }
+    }
+
+    /// <summary>Counts how often the idle loop asks for the hints; the slots it names are irrelevant.</summary>
+    /// <param name="failCalls">How many of the first calls throw, standing in for a hint that cannot read its state.</param>
+    private sealed class CountingAccessListHint(int failCalls = 0) : IHasAccessList
+    {
+        private int _calls;
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        public AccessList GetAccessList(Block block, IReleaseSpec spec)
+        {
+            if (Interlocked.Increment(ref _calls) <= failCalls) throw new InvalidOperationException("hint state unreadable");
+
+            return new AccessList.Builder().AddAddress(TestItem.AddressD).Build();
         }
     }
 
@@ -1680,14 +1869,14 @@ public class BlockCachePreWarmerTests
         return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, logManager ?? LimboLogs.Instance);
     }
 
-    private (BlockCachePreWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created, ConcurrentBag<IReadOnlyTxProcessorSource> disposed) CreatePreWarmer(int minPoolSize, bool parallelExecutionBatchRead = true)
+    private (BlockCachePreWarmer, ConcurrentBag<IPrewarmerEnv> created, ConcurrentBag<IPrewarmerEnv> disposed) CreatePreWarmer(int minPoolSize, bool parallelExecutionBatchRead = true)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
 
-        ConcurrentBag<IReadOnlyTxProcessorSource> created = [];
-        ConcurrentBag<IReadOnlyTxProcessorSource> disposed = [];
+        ConcurrentBag<IPrewarmerEnv> created = [];
+        ConcurrentBag<IPrewarmerEnv> disposed = [];
         DisposalTrackingPolicy trackingPolicy = new(envFactory, preBlockCaches, created, disposed);
 
         BlockCachePreWarmer preWarmer = new(
@@ -1778,24 +1967,24 @@ public class BlockCachePreWarmerTests
         PreBlockCaches caches,
         ManualResetEventSlim observed,
         Action<bool> capture)
-        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+        : IPooledObjectPolicy<IPrewarmerEnv>
     {
         private readonly ManualResetEventSlim _observed = observed;
         private readonly Action<bool> _capture = capture;
         private int _captured;
 
-        public IReadOnlyTxProcessorSource Create()
+        public IPrewarmerEnv Create()
         {
-            IReadOnlyTxProcessorSource inner = factory.Create(caches);
+            IPrewarmerEnv inner = factory.Create(caches);
             return new CapturingEnv(inner, this);
         }
 
-        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+        public bool Return(IPrewarmerEnv obj) => true;
 
         private sealed class CapturingEnv(
-            IReadOnlyTxProcessorSource inner,
+            IPrewarmerEnv inner,
             FlagCapturingPolicy owner)
-            : IReadOnlyTxProcessorSource
+            : IPrewarmerEnv
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
             {
@@ -1808,6 +1997,8 @@ public class BlockCachePreWarmerTests
                 return inner.Build(baseBlock);
             }
 
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
+
             public void Dispose() => inner.Dispose();
         }
     }
@@ -1819,18 +2010,18 @@ public class BlockCachePreWarmerTests
     private sealed class DisposalTrackingPolicy(
         PrewarmerEnvFactory factory,
         PreBlockCaches caches,
-        ConcurrentBag<IReadOnlyTxProcessorSource> created,
-        ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
-        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+        ConcurrentBag<IPrewarmerEnv> created,
+        ConcurrentBag<IPrewarmerEnv> disposed)
+        : IPooledObjectPolicy<IPrewarmerEnv>
     {
-        public IReadOnlyTxProcessorSource Create()
+        public IPrewarmerEnv Create()
         {
             TrackingEnv env = new(factory.Create(caches), disposed);
             created.Add(env);
             return env;
         }
 
-        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+        public bool Return(IPrewarmerEnv obj) => true;
 
         /// <summary>
         /// Wraps an inner env and records itself in <paramref name="disposed"/> when
@@ -1838,12 +2029,14 @@ public class BlockCachePreWarmerTests
         /// disposed by pool eviction from those still retained.
         /// </summary>
         private sealed class TrackingEnv(
-            IReadOnlyTxProcessorSource inner,
-            ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
-            : IReadOnlyTxProcessorSource
+            IPrewarmerEnv inner,
+            ConcurrentBag<IPrewarmerEnv> disposed)
+            : IPrewarmerEnv
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
                 inner.Build(baseBlock);
+
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
 
             public void Dispose()
             {
@@ -1857,21 +2050,21 @@ public class BlockCachePreWarmerTests
     private sealed class DiscoveryDetectingPolicy(
         PrewarmerEnvFactory factory,
         PreBlockCaches caches)
-        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+        : IPooledObjectPolicy<IPrewarmerEnv>
     {
         private readonly PreBlockCaches _caches = caches;
         private int _discoveryBuilds;
 
         public int DiscoveryBuilds => Volatile.Read(ref _discoveryBuilds);
 
-        public IReadOnlyTxProcessorSource Create() => new DetectingEnv(factory.Create(_caches), this);
+        public IPrewarmerEnv Create() => new DetectingEnv(factory.Create(_caches), this);
 
-        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+        public bool Return(IPrewarmerEnv obj) => true;
 
         private sealed class DetectingEnv(
-            IReadOnlyTxProcessorSource inner,
+            IPrewarmerEnv inner,
             DiscoveryDetectingPolicy owner)
-            : IReadOnlyTxProcessorSource
+            : IPrewarmerEnv
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
             {
@@ -1879,11 +2072,13 @@ public class BlockCachePreWarmerTests
                 return inner.Build(baseBlock);
             }
 
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
+
             public void Dispose() => inner.Dispose();
         }
     }
 
-    private sealed class ThrowingBuildPolicy : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    private sealed class ThrowingBuildPolicy : IPooledObjectPolicy<IPrewarmerEnv>
     {
         private int _created;
         private int _returned;
@@ -1891,7 +2086,7 @@ public class BlockCachePreWarmerTests
         public int Created => Volatile.Read(ref _created);
         public int Returned => Volatile.Read(ref _returned);
 
-        public IReadOnlyTxProcessorSource Create()
+        public IPrewarmerEnv Create()
         {
             Interlocked.Increment(ref _created);
             return new ThrowingBuildEnv();
@@ -1902,16 +2097,18 @@ public class BlockCachePreWarmerTests
         /// twice would otherwise increment <see cref="Returned"/> twice against a single create,
         /// failing the <c>Returned == Created</c> assertion on timing-dependent pool hits.
         /// </remarks>
-        public bool Return(IReadOnlyTxProcessorSource obj)
+        public bool Return(IPrewarmerEnv obj)
         {
             Interlocked.Increment(ref _returned);
             return false;
         }
 
-        private sealed class ThrowingBuildEnv : IReadOnlyTxProcessorSource
+        private sealed class ThrowingBuildEnv : IPrewarmerEnv
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
                 throw new InvalidOperationException("scope build failure");
+
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => default;
 
             public void Dispose() { }
         }
@@ -1999,19 +2196,21 @@ public class BlockCachePreWarmerTests
         PreBlockCaches caches,
         ManualResetEventSlim gate,
         Action onWarmup)
-        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+        : IPooledObjectPolicy<IPrewarmerEnv>
     {
-        public IReadOnlyTxProcessorSource Create() => new CountingEnv(factory.Create(caches), gate, onWarmup);
+        public IPrewarmerEnv Create() => new CountingEnv(factory.Create(caches), gate, onWarmup);
 
-        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+        public bool Return(IPrewarmerEnv obj) => true;
 
-        private sealed class CountingEnv(IReadOnlyTxProcessorSource inner, ManualResetEventSlim gate, Action onWarmup) : IReadOnlyTxProcessorSource
+        private sealed class CountingEnv(IPrewarmerEnv inner, ManualResetEventSlim gate, Action onWarmup) : IPrewarmerEnv
         {
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
             {
                 gate.Wait();
                 return new CountingScope(inner.Build(baseBlock), onWarmup);
             }
+
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
 
             public void Dispose() => inner.Dispose();
         }
@@ -2051,7 +2250,7 @@ public class BlockCachePreWarmerTests
         Action onTxScope,
         Action onWarmup,
         Action? onTxWarmEnvReturn = null)
-        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+        : IPooledObjectPolicy<IPrewarmerEnv>
     {
         private readonly ManualResetEventSlim _gate = gate;
         private readonly CountdownEvent _txScopesInFlight = txScopesInFlight;
@@ -2059,9 +2258,9 @@ public class BlockCachePreWarmerTests
         private readonly Action _onWarmup = onWarmup;
         private readonly Action? _onTxWarmEnvReturn = onTxWarmEnvReturn;
 
-        public IReadOnlyTxProcessorSource Create() => new GateEnv(factory.Create(caches), this);
+        public IPrewarmerEnv Create() => new GateEnv(factory.Create(caches), this);
 
-        public bool Return(IReadOnlyTxProcessorSource obj)
+        public bool Return(IPrewarmerEnv obj)
         {
             // The address warmer shares the pool; count only envs that built a tx-warm scope,
             // and clear the mark so pooled reuse by another section does not double-count.
@@ -2073,10 +2272,11 @@ public class BlockCachePreWarmerTests
             return true;
         }
 
-        private sealed class GateEnv(IReadOnlyTxProcessorSource inner, TxWarmGatePolicy owner) : IReadOnlyTxProcessorSource
+        private sealed class GateEnv(IPrewarmerEnv inner, TxWarmGatePolicy owner) : IPrewarmerEnv
         {
             public bool BuiltTxWarmScope;
             public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => new GateScope(inner.Build(baseBlock), owner, this);
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
             public void Dispose() => inner.Dispose();
         }
 

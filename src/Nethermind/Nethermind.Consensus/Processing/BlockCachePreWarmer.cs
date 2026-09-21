@@ -47,7 +47,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
     private readonly int _speculativeConcurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
-    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
+    private readonly ObjectPool<IPrewarmerEnv> _envPool;
     private readonly ILogger _logger;
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
@@ -58,6 +58,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     internal const int MaxDiscoveredCells = 8192;
     // Iterative discovery is substantially costlier than ordinary warmup; reserve it for exceptional transactions.
     private const ulong StorageDiscoveryGasThreshold = 10_000_000;
+    // How many idle passes may try to warm one predicted slot's system hints before the slot is left cold.
+    internal const int MaxSystemWarmAttempts = 3;
 
     private static readonly IComparer<StorageCell> _cellAddressComparer =
         Comparer<StorageCell>.Create(static (left, right) => left.Address.CompareTo(right.Address));
@@ -76,15 +78,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private WarmMarker? _warmMarker;
 
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
-    private readonly IHasAccessList[] _systemAccessLists;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
-        ILogManager logManager,
-        IHasAccessList[]? systemAccessLists = null
+        ILogManager logManager
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
@@ -93,21 +93,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         nodeStorageCache,
         preBlockCaches,
         logManager,
-        blocksConfig.MempoolPreWarmConcurrency,
-        systemAccessLists) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        blocksConfig.MempoolPreWarmConcurrency) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
-        IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
+        IPooledObjectPolicy<IPrewarmerEnv> poolPolicy,
         int minPoolSize,
         int concurrency,
         bool parallelExecutionBatchRead,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
-        int speculativeConcurrency = 0,
-        IHasAccessList[]? systemAccessLists = null)
+        int speculativeConcurrency = 0)
     {
-        _systemAccessLists = systemAccessLists ?? [];
         _concurrencyLevel = concurrency == 0 ? Environment.ProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -158,14 +155,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         if (skipReactiveWarming) return Task.CompletedTask;
-        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, _systemAccessLists);
+        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
     }
 
-    private Task WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    private Task WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken)
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
-        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, _concurrencyLevel, cancellationToken, systemAccessLists);
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, _concurrencyLevel, cancellationToken, warmSystemAccessLists: true);
         // A block access list already enumerates the block's reads; discovery adds nothing.
         List<(int Index, Transaction Tx)>? discoveryCandidates = addressWarmer.HasBal
             ? null
@@ -378,7 +375,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (MainThreadTxIndex >= candidate.Index) return;
         }
 
-        IReadOnlyTxProcessorSource env = _envPool.Get();
+        IPrewarmerEnv env = _envPool.Get();
         try
         {
             using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(round.RemainingCaptureCells);
@@ -459,7 +456,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // Reads through a prewarmer scope populate PreBlockCaches, so plain parallel reads are the warm-up.
             Parallel.ForEach(Partitioner.Create(0, cellCount, rangeSize), parallelOptions, range =>
             {
-                IReadOnlyTxProcessorSource env = _envPool.Get();
+                IPrewarmerEnv env = _envPool.Get();
                 try
                 {
                     using IReadOnlyTxProcessingScope scope = env.Build(parent);
@@ -502,10 +499,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)
+    /// <returns>Whether the system-contract hints were warmed; false when they were requested but the pass did not reach them.</returns>
+    private bool WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, bool warmSystemAccessLists, CancellationToken token)
     {
-        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, _speculativeConcurrencyLevel, token, systemAccessLists: default);
-        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists);
+        // Run inline rather than through the pool: this pass is going to block on the warmer anyway, and the block
+        // that ends the gap joins this thread, so a queued item would put thread-pool dispatch latency on its path.
+        ((IThreadPoolWorkItem)addressWarmer).Execute();
         PreWarmCachesParallel(
             blockState,
             delta,
@@ -514,9 +514,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             isPreparation: true,
             transactionCount: delta.Transactions.Length,
             cancellationToken: token);
+
+        // PreWarmCachesParallel joins the address warmer before returning, so the flag is settled here.
+        return addressWarmer.SystemAccessListsWarmed;
     }
 
-    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, int maxDegreeOfParallelism, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists)
     {
         BlockState blockState = new(this, block, parent, spec, speculativelyWarmed);
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
@@ -525,11 +528,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
         ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
-        AddressWarmer addressWarmer = new(parallelOptions, block, parent, spec, systemAccessLists, this, bal);
+        AddressWarmer addressWarmer = new(parallelOptions, block, parent, spec, warmSystemAccessLists, this, bal);
         return (blockState, parallelOptions, addressWarmer);
     }
 
-    public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
+    public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
     {
         if (_preBlockCaches is null || !ShouldPreWarm(spec) || _concurrencyLevel <= 1) return Task.CompletedTask;
         if (head.Hash is not Hash256 headHash) return Task.CompletedTask;
@@ -559,28 +562,49 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken token)
+    private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken token)
     {
         // _warmedTxHashes is reused across sessions (cleared at session start); only the small marker is per-session.
         WarmMarker marker = new(headHash, spec, _warmedTxHashes);
         try
         {
             int delay = Math.Max(1, idlePassDelayMs);
+            // The EIP-4788 ring-buffer cells are indexed by the predicted timestamp, so the system warm is redone only
+            // when the prediction moves to another slot (a missed slot), not on every pass.
+            ulong? warmedSystemTimestamp = null;
+            ulong attemptedSystemTimestamp = 0;
+            int systemWarmAttempts = 0;
             while (!token.IsCancellationRequested)
             {
-                Block? delta = nextDelta(token);
+                (Block Block, IReleaseSpec Spec)? next = nextDelta(token);
                 if (token.IsCancellationRequested) break;
 
-                if (delta is not null && delta.Transactions.Length > 0)
+                if (next is (Block delta, IReleaseSpec deltaSpec))
                 {
-                    WarmDeltaSync(delta, head, spec, token);
-                    // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
-                    if (token.IsCancellationRequested) break;
-                    foreach (Transaction tx in delta.Transactions)
+                    bool warmSystemAccessLists = warmedSystemTimestamp != delta.Timestamp;
+                    // An empty delta still warms the system-contract slots and the beneficiary for the predicted block.
+                    if (warmSystemAccessLists || delta.Transactions.Length > 0)
                     {
-                        if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
+                        bool systemWarmed = WarmDeltaSync(delta, head, deltaSpec, warmSystemAccessLists, token);
+                        // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
+                        if (token.IsCancellationRequested) break;
+                        if (warmSystemAccessLists)
+                        {
+                            systemWarmAttempts = attemptedSystemTimestamp == delta.Timestamp ? systemWarmAttempts + 1 : 1;
+                            attemptedSystemTimestamp = delta.Timestamp;
+                            // Retire the slot only once its hints actually landed, since re-warming on the next pass is
+                            // cheaper than leaving the slot cold for the rest of the gap - but give up after a few
+                            // tries, so a hint that never recovers cannot charge a warm pass to every pass in the gap.
+                            if (systemWarmed || systemWarmAttempts >= MaxSystemWarmAttempts) warmedSystemTimestamp = delta.Timestamp;
+                        }
+                        foreach (Transaction tx in delta.Transactions)
+                        {
+                            if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
+                        }
+                        // A fork activating inside the gap moves the predicted spec; the marker must name the one warmed.
+                        if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
+                        Volatile.Write(ref _warmMarker, marker);
                     }
-                    Volatile.Write(ref _warmMarker, marker);
                 }
 
                 // Rate-limit every pass so a churning mempool can't keep tx selection continuously in flight.
@@ -1039,35 +1063,26 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, bool warmSystemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
+        private readonly IReleaseSpec Spec = spec;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
         private readonly ReadOnlyBlockAccessList? Bal = bal;
-        private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly bool WarmWithdrawals = bal is null && spec.WithdrawalsEnabled && block.Withdrawals?.Length > 0;
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
+        private bool _systemAccessListsWarmed;
 
         public bool HasBal => Bal is not null;
+
+        /// <summary>Whether the system-contract hints were evaluated and warmed; false if the pass was cancelled or faulted.</summary>
+        /// <remarks>Only meaningful after <see cref="Wait"/>, which orders this read after the warming thread's write.</remarks>
+        public bool SystemAccessListsWarmed => Volatile.Read(ref _systemAccessListsWarmed);
 
         public void Wait() => _doneEvent.Wait();
 
         public void Dispose() => _doneEvent.Dispose();
-
-        private static ArrayPoolList<AccessList>? GetAccessLists(Block block, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists)
-        {
-            if (systemAccessLists.Length == 0) return null;
-
-            ArrayPoolList<AccessList> list = new(systemAccessLists.Length);
-
-            foreach (IHasAccessList systemAccessList in systemAccessLists)
-            {
-                list.Add(systemAccessList.GetAccessList(block, spec));
-            }
-
-            return list;
-        }
 
         void IThreadPoolWorkItem.Execute()
         {
@@ -1088,19 +1103,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         private void WarmupAddresses(ParallelOptions parallelOptions, Block block)
         {
-            if (parallelOptions.CancellationToken.IsCancellationRequested)
-            {
-                SystemTxAccessLists?.Dispose();
-                return;
-            }
+            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
-            ObjectPool<IReadOnlyTxProcessorSource> envPool = PreWarmer._envPool;
+            ObjectPool<IPrewarmerEnv> envPool = PreWarmer._envPool;
             try
             {
                 Address? beneficiary = block.Header.GasBeneficiary;
-                if (SystemTxAccessLists is not null || beneficiary is not null || WarmWithdrawals)
+                if (warmSystemAccessLists || beneficiary is not null || WarmWithdrawals)
                 {
-                    IReadOnlyTxProcessorSource env = envPool.Get();
+                    IPrewarmerEnv env = envPool.Get();
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.Build(parent);
@@ -1119,18 +1130,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             }
                         }
 
-                        if (SystemTxAccessLists is not null)
+                        if (warmSystemAccessLists)
                         {
-                            foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                            // Evaluated here rather than up front: the hints read state, and the only world state with an
+                            // open scope on the speculative path is this env's own.
+                            if (WarmupSystemAccessLists(env.SystemAccessLists, scope.WorldState))
                             {
-                                scope.WorldState.WarmUp(list);
+                                Volatile.Write(ref _systemAccessListsWarmed, true);
                             }
                         }
                     }
                     finally
                     {
                         envPool.Return(env);
-                        SystemTxAccessLists?.Dispose();
                     }
                 }
 
@@ -1239,6 +1251,40 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             return false;
         }
 
+        /// <summary>Warms every system-contract hint.</summary>
+        /// <returns>Whether all of them landed.</returns>
+        /// <remarks>
+        /// Tolerates a pruned root the same way <see cref="WarmupSender"/> does: losing a hint costs a cold read, it is
+        /// not a reason to abandon the rest of the pass. The hints are plugin-supplied, so any other failure is
+        /// contained here as well rather than costing the pass its transaction warming too.
+        /// </remarks>
+        private bool WarmupSystemAccessLists(ReadOnlySpan<IHasAccessList> systemAccessLists, IWorldState worldState)
+        {
+            bool warmed = true;
+            CancellationToken token = parallelOptions.CancellationToken;
+            foreach (IHasAccessList systemAccessList in systemAccessLists)
+            {
+                // The hints are plugin-supplied and read state, so bound them on the token the way the transaction
+                // and withdrawal loops are: this warmer is joined on the way into block processing.
+                if (token.IsCancellationRequested) return false;
+                try
+                {
+                    if (systemAccessList.GetAccessList(Block, Spec) is AccessList list) worldState.WarmUp(list, token);
+                }
+                catch (MissingTrieNodeException)
+                {
+                    warmed = false;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    PreWarmer._logger.DebugError($"Error pre-warming the {systemAccessList.GetType().Name} access list", ex);
+                    warmed = false;
+                }
+            }
+
+            return warmed;
+        }
+
         private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
         {
             try
@@ -1259,16 +1305,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private readonly struct WarmingState<TPayload>(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent) : IDisposable
+    private readonly struct WarmingState<TPayload>(ObjectPool<IPrewarmerEnv> envPool, TPayload payload, BlockHeader parent) : IDisposable
     {
         public static Action<WarmingState<TPayload>> FinallyAction { get; } = DisposeThreadState;
 
-        private readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
-        private readonly IReadOnlyTxProcessorSource? Env;
+        private readonly ObjectPool<IPrewarmerEnv> EnvPool = envPool;
+        private readonly IPrewarmerEnv? Env;
         public readonly TPayload Payload = payload;
         public readonly IReadOnlyTxProcessingScope? Scope;
 
-        private WarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, parent)
+        private WarmingState(ObjectPool<IPrewarmerEnv> envPool, TPayload payload, BlockHeader parent, IPrewarmerEnv env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, parent)
         {
             Env = env;
             Scope = scope;
@@ -1276,7 +1322,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         public WarmingState<TPayload> InitThreadState()
         {
-            IReadOnlyTxProcessorSource env = EnvPool.Get();
+            IPrewarmerEnv env = EnvPool.Get();
             try
             {
                 return new(EnvPool, Payload, parent, env, scope: env.Build(parent));
@@ -1301,18 +1347,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <summary>
-    /// Pool policy for <see cref="IReadOnlyTxProcessorSource"/> envs used by the prewarmer.
+    /// Pool policy for the <see cref="IPrewarmerEnv"/> instances used by the prewarmer.
     /// </summary>
-    internal class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches _preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    internal class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches _preBlockCaches) : IPooledObjectPolicy<IPrewarmerEnv>
     {
-        public IReadOnlyTxProcessorSource Create() => envFactory.Create(_preBlockCaches);
+        public IPrewarmerEnv Create() => envFactory.Create(_preBlockCaches);
 
         /// <remarks>
         /// Always returns true — the env is valid for reuse. The pool that owns this policy
         /// must call <see cref="IDisposable.Dispose"/> on any item it cannot retain; failing
         /// to do so leaks resources held by the env for the lifetime of the process.
         /// </remarks>
-        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+        public bool Return(IPrewarmerEnv obj) => true;
     }
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
@@ -1329,7 +1375,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly BlockState BlockState = blockState;
         public readonly ArrayPoolList<WarmupJob> Jobs = jobs;
         public readonly CancellationToken Token = token;
-        public readonly IReadOnlyTxProcessorSource Env = blockState.PreWarmer._envPool.Get();
+        public readonly IPrewarmerEnv Env = blockState.PreWarmer._envPool.Get();
 
         public void ReturnEnv() => BlockState.PreWarmer._envPool.Return(Env);
     }
