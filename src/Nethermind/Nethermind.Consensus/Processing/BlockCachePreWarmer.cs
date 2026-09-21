@@ -1258,7 +1258,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly BlockCachePreWarmer PreWarmer;
         public readonly Func<TxWarmupWorker> RentWorker;
         private readonly Lock _parkedLock = new();
-        private readonly ManualResetEventSlim _helpersDone = new(initialState: false);
+        // Monitor rather than an event: the last helper out pulses under the gate and the join checks the count
+        // under it too, so there is no window for a lost wake and nothing to dispose.
+        private readonly object _helpersGate = new();
         private TxWarmupWorker? _parked;
         private int _inUse;
 
@@ -1280,7 +1282,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public WarmupQueue(BlockCachePreWarmer preWarmer)
         {
             PreWarmer = preWarmer;
-            RentWorker = Rent;
+            RentWorker = RentAttached;
         }
 
         /// <summary><c>true</c> when the caller now owns the queue; it is handed back by <see cref="Unload"/>.</summary>
@@ -1400,9 +1402,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// Queues a helper for each run that is ready with no worker free for it, never beyond the degree the fan-out
         /// was given. The fan-out's own workers are parked as soon as they run dry and its range is spent once they
         /// have, so this is what gives a wave of late senders its parallelism back. A helper is a parked worker when
-        /// there is one, and is parked again as soon as nothing is ready, so no thread waits on the pool that
-        /// recovery needs.
+        /// there is one, rents its env on its own thread rather than the recruiter's, and is parked again as soon as
+        /// nothing is ready, so no thread waits on the pool that recovery needs.
         /// </summary>
+        /// <remarks>
+        /// The block joins helpers on <c>_helpers</c>, so the count is only raised once the helper exists and is
+        /// lowered again if it cannot be queued: a count left high would hold the join, and with it the processing
+        /// thread at the top of the next block, forever.
+        /// </remarks>
         public void Recruit(int wanted)
         {
             while (wanted-- > 0)
@@ -1413,28 +1420,47 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     return;
                 }
 
+                TxWarmupWorker helper = Rent();
                 Interlocked.Increment(ref _helpers);
-                ThreadPool.UnsafeQueueUserWorkItem(Rent(), preferLocal: false);
+                try
+                {
+                    ThreadPool.UnsafeQueueUserWorkItem(helper, preferLocal: false);
+                }
+                catch
+                {
+                    Park(helper);
+                    HelperExited();
+                    throw;
+                }
             }
         }
 
         public void HelperExited()
         {
             Interlocked.Decrement(ref _active);
-            if (Interlocked.Decrement(ref _helpers) == 0) _helpersDone.Set();
+            if (Interlocked.Decrement(ref _helpers) != 0) return;
+
+            lock (_helpersGate)
+            {
+                Monitor.PulseAll(_helpersGate);
+            }
         }
 
         /// <summary>
-        /// Joins the helpers, which are pool items outside the fan-out's own join. The reset precedes the re-check, so
-        /// a helper that exits in between sets the event after the reset and no exit is missed.
+        /// Joins the helpers, which are pool items outside the fan-out's own join. The count is checked under the gate
+        /// the last helper pulses, and <see cref="Monitor.Wait(object)"/> releases it atomically, so the pulse cannot
+        /// fall between the check and the wait.
         /// </summary>
         private void WaitForHelpers()
         {
-            while (Volatile.Read(ref _helpers) > 0)
+            if (Volatile.Read(ref _helpers) == 0) return;
+
+            lock (_helpersGate)
             {
-                _helpersDone.Reset();
-                if (Volatile.Read(ref _helpers) == 0) return;
-                _helpersDone.Wait();
+                while (Volatile.Read(ref _helpers) > 0)
+                {
+                    Monitor.Wait(_helpersGate);
+                }
             }
         }
 
@@ -1492,7 +1518,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             return first;
         }
 
-        /// <summary>A parked worker with an env rented for the loaded block, or a new one when none is parked.</summary>
+        /// <summary>A parked worker, or a new one when none is parked; it has no env yet.</summary>
         private TxWarmupWorker Rent()
         {
             TxWarmupWorker? worker;
@@ -1502,7 +1528,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (worker is not null) _parked = worker.NextParked;
             }
 
-            worker ??= new TxWarmupWorker(this);
+            return worker ?? new TxWarmupWorker(this);
+        }
+
+        /// <summary>The fan-out's init: runs on the worker's own thread, so the env is rented there.</summary>
+        private TxWarmupWorker RentAttached()
+        {
+            TxWarmupWorker worker = Rent();
             worker.Attach();
             return worker;
         }
@@ -1526,7 +1558,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             _parked = null;
-            _helpersDone.Dispose();
         }
     }
 
@@ -1541,50 +1572,73 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private readonly WarmupQueue _queue = queue;
         // Reused for every late run this worker claims, so claiming allocates nothing per job.
         private readonly ArrayPoolList<(int Index, Transaction Tx)> _run = new(4);
-        private IReadOnlyTxProcessorSource _env = null!;
+        private IReadOnlyTxProcessorSource? _env;
 
         /// <summary>Link of the queue's parked list; owned by the queue.</summary>
         public TxWarmupWorker? NextParked;
 
         public void Attach() => _env = _queue.PreWarmer._envPool.Get();
 
+        /// <summary>Returns the env if one was rented; a helper whose rent threw parks without one.</summary>
         public void Detach()
         {
-            _queue.PreWarmer._envPool.Return(_env);
-            _env = null!;
+            IReadOnlyTxProcessorSource? env = _env;
+            if (env is null) return;
+            _env = null;
+            _queue.PreWarmer._envPool.Return(env);
         }
 
         public void Park() => _queue.Park(this);
 
+        /// <summary>One of the fan-out's own workers; it counts against the degree from here until it leaves, however it leaves.</summary>
         public void Drain()
         {
             WarmupQueue queue = _queue;
-            CancellationToken token = queue.Token;
             queue.Enter();
-            while (!token.IsCancellationRequested && queue.TryTakeJob(out WarmupJob job))
+            try
             {
-                Warm(job.Transactions.AsSpan(), job.LastIndex);
-            }
+                CancellationToken token = queue.Token;
+                while (!token.IsCancellationRequested && queue.TryTakeJob(out WarmupJob job))
+                {
+                    Warm(job.Transactions.AsSpan(), job.LastIndex);
+                }
 
-            bool waiter = false;
-            while (!token.IsCancellationRequested)
+                bool waiter = false;
+                while (!token.IsCancellationRequested)
+                {
+                    if (WarmLate()) continue;
+
+                    // Nothing is ready: one worker stays for stragglers, the rest are parked rather than left waiting
+                    // on the pool while the recovery they would wait for needs it.
+                    if (!waiter && !(waiter = queue.TryBecomeWaiter())) return;
+                    if (!queue.WaitForArrival()) return;
+                }
+            }
+            finally
             {
-                if (WarmLate()) continue;
-
-                // Nothing is ready: one worker stays for stragglers, the rest are parked rather than left waiting
-                // on the pool while the recovery they would wait for needs it.
-                if (!waiter && !(waiter = queue.TryBecomeWaiter())) break;
-                if (!queue.WaitForArrival()) break;
+                queue.Leave();
             }
-
-            queue.Leave();
         }
 
+        /// <summary>
+        /// A helper recruited for a wave of late senders. Nothing may escape a pool work item, and the block joins
+        /// helpers on the count <see cref="WarmupQueue.HelperExited"/> lowers, so the env is rented and returned
+        /// inside the guarded region and the count is lowered last, whatever happened before.
+        /// </summary>
         public void Execute()
         {
             try
             {
-                while (!_queue.Token.IsCancellationRequested && WarmLate()) { }
+                try
+                {
+                    Attach();
+                    CancellationToken token = _queue.Token;
+                    while (!token.IsCancellationRequested && WarmLate()) { }
+                }
+                finally
+                {
+                    Park();
+                }
             }
             catch (OperationCanceledException)
             {
@@ -1596,9 +1650,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
             finally
             {
-                // What the fan-out's loop finalizer does for its own workers: the env goes back and the helper is
-                // counted out however it ended, because the block joins helpers on that count.
-                Park();
                 _queue.HelperExited();
             }
         }
@@ -1626,7 +1677,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             CancellationToken token = _queue.Token;
             // Each job builds and disposes its own scope, so no speculative state crosses jobs.
-            using IReadOnlyTxProcessingScope scope = _env.Build(blockState.Parent);
+            using IReadOnlyTxProcessingScope scope = _env!.Build(blockState.Parent);
             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
             scope.TransactionProcessor.SetBlockExecutionContext(context);
 
