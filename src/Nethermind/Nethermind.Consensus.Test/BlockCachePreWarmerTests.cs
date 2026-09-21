@@ -1216,6 +1216,50 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    /// <summary>
+    /// A candidate whose sender is still pending does not hold the round: the cells the ready candidates discover are
+    /// warmed while it waits, and it is discovered once its sender lands.
+    /// </summary>
+    [Test]
+    public void DiscoverAndWarmStorage_APendingSenderDoesNotHoldBackTheReadyCandidates()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction ready = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction pending = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressF)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Address sender = pending.SenderAddress!;
+            pending.SenderAddress = null;
+            Block block = Build.A.Block.WithTransactions(ready, pending).WithGasLimit(30_000_000).TestObject;
+
+            using CancellationTokenSource cts = new();
+            Task discovery = Task.Run(() =>
+                preWarmer.DiscoverAndWarmStorage([(0, ready), (1, pending)], block, BuildParentHeader(), Osaka.Instance, cts.Token));
+
+            try
+            {
+                Assert.That(SpinWait.SpinUntil(() => preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), DiscoveryTimeout), Is.True,
+                    "the ready candidate's reads must be warmed while the other is still waiting for its sender");
+                // Pending is the handshake as well: the sender below lands with the wait demonstrably in progress.
+                Assert.That(discovery.Wait(PendingProbe), Is.False, "discovery must wait for the pending sender, not drop the candidate");
+
+                pending.SenderAddress = sender;
+
+                Assert.That(discovery.Wait(DiscoveryTimeout), Is.True, "the wait must end when the sender lands");
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressF, 0), out _), Is.True,
+                    "the candidate must be discovered once its sender arrives");
+            }
+            finally
+            {
+                cts.Cancel();
+                discovery.Wait(DiscoveryTimeout);
+            }
+        }
+    }
+
     [Test]
     public void DiscoverAndWarmStorage_EnforcesCellBudgetBeforeWarming()
     {
