@@ -31,7 +31,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly IPbtDbManager _manager;
     private readonly IPbtResourcePool _resourcePool;
     private readonly IPbtConfig _config;
-    private readonly PbtTrieNodeCache? _trieNodeCache;
+    private readonly IPbtTrieNodeCache _trieNodeCache;
     private readonly bool _recordDetailedMetrics;
     private readonly KnownHeadersScopeProvider _worldState;
     private bool _isDisposed;
@@ -43,8 +43,8 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         IMetricsConfig metricsConfig,
         IPbtConfig config,
         IStateHeaderProvider stateHeaderProvider,
-        ILogManager? logManager = null,
-        PbtTrieNodeCache? trieNodeCache = null)
+        IPbtTrieNodeCache trieNodeCache,
+        ILogManager? logManager = null)
     {
         _logManager = logManager ?? NullLogManager.Instance;
         _config = config;

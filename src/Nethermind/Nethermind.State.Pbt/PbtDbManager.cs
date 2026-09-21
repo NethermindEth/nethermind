@@ -22,7 +22,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private const int MaxInFlightCompactionJobs = 32;
     private static readonly TimeSpan CacheSweepInterval = TimeSpan.FromSeconds(15);
 
-    private readonly PbtTrieNodeCache? _trieNodeCache;
+    private readonly IPbtTrieNodeCache _trieNodeCache;
     private readonly PbtSnapshotRepository _repository;
     private readonly PbtPersistenceCoordinator _coordinator;
     private readonly IPbtPersistence _persistence;
@@ -63,7 +63,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         ILogManager logManager,
         IPbtConfig config,
         IMetricsConfig metricsConfig,
-        PbtTrieNodeCache? trieNodeCache = null)
+        IPbtTrieNodeCache trieNodeCache)
     {
         _trieNodeCache = trieNodeCache;
         _repository = repository;
@@ -193,8 +193,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 transientResource.ReleaseLease();
                 return;
             }
-            if (_trieNodeCache is null) transientResource.ReleaseLease();
-            else if (!EnqueueOrStall(_trieCachePopulationJobs.Writer, transientResource, "trie cache population")) transientResource.ReleaseLease();
+            if (!EnqueueOrStall(_trieCachePopulationJobs.Writer, transientResource, "trie cache population")) transientResource.ReleaseLease();
             if (_logger.IsDebug) _logger.Debug($"Admitted Pbt snapshot {snapshot.From} -> {committed}: persisted={persisted}, snapshots={_repository.Count}, compactedSnapshots={_repository.CompactedCount}, cachedBundles={_readOnlyBundleCache.Count}, managedBytes={GC.GetTotalMemory(false)}");
 
             EnqueueOrStall(_compactionJobs.Writer, committed, "compaction/persistence");
@@ -301,7 +300,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             {
                 try
                 {
-                    _trieNodeCache!.Add(transientResource);
+                    _trieNodeCache.Add(transientResource);
                 }
                 catch (Exception e)
                 {

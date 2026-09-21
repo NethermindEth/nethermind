@@ -382,7 +382,7 @@ public class PbtDbManagerTests
         PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
             repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         PbtDbManager manager = new(repository, coordinator, persistence, pool,
-            new PbtSnapshotCompactor(pool, schedule, repository, config), exitSource, logs, config, new MetricsConfig());
+            new PbtSnapshotCompactor(pool, schedule, repository, config), exitSource, logs, config, new MetricsConfig(), IPbtTrieNodeCache.Noop.Instance);
         Task producer = Task.CompletedTask;
         try
         {
@@ -471,7 +471,7 @@ public class PbtDbManagerTests
             repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         using PbtTrieNodeCache cache = new(config);
         PbtDbManager manager = new(repository, coordinator, persistence, pool, new PbtSnapshotCompactor(pool, schedule, repository, config),
-            exitSource, LimboLogs.Instance, config, new MetricsConfig(), mode == TransientHandOff.NoCache ? null : cache);
+            exitSource, LimboLogs.Instance, config, new MetricsConfig(), mode == TransientHandOff.NoCache ? IPbtTrieNodeCache.Noop.Instance : cache);
         PbtTransientResource first = StagedTransient(pool, 1);
         PbtTransientResource second = StagedTransient(pool, 2);
         PbtTransientResource third = StagedTransient(pool, 3);
@@ -489,7 +489,7 @@ public class PbtDbManagerTests
                 Assert.That(stalledCommit.Wait(5000), Is.True, "the stalled commit resumes once the populator drains the queue");
             }
             else third.ReleaseLease();
-            if (mode is TransientHandOff.NoCache or TransientHandOff.Duplicate) Assert.That(IsReturned(second), Is.True, "a transient that cannot reach the populator returns to the pool at once");
+            if (mode == TransientHandOff.Duplicate) Assert.That(IsReturned(second), Is.True, "a transient that cannot reach the populator returns to the pool at once");
             Assert.That(() => cache.EntryCount, Is.EqualTo(mode switch { TransientHandOff.NoCache => 0, TransientHandOff.Duplicate => 1, TransientHandOff.Admitted => 2, _ => 3 }).After(5000, 10));
             Assert.That(() => IsReturned(first) && IsReturned(second) && IsReturned(third), Is.True.After(5000, 10), "every transient returns to the pool once ingested or refused");
             Assert.That(first.NodeGroups.Count + second.NodeGroups.Count + third.NodeGroups.Count, Is.Zero);

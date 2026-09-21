@@ -33,6 +33,7 @@ public class PbtMirrorModule(IPbtConfig config) : Module
             // A second pool would halve cache hit rates.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<PbtTrieNodeCache>()
+            .Bind<IPbtTrieNodeCache, PbtTrieNodeCache>()
             .AddSingleton<PbtSnapshotRepository>()
             .AddSingleton<PbtSnapshotCompactor>()
             .AddSingleton<PbtCompactionSchedule>()

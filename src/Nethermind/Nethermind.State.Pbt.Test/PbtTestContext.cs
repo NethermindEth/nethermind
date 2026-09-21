@@ -66,7 +66,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         _trieNodeCache = new PbtTrieNodeCache(Config);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), LimboLogs.Instance, Config, metricsConfig, _trieNodeCache);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, StateHeaderProvider, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, metricsConfig, Config, StateHeaderProvider), TrieWarmer, CodeDb, Config);
+        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, StateHeaderProvider, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, metricsConfig, Config, StateHeaderProvider, _trieNodeCache), TrieWarmer, CodeDb, Config);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false, ILogManager? logManager = null) =>

@@ -42,6 +42,7 @@ public class PbtModule(IPbtConfig config) : Module
             // A second pool would halve each pool's hit rate.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<PbtTrieNodeCache>()
+            .Bind<IPbtTrieNodeCache, PbtTrieNodeCache>()
             .AddSingleton<PbtSnapshotRepository>()
             .AddSingleton<PbtSnapshotCompactor>()
             .AddSingleton<PbtCompactionSchedule>()

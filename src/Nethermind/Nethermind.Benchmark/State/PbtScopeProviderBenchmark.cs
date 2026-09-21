@@ -123,7 +123,7 @@ public class PbtScopeProviderBenchmark
             config, new BenchFinalizedStateProvider(), persistence, repository, schedule,
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
-            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance, config, new MetricsConfig());
+            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance, config, new MetricsConfig(), IPbtTrieNodeCache.Noop.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, new BenchFinalizedStateProvider(), resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
             new NoopTrieWarmer(), config);
