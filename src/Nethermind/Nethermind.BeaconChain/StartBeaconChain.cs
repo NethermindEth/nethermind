@@ -4,6 +4,8 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
+using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 
@@ -22,10 +24,14 @@ namespace Nethermind.BeaconChain;
 /// fire-and-forget here and disposed by the container.
 /// </remarks>
 [RunnerStepDependencies(typeof(RegisterRpcModules))]
-public class StartBeaconChain(BeaconChainService service, ILogManager logManager) : IStep
+public class StartBeaconChain(BeaconChainService service, IEngineDriver engine, ILogManager logManager) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
+        // Fails startup rather than the node's first Gloas block if the engine driver still relies
+        // on the interface's throwing default for the envelope overload.
+        INewPayloadNotifier.RequireEnvelopeSupport(engine);
+
         _ = service.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
 
         ILogger logger = logManager.GetClassLogger<StartBeaconChain>();
