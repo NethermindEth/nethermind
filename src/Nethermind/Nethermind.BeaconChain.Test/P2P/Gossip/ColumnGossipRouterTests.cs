@@ -130,7 +130,7 @@ public class ColumnGossipRouterTests
     }
 
     [Test]
-    public void Crossing_the_reconstruction_threshold_reconstructs_and_publishes_the_missing_columns_exactly_once_with_the_cache_marked_first()
+    public void Crossing_the_reconstruction_threshold_reconstructs_and_publishes_the_missing_columns_exactly_once()
     {
         // Held directly over gossip: columns 0..63 (crosses the 64-column threshold on the last one).
         // Subscribed but held: subnets 64..70, so publishing-only-when-subscribed is actually exercised
@@ -178,8 +178,8 @@ public class ColumnGossipRouterTests
             }
         }
 
-        // The anti-equivocation cache was marked for the reconstructed columns: a genuine gossip
-        // arrival for one of them afterward is rejected as a duplicate, not re-accepted or re-raised.
+        // A gossip copy of a reconstructed column arriving later is rejected as a duplicate, not
+        // re-accepted or re-raised. Whether the mark precedes the publish is pinned by ReconstructionPublishOrderTests.
         int receivedBeforeReplay = receivedEvents.Count;
         DataColumnSidecar replay = DataColumnSidecarTestFixture.BuildValidSidecar((ulong)required, CurrentSlot);
         topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName((ulong)required))].Deliver(Message(replay));
