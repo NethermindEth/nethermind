@@ -166,9 +166,9 @@ public class OperationsTests
 
                 FuluDriverSupport.AssertPostStateRoot(driver, postPath, ctx.State);
             }
-            else if (thrown is null)
+            else
             {
-                Assert.Fail("expected the operation to be rejected as invalid, but it completed without error");
+                FuluDriverSupport.AssertRejected(thrown, "the operation");
             }
         });
 

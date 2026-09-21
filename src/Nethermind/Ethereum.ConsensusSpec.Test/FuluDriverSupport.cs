@@ -9,7 +9,9 @@ using System.Linq;
 using System.Reflection;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -57,6 +59,22 @@ public static class FuluDriverSupport
 
         List<string> diff = Diff(expectedPost, driver.ForDiff(actual), "state");
         Assert.Fail($"post-state root mismatch: expected {expectedRoot}, actual {actualRoot}. Diverging fields: {(diff.Count > 0 ? string.Join("; ", diff) : "(none found - roots differ anyway)")}");
+    }
+
+    /// <summary>
+    /// Whether <paramref name="thrown"/> is one of the pipeline's own rejection types, i.e. a failed
+    /// spec assertion, rather than a crash on the way to one. Only these count as correctly rejecting
+    /// an invalid vector; anything else (a NullReferenceException, an SSZ decode error) is a defect.
+    /// </summary>
+    public static bool IsSpecRejection(Exception thrown) => thrown is BeaconStateException or ForkChoiceException;
+
+    /// <summary>Fails the vector unless <paramref name="thrown"/> is a real spec rejection: completing, and throwing for the wrong reason, are both failures.</summary>
+    public static void AssertRejected(Exception? thrown, string subject)
+    {
+        if (thrown is null)
+            Assert.Fail($"expected {subject} to be rejected as invalid, but it completed without error");
+        else if (!IsSpecRejection(thrown))
+            Assert.Fail($"expected {subject} to be rejected by a spec assertion, but the pipeline threw {thrown.GetType().Name} on the way: {thrown}");
     }
 
     public static PubkeyCache BuildPubkeyCache(BeaconStateFulu state)
