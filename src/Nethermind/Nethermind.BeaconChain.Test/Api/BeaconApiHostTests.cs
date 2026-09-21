@@ -280,13 +280,6 @@ public class BeaconApiHostTests
     }
 
     [Test]
-    public async Task Debug_fork_choice_is_501_because_it_is_not_resolvable_from_this_host()
-    {
-        HttpResponseMessage response = await _client.GetAsync("/eth/v1/debug/beacon/fork_choice");
-        Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)501));
-    }
-
-    [Test]
     public async Task Debug_state_ssz_is_503_before_any_state_is_persisted_and_serves_exact_bytes_once_it_is()
     {
         Hash256 root = TestRoot(2);

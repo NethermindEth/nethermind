@@ -45,7 +45,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     public BeaconApiHost Host { get; }
     public HttpClient Client { get; private set; } = null!;
 
-    private BeaconApiTestHost(BeaconChainSpec spec)
+    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots)
     {
         Spec = spec;
         ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime);
@@ -53,12 +53,13 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         Store = new BeaconChainStore(Db);
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
         Host = new BeaconApiHost(apiConfig, new BeaconChainConfig(), spec, StatusHolder, new SlotClock(spec, timestamper), Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), new NoOpProcessExitSource(), LimboLogs.Instance);
+            new LocalMetadataSource(), new NoOpEngineDriver(), new NoOpProcessExitSource(), LimboLogs.Instance, forkChoiceSnapshots: forkChoiceSnapshots);
     }
 
-    public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec)
+    /// <param name="forkChoiceSnapshots">The holder the debug fork-choice endpoint reads; <c>null</c> runs the host without one, as the driver-less configurations do.</param>
+    public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null)
     {
-        BeaconApiTestHost host = new(spec);
+        BeaconApiTestHost host = new(spec, forkChoiceSnapshots);
         await host.Host.StartAsync(CancellationToken.None);
         host.Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Host.Port}"), Timeout = TimeSpan.FromSeconds(30) };
         return host;
