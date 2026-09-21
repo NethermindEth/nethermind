@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
@@ -15,6 +14,8 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -43,6 +44,11 @@ namespace Nethermind.BeaconChain.Sync;
 /// </remarks>
 public sealed class BlockImporter : IBlockImporter
 {
+    private static readonly StringLabel BodyAttestationRejected = new("body_attestation");
+    private static readonly StringLabel BodyAttesterSlashingRejected = new("body_attester_slashing");
+    private static readonly StringLabel GossipAggregateRejected = new("gossip_aggregate");
+    private static readonly StringLabel GossipAttesterSlashingRejected = new("gossip_attester_slashing");
+
     private readonly BeaconChainSpec _spec;
     private readonly BeaconChainStore _store;
     private readonly PubkeyCache _pubkeys;
@@ -66,7 +72,6 @@ public sealed class BlockImporter : IBlockImporter
 
     private Hash256 _canonicalHead;
     private ulong _lastSnapshotEpoch;
-    private long _rejectedGossipAttestations;
 
     public BlockImporter(
         BeaconChainSpec spec,
@@ -94,9 +99,6 @@ public sealed class BlockImporter : IBlockImporter
         _lastSnapshotEpoch = anchorState.GetCurrentEpoch();
         store.SetCanonicalRoot(anchorBlock.Message!.Slot, anchorRoot);
     }
-
-    /// <summary>Gossip aggregates rejected by fork-choice validation since startup.</summary>
-    public long RejectedGossipAttestations => Interlocked.Read(ref _rejectedGossipAttestations);
 
     /// <inheritdoc/>
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
@@ -318,7 +320,7 @@ public sealed class BlockImporter : IBlockImporter
         }
         catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
         {
-            Interlocked.Increment(ref _rejectedGossipAttestations);
+            Metrics.BeaconChainForkChoiceRejections.Increment(GossipAggregateRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected gossip aggregate: {e.Message}");
         }
     }
@@ -332,11 +334,16 @@ public sealed class BlockImporter : IBlockImporter
         }
         catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
         {
+            Metrics.BeaconChainForkChoiceRejections.Increment(GossipAttesterSlashingRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected gossip attester slashing: {e.Message}");
         }
     }
 
-    /// <summary>Feeds the block's attestations and attester slashings (already verified by the transition) to fork choice.</summary>
+    /// <summary>
+    /// The body replay <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/>
+    /// leaves to its caller: feeds the block's attestations and attester slashings (already verified
+    /// by the transition) to fork choice. A refused operation is counted and skipped, never fatal.
+    /// </summary>
     private void ApplyBodyOperations(BeaconBlockBody body)
     {
         foreach (Attestation attestation in body.Attestations!)
@@ -349,6 +356,7 @@ public sealed class BlockImporter : IBlockImporter
             {
                 // Body attestations may reference targets outside our block tree; that does not
                 // invalidate the block (the transition already accepted it).
+                Metrics.BeaconChainForkChoiceRejections.Increment(BodyAttestationRejected);
                 if (_logger.IsTrace) _logger.Trace($"Skipped body attestation: {e.Message}");
             }
         }
@@ -361,6 +369,7 @@ public sealed class BlockImporter : IBlockImporter
             }
             catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
             {
+                Metrics.BeaconChainForkChoiceRejections.Increment(BodyAttesterSlashingRejected);
                 if (_logger.IsTrace) _logger.Trace($"Skipped body attester slashing: {e.Message}");
             }
         }

@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -38,6 +39,7 @@ namespace Nethermind.BeaconChain.Test.Sync;
 public class BlockImporterTests
 {
     private static readonly Hash256 NodeId = new([.. Enumerable.Repeat((byte)0x42, 32)]);
+    private static readonly Hash256 UnknownBlockRoot = new([.. Enumerable.Repeat((byte)0x99, 32)]);
 
     /// <summary>A base-custody node: four custody groups, eight sampled columns per slot on mainnet.</summary>
     private static NodeColumnCustody BaseCustody() => new(NodeId, Eip7594DasConstants.CustodyRequirement);
@@ -323,6 +325,79 @@ public class BlockImporterTests
             Assert.That(retried, Is.EqualTo(BlockImportResult.Imported), "the same block must import once the missing column arrives");
         });
     }
+
+    /// <summary>
+    /// The importer's half of the body replay fork choice leaves to its callers: a block whose body
+    /// slashes the two validators whose votes hold the head must move the head to the competing
+    /// branch, which only happens if the accepted slashing is handed on to fork choice.
+    /// </summary>
+    [Test]
+    public void Body_attester_slashing_moves_the_head_off_the_equivocators_branch()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        // Past every block's slot, so none is timely and no proposer boost confounds the weights.
+        importer.OnSlotTick(8);
+        UnsignedChain.Equivocation scenario = chain.BuildEquivocation();
+        BlockImportResult[] imported =
+        [
+            importer.Import(scenario.A.Block, scenario.A.Root, verifySignatures: false),
+            importer.Import(scenario.B.Block, scenario.B.Root, verifySignatures: false),
+            importer.Import(scenario.Voted.Block, scenario.Voted.Root, verifySignatures: false),
+        ];
+        Hash256 headBeforeSlashing = importer.ComputeHead().HeadRoot;
+
+        BlockImportResult slashingImported = importer.Import(scenario.Slashing.Block, scenario.Slashing.Root, verifySignatures: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(imported, Is.All.EqualTo(BlockImportResult.Imported));
+            Assert.That(headBeforeSlashing, Is.EqualTo(scenario.Voted.Root), "two votes on A's branch outweigh one on B");
+            Assert.That(slashingImported, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(importer.ComputeHead().HeadRoot, Is.EqualTo(scenario.B.Root), "the slashed validators' votes no longer count, so B's lone vote wins");
+        });
+    }
+
+    /// <summary>
+    /// A body attestation the transition accepts but fork choice refuses (its head is a block this
+    /// node never saw) must neither sink the block nor vanish: the refusal is counted.
+    /// </summary>
+    [Test]
+    public void Body_attestation_refused_by_fork_choice_is_tolerated_and_counted()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        UnsignedChain.ChainBlock a = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
+        UnsignedChain.ChainBlock strayVote = chain.Extend(a.Root, slot: 2, payloadHashByte: 0xa2, attestations: [chain.Vote(1, UnknownBlockRoot)]);
+        long refusedBefore = RefusedByForkChoice("body_attestation");
+
+        BlockImportResult parent = importer.Import(a.Block, a.Root, verifySignatures: false);
+        BlockImportResult result = importer.Import(strayVote.Block, strayVote.Root, verifySignatures: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(parent, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a vote for a block we never saw is not a reason to drop a block the transition accepted");
+            Assert.That(importer.IsKnown(strayVote.Root), Is.True);
+            Assert.That(RefusedByForkChoice("body_attestation") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
+        });
+    }
+
+    [Test]
+    public void Gossip_aggregate_refused_by_fork_choice_is_counted()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        importer.OnSlotTick(2);
+        long refusedBefore = RefusedByForkChoice("gossip_aggregate");
+
+        importer.OnGossipAggregate(new SignedAggregateAndProof { Message = new AggregateAndProof { AggregatorIndex = 0, Aggregate = chain.Vote(1, UnknownBlockRoot) } });
+
+        Assert.That(RefusedByForkChoice("gossip_aggregate") - refusedBefore, Is.EqualTo(1));
+    }
+
+    private static long RefusedByForkChoice(string operation) =>
+        Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
     private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null) =>
         new(
