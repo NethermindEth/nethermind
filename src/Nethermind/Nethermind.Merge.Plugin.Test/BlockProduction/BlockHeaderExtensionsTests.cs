@@ -13,13 +13,13 @@ namespace Nethermind.Merge.Plugin.Test.BlockProduction;
 public class BlockHeaderExtensionsTests
 {
     [Test]
-    public void GenerateSimulatedPayload_preserves_parent_slot_number()
+    public void GenerateSimulatedPayload_advances_parent_slot_number()
     {
         BlockHeader parent = Build.A.BlockHeader.WithSlotNumber(7).TestObject;
 
         PayloadAttributes attributes = parent.GenerateSimulatedPayload();
 
-        Assert.That(attributes.SlotNumber, Is.EqualTo(7));
+        Assert.That(attributes.SlotNumber, Is.EqualTo(8));
     }
 
     [Test]
