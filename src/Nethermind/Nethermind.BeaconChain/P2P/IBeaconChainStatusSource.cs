@@ -12,6 +12,12 @@ namespace Nethermind.BeaconChain.P2P;
 public interface IBeaconChainStatusSource
 {
     StatusMessageV2 CurrentStatus { get; }
+
+    /// <summary>Root of the head's justified checkpoint; <see cref="Hash256.Zero"/> until the first head step.</summary>
+    Hash256 JustifiedRoot { get; }
+
+    /// <summary>Whether the execution layer has confirmed the current head VALID; false until it has, which is the safe direction to be wrong in.</summary>
+    bool ExecutionInSync { get; }
 }
 
 /// <summary>
@@ -21,6 +27,8 @@ public interface IBeaconChainStatusSource
 public class BeaconChainStatusHolder(BeaconChainSpec spec, ITimestamper timestamper) : IBeaconChainStatusSource
 {
     private volatile StatusMessageV2? _current;
+    private volatile Hash256 _justifiedRoot = Hash256.Zero;
+    private volatile bool _executionInSync;
 
     public StatusMessageV2 CurrentStatus
     {
@@ -31,5 +39,17 @@ public class BeaconChainStatusHolder(BeaconChainSpec spec, ITimestamper timestam
             HeadRoot = Hash256.Zero,
         };
         set => _current = value;
+    }
+
+    public Hash256 JustifiedRoot
+    {
+        get => _justifiedRoot;
+        set => _justifiedRoot = value;
+    }
+
+    public bool ExecutionInSync
+    {
+        get => _executionInSync;
+        set => _executionInSync = value;
     }
 }
