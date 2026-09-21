@@ -46,6 +46,7 @@ namespace Nethermind.Evm.Test
 
         public List<ActionTrace> Actions { get; } = [];
 
+        /// <summary>Output of every action frame that ended successfully; a create frame contributes its deployed code.</summary>
         public List<byte[]> ActionOutputs { get; } = [];
 
         public List<byte[]> ActionRevertOutputs { get; } = [];
@@ -74,6 +75,8 @@ namespace Nethermind.Evm.Test
         public override void ReportActionError(EvmExceptionType exceptionType) => ReportedActionErrors.Add(exceptionType);
 
         public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => ActionOutputs.Add(output.ToArray());
+
+        public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => ActionOutputs.Add(deployedCode.ToArray());
 
         public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
         {

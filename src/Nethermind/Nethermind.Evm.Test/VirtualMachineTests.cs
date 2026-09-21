@@ -1394,10 +1394,10 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0123456789abcdef")).SetName("Multi_word_output"),
     ];
 
-    // The receipt and action callbacks must both receive the terminal frame output, whether its backing array is
-    // forwarded directly or copied.
+    // Regression cover for the returndata copy-elision in the transaction processor: the receipt tracer and the
+    // action callbacks must both see the top-level RETURN / REVERT / precompile output, copied or forwarded.
     [TestCaseSource(nameof(TopLevelOutputCases))]
-    public void Return_output_reaches_receipt_tracer_verbatim(byte[] data)
+    public void Return_output_reaches_receipt_and_action_tracers_verbatim(byte[] data)
     {
         byte[] code = Prepare.EvmCode
             .StoreDataInMemory(0, data)
@@ -1415,7 +1415,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(TopLevelOutputCases))]
-    public void Revert_output_reaches_receipt_tracer_verbatim(byte[] data)
+    public void Revert_output_reaches_receipt_and_action_tracers_verbatim(byte[] data)
     {
         byte[] code = Prepare.EvmCode
             .StoreDataInMemory(0, data)
@@ -1434,7 +1434,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Empty_return_yields_empty_receipt_output()
+    public void Empty_return_yields_empty_receipt_and_action_output()
     {
         TestAllTracerWithOutput receipt = Execute(Prepare.EvmCode.Return(0, 0).Done);
 
@@ -1487,6 +1487,24 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.EqualTo(topLevelOutput));
             Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { nestedOutput, topLevelOutput }));
+        }
+    }
+
+    // A create frame ends through the deployment overload, so its action output is the deployed code, not RETURN data.
+    [Test]
+    public void Create_frame_reports_deployed_code_as_action_output()
+    {
+        byte[] deployedCode = Bytes.FromHexString("0x600060005500");
+        byte[] code = Prepare.EvmCode
+            .Create(Prepare.EvmCode.ForInitOf(deployedCode).Done, 0)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { deployedCode, Array.Empty<byte>() }));
         }
     }
 
