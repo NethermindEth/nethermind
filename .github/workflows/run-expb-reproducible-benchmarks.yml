@@ -1430,10 +1430,8 @@ jobs:
 
           # n/a rather than an empty cell when the series this divides by was not collected.
           read_mgas_s() {
-            local value=""
-            if grep -qE "^${1}MGAS_S=" "${metrics_file}"; then
-              value="$(grep -E "^${1}MGAS_S=" "${metrics_file}" | head -n 1 | cut -d'=' -f2-)"
-            fi
+            local value
+            value="$(grep -E "^${1}MGAS_S=" "${metrics_file}" | head -n 1 | cut -d'=' -f2- || true)"
             printf '%s' "${value:-n/a}"
           }
 
@@ -1450,7 +1448,7 @@ jobs:
               compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_file}"
               emit_mgas_s "OUTSIDE_" "${outside_ms}" "${paired_count}"
             fi
-          elif [[ -s "${ttfb_gas}" ]]; then
+          elif [[ -s "${ttfb_ms}" ]]; then
             # Without the client feed the unprefixed keys hold the k6 request table, and so does their
             # throughput; there is no processing or outside series to divide by.
             emit_mgas_s "" "${processing_ms}"
@@ -1865,11 +1863,16 @@ jobs:
             row="${row}$(group_cells "${current_metrics}" "${processing_master}" "OUTSIDE_" "OUTSIDE_" "MGAS_S")"
             append_line "${row}"
 
+            # The decomposition is a property of the columns, so it is printed whenever this run has
+            # all three; the delta direction below needs a baseline to compare against.
+            if [[ "${current_source}" == "sse" ]]; then
+              append_blank
+              append_line "_Each MGas/s divides one gas total by its own group's time over the same payloads, so the reciprocals add: ms per gas of a request is ms per gas of processing plus ms per gas outside it._"
+            fi
+
             if [[ "${master_source}" == "sse" ]]; then
               append_blank
               append_line "_Timing rows: a positive delta is slower. MGas/s: a positive delta is more throughput._"
-              append_blank
-              append_line "_Each MGas/s divides one gas total by its own group's time over the same payloads, so the reciprocals add: ms per gas of a request is ms per gas of processing plus ms per gas outside it._"
             elif [[ "${master_source}" == "k6" && "${current_source}" == "sse" ]]; then
               append_blank
               append_line "_The cached master run has no client processing data, so the processing columns are PR-only._"
@@ -3025,10 +3028,8 @@ jobs:
 
           # n/a rather than an empty cell when the series this divides by was not collected.
           read_mgas_s() {
-            local value=""
-            if grep -qE "^${1}MGAS_S=" "${metrics_dir}/metrics.env"; then
-              value="$(grep -E "^${1}MGAS_S=" "${metrics_dir}/metrics.env" | head -n 1 | cut -d'=' -f2-)"
-            fi
+            local value
+            value="$(grep -E "^${1}MGAS_S=" "${metrics_dir}/metrics.env" | head -n 1 | cut -d'=' -f2- || true)"
             printf '%s' "${value:-n/a}"
           }
 
@@ -3045,7 +3046,7 @@ jobs:
               compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_dir}/metrics.env"
               emit_mgas_s "OUTSIDE_" "${outside_ms}" "${paired_count}"
             fi
-          elif [[ -s "${ttfb_gas}" ]]; then
+          elif [[ -s "${ttfb_ms}" ]]; then
             # Without the client feed the unprefixed keys hold the k6 request table, and so does their
             # throughput; there is no processing or outside series to divide by.
             emit_mgas_s "" "${processing_ms}"
