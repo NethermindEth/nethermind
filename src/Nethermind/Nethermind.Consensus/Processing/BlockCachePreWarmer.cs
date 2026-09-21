@@ -916,11 +916,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return unclaimed;
     }
 
+    /// <summary>For tests: the jobs, and with them their transaction lists, are the caller's to dispose; the scratch is released here.</summary>
     internal static ArrayPoolList<WarmupJob> GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null, int[]? claimed = null)
     {
-        GroupingScratch scratch = new();
+        using GroupingScratch scratch = new();
         GroupTransactionsBySender(block, maxWorkers, speculativelyWarmed, claimed, scratch);
-        return scratch.Jobs;
+        ArrayPoolList<WarmupJob> jobs = new(scratch.Jobs.Count);
+        jobs.AddRange(scratch.Jobs.AsSpan());
+        scratch.Jobs.Clear();
+        return jobs;
     }
 
     /// <summary>Groups into <paramref name="scratch"/>, whose lists and dictionary are reused block after block.</summary>
@@ -1555,6 +1559,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             while (wanted-- > 0)
             {
+                // A helper queued for a block that is already done would only be dispatched behind the pool's other
+                // work to find its token cancelled, and the block's join would wait for that; the join sits on the
+                // processing thread.
+                if (Token.IsCancellationRequested) return;
+
                 TxWarmupWorker helper = Rent();
                 if (Interlocked.Increment(ref _active) > Degree)
                 {
@@ -1799,17 +1808,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// <summary>
         /// A helper recruited for a wave of late senders. Nothing may escape a pool work item, and the block joins
         /// helpers on the count <see cref="WarmupQueue.HelperExited"/> lowers, so the env is rented and returned
-        /// inside the guarded region and the count is lowered whatever happened before. Parking comes last: a parked
-        /// worker can be rented and queued again at once, so it must not be reachable while this frame still runs.
+        /// inside the guarded region and the count is lowered whatever happened before. Parking comes before the
+        /// count-out: the moment the count reaches zero the block may unload and dispose the queue, and a worker
+        /// parked after that would sit on a disposed list. Nothing here touches the worker after it is parked, so
+        /// being rented again at once is harmless.
         /// </summary>
         public void Execute()
         {
             try
             {
+                CancellationToken token = _queue.Token;
+                // Dispatched after the block finished: leave without renting an env.
+                if (token.IsCancellationRequested) return;
+
                 try
                 {
                     Attach();
-                    CancellationToken token = _queue.Token;
                     while (!token.IsCancellationRequested && WarmLate()) { }
                 }
                 finally
@@ -1827,8 +1841,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
             finally
             {
-                _queue.HelperExited();
                 Park();
+                _queue.HelperExited();
             }
         }
 

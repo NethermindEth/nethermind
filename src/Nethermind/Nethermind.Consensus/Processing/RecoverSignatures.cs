@@ -135,9 +135,9 @@ namespace Nethermind.Consensus.Processing
         /// pooled transaction objects, so a different array of the same length starting with the same transaction
         /// matches. A false positive costs <see cref="RecoverDataForQueuedProcessing"/> no more than the inline
         /// fallbacks it already relies on — <c>TransactionProcessor</c> for the senders, <c>ProcessDelegations</c>
-        /// for the authorities. The prewarmer's waits then key off a foreign recovery, whose completion ends them
-        /// while this block's senders may still be pending; they rescan on a timer as well, so a sender that lands
-        /// afterwards is still picked up, and what is missed is only speculative warming.
+        /// for the authorities. The prewarmer's waits then key off a foreign recovery: its completion ends them for
+        /// the block, and a sender of this block that lands afterwards is not warmed. What is lost is speculative
+        /// warming for the rest of that block, nothing else.
         /// </remarks>
         public ISenderRecoveryProgress? GetInFlight(Transaction[] txs)
         {
