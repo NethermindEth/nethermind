@@ -153,10 +153,9 @@ public class BlockHeader
     public virtual BlockHeader CreateSimulatedChild(ulong timestamp)
     {
         Hash256? requestsHash = RequestsHash;
-        // The simulated child executes in the latest known slot context: like RequestsHash,
-        // the slot is inherited from the parent because the EL cannot derive the CL-assigned
-        // slot of a block that does not exist yet.
-        ulong? slotNumber = SlotNumber;
+        // EIP-7843: the EL cannot know the CL-assigned slot of a block that does not exist yet, so the
+        // simulated child takes the earliest one it could occupy. Stays unset for a pre-fork parent.
+        ulong? slotNumber = SlotNumber + 1;
         return new BlockHeader(
             Hash!,
             Keccak.OfAnEmptySequenceRlp,
