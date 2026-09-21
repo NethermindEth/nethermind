@@ -12,7 +12,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
@@ -168,7 +167,7 @@ public class FlatDbManagerPersistedTests
         using PersistenceManager persistenceManager = new(
             _config,
             tier.Resolve<ICompactionSchedule>(),
-            tier.Resolve<IFinalizedStateProvider>(),
+            tier.Resolve<IStateHeaderProvider>(),
             persistence,
             tier.Repository,
             NullStatePersistenceBarrier.Instance,

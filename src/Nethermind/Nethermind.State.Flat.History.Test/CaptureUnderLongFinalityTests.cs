@@ -62,10 +62,14 @@ public class CaptureUnderLongFinalityTests
         Assert.That(fixture.Writer.LastCapturedBlock, Is.GreaterThan(600ul));
     }
 
-    private sealed class SyncingFinality(IReadOnlyDictionary<ulong, Hash256> roots) : IFinalizedStateProvider
+    private sealed class SyncingFinality(IReadOnlyDictionary<ulong, Hash256> roots) : IStateHeaderProvider
     {
         public ulong FinalizedBlockNumber => 26_000_000;
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => roots.GetValueOrDefault(blockNumber);
+        public BlockHeader? FindParentHeader(BlockHeader target) => null;
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber) =>
+            roots.TryGetValue(blockNumber, out Hash256? root)
+                ? Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(root).TestObject
+                : null;
     }
 
     private sealed class CaptureFixture : IAsyncDisposable
@@ -76,7 +80,7 @@ public class CaptureUnderLongFinalityTests
         public bool CaptureDisabled { get; private set; }
         private StateId _previous = new(0, Keccak.EmptyTreeHash);
 
-        public CaptureFixture(FlatDbConfig config, IFinalizedStateProvider? finalized = null)
+        public CaptureFixture(FlatDbConfig config, IStateHeaderProvider? finalized = null)
         {
             IPersistence persistence = Substitute.For<IPersistence>();
             IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();

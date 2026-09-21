@@ -149,7 +149,7 @@ public static class StatelessExecutor
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
-            Debug.Fail(error);
+            Debug.WriteLine(error);
             return false;
         }
 

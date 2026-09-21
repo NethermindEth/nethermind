@@ -509,7 +509,7 @@ public class FlatWorldStateScopeProviderTests
         // VerifyWithTrie that read used to be compared against the trie, which still held it: the EIP-161
         // clearing of any pre-existing empty account (e.g. the identity precompile at the Spurious Dragon block)
         // threw "Incorrect account ... vs flat:".
-        using TestContext ctx = new(new FlatDbConfig { VerifyWithTrie = true });
+        using TestContext ctx = new(config: new FlatDbConfig { VerifyWithTrie = true });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         Account account = hasStorage ? new Account(nonce: 1, balance: 5) : Account.TotallyEmpty;
