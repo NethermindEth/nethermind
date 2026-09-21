@@ -73,7 +73,11 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>Restricted to each sender's appendable run from its next nonce, since nothing else could be
-    /// appended. Never drawn by fee: a fee-ordered draw drops what a builder passes over. See
+    /// appended. Never drawn by fee: a fee-ordered draw drops what a builder passes over.
+    /// Not gated on pool revalidation: the ready-tx snapshot applies no per-transaction spec check, so around a
+    /// fork the draw can include entries the new spec rejects — either because the pool's background revalidation
+    /// is still catching up, or because the target block is the activation slot itself, whose spec is not
+    /// derivable from a parent hash alone. The only cost is wasted list bytes. See
     /// <see cref="DrawSenders"/> for how the senders themselves are picked.</remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs(BlockHeader? parent)
     {
@@ -221,12 +225,23 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     /// <summary>How many leading transactions of <paramref name="bySender"/> the next block could append.</summary>
     /// <remarks>Buckets are nonce-ordered, so a broken offset can never realign: nothing behind a nonce gap is
     /// appendable, and nothing behind an entry the next block would price out is worth the byte cap either.
-    /// The pool vouches for the first entry alone, so both are re-checked from there.</remarks>
+    /// The pool vouches for the first entry alone, so both are re-checked from there.
+    /// Deliberately doesn't check gas limit or spendable balance like <see cref="Nethermind.Consensus.Validators.InclusionListValidator"/>
+    /// does: the pool already evicts a run past the nonce its sender cannot fund (<c>BalanceTooLowFilter</c> plus the
+    /// cumulative-cost eviction in <c>UpdateGasBottleneckAndMarkForEviction</c>), and the validator's gas-limit check is
+    /// against the built block's remaining gas, which is not knowable here.</remarks>
     private static int AppendableRunLength(Transaction[] bySender, in UInt256 baseFee)
     {
+        // GetBucketSnapshot only prunes empty buckets when a predicate is supplied (SortedPool.cs); ITxPool's
+        // contract doesn't guarantee it otherwise, so guard rather than rely on the current caller's filter.
+        if (bySender.Length == 0) return 0;
+
         ulong anchor = bySender[0].Nonce;
         int length = 0;
-        while (length < bySender.Length
+        // The caller only ever consults round < SenderSampleCapacity, so a run longer than that is
+        // indistinguishable from one capped here — scanning further would just waste work.
+        int limit = Math.Min(bySender.Length, SenderSampleCapacity);
+        while (length < limit
             && bySender[length].Nonce == anchor + (ulong)length
             && bySender[length].CanPayBaseFee(baseFee))
         {
