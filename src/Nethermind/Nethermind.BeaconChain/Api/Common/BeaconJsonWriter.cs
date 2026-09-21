@@ -25,14 +25,19 @@ internal sealed class BeaconJsonStream(PipeWriter output, CancellationToken toke
 {
     private const int FlushThresholdBytes = 64 * 1024;
 
+    private long _flushedBytes;
+
     public Utf8JsonWriter Writer { get; } = new(output);
 
-    /// <summary>Pushes buffered bytes to the client once enough have accumulated; call between elements of long arrays.</summary>
-    public ValueTask CheckpointAsync() => Writer.BytesPending < FlushThresholdBytes ? default : FlushAsync();
+    /// <summary>Pushes buffered bytes to the client once enough have accumulated since the last flush; call between elements of long arrays.</summary>
+    /// <remarks>Counts committed bytes too: <see cref="Utf8JsonWriter.BytesPending"/> alone resets every time the writer
+    /// grows into a new pipe segment (about 4 KB), so it can never reach the threshold.</remarks>
+    public ValueTask CheckpointAsync() => Writer.BytesCommitted + Writer.BytesPending - _flushedBytes < FlushThresholdBytes ? default : FlushAsync();
 
     public async ValueTask FlushAsync()
     {
         Writer.Flush();
+        _flushedBytes = Writer.BytesCommitted;
         FlushResult result = await output.FlushAsync(token);
         if (result.IsCanceled || result.IsCompleted)
         {

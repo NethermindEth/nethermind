@@ -78,6 +78,7 @@ public class BeaconApiErrorMappingTests
             new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null));
         _pipeline.MapGet("/test/not-supported", (HttpContext _) => { throw new NotSupportedException(UnrelatedInternalDetail); });
         _pipeline.MapGet("/test/unsupported-fork", (HttpContext _) => { throw new UnsupportedForkException(new NotSupportedException(UnrelatedInternalDetail)); });
+        _pipeline.MapGet("/test/fault-after-flush", FaultAfterFirstFlush);
         await _pipeline.StartAsync();
         _pipelineClient = new HttpClient { BaseAddress = new Uri(_pipeline.Urls.First()), Timeout = TimeSpan.FromSeconds(5) };
     }
@@ -117,6 +118,37 @@ public class BeaconApiErrorMappingTests
         JsonDocument body = JsonDocument.Parse(raw);
         Assert.That(body.RootElement.GetProperty("message").GetString(), Is.EqualTo(BeaconApiEndpoints.UnsupportedForkMessage));
     }
+
+    /// <summary>
+    /// Streams success bytes through the same writer the state endpoint uses until its flush
+    /// checkpoint has started the response, then fails like a handler bug would.
+    /// </summary>
+    private static async Task FaultAfterFirstFlush(HttpContext c)
+    {
+        const long fillerLimit = 1024 * 1024;
+        c.Response.ContentType = ContentNegotiation.Json;
+        await using BeaconJsonStream stream = new(c.Response.BodyWriter, c.RequestAborted);
+        stream.Writer.WriteStartArray();
+        while (!c.Response.HasStarted && stream.Writer.BytesCommitted < fillerLimit)
+        {
+            stream.Writer.WriteStringValue(UnrelatedInternalDetail);
+            await stream.CheckpointAsync();
+        }
+
+        // Whatever the checkpoint did, the failure below must land after bytes are on the wire.
+        await stream.FlushAsync();
+        throw new InvalidOperationException(UnrelatedInternalDetail);
+    }
+
+    /// <summary>
+    /// Once success bytes are on the wire no error envelope can follow them. Letting the response
+    /// complete normally sent the chunked terminator, and the client parsed a clean 200 whose JSON
+    /// simply stopped; only an aborted connection tells it the body is incomplete.
+    /// </summary>
+    [Test]
+    public void A_handler_failure_after_the_first_flush_is_a_transport_error_not_a_well_terminated_200() =>
+        Assert.ThrowsAsync<HttpRequestException>(() => _pipelineClient.GetAsync("/test/fault-after-flush"),
+            "the client must observe a failed transfer, not a 200 with a truncated body");
 
     /// <summary>Minimal bytes for BeaconStateCodec to read a slot: it never reaches the full decode
     /// once the slot resolves to a fork this driver refuses, so nothing past offset 48 matters.</summary>
