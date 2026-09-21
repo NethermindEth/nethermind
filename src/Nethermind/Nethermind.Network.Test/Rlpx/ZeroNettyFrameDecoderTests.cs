@@ -1,14 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
+using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx;
@@ -65,6 +68,72 @@ public class ZeroNettyFrameDecoderTests
     public void Check_and_decrypt(string frame, Delivery delivery, string expectedOutput) => Test(frame, delivery, expectedOutput);
 
     [Test]
+    public void Complete_and_fragmented_frames_preserve_plaintext_and_ownership(
+        [Values(0, 16, 32, 48, -1)] int split, [Values] bool shared, [Values] bool pooled)
+    {
+        using PooledBufferLeakDetector detector = new();
+        EmbeddedChannel channel = new(new ZeroFrameDecoder(_frameCipher, _macProcessor));
+        IByteBufferAllocator allocator = pooled ? detector.Allocator : UnpooledByteBufferAllocator.Default;
+        channel.Configuration.Allocator = allocator;
+        byte[] wire = Bytes.FromHexString(ShortNewBlockSingleFrame);
+        byte[] expected = Bytes.FromHexString(ShortNewBlockSingleFrameDecrypted);
+        int firstLength = split == 0 ? wire.Length : split == -1 ? wire.Length - 1 : split;
+        IByteBuffer input = allocator.Buffer(firstLength + 7).WriteZero(7).WriteBytes(wire, 0, firstLength).SkipBytes(7);
+        // Keep the cumulation alive when the decoded frame is delivered downstream.
+        if (split == 0) input.WriteByte(0);
+        byte[] backing = input.Array;
+        int arrayOffset = input.ArrayOffset + 7;
+        bool wrapped = input.Unwrap() is not null;
+        if (shared) input.Retain();
+        try
+        {
+            channel.WriteInbound(input);
+            if (split != 0)
+            {
+                Assert.That(channel.ReadInbound<IByteBuffer>(), Is.Null, "partial frames must not be published");
+                channel.WriteInbound(allocator.Buffer(wire.Length - firstLength).WriteBytes(wire, firstLength, wire.Length - firstLength));
+            }
+            using DisposableByteBuffer decoded = channel.ReadInbound<IByteBuffer>().AsDisposable();
+            Assert.That(decoded.AsSpan().ToArray(), Is.EqualTo(expected));
+            Assert.That(decoded.ReferenceCount, Is.EqualTo(1), "the merger requires independently owned frames");
+            if (split == 0)
+                Assert.That(ReferenceEquals(decoded.Array, backing) && decoded.ArrayOffset == arrayOffset + Frame.MacSize, Is.EqualTo(pooled && !shared && !wrapped));
+            if (shared)
+                Assert.That(backing.AsSpan(arrayOffset, firstLength).ToArray(), Is.EqualTo(wire.AsSpan(0, firstLength).ToArray()), "shared ciphertext must not be modified");
+        }
+        finally
+        {
+            channel.FinishAndReleaseAll();
+            if (shared) input.Release();
+        }
+    }
+
+    [Test]
+    public void In_place_decode_does_not_modify_or_publish_unauthenticated_payload()
+    {
+        using PooledBufferLeakDetector detector = new();
+        EmbeddedChannel channel = new(new ZeroFrameDecoder(_frameCipher, _macProcessor));
+        channel.Configuration.Allocator = detector.Allocator;
+        byte[] wire = Bytes.FromHexString(ShortNewBlockSingleFrame);
+        wire[^1] ^= 1;
+        IByteBuffer input = detector.Allocator.Buffer(wire.Length).WriteBytes(wire);
+        byte[] backing = input.Array;
+        int offset = input.ArrayOffset;
+        try
+        {
+            Assert.That(() => channel.WriteInbound(input), Throws.InstanceOf<DecoderException>());
+            Assert.That(channel.ReadInbound<IByteBuffer>(), Is.Null);
+            Assert.That(backing.AsSpan(offset, wire.Length).ToArray(), Is.EqualTo(wire));
+        }
+        finally
+        {
+            // Discard the failed frame rather than asking DecodeLast to retry its invalid MAC.
+            channel.Pipeline.Remove<ZeroFrameDecoder>();
+            channel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
     public void Rejects_frame_exceeding_configured_limit()
     {
         byte[] frameBytes = Bytes.FromHexString(BigNewBlockSingleFrame);
@@ -72,6 +141,40 @@ public class ZeroNettyFrameDecoderTests
         ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper = new(_frameCipher, _macProcessor, Frame.DefaultMaxFrameSize);
 
         Assert.Throws<CorruptedFrameException>(() => zeroFrameDecoderTestWrapper.Decode(input));
+    }
+
+    [Test]
+    public void Authenticated_header_enforces_default_frame_limit([Range(-1, 1)] int delta)
+    {
+        using PooledBufferLeakDetector detector = new();
+        (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
+        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        int length = ZeroFrameDecoder.DefaultMaxInboundFrameSize + delta;
+        byte[] header = new byte[Frame.HeaderSize + Frame.MacSize];
+        header[0] = (byte)(length >> 16);
+        header[1] = (byte)(length >> 8);
+        header[2] = (byte)length;
+        header[3] = 0xc2;
+        header[4] = header[5] = 0x80;
+        new FrameCipher(a.AesSecret).Encrypt(header, 0, Frame.HeaderSize, header, 0);
+        outboundMac.AddMac(header, 0, Frame.HeaderSize, header, Frame.HeaderSize, true);
+        EmbeddedChannel channel = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
+        channel.Configuration.Allocator = detector.Allocator;
+        try
+        {
+            IByteBuffer input = detector.Allocator.Buffer(header.Length).WriteBytes(header);
+            if (delta > 0)
+                Assert.That(() => channel.WriteInbound(input), Throws.InstanceOf<DecoderException>());
+            else
+                Assert.That(channel.WriteInbound(input), Is.False, "a valid header alone must not publish a frame");
+            Assert.That(channel.ReadInbound<IByteBuffer>(), Is.Null);
+        }
+        finally
+        {
+            channel.Pipeline.Remove<ZeroFrameDecoder>();
+            channel.FinishAndReleaseAll();
+        }
     }
 
     [Test]

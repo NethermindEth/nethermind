@@ -2299,10 +2299,8 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_batch_return_blobs_and_proofs_v1_from_persistent_storage()
+        public void should_batch_return_blobs_and_proofs_v1_from_persistent_storage([Values(1, 2)] int blobCount, [Values(1, 2, 16, 256, 257)] int repetitions)
         {
-            // BlobCacheSize = 1 forces cache eviction after the first insert,
-            // so the second tx must be fetched via TryGetMany (Phase 2 DB path).
             TxPoolConfig txPoolConfig = new()
             {
                 BlobsSupport = BlobsSupportMode.Storage,
@@ -2315,40 +2313,64 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
             Transaction tx1 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithShardBlobTxTypeAndFields(blobCount, spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction tx2 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithShardBlobTxTypeAndFields(blobCount, spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
-                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 3))
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            int expectedSlot = new TxLookupKey(tx1.Hash!, tx1.SenderAddress!, tx1.Timestamp).GetHashCode() & 1023;
+            for (uint timestamp = 0; timestamp < 100_000; timestamp++)
+            {
+                tx2.Timestamp = timestamp;
+                if ((new TxLookupKey(tx2.Hash!, tx2.SenderAddress!, tx2.Timestamp).GetHashCode() & 1023) == expectedSlot)
+                    break;
+            }
+            Assert.That(new TxLookupKey(tx2.Hash!, tx2.SenderAddress!, tx2.Timestamp).GetHashCode() & 1023, Is.EqualTo(expectedSlot));
 
             Assert.That(tx2.BlobVersionedHashes![0], Is.Not.EqualTo(tx1.BlobVersionedHashes![0]));
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Transaction cacheEvictor = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(1)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 4))
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            Assert.That(_txPool.SubmitTx(cacheEvictor, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // tx1 was evicted from cache (size=1) when tx2 was inserted,
-            // so at least one must come from DB via TryGetMany
-            byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, tx2.BlobVersionedHashes![0]!];
-            byte[][] blobs = new byte[2][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+            byte[][] requestedHashes = new byte[repetitions * (blobCount + 1)][];
+            for (int i = 0; i < requestedHashes.Length; i++)
+            {
+                int index = i % (blobCount + 1);
+                requestedHashes[i] = index == blobCount ? tx2.BlobVersionedHashes![0]! : tx1.BlobVersionedHashes![index]!;
+            }
+            byte[][] blobs = new byte[requestedHashes.Length][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[requestedHashes.Length];
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(found, Is.EqualTo(2));
-                Assert.That(blobs[0], Is.Not.Null);
-                Assert.That(blobs[1], Is.Not.Null);
-                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(1));
+                Assert.That(found, Is.EqualTo(requestedHashes.Length));
+                for (int i = 0; i < requestedHashes.Length; i++)
+                {
+                    int blobIndex = i % (blobCount + 1);
+                    ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)(blobIndex == blobCount ? tx2 : tx1).NetworkWrapper!;
+                    int index = blobIndex == blobCount ? 0 : blobIndex;
+                    Assert.That(blobs[i].AsSpan().SequenceEqual(wrapper.Blobs[index]), Is.True, $"Blob at index {i}");
+                    Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob).ToArray()));
+                }
+                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(2));
             }
         }
 
