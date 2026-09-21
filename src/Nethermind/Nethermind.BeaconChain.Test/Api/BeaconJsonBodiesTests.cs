@@ -380,6 +380,22 @@ public class BeaconJsonBodiesTests
     }
 
     [Test]
+    public async Task Headers_by_parent_root_is_not_finalized_when_the_slot_filter_excludes_every_child()
+    {
+        Hash256 parent = BeaconApiTestHost.TestRoot(0x55);
+        Hash256 child = BeaconApiTestHost.TestRoot(0x56);
+        _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 9, parent));
+        _host.Store.SetCanonicalRoot(Slot + 9, child);
+        _host.SetStatus(child, child, 412_500);
+
+        JsonElement body = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}&slot={Slot + 10}", Json))).RootElement;
+
+        Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+        Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False, "an empty answer references no finalized history, however finalized the children it filtered out are");
+    }
+
+    [Test]
     public async Task Headers_by_parent_root_is_501_for_a_parent_stored_before_the_index_existed()
     {
         Hash256 legacyParent = BeaconApiTestHost.TestRoot(0x60);
@@ -431,5 +447,27 @@ public class BeaconJsonBodiesGloasTests
 
         HttpResponseMessage ssz = await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", "application/octet-stream");
         Assert.That(ssz.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+    }
+
+    [Test]
+    public async Task Headers_by_parent_root_names_the_fork_only_when_every_listed_child_is_in_the_same_one()
+    {
+        ulong gloasSlot = BeaconChainSpec.Sepolia.GloasForkEpoch * BeaconChainSpec.Sepolia.SlotsPerEpoch;
+        Hash256 parent = BeaconApiTestHost.TestRoot(0x81);
+        Hash256 fuluChild = BeaconApiTestHost.TestRoot(0x82);
+        Hash256 gloasChild = BeaconApiTestHost.TestRoot(0x83);
+        _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(gloasSlot - 5, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.PutBlock(fuluChild, BeaconApiTestHost.RichBlock(gloasSlot - 2, parent));
+        _host.Store.PutBlock(gloasChild, BeaconApiTestHost.RichBlock(gloasSlot + 1, parent));
+
+        HttpResponseMessage mixed = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", "application/json");
+        string raw = await mixed.Content.ReadAsStringAsync();
+        Assert.That(mixed.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(2));
+        Assert.That(mixed.Headers.Contains("Eth-Consensus-Version"), Is.False, "children straddle the Gloas boundary, so no single fork name is true of the list");
+
+        HttpResponseMessage gloasOnly = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}&slot={gloasSlot + 1}", "application/json");
+        Assert.That(gloasOnly.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(gloasOnly.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"), "the fork is named for the listed children, not for every child in the index");
     }
 }
