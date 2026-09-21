@@ -63,7 +63,7 @@ public sealed class BeaconDiscovery(
     ILogManager logManager) : IAsyncDisposable
 {
     /// <summary>Same metadata key as the libp2p host so both stacks share one secp256k1 identity.</summary>
-    private const string IdentityMetadataKey = "p2pIdentityKey";
+    internal const string IdentityMetadataKey = "p2pIdentityKey";
 
     private static readonly TimeSpan TableSweepInterval = TimeSpan.FromMinutes(2);
 
