@@ -80,6 +80,10 @@ namespace Nethermind.TxPool
         [Description("Number of pending EIP-8250 keyed-nonce frame transactions received that were ignored because their sender held too little width for another pending transaction beyond its baseline.")]
         public static long PendingTransactionsFrameTxWidthUnmet;
 
+        [CounterMetric]
+        [Description("Number of pending EIP-8250 keyed-nonce frame transactions received that were ignored because their nonce-key set intersects another pending frame transaction from the same sender.")]
+        public static long PendingTransactionsKeyedNonceOverlap;
+
         [GaugeMetric]
         [Description("Number of EIP-8250 keyed-nonce frame-transaction senders currently holding positive width.")]
         public static long FrameTxSendersWithWidth;

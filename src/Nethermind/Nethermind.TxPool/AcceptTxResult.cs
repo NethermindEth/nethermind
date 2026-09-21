@@ -194,6 +194,13 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult WidthUnmet = new(TxPoolErrorMessages.WidthUnmet);
 
         /// <summary>
+        /// An EIP-8250 keyed-nonce frame transaction whose nonce-key set intersects a pending transaction of
+        /// the same sender. EIP-8250 admits several pending frame transactions per sender only on disjoint key
+        /// sets, so this is a local mempool policy, not a validity rule.
+        /// </summary>
+        public static readonly AcceptTxResult KeyedNonceOverlap = new(TxPoolErrorMessages.KeyedNonceOverlap);
+
+        /// <summary>
         /// Declares a result distinct from every other declared result.
         /// </summary>
         /// <remarks>For static declarations only: every call permanently consumes an id from a process-wide

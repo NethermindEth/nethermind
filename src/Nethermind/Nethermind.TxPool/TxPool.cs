@@ -311,8 +311,10 @@ namespace Nethermind.TxPool
             // second registration would reserve every frame tx's cost twice.
             postHashFilters.Add(new FrameTxPayerExposureFilter(_specProvider, chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
-            // MATCHA width: last, so width is only spent on a transaction every other gate admits; the pool
-            // refunds it on every path that leaves the transaction unpooled.
+            // EIP-8250: no two pending frame transactions of one sender may share a nonce key, whether or not MATCHA width is enabled.
+            postHashFilters.Add(new KeyedNonceDisjointnessFilter(_transactions, _blobTransactions));
+
+            // MATCHA width: last, so width is only spent on a transaction every other gate admits.
             postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _transactions, _blobTransactions, _senderWidth, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
@@ -953,7 +955,7 @@ namespace Nethermind.TxPool
                 Transaction blockTx = blockTransactions[i];
                 if (blockTx.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(blockTx))
                 {
-                    _senderWidth.Earn(blockTx.SenderAddress!, (UInt256)receipts[i].GasUsed);
+                    _senderWidth.Earn(blockTx.SenderAddress!, (UInt256)receipts[i].GasUsed, _txPoolConfig.FrameTxWidthCap);
                 }
             }
         }
@@ -1106,6 +1108,7 @@ namespace Nethermind.TxPool
             }
 
             IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
+            HashSet<AddressAsKey> baselineExempt = [];
 
             foreach (ValueHash256 hash in _frameTxsToRevalidate)
             {
@@ -1118,7 +1121,7 @@ namespace Nethermind.TxPool
                 }
 
                 Interlocked.Increment(ref Metrics.FrameTxRevalidations);
-                if (!TryRevalidateFrameTransaction(tx, state))
+                if (!TryRevalidateFrameTransaction(tx, state, baselineExempt))
                 {
                     // The record is untouched, so the Removed handler releases exactly what admission took.
                     if (RemoveTransaction(tx.Hash))
@@ -1147,14 +1150,14 @@ namespace Nethermind.TxPool
         /// A transaction that stays pending is re-indexed for the sender's delegation target, a head-state
         /// snapshot that can move while the payer does not, since a payer that moves evicts instead.
         /// </remarks>
-        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state)
+        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state, HashSet<AddressAsKey> baselineExempt)
         {
-            bool stillValid = ResolveFrameTxAgainstHead(tx, state, out Address? resolvedPayer);
+            bool stillValid = ResolveFrameTxAgainstHead(tx, state, baselineExempt, out Address? resolvedPayer);
             if (stillValid) IndexFrameTxDependencies(tx, resolvedPayer);
             return stillValid;
         }
 
-        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, out Address? resolvedPayer)
+        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, HashSet<AddressAsKey> baselineExempt, out Address? resolvedPayer)
         {
             resolvedPayer = null;
 
@@ -1173,6 +1176,15 @@ namespace Nethermind.TxPool
                 default:
                     // Opaque: with no simulator wired the prefix stays unresolved, exactly as at admission.
                     if (_frameTxPrefixSimulator is null) return true;
+                    // EIP-8141 MATCHA: an additional keyed-nonce prefix rerun spends its charge first (EIP8141-GAP: baseline by count, as at admission).
+                    if (_txPoolConfig.FrameTxWidthEnabled
+                        && KeyedNonceManager.UsesKeyedNonce(tx)
+                        && !baselineExempt.Add(tx.SenderAddress!)
+                        && !_senderWidth.TrySpend(tx.SenderAddress!, FrameTxWidthCharge.For(tx, _txPoolConfig.FrameTxWidthSafetyFactorPermille)))
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
+                        return false;
+                    }
                     // validate_signature reads no state, so admission's verdict still holds and re-verifying
                     // would only spend the per-head simulation budget this pool rations.
                     FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
@@ -1575,11 +1587,6 @@ namespace Nethermind.TxPool
             if (PendingPaymasterCache.KeyFor(tx) is Address paymaster)
             {
                 _pendingPaymasters.Decrement(paymaster);
-            }
-
-            if (_txPoolConfig.FrameTxWidthEnabled && tx.Hash is not null)
-            {
-                _senderWidth.RefundCharge(tx.Hash.ValueHash256);
             }
         }
 

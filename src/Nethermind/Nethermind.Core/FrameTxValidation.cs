@@ -285,6 +285,15 @@ public static class FrameTxValidation
     }
 
     /// <summary>
+    /// EIP-8141 MATCHA <c>admission_gas</c>: the validation work admitting one keyed-nonce frame transaction budgets,
+    /// which its width charge scales. Equal to <see cref="ValidationWorkGas"/>, so it prices the validation prefix's
+    /// declared execution limits through payment approval plus signature verification. Reading declared limits rather
+    /// than a first simulation, it also covers a later revalidation that runs more work. Application execution past the
+    /// prefix and the separately bounded state gas are excluded.
+    /// </summary>
+    public static ulong AdmissionGas(Transaction transaction) => ValidationWorkGas(transaction);
+
+    /// <summary>
     /// The gas <c>validate_signature</c> spends verifying a frame transaction's signatures, saturating at
     /// <see cref="ulong.MaxValue"/>. Scheme-weighted, so it reflects the elliptic-curve work each entry costs;
     /// an ARBITRARY entry contributes only its cheap structural-check cost, its witness being verified by frame code.

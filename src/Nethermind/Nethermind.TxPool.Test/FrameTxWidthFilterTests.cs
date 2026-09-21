@@ -23,18 +23,21 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>MATCHA sender-keyed width: keyed-nonce frame transactions beyond the sender's free baseline spend width earned from included gas.</summary>
+/// <summary>MATCHA sender-keyed width: keyed-nonce frame transactions beyond the sender's free baseline spend a charge that scales with their admission gas, drawn from width earned from finalized gas.</summary>
 public class FrameTxWidthFilterTests
 {
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly UInt256 NonceKey = 0xbeef;
-    private const ulong Cost = 21_000;
-    private const int Baseline = 2;
+    private const ulong Baseline = 1;
+    private const ulong SafetyFactorPermille = 1000;
 
-    [TestCase(0, true, TestName = "no pending transactions")]
-    [TestCase(Baseline - 1, true, TestName = "last free admission")]
-    [TestCase(Baseline, false, TestName = "first admission beyond the baseline")]
-    [TestCase(Baseline + 1, false, TestName = "further beyond the baseline")]
+    // A keyed-nonce transaction carrying one secp256k1 frame signature: admission_gas is that signature's verification
+    // cost, so with the default 1000-permille safety factor its charge equals it.
+    private const ulong Cost = Eip8141Constants.Secp256k1VerificationGasCost;
+
+    [TestCase(0, true, TestName = "the single baseline admission is free")]
+    [TestCase((int)Baseline, false, TestName = "first admission beyond the baseline")]
+    [TestCase((int)Baseline + 1, false, TestName = "further beyond the baseline")]
     public void Accept_FirstBaselineAdmissionsAreFreeWithoutWidth(int pending, bool accepted)
     {
         SenderWidthCache cache = new();
@@ -53,7 +56,7 @@ public class FrameTxWidthFilterTests
         SenderWidthCache cache = new();
         cache.Earn(Sender, earned);
 
-        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: Baseline), PendingKeyedTxs(Baseline));
+        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: Baseline), PendingKeyedTxs((int)Baseline));
 
         using (Assert.EnterMultipleScope())
         {
@@ -62,21 +65,51 @@ public class FrameTxWidthFilterTests
         }
     }
 
+    [TestCase(1000ul, Cost, TestName = "unit safety factor charges the admission gas")]
+    [TestCase(2000ul, Cost * 2, TestName = "double safety factor charges twice the admission gas")]
+    public void Accept_ChargeScalesWithSafetyFactor(ulong permille, ulong charge)
+    {
+        SenderWidthCache cache = new();
+        cache.Earn(Sender, charge);
+
+        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: Baseline), PendingKeyedTxs((int)Baseline), permille: permille);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero), "the charge scaled by the safety factor drained the earned width");
+        }
+    }
+
     [Test]
-    public void Accept_ChargedAdmission_IsRefundedWhenTheTransactionLeavesThePool()
+    public void Accept_ChargeScalesWithAdmissionGas()
+    {
+        SenderWidthCache cache = new();
+        cache.Earn(Sender, Cost * 3);
+
+        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: Baseline, signatures: 3), PendingKeyedTxs((int)Baseline));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero), "three signatures cost three times one signature's admission gas");
+        }
+    }
+
+    [Test]
+    public void Accept_ChargedAdmission_SpendsWidthPermanently()
     {
         SenderWidthCache cache = new();
         cache.Earn(Sender, Cost);
         Transaction tx = KeyedTx(nonceSeq: Baseline);
 
-        AcceptTxResult admitted = Accept(cache, tx, PendingKeyedTxs(Baseline));
-        cache.RefundCharge(tx.Hash!.ValueHash256);
-        AcceptTxResult readmitted = Accept(cache, tx, PendingKeyedTxs(Baseline));
+        AcceptTxResult admitted = Accept(cache, tx, PendingKeyedTxs((int)Baseline));
+        AcceptTxResult readmitted = Accept(cache, tx, PendingKeyedTxs((int)Baseline));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(admitted, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(readmitted, Is.EqualTo(AcceptTxResult.Accepted), "the refund restores what admission took");
+            Assert.That(readmitted, Is.EqualTo(AcceptTxResult.WidthUnmet), "spent width is not returned, so re-admission needs re-earning");
             Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero));
         }
     }
@@ -88,9 +121,9 @@ public class FrameTxWidthFilterTests
     public void Accept_ReplacementIsNotAnAdditionalAdmission(bool replaces, bool accepted)
     {
         SenderWidthCache cache = new();
-        Transaction incoming = KeyedTx(nonceSeq: (ulong)(replaces ? Baseline - 1 : Baseline), gasPrice: 2);
+        Transaction incoming = KeyedTx(nonceSeq: replaces ? Baseline - 1 : Baseline, gasPrice: 2);
 
-        AcceptTxResult result = Accept(cache, incoming, PendingKeyedTxs(Baseline));
+        AcceptTxResult result = Accept(cache, incoming, PendingKeyedTxs((int)Baseline));
 
         Assert.That(result, Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.WidthUnmet));
     }
@@ -102,7 +135,7 @@ public class FrameTxWidthFilterTests
         SenderWidthCache cache = new();
         long rejectionsBefore = Metrics.PendingTransactionsFrameTxWidthUnmet;
 
-        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: Baseline), PendingKeyedTxs(Baseline), enabled);
+        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: Baseline), PendingKeyedTxs((int)Baseline), enabled);
 
         using (Assert.EnterMultipleScope())
         {
@@ -117,7 +150,7 @@ public class FrameTxWidthFilterTests
         SenderWidthCache cache = new();
         cache.Earn(Sender, Cost);
 
-        AcceptTxResult result = Accept(cache, build(), PendingKeyedTxs(Baseline));
+        AcceptTxResult result = Accept(cache, build(), PendingKeyedTxs((int)Baseline));
 
         using (Assert.EnterMultipleScope())
         {
@@ -141,7 +174,7 @@ public class FrameTxWidthFilterTests
         cache.Earn(Sender, 50_000);
         cache.Earn(Sender, 10_000);
 
-        Assert.That(cache.TrySpend(Sender, Cost), Is.True);
+        Assert.That(cache.TrySpend(Sender, 21_000), Is.True);
         Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)39_000));
 
         Assert.That(cache.TrySpend(Sender, 39_001), Is.False);
@@ -153,18 +186,17 @@ public class FrameTxWidthFilterTests
     }
 
     [Test]
-    public void SenderWidthCache_RefundRestoresSpentWidthOnce()
+    public void SenderWidthCache_SpentWidthIsNotReturned()
     {
         SenderWidthCache cache = new();
-        cache.Earn(Sender, Cost);
-        Assert.That(cache.TrySpend(Sender, Cost), Is.True);
-        cache.RecordCharge(TestItem.KeccakA.ValueHash256, Sender, Cost);
+        cache.Earn(Sender, 21_000);
+        Assert.That(cache.TrySpend(Sender, 21_000), Is.True);
 
-        cache.RefundCharge(TestItem.KeccakA.ValueHash256);
-        Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)Cost));
-
-        cache.RefundCharge(TestItem.KeccakA.ValueHash256);
-        Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)Cost), "a second refund of the same charge is a no-op");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero), "the spend drained the balance");
+            Assert.That(cache.TrySpend(Sender, 21_000), Is.False, "nothing credits spent width back");
+        }
     }
 
     [Test]
@@ -190,9 +222,37 @@ public class FrameTxWidthFilterTests
         Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.MaxValue));
     }
 
-    private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true)
+    [Test]
+    public void SenderWidthCache_EarnHoldsAtTheCap()
     {
-        TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthCostPerAdmission = Cost, MaxPendingTxsPerSender = Baseline };
+        SenderWidthCache cache = new();
+        cache.Earn(Sender, 30_000, widthCap: 50_000);
+        cache.Earn(Sender, 30_000, widthCap: 50_000);
+
+        Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)50_000), "earned width never rises above the cap");
+    }
+
+    [Test]
+    public void SenderWidthCache_FirstEarnClampsToTheCap()
+    {
+        SenderWidthCache cache = new();
+        cache.Earn(Sender, 90_000, widthCap: 50_000);
+
+        Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)50_000), "a single earn above the cap is held at it");
+    }
+
+    [Test]
+    public void SenderWidthCache_ZeroCapLiftsTheCeiling()
+    {
+        SenderWidthCache cache = new();
+        cache.Earn(Sender, 90_000, widthCap: 0);
+
+        Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)90_000), "a zero cap lifts the ceiling");
+    }
+
+    private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true, ulong permille = SafetyFactorPermille)
+    {
+        TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille, MaxPendingTxsPerSender = (int)Baseline };
         FrameTxWidthFilter filter = new(config, pending, Pool(), cache, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
@@ -227,10 +287,16 @@ public class FrameTxWidthFilterTests
         return pool;
     }
 
-    private static Transaction KeyedTx(ulong nonceSeq, uint gasPrice = 1) => FrameTx(nonceSeq, [NonceKey], gasPrice);
+    private static Transaction KeyedTx(ulong nonceSeq, uint gasPrice = 1, int signatures = 1) => FrameTx(nonceSeq, [NonceKey], gasPrice, signatures);
 
-    private static Transaction FrameTx(ulong nonce, UInt256[]? nonceKeys, uint gasPrice = 1)
+    private static Transaction FrameTx(ulong nonce, UInt256[]? nonceKeys, uint gasPrice = 1, int signatures = 1)
     {
+        TxFrameSignature[] frameSignatures = new TxFrameSignature[signatures];
+        for (int i = 0; i < signatures; i++)
+        {
+            frameSignatures[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default);
+        }
+
         Transaction tx = new()
         {
             Type = TxType.FrameTx,
@@ -238,7 +304,7 @@ public class FrameTxWidthFilterTests
             Nonce = nonce,
             NonceKeys = nonceKeys,
             Frames = [],
-            FrameSignatures = [],
+            FrameSignatures = frameSignatures,
             GasLimit = 1_000_000,
             GasPrice = gasPrice,
             DecodedMaxFeePerGas = gasPrice,

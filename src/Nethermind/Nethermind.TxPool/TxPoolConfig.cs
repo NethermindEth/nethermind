@@ -25,7 +25,8 @@ public class TxPoolConfig : ITxPoolConfig
     public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
     public int MaxPendingBlobTxsPerSender { get; set; } = 16;
     public bool FrameTxWidthEnabled { get; set; } = false;
-    public ulong FrameTxWidthCostPerAdmission { get; set; } = 21_000;
+    public ulong FrameTxWidthSafetyFactorPermille { get; set; } = 1000;
+    public ulong FrameTxWidthCap { get; set; } = 0;
     public int HashCacheSize { get; set; } = 512 * 1024;
     public ulong? GasLimit { get; set; } = null;
     public long? MaxTxSize { get; set; } = 128.KiB;
