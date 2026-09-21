@@ -643,7 +643,7 @@ public class PbtWorldStateScopeTests
         using ManualResetEventSlim release = new();
         reader.BeforeRead = () => { entered.Set(); Assert.That(release.Wait(TimeSpan.FromSeconds(10)), Is.True); };
         RecordingTrieWarmer warmer = new();
-        using PbtWorldStateScope scope = CreateCountingScope(reader, null, warmer);
+        using PbtWorldStateScope scope = CreateCountingScope(reader, IPbtTrieNodeCache.Noop.Instance, warmer);
         IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
         borrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
         Task<bool> operation = Task.Run(() => ExecuteHint(warmer, -1));
@@ -840,7 +840,7 @@ public class PbtWorldStateScopeTests
         return payload!.GetSpan().ToArray();
     }
 
-    private static PbtWorldStateScope CreateCountingScope(CountingWarmupReader reader, PbtTrieNodeCache? cache, ITrieWarmer warmer)
+    private static PbtWorldStateScope CreateCountingScope(CountingWarmupReader reader, IPbtTrieNodeCache cache, ITrieWarmer warmer)
     {
         PbtResourcePool pool = new(new PbtConfig());
         PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader);

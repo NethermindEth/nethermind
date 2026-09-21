@@ -22,7 +22,7 @@ public sealed class PbtSnapshotBundle(
     PbtReadOnlySnapshotBundle readOnlyBundle,
     IPbtResourcePool resourcePool,
     PbtResourcePool.Usage usage,
-    PbtTrieNodeCache? trieNodeCache = null) : IDisposable
+    IPbtTrieNodeCache trieNodeCache) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
     private readonly PbtWriteBatchBuilder<PbtPath> _accountBatch = resourcePool.GetWriteBatch(usage);
@@ -130,7 +130,7 @@ public sealed class PbtSnapshotBundle(
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(storagePath, out payload)) return payload;
         if (_transientResource.NodeGroups.TryGet(groupHash, storagePath, out payload)) return payload;
-        if (trieNodeCache?.TryGet(groupHash, storagePath, out payload) == true) return payload;
+        if (trieNodeCache.TryGet(groupHash, storagePath, out payload)) return payload;
         return readOnlyBundle.GetNodeGroup(storagePath);
     }
 

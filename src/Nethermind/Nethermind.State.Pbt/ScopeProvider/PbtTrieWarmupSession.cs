@@ -19,7 +19,7 @@ internal sealed class PbtTrieWarmupSession(
     PbtTransientResource transientResource,
     ITrieWarmer trieWarmer,
     int sequenceId,
-    PbtTrieNodeCache? trieNodeCache) : IWorldStateScopeProvider.ITrieWarmupSession, ITrieWarmer.IAddressWarmer, IPbtStore
+    IPbtTrieNodeCache trieNodeCache) : IWorldStateScopeProvider.ITrieWarmupSession, ITrieWarmer.IAddressWarmer, IPbtStore
 {
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer> _storageWarmers = [];
     // The owner's lease, each borrow and each in-flight warm-up hold one count; the last to leave releases the frozen layers.
@@ -122,7 +122,7 @@ internal sealed class PbtTrieWarmupSession(
         for (int index = initialSnapshots.Count - 1; index >= 0; index--)
             if (initialSnapshots[index].Content.TryGetNodeGroup(storagePath, out RefCountingMemory? payload)) return payload;
         if (transientResource.NodeGroups.TryGet(groupHash, storagePath, out RefCountingMemory? staged)) return staged;
-        if (trieNodeCache?.TryGet(groupHash, storagePath, out RefCountingMemory? result) != true) result = readOnlyBundle.GetNodeGroup(storagePath);
+        if (!trieNodeCache.TryGet(groupHash, storagePath, out RefCountingMemory? result)) result = readOnlyBundle.GetNodeGroup(storagePath);
         if (result is not null) transientResource.NodeGroups.Set(groupHash, storagePath, result);
         return result;
     }

@@ -382,7 +382,7 @@ public class PbtDbManagerTests
         PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
             repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         PbtDbManager manager = new(repository, coordinator, persistence, pool,
-            new PbtSnapshotCompactor(pool, schedule, repository, config), exitSource, logs, config, new MetricsConfig());
+            new PbtSnapshotCompactor(pool, schedule, repository, config), exitSource, logs, config, new MetricsConfig(), IPbtTrieNodeCache.Noop.Instance);
         Task producer = Task.CompletedTask;
         try
         {
@@ -471,7 +471,7 @@ public class PbtDbManagerTests
             repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         using PbtTrieNodeCache cache = new(config);
         PbtDbManager manager = new(repository, coordinator, persistence, pool, new PbtSnapshotCompactor(pool, schedule, repository, config),
-            exitSource, LimboLogs.Instance, config, new MetricsConfig(), mode == TransientHandOff.NoCache ? null : cache);
+            exitSource, LimboLogs.Instance, config, new MetricsConfig(), mode == TransientHandOff.NoCache ? IPbtTrieNodeCache.Noop.Instance : cache);
         PbtTransientResource first = StagedTransient(pool, 1);
         PbtTransientResource second = StagedTransient(pool, 2);
         PbtTransientResource third = StagedTransient(pool, 3);
@@ -485,7 +485,7 @@ public class PbtDbManagerTests
             else third.ReleaseLease();
             using (Assert.EnterMultipleScope())
             {
-                if (mode is TransientHandOff.NoCache or TransientHandOff.Duplicate) Assert.That(IsReturned(second), Is.True, "a transient that cannot reach the populator returns to the pool at once");
+                if (mode == TransientHandOff.Duplicate) Assert.That(IsReturned(second), Is.True, "a transient that cannot reach the populator returns to the pool at once");
                 if (mode == TransientHandOff.ChannelFull) Assert.That(IsReturned(third), Is.True, "a transient refused by the full queue returns to the pool at once");
             }
             if (firstHeld) first.ReleaseLease();

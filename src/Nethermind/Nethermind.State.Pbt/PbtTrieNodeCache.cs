@@ -19,7 +19,7 @@ namespace Nethermind.State.Pbt;
 /// leases the payload first and then re-reads the version, discarding the lease if the slot moved underneath it.
 /// Account and code entries key on the narrower <see cref="PbtNodePath"/>; only the storage partition pays for <see cref="PbtStorageNodePath"/>.
 /// </remarks>
-public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
+public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDisposable
 {
     private const int ShardCount = 256;
     private const int WaysPerSet = 8;
