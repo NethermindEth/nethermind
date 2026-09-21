@@ -2167,6 +2167,18 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
+    public void Published_group_root_is_not_rehashed_by_its_owner_group()
+    {
+        TrieUpdaterMetrics metrics = new();
+        // The root branch is at bit 3, so its left child is the root of the group at depth 4: a branch over the two
+        // leaves diverging at bit 4, hashed when that group is published and then written into the root group at the
+        // same depth, with no prefix to promote it through.
+        TrieUpdater.UpdateRoot(new CountingPbtStore(), default, Batch(([0x00], Value(1)), ([0x08], Value(2)), ([0x10], Value(3))), metrics);
+
+        Assert.That(metrics.NodeHashes, Is.EqualTo(5), "three leaves, the depth-4 branch once, and the root");
+    }
+
+    [Test]
     public void Untouched_sibling_reuses_the_hash_its_parent_holds([Values] bool omittedSibling)
     {
         // The root branch splits [0x00] from its right sibling: a stored leaf, or an omitted branch over two leaves.

@@ -288,8 +288,11 @@ internal static partial class TrieUpdater<TKey, TPath>
             using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider, context.OmitPrefixlessBranches);
             InheritDescendants(ref reader, in ownerReader, path, current);
             OwnedSubtree result = FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, partition);
-            ValueHash256 hash = result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]).Hash(bitDepth, metrics);
+            TraversalSubtree resolved = result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]);
+            ValueHash256 hash = resolved.Hash(bitDepth, metrics);
             result.SizeDelta = PublishGroup(context.Store, ref reader, writer, path, hash);
+            // The owner group writes this root at the same depth, so a composed root can reuse the hash just published.
+            if (result.Node.Kind == NodeKind.Branch) result.Node = result.Node.WithKnownHash(hash, resolved.BranchDepth - bitDepth);
             return result;
         }
     }

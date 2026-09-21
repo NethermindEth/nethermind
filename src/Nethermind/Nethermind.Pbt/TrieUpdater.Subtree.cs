@@ -31,8 +31,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <summary>A leaf's hash, or a branch's left child hash.</summary>
         internal readonly ValueHash256 HashOrLeft;
         private readonly ValueHash256 _right;
-        /// <summary>The hash the source group already held for this node, or default when it must be computed.</summary>
+        /// <summary>The hash already computed for this node, or default when it must be computed.</summary>
         internal readonly ValueHash256 KnownHash;
+        /// <summary>The compressed-prefix bit count of the encoding <see cref="KnownHash"/> is the hash of.</summary>
+        internal readonly ushort KnownHashBitCount;
         /// <summary>Which children of a composed branch are leaves: <see cref="LeftLeaf"/> and <see cref="RightLeaf"/> bits.</summary>
         internal readonly byte LeafChildren;
 
@@ -42,6 +44,14 @@ internal static partial class TrieUpdater<TKey, TPath>
             Encoding = encoding;
             Path = path;
             KnownHash = knownHash;
+            KnownHashBitCount = (ushort)Reader.Prefix.BitCount;
+        }
+
+        private Subtree(in Subtree source, in ValueHash256 knownHash, int knownHashBitCount)
+        {
+            this = source;
+            KnownHash = knownHash;
+            KnownHashBitCount = (ushort)knownHashBitCount;
         }
 
         internal Subtree(TKey key, in ValueHash256 hash)
@@ -64,6 +74,9 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, in ValueHash256 knownHash)
             : this(path, left, right, default, default, 0) => KnownHash = knownHash;
+
+        /// <summary>This node carrying the hash of its encoding with a <paramref name="bitCount"/>-bit prefix, so that encoding is not hashed again.</summary>
+        internal readonly Subtree WithKnownHash(in ValueHash256 hash, int bitCount) => new(this, hash, bitCount);
 
         internal readonly NodeGroupPath Path { get; }
         internal readonly PbtNodeReader Reader => PbtNodeReader.FromValidated(Encoding.Span);
@@ -203,8 +216,9 @@ internal static partial class TrieUpdater<TKey, TPath>
             CopyBranchBits(depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
             int branchPreimageLength = PbtNodeCodec.BranchPreimageLength(bitCount);
             Node.WriteLeafKeys(encoding[branchPreimageLength..]);
-            // An omitted branch reacquired at its own anchor is the node its parent already hashed.
-            if (depth == AnchorDepth && Node.KnownHash != default) return Node.KnownHash;
+            // An omitted branch reacquired at its own anchor, or a published group root written into its parent
+            // group, is the node already hashed at this prefix length.
+            if (Node.KnownHash != default && bitCount == Node.KnownHashBitCount) return Node.KnownHash;
             preimageLength = branchPreimageLength;
             return default;
         }
