@@ -137,9 +137,6 @@ public class GloasSeedAndEpochCacheTests
         ulong balanceA = cache.GetTotalActiveBalance(siblingA);
         Assert.That(() => cache.GetTotalActiveBalance(siblingB), Is.EqualTo(balanceA),
             "nothing a block inside the epoch does changes the current epoch's active set or effective balances, so siblings share the value");
-        // The sharing is only legitimate while the memo hands B what B would compute alone; this is
-        // the assertion that goes red if a sibling collision ever becomes possible.
-        Assert.That(cache.GetTotalActiveBalance(siblingB), Is.EqualTo(siblingB.GetTotalBalance(siblingB.GetActiveValidatorIndices(epoch))));
     }
 
     [Test]

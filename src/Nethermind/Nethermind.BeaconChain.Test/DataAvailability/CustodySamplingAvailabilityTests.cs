@@ -108,8 +108,10 @@ public class CustodySamplingAvailabilityTests
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
-        DataColumnSidecar foreign = chain.Columns[(int)custody.SampledColumns[0]];
-        foreign.KzgCommitments = [foreign.KzgCommitments![0]]; // one of the block's two commitments
+        // The block's two commitments in the other order: the held column's inclusion and cell proofs
+        // still verify against its own header, so only the per-index cross-check can reject it.
+        SszKzgCommitment[] blockCommitments = chain.Block.Message!.Body!.BlobKzgCommitments!;
+        chain.Block.Message.Body.BlobKzgCommitments = [blockCommitments[1], blockCommitments[0]];
         CustodySamplingAvailability rule = new(new FixedCustodySource(custody), new RecordingColumnSource(chain, custody.SampledColumns));
 
         Assert.That(rule.IsDataAvailable(chain.Block.Message!, chain.BlockRoot, chain.Spec), Is.False);
