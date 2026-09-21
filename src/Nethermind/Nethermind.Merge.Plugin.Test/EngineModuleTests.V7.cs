@@ -858,6 +858,56 @@ public partial class EngineModuleTests
         }
     }
 
+    // An unexpected failure to evaluate a retained list is not retryable the way a healing subtrie is, and
+    // forkchoiceUpdatedV5 runs several times per slot, so the list is forgotten rather than re-evaluated.
+    [Test]
+    public async Task ForkchoiceUpdatedV5_evaluates_a_retained_list_once_when_the_evaluation_throws()
+    {
+        HeadStateInterceptor headState = new();
+        InterleavingEvaluator evaluator = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder
+                .UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<IStateReader>(headState))
+                .AddDecorator<IInclusionListComplianceEvaluator>((_, inner) =>
+                {
+                    evaluator.Inner = inner;
+                    return evaluator;
+                }));
+        headState.Inner = chain.StateReader;
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
+
+        // Retain a list by resending the block with its state pruned, so the forkchoice update has to evaluate.
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        headState.PrunedBlock = payload.BlockHash;
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
+            payload, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
+        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the resend must leave its list retained");
+        headState.PrunedBlock = null;
+
+        int evaluations = 0;
+        evaluator.BeforeEvaluate = () =>
+        {
+            evaluations++;
+            throw new InvalidOperationException("evaluation failed");
+        };
+
+        ForkchoiceStateV1 forkchoiceState = new(payload.BlockHash, payload.BlockHash, payload.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV2Result> first = await rpc.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes: null);
+        ResultWrapper<ForkchoiceUpdatedV2Result> second = await rpc.engine_forkchoiceUpdatedV5(forkchoiceState, payloadAttributes: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(first.Data.PayloadStatus.InclusionListSatisfied, Is.Null);
+            Assert.That(second.Data.PayloadStatus.InclusionListSatisfied, Is.Null);
+            Assert.That(evaluations, Is.EqualTo(1), "the retained list must not be re-evaluated after it threw");
+        }
+    }
+
     /// <summary>Wraps the chain's <see cref="IInclusionListComplianceEvaluator"/> so a test can act inside the
     /// window between <c>engine_forkchoiceUpdatedV5</c> reading the retained list and publishing an answer.</summary>
     private sealed class InterleavingEvaluator : IInclusionListComplianceEvaluator

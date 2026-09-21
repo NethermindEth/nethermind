@@ -175,6 +175,9 @@ public partial class EngineRpcModule : IEngineRpcModule
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Cannot evaluate the inclusion list of head {headBlockHash}: {exception}");
+            // Unlike a pruned or healing subtrie, nothing failing here is expected to succeed later, so forget
+            // the list instead of re-throwing and re-logging on every later update to this head.
+            PublishInclusionListState(headBlockHash, retained, default);
             return null;
         }
 
@@ -185,16 +188,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             return null;
         }
 
-        // Publish only while the list the answer was computed for is still the retained one: a concurrent
-        // engine_newPayloadV6 may have replaced it, and the newer list outranks this answer.
-        lock (_inclusionListLock)
-        {
-            if (_inclusionListByBlock.TryGet(headBlockHash, out InclusionListState current)
-                && ReferenceEquals(current.Retained, retained))
-            {
-                _inclusionListByBlock.Set(headBlockHash, new InclusionListState(answer, null));
-            }
-        }
+        PublishInclusionListState(headBlockHash, retained, new InclusionListState(answer, null));
 
         return answer;
     }
@@ -204,6 +198,22 @@ public partial class EngineRpcModule : IEngineRpcModule
         lock (_inclusionListLock)
         {
             _inclusionListByBlock.Set(blockHash, state);
+        }
+    }
+
+    /// <summary>Stores what evaluating <paramref name="retained"/> established for <paramref name="blockHash"/>,
+    /// but only while that is still the list retained for it.</summary>
+    /// <remarks>A concurrent <c>engine_newPayloadV6</c> may have retained a newer list, which outranks anything
+    /// derived from the older one.</remarks>
+    private void PublishInclusionListState(Hash256 blockHash, byte[][] retained, InclusionListState state)
+    {
+        lock (_inclusionListLock)
+        {
+            if (_inclusionListByBlock.TryGet(blockHash, out InclusionListState current)
+                && ReferenceEquals(current.Retained, retained))
+            {
+                _inclusionListByBlock.Set(blockHash, state);
+            }
         }
     }
 
