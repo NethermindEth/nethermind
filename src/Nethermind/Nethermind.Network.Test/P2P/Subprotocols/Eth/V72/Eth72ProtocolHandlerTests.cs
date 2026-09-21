@@ -265,7 +265,7 @@ public class Eth72ProtocolHandlerTests
         _handler.SendNewTransactions([first, second], sendFullTx: false);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(message =>
-            message.Hashes.SequenceEqual(new[] { first.Hash!, second.Hash! })
+            message.Hashes.SequenceEqual(new ValueHash256[] { first.Hash!, second.Hash! })
             && message.CellMask.SequenceEqual(BlobCellMask.Full.ToBytes())));
     }
 
@@ -537,7 +537,7 @@ public class Eth72ProtocolHandlerTests
         const int count = NewPooledTransactionHashesMessage72.MaxCount + 1;
         byte[] types = new byte[count];
         int[] sizes = new int[count];
-        Hash256[] hashes = new Hash256[count];
+        ValueHash256[] hashes = new ValueHash256[count];
         Array.Fill(types, (byte)TxType.EIP1559);
         Array.Fill(sizes, 1024);
         for (int i = 0; i < hashes.Length; i++)
@@ -695,7 +695,7 @@ public class Eth72ProtocolHandlerTests
         GetCellsMessage72? handlerRequest = _deliveredMessages.OfType<GetCellsMessage72>().LastOrDefault();
         (Hash256 Hash, BlobCellMask CellMask) request = secondProvider.CellRequests.Count == 1
             ? secondProvider.CellRequests[0]
-            : (handlerRequest!.Hashes[0], BlobCellMask.FromBytes(handlerRequest.CellMask));
+            : (handlerRequest!.Hashes[0].ToHash256(), BlobCellMask.FromBytes(handlerRequest.CellMask));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(secondProvider.CellRequests.Count + (handlerRequest is null ? 0 : 1), Is.EqualTo(1));
@@ -1396,7 +1396,7 @@ public class Eth72ProtocolHandlerTests
         typeof(Eth72ProtocolHandler)
             .GetField("_blobAnnouncementsReceived", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(_handler, 13L);
-        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsRequestHashes + 1];
+        ValueHash256[] hashes = new ValueHash256[Eth72ProtocolHandler.MaxCellsRequestHashes + 1];
         for (int i = 0; i < hashes.Length; i++)
         {
             hashes[i] = HashFromInt(i);
@@ -1544,7 +1544,7 @@ public class Eth72ProtocolHandlerTests
 
         _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(m =>
             m.RequestId == request.RequestId &&
-            m.Hashes.SequenceEqual(new[] { firstTx.Hash!, secondTx.Hash! }) &&
+            m.Hashes.SequenceEqual(new ValueHash256[] { firstTx.Hash!, secondTx.Hash! }) &&
             m.CellMask.SequenceEqual(requestedMask.ToBytes()) &&
             m.Cells.Length == 2 &&
             m.Cells[0].Zip(firstCells, static (left, right) => left.SequenceEqual(right)).All(static equal => equal) &&
@@ -1555,7 +1555,7 @@ public class Eth72ProtocolHandlerTests
     public void should_cap_cells_response_when_request_exceeds_response_hash_limit()
     {
         BlobCellMask requestedMask = BlobCellMask.FromIndices([1]);
-        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsResponseHashes * 2];
+        ValueHash256[] hashes = new ValueHash256[Eth72ProtocolHandler.MaxCellsResponseHashes * 2];
         for (int i = 0; i < hashes.Length; i++)
         {
             Hash256 hash = HashFromInt(i);
@@ -1601,7 +1601,7 @@ public class Eth72ProtocolHandlerTests
 
         _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(m =>
             m.RequestId == request.RequestId &&
-            m.Hashes.SequenceEqual(new[] { firstHash }) &&
+            m.Hashes.SequenceEqual(new ValueHash256[] { firstHash }) &&
             m.Cells.Length == 1));
         _transactionPool.Received(1).TryGetBlobCells(
             firstHash,
@@ -1620,8 +1620,8 @@ public class Eth72ProtocolHandlerTests
     public void should_bound_hash_lookups_for_cells_request()
     {
         BlobCellMask requestedMask = BlobCellMask.FromIndices([1]);
-        Hash256[] hashes = Enumerable.Range(0, Eth72ProtocolHandler.MaxCellsRequestHashes + 1)
-            .Select(HashFromInt)
+        ValueHash256[] hashes = Enumerable.Range(0, Eth72ProtocolHandler.MaxCellsRequestHashes + 1)
+            .Select(i => HashFromInt(i).ValueHash256)
             .ToArray();
         using GetCellsMessage72 request = new(1234, hashes, requestedMask.ToBytes());
 
@@ -1669,7 +1669,7 @@ public class Eth72ProtocolHandlerTests
 
         _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(m =>
             m.RequestId == request.RequestId &&
-            m.Hashes.SequenceEqual(new[] { secondTx.Hash! }) &&
+            m.Hashes.SequenceEqual(new ValueHash256[] { secondTx.Hash! }) &&
             m.CellMask.SequenceEqual(requestedMask.ToBytes()) &&
             m.Cells.Length == 1 &&
             m.Cells[0].Zip(secondCells, static (left, right) => left.SequenceEqual(right)).All(static equal => equal)));
@@ -1739,7 +1739,7 @@ public class Eth72ProtocolHandlerTests
 
         _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(message =>
             message.RequestId == availableRequest.RequestId
-            && message.Hashes.SequenceEqual(new[] { tx.Hash! })
+            && message.Hashes.SequenceEqual(new ValueHash256[] { tx.Hash! })
             && message.Cells.Length == 1));
         _transactionPool.DidNotReceive().TryGetPendingBlobTransaction(tx.Hash!, out Arg.Any<Transaction>());
     }
@@ -5004,7 +5004,7 @@ public class Eth72ProtocolHandlerTests
         return false;
     }
 
-    private static bool ContainsHash(IReadOnlyList<Hash256> hashes, Hash256 expected)
+    private static bool ContainsHash(IReadOnlyList<ValueHash256> hashes, Hash256 expected)
     {
         for (int i = 0; i < hashes.Count; i++)
         {

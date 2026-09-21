@@ -401,7 +401,7 @@ public class Eth72ProtocolHandler(
 
     private void Handle(NewPooledTransactionHashesMessage72 msg)
     {
-        ReadOnlySpan<Hash256> hashes = msg.Hashes.AsSpan();
+        ReadOnlySpan<ValueHash256> hashes = msg.Hashes.AsSpan();
         ReadOnlySpan<byte> types = msg.Types.AsSpan();
         ReadOnlySpan<int> sizes = msg.Sizes.AsSpan();
 
@@ -425,7 +425,7 @@ public class Eth72ProtocolHandler(
 
         for (int i = 0; i < hashes.Length; i++)
         {
-            Hash256 hash = hashes[i];
+            ValueHash256 hash = hashes[i];
             TxType txType = (TxType)types[i];
             int txSize = sizes[i];
             if (!CanRequestPooledTransaction(txType) || txSize <= 0)
@@ -440,24 +440,26 @@ public class Eth72ProtocolHandler(
             }
 
             bool supportsBlobs = txType.SupportsBlobs();
-            bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash.ValueHash256);
+            Hash256? blobHash = null;
+            bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash);
             if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
             {
-                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, announcementMask);
+                blobHash = hash.ToHash256();
+                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, blobHash, announcementMask);
                 if (!recorded
                     && (!_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask) || !localMask.IsFull))
                 {
                     continue;
                 }
 
-                if (_countedBlobAnnouncements.Set(hash.ValueHash256, 1))
+                if (_countedBlobAnnouncements.Set(hash, 1))
                 {
                     Interlocked.Increment(ref _blobAnnouncementsReceived);
                 }
             }
 
             bool shouldRequestTx = !_txPool.IsKnown(hash)
-                && _txPool.NotifyAboutTx(in hash.ValueHash256, this) is AnnounceResult.RequestRequired;
+                && _txPool.NotifyAboutTx(in hash, this) is AnnounceResult.RequestRequired;
 
             if (shouldRequestTx
                 && (_blobSupportEnabled || !supportsBlobs))
@@ -478,12 +480,12 @@ public class Eth72ProtocolHandler(
                 toRequestCount++;
             }
 
-            if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
+            if (blobHash is not null)
             {
-                BlobCellMask requestMask = _sparseBlobPoolPeerRegistry.GetRequestMask(hash, announcementMask, _providerProbabilityPercent);
+                BlobCellMask requestMask = _sparseBlobPoolPeerRegistry.GetRequestMask(blobHash, announcementMask, _providerProbabilityPercent);
                 if (!requestMask.IsEmpty)
                 {
-                    RequestCellsWhenReady(hash, requestMask);
+                    RequestCellsWhenReady(blobHash, requestMask);
                 }
             }
         }
@@ -583,7 +585,7 @@ public class Eth72ProtocolHandler(
 
         int requestHashCount = Math.Min(message.Hashes.Length, MaxCellsRequestHashes);
         int responseCapacity = Math.Min(requestHashCount, MaxCellsResponseHashes);
-        List<Hash256> responseHashes = new(responseCapacity);
+        List<ValueHash256> responseHashes = new(responseCapacity);
         List<byte[][]> cellsByTx = new(responseCapacity);
         HashSet<ValueHash256> seenHashes = new(requestHashCount);
         int hashesContentLength = 0;
@@ -596,12 +598,13 @@ public class Eth72ProtocolHandler(
                 break;
             }
 
-            Hash256 hash = message.Hashes[i];
-            if (!seenHashes.Add(hash.ValueHash256))
+            ValueHash256 valueHash = message.Hashes[i];
+            if (!seenHashes.Add(valueHash))
             {
                 continue;
             }
 
+            Hash256 hash = valueHash.ToHash256();
             if (!TryGetCellsResponseMetadata(
                     hash,
                     requestedMask,
@@ -720,12 +723,12 @@ public class Eth72ProtocolHandler(
             return;
         }
 
-        if (message.Hashes.Length != 1 || message.Hashes[0].ValueHash256 != sentRequest.Hash)
+        if (message.Hashes.Length != 1 || message.Hashes[0] != sentRequest.Hash)
         {
             ThrowMalformedCellsResponse(sentRequest, $"Wrong format of {nameof(CellsMessage72)} message. Response does not match requested blob cells.");
         }
 
-        Hash256 hash = message.Hashes[0];
+        Hash256 hash = message.Hashes[0].ToHash256();
         ValueHash256 key = hash.ValueHash256;
         BlobCellMask requestedMask = sentRequest.Mask;
         if ((responseMask & requestedMask) != responseMask)
@@ -1821,7 +1824,7 @@ public class Eth72ProtocolHandler(
         int count = txs.Count;
         ArrayPoolList<byte> types = new(count);
         ArrayPoolList<int> sizes = new(count);
-        ArrayPoolList<Hash256> hashes = new(count);
+        ArrayPoolList<ValueHash256> hashes = new(count);
 
         for (int i = 0; i < count; i++)
         {

@@ -117,15 +117,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         protected virtual void Handle(NewPooledTransactionHashesMessage msg) => RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
 
-        protected void AddNotifiedTransactions(ReadOnlySpan<Hash256> hashes)
+        protected void AddNotifiedTransactions(ReadOnlySpan<ValueHash256> hashes)
         {
             for (int i = 0; i < hashes.Length; i++)
             {
-                Hash256 hash = hashes[i];
-                if (hash is not null)
-                {
-                    NotifiedTransactions.Set(hash.ValueHash256);
-                }
+                NotifiedTransactions.Set(hashes[i]);
             }
         }
 
