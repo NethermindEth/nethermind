@@ -337,9 +337,10 @@ public class HistoryRowScannerTests
         BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 8);
         foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
             state.ImportPage(Store(source, column), format, column, 10, CancellationToken.None);
-        // A slot row is only decoded as RLP in the wrapped format, so the malformed-slot case has nothing to corrupt
-        // in the other one and is left as a passing run there.
-        bool slotCorruptionApplies = corruption == ScratchCorruption.MalformedSlotRow && rlpWrapped;
+        // A slot row is only decoded as RLP in the wrapped format, and only when it survives the clear: a slot older
+        // than the clear is dead and skipped before decoding. In the other cases the malformed row has nothing to
+        // corrupt and the run is left as a passing one.
+        bool slotCorruptionApplies = corruption == ScratchCorruption.MalformedSlotRow && rlpWrapped && clearAt <= 5;
         switch (corruption)
         {
             case ScratchCorruption.WrongBalance:
@@ -349,10 +350,13 @@ public class HistoryRowScannerTests
                 scratch.GetColumnDb(BulkFillScratchState.Columns.Accounts).PutSpan(address.Bytes, [0xff]);
                 break;
             case ScratchCorruption.MalformedSlotRow when slotCorruptionApplies:
+                // The scratch orders slots under a key of its own, not the history row key, so the corruption goes
+                // where the import put the row; under any other key the verifier never sees it.
+                byte[] scratchSlotKey = scratch.GetColumnDb(BulkFillScratchState.Columns.Storage).GetAllKeys().Single();
                 Span<byte> malformed = stackalloc byte[sizeof(ulong) + 1];
                 BinaryPrimitives.WriteUInt64BigEndian(malformed, 5);
                 malformed[sizeof(ulong)] = 0xff;
-                scratch.GetColumnDb(BulkFillScratchState.Columns.Storage).PutSpan(storageKey, malformed);
+                scratch.GetColumnDb(BulkFillScratchState.Columns.Storage).PutSpan(scratchSlotKey, malformed);
                 break;
         }
 

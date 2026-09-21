@@ -100,15 +100,11 @@ internal sealed class RangeOverlay : IStateReadOverlay
         UInt256? nonce = null;
         UInt256? balance = null;
         ValueHash256? codeHash = null;
-        bool? storageEmpty = null;
+        RangeOverlay? wipedAt = null;
         bool hit = false;
         Account? basis = underlying;
         for (RangeOverlay? node = this; node is not null; node = node._older)
         {
-            // The newest node that says anything about this account's storage settles it: slots written after a wipe
-            // leave the account holding storage again, so an older block's wipe must not reach the root reported here.
-            if (storageEmpty is null && node._storageAccounts.Contains(address)) storageEmpty = false;
-
             if (!node._accounts.TryGetValue(address, out AccountEnd end)) continue;
 
             hit = true;
@@ -121,11 +117,10 @@ internal sealed class RangeOverlay : IStateReadOverlay
             nonce ??= end.Nonce;
             balance ??= end.Balance;
             codeHash ??= end.CodeHash;
-            if (storageEmpty is null && (end.Wiped || end.Gone)) storageEmpty = true;
+            wipedAt ??= end.Wiped || end.Emptied ? node : null;
             if (end.Emptied)
             {
                 basis = Account.TotallyEmpty;
-                storageEmpty ??= true;
                 break;
             }
         }
@@ -134,6 +129,22 @@ internal sealed class RangeOverlay : IStateReadOverlay
         {
             overlaid = null;
             return false;
+        }
+
+        // The newest wipe settles the root unless a slot was written in that block or any block after it, which
+        // leaves the account holding storage again. Only a wiped account pays for that second walk: for the account
+        // no block of the chain wiped, the common one, the walk above is the whole cost of the read.
+        bool? storageEmpty = null;
+        if (wipedAt is not null)
+        {
+            storageEmpty = true;
+            for (RangeOverlay? node = this; node is not null && node != wipedAt._older; node = node._older)
+            {
+                if (!node._storageAccounts.Contains(address)) continue;
+
+                storageEmpty = false;
+                break;
+            }
         }
 
         basis ??= Account.TotallyEmpty;

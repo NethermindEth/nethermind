@@ -106,6 +106,23 @@ public class RangeOverlayTests
     }
 
     [Test]
+    public void AWipeInANewerBlock_IsNotUndoneBySlotsAnOlderBlockWrote()
+    {
+        RangeOverlay written = Chain(null, 7, c => c.Storage(SlotOne, [0x11]));
+        RangeOverlay wiped = Chain(written, 8, c =>
+        {
+            c.StorageCleared(TestItem.AddressA);
+            c.Code(TestItem.AddressA, Code);
+        });
+        RangeOverlay later = Chain(wiped, 9, c => c.Balance(TestItem.AddressB, 1));
+
+        later.TryGetAccount(TestItem.AddressA, Parent, out Account? account);
+
+        Assert.That(account!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash),
+            "the slot the older block wrote went with the wipe; only a write in the wiping block or after it leaves the account holding storage");
+    }
+
+    [Test]
     public void AnAccountRecreatedWithStorageAfterAnOlderBlockWipedIt_DoesNotReportAnEmptyRoot()
     {
         RangeOverlay destroyed = Chain(null, 7, c => c.Deleted(TestItem.AddressA));
