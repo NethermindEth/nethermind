@@ -34,7 +34,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.State.Flat;
+using Nethermind.State;
 using Nethermind.Trie;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -969,17 +969,24 @@ public class JsonRpcServiceTests
         using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
     }
 
-    [Test]
-    public void State_unavailable_exception_returns_resource_unavailable()
+    [TestCaseSource(nameof(StateUnavailableShapes))]
+    public void State_unavailable_exception_returns_resource_unavailable(Exception thrown)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_getLogs(Arg.Any<Filter>())
-            .Throws(new StateUnavailableException("State for block 1 is unavailable"));
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(thrown);
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(
             TestRequest(ethRpcModule, "eth_getLogs", "{}"),
             ErrorCodes.ResourceUnavailable,
             "State for block 1 is unavailable");
+    }
+
+    private static IEnumerable<TestCaseData> StateUnavailableShapes()
+    {
+        StateUnavailableException inner = new("State for block 1 is unavailable");
+        yield return new TestCaseData(inner).SetName("{m}(bare)");
+        yield return new TestCaseData(new TargetInvocationException(inner)).SetName("{m}(wrapped)");
+        yield return new TestCaseData(new MissingTrieNodeException("missing", null, TreePath.Empty, TestItem.KeccakA, inner)).SetName("{m}(missing-trie wrap)");
     }
 
     [RpcModule(ModuleType.Eth)]

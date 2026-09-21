@@ -3,8 +3,5 @@
 
 namespace Nethermind.State.Flat;
 
-/// <summary>
-/// The requested state does not exist (pruned or concurrently removed) and no retry can recover it — as opposed
-/// to transient gather failures (e.g. timeout under load), which remain plain <see cref="InvalidOperationException"/>.
-/// </summary>
-public sealed class StateUnavailableException(string message) : InvalidOperationException(message);
+/// <summary>Flat-backend alias of <see cref="Nethermind.State.StateUnavailableException"/> so existing throw sites keep compiling.</summary>
+public sealed class StateUnavailableException(string message) : Nethermind.State.StateUnavailableException(message);

@@ -22,7 +22,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Nethermind.State.Flat;
 using Nethermind.Trie;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
@@ -625,6 +624,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, in request.IdRef, returnAction),
 
+            MissingTrieNodeException { InnerException: StateUnavailableException inner } =>
+                HandleStateUnavailable(inner, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: MissingTrieNodeException { InnerException: StateUnavailableException inner } } =>
+                HandleStateUnavailable(inner, methodName, request, returnAction),
+
             MissingTrieNodeException e =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
 
@@ -1058,8 +1063,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // rejections reach this point along two distinct paths (module rental before invocation,
         // and the override-environment cap during invocation), and their warnings are suppressed
         // by design — without a counter operators cannot see that callers are being shed.
-        // suppressWarning scopes the count to exactly those shedding sites: batch-size and
-        // response-body caps also produce LimitExceeded but keep their warnings.
+        // suppressWarning scopes the count to exactly those shedding sites: the batch-size cap
+        // keeps its own Warn; the response-body cap now demotes with the other -32005s.
         if (suppressWarning && errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
         {
             Metrics.IncrementJsonRpcOverloadRejections();

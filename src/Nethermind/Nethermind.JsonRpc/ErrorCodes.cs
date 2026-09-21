@@ -177,7 +177,8 @@ namespace Nethermind.JsonRpc
         public const int VMError = -32015;
 
         /// <summary>
-        /// True for errors a caller chooses to trigger: the JSON-RPC 2.0 pre-defined request errors
+        /// True for errors whose volume a single unauthenticated caller controls, and which no operator
+        /// action would prevent: the JSON-RPC 2.0 pre-defined request errors
         /// (<see cref="ParseError"/>, <see cref="InvalidRequest"/>, <see cref="MethodNotFound"/>,
         /// <see cref="InvalidParams"/>) and the application guard rails (<see cref="ResourceUnavailable"/>,
         /// <see cref="LimitExceeded"/>, <see cref="PrunedHistoryUnavailable"/>).
