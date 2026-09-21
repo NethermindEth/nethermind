@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -46,11 +47,16 @@ public class BlobTxStorageTests
     [Test]
     public void Invalid_processed_index_is_a_cache_miss_and_can_be_replaced_or_deleted(
         [Values("", "00", "000000", "000000000001", "0000000000", "00ffffffff", "007fffffff", "0000014587")] string encodedIndex,
-        [Values] bool replace)
+        [Values] bool replace, [Values] bool orphanedPayload)
     {
         using MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
-        db.GetColumnDb(BlobTxsColumns.ProcessedTxs).PutSpan(358UL.ToBigEndianSpanWithoutLeadingZeros(out _), Convert.FromHexString(encodedIndex));
+        IDb processed = db.GetColumnDb(BlobTxsColumns.ProcessedTxs);
+        byte[] orphanKey = new byte[sizeof(ulong) + sizeof(int)];
+        BinaryPrimitives.WriteUInt64BigEndian(orphanKey, 358);
+        BinaryPrimitives.WriteInt32BigEndian(orphanKey.AsSpan(sizeof(ulong)), 3);
+        if (orphanedPayload) processed.PutSpan(orphanKey, [1]);
+        processed.PutSpan(358UL.ToBigEndianSpanWithoutLeadingZeros(out _), Convert.FromHexString(encodedIndex));
 
         using (Assert.EnterMultipleScope())
         {
@@ -66,7 +72,8 @@ public class BlobTxStorageTests
         }
 
         storage.DeleteBlobTransactionsFromBlock(358);
-        Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys(), Is.Empty);
+        // Payloads orphaned by a damaged index are reclaimed by finalization cleanup.
+        Assert.That(processed.GetAllKeys(), Is.EquivalentTo(orphanedPayload ? new[] { orphanKey } : Array.Empty<byte[]>()));
     }
 
     [Test]

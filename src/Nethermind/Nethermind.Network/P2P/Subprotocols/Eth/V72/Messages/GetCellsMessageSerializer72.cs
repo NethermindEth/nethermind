@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -45,7 +46,7 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         int hashesCheckPosition = ctx.ReadSequenceLength() + ctx.Position;
         int hashCount = ctx.PeekNumberOfItemsRemaining(hashesCheckPosition, HashesRlpLimit.Limit + 1);
         ctx.GuardLimit(hashCount, HashesRlpLimit);
-        int retainedHashCount = System.Math.Min(hashCount, Eth72ProtocolHandler.MaxCellsRequestHashes);
+        int retainedHashCount = Math.Min(hashCount, Eth72ProtocolHandler.MaxCellsRequestHashes);
         ValueHash256[] hashes = new ValueHash256[retainedHashCount];
         for (int i = 0; i < retainedHashCount; i++)
         {
