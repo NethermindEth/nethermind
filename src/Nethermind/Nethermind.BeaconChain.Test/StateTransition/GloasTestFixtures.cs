@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
@@ -278,6 +279,32 @@ internal static class GloasTestFixtures
     /// <summary>Applies <paramref name="block"/> to <paramref name="state"/> through the real pipeline, signatures skipped (the fixtures' RANDAO reveal is unsigned).</summary>
     public static void ApplyBlock(BeaconStateGloas state, SignedBeaconBlockGloas block, EpochCache cache) =>
         GloasBlockProcessing.ProcessBlock(state, block.Message!, cache, new PubkeyCache(), new AcceptingNotifier(), SyntheticSpec(), verifySignatures: false);
+
+    /// <summary>A queued top-up for the validator already at <paramref name="validatorIndex"/>; a known pubkey is credited without a signature check.</summary>
+    public static PendingDeposit TopUpDeposit(BeaconStateGloas state, int validatorIndex, ulong amount, ulong slot) => new()
+    {
+        Pubkey = state.Validators![validatorIndex].Pubkey,
+        WithdrawalCredentials = Hash256.Zero,
+        Amount = amount,
+        Signature = default,
+        Slot = slot,
+    };
+
+    /// <summary>
+    /// A queued deposit for a pubkey not in the registry (the key <see cref="DeriveKey"/> derives for
+    /// <paramref name="keyIndex"/>), signed over the genesis deposit domain by that key unless
+    /// <paramref name="signerKeyIndex"/> names another one.
+    /// </summary>
+    public static PendingDeposit NewValidatorDeposit(int keyIndex, ulong amount, ulong slot, int? signerKeyIndex = null)
+    {
+        BlsPublicKey pubkey = new(new Bls.P1(DeriveKey(keyIndex)).Compress());
+        Hash256 withdrawalCredentials = EthWithdrawalCredentials(0xEE);
+        DepositMessage.Merkleize(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount }, out UInt256 root);
+        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, Presets.GenesisForkVersion, Hash256.Zero);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
+        BlsSignature signature = new(BlsSigner.Sign(DeriveKey(signerKeyIndex ?? keyIndex), signingRoot.Bytes).Bytes);
+        return new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount, Signature = signature, Slot = slot };
+    }
 
     public static Hash256 EthWithdrawalCredentials(byte fill)
     {
