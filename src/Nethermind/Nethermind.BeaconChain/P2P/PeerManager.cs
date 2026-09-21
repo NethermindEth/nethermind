@@ -185,11 +185,18 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return;
         }
 
-        HashSet<string> exempt = new(staticAddresses, StringComparer.Ordinal);
+        // By peer id, not pool key: a static peer that connected to us first is keyed by the address it
+        // came from, which never equals its configured dial address.
+        HashSet<string> exempt = new(StringComparer.Ordinal);
+        foreach (string address in staticAddresses)
+        {
+            exempt.Add(ExtractPeerId(address));
+        }
+
         List<ManagedPeer> trimmable = [];
         foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
         {
-            if (!exempt.Contains(peer.Key))
+            if (!exempt.Contains(peer.Value.PeerId))
             {
                 trimmable.Add(peer.Value);
             }
