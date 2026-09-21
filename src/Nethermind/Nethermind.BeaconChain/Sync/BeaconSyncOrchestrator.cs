@@ -701,7 +701,7 @@ public sealed class BeaconSyncOrchestrator(
     {
         try
         {
-            if (!await peerManager!.TryAddPeerAsync(candidate.Multiaddress, token))
+            if (!await peerManager!.TryAddPeerAsync(candidate.Multiaddress, token, candidate.Enr))
             {
                 // Allow a later re-dial when the peer shows up again.
                 _dialedPeerIds.TryRemove(candidate.PeerId, out _);

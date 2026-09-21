@@ -264,7 +264,7 @@ public sealed class BeaconDiscovery(
 
         string peerId = DerivePeerId(publicKey);
         string ipProtocol = tcpEndpoint.AddressFamily == AddressFamily.InterNetworkV6 ? "ip6" : "ip4";
-        candidate = new BeaconPeerCandidate($"/{ipProtocol}/{tcpEndpoint.Address}/tcp/{tcpEndpoint.Port}/p2p/{peerId}", peerId, forkId.ForkDigest, record.EnrSequence);
+        candidate = new BeaconPeerCandidate($"/{ipProtocol}/{tcpEndpoint.Address}/tcp/{tcpEndpoint.Port}/p2p/{peerId}", peerId, forkId.ForkDigest, record.EnrSequence, record.ToString());
         return true;
     }
 

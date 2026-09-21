@@ -8,4 +8,6 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 /// <param name="PeerId">The base58 libp2p peer id derived from the ENR's secp256k1 key.</param>
 /// <param name="ForkDigest">The 4-byte fork digest the peer advertised in its <c>eth2</c> ENR entry.</param>
 /// <param name="EnrSequence">The sequence number of the ENR the candidate was built from.</param>
-public sealed record BeaconPeerCandidate(string Multiaddress, string PeerId, byte[] ForkDigest, ulong EnrSequence);
+/// <param name="Enr">The candidate's full ENR text (<c>enr:...</c>), carried through so a peer admitted
+/// from this candidate can report it truthfully on the Beacon API's <c>node/peers</c> surface.</param>
+public sealed record BeaconPeerCandidate(string Multiaddress, string PeerId, byte[] ForkDigest, ulong EnrSequence, string Enr);
