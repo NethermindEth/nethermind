@@ -730,10 +730,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         bool[] claimed = ArrayPool<bool>.Shared.Rent(txCount);
         Array.Clear(claimed, 0, txCount);
         int firstUnclaimed = 0;
-        while (WarmupRecoveredTransactions(blockState, parallelOptions, claimed)
-               && WaitForMoreSenders(blockState.Block.Transactions, claimed, ref firstUnclaimed, parallelOptions.CancellationToken))
+        bool morePasses;
+        do
         {
+            morePasses = WarmupRecoveredTransactions(blockState, parallelOptions, claimed)
+                         && WaitForMoreSenders(blockState.Block.Transactions, claimed, ref firstUnclaimed, parallelOptions.CancellationToken);
         }
+        while (morePasses);
 
         ArrayPool<bool>.Shared.Return(claimed);
     }
@@ -764,9 +767,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (!claimed[i] && txs[i].SenderAddress is not null) return true;
             }
 
-            // Past the window the sender may never arrive at all, and a spinning core would starve the very
-            // recovery this waits for. Waiting on the token rather than sleeping keeps the end-of-block join,
-            // which runs on the processing thread, from paying out the rest of a sleep quantum.
+            // The threshold disables SpinWait's own Sleep(1) backoff, so SenderArrivalWindow is the only bound
+            // on the busy spin: past it the sender may never arrive at all, and a spinning core would starve the
+            // very recovery this waits for. Waiting on the token rather than sleeping then keeps the end-of-block
+            // join, which runs on the processing thread, from paying out the rest of a sleep quantum.
             if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow)
             {
                 spinner.SpinOnce(sleep1Threshold: -1);
@@ -1220,6 +1224,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 int lastPendingTx = Math.Min(lastPending, block.Transactions.Length - 1);
                 if (lastPendingTx >= 0 && PreWarmer.MainThreadTxIndex >= lastPendingTx) return false;
 
+                // SenderArrivalWindow is the only bound on the spin: the threshold disables SpinWait's own
+                // Sleep(1) backoff, so past the window this must sleep instead of taking a core from recovery.
                 if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
                 else if (SleepUnlessDone(cancellationToken)) return false;
             }

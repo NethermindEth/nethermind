@@ -102,8 +102,13 @@ namespace Nethermind.Consensus.Processing
         }
 
         /// <summary>Whether the recovery started for <paramref name="txs"/> is still running.</summary>
-        /// <remarks><see cref="Block"/>'s constructor copies the transaction array, so only the shared
-        /// transaction objects can identify the recovery.</remarks>
+        /// <remarks>
+        /// <see cref="Block"/>'s constructor copies the transaction array, so only the shared transaction objects
+        /// can identify the recovery. The test is a heuristic, not an identity: a payload-improvement build reuses
+        /// pooled transaction objects, so a different array of the same length starting with the same transaction
+        /// matches. What makes that safe is the fallbacks, not the test — a block wrongly skipped here recovers its
+        /// senders in <c>TransactionProcessor</c> and its authorities in <c>ProcessDelegations</c>, both inline.
+        /// </remarks>
         internal bool IsRecoveryInFlight(Transaction[] txs)
         {
             Recovery? current = Volatile.Read(ref _current);
@@ -226,7 +231,10 @@ namespace Nethermind.Consensus.Processing
                 }
                 catch (Exception e)
                 {
-                    if (owner._logger.IsDebug) owner._logger.Debug($"Early sender recovery failed: {e}");
+                    // skipErrors above absorbs the malformed signatures, so anything here is unexpected, and its
+                    // only symptom is every sender of the block falling back to serial recovery on the processing
+                    // thread. Broad because an escaping exception would go unhandled on the pool thread.
+                    if (owner._logger.IsError) owner._logger.Error("Early sender recovery failed.", e);
                 }
                 finally
                 {
