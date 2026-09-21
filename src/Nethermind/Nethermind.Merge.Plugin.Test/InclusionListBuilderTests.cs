@@ -188,7 +188,8 @@ public class InclusionListBuilderTests
 
         using (Assert.EnterMultipleScope())
         {
-            // The encode loop only stops once nothing could fit, so a saturated list has under one entry of slack.
+            // The loop exits on the early-break check or on exhausting every candidate, so slack is bounded
+            // by whichever is larger: the break threshold (32B) or the smallest entry actually seen (~75B).
             Assert.That(totalBytes, Is.GreaterThan(Eip7805Constants.MaxBytesPerInclusionList - 100));
             Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
         }
