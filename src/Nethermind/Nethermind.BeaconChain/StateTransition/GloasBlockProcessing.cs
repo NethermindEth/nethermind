@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -55,19 +56,17 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// next block, matching the task's own framing ("applied to state one block later") more precisely
 /// than a same-step read would.
 /// <para/>
-/// <b>Scope actually covered here</b> (see the task's stated order of value): block header and
-/// RANDAO, bid processing, envelope verification, withdrawals computed from state, and the builder
-/// payment/deposit/exit machinery - including a parent payload whose execution requests are
-/// non-empty, via the full deposit/withdrawal/consolidation/builder-deposit/builder-exit request
-/// pipeline in <see cref="ApplyParentExecutionPayload"/> - are all fully implemented, with the
-/// payment window addressed exactly as the spec does now that <see cref="GloasEpochProcessing"/>
-/// rotates it at every epoch boundary.
-/// Left as a declared, by-name gap rather than a partial or approximated implementation: attester/
-/// proposer slashings, attestations, voluntary exits, BLS-to-execution changes and payload
-/// attestations inside a Gloas block body - attestation and PTC processing pull in the whole
-/// committee-shuffling stack, a separate large piece of work or of scope even than the rest of this.
-/// Every one of these throws <see cref="NotSupportedException"/> by name rather than silently
-/// skipping the step.
+/// <b>Scope.</b> The whole of <c>process_block</c>: block header and RANDAO, bid processing,
+/// envelope verification, withdrawals computed from state, the builder payment/deposit/exit
+/// machinery - including a parent payload whose execution requests are non-empty, via the full
+/// deposit/withdrawal/consolidation/builder-deposit/builder-exit request pipeline in
+/// <see cref="ApplyParentExecutionPayload"/> - with the payment window addressed exactly as the
+/// spec does now that <see cref="GloasEpochProcessing"/> rotates it at every epoch boundary, and
+/// every block-body operation (<see cref="ProcessOperations"/>), attestations with their builder
+/// payment weight and PTC payload attestations included. The operations inherited unchanged from
+/// Electra are ported to the Gloas state type rather than shared with <see cref="BlockProcessing"/>,
+/// for the reason given on <see cref="GloasStateAccessors"/>; their signature checks live in
+/// <see cref="GloasSignatureSets"/>.
 /// </remarks>
 public static class GloasBlockProcessing
 {
@@ -83,7 +82,7 @@ public static class GloasBlockProcessing
         ProcessExecutionPayloadBid(state, body.SignedExecutionPayloadBid!, spec, pubkeys, verifySignatures);
         ProcessRandao(state, body, pubkeys, verifySignatures);
         ProcessEth1Data(state, body);
-        ProcessOperations(state, body, parentSlot);
+        ProcessOperations(state, body, parentSlot, cache, pubkeys, verifySignatures);
         ProcessSyncAggregate(state, body.SyncAggregate!, cache, verifySignatures);
     }
 
@@ -163,36 +162,366 @@ public static class GloasBlockProcessing
 
     /// <summary>
     /// Spec <c>process_operations</c> (Gloas): the deposit-request/withdrawal-request/
-    /// consolidation-request dispatch is gone (moved to <see cref="ApplyParentExecutionPayload"/>);
-    /// payload attestations are added. See this type's remarks for exactly which operation kinds
-    /// this method processes versus rejects by name.
+    /// consolidation-request dispatch is gone (moved to <see cref="ApplyParentExecutionPayload"/>),
+    /// payload attestations are added, and attestations learn the parent block's slot.
     /// </summary>
-    public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot)
+    public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
     {
         if ((body.Deposits?.Length ?? 0) != 0)
             throw new BeaconStateException("Gloas block body must carry zero deposits (EIP-6110: the Eth1 deposit path is fully retired)");
 
-        RejectIfPresent(body.ProposerSlashings, Presets.MaxProposerSlashings, "proposer slashings");
-        RejectIfPresent(body.AttesterSlashings, Presets.MaxAttesterSlashingsElectra, "attester slashings");
-        RejectIfPresent(body.Attestations, Presets.MaxAttestationsElectra, "attestations");
-        RejectIfPresent(body.VoluntaryExits, Presets.MaxVoluntaryExits, "voluntary exits");
-        RejectIfPresent(body.BlsToExecutionChanges, Presets.MaxBlsToExecutionChanges, "BLS-to-execution changes");
-        RejectIfPresent(body.PayloadAttestations, Presets.MaxPayloadAttestations, "payload attestations");
+        // [New in Gloas:EIP7688] The lists are progressive (no SSZ-level bound), so the per-kind
+        // limits are asserted here instead.
+        RequireAtMost(body.ProposerSlashings, Presets.MaxProposerSlashings, "proposer slashings");
+        RequireAtMost(body.AttesterSlashings, Presets.MaxAttesterSlashingsElectra, "attester slashings");
+        RequireAtMost(body.Attestations, Presets.MaxAttestationsElectra, "attestations");
+        RequireAtMost(body.VoluntaryExits, Presets.MaxVoluntaryExits, "voluntary exits");
+        RequireAtMost(body.BlsToExecutionChanges, Presets.MaxBlsToExecutionChanges, "BLS-to-execution changes");
+        RequireAtMost(body.PayloadAttestations, Presets.MaxPayloadAttestations, "payload attestations");
+
+        foreach (ProposerSlashing slashing in body.ProposerSlashings ?? [])
+        {
+            ProcessProposerSlashing(state, slashing, cache, pubkeys, verifySignatures);
+        }
+        foreach (AttesterSlashingGloas slashing in body.AttesterSlashings ?? [])
+        {
+            ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures);
+        }
+        foreach (AttestationGloas attestation in body.Attestations ?? [])
+        {
+            ProcessAttestation(state, attestation, parentSlot, cache, pubkeys, verifySignatures);
+        }
+        foreach (SignedVoluntaryExit exit in body.VoluntaryExits ?? [])
+        {
+            ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures);
+        }
+        foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges ?? [])
+        {
+            ProcessBlsToExecutionChange(state, change, verifySignatures);
+        }
+        foreach (PayloadAttestation attestation in body.PayloadAttestations ?? [])
+        {
+            ProcessPayloadAttestation(state, attestation, pubkeys, verifySignatures);
+        }
     }
 
-    /// <summary>
-    /// Enforces the operation's spec length bound (still real state-transition behavior: an
-    /// oversized list must reject the block) and then, for a genuinely non-empty list, fails loudly
-    /// by name instead of silently skipping operations this driver does not process (see this
-    /// type's remarks). An empty list is a true no-op, not a gap.
-    /// </summary>
-    private static void RejectIfPresent<T>(T[]? operations, int limit, string name)
+    private static void RequireAtMost<T>(T[]? operations, int limit, string name)
     {
         int count = operations?.Length ?? 0;
         if (count > limit)
             throw new BeaconStateException($"Block has {count} {name}, exceeding the limit of {limit}");
-        if (count > 0)
-            throw new NotSupportedException($"Gloas block processing of {name} is not implemented (needs the committee/shuffling stack this driver does not carry for Gloas state)");
+    }
+
+    /// <summary>
+    /// Spec <c>process_payload_attestation</c> (new in Gloas): a PTC vote on the parent block's
+    /// payload, valid only for the parent and the previous slot. Pure verification - the vote's
+    /// content feeds fork choice, not the state.
+    /// </summary>
+    public static void ProcessPayloadAttestation(BeaconStateGloas state, PayloadAttestation attestation, PubkeyCache pubkeys, bool verifySignature = true)
+    {
+        PayloadAttestationData data = attestation.Data!;
+        if (data.BeaconBlockRoot != state.LatestBlockHeader!.ParentRoot)
+            throw new BeaconStateException("Payload attestation is not for the parent beacon block");
+        if (data.Slot + 1 != state.Slot)
+            throw new BeaconStateException($"Payload attestation for slot {data.Slot} is not for the slot before {state.Slot}");
+
+        IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation);
+        if (!IsValidIndexedPayloadAttestation(state, indexed, pubkeys, verifySignature))
+            throw new BeaconStateException("Invalid indexed payload attestation");
+    }
+
+    /// <summary>
+    /// Spec <c>is_valid_indexed_payload_attestation</c>: indices must be non-empty, sorted (a PTC
+    /// is sampled with replacement, so repeats are legitimate) and in range, and the aggregate
+    /// signature must verify.
+    /// </summary>
+    public static bool IsValidIndexedPayloadAttestation(BeaconStateGloas state, IndexedPayloadAttestation attestation, PubkeyCache pubkeys, bool verifySignature)
+    {
+        ulong[] indices = attestation.AttestingIndices ?? [];
+        if (indices.Length == 0)
+            return false;
+        for (int i = 0; i < indices.Length; i++)
+        {
+            if (i > 0 && indices[i - 1] > indices[i])
+                return false;
+            if (indices[i] >= (ulong)state.Validators!.Length)
+                return false;
+        }
+        return !verifySignature || GloasSignatureSets.VerifyIndexedPayloadAttestation(state, attestation, pubkeys);
+    }
+
+    /// <summary>
+    /// Spec <c>process_proposer_slashing</c> (Gloas): the Electra checks and slashing, plus the
+    /// EIP-7732 clearing of the pending builder payment for the equivocated proposal, when that
+    /// payment is still in the two-epoch window and was recorded for this same proposer.
+    /// </summary>
+    public static void ProcessProposerSlashing(BeaconStateGloas state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    {
+        BeaconBlockHeader header1 = slashing.SignedHeader1!.Message!;
+        BeaconBlockHeader header2 = slashing.SignedHeader2!.Message!;
+
+        if (header1.Slot != header2.Slot)
+            throw new BeaconStateException("Proposer slashing header slots do not match");
+        if (header1.ProposerIndex != header2.ProposerIndex)
+            throw new BeaconStateException("Proposer slashing proposer indices do not match");
+        if (HeaderEquals(header1, header2))
+            throw new BeaconStateException("Proposer slashing headers are identical");
+        if (header1.ProposerIndex >= (ulong)state.Validators!.Length)
+            throw new BeaconStateException($"Proposer slashing index {header1.ProposerIndex} is out of range");
+        if (!state.Validators[(int)header1.ProposerIndex].IsSlashableValidator(state.GetCurrentEpoch()))
+            throw new BeaconStateException($"Proposer {header1.ProposerIndex} is not slashable");
+
+        if (verifySignatures)
+        {
+            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader1, pubkeys))
+                throw new BeaconStateException("Invalid proposer slashing signature 1");
+            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader2, pubkeys))
+                throw new BeaconStateException("Invalid proposer slashing signature 2");
+        }
+
+        // Only the payment recorded for this proposer is cleared: an unrelated same-slot
+        // equivocation must not grief an honest proposer's payment.
+        ulong proposalEpoch = BeaconStateAccessors.ComputeEpochAtSlot(header1.Slot);
+        int? paymentIndex = proposalEpoch == state.GetCurrentEpoch()
+            ? (int)(Presets.SlotsPerEpoch + header1.Slot % Presets.SlotsPerEpoch)
+            : proposalEpoch == state.GetPreviousEpoch()
+                ? (int)(header1.Slot % Presets.SlotsPerEpoch)
+                : null;
+        if (paymentIndex is int index && state.BuilderPendingPayments![index].ProposerIndex == header1.ProposerIndex)
+            state.BuilderPendingPayments[index] = EmptyBuilderPendingPayment();
+
+        state.SlashValidator((int)header1.ProposerIndex, cache);
+    }
+
+    private static bool HeaderEquals(BeaconBlockHeader a, BeaconBlockHeader b) =>
+        a.Slot == b.Slot
+        && a.ProposerIndex == b.ProposerIndex
+        && a.ParentRoot == b.ParentRoot
+        && a.StateRoot == b.StateRoot
+        && a.BodyRoot == b.BodyRoot;
+
+    /// <summary>Spec <c>BuilderPendingPayment.empty()</c>, in the shape <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/> and <see cref="SettleBuilderPayment"/> write.</summary>
+    private static BuilderPendingPayment EmptyBuilderPendingPayment() =>
+        new() { Withdrawal = new BuilderPendingWithdrawal() };
+
+    /// <summary>Spec <c>process_attester_slashing</c> (unmodified in Gloas): slashes every still-slashable validator attesting in both votes.</summary>
+    public static void ProcessAttesterSlashing(BeaconStateGloas state, AttesterSlashingGloas slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    {
+        IndexedAttestationGloas attestation1 = slashing.Attestation1!;
+        IndexedAttestationGloas attestation2 = slashing.Attestation2!;
+
+        if (!BeaconStateAccessors.IsSlashableAttestationData(attestation1.Data!, attestation2.Data!))
+            throw new BeaconStateException("Attester slashing votes are not slashable");
+        if (!IsValidIndexedAttestation(state, attestation1, pubkeys, verifySignatures))
+            throw new BeaconStateException("Attester slashing attestation 1 is invalid");
+        if (!IsValidIndexedAttestation(state, attestation2, pubkeys, verifySignatures))
+            throw new BeaconStateException("Attester slashing attestation 2 is invalid");
+
+        ulong currentEpoch = state.GetCurrentEpoch();
+        HashSet<ulong> indices2 = [.. attestation2.AttestingIndices!];
+        bool slashedAny = false;
+        // attestation_1's indices are validated ascending, so the intersection is visited in sorted order.
+        foreach (ulong index in attestation1.AttestingIndices!)
+        {
+            if (indices2.Contains(index) && state.Validators![(int)index].IsSlashableValidator(currentEpoch))
+            {
+                state.SlashValidator((int)index, cache);
+                slashedAny = true;
+            }
+        }
+        if (!slashedAny)
+            throw new BeaconStateException("Attester slashing slashed no validator");
+    }
+
+    /// <summary>
+    /// Spec <c>is_valid_indexed_attestation</c> (Gloas): indices must be non-empty, within the
+    /// EIP-7688 bound that replaced the list's SSZ limit, sorted, unique and in range, and the
+    /// aggregate signature must verify.
+    /// </summary>
+    public static bool IsValidIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys, bool verifySignature)
+    {
+        ulong[] indices = attestation.AttestingIndices ?? [];
+        if (indices.Length == 0 || indices.Length > Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot)
+            return false;
+        for (int i = 0; i < indices.Length; i++)
+        {
+            if (i > 0 && indices[i - 1] >= indices[i])
+                return false;
+            if (indices[i] >= (ulong)state.Validators!.Length)
+                return false;
+        }
+        return !verifySignature || GloasSignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys);
+    }
+
+    /// <summary>
+    /// Spec <c>process_attestation</c> (Gloas): the Electra aggregate validation, participation
+    /// flags and proposer reward, with two EIP-7732 changes - <c>data.index</c> now encodes the
+    /// attested block's payload status (0 absent, 1 present) instead of a committee index, and a
+    /// validator's first participation in the target epoch, when it votes for the block proposed
+    /// at the attestation slot, adds its effective balance to the weight of that slot's pending
+    /// builder payment (the PTC-quorum the epoch transition honors the payment against).
+    /// </summary>
+    /// <param name="parentSlot">The slot of the block's parent, where the attested block's payload availability is tracked.</param>
+    public static void ProcessAttestation(BeaconStateGloas state, AttestationGloas attestation, ulong parentSlot, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true)
+    {
+        AttestationData data = attestation.Data!;
+        ulong currentEpoch = state.GetCurrentEpoch();
+        if (data.Target!.Epoch != state.GetPreviousEpoch() && data.Target.Epoch != currentEpoch)
+            throw new BeaconStateException($"Attestation target epoch {data.Target.Epoch} is not the previous or current epoch");
+        if (data.Target.Epoch != BeaconStateAccessors.ComputeEpochAtSlot(data.Slot))
+            throw new BeaconStateException("Attestation target epoch does not match its slot");
+        if (data.Slot + Presets.MinAttestationInclusionDelay > state.Slot)
+            throw new BeaconStateException($"Attestation for slot {data.Slot} is included too early at slot {state.Slot}");
+        if (data.Index >= 2)
+            throw new BeaconStateException($"Attestation data index {data.Index} must encode a payload status (0 or 1)");
+
+        // GetAttestingIndices performs the spec's committee/aggregation-bits structural asserts.
+        CommitteeCache committees = cache.GetCommitteeCache(state, data.Target.Epoch);
+        ulong[] attestingIndices = state.GetAttestingIndices(attestation, committees);
+
+        byte participationFlags = GetAttestationParticipationFlagIndices(state, data, state.Slot - data.Slot, parentSlot);
+
+        IndexedAttestationGloas indexed = new()
+        {
+            AttestingIndices = attestingIndices,
+            Data = data,
+            Signature = attestation.Signature,
+        };
+        if (!IsValidIndexedAttestation(state, indexed, pubkeys, verifySignature))
+            throw new BeaconStateException("Invalid indexed attestation");
+
+        bool currentEpochTarget = data.Target.Epoch == currentEpoch;
+        byte[] epochParticipation = currentEpochTarget ? state.CurrentEpochParticipation! : state.PreviousEpochParticipation!;
+        int paymentIndex = (int)(currentEpochTarget ? Presets.SlotsPerEpoch + data.Slot % Presets.SlotsPerEpoch : data.Slot % Presets.SlotsPerEpoch);
+        BuilderPendingPayment payment = state.BuilderPendingPayments![paymentIndex];
+        bool weighsForPayment = payment.Withdrawal!.Amount > 0 && state.IsAttestationSameSlot(data);
+
+        ulong proposerRewardNumerator = 0;
+        ulong addedWeight = 0;
+        foreach (ulong index in attestingIndices)
+        {
+            bool hadNoParticipation = epochParticipation[index] == 0;
+            bool willSetNewFlag = false;
+            for (int flagIndex = 0; flagIndex < Presets.ParticipationFlagWeights.Length; flagIndex++)
+            {
+                byte flag = (byte)(1 << flagIndex);
+                if ((participationFlags & flag) != 0 && (epochParticipation[index] & flag) == 0)
+                {
+                    epochParticipation[index] |= flag;
+                    proposerRewardNumerator += state.GetBaseReward((int)index, cache) * Presets.ParticipationFlagWeights[flagIndex];
+                    willSetNewFlag = true;
+                }
+            }
+            if (willSetNewFlag && hadNoParticipation && weighsForPayment)
+                addedWeight += state.Validators![(int)index].EffectiveBalance;
+        }
+
+        ulong proposerRewardDenominator = (Presets.WeightDenominator - Presets.ProposerWeight) * Presets.WeightDenominator / Presets.ProposerWeight;
+        state.IncreaseBalance((int)state.GetBeaconProposerIndex(), proposerRewardNumerator / proposerRewardDenominator);
+
+        // Written back as a new entry (the spec reassigns the payment) rather than in place: a
+        // cloned state shares the entry objects, only the vector is copied.
+        if (addedWeight > 0)
+        {
+            state.BuilderPendingPayments[paymentIndex] = new BuilderPendingPayment
+            {
+                Weight = payment.Weight + addedWeight,
+                Withdrawal = payment.Withdrawal,
+                ProposerIndex = payment.ProposerIndex,
+            };
+        }
+    }
+
+    /// <summary>
+    /// Spec <c>get_attestation_participation_flag_indices</c> (Gloas), returned as a bitmask over
+    /// the participation flag indices. The head flag additionally requires the attestation's
+    /// payload status to match: trivially for a vote for the block proposed at the attestation
+    /// slot (which must then carry index 0), otherwise against the availability recorded at
+    /// <paramref name="parentSlot"/>.
+    /// </summary>
+    /// <exception cref="BeaconStateException">The source does not match the justified checkpoint, or a same-slot vote carries a non-zero index.</exception>
+    private static byte GetAttestationParticipationFlagIndices(BeaconStateGloas state, AttestationData data, ulong inclusionDelay, ulong parentSlot)
+    {
+        Checkpoint justifiedCheckpoint = data.Target!.Epoch == state.GetCurrentEpoch()
+            ? state.CurrentJustifiedCheckpoint!
+            : state.PreviousJustifiedCheckpoint!;
+        if (data.Source!.Epoch != justifiedCheckpoint.Epoch || data.Source.Root != justifiedCheckpoint.Root)
+            throw new BeaconStateException("Attestation source does not match the justified checkpoint");
+
+        bool isMatchingTarget = data.Target.Root == state.GetBlockRoot(data.Target.Epoch);
+
+        bool payloadMatches;
+        if (state.IsAttestationSameSlot(data))
+        {
+            if (data.Index != 0)
+                throw new BeaconStateException("An attestation for the block proposed at its own slot must carry index 0");
+            payloadMatches = true;
+        }
+        else
+        {
+            bool payloadAvailable = state.ExecutionPayloadAvailability![(int)(parentSlot % Presets.SlotsPerHistoricalRoot)];
+            payloadMatches = data.Index == (payloadAvailable ? 1UL : 0UL);
+        }
+
+        bool isMatchingHead = isMatchingTarget && data.BeaconBlockRoot == state.GetBlockRootAtSlot(data.Slot) && payloadMatches;
+
+        byte flags = 0;
+        if (inclusionDelay <= BeaconStateAccessors.IntegerSquareRoot(Presets.SlotsPerEpoch))
+            flags |= 1 << Presets.TimelySourceFlagIndex;
+        if (isMatchingTarget)
+            flags |= 1 << Presets.TimelyTargetFlagIndex;
+        if (isMatchingHead && inclusionDelay == Presets.MinAttestationInclusionDelay)
+            flags |= 1 << Presets.TimelyHeadFlagIndex;
+        return flags;
+    }
+
+    /// <summary>Spec <c>process_voluntary_exit</c> (Electra, unmodified in Gloas); the exit it initiates draws on the EIP-8061 exit churn.</summary>
+    public static void ProcessVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true)
+    {
+        VoluntaryExit exit = signedExit.Message!;
+        if (exit.ValidatorIndex >= (ulong)state.Validators!.Length)
+            throw new BeaconStateException($"Voluntary exit validator index {exit.ValidatorIndex} is out of range");
+
+        Validator validator = state.Validators[(int)exit.ValidatorIndex];
+        ulong currentEpoch = state.GetCurrentEpoch();
+        if (!validator.IsActiveValidator(currentEpoch))
+            throw new BeaconStateException($"Exiting validator {exit.ValidatorIndex} is not active");
+        if (validator.ExitEpoch != Presets.FarFutureEpoch)
+            throw new BeaconStateException($"Validator {exit.ValidatorIndex} already initiated an exit");
+        if (currentEpoch < exit.Epoch)
+            throw new BeaconStateException($"Voluntary exit is not valid before epoch {exit.Epoch}");
+        if (currentEpoch < validator.ActivationEpoch + Presets.ShardCommitteePeriod)
+            throw new BeaconStateException($"Validator {exit.ValidatorIndex} has not been active long enough");
+        if (state.GetPendingBalanceToWithdraw((int)exit.ValidatorIndex) != 0)
+            throw new BeaconStateException($"Validator {exit.ValidatorIndex} has pending partial withdrawals");
+        if (verifySignature && !GloasSignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys))
+            throw new BeaconStateException("Invalid voluntary exit signature");
+
+        state.InitiateValidatorExit((int)exit.ValidatorIndex, cache);
+    }
+
+    /// <summary>Spec <c>process_bls_to_execution_change</c> (Capella, unmodified in Gloas).</summary>
+    public static void ProcessBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, bool verifySignature = true)
+    {
+        BlsToExecutionChange change = signedChange.Message!;
+        if (change.ValidatorIndex >= (ulong)state.Validators!.Length)
+            throw new BeaconStateException($"BLS change validator index {change.ValidatorIndex} is out of range");
+
+        Validator validator = state.Validators[(int)change.ValidatorIndex];
+        ReadOnlySpan<byte> credentials = validator.WithdrawalCredentials!.Bytes;
+        if (credentials[0] != Presets.BlsWithdrawalPrefix)
+            throw new BeaconStateException($"Validator {change.ValidatorIndex} does not have BLS withdrawal credentials");
+        if (!credentials[1..].SequenceEqual(SHA256.HashData(change.FromBlsPubkey.Bytes).AsSpan(1)))
+            throw new BeaconStateException("BLS change pubkey does not match the withdrawal credentials");
+        if (verifySignature && !GloasSignatureSets.VerifyBlsToExecutionChange(state, signedChange))
+            throw new BeaconStateException("Invalid BLS to execution change signature");
+
+        Span<byte> newCredentials = stackalloc byte[32];
+        newCredentials[0] = Presets.EthWithdrawalPrefix;
+        change.ToExecutionAddress!.Bytes.CopyTo(newCredentials[12..]);
+        Validator updated = validator.Clone();
+        updated.WithdrawalCredentials = new Hash256(newCredentials);
+        state.Validators[(int)change.ValidatorIndex] = updated;
     }
 
     /// <summary>
@@ -559,7 +888,7 @@ public static class GloasBlockProcessing
         BuilderPendingPayment payment = state.BuilderPendingPayments[(int)paymentIndex];
         if (payment.Withdrawal!.Amount > 0)
             state.BuilderPendingWithdrawals = [.. state.BuilderPendingWithdrawals ?? [], payment.Withdrawal];
-        state.BuilderPendingPayments[(int)paymentIndex] = new BuilderPendingPayment { Withdrawal = new BuilderPendingWithdrawal() };
+        state.BuilderPendingPayments[(int)paymentIndex] = EmptyBuilderPendingPayment();
     }
 
     /// <summary>Spec <c>process_deposit_request</c> (EIP-6110): unchanged from Fulu, ported to <see cref="BeaconStateGloas"/>.</summary>

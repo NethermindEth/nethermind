@@ -3,9 +3,11 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
@@ -314,8 +316,134 @@ public static class GloasStateAccessors
         state.InactivityScores = [.. state.InactivityScores!, 0UL];
     }
 
+    /// <summary>Spec <c>get_base_reward</c> (Altair, unmodified in Gloas).</summary>
+    public static ulong GetBaseReward(this BeaconStateGloas state, int index, EpochCache cache) =>
+        state.Validators![index].EffectiveBalance / Presets.EffectiveBalanceIncrement * state.GetBaseRewardPerIncrement(cache);
+
+    /// <summary>
+    /// Returns the validator indices attesting in a Gloas (EIP-7549 shape) aggregate, in ascending
+    /// order, validating the committee/aggregation bit structure as in <c>process_attestation</c>.
+    /// </summary>
+    /// <param name="committees">Committee cache built for the epoch of <c>attestation.Data.Slot</c>.</param>
+    /// <exception cref="BeaconStateException">The attestation's bitfields are inconsistent with the committees.</exception>
+    public static ulong[] GetAttestingIndices(this BeaconStateGloas state, AttestationGloas attestation, CommitteeCache committees)
+    {
+        ulong slot = attestation.Data!.Slot;
+        BitArray committeeBits = attestation.CommitteeBits!;
+        BitArray aggregationBits = attestation.AggregationBits!;
+
+        List<ulong> attestingIndices = [];
+        int committeeOffset = 0;
+        for (int committeeIndex = 0; committeeIndex < committeeBits.Length; committeeIndex++)
+        {
+            if (!committeeBits[committeeIndex])
+                continue;
+            if (committeeIndex >= committees.CommitteesPerSlot)
+                throw new BeaconStateException($"Committee index {committeeIndex} out of range ({committees.CommitteesPerSlot} committees per slot)");
+
+            ReadOnlySpan<int> committee = committees.GetBeaconCommittee(slot, committeeIndex);
+            int attestersInCommittee = 0;
+            for (int i = 0; i < committee.Length; i++)
+            {
+                int bitIndex = committeeOffset + i;
+                if (bitIndex < aggregationBits.Length && aggregationBits[bitIndex])
+                {
+                    attestingIndices.Add((ulong)committee[i]);
+                    attestersInCommittee++;
+                }
+            }
+            if (attestersInCommittee == 0)
+                throw new BeaconStateException($"Committee {committeeIndex} has no attesters set");
+            committeeOffset += committee.Length;
+        }
+
+        if (committeeOffset != aggregationBits.Length)
+            throw new BeaconStateException($"Aggregation bits length {aggregationBits.Length} does not match participant count {committeeOffset}");
+
+        attestingIndices.Sort();
+        return attestingIndices.ToArray();
+    }
+
+    /// <summary>Converts a Gloas attestation to its indexed, signature-verifiable form.</summary>
+    /// <param name="committees">Committee cache built for the epoch of <c>attestation.Data.Slot</c>.</param>
+    public static IndexedAttestationGloas GetIndexedAttestation(this BeaconStateGloas state, AttestationGloas attestation, CommitteeCache committees) =>
+        new()
+        {
+            AttestingIndices = state.GetAttestingIndices(attestation, committees),
+            Data = attestation.Data,
+            Signature = attestation.Signature,
+        };
+
+    /// <summary>
+    /// Spec <c>is_attestation_same_slot</c> (new in Gloas): whether the attestation votes for the
+    /// block proposed at its own slot, i.e. that slot's root is the vote and differs from the
+    /// previous slot's (a skipped slot repeats the previous root).
+    /// </summary>
+    public static bool IsAttestationSameSlot(this BeaconStateGloas state, AttestationData data)
+    {
+        if (data.Slot == 0)
+            return true;
+
+        Hash256 blockRoot = data.BeaconBlockRoot!;
+        Hash256 slotBlockRoot = state.GetBlockRootAtSlot(data.Slot);
+        Hash256 previousBlockRoot = state.GetBlockRootAtSlot(data.Slot - 1);
+        return blockRoot == slotBlockRoot && blockRoot != previousBlockRoot;
+    }
+
+    /// <summary>
+    /// Spec <c>get_ptc</c> (new in Gloas): the payload timeliness committee for <paramref name="slot"/>,
+    /// read from the window <see cref="GloasEpochProcessing.ProcessPtcWindow"/> maintains (the
+    /// previous epoch in the first <c>SLOTS_PER_EPOCH</c> entries, then the current epoch and the
+    /// <c>MIN_SEED_LOOKAHEAD</c> epochs after it).
+    /// </summary>
+    /// <exception cref="BeaconStateException">The slot's epoch is outside the window.</exception>
+    public static PayloadTimelinessCommittee GetPtc(this BeaconStateGloas state, ulong slot)
+    {
+        ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(slot);
+        ulong stateEpoch = state.GetCurrentEpoch();
+        ulong slotInEpoch = slot % Presets.SlotsPerEpoch;
+        if (epoch < stateEpoch)
+        {
+            if (epoch + 1 != stateEpoch)
+                throw new BeaconStateException($"PTC for slot {slot} is not available: epoch {epoch} is before the previous epoch at state epoch {stateEpoch}");
+            return state.PtcWindow![(int)slotInEpoch];
+        }
+
+        if (epoch > stateEpoch + Presets.MinSeedLookahead)
+            throw new BeaconStateException($"PTC for slot {slot} is not available: epoch {epoch} is beyond the lookahead at state epoch {stateEpoch}");
+        ulong offset = (epoch - stateEpoch + 1) * Presets.SlotsPerEpoch;
+        return state.PtcWindow![(int)(offset + slotInEpoch)];
+    }
+
+    /// <summary>Spec <c>get_indexed_payload_attestation</c> (new in Gloas): resolves the set PTC bits to validator indices, sorted ascending.</summary>
+    /// <exception cref="BeaconStateException">The bitvector's length is not the PTC size, or the slot's PTC is not available.</exception>
+    public static IndexedPayloadAttestation GetIndexedPayloadAttestation(this BeaconStateGloas state, PayloadAttestation attestation)
+    {
+        // The pre-fork history is the spec's default committee (validator 0 at every position), which
+        // the upgrade leaves unpopulated; a vote for one of those slots is invalid, not a crash.
+        ulong[] ptc = state.GetPtc(attestation.Data!.Slot).Indices ?? new ulong[Presets.PtcSize];
+        BitArray bits = attestation.AggregationBits!;
+        if (bits.Length != ptc.Length)
+            throw new BeaconStateException($"Payload attestation has {bits.Length} aggregation bits, expected {ptc.Length}");
+
+        List<ulong> attestingIndices = [];
+        for (int i = 0; i < ptc.Length; i++)
+        {
+            if (bits[i])
+                attestingIndices.Add(ptc[i]);
+        }
+        attestingIndices.Sort();
+
+        return new IndexedPayloadAttestation
+        {
+            AttestingIndices = attestingIndices.ToArray(),
+            Data = attestation.Data,
+            Signature = attestation.Signature,
+        };
+    }
+
     /// <summary>Epoch addition that rejects uint64 overflow like the pyspec's <c>Epoch(...)</c> constructor.</summary>
-    private static ulong CheckedEpochSum(ulong epoch, ulong delta) =>
+    internal static ulong CheckedEpochSum(ulong epoch, ulong delta) =>
         epoch <= Presets.FarFutureEpoch - delta
             ? epoch + delta
             : throw new BeaconStateException($"Epoch {epoch} + {delta} overflows uint64");

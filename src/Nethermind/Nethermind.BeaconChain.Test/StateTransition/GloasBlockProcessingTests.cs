@@ -300,20 +300,19 @@ public class GloasBlockProcessingTests
         Assert.That(state.PayloadExpectedWithdrawals, Is.Empty.Or.Null);
     }
 
-    // ---- Declared, by-name gaps must fail loudly rather than silently mishandle the block ----
+    // ---- The progressive operation lists carry no SSZ bound, so process_operations asserts the limits ----
 
     [Test]
-    public void ProcessOperations_throws_by_name_for_an_attester_slashing_it_does_not_process()
+    public void ProcessOperations_rejects_an_operation_list_over_its_spec_bound_before_processing_any_of_it()
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
-        BeaconBlockBodyGloas body = new()
-        {
-            Deposits = [],
-            AttesterSlashings = [new AttesterSlashingGloas { Attestation1 = new IndexedAttestationGloas(), Attestation2 = new IndexedAttestationGloas() }],
-        };
+        AttestationGloas[] attestations = new AttestationGloas[Presets.MaxAttestationsElectra + 1];
+        Array.Fill(attestations, new AttestationGloas());
+        BeaconBlockBodyGloas body = new() { Deposits = [], Attestations = attestations };
 
-        NotSupportedException ex = Assert.Throws<NotSupportedException>(() => GloasBlockProcessing.ProcessOperations(state, body, parentSlot: 0))!;
-        Assert.That(ex.Message, Does.Contain("attester slashings"));
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            GloasBlockProcessing.ProcessOperations(state, body, parentSlot: 0, new EpochCache(), new PubkeyCache(), verifySignatures: false))!;
+        Assert.That(ex.Message, Does.Contain("exceeding the limit"));
     }
 
     private static ExecutionPayloadBid WithGasLimit(ExecutionPayloadBid bid, ulong gasLimit) => new()

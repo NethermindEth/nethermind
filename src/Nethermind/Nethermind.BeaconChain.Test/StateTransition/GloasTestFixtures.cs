@@ -4,10 +4,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,6 +34,9 @@ internal static class GloasTestFixtures
     // during PTC computation; with too few validators most slices are empty and
     // ComputeBalanceWeightedSelection has nothing to sample from.
     public const int ValidatorCount = 2048;
+
+    // Keeps validator keys clear of the builder key (200) and the deposit keys tests derive (300+).
+    private const int ValidatorKeyOffset = 1000;
 
     public static readonly ulong BoundarySlot = Presets.SlotsPerEpoch;
 
@@ -157,6 +162,201 @@ internal static class GloasTestFixtures
         BlsPublicKey[] committee = new BlsPublicKey[Presets.SyncCommitteeSize];
         Array.Fill(committee, pubkey);
         return committee;
+    }
+
+    /// <summary>The key <see cref="InstallRealValidatorKeys"/> gives validator <paramref name="validatorIndex"/>.</summary>
+    public static Bls.SecretKey ValidatorKey(int validatorIndex) => DeriveKey(ValidatorKeyOffset + validatorIndex);
+
+    /// <summary>
+    /// Replaces every validator's placeholder pubkey with the real key <see cref="ValidatorKey"/>
+    /// derives for it and returns the decompressed cache the signature checks read. The sync
+    /// committees are re-pointed at validator 0's new key so <see cref="ApplyBlock"/> still
+    /// resolves their members.
+    /// </summary>
+    public static PubkeyCache InstallRealValidatorKeys(BeaconStateGloas state)
+    {
+        Validator[] validators = state.Validators!;
+        for (int i = 0; i < validators.Length; i++)
+        {
+            Validator updated = validators[i].Clone();
+            updated.Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress());
+            validators[i] = updated;
+        }
+        state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = FillCommittee(validators[0].Pubkey), AggregatePubkey = Pubkey(0x60) };
+        state.NextSyncCommittee = new SyncCommittee { Pubkeys = FillCommittee(validators[0].Pubkey), AggregatePubkey = Pubkey(0x61) };
+
+        PubkeyCache pubkeys = new();
+        pubkeys.Build(validators);
+        return pubkeys;
+    }
+
+    /// <summary>A header for <paramref name="slot"/> claiming <paramref name="proposerIndex"/>, signed by that validator's <see cref="ValidatorKey"/> over <c>DOMAIN_BEACON_PROPOSER</c>.</summary>
+    public static SignedBeaconBlockHeader SignedHeader(BeaconStateGloas state, ulong slot, int proposerIndex, Hash256 bodyRoot)
+    {
+        BeaconBlockHeader header = new()
+        {
+            Slot = slot,
+            ProposerIndex = (ulong)proposerIndex,
+            ParentRoot = Hash(0x11),
+            StateRoot = Hash(0x12),
+            BodyRoot = bodyRoot,
+        };
+        Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(slot));
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
+        return new SignedBeaconBlockHeader { Message = header, Signature = Sign(ValidatorKey(proposerIndex), signingRoot) };
+    }
+
+    /// <summary>Two validly signed, distinct headers for the same slot from <paramref name="proposerIndex"/>.</summary>
+    public static ProposerSlashing Equivocation(BeaconStateGloas state, ulong slot, int proposerIndex) => new()
+    {
+        SignedHeader1 = SignedHeader(state, slot, proposerIndex, Hash(0x21)),
+        SignedHeader2 = SignedHeader(state, slot, proposerIndex, Hash(0x22)),
+    };
+
+    /// <summary>Attestation data voting for distinct roots derived from <paramref name="fill"/>, with the given slot and source/target epochs.</summary>
+    public static AttestationData Vote(ulong slot, ulong sourceEpoch, ulong targetEpoch, byte fill) => new()
+    {
+        Slot = slot,
+        Index = 0,
+        BeaconBlockRoot = Hash(fill),
+        Source = new Checkpoint { Epoch = sourceEpoch, Root = Hash((byte)(fill + 1)) },
+        Target = new Checkpoint { Epoch = targetEpoch, Root = Hash((byte)(fill + 2)) },
+    };
+
+    /// <summary>An indexed attestation by <paramref name="validatorIndices"/> over <paramref name="data"/>, aggregate-signed with their <see cref="ValidatorKey"/>s under <c>DOMAIN_BEACON_ATTESTER</c>.</summary>
+    public static IndexedAttestationGloas SignedIndexedAttestation(BeaconStateGloas state, AttestationData data, int[] validatorIndices)
+    {
+        Hash256 domain = state.GetDomain(DomainType.BeaconAttester, data.Target!.Epoch);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain);
+        return new IndexedAttestationGloas
+        {
+            AttestingIndices = [.. validatorIndices.Select(i => (ulong)i)],
+            Data = data,
+            Signature = AggregateSignature(signingRoot, validatorIndices),
+        };
+    }
+
+    /// <summary>A voluntary exit for <paramref name="validatorIndex"/>, signed with its <see cref="ValidatorKey"/> over the fork-agnostic Capella exit domain.</summary>
+    public static SignedVoluntaryExit SignedExit(BeaconStateGloas state, int validatorIndex, ulong epoch)
+    {
+        VoluntaryExit exit = new() { Epoch = epoch, ValidatorIndex = (ulong)validatorIndex };
+        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, Presets.CapellaForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
+        return new SignedVoluntaryExit { Message = exit, Signature = Sign(ValidatorKey(validatorIndex), signingRoot) };
+    }
+
+    /// <summary>A BLS-to-execution change for <paramref name="validatorIndex"/> from <paramref name="fromKey"/>'s pubkey, signed by that key over the genesis-version domain.</summary>
+    public static SignedBlsToExecutionChange SignedBlsChange(BeaconStateGloas state, int validatorIndex, Bls.SecretKey fromKey, Address toAddress)
+    {
+        BlsToExecutionChange change = new()
+        {
+            ValidatorIndex = (ulong)validatorIndex,
+            FromBlsPubkey = new BlsPublicKey(new Bls.P1(fromKey).Compress()),
+            ToExecutionAddress = toAddress,
+        };
+        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, Presets.GenesisForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
+        return new SignedBlsToExecutionChange { Message = change, Signature = Sign(fromKey, signingRoot) };
+    }
+
+    /// <summary>The 0x00-prefixed withdrawal credentials committing to <paramref name="pubkey"/>.</summary>
+    public static Hash256 BlsWithdrawalCredentials(BlsPublicKey pubkey)
+    {
+        byte[] credentials = System.Security.Cryptography.SHA256.HashData(pubkey.Bytes);
+        credentials[0] = Presets.BlsWithdrawalPrefix;
+        return new Hash256(credentials);
+    }
+
+    /// <summary>
+    /// An aggregate over committee <paramref name="committeeIndex"/> at <c>data.Slot</c> with every
+    /// member attesting, signed with their <see cref="ValidatorKey"/>s when <paramref name="sign"/>
+    /// (a state still carrying placeholder pubkeys can only be processed unverified).
+    /// </summary>
+    public static AttestationGloas CommitteeAttestation(BeaconStateGloas state, AttestationData data, CommitteeCache committees, int committeeIndex, bool sign)
+    {
+        int[] committee = committees.GetBeaconCommittee(data.Slot, committeeIndex).ToArray();
+        BitArray committeeBits = new(Presets.MaxCommitteesPerSlot);
+        committeeBits[committeeIndex] = true;
+
+        BlsSignature signature = default;
+        if (sign)
+        {
+            Hash256 domain = state.GetDomain(DomainType.BeaconAttester, data.Target!.Epoch);
+            signature = AggregateSignature(Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain), committee);
+        }
+
+        return new AttestationGloas
+        {
+            AggregationBits = new BitArray(committee.Length, true),
+            Data = data,
+            Signature = signature,
+            CommitteeBits = committeeBits,
+        };
+    }
+
+    /// <summary>The same aggregate in the Fulu container, for the differential tests.</summary>
+    public static Attestation ToFuluAttestation(AttestationGloas attestation) => new()
+    {
+        AggregationBits = attestation.AggregationBits,
+        Data = attestation.Data,
+        Signature = attestation.Signature,
+        CommitteeBits = attestation.CommitteeBits,
+    };
+
+    /// <summary>A vote at <paramref name="slot"/> for <paramref name="headRoot"/>, sourced from the checkpoint the state has justified for <paramref name="targetEpoch"/> and targeting that epoch's boundary root.</summary>
+    public static AttestationData VoteFor(BeaconStateGloas state, ulong slot, ulong targetEpoch, Hash256 headRoot, ulong index = 0) => new()
+    {
+        Slot = slot,
+        Index = index,
+        BeaconBlockRoot = headRoot,
+        Source = targetEpoch == state.GetCurrentEpoch() ? state.CurrentJustifiedCheckpoint : state.PreviousJustifiedCheckpoint,
+        Target = new Checkpoint { Epoch = targetEpoch, Root = state.GetBlockRoot(targetEpoch) },
+    };
+
+    /// <summary>
+    /// A PTC aggregate for <c>data.Slot</c> with the committee <paramref name="positions"/> set,
+    /// signed (when <paramref name="sign"/>) by the validators at those positions under
+    /// <c>DOMAIN_PTC_ATTESTER</c>, once per position since a repeated member is aggregated per occurrence.
+    /// </summary>
+    public static PayloadAttestation PtcAttestation(BeaconStateGloas state, PayloadAttestationData data, int[] positions, bool sign)
+    {
+        ulong[] ptc = state.GetPtc(data.Slot).Indices ?? new ulong[Presets.PtcSize];
+        BitArray bits = new((int)Presets.PtcSize);
+        foreach (int position in positions)
+        {
+            bits[position] = true;
+        }
+
+        BlsSignature signature = default;
+        if (sign)
+        {
+            Hash256 domain = state.GetDomain(DomainType.PtcAttester, BeaconStateAccessors.ComputeEpochAtSlot(data.Slot));
+            signature = AggregateSignature(Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain), [.. positions.Select(p => (int)ptc[p])]);
+        }
+
+        return new PayloadAttestation { AggregationBits = bits, Data = data, Signature = signature };
+    }
+
+    /// <summary>The aggregate of each listed validator's signature over <paramref name="signingRoot"/>; a repeated index signs (and so must be aggregated) once per occurrence.</summary>
+    public static BlsSignature AggregateSignature(Hash256 signingRoot, IReadOnlyList<int> validatorIndices)
+    {
+        BlsSigner.Signature aggregate = BlsSigner.Sign(ValidatorKey(validatorIndices[0]), signingRoot.Bytes);
+        for (int i = 1; i < validatorIndices.Count; i++)
+        {
+            aggregate.Aggregate(BlsSigner.Sign(ValidatorKey(validatorIndices[i]), signingRoot.Bytes));
+        }
+        return new BlsSignature(aggregate.Bytes);
+    }
+
+    public static BlsSignature Sign(Bls.SecretKey key, Hash256 signingRoot) =>
+        new(BlsSigner.Sign(key, signingRoot.Bytes).Bytes);
+
+    /// <summary>Returns <paramref name="signature"/> with one byte flipped: still 96 well-formed bytes, just not the right ones.</summary>
+    public static BlsSignature Corrupt(BlsSignature signature)
+    {
+        byte[] corrupted = signature.Bytes.ToArray();
+        corrupted[10] ^= 0xFF;
+        return new BlsSignature(corrupted);
     }
 
     /// <summary>A builder-signed bid over <c>DOMAIN_BEACON_BUILDER</c>, valid against <paramref name="state"/> as it stands.</summary>
