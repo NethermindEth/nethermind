@@ -1099,7 +1099,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                valueChanges = new StorageChangeTrace(valueChanges.Before, value);
+                valueChanges = valueChanges.IsInitialValue
+                    ? new StorageChangeTrace(value)
+                    : new StorageChangeTrace(valueChanges.Before, value);
             }
 
             EnsureStorageTree();
