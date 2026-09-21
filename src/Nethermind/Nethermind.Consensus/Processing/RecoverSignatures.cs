@@ -164,6 +164,12 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
+        /// <remarks>
+        /// Every consumer of a recovered sender rests on this store: assigning the <see cref="Address"/> to a
+        /// location other threads can see is a release with respect to its own fields, so a reader that sees a
+        /// non-null <see cref="Transaction.SenderAddress"/> sees the recovered bytes with it. The only race left
+        /// is reading a stale null, which each consumer handles by recovering inline or warming on a later pass.
+        /// </remarks>
         private void Recover(Transaction tx, IReleaseSpec releaseSpec)
         {
             _ = tx.Hash;

@@ -40,6 +40,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <summary>How long a warmup pass spins for the next sender before falling back to sleeping.</summary>
     private static readonly TimeSpan SenderArrivalWindow = TimeSpan.FromMilliseconds(1);
 
+    /// <summary>Yielding spin iterations a discovery worker takes before it starts sleeping for a sender.</summary>
+    private const int SenderWaitSpins = 16;
+
     private readonly int _concurrencyLevel;
     // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
     private readonly int _speculativeConcurrencyLevel;
@@ -337,17 +340,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Waits for a candidate's sender; <c>false</c> once the main thread has passed it or the block is done.</summary>
     /// <remarks>
-    /// Sleeps without the spin phase the other waits open with: the same ascending-recovery argument that makes this
+    /// Without the 1 ms spin window the other waits open with: the same ascending-recovery argument that makes this
     /// wait worth taking makes it a long one, and several discovery workers spinning would take cores from the very
-    /// recovery they are waiting on.
+    /// recovery they are waiting on. It still opens with a handful of <see cref="SpinWait.SpinOnce()"/> iterations,
+    /// which yield rather than burn a core past the first few, because the sleep below is
+    /// <see cref="WaitHandle.WaitOne(int)"/> and rounds up to the platform timer tick — some 15 ms on Windows at the
+    /// default resolution, against a discovery window of tens.
     /// </remarks>
     private bool WaitForSender((int Index, Transaction Tx) candidate, DiscoveryRound round)
     {
+        SpinWait spinner = default;
         while (candidate.Tx.SenderAddress is null)
         {
             // Once the main thread is there, discovering its reads no longer helps and only contends.
             if (round.CancellationToken.IsCancellationRequested || MainThreadTxIndex >= candidate.Index) return false;
-            if (SleepUnlessDone(round.CancellationToken)) return false;
+
+            if (spinner.Count < SenderWaitSpins) spinner.SpinOnce();
+            else if (SleepUnlessDone(round.CancellationToken)) return false;
         }
 
         return true;
