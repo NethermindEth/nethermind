@@ -17,6 +17,9 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 /// </remarks>
 public sealed class LocalCustody
 {
+    /// <summary>The discv5 node id every value here was derived from, exactly as it was supplied.</summary>
+    public Hash256 NodeId { get; }
+
     /// <summary>The number of custody groups this node is responsible for.</summary>
     public ulong CustodyGroupCount { get; }
 
@@ -35,6 +38,7 @@ public sealed class LocalCustody
     /// </param>
     public LocalCustody(Hash256 nodeId, ulong custodyGroupCount)
     {
+        NodeId = nodeId;
         CustodyGroupCount = custodyGroupCount;
         ulong[] groups = DataAvailability.CustodyGroups.GetCustodyGroups(nodeId, custodyGroupCount);
         CustodyGroups = groups;

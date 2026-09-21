@@ -2,12 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Enr;
 using NUnit.Framework;
 
@@ -20,18 +28,41 @@ namespace Nethermind.BeaconChain.Test.Sync;
 public class DiscoveryNodeCustodySourceTests
 {
     [Test]
-    public void NodeIdOf_recovers_the_discv5_node_id_the_local_custody_was_derived_from()
+    public async Task Custody_is_derived_from_the_node_id_peers_read_off_the_local_enr()
     {
-        PrivateKey key = TestItem.PrivateKeyA;
-        NodeRecord record = new();
-        record.SetEntry(new SecP256k1Entry(key.CompressedPublicKey));
-        record.EnrSequence = 1;
-        new NodeRecordSigner(new Ecdsa(), key).Sign(record);
-        // Parse back from the string form so the entry takes the same path as a wire record.
-        NodeRecord parsed = NodeRecord.FromEnrString(record.ToString());
+        await using BeaconDiscovery discovery = NewDiscovery(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
+        // Resolves the identity and local custody exactly as Start does, without binding a socket.
+        discovery.CreateDiscv5Services(IPAddress.Loopback);
+        Hash256 enrNodeId = discovery.LocalNodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress().Hash;
 
-        Assert.That(DiscoveryNodeCustodySource.NodeIdOf(parsed), Is.EqualTo(key.PublicKey.Hash),
-            "BeaconDiscovery seeds LocalCustody with nodeKey.PublicKey.Hash; the ENR must round-trip to that exact value");
+        NodeColumnCustody demanded = new DiscoveryNodeCustodySource(discovery).Current!;
+
+        Assert.That(demanded.NodeId, Is.EqualTo(enrNodeId),
+            "peers compute this node's custody from the secp256k1 key in its ENR; the columns demanded here must be that identity's");
+    }
+
+    [Test]
+    public async Task Custody_is_re_derived_when_discovery_advertises_a_different_identity()
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        await using BeaconDiscovery discovery = NewDiscovery(store);
+        DiscoveryNodeCustodySource source = new(discovery);
+        discovery.CreateDiscv5Services(IPAddress.Loopback);
+        NodeColumnCustody first = source.Current!;
+
+        // Discovery loads whatever identity the store holds, so a replaced key resolves to a new node id.
+        store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, TestItem.PrivateKeyB.KeyBytes);
+        discovery.CreateDiscv5Services(IPAddress.Loopback);
+        Assert.That(discovery.LocalCustody.NodeId, Is.Not.EqualTo(first.NodeId), "the identity swap the test relies on did not take");
+
+        NodeColumnCustody second = source.Current!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(second.NodeId, Is.EqualTo(discovery.LocalCustody.NodeId), "the custody demanded must follow the identity discovery currently advertises");
+            Assert.That(second.CustodyColumns, Is.Not.EqualTo(first.CustodyColumns), "a stale custody would demand the previous identity's columns");
+            Assert.That(source.Current, Is.SameAs(second), "an unchanged identity is not re-derived on every read");
+        });
     }
 
     [Test]
@@ -52,4 +83,13 @@ public class DiscoveryNodeCustodySourceTests
     [Test]
     public void Without_discovery_there_is_no_identity() =>
         Assert.That(new DiscoveryNodeCustodySource(null).Current, Is.Null);
+
+    private static BeaconDiscovery NewDiscovery(BeaconChainStore store) =>
+        new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
+
+    private sealed class FixedIPResolver(IPAddress ip) : IIPResolver
+    {
+        public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
+            new(new IIPResolver.NethermindIp(ip, ip));
+    }
 }
