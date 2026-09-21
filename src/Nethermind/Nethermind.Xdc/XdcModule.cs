@@ -7,9 +7,7 @@ using Nethermind.Abi;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -23,7 +21,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -146,15 +143,7 @@ public class XdcModule : Module
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
 
             // Keeps eth_gasPrice from suggesting a price MinGasPriceFilter would then reject
-            .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, IChainHeadInfoProvider, ILogManager, IBlocksConfig>(
-                (blockFinder, specProvider, chainHeadInfoProvider, logManager, blocksConfig) =>
-                    new XdcGasPriceOracle(
-                        blockFinder,
-                        specProvider,
-                        chainHeadInfoProvider,
-                        logManager,
-                        blocksConfig.MinGasPrice
-                    ))
+            .AddDecorator<IGasPriceOracle, XdcGasPriceOracle>()
 
             .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
             .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>()
