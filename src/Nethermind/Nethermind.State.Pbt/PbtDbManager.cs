@@ -32,7 +32,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly Channel<StateId> _persistenceJobs = Channel.CreateBounded<StateId>(MaxInFlightCompactionJobs);
     private readonly Channel<StateId> _compactionJobs = Channel.CreateBounded<StateId>(MaxInFlightCompactionJobs);
     // The trie cache matters for the next block's fold, so a retired block's staged groups are folded in as soon as
-    // possible; a block that arrives while the previous one is still being ingested forfeits its groups rather than stalls.
+    // possible; a block that arrives while the previous one is still being ingested stalls until it has been.
     private readonly Channel<PbtTransientResource> _trieCachePopulationJobs = Channel.CreateBounded<PbtTransientResource>(1);
     private readonly Lock _admissionLock = new();
     private readonly CancellationToken _processExitToken;
@@ -193,21 +193,31 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 transientResource.ReleaseLease();
                 return;
             }
-            if (_trieNodeCache is null || !_trieCachePopulationJobs.Writer.TryWrite(transientResource)) transientResource.ReleaseLease();
+            if (_trieNodeCache is null) transientResource.ReleaseLease();
+            else if (!EnqueueOrStall(_trieCachePopulationJobs.Writer, transientResource, "trie cache population")) transientResource.ReleaseLease();
             if (_logger.IsDebug) _logger.Debug($"Admitted Pbt snapshot {snapshot.From} -> {committed}: persisted={persisted}, snapshots={_repository.Count}, compactedSnapshots={_repository.CompactedCount}, cachedBundles={_readOnlyBundleCache.Count}, managedBytes={GC.GetTotalMemory(false)}");
 
-            if (_compactionJobs.Writer.TryWrite(committed)) return;
-            if (_logger.IsWarn) _logger.Warn("Pbt compaction/persistence is not keeping up with block processing; stalling the commit until it does.");
-            try
-            {
-                _compactionJobs.Writer.WriteAsync(committed, _processExitToken).AsTask().GetAwaiter().GetResult();
-            }
-            catch (OperationCanceledException) when (_processExitToken.IsCancellationRequested)
-            {
-            }
-            catch (ChannelClosedException) when (Volatile.Read(ref _isDisposed) != 0)
-            {
-            }
+            EnqueueOrStall(_compactionJobs.Writer, committed, "compaction/persistence");
+        }
+    }
+
+    /// <summary>Blocks the committing thread until the worker accepts the job; returns false only when the manager is shutting down.</summary>
+    private bool EnqueueOrStall<T>(ChannelWriter<T> writer, T job, string workerName)
+    {
+        if (writer.TryWrite(job)) return true;
+        if (_logger.IsWarn) _logger.Warn($"Pbt {workerName} is not keeping up with block processing; stalling the commit until it does.");
+        try
+        {
+            writer.WriteAsync(job, _processExitToken).AsTask().GetAwaiter().GetResult();
+            return true;
+        }
+        catch (OperationCanceledException) when (_processExitToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (ChannelClosedException) when (Volatile.Read(ref _isDisposed) != 0)
+        {
+            return false;
         }
     }
 
