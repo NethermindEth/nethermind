@@ -6,6 +6,7 @@ using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -24,13 +25,23 @@ internal class WorldStateDbDeciderModule : Module
         builder
             .AddSingleton<FlatStateActivationPolicy>()
 
-            .AddSingleton<IWorldStateManager, FlatStateActivationPolicy, ISyncConfig, Func<FlatWorldStateManager>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
-                (policy, syncConfig, flatFactory, patriciaFactory) =>
+            .AddSingleton<IWorldStateManager, FlatStateActivationPolicy, ISyncConfig, IPruningConfig, ILogManager, Func<FlatWorldStateManager>, Func<PruningTrieStoreModule.PruningTrieStateFactoryOutput>>(
+                (policy, syncConfig, pruningConfig, logManager, flatFactory, patriciaFactory) =>
                 {
                     if (!policy.ShouldTurnOnFlatDb())
                     {
                         return patriciaFactory().WorldStateManager;
                     }
+
+                    // FullPrunerFactory is never constructed on Flat (WorldStateDbDecider skips the patricia graph).
+                    // Warn only when the operator set an automatic full-prune trigger; Hybrid is the default Mode.
+                    if (pruningConfig.FullPruningTrigger != FullPruningTrigger.Manual)
+                    {
+                        ILogger logger = logManager.GetClassLogger<WorldStateDbDeciderModule>();
+                        if (logger.IsWarn)
+                            logger.Warn("Copy-style full pruning is patricia-only and is ignored on the Flat backend. admin_prune returns disabled. Use FlatDb.HistoryRetention / history pruning instead of Pruning.FullPruningTrigger.");
+                    }
+
                     // Flat state can always serve snap requests; set before InitializeNetwork registers capabilities.
                     syncConfig.SnapServingEnabled ??= true;
                     return flatFactory();

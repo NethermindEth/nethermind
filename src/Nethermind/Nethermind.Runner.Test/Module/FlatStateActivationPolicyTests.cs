@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO.Abstractions;
 using System.Linq;
+using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -31,12 +33,12 @@ public class FlatStateActivationPolicyTests
         PatriciaHasData = 8
     }
 
-    // Branch 1: Enabled=false → false, regardless of db content
+    // Branch 1: Enabled=false, no flat directory → false
     // Branch 2: Enabled=true, flat persistence has committed state → true
     // Branch 3: Enabled=true, no committed state, ImportFromPruningTrieState=true → true
     // Branch 4: Enabled=true, no committed state, ImportFromPruningTrieState=false, patricia has data → false
     // Branch 5: Enabled=true, no committed state, ImportFromPruningTrieState=false, no patricia data → true
-    [TestCase(Flags.None, false, Description = "Disabled → always false")]
+    [TestCase(Flags.None, false, Description = "Disabled, no flat directory → false")]
     [TestCase(Flags.Enabled | Flags.FlatHasData, true, Description = "Flat has committed state → true")]
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState=true → true")]
     [TestCase(Flags.Enabled | Flags.PatriciaHasData, false, Description = "Patricia has data → false")]
@@ -137,15 +139,35 @@ public class FlatStateActivationPolicyTests
             patriciaHasData: false,
             layout: FlatLayout.Flat,
             availableMemoryBytes: 32.GiB,
-            logManager: LimboLogs.Instance))!;
+            logManager: LimboLogs.Instance,
+            flatDirectoryExists: true))!;
 
         Assert.That(ex.Message, Does.Contain("FlatDb.Enabled").And.Contain("existing"));
+    }
+
+    [Test]
+    public void Existing_flat_with_fast_sync_and_no_snap_keeps_serving()
+    {
+        TestLogger testLogger = new();
+        FlatStateActivationPolicy policy = CreatePolicy(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: true,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: new OneLoggerLogManager(new ILogger(testLogger)),
+            fastSync: true,
+            snapSync: false);
+
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+        Assert.That(testLogger.LogList.Any(static l => l.Contains("SnapSync=false") && l.Contains("already has flat state")), Is.True);
     }
 
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
         FlatLayout layout, long availableMemoryBytes, ILogManager logManager,
-        bool fastSync = false, bool snapSync = false)
+        bool fastSync = false, bool snapSync = false, bool flatDirectoryExists = false)
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(enabled);
@@ -165,12 +187,19 @@ public class FlatStateActivationPolicyTests
         syncConfig.FastSync.Returns(fastSync);
         syncConfig.SnapSync.Returns(snapSync);
 
+        IInitConfig initConfig = Substitute.For<IInitConfig>();
+        initConfig.BaseDbPath.Returns("/data");
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.Directory.Exists(Arg.Any<string>()).Returns(flatDirectoryExists);
+
         return new FlatStateActivationPolicy(
             flatDbConfig,
             new TestHardwareInfo(availableMemoryBytes),
             new Lazy<IPersistence>(() => flatPersistence),
             new Lazy<IDb>(() => patriciaDb),
             syncConfig,
+            initConfig,
+            fileSystem,
             logManager);
     }
 }

@@ -4,6 +4,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO.Abstractions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -156,12 +158,16 @@ public class SeedFlatHistoryGenesisTests
         IPersistence flatPersistence = Substitute.For<IPersistence>();
         flatPersistence.CreateReader().Returns(reader);
 
+        IInitConfig initConfig = Substitute.For<IInitConfig>();
+        initConfig.BaseDbPath.Returns("/data");
         return new FlatStateActivationPolicy(
             flatDbConfig,
             new TestHardwareInfo(32L * 1024 * 1024 * 1024),
             new Lazy<IPersistence>(() => flatPersistence),
             new Lazy<IDb>(() => new MemDb()),
             Substitute.For<ISyncConfig>(),
+            initConfig,
+            Substitute.For<IFileSystem>(),
             LimboLogs.Instance);
     }
 }

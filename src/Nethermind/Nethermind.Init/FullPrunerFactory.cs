@@ -41,18 +41,7 @@ public class FullPrunerFactory(
     {
         IDb stateDb = dbProvider.StateDb;
 
-        if (stateDb is not IFullPruningDb fullPruningDb)
-        {
-            if (pruningConfig.Mode.IsFull() || pruningConfig.FullPruningTrigger != FullPruningTrigger.Manual)
-            {
-                if (_logger.IsWarn)
-                    _logger.Warn("Copy-style full pruning is patricia-only and is ignored on the Flat backend. admin_prune returns disabled. Use FlatDb.HistoryRetention / history pruning instead of Pruning.Mode=Hybrid and Pruning.FullPruningTrigger.");
-            }
-
-            return null;
-        }
-
-        if (!pruningConfig.Mode.IsFull()) return null;
+        if (!pruningConfig.Mode.IsFull() || stateDb is not IFullPruningDb fullPruningDb) return null;
 
         string pruningDbPath = fullPruningDb.GetPath(initConfig.BaseDbPath);
         IPruningTrigger? automaticTrigger = CreateAutomaticTrigger(pruningDbPath);
