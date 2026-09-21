@@ -4291,6 +4291,51 @@ namespace Nethermind.TxPool.Test
         }
 
         /// <summary>
+        /// A bucket of nothing but keyed frame transactions, which is what the readiness scan has to get right on
+        /// its own: no ordinary entry is present to satisfy an account-nonce test by accident.
+        /// </summary>
+        /// <remarks>
+        /// Pins both halves of readiness at once, because either half alone also passes the mixed-bucket cases.
+        /// Dropping the keyed branch of <c>IsNonceReady</c> and comparing every entry to the account nonce loses
+        /// the payable sender, whose sequences never equal it; dropping the fee test keeps the unpayable one.
+        /// </remarks>
+        [Test]
+        public void Keyed_only_bucket_is_ready_when_a_keyed_tx_is_both_current_and_payable([Values] bool forProduction)
+        {
+            const int baseFee = 2;
+
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address payableSender = TestItem.PrivateKeyA.Address;
+            Address unpayableSender = TestItem.PrivateKeyB.Address;
+            foreach (Address sender in new[] { payableSender, unpayableSender })
+            {
+                EnsureSenderBalance(sender, UInt256.MaxValue);
+                _stateProvider.CreateAccount(sender, UInt256.MaxValue, AccountNonceAheadOfKeyedSequences);
+            }
+
+            // Sequence 0 is what an untouched NONCE_MANAGER slot reads, so both are current in their own domain.
+            Transaction payable = BuildKeyedFrameTx(payableSender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            Transaction unpayable = BuildKeyedFrameTx(unpayableSender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: baseFee - 1);
+
+            Assert.That(_txPool.SubmitTx(payable, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(unpayable, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> ready = forProduction
+                ? _txPool.GetPendingForProduction(_blockTree.Head!.Header, filterToReadyTx: true, baseFee).Transactions
+                : _txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee: baseFee).AsReadOnly();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(payable.Nonce, Is.Not.EqualTo(AccountNonceAheadOfKeyedSequences), "a keyed sequence must not equal the account nonce, or this pins nothing");
+                Assert.That(payable.CanPayBaseFee(baseFee), Is.True);
+                Assert.That(unpayable.CanPayBaseFee(baseFee), Is.False);
+                Assert.That(ready.TryGetValue(payableSender, out Transaction[] readyForSender), Is.True, "a current, payable keyed sequence is includable");
+                Assert.That(readyForSender, Does.Contain(payable));
+                Assert.That(ready.ContainsKey(unpayableSender), Is.False, "a keyed sequence that cannot pay the base fee is not includable");
+            }
+        }
+
+        /// <summary>
         /// The mirror case: a keyed sequence past the sender's account nonce sorts behind the ordinary entries, so
         /// the scan cannot stop at the first of those. Its domain is current whatever that entry's fee says.
         /// </summary>

@@ -420,8 +420,11 @@ namespace Nethermind.TxPool
         /// <summary>Keeps only the senders with something includable in the next block, leaving the snapshot intact.</summary>
         /// <remarks>Judged by the same <see cref="HasReadyTransaction"/> bucket scan as
         /// <see cref="DropUnreadySenders"/>, because a single-entry test on the bucket's lowest transaction cannot
-        /// answer readiness once EIP-8250 keyed sequences share the ordering. Copies rather than removes in place:
-        /// a production snapshot is shared with the pool's cache and with other callers.</remarks>
+        /// answer readiness once EIP-8250 keyed sequences share the ordering. Copies rather than removes in place,
+        /// which is why this is not <see cref="DropUnreadySenders"/> itself: a production snapshot is shared with
+        /// the pool's cache and with other callers, while that one owns the dictionary it filters.
+        /// The two agree only by both calling <see cref="HasReadyTransaction"/>, so a readiness rule added to one
+        /// must be added to the other; there is no longer a call between them to enforce it.</remarks>
         private IDictionary<AddressAsKey, Transaction[]> SelectReadySenders(
             IDictionary<AddressAsKey, Transaction[]> bySender, bool filterToReadyTx, in UInt256 baseFee)
         {
