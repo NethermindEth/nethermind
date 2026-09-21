@@ -33,6 +33,9 @@ internal static class GloasTestFixtures
     // ComputeBalanceWeightedSelection has nothing to sample from.
     public const int ValidatorCount = 2048;
 
+    // Keeps validator keys clear of the builder key (200) and the deposit keys tests derive (300+).
+    private const int ValidatorKeyOffset = 1000;
+
     public static readonly ulong BoundarySlot = Presets.SlotsPerEpoch;
 
     private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
@@ -157,6 +160,77 @@ internal static class GloasTestFixtures
         BlsPublicKey[] committee = new BlsPublicKey[Presets.SyncCommitteeSize];
         Array.Fill(committee, pubkey);
         return committee;
+    }
+
+    /// <summary>The key <see cref="InstallRealValidatorKeys"/> gives validator <paramref name="validatorIndex"/>.</summary>
+    public static Bls.SecretKey ValidatorKey(int validatorIndex) => DeriveKey(ValidatorKeyOffset + validatorIndex);
+
+    /// <summary>
+    /// Replaces every validator's placeholder pubkey with the real key <see cref="ValidatorKey"/>
+    /// derives for it and returns the decompressed cache the signature checks read. The sync
+    /// committees are re-pointed at validator 0's new key so <see cref="ApplyBlock"/> still
+    /// resolves their members.
+    /// </summary>
+    public static PubkeyCache InstallRealValidatorKeys(BeaconStateGloas state)
+    {
+        Validator[] validators = state.Validators!;
+        for (int i = 0; i < validators.Length; i++)
+        {
+            Validator updated = validators[i].Clone();
+            updated.Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress());
+            validators[i] = updated;
+        }
+        state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = FillCommittee(validators[0].Pubkey), AggregatePubkey = Pubkey(0x60) };
+        state.NextSyncCommittee = new SyncCommittee { Pubkeys = FillCommittee(validators[0].Pubkey), AggregatePubkey = Pubkey(0x61) };
+
+        PubkeyCache pubkeys = new();
+        pubkeys.Build(validators);
+        return pubkeys;
+    }
+
+    /// <summary>A header for <paramref name="slot"/> claiming <paramref name="proposerIndex"/>, signed by that validator's <see cref="ValidatorKey"/> over <c>DOMAIN_BEACON_PROPOSER</c>.</summary>
+    public static SignedBeaconBlockHeader SignedHeader(BeaconStateGloas state, ulong slot, int proposerIndex, Hash256 bodyRoot)
+    {
+        BeaconBlockHeader header = new()
+        {
+            Slot = slot,
+            ProposerIndex = (ulong)proposerIndex,
+            ParentRoot = Hash(0x11),
+            StateRoot = Hash(0x12),
+            BodyRoot = bodyRoot,
+        };
+        Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(slot));
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
+        return new SignedBeaconBlockHeader { Message = header, Signature = Sign(ValidatorKey(proposerIndex), signingRoot) };
+    }
+
+    /// <summary>Two validly signed, distinct headers for the same slot from <paramref name="proposerIndex"/>.</summary>
+    public static ProposerSlashing Equivocation(BeaconStateGloas state, ulong slot, int proposerIndex) => new()
+    {
+        SignedHeader1 = SignedHeader(state, slot, proposerIndex, Hash(0x21)),
+        SignedHeader2 = SignedHeader(state, slot, proposerIndex, Hash(0x22)),
+    };
+
+    /// <summary>The aggregate of each listed validator's signature over <paramref name="signingRoot"/>; a repeated index signs (and so must be aggregated) once per occurrence.</summary>
+    public static BlsSignature AggregateSignature(Hash256 signingRoot, IReadOnlyList<int> validatorIndices)
+    {
+        BlsSigner.Signature aggregate = BlsSigner.Sign(ValidatorKey(validatorIndices[0]), signingRoot.Bytes);
+        for (int i = 1; i < validatorIndices.Count; i++)
+        {
+            aggregate.Aggregate(BlsSigner.Sign(ValidatorKey(validatorIndices[i]), signingRoot.Bytes));
+        }
+        return new BlsSignature(aggregate.Bytes);
+    }
+
+    public static BlsSignature Sign(Bls.SecretKey key, Hash256 signingRoot) =>
+        new(BlsSigner.Sign(key, signingRoot.Bytes).Bytes);
+
+    /// <summary>Returns <paramref name="signature"/> with one byte flipped: still 96 well-formed bytes, just not the right ones.</summary>
+    public static BlsSignature Corrupt(BlsSignature signature)
+    {
+        byte[] corrupted = signature.Bytes.ToArray();
+        corrupted[10] ^= 0xFF;
+        return new BlsSignature(corrupted);
     }
 
     /// <summary>A builder-signed bid over <c>DOMAIN_BEACON_BUILDER</c>, valid against <paramref name="state"/> as it stands.</summary>

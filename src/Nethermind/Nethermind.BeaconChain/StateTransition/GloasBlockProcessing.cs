@@ -83,7 +83,7 @@ public static class GloasBlockProcessing
         ProcessExecutionPayloadBid(state, body.SignedExecutionPayloadBid!, spec, pubkeys, verifySignatures);
         ProcessRandao(state, body, pubkeys, verifySignatures);
         ProcessEth1Data(state, body);
-        ProcessOperations(state, body, parentSlot);
+        ProcessOperations(state, body, parentSlot, cache, pubkeys, verifySignatures);
         ProcessSyncAggregate(state, body.SyncAggregate!, cache, verifySignatures);
     }
 
@@ -167,33 +167,101 @@ public static class GloasBlockProcessing
     /// payload attestations are added. See this type's remarks for exactly which operation kinds
     /// this method processes versus rejects by name.
     /// </summary>
-    public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot)
+    public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
     {
         if ((body.Deposits?.Length ?? 0) != 0)
             throw new BeaconStateException("Gloas block body must carry zero deposits (EIP-6110: the Eth1 deposit path is fully retired)");
 
-        RejectIfPresent(body.ProposerSlashings, Presets.MaxProposerSlashings, "proposer slashings");
-        RejectIfPresent(body.AttesterSlashings, Presets.MaxAttesterSlashingsElectra, "attester slashings");
-        RejectIfPresent(body.Attestations, Presets.MaxAttestationsElectra, "attestations");
-        RejectIfPresent(body.VoluntaryExits, Presets.MaxVoluntaryExits, "voluntary exits");
-        RejectIfPresent(body.BlsToExecutionChanges, Presets.MaxBlsToExecutionChanges, "BLS-to-execution changes");
-        RejectIfPresent(body.PayloadAttestations, Presets.MaxPayloadAttestations, "payload attestations");
+        // [New in Gloas:EIP7688] The lists are progressive (no SSZ-level bound), so the per-kind
+        // limits are asserted here instead.
+        RequireAtMost(body.ProposerSlashings, Presets.MaxProposerSlashings, "proposer slashings");
+        RequireAtMost(body.AttesterSlashings, Presets.MaxAttesterSlashingsElectra, "attester slashings");
+        RequireAtMost(body.Attestations, Presets.MaxAttestationsElectra, "attestations");
+        RequireAtMost(body.VoluntaryExits, Presets.MaxVoluntaryExits, "voluntary exits");
+        RequireAtMost(body.BlsToExecutionChanges, Presets.MaxBlsToExecutionChanges, "BLS-to-execution changes");
+        RequireAtMost(body.PayloadAttestations, Presets.MaxPayloadAttestations, "payload attestations");
+
+        foreach (ProposerSlashing slashing in body.ProposerSlashings ?? [])
+        {
+            ProcessProposerSlashing(state, slashing, cache, pubkeys, verifySignatures);
+        }
+        RejectIfPresent(body.AttesterSlashings, "attester slashings");
+        RejectIfPresent(body.Attestations, "attestations");
+        RejectIfPresent(body.VoluntaryExits, "voluntary exits");
+        RejectIfPresent(body.BlsToExecutionChanges, "BLS-to-execution changes");
+        RejectIfPresent(body.PayloadAttestations, "payload attestations");
     }
 
-    /// <summary>
-    /// Enforces the operation's spec length bound (still real state-transition behavior: an
-    /// oversized list must reject the block) and then, for a genuinely non-empty list, fails loudly
-    /// by name instead of silently skipping operations this driver does not process (see this
-    /// type's remarks). An empty list is a true no-op, not a gap.
-    /// </summary>
-    private static void RejectIfPresent<T>(T[]? operations, int limit, string name)
+    private static void RequireAtMost<T>(T[]? operations, int limit, string name)
     {
         int count = operations?.Length ?? 0;
         if (count > limit)
             throw new BeaconStateException($"Block has {count} {name}, exceeding the limit of {limit}");
-        if (count > 0)
-            throw new NotSupportedException($"Gloas block processing of {name} is not implemented (needs the committee/shuffling stack this driver does not carry for Gloas state)");
     }
+
+    /// <summary>
+    /// Fails loudly by name for a non-empty list of operations this driver does not process yet
+    /// (see this type's remarks). An empty list is a true no-op, not a gap.
+    /// </summary>
+    private static void RejectIfPresent<T>(T[]? operations, string name)
+    {
+        if ((operations?.Length ?? 0) > 0)
+            throw new NotSupportedException($"Gloas block processing of {name} is not implemented");
+    }
+
+    /// <summary>
+    /// Spec <c>process_proposer_slashing</c> (Gloas): the Electra checks and slashing, plus the
+    /// EIP-7732 clearing of the pending builder payment for the equivocated proposal, when that
+    /// payment is still in the two-epoch window and was recorded for this same proposer.
+    /// </summary>
+    public static void ProcessProposerSlashing(BeaconStateGloas state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    {
+        BeaconBlockHeader header1 = slashing.SignedHeader1!.Message!;
+        BeaconBlockHeader header2 = slashing.SignedHeader2!.Message!;
+
+        if (header1.Slot != header2.Slot)
+            throw new BeaconStateException("Proposer slashing header slots do not match");
+        if (header1.ProposerIndex != header2.ProposerIndex)
+            throw new BeaconStateException("Proposer slashing proposer indices do not match");
+        if (HeaderEquals(header1, header2))
+            throw new BeaconStateException("Proposer slashing headers are identical");
+        if (header1.ProposerIndex >= (ulong)state.Validators!.Length)
+            throw new BeaconStateException($"Proposer slashing index {header1.ProposerIndex} is out of range");
+        if (!state.Validators[(int)header1.ProposerIndex].IsSlashableValidator(state.GetCurrentEpoch()))
+            throw new BeaconStateException($"Proposer {header1.ProposerIndex} is not slashable");
+
+        if (verifySignatures)
+        {
+            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader1, pubkeys))
+                throw new BeaconStateException("Invalid proposer slashing signature 1");
+            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader2, pubkeys))
+                throw new BeaconStateException("Invalid proposer slashing signature 2");
+        }
+
+        // Only the payment recorded for this proposer is cleared: an unrelated same-slot
+        // equivocation must not grief an honest proposer's payment.
+        ulong proposalEpoch = BeaconStateAccessors.ComputeEpochAtSlot(header1.Slot);
+        int? paymentIndex = proposalEpoch == state.GetCurrentEpoch()
+            ? (int)(Presets.SlotsPerEpoch + header1.Slot % Presets.SlotsPerEpoch)
+            : proposalEpoch == state.GetPreviousEpoch()
+                ? (int)(header1.Slot % Presets.SlotsPerEpoch)
+                : null;
+        if (paymentIndex is int index && state.BuilderPendingPayments![index].ProposerIndex == header1.ProposerIndex)
+            state.BuilderPendingPayments[index] = EmptyBuilderPendingPayment();
+
+        state.SlashValidator((int)header1.ProposerIndex, cache);
+    }
+
+    private static bool HeaderEquals(BeaconBlockHeader a, BeaconBlockHeader b) =>
+        a.Slot == b.Slot
+        && a.ProposerIndex == b.ProposerIndex
+        && a.ParentRoot == b.ParentRoot
+        && a.StateRoot == b.StateRoot
+        && a.BodyRoot == b.BodyRoot;
+
+    /// <summary>Spec <c>BuilderPendingPayment.empty()</c>, in the shape <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/> and <see cref="SettleBuilderPayment"/> write.</summary>
+    private static BuilderPendingPayment EmptyBuilderPendingPayment() =>
+        new() { Withdrawal = new BuilderPendingWithdrawal() };
 
     /// <summary>
     /// Spec <c>process_sync_aggregate</c> (Altair): unchanged semantics, ported to
@@ -559,7 +627,7 @@ public static class GloasBlockProcessing
         BuilderPendingPayment payment = state.BuilderPendingPayments[(int)paymentIndex];
         if (payment.Withdrawal!.Amount > 0)
             state.BuilderPendingWithdrawals = [.. state.BuilderPendingWithdrawals ?? [], payment.Withdrawal];
-        state.BuilderPendingPayments[(int)paymentIndex] = new BuilderPendingPayment { Withdrawal = new BuilderPendingWithdrawal() };
+        state.BuilderPendingPayments[(int)paymentIndex] = EmptyBuilderPendingPayment();
     }
 
     /// <summary>Spec <c>process_deposit_request</c> (EIP-6110): unchanged from Fulu, ported to <see cref="BeaconStateGloas"/>.</summary>
