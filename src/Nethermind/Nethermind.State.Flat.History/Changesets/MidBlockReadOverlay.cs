@@ -21,7 +21,7 @@ internal sealed class MidBlockReadOverlay(MidBlockOverlay overlay) : IStateReadO
             return false;
         }
 
-        overlaid = Overlay(account, account.Emptied ? Account.TotallyEmpty : underlying ?? Account.TotallyEmpty);
+        overlaid = Overlay(address, account, account.Emptied ? Account.TotallyEmpty : underlying ?? Account.TotallyEmpty);
         return true;
     }
 
@@ -32,20 +32,31 @@ internal sealed class MidBlockReadOverlay(MidBlockOverlay overlay) : IStateReadO
         overlaid = null;
         if (!overlay.TryGetAccount(address, out MidBlockOverlay.AccountOverlay? account) || !account.Emptied) return false;
 
-        overlaid = Overlay(account, Account.TotallyEmpty);
+        overlaid = Overlay(address, account, Account.TotallyEmpty);
         return true;
     }
 
-    private static Account? Overlay(MidBlockOverlay.AccountOverlay account, Account basis)
+    private Account? Overlay(Address address, MidBlockOverlay.AccountOverlay account, Account basis)
     {
         if (account.Emptied && !account.Exists) return null;
 
-        bool wiped = account.StorageClearedAt != MidBlockOverlay.NeverCleared;
         return new Account(
             account.Nonce is { } nonce ? (ulong)nonce : (ulong)basis.Nonce,
             account.Balance ?? basis.Balance,
-            wiped ? Keccak.EmptyTreeHash : basis.StorageRoot,
+            StorageRootOf(address, account, basis),
             account.CodeHash is { } codeHash ? (Hash256)codeHash : basis.CodeHash);
+    }
+
+    /// <summary>The root says whether the account holds storage, not what the root is. A wipe empties it only if
+    /// nothing was written afterwards, and an account the prefix re-created holds whatever it has written since,
+    /// even though its basis is the empty account: reporting empty there would have a later wipe skipped and the
+    /// account's old slots read back instead of zero.</summary>
+    private Hash256 StorageRootOf(Address address, MidBlockOverlay.AccountOverlay account, Account basis)
+    {
+        bool holdsStorage = overlay.HasStorageWrites(address);
+        if (!holdsStorage && account.StorageClearedAt != MidBlockOverlay.NeverCleared) return Keccak.EmptyTreeHash;
+
+        return holdsStorage && basis.StorageRoot == Keccak.EmptyTreeHash ? IStateReadOverlay.NonEmptyStorageRoot : basis.StorageRoot;
     }
 
     public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value) => overlay.TryGetStorage(new StorageCell(address, index), out value);
