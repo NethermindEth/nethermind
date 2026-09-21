@@ -36,8 +36,8 @@ public class PruningTrieStoreModuleTests
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData, true, Description = "Flat owns a populated store -> drop")]
     [TestCase(Flags.Drop | Flags.FlatHasData, false, Description = "Flat DB disabled, node runs on patricia -> keep")]
     [TestCase(Flags.Drop | Flags.Enabled, false, Description = "Flat store still empty -> keep, or the node loses all state")]
-    [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.ImportFromPruningTrieState, false, Description = "Import still configured -> keep, the importer and the fallback boundary read the trie")]
-    [TestCase(Flags.Drop | Flags.Enabled | Flags.ImportFromPruningTrieState, false, Description = "Mid-import -> keep")]
+    [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.ImportFromPruningTrieState, true, Description = "Import finished and left configured -> drop; the fallback boundary stops reading the trie once flat is populated")]
+    [TestCase(Flags.Drop | Flags.Enabled | Flags.ImportFromPruningTrieState, false, Description = "Mid-import, flat still empty -> keep")]
     public void Drops_only_when_flat_owns_a_populated_store(Flags flags, bool expected)
     {
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(

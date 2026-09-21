@@ -138,13 +138,9 @@ public class PruningTrieStoreModule : Module
             return false;
         }
 
-        // The importer and the fallback boundary both read the trie.
-        if (flatDbConfig.ImportFromPruningTrieState)
-        {
-            if (logger.IsInfo) logger.Info($"Keeping the patricia trie state: {nameof(IFlatDbConfig.ImportFromPruningTrieState)} is still set. Remove it once the import has completed, then restart to drop the trie.");
-            return false;
-        }
-
+        // ImportFallbackStateBoundary only reads the trie's BestPersistedState while the flat one is
+        // null, which is exactly StateId.PreGenesis - the case the next check rejects. So a populated
+        // flat store is sufficient on its own, and the import flag needs no gate of its own.
         using IPersistence.IPersistenceReader reader = flatPersistence().CreateReader();
         if (reader.CurrentState == StateId.PreGenesis)
         {
