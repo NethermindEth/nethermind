@@ -709,13 +709,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
-    /// <summary>Sends <c>goodbye</c> and disconnects a session that was never admitted. Recorded in the
-    /// peer id's disconnect history like any other drop, so who keeps knocking while we are full or
-    /// after a ban is visible in the diagnostics rather than only in a debug log.</summary>
+    /// <summary>Sends <c>goodbye</c> and disconnects a session that was never admitted. Noted in the peer
+    /// id's disconnect history only when it already has one, so a banned peer that keeps knocking is
+    /// visible in the diagnostics while a never-admitted id earns no record.</summary>
     private async Task RefuseSessionAsync(ISession session, string peerId, ulong reason, string detail)
     {
         if (_logger.IsDebug) _logger.Debug($"Refusing beacon chain peer: {detail}");
-        RecordDisconnect(peerId, messagesSent: 0, failuresReported: 0, reason, detail);
+        RecordRefusal(peerId, reason, detail);
         await _p2p.GoodbyeAsync(session, reason, CancellationToken.None);
         try
         {
@@ -823,6 +823,23 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             record.Banned = true;
             if (_logger.IsWarn) _logger.Warn($"Banned beacon chain peer {peerId} after {consecutiveFaults} consecutive fault disconnects");
         }
+    }
+
+    /// <summary>
+    /// Notes a refusal in an existing record only. Creating one for a never-admitted id would let a
+    /// flood of distinct knockers at the ceiling evict the history of real peers, and a refusal is not
+    /// evidence about the peer's behaviour either way, so the consecutive-fault streak is left as is.
+    /// </summary>
+    private void RecordRefusal(string peerId, ulong reason, string detail)
+    {
+        if (!_peerRecords.TryGetValue(peerId, out BanRecord? record))
+        {
+            return;
+        }
+
+        record.LastDisconnectReason = GoodbyeReasonName(reason);
+        record.LastDisconnectDetail = detail;
+        Interlocked.Increment(ref record.DisconnectCount);
     }
 
     /// <summary>Internal so a test can assert ban state without dialing: see <see cref="RecordDisconnect(string,long,long,ulong,string)"/>.</summary>
