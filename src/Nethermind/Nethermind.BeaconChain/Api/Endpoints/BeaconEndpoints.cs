@@ -100,7 +100,7 @@ internal static class BeaconEndpoints
             slotFilter = parsedSlot;
         }
 
-        if (!ctx.Store.TryGetBlock(parentRoot!, out _))
+        if (!ctx.Store.HasBlock(parentRoot!))
         {
             return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"Block {parentRoot} is not retained by this node.", c.RequestAborted);
         }
