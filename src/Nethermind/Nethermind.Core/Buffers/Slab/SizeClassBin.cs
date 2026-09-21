@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Threading;
 
 namespace Nethermind.Core.Buffers.Slab;
@@ -11,24 +12,40 @@ internal readonly record struct RegionHandle(Slab Slab, int Index);
 
 /// <summary>The shared slabs of one size class; thread caches move regions in and out in batches under its lock.</summary>
 /// <remarks>
-/// Slabs with a free region sit in a doubly linked list; one emptied slab is retained out of the
-/// list so a bin oscillating around a slab boundary does not churn native allocations, and further
-/// emptied slabs are released. A region parked in a thread cache counts as allocated, so an empty
-/// slab really has no outstanding region.
+/// Non-full slabs are bucketed by their free-region count and allocations always draw from the
+/// fullest one, so the emptier slabs get no refills, drain as their regions come back, and are
+/// released. One emptied slab is retained out of the buckets so a bin oscillating around a slab
+/// boundary does not churn native allocations. A region parked in a thread cache counts as
+/// allocated, so an empty slab really has no outstanding region.
 /// </remarks>
-internal sealed class SizeClassBin(SlabMemoryAllocator allocator, int classIndex, int classSize, int slabSize, int threadCacheCapacity)
+internal sealed class SizeClassBin
 {
+    private readonly SlabMemoryAllocator _allocator;
     private readonly Lock _lock = new();
-    private Slab? _nonFullHead;
+    /// <summary>Doubly linked list heads indexed by free-region count; index 0 is unused (full slabs are tracked by nothing).</summary>
+    private readonly Slab?[] _headByFreeCount;
+    private readonly ulong[] _occupiedBuckets;
     private Slab? _spareEmpty;
     private long _allocatedRegions;
     private long _slabBytes;
 
-    public int ClassIndex { get; } = classIndex;
-    public int ClassSize { get; } = classSize;
-    public int SlabSize { get; } = slabSize;
-    public int RegionCount { get; } = slabSize / classSize;
-    public int ThreadCacheCapacity { get; } = threadCacheCapacity;
+    public SizeClassBin(SlabMemoryAllocator allocator, int classIndex, int classSize, int slabSize, int threadCacheCapacity)
+    {
+        _allocator = allocator;
+        ClassIndex = classIndex;
+        ClassSize = classSize;
+        SlabSize = slabSize;
+        RegionCount = slabSize / classSize;
+        ThreadCacheCapacity = threadCacheCapacity;
+        _headByFreeCount = new Slab?[RegionCount + 1];
+        _occupiedBuckets = new ulong[(RegionCount + 64) / 64];
+    }
+
+    public int ClassIndex { get; }
+    public int ClassSize { get; }
+    public int SlabSize { get; }
+    public int RegionCount { get; }
+    public int ThreadCacheCapacity { get; }
 
     /// <summary>Bytes handed out by this bin and not yet given back, regions parked in thread caches included.</summary>
     public long AllocatedBytes => Volatile.Read(ref _allocatedRegions) * ClassSize;
@@ -43,16 +60,19 @@ internal sealed class SizeClassBin(SlabMemoryAllocator allocator, int classIndex
             int filled = 0;
             while (filled < into.Length)
             {
-                Slab? slab = _nonFullHead;
+                Slab? slab = FullestNonFull();
                 if (slab is null)
                 {
                     slab = _spareEmpty ?? CreateSlab();
                     _spareEmpty = null;
-                    Link(slab);
+                }
+                else
+                {
+                    Unlink(slab);
                 }
 
                 while (filled < into.Length && !slab.IsFull) into[filled++] = new RegionHandle(slab, slab.Pop());
-                if (slab.IsFull) Unlink(slab);
+                if (!slab.IsFull) Link(slab);
             }
 
             _allocatedRegions += filled;
@@ -67,10 +87,11 @@ internal sealed class SizeClassBin(SlabMemoryAllocator allocator, int classIndex
             foreach (RegionHandle handle in handles)
             {
                 Slab slab = handle.Slab;
-                bool wasFull = slab.IsFull;
+                // A slab freed by its own finalizer (see Slab.IsReleased) is never in the buckets and must not be handed out again.
+                if (!slab.IsFull && !slab.IsReleased) Unlink(slab);
                 slab.Push(handle.Index);
-                if (wasFull) Link(slab);
                 if (slab.IsEmpty) Retire(slab);
+                else if (!slab.IsReleased) Link(slab);
             }
 
             _allocatedRegions -= handles.Length;
@@ -88,6 +109,16 @@ internal sealed class SizeClassBin(SlabMemoryAllocator allocator, int classIndex
         }
     }
 
+    private Slab? FullestNonFull()
+    {
+        for (int word = 0; word < _occupiedBuckets.Length; word++)
+        {
+            if (_occupiedBuckets[word] != 0) return _headByFreeCount[word * 64 + BitOperations.TrailingZeroCount(_occupiedBuckets[word])];
+        }
+
+        return null;
+    }
+
     private Slab CreateSlab()
     {
         Slab slab = new(this, SlabSize, ClassSize, RegionCount);
@@ -103,23 +134,34 @@ internal sealed class SizeClassBin(SlabMemoryAllocator allocator, int classIndex
 
     private void Retire(Slab slab)
     {
-        Unlink(slab);
-        if (_spareEmpty is null && !allocator.IsDisposed) _spareEmpty = slab;
+        if (_spareEmpty is null && !_allocator.IsDisposed && !slab.IsReleased) _spareEmpty = slab;
         else ReleaseSlab(slab);
     }
 
     private void Link(Slab slab)
     {
+        int bucket = slab.FreeCount;
+        Slab? head = _headByFreeCount[bucket];
         slab.PreviousInBin = null;
-        slab.NextInBin = _nonFullHead;
-        if (_nonFullHead is not null) _nonFullHead.PreviousInBin = slab;
-        _nonFullHead = slab;
+        slab.NextInBin = head;
+        if (head is not null) head.PreviousInBin = slab;
+        _headByFreeCount[bucket] = slab;
+        _occupiedBuckets[bucket / 64] |= 1UL << (bucket % 64);
     }
 
     private void Unlink(Slab slab)
     {
-        if (slab.PreviousInBin is null) _nonFullHead = slab.NextInBin;
-        else slab.PreviousInBin.NextInBin = slab.NextInBin;
+        int bucket = slab.FreeCount;
+        if (slab.PreviousInBin is null)
+        {
+            _headByFreeCount[bucket] = slab.NextInBin;
+            if (slab.NextInBin is null) _occupiedBuckets[bucket / 64] &= ~(1UL << (bucket % 64));
+        }
+        else
+        {
+            slab.PreviousInBin.NextInBin = slab.NextInBin;
+        }
+
         if (slab.NextInBin is not null) slab.NextInBin.PreviousInBin = slab.PreviousInBin;
         slab.NextInBin = null;
         slab.PreviousInBin = null;

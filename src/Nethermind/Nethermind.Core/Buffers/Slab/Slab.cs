@@ -40,8 +40,11 @@ internal sealed unsafe class Slab
     public SizeClassBin Bin { get; }
     public int Size { get; }
     public int RegionCount { get; }
+    public int FreeCount => _freeCount;
     public bool IsFull => _freeCount == 0;
     public bool IsEmpty => _freeCount == RegionCount;
+    /// <summary>Whether the native block is already freed, which its finalizer may do before a dead thread's cache hands the last regions back.</summary>
+    public bool IsReleased => _base is null;
     public Slab? NextInBin { get; set; }
     public Slab? PreviousInBin { get; set; }
 

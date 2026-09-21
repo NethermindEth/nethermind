@@ -119,6 +119,94 @@ public unsafe class SlabMemoryAllocatorTests
     }
 
     [Test]
+    public void Bins_allocate_from_the_fullest_slab_first()
+    {
+        using SlabMemoryAllocator allocator = CreateAllocator();
+        // Four regions per slab, so sixteen regions fill exactly four slabs.
+        SizeClassBin bin = new(allocator, 0, PageSize / 4, PageSize, 8);
+        RegionHandle[] handles = new RegionHandle[16];
+        Assert.That(bin.AllocateBatch(handles), Is.EqualTo(16));
+        Nethermind.Core.Buffers.Slab.Slab[] slabs = [handles[0].Slab, handles[4].Slab, handles[8].Slab, handles[12].Slab];
+        Assert.That(slabs, Is.Unique);
+
+        // Leave slab 0 with three free regions, slab 1 with one, slab 2 with two and slab 3 full.
+        bin.FreeBatch([handles[0], handles[1], handles[2], handles[4], handles[8], handles[9]]);
+
+        RegionHandle[] next = new RegionHandle[4];
+        bin.AllocateBatch(next);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next[0].Slab, Is.SameAs(slabs[1]), "one free region: the fullest");
+            Assert.That(next[1].Slab, Is.SameAs(slabs[2]), "two free regions");
+            Assert.That(next[2].Slab, Is.SameAs(slabs[2]));
+            Assert.That(next[3].Slab, Is.SameAs(slabs[0]), "three free regions: the emptiest, last");
+        }
+
+        // Draining a slab fully retires it: the first becomes the spare, the second is released.
+        long reserved = bin.SlabBytes;
+        bin.FreeBatch([handles[12], handles[13], handles[14], handles[15]]);
+        Assert.That(bin.SlabBytes, Is.EqualTo(reserved), "the first empty slab is kept spare");
+        bin.FreeBatch([handles[5], handles[6], handles[7], next[0]]);
+        Assert.That(bin.SlabBytes, Is.EqualTo(reserved - PageSize), "the second empty slab is released");
+    }
+
+    [Test]
+    public void An_idle_thread_cache_is_flushed_by_the_second_sweep()
+    {
+        using SlabMemoryAllocator allocator = CreateAllocator();
+        // A private cache, so the allocator's own gen-2 sweeps cannot interleave with the calls below.
+        SizeClassBin bin = new(allocator, 0, 128, PageSize, 8);
+        SlabThreadCache cache = new([bin]);
+        RegionHandle[] handles = new RegionHandle[4];
+        for (int i = 0; i < handles.Length; i++) handles[i] = cache.Rent(0);
+        for (int i = 0; i < handles.Length; i++) cache.Return(0, in handles[i]);
+        long parked = bin.AllocatedBytes;
+        Assert.That(parked, Is.EqualTo(4 * 128L), "the regions sit in the cache");
+
+        cache.TrimIfIdle();
+        Assert.That(bin.AllocatedBytes, Is.EqualTo(parked), "the first sweep only arms a cache that was in use");
+        cache.Return(0, cache.Rent(0));
+        cache.TrimIfIdle();
+        Assert.That(bin.AllocatedBytes, Is.EqualTo(parked), "a cache used since the last sweep is kept");
+        cache.TrimIfIdle();
+        Assert.That(bin.AllocatedBytes, Is.Zero, "an untouched cache is flushed");
+    }
+
+    [Test]
+    public void Other_threads_caches_are_flushed_on_demand_and_by_the_gen2_sweep()
+    {
+        using SlabMemoryAllocator allocator = CreateAllocator();
+        using ManualResetEventSlim parked = new();
+        using ManualResetEventSlim release = new();
+        Thread worker = new(() =>
+        {
+            SlabAllocation block = allocator.Allocate(128);
+            allocator.Free(in block);
+            parked.Set();
+            release.Wait();
+        })
+        { IsBackground = true };
+        worker.Start();
+        parked.Wait();
+        Assert.That(allocator.OutstandingBytes, Is.GreaterThan(0), "the worker's refill batch sits in its cache");
+        allocator.FlushAllThreadCaches();
+        Assert.That(allocator.OutstandingBytes, Is.Zero, "a live thread's cache is flushed from another thread");
+
+        SlabAllocation again = allocator.Allocate(128);
+        allocator.Free(in again);
+        // The sweeper re-registers its finalizer, so consecutive collections arm and then flush the cache.
+        for (int attempt = 0; attempt < 5 && allocator.OutstandingBytes > 0; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+
+        Assert.That(allocator.OutstandingBytes, Is.Zero, "the gen-2 sweep flushed this thread's idle cache");
+        release.Set();
+        worker.Join();
+    }
+
+    [Test]
     public void A_dying_thread_returns_its_cached_regions()
     {
         using SlabMemoryAllocator allocator = CreateAllocator();
