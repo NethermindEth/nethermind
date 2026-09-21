@@ -21,6 +21,9 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// <see cref="ForkChoiceRunner.OnBlock"/> hands <c>is_data_available</c> to whichever
 /// <see cref="IDataAvailabilityRule"/> its caller chose: a column list means the supernode rule the
 /// spec vectors need, a rule means exactly that rule, and neither is ever inferred from the other.
+/// Also the body replay <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/>
+/// leaves to its caller, on a hand-built chain (<see cref="UnsignedChain"/>): no mainnet vector
+/// carries a body attester slashing, so the vectors never show whether a replayed one is honored.
 /// </summary>
 public class ForkChoiceRunnerTests
 {
@@ -88,6 +91,79 @@ public class ForkChoiceRunnerTests
             Assert.That(accepting.Asked, Has.Count.EqualTo(1));
             Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
         });
+    }
+
+    /// <summary>
+    /// Two validators vote block A onto the head over block B's one; a later block on A's branch
+    /// carries a slashing of those two for a double vote. Replayed the way the callers do (after
+    /// OnBlock, signatures unverified), the slashing must pull their votes out of the weight so B
+    /// wins - even though the slashing block itself extends A's branch. Without the replay, A's
+    /// branch keeps its two votes and nothing ever reports the loss.
+    /// </summary>
+    [Test]
+    public void Body_attester_slashing_replayed_after_OnBlock_discounts_the_equivocating_votes()
+    {
+        (ForkChoiceRunner runner, UnsignedChain.ChainBlock voted, UnsignedChain.ChainBlock b, UnsignedChain.ChainBlock slashing) = EquivocationScenario();
+        Hash256 headBeforeSlashing = runner.GetHead();
+
+        ImportWithBodyReplay(runner, slashing);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(headBeforeSlashing, Is.EqualTo(voted.Root), "two votes on A's branch outweigh one on B");
+            Assert.That(runner.GetHead(), Is.EqualTo(b.Root), "the slashed validators' votes no longer count, so B's lone vote wins");
+        });
+    }
+
+    /// <summary>
+    /// The replay flag is what admits a transition-verified slashing: the same body slashing with
+    /// verification on is refused, and a refused slashing leaves no equivocating index behind.
+    /// </summary>
+    [Test]
+    public void Body_attester_slashing_replay_with_verification_on_is_refused_whole()
+    {
+        (ForkChoiceRunner runner, _, _, UnsignedChain.ChainBlock slashing) = EquivocationScenario();
+        runner.OnBlock(slashing.Block, slashing.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => runner.OnAttesterSlashing(slashing.Block.Message!.Body!.AttesterSlashings![0], verifySignatures: true),
+                Throws.TypeOf<ForkChoiceException>().With.Message.Contains("invalid"));
+            Assert.That(runner.GetHead(), Is.EqualTo(slashing.Root), "a refused slashing discounts nobody: the head stays on A's branch, at its new leaf");
+        });
+    }
+
+    /// <summary>
+    /// <see cref="UnsignedChain.BuildEquivocation"/> with everything up to the slashing block imported
+    /// and replayed. The runner is ticked past every block so no proposer boost confounds the weights.
+    /// </summary>
+    private static (ForkChoiceRunner Runner, UnsignedChain.ChainBlock Voted, UnsignedChain.ChainBlock B, UnsignedChain.ChainBlock Slashing) EquivocationScenario()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        runner.OnTick(runner.GenesisTime + 8 * chain.Spec.SecondsPerSlot);
+        UnsignedChain.Equivocation scenario = chain.BuildEquivocation();
+
+        ImportWithBodyReplay(runner, scenario.A);
+        ImportWithBodyReplay(runner, scenario.B);
+        ImportWithBodyReplay(runner, scenario.Voted);
+        return (runner, scenario.Voted, scenario.B, scenario.Slashing);
+    }
+
+    /// <summary>The caller-side contract of <see cref="ForkChoiceRunner.OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IDataAvailabilityRule)"/>: the block, then its body operations with signatures already trusted.</summary>
+    private static void ImportWithBodyReplay(ForkChoiceRunner runner, UnsignedChain.ChainBlock block)
+    {
+        runner.OnBlock(block.Block, block.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        BeaconBlockBody body = block.Block.Message!.Body!;
+        foreach (Attestation attestation in body.Attestations!)
+        {
+            runner.OnAttestation(attestation, isFromBlock: true, verifySignature: false);
+        }
+
+        foreach (AttesterSlashing slashing in body.AttesterSlashings!)
+        {
+            runner.OnAttesterSlashing(slashing, verifySignatures: false);
+        }
     }
 
     /// <summary>A runner rooted at the fixture's anchor, ticked to the block's slot, with the block's real post-state computed.</summary>
