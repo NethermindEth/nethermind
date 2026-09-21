@@ -81,8 +81,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly object _admissionLock = new();
 
     /// <summary>What an admission in flight already knows about its peer: enough for the directory's
-    /// <see cref="PeerConnectionState.Connecting"/> entry and for the peer-id dedup in <see cref="IsKnown"/>.</summary>
-    private readonly record struct Reservation(string PeerId, PeerDirection Direction);
+    /// <see cref="PeerConnectionState.Connecting"/> entry and for the peer-id dedup in <see cref="IsKnown"/>.
+    /// <paramref name="Enr"/> is only ever known for a discovery-sourced dial (see
+    /// <see cref="TryAddPeerAsync"/>'s optional parameter); <c>null</c> for a static-peer reconnect or
+    /// an inbound session, which have no ENR to offer.</summary>
+    private readonly record struct Reservation(string PeerId, PeerDirection Direction, string? Enr);
 
     public PeerManager(BeaconP2P p2p, IBeaconChainConfig config, IBeaconChainStatusSource statusSource, ILogManager logManager)
     {
@@ -226,8 +229,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// the status exchange succeeds. Refuses a banned peer id or one that would push the pool past
     /// <see cref="IBeaconChainConfig.MaxPeerCount"/> without attempting a dial.
     /// </summary>
+    /// <param name="address">The dial multiaddr, including its <c>/p2p/</c> peer-id component.</param>
+    /// <param name="token">Cancels the dial; a timeout past <see cref="DialTimeout"/> is treated as a refusal, not propagated.</param>
+    /// <param name="enr">The candidate's discv5 ENR text when known, so the resulting <see cref="PeerRecord"/>
+    /// can report it truthfully instead of <c>null</c>. Omitted for a static-peer reconnect, which has no ENR to offer.</param>
     /// <returns><c>true</c> when the peer is (already) connected and on our fork.</returns>
-    public async Task<bool> TryAddPeerAsync(string address, CancellationToken token)
+    public async Task<bool> TryAddPeerAsync(string address, CancellationToken token, string? enr = null)
     {
         if (IsConnected(address))
         {
@@ -238,7 +245,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         cts.CancelAfter(DialTimeout);
         try
         {
-            return await ConnectAsync(address, cts.Token);
+            return await ConnectAsync(address, cts.Token, enr);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
@@ -255,7 +262,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// one session can never be recorded twice; <paramref name="atCeiling"/> tells the two refusals
     /// apart, because only the ceiling one may cost the remote its session.
     /// </summary>
-    private bool TryReserveAdmissionSlot(string address, string peerId, PeerDirection direction, out bool atCeiling)
+    private bool TryReserveAdmissionSlot(string address, string peerId, PeerDirection direction, string? enr, out bool atCeiling)
     {
         lock (_admissionLock)
         {
@@ -271,7 +278,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 return false;
             }
 
-            _dialing[address] = new Reservation(peerId, direction);
+            _dialing[address] = new Reservation(peerId, direction, enr);
             return true;
         }
     }
@@ -384,7 +391,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// connected to us is <see cref="PeerDirection.Inbound"/>. <see cref="PeerConnectionState.Disconnected"/>
     /// and <see cref="PeerConnectionState.Disconnecting"/> are never produced: a dropped peer is simply
     /// forgotten here (its history lives in <see cref="BanRecord"/>). <c>AgentVersion</c> is the identify
-    /// agent string the libp2p layer captured, <c>null</c> only when that probe went unanswered.</summary>
+    /// agent string the libp2p layer captured, <c>null</c> only when that probe went unanswered.
+    /// <c>Enr</c> is the discv5 ENR text supplied to <see cref="TryAddPeerAsync"/> for a peer this
+    /// manager discovered and dialed itself; <c>null</c> for a static peer or one that connected to us,
+    /// neither of which offers an ENR at admission time.</summary>
     public IReadOnlyList<PeerRecord> Peers
     {
         get
@@ -442,14 +452,16 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         peer.Direction,
         PeerConnectionState.Connected,
         peer.Session.RemoteAddress?.ToString() ?? peer.Id,
-        peer.AgentVersion);
+        peer.AgentVersion,
+        peer.Enr);
 
     private static PeerRecord ToConnectingRecord(string address, Reservation reservation) => new(
         reservation.PeerId,
         reservation.Direction,
         PeerConnectionState.Connecting,
         address,
-        AgentVersion: null);
+        AgentVersion: null,
+        reservation.Enr);
 
     // GoodbyeReason is const ulong, not an enum, so the wire value is resolved to a name by hand
     // for a bounded-cardinality metric label instead of the raw number.
@@ -526,7 +538,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// Refuses a banned id, a peer already connected or in flight, or one that would overshoot the
     /// ceiling, all without attempting a dial.
     /// </summary>
-    private async Task<bool> ConnectAsync(string address, CancellationToken token)
+    private async Task<bool> ConnectAsync(string address, CancellationToken token, string? enr = null)
     {
         string peerId = ExtractPeerId(address);
         if (IsBanned(peerId))
@@ -535,7 +547,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
-        if (!TryReserveAdmissionSlot(address, peerId, PeerDirection.Outbound, out bool atCeiling))
+        if (!TryReserveAdmissionSlot(address, peerId, PeerDirection.Outbound, enr, out bool atCeiling))
         {
             if (_logger.IsDebug) _logger.Debug($"Refusing to dial {address}: {(atCeiling ? $"at the configured peer band ceiling ({_config.MaxPeerCount})" : "already connected or in flight")}");
             return false;
@@ -551,7 +563,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 // already existed (the peer connected to us first): wait for what the libp2p layer
                 // recorded instead of assuming "we dialed it, no client string".
                 BeaconP2P.SessionInfo info = await _p2p.GetSessionInfoAsync(session, token);
-                return await AdmitSessionAsync(address, peerId, session, info, token);
+                return await AdmitSessionAsync(address, peerId, session, info, enr, token);
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
@@ -571,7 +583,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
     /// <summary>Status-exchanges an established session and, when it is on our fork, records it under
     /// <paramref name="address"/>. Shared by every admission path; the caller holds the reservation.</summary>
-    private async Task<bool> AdmitSessionAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, CancellationToken token)
+    private async Task<bool> AdmitSessionAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token)
     {
         // A dial address without a /p2p/ component keys on the whole address, so the session's real
         // peer id is the only reliable way to notice it is already admitted under another address.
@@ -581,7 +593,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return true;
         }
 
-        ManagedPeer peer = new(this, _p2p, address, peerId, session, info.Direction, info.AgentVersion);
+        ManagedPeer peer = new(this, _p2p, address, peerId, session, info.Direction, info.AgentVersion, enr);
         if (!await UpdateStatusAsync(peer, token))
         {
             return false;
@@ -636,7 +648,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 return;
             }
 
-            if (!TryReserveAdmissionSlot(address, peerId, info.Direction, out bool atCeiling))
+            if (!TryReserveAdmissionSlot(address, peerId, info.Direction, null, out bool atCeiling))
             {
                 if (atCeiling)
                 {
@@ -648,7 +660,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
             try
             {
-                await AdmitSessionAsync(address, peerId, session, info, CancellationToken.None);
+                // The remote opened this session; we never discovered it via discv5 ourselves, so there
+                // is no ENR to attribute to it here (see the Enr param note on TryAddPeerAsync).
+                await AdmitSessionAsync(address, peerId, session, info, null, CancellationToken.None);
             }
             finally
             {
@@ -781,8 +795,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     internal bool IsBannedForTest(string peerId) => IsBanned(peerId);
 
     /// <summary>Internal so a test can put an address straight into the "dialing" reservation set,
-    /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.</summary>
-    internal void ReserveDialingForTest(string address) => _dialing[address] = new Reservation(ExtractPeerId(address), PeerDirection.Outbound);
+    /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.
+    /// <paramref name="enr"/> lets a test also exercise the Beacon API's <c>enr</c> field without a live dial.</summary>
+    internal void ReserveDialingForTest(string address, string? enr = null) => _dialing[address] = new Reservation(ExtractPeerId(address), PeerDirection.Outbound, enr);
 
     /// <summary>The durable, peer-id-keyed half of a peer's history: outlives any one
     /// <see cref="ManagedPeer"/> session so a ban and disconnect history survive reconnection attempts.
@@ -801,7 +816,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         public string? LastDisconnectDetail;
     }
 
-    private sealed class ManagedPeer(PeerManager manager, BeaconP2P p2p, string address, string peerId, ISession session, PeerDirection direction, string? agentVersion) : IBeaconSyncPeer
+    private sealed class ManagedPeer(PeerManager manager, BeaconP2P p2p, string address, string peerId, ISession session, PeerDirection direction, string? agentVersion, string? enr) : IBeaconSyncPeer
     {
         private int _consecutiveFailures;
         private long _messagesSent;
@@ -818,6 +833,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         /// <summary>The identify agent string, <c>null</c> when the peer left the probe unanswered.</summary>
         public string? AgentVersion { get; } = agentVersion;
+
+        /// <summary>The discv5 ENR text this peer was discovered with; <c>null</c> for a static peer or
+        /// an inbound session (see <see cref="PeerManager.TryAddPeerAsync"/>'s optional parameter).</summary>
+        public string? Enr { get; } = enr;
 
         public int ConsecutiveFailures
         {
