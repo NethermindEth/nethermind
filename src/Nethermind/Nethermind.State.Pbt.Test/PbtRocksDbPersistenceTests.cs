@@ -159,13 +159,13 @@ public class PbtRocksDbPersistenceTests
     [TestCase(63)]
     [TestCase(64)]
     [TestCase(256)]
-    public void Clear_storage_respects_staged_order_and_preserves_other_addresses(int slotNumber)
+    public void Clear_storage_precedes_staged_runs_and_preserves_other_addresses(int slotNumber)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         PbtStorageTreeKey persistedKey = PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)slotNumber);
-        PbtStorageTreeKey stagedKey = PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)(slotNumber + 1));
+        PbtStorageTreeKey stagedKey = PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)(slotNumber + SlotRun.Width));
         PbtStorageTreeKey otherAddressKey = PbtStateKey.Storage(TestItem.AddressB, (UInt256)(uint)slotNumber);
         EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
         EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("0x5678"));
@@ -180,11 +180,9 @@ public class PbtRocksDbPersistenceTests
         using IPbtPersistence.IReader olderReader = persistence.CreateReader();
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default, WriteFlags.None))
         {
-            batch.SetSlot(stagedKey, original);
             batch.ClearStorage(addressHash);
             batch.SetSlot(persistedKey, replacement);
-            batch.ClearStorage(addressHash);
-            batch.SetSlot(persistedKey, replacement);
+            batch.SetSlot(stagedKey, replacement);
             batch.Commit();
         }
 
@@ -192,11 +190,11 @@ public class PbtRocksDbPersistenceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.GetSlot(persistedKey), Is.EqualTo(replacement));
-            Assert.That(reader.GetSlot(stagedKey), Is.EqualTo(default(EvmWord)));
+            Assert.That(reader.GetSlot(stagedKey), Is.EqualTo(replacement));
             Assert.That(reader.GetSlot(otherAddressKey), Is.EqualTo(original));
             Assert.That(olderReader.GetSlot(persistedKey), Is.EqualTo(original));
-            Assert.That(reader.EnumerateStorage().Drain(), Has.Exactly(2).Items);
-            Assert.That(reader.EnumerateStorage(addressHash).Drain().Single().Value, Is.EqualTo(replacement));
+            Assert.That(reader.EnumerateStorage().Drain(), Has.Exactly(3).Items);
+            Assert.That(reader.EnumerateStorage(addressHash).Drain().Select(entry => entry.Value), Is.All.EqualTo(replacement));
         }
     }
 

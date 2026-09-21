@@ -450,6 +450,32 @@ public class KademliaAdapterTests
         Assert.That(adapter.RequestCount, Is.EqualTo(expectedRequestCount));
     }
 
+    [Test]
+    public async Task RefreshRemoteRecord_StopsOnCancellationWhenAdvertisedSequenceAdvances([Values] bool alreadyCancelled)
+    {
+        using CancellationTokenSource cancellation = new();
+        Node node = CreateNode(TestItem.PublicKeyB, 1);
+        RejectingRefreshAdapter adapter = new(CreateEnr(TestItem.PrivateKeyB, IPAddress.Loopback));
+        adapter.RecordResponse = (requestNode, sequence) =>
+        {
+            if (adapter.RequestCount == 1)
+            {
+                requestNode.TryRequestEnrSequence(sequence + 1);
+                cancellation.Cancel();
+            }
+            return null;
+        };
+        if (alreadyCancelled) cancellation.Cancel();
+
+        await adapter.Refresh(node, 2, cancellation.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(adapter.RequestCount, Is.EqualTo(alreadyCancelled ? 0 : 1));
+            Assert.That(node.RequestingEnrSequence, Is.Zero);
+        }
+    }
+
     private KademliaAdapter CreateAdapter(Node? currentNode = null, IPAddress? localIp = null)
     {
         currentNode ??= CreateNode(TestItem.PublicKeyA, 1);
@@ -556,14 +582,15 @@ public class KademliaAdapterTests
             CreateListenerState(CreateIpResolver(IPAddress.Any), IPAddress.Any))
     {
         public int RequestCount { get; private set; }
+        public Func<Node, ulong, NodeRecord?>? RecordResponse { get; set; }
 
-        public Task Refresh(Node node, ulong sequence)
-            => RefreshRemoteRecordIfNewer(node, sequence, CancellationToken.None);
+        public Task Refresh(Node node, ulong sequence, CancellationToken token = default)
+            => RefreshRemoteRecordIfNewer(node, sequence, token);
 
         protected override ValueTask<NodeRecord?> RequestRemoteRecord(Node node, ulong requestedSequence, CancellationToken token)
         {
             RequestCount++;
-            return new ValueTask<NodeRecord?>(record);
+            return new ValueTask<NodeRecord?>(RecordResponse is null ? record : RecordResponse(node, requestedSequence));
         }
 
         protected override bool TryCreateNodeFromEnr(

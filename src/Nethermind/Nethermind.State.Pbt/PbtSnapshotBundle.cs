@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -44,8 +43,6 @@ public sealed class PbtSnapshotBundle(
     private bool _isDisposed;
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
-
-    internal Func<ValueHash256, byte[]?>? ReadCode { private get; set; }
 
     private PbtSnapshotContent WriteBuffer
     {
@@ -217,17 +214,9 @@ public sealed class PbtSnapshotBundle(
             else
             {
                 SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
-                if (code is not null)
-                {
-                    int chunkCount = (code.Code.Length + 30) / 31;
-                    using ArrayPoolListRef<byte> chunks = new(chunkCount * PbtKeyDerivation.CodeChunkSize, chunkCount * PbtKeyDerivation.CodeChunkSize);
-                    PbtKeyDerivation.ChunkifyCode(code.CodeSpan, chunks.AsSpan());
-                    for (int chunkId = 0; chunkId < chunkCount; chunkId++)
-                    {
-                        ValueHash256 chunk = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
-                        if (chunk != default) SetPbtLeaf(PbtStateKey.Code(addressHash, account.CodeHash.ValueHash256, chunkId), chunk);
-                    }
-                }
+                // Chunk leaves are keyed by code hash alone, so only code written in this block (see SetCode) stages them;
+                // code held by an older layer already has its chunks in the tree.
+                if (code is not null && WriteBuffer.Codes.ContainsKey(account.CodeHash.ValueHash256)) WriteCodeChunkLeaves(account.CodeHash.ValueHash256, code);
             }
         }
         else
@@ -264,30 +253,11 @@ public sealed class PbtSnapshotBundle(
         return null;
     }
 
-    public void SelfDestruct(Address address)
-    {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
-        long start = Stopwatch.GetTimestamp();
-        ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
-        SortedDictionary<PbtStorageTreeKey, EvmWord> changes = new(PbtStorageKeyLayout.Comparer);
-        bool clearedInLayer = false;
-        foreach (PbtSnapshot snapshot in snapshots) ApplyChanges(snapshot.Content);
-        ApplyChanges(WriteBuffer);
-        if (!clearedInLayer)
-            foreach ((PbtStorageTreeKey key, _) in readOnlyBundle.EnumerateStorage(hash))
-                if (!changes.ContainsKey(key)) SetPbtLeaf(key, null);
-        foreach ((PbtStorageTreeKey key, EvmWord value) in changes)
-            if (!EvmWordSlot.IsZero(value)) SetPbtLeaf(key, null);
-        WriteBuffer.ClearStorage(hash);
-        Metrics.PbtSelfDestructTime.Observe(Stopwatch.GetTimestamp() - start);
+    // Clearing existing storage (isNewStorage: false) is not supported in PBT: under EIP-6780 a contract only loses
+    // its storage when destroyed in its creating transaction, so no persisted run or trie leaf ever needs deleting.
+    public void SelfDestruct(Address address) => WriteBuffer.ClearStorage(PbtKeyDerivation.AddressKeyHash(address), isNewStorage: true);
 
-        void ApplyChanges(PbtSnapshotContent content)
-        {
-            PbtFlatState.ApplyStorage(changes, content, hash);
-            clearedInLayer |= content.SelfDestructedStorageAddresses.ContainsKey(hash);
-        }
-    }
-
+    /// <summary>Stores bytecode written in this block; its chunk leaves are staged by the account writes that reference it.</summary>
     internal void SetCode(in ValueHash256 codeHash, CodeInfo code)
     {
         lock (_accountLock)
@@ -304,6 +274,19 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
+    private void WriteCodeChunkLeaves(in ValueHash256 codeHash, CodeInfo code)
+    {
+        int chunkCount = (code.Code.Length + 30) / 31;
+        using ArrayPoolListRef<byte> chunks = new(chunkCount * PbtKeyDerivation.CodeChunkSize, chunkCount * PbtKeyDerivation.CodeChunkSize);
+        PbtKeyDerivation.ChunkifyCode(code.CodeSpan, chunks.AsSpan());
+        for (int chunkId = 0; chunkId < chunkCount; chunkId++)
+        {
+            ValueHash256 chunk = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
+            if (chunk != default) SetPbtLeaf(Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId), chunk);
+        }
+    }
+
+    /// <summary>The bytecode as a PBT layer holds it; null when no layer has it, in which case its chunk leaves are not in the tree either.</summary>
     internal CodeInfo? GetCode(in ValueHash256 codeHash)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString) return CodeInfo.Empty;
@@ -313,11 +296,6 @@ public sealed class PbtSnapshotBundle(
         if (_codeMemo.TryGetValue(codeHash, out code)) return code;
         code = readOnlyBundle.GetCode(codeHash);
         if (code is not null) _codeMemo[codeHash] = code;
-        else if (ReadCode?.Invoke(codeHash) is { } bytes)
-        {
-            code = new CodeInfo(bytes);
-            WriteBuffer.Codes[codeHash] = code;
-        }
         return code;
     }
 
@@ -398,7 +376,6 @@ public sealed class PbtSnapshotBundle(
         _accountsAwaitingCode.Clear();
         _codeMemo.Clear();
         _hintedAccounts.Clear();
-        ReadCode = null;
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;
         try

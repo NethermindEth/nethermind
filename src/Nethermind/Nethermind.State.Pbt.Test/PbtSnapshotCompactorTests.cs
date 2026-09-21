@@ -113,7 +113,7 @@ public class PbtSnapshotCompactorTests
         older.SetSlot(otherSlot, original);
         older.SetSlot(otherAddress, original);
         PbtSnapshotContent clearing = new();
-        clearing.ClearStorage(addressHash);
+        clearing.ClearStorage(addressHash, isNewStorage: false);
         PbtSnapshotContent writing = new();
         writing.SetSlot(key, replacement);
         ISlotRun writtenRun = writing.Storages[SlotRun.RunKey(key)];
@@ -140,6 +140,24 @@ public class PbtSnapshotCompactorTests
             Assert.That(compacted.Content.GetSlot(otherSlot), Is.EqualTo(default(EvmWord)));
             Assert.That(compacted.Content.GetSlot(otherAddress), Is.EqualTo(original));
         }
+    }
+
+    [Test]
+    public void Compact_keeps_a_clear_of_existing_storage_sticky([Values] bool existingFirst)
+    {
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        PbtSnapshotContent existing = new();
+        existing.ClearStorage(addressHash, isNewStorage: false);
+        PbtSnapshotContent fresh = new();
+        fresh.ClearStorage(addressHash, isNewStorage: true);
+        PbtSnapshot compacted;
+        using (PbtSnapshotPooledList chain = new(2))
+        {
+            chain.Add(new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, existingFirst ? existing : fresh, _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            chain.Add(new PbtSnapshot(new StateId(1, default), new StateId(2, default), default, existingFirst ? fresh : existing, _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            compacted = NewCompactor().Compact(chain);
+        }
+        using (compacted) Assert.That(compacted.Content.SelfDestructedStorageAddresses[addressHash], Is.False);
     }
 
     private PbtSnapshotCompactor NewCompactor() => new(_pool, new PbtCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(), Config);

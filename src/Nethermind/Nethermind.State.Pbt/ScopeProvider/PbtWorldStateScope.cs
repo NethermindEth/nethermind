@@ -73,7 +73,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _trieWarmer = trieWarmer;
         _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
-        Bundle.ReadCode = hash => codeDb.GetCode(hash);
         CodeDb = new PbtCodeDb(codeDb, Bundle);
         _trieWarmer.OnEnterScope();
         if (_logger.IsDebug) LogLifecycle("opened");
