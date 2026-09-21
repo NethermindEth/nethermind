@@ -84,7 +84,7 @@ public sealed class TransactionChangesetIndex
     /// <summary>Whether this height already holds the rows of exactly this block. The hash row is written in the same
     /// atomic batch as the rows, so a matching hash proves the rows are there and whole, and the block can be claimed
     /// without executing it again.</summary>
-    internal bool HasRowsOf(ulong block, Hash256 blockHash) =>
+    public bool HasRowsOf(ulong block, Hash256 blockHash) =>
         Enabled && _store.TryGetBlockHash(block, out ValueHash256 indexed) && indexed == blockHash;
 
     /// <summary>Follows the history floor: a block whose history is gone cannot be traced, so its changesets have

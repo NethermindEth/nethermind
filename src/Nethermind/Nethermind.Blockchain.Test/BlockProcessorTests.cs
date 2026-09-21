@@ -464,21 +464,26 @@ public class BlockProcessorTests
         }
     }
 
-    [TestCase(true, TestName = "InlineCapture_FarFromTheTip_IndexesTheBlockItJustProcessed")]
+    [TestCase(true, TestName = "InlineCapture_FarFromTheTip_WritesTheRowsOfTheBlockItJustProcessed")]
     [TestCase(false, TestName = "InlineCapture_NearTheTip_LeavesTheBlockToTheBuilder")]
     public async Task InlineCapture_follows_main_processing(bool farFromTip)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
-        InlineChangesetCapture capture = new(index, _ => farFromTip, LimboLogs.Instance);
+        InlineChangesetCapture capture = new(index, new CapturePolicy(farFromTip), LimboLogs.Instance);
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
             .AddDecorator<IBlockProcessor>((_, inner) => new InlineCaptureBlockProcessor(inner, capture)));
 
         Block block = await AddThreeTransferBlock(chain);
 
-        Assert.That(index.Covers((ulong)block.Number), Is.EqualTo(farFromTip),
-            "a block executed by the node itself is indexed for free while syncing, and left to the durable builder at the tip");
+        Assert.That(index.HasRowsOf((ulong)block.Number, block.Hash!), Is.EqualTo(farFromTip),
+            "a block executed by the node itself has its rows written for free while syncing, and is left to the durable builder at the tip");
+    }
+
+    private sealed class CapturePolicy(bool capture) : IInlineCapturePolicy
+    {
+        public bool ShouldCapture(Block block) => capture;
     }
 
     private sealed class PrefixReplayValidationModule : Module, IBlockValidationModule
