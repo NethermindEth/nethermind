@@ -169,6 +169,9 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
         return false;
     }
 
+    /// <summary>Whether a block is stored under <paramref name="root"/>, without reading or decoding it.</summary>
+    public bool HasBlock(Hash256 root) => _blocks.KeyExists(root.Bytes);
+
     public bool TryGetBlock(Hash256 root, [NotNullWhen(true)] out SignedBeaconBlock? block)
     {
         byte[]? compressed = _blocks.Get(root.Bytes);
