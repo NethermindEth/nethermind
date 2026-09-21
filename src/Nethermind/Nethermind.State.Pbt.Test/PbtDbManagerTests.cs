@@ -521,7 +521,7 @@ public class PbtDbManagerTests
     public void Persistence_ClearsStorageOnlyForAddressesWithExistingStorage()
     {
         PbtConfig config = new() { CompactSize = 1, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 1 };
-        PbtResourcePool pool = new(config);
+        PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
         PbtSnapshotRepository repository = new();
         using MemDb metadata = new();
         ValueHash256 existing = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
