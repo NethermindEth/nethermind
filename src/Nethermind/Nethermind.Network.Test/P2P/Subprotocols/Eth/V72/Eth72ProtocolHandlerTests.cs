@@ -540,7 +540,7 @@ public class Eth72ProtocolHandlerTests
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8141Enabled.Returns(true);
         _specProvider.GetCurrentHeadSpec().Returns(spec);
-        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+        _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
 
         Hash256[] hashes = [HashFromInt(1), HashFromInt(2), HashFromInt(3)];
@@ -5191,7 +5191,7 @@ public class Eth72ProtocolHandlerTests
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8141Enabled.Returns(true);
         _specProvider.GetCurrentHeadSpec().Returns(spec);
-        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+        _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
         HandleIncomingStatusMessage();
 
@@ -5274,7 +5274,7 @@ public class Eth72ProtocolHandlerTests
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8141Enabled.Returns(true);
         _specProvider.GetCurrentHeadSpec().Returns(spec);
-        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+        _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
         HandleIncomingStatusMessage();
 
