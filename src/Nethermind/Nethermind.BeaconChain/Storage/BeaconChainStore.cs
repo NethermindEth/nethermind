@@ -19,6 +19,8 @@ public static class BeaconChainMetadataKeys
     /// <summary>32-byte anchor block root followed by the 8-byte big-endian anchor slot.</summary>
     public const string Anchor = "anchor";
     public const string GenesisValidatorsRoot = "genesisValidatorsRoot";
+    /// <summary>4-byte big-endian schema version the database was last opened with; absent in databases that predate versioning.</summary>
+    public const string SchemaVersion = "schemaVersion";
 }
 
 /// <summary>Persistence for beacon blocks, states, the canonical slot index, the root-to-children index, and driver metadata.</summary>
@@ -41,6 +43,9 @@ public static class BeaconChainMetadataKeys
 /// </remarks>
 public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
 {
+    /// <summary>Layout version of every column; bump it whenever a change needs an existing database migrated or refused.</summary>
+    public const uint CurrentSchemaVersion = 1;
+
     private const int StateChunkSize = 4 * 1024 * 1024;
     private const int StateManifestLength = sizeof(uint) + sizeof(ulong);
     private const int AnchorValueLength = Hash256.Size + sizeof(ulong);
@@ -340,6 +345,47 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
     public byte[]? GetMetadata(string key) => _metadata.Get(Encoding.UTF8.GetBytes(key));
 
     public void PutMetadata(string key, byte[] value) => _metadata.Set(Encoding.UTF8.GetBytes(key), value);
+
+    /// <summary>Brings the database to <see cref="CurrentSchemaVersion"/>, or refuses one last written by a newer build.</summary>
+    /// <remarks>
+    /// A database with no version predates versioning and counts as version 0; version 1 added only
+    /// the stamp itself, so that upgrade rewrites nothing. A newer version may hold key shapes this
+    /// build does not know, so it is refused rather than reinterpreted, and left unstamped.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The database was written by a newer schema version.</exception>
+    public void EnsureSchemaVersion()
+    {
+        uint version = TryGetSchemaVersion(out uint stored) ? stored : 0;
+        if (version > CurrentSchemaVersion)
+        {
+            throw new InvalidOperationException($"The beaconChain database has schema version {version}, newer than the {CurrentSchemaVersion} this build supports; delete the beaconChain database to checkpoint-sync again.");
+        }
+
+        if (version != CurrentSchemaVersion)
+        {
+            SetSchemaVersion(CurrentSchemaVersion);
+        }
+    }
+
+    public bool TryGetSchemaVersion(out uint version)
+    {
+        byte[]? value = GetMetadata(BeaconChainMetadataKeys.SchemaVersion);
+        if (value is null || value.Length != sizeof(uint))
+        {
+            version = 0;
+            return false;
+        }
+
+        version = BinaryPrimitives.ReadUInt32BigEndian(value);
+        return true;
+    }
+
+    public void SetSchemaVersion(uint version)
+    {
+        byte[] value = new byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(value, version);
+        PutMetadata(BeaconChainMetadataKeys.SchemaVersion, value);
+    }
 
     public void SetAnchor(Hash256 blockRoot, ulong slot)
     {

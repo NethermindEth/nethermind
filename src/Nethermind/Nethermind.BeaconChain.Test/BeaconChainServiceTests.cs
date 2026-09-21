@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -24,7 +26,7 @@ namespace Nethermind.BeaconChain.Test;
 
 public class BeaconChainServiceTests
 {
-    private static IContainer BuildContainer()
+    private static IContainer BuildContainer(ILogManager? logManager = null)
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>(); // registered by NetworkModule in production
         ipResolver.Resolve(Arg.Any<CancellationToken>())
@@ -34,7 +36,7 @@ public class BeaconChainServiceTests
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new BeaconChainModule())
             .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig())
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton(logManager ?? LimboLogs.Instance)
             .AddSingleton(Substitute.For<IEngineRpcModule>()) // registered by MergePlugin in production
             .AddSingleton<ITimestamper>(Timestamper.Default) // registered by NethermindModule in production
             .AddSingleton(ipResolver)
@@ -81,6 +83,39 @@ public class BeaconChainServiceTests
 
             Assert.DoesNotThrowAsync(async () => await Task.WhenAll(stopTask, disposeTask));
         }
+    }
+
+    [Test]
+    public async Task Start_refuses_a_database_written_by_a_newer_schema_version_before_reading_the_anchor()
+    {
+        TestErrorLogManager logManager = new();
+        using IContainer container = BuildContainer(logManager);
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        uint newer = BeaconChainStore.CurrentSchemaVersion + 1;
+        store.SetSchemaVersion(newer);
+        store.SetAnchor(TestItem.KeccakA, 1);
+
+        await container.Resolve<BeaconChainService>().Start();
+
+        Assert.That(logManager.Errors.Single().Exception?.Message, Does.Contain($"schema version {newer}"), "the driver must stop at the version check, not at the anchor it would otherwise misread");
+        Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
+        Assert.That(version, Is.EqualTo(newer), "a refused database is not restamped");
+    }
+
+    [Test]
+    public async Task Start_stamps_an_unversioned_database_before_reading_its_anchor()
+    {
+        TestErrorLogManager logManager = new();
+        using IContainer container = BuildContainer(logManager);
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        // An anchor without its state stops the driver right after the version check, before any network access.
+        store.SetAnchor(TestItem.KeccakA, 1);
+
+        await container.Resolve<BeaconChainService>().Start();
+
+        Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
+        Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+        Assert.That(logManager.Errors.Single().Exception?.Message, Does.Contain("anchor state"), "the driver went on to read the anchor");
     }
 
     // Regression for gap 113: ServiceStopper.StopAllServices() resolves every registered
