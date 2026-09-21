@@ -158,14 +158,15 @@ public class TransactionChangesetIndexModuleTests
             Block isolated = block.WithReplacedHeader(block.Header.Clone());
             try
             {
-                Assert.That(processor.Process(isolated, ProcessingTransactionIndexBulkFill.ReplayOptions, capture.Tracer), Is.Not.Null);
+                Block processed = processor.Process(isolated, ProcessingTransactionIndexBulkFill.ReplayOptions, capture.Tracer);
+                Assert.That(processed, Is.Not.Null);
                 Assert.That(capture.Commit(), Is.True);
                 index.SyncWal();
                 session.CommitBlock();
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(tree.Head, Is.SameAs(originalHead), "bulk replay must not advance the main chain");
-                    Assert.That(receipts.Get(block), Is.Empty, "bulk replay must not persist receipts");
+                    Assert.That(receipts.HasBlock(processed.Number, processed.Hash!), Is.False, "bulk replay must not persist receipts");
                 }
             }
             finally
