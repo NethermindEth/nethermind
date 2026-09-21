@@ -252,39 +252,26 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(int.Parse(counts[1]), Is.EqualTo(steps + 1), "postStep must fire once per step, plus the CALL's own report");
     }
 
-    private static IEnumerable<TestCaseData> InstructionCallbackCases()
-    {
-        yield return new TestCaseData("5f5f20", "0:PUSH0,1:PUSH0,2:KECCAK256,3:STOP", 0)
-            .SetName($"{nameof(Instruction_callbacks_are_paired)}_Terminal_continuable_opcode");
-        yield return new TestCaseData("5f5f205000", "0:PUSH0,1:PUSH0,2:KECCAK256,3:POP,4:STOP", 0)
-            .SetName($"{nameof(Instruction_callbacks_are_paired)}_Non_terminal_continuable_opcode");
-        yield return new TestCaseData("00", "0:STOP", 0)
-            .SetName($"{nameof(Instruction_callbacks_are_paired)}_Explicit_stop");
-        yield return new TestCaseData("5f5ff3", "0:PUSH0,1:PUSH0,2:RETURN", 0)
-            .SetName($"{nameof(Instruction_callbacks_are_paired)}_Explicit_return");
-        yield return new TestCaseData("5f5ffd", "0:PUSH0,1:PUSH0,2:REVERT", 1)
-            .SetName($"{nameof(Instruction_callbacks_are_paired)}_Explicit_revert");
-        yield return new TestCaseData("5fff", "0:PUSH0,1:SELFDESTRUCT", 0)
-            .SetName($"{nameof(Instruction_callbacks_are_paired)}_Explicit_self_destruct");
-        yield return new TestCaseData("20", "0:KECCAK256", 1)
-            .SetName($"{nameof(Instruction_callbacks_are_paired)}_Stack_underflow");
-        yield return new TestCaseData("63ffffffff5f20", "0:PUSH4,5:PUSH0,6:KECCAK256", 1)
-            .SetName($"{nameof(Instruction_callbacks_are_paired)}_Out_of_gas");
-        yield return new TestCaseData("5f5f57", "0:PUSH0,1:PUSH0,2:JUMPI,3:STOP", 0)
-            .SetName($"{nameof(Instruction_callbacks_are_paired)}_Terminal_jump_if");
-    }
-
-    [TestCaseSource(nameof(InstructionCallbackCases))]
-    public void Instruction_callbacks_are_paired(string codeHex, string operations, int faults)
+    [TestCase("5f5f20", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:STOP,P3:STOP", 0, TestName = "Callbacks_paired_fallthrough_to_implicit_stop")]
+    [TestCase("5f5f205000", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:POP,P3:POP,S4:STOP,P4:STOP", 0, TestName = "Callbacks_paired_mid_code_opcode")]
+    [TestCase("00", "S0:STOP,P0:STOP", 0, TestName = "Callbacks_paired_explicit_stop")]
+    [TestCase("5f5ff3", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:RETURN,P2:RETURN", 0, TestName = "Callbacks_paired_explicit_return")]
+    [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,P2:REVERT", 1, TestName = "Callbacks_paired_explicit_revert")]
+    [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_paired_explicit_self_destruct")]
+    [TestCase("20", "S0:KECCAK256,P0:KECCAK256", 1, TestName = "Callbacks_paired_stack_underflow")]
+    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256", 1, TestName = "Callbacks_paired_out_of_gas")]
+    [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_paired_jumpi_falls_off_code")]
+    [TestCase("fe", "S0:INVALID,P0:INVALID", 1, TestName = "Callbacks_paired_invalid_opcode")]
+    [TestCase("0f", "S0:opcode 0xf not defined,P0:opcode 0xf not defined", 1, TestName = "Callbacks_paired_undefined_opcode")]
+    public void Instruction_callbacks_are_paired(string codeHex, string sequence, int faults)
     {
         string userTracer = @"{
-                    steps: [],
-                    postSteps: [],
+                    sequence: [],
                     faults: 0,
-                    step: function(log, db) { this.steps.push(log.getPC() + ':' + log.op.toString()) },
-                    postStep: function(log, db) { this.postSteps.push(log.getPC() + ':' + log.op.toString()) },
+                    step: function(log, db) { this.sequence.push('S' + log.getPC() + ':' + log.op.toString()) },
+                    postStep: function(log, db) { this.sequence.push('P' + log.getPC() + ':' + log.op.toString()) },
                     fault: function(log, db) { this.faults++ },
-                    result: function(ctx, db) { return this.steps.join(',') + '|' + this.postSteps.join(',') + '|' + this.faults }
+                    result: function(ctx, db) { return this.sequence.join(',') + '|' + this.faults }
                 }";
 
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
@@ -293,7 +280,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        AssertResult(traces, $"{operations}|{operations}|{faults}");
+        AssertResult(traces, $"{sequence}|{faults}");
     }
 
     [Test]
