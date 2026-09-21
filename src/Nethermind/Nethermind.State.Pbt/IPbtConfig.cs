@@ -103,6 +103,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Leave prefixless branches at relative depths 1-3 out of stored node groups and recompute them from their children on read. Off stores every node. Both layouts are readable, so the setting can change on an existing database; groups convert as they are rewritten.", DefaultValue = "true", HiddenFromDocs = true)]
     bool OmitPrefixlessBranches { get; set; }
 
+    [ConfigItem(Description = "Keep node-group payloads in slab-allocated native memory sized to jemalloc-style classes. Off rents pooled managed arrays in power-of-two buckets instead.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool NativeNodeGroupMemory { get; set; }
+
     [ConfigItem(Description = "RocksDB options shared by every column of the pbt database. Applied on top of the global database options, and overridden in turn by the per-column options below.", HiddenFromDocs = true)]
     string RocksDbOptions { get; set; }
 

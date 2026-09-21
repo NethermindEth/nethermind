@@ -43,7 +43,7 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
             .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
-            .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider())
+            .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(configuration))
             .AddSingleton<PbtTrieNodeCache>()
             .Bind<IPbtTrieNodeCache, PbtTrieNodeCache>()
             .AddSingleton<PbtSnapshotRepository>()

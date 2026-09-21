@@ -758,6 +758,14 @@ public class PbtNodeGroupTests
 
     private static int ReadGroupCount<TPath>(TPath groupKey, byte[] payload) where TPath : struct, IPbtNodePath<TPath> => PbtStoreTestExtensions.ReadGroup(groupKey, payload).Count;
 
+    [Test]
+    public void Node_group_memory_follows_the_native_memory_flag([Values] bool native)
+    {
+        IRefCountingMemoryProvider provider = PbtNodeGroupMemory.CreateProvider(new PbtConfig { NativeNodeGroupMemory = native });
+        using IDisposable? disposable = provider as IDisposable;
+        Assert.That(provider, native ? Is.InstanceOf<SlabRefCountingMemoryProvider>() : Is.SameAs(PooledRefCountingMemoryProvider.Instance));
+    }
+
     [TestCase(1, 2, false)]
     [TestCase(10, 2, false)]
     [TestCase(PbtNodeGroupCodec.PositionCount, 3, false)]
@@ -766,7 +774,7 @@ public class PbtNodeGroupTests
     [TestCase(PbtNodeGroupCodec.PositionCount, 4, true)]
     public void Writer_rents_few_buffers_and_detaches_a_right_sized_payload(int nodeCount, int maxRents, bool slabProvider)
     {
-        using SlabRefCountingMemoryProvider slab = PbtNodeGroupMemory.CreateProvider();
+        using SlabRefCountingMemoryProvider slab = PbtNodeGroupMemory.CreateSlabProvider();
         TrackingMemoryProvider memory = new(slabProvider ? slab : PooledRefCountingMemoryProvider.Instance);
         PbtStorageNodePath groupKey = new([], 0);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);

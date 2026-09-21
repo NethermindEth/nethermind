@@ -29,5 +29,9 @@ public static class PbtNodeGroupMemory
         return new SlabAllocatorOptions(classes, SlabAllocatorOptions.DefaultPageSize, Quantum, SlabAllocatorOptions.DefaultThreadCacheMaxCount);
     }
 
-    public static SlabRefCountingMemoryProvider CreateProvider() => new(new SlabMemoryAllocator(CreateOptions()));
+    public static SlabRefCountingMemoryProvider CreateSlabProvider() => new(new SlabMemoryAllocator(CreateOptions()));
+
+    /// <summary>The slab provider, or the pooled one when <see cref="IPbtConfig.NativeNodeGroupMemory"/> is off.</summary>
+    public static IRefCountingMemoryProvider CreateProvider(IPbtConfig config) =>
+        config.NativeNodeGroupMemory ? CreateSlabProvider() : PooledRefCountingMemoryProvider.Instance;
 }

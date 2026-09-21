@@ -204,7 +204,7 @@ public class PbtWorldStateScopeTests
     public async Task Slab_backed_node_groups_are_freed_once_the_scope_and_cache_are_gone()
     {
         long baselineCount = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount;
-        using SlabRefCountingMemoryProvider slab = PbtNodeGroupMemory.CreateProvider();
+        using SlabRefCountingMemoryProvider slab = PbtNodeGroupMemory.CreateSlabProvider();
         await using (PbtTestContext ctx = new(nodeGroupMemory: slab))
         {
             using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
