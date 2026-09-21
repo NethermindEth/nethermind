@@ -302,13 +302,15 @@ test('publication validates the captured model without disclosing it in the publ
   assert.ok(f.calls.includes('post review'));
 });
 
-test('a previous model is rejected when the captured configuration selected another', async t => {
+test('independent validation can publish a partial result when primary model binding fails', async t => {
   const f = fixture(t);
   f.config.model = 'another/model';
   const report = await f.run();
   assert.equal(report.complete, false);
   assert.ok(report.reasons.includes('unexpected model in the review manifest'));
-  assert.ok(!f.calls.includes('post review'));
+  assert.match(report.markdown, /AI code review: PARTIAL/);
+  assert.ok(f.calls.includes('post review'));
+  assert.equal(f.outputs.usable, 'true');
 });
 
 for (const [name, mutate] of Object.entries({
@@ -325,22 +327,25 @@ for (const [name, mutate] of Object.entries({
   'oversize exclusion': f => { f.preview.files.push({ path: 'Huge.cs', will_review: false, exclude_reason: 'too_large' }); },
   'failed run': f => { f.result.manifest.run_failure = { classification: 'internal' }; },
 })) {
-  test(name + ' publishes only an incomplete summary', async t => {
+  test(name + ' stays partial while independently validated findings remain publishable', async t => {
     const f = fixture(t);
     mutate(f);
     const report = await f.run();
     assert.equal(report.complete, false);
-    assert.ok(!f.calls.includes('post review'));
-    const posted = f.calls.find(call => call.create);
-    assert.match(posted.create.body, /INCOMPLETE/);
-    assert.doesNotMatch(posted.create.body, /Looks good|✅/);
+    assert.ok(f.calls.includes('post review'));
+    assert.match(report.markdown, /AI code review: PARTIAL/);
+    assert.doesNotMatch(report.markdown, /Looks good|✅/);
+    assert.equal(f.outputs.usable, 'true');
   });
 }
 
-test('nonzero exit cannot publish a successful review', async t => {
+test('nonzero primary exit remains partial but can publish independently validated findings', async t => {
   const f = fixture(t);
-  assert.equal((await f.run(true, 124)).complete, false);
-  assert.ok(!f.calls.includes('post review'));
+  const report = await f.run(true, 124);
+  assert.equal(report.complete, false);
+  assert.match(report.markdown, /AI code review: PARTIAL/);
+  assert.ok(f.calls.includes('post review'));
+  assert.equal(f.outputs.usable, 'true');
 });
 
 for (const change of ['head', 'base', 'closed', 'draft']) {
@@ -443,8 +448,9 @@ for (const failure of ['missing summary', 'failed inline']) {
   });
 }
 
-test('incomplete rerun updates only the bot-owned OCR summary', async t => {
+test('incomplete rerun without validation updates only the bot-owned OCR summary', async t => {
   const f = fixture(t);
+  f.validation.enabled = false;
   f.result.manifest.terminal_state = 'partial';
   f.comments.push(
     { id: 1, user: { login: 'human' }, body: '<!-- ocr-summary -->' },

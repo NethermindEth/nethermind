@@ -212,12 +212,13 @@ async function validate({ root, directory, token = process.env.OCR_LLM_TOKEN,
     if (![8192, 16384, 32768, 65536].includes(maxOutputTokens)) fail('Unsupported validation response token limit');
     const target = read(directory, 'target');
     const context = read(directory, 'context');
-    const primary = read(directory, 'result');
+    let primary = {};
+    try { primary = read(directory, 'result'); } catch { /* Independent discovery can still review captured source. */ }
     const config = read(directory, 'validation-config');
     const primaryConfig = read(directory, 'config');
     const exitCode = Number(fs.readFileSync(path.join(directory, 'exit-code.txt'), 'utf8').trim());
     const { assess } = require('./open-code-review.cjs');
-    if (!assess(primary, read(directory, 'preview'), target, exitCode, primaryConfig.model).complete) fail('Primary OCR review is incomplete; validation was skipped');
+    const primaryAssessment = assess(primary, read(directory, 'preview'), target, exitCode, primaryConfig.model);
     if (context.head !== target.head || context.base !== target.merge_base || context.pr.head !== target.head ||
         context.pr.base !== target.base) fail('Validation context does not match captured commits');
     if (!ask && !token) fail('Validation API key is unavailable');
@@ -235,7 +236,22 @@ async function validate({ root, directory, token = process.env.OCR_LLM_TOKEN,
       ask: ask || ((body, timeout) => completion(config, token, body, timeout)) };
     const discovery = await runPass({ ...common, phase: 'discovery' });
     report.checks = discovery.checks;
-    const candidates = [...primary.comments.map(finding => ({ finding })), ...discovery.findings]
+    const manifest = primary.manifest;
+    const primaryBound = manifest?.schema_version === 'ocr.run-manifest/v1' &&
+      manifest.input?.resolved_head === target.head && manifest.input?.resolved_base === target.merge_base &&
+      manifest.execution?.model === primaryConfig.model && Array.isArray(primary.comments);
+    const changes = repository.changes();
+    const validCandidate = value => value && sourcePath(value.path) &&
+      Number.isSafeInteger(value.start_line) && Number.isSafeInteger(value.end_line) &&
+      value.start_line >= 1 && value.end_line >= value.start_line && value.end_line - value.start_line <= 10 &&
+      string(value.content) && findingSchema.properties.severity.enum.includes(value.severity) &&
+      findingSchema.properties.category.enum.includes(value.category) &&
+      changes.some(change => change.path === value.path && [...change.ranges, ...change.deletion_ranges]
+        .some(range => value.start_line >= range.start && value.start_line <= range.end));
+    const primaryCandidates = primaryBound ? primary.comments.filter(validCandidate).map(finding => ({ finding })) : [];
+    report.primary_complete = primaryAssessment.complete;
+    report.primary_candidates = primaryCandidates.length;
+    const candidates = [...primaryCandidates, ...discovery.findings]
       .map((candidate, index) => ({ id: hash([index, candidate.finding]).slice(0, 20),
         finding: Object.fromEntries(Object.keys(findingSchema.properties).map(key => [key, candidate.finding[key]])) }));
     if (candidates.length > 40) fail('Too many candidate findings for bounded validation');

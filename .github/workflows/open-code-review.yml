@@ -18,7 +18,7 @@ on:
       token_budget:
         description: Soft aggregate token limit, including repeated context
         type: choice
-        default: '10000000'
+        default: '2000000'
         options:
           - '500000'
           - '1000000'
@@ -181,7 +181,7 @@ jobs:
         env:
           OCR_LLM_TOKEN: ${{ secrets[vars.OCR_API_KEY_SECRET || 'OCR_LITELLM_API_KEY'] }}
           HEAD_SHA: ${{ steps.target.outputs.head }}
-          REVIEW_TOKEN_BUDGET: ${{ inputs.token_budget || vars.OCR_AUTO_TOKEN_BUDGET || '10000000' }}
+          REVIEW_TOKEN_BUDGET: ${{ inputs.token_budget || vars.OCR_AUTO_TOKEN_BUDGET || '2000000' }}
         run: |
           if [[ -z "$OCR_LLM_TOKEN" ]]; then
             echo "::error::Set the Actions secret selected by OCR_API_KEY_SECRET (default OCR_LITELLM_API_KEY)."
@@ -238,8 +238,8 @@ jobs:
           path: ${{ env.OCR_DIRECTORY }}/summary.md
           retention-days: 14
 
-      - name: Mark incomplete or stale review
-        if: steps.report.outputs.complete != 'true' || steps.report.outputs.stale == 'true'
+      - name: Mark unusable or stale review
+        if: steps.report.outputs.usable != 'true' || steps.report.outputs.stale == 'true'
         run: |
-          echo "::error::Review unavailable, incomplete, or stale. See the run summary and artifacts."
+          echo "::error::Neither OCR nor independent validation produced a safely bound review, or the result became stale. See the run summary and artifacts."
           exit 1

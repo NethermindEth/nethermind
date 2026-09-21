@@ -120,7 +120,7 @@ function assess(result, preview, target, exitCode, expectedModel, additionalReas
   ];
   if (complete) lines.push('Findings: ' + result.comments.length + '. Human review is still required.');
   else lines.push('', ...reasons.map(reason => '- ' + reason),
-    '', 'This run cannot establish that the PR is clean. Findings from incomplete reviews are not published.');
+    '', 'This run cannot establish that the PR is clean.');
   if (excluded.length) {
     lines.push('', '<details><summary>Excluded files</summary>', '',
       ...excluded.slice(0, 100).map(item => '- `' + quote(item.path) + '`: ' + quote(item.exclude_reason)),
@@ -143,6 +143,10 @@ async function publish({ github, context, core, directory, enabled, postReview }
     validated ? [] : ['independent source validation is missing, incomplete, or does not match this review']);
   if (validated) {
     const { report: validation, context: evidence } = validated;
+    if (!report.complete) {
+      report.markdown = report.markdown.replace('AI code review: INCOMPLETE', 'AI code review: PARTIAL');
+      report.markdown += '\n\nIndependent source validation completed despite incomplete OCR coverage. Any confirmed findings are published, but this review cannot establish that the PR is clean.';
+    }
     report.markdown += '\n\nIndependent source checks: ' + validation.checks.filter(check => check.status === 'checked').length +
       ' checked, ' + validation.checks.filter(check => check.status === 'not_applicable').length + ' not applicable.' +
       '\nCandidate validation: ' + validation.decisions.filter(decision => decision.verdict === 'confirmed').length +
@@ -183,6 +187,7 @@ async function publish({ github, context, core, directory, enabled, postReview }
   fs.writeFileSync(path.join(directory, 'summary.md'), report.markdown + '\n');
   await core.summary.addRaw(report.markdown).write();
   core.setOutput('complete', String(report.complete));
+  core.setOutput('usable', String(Boolean(validated)));
   if (!enabled) return report;
 
   const { data: current } = await github.rest.pulls.get({
@@ -204,7 +209,7 @@ async function publish({ github, context, core, directory, enabled, postReview }
         .replace(/^⚠️ GitHub could not post this as an inline comment: (Routed to summary \([^\r\n]*\))$/gm, 'ℹ️ $1.')
       : args.body,
   });
-  if (report.complete) {
+  if (validated) {
     const posting = {};
     const client = {
       ...github,

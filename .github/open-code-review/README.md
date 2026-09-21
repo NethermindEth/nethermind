@@ -39,7 +39,7 @@ read for each run, so changing the model, API base URL, or key needs no code cha
 | `OCR_VALIDATION_MODEL` | Secret | Optional model for independent discovery and candidate validation. Defaults to `OCR_MODEL`. |
 | `OCR_VALIDATION_EXTRA_BODY` | Secret | Optional request options for validation. Defaults to primary options when reusing the primary model, or `{}` when selecting another model. |
 | `OCR_AUTO_REVIEW` | Variable | Automatic reviews are enabled unless this is `false`. Manual runs remain available. |
-| `OCR_AUTO_TOKEN_BUDGET` | Variable | Soft token budget for automatic and comment-triggered runs: `500000`, `1000000`, `2000000`, `5000000`, or `10000000` (default). |
+| `OCR_AUTO_TOKEN_BUDGET` | Variable | Soft token budget for automatic and comment-triggered runs: `500000`, `1000000`, `2000000` (default), `5000000`, or `10000000`. |
 | `OCR_VALIDATION_TOKEN_BUDGET` | Variable | Additional soft budget across discovery and candidate validation: `500000`, `1000000` (default), or `2000000`. Applies to all triggers. |
 | `OCR_VALIDATION_MAX_OUTPUT_TOKENS` | Variable | Per-response output allowance for validation, including reasoning where the provider counts it: `8192`, `16384`, `32768` (default), or `65536`. Applies to all triggers. |
 
@@ -95,21 +95,22 @@ the dedicated key's budget; enforce spending and rate limits in LiteLLM.
 Configuration uses OCR's native LiteLLM provider with the selected model and endpoint.
 The pinned OCR tool loop preserves reasoning across tool calls and uses provider
 default tool selection. The initial limits are two concurrent review tasks,
-low OCR effort (one review pass), a 64,000-token prompt ceiling per group, and a 10,000,000-token
+low OCR effort (one review pass), a 64,000-token prompt ceiling per group, and a 2,000,000-token
 aggregate budget. OCR's aggregate budget is soft: active requests and final
 submission rounds can exceed it. Enforce the spending ceiling in LiteLLM.
 Set `OCR_AUTO_TOKEN_BUDGET` to override the default for automatic and comment-triggered
 reviews. Existing repository overrides continue to apply. The dispatch form selects
-the budget for manual runs and defaults to 10,000,000 tokens.
+the budget for manual runs and defaults to 2,000,000 tokens; larger options require an explicit choice.
 Local trials with medium effort on PRs #13478 and #13535 exhausted 500,000 tokens;
 the latter also exhausted 2,000,000. The pilot uses a single pass with instructions
 to limit context reads to concrete hypotheses about changed behavior. Cached input
 counts toward the limit. Treat budget-exhausted runs as incomplete when comparing
 review quality.
-The primary OCR process has an 18-minute limit. Independent discovery and validation
-share an additional eight-minute limit and token budget, with at most ten requests
-per pass plus two bounded repair requests. The job has a 35-minute limit. The default total allowance is approximately
-11 million tokens: 10 million for OCR and one million for validation. Repeated and
+The primary OCR process has a 32-minute limit. Independent discovery and validation
+share an eight-minute internal deadline and token budget, with at most ten requests
+per pass plus two bounded repair requests; the workflow step allows 15 minutes for setup and reporting.
+The job has a 55-minute limit. The default total allowance is approximately
+3 million tokens: two million for OCR and one million for validation. Repeated and
 cached context count toward these budgets; one in-flight request can exceed a soft
 limit. Actual usage depends on the PR and model. No extra secret is required to
 enable validation with the existing model and gateway.
@@ -169,8 +170,10 @@ Each run captures its effective configuration on the runner and validates agains
 Before posting, the wrapper checks the reviewed commits, models, selected-file
 coverage, token-budget status, and current PR commits. It also binds validation to
 the primary result, captured source context, and final findings with content hashes.
-Incomplete reviews publish
-an explicit incomplete summary with allowlisted failure reasons; their findings are not published. Stale runs
+If OCR is incomplete, independent discovery still runs against the captured source. A completed independent
+pass may publish only candidates that it confirms after reading source evidence; the summary remains explicitly
+partial and never presents incomplete coverage as a clean review. If both layers are incomplete, only an
+incomplete summary is published and the job fails. Stale runs
 publish nothing; automatic runs also suppress publication if the PR has returned
 to draft. Completed reviews use OCR's upstream publisher for one updated
 summary and deduplicated inline findings. Low-severity and style/documentation

@@ -198,10 +198,9 @@ for (const kind of ['missing check', 'skipped changed behavior', 'unread citatio
   });
 }
 
-for (const kind of ['budget', 'missing usage', 'time', 'length', 'unverified', 'primary incomplete', 'wrong context', 'gateway error']) {
+for (const kind of ['budget', 'missing usage', 'time', 'length', 'unverified', 'wrong context', 'gateway error']) {
   test(kind + ' cannot produce a successful validation result', async t => {
     const f = fixture(t);
-    if (kind === 'primary incomplete') { f.primary.manifest.terminal_state = 'partial'; f.write('result', f.primary); }
     if (kind === 'wrong context') { f.context.head = 'd'.repeat(40); f.write('context', f.context); }
     let called = false;
     const report = await validate({ ...f, duration: kind === 'time' ? -1 : 60000, ask: async () => {
@@ -221,7 +220,6 @@ for (const kind of ['budget', 'missing usage', 'time', 'length', 'unverified', '
       time: 'Validation time limit reached',
       length: 'Validation response reached its output limit',
       unverified: 'Some assigned checks or candidate findings remain unverified',
-      'primary incomplete': 'Primary OCR review is incomplete; validation was skipped',
       'wrong context': 'Validation context does not match captured commits',
       'gateway error': 'Validation could not complete safely',
     };
@@ -229,9 +227,32 @@ for (const kind of ['budget', 'missing usage', 'time', 'length', 'unverified', '
     assert.equal(verifyValidation(f.directory, f.target, f.primary), null);
     assert.equal(fs.existsSync(path.join(f.directory, 'validated-result.json')), false);
     assert.doesNotMatch(report.reason, /private model endpoint token/);
-    if (['time', 'wrong context', 'primary incomplete'].includes(kind)) assert.equal(called, false);
+    if (['time', 'wrong context'].includes(kind)) assert.equal(called, false);
   });
 }
+
+test('incomplete primary findings proceed through independent discovery and source validation', async t => {
+  const f = fixture(t);
+  f.primary.manifest.terminal_state = 'partial';
+  f.primary.summary.budget_exceeded = true;
+  f.primary.comments.push(f.finding);
+  f.write('result', f.primary);
+  let requests = 0;
+  const report = await validate({ ...f, ask: async body => {
+    requests++;
+    const input = JSON.parse(body.messages[1].content);
+    if (!input.candidates) return submit({ checks: f.checks, findings: [] });
+    assert.equal(input.candidates.length, 1);
+    if (!body.messages.some(message => message.role === 'tool')) return response([['read_source', f.ref]]);
+    return submit({ decisions: [{ id: input.candidates[0].id, verdict: 'confirmed',
+      explanation: 'The captured source establishes the defect.', evidence: [f.ref] }] });
+  } });
+  assert.equal(report.complete, true, report.reason);
+  assert.equal(report.primary_complete, false);
+  assert.equal(report.primary_candidates, 1);
+  assert.equal(requests, 3);
+  assert.deepEqual(verifyValidation(f.directory, f.target, f.primary).result.comments, [f.finding]);
+});
 
 test('gateway request protects routing fields, preserves options, refuses redirects and does not disclose errors', async () => {
   const config = { model: 'private-model', providers: { litellm: { url: 'https://gateway.example/v1',
