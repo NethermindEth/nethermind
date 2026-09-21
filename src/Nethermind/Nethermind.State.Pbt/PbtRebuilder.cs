@@ -24,7 +24,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
     private readonly ConcurrencyController _foldQuota = new(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
     private readonly FoldFanOut _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
-    private readonly bool _omitPrefixlessBranches = config.OmitPrefixlessBranches;
+    private readonly PbtPrefixlessBranchOmission _prefixlessBranchOmission = config.PrefixlessBranchOmission;
 
     /// <summary>Folds leaf records into staged tree groups and publishes the completed root.</summary>
     /// <param name="source">Owned leaf chunks.</param>
@@ -94,7 +94,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
                 if (accountChanges.Count != 0) prepared.Account = accountChanges.Build();
                 if (codeChanges.Count != 0) prepared.Code = codeChanges.Build();
                 if (storageChanges.Count != 0) prepared.Storage = storageChanges.Build();
-                root = TrieUpdater.UpdateRoot(new WindowStore(reader, stagingBatch, cancellationToken), root, prepared, _foldQuota, _foldFanOut, _omitPrefixlessBranches, null);
+                root = TrieUpdater.UpdateRoot(new WindowStore(reader, stagingBatch, cancellationToken), root, prepared, _foldQuota, _foldFanOut, _prefixlessBranchOmission, null);
                 cancellationToken.ThrowIfCancellationRequested();
                 stagingBatch.Commit();
             }

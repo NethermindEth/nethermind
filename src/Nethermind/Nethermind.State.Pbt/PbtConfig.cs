@@ -37,7 +37,7 @@ public class PbtConfig : IPbtConfig
     public int ScanTreeConcurrency { get; set; }
 
     public PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; } = PbtNodeGroupKeyLayout.Padded;
-    public bool OmitPrefixlessBranches { get; set; } = true;
+    public PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; set; } = PbtPrefixlessBranchOmission.Interior;
     public bool NativeNodeGroupMemory { get; set; } = true;
 
     public string RocksDbOptions { get; set; } =

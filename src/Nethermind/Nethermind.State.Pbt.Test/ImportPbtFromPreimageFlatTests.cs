@@ -124,7 +124,7 @@ public class ImportPbtFromPreimageFlatTests
         Assert.Throws<InvalidOperationException>(() => bundle.SetAccount(TestItem.AddressC, null), "imported code chunks are shared without a reference count");
         bundle.SetAccount(TestItem.AddressE, new Account(2, 0));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
-        ValueHash256 remainingRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), reader.CurrentRoot, changes, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, true, null);
+        ValueHash256 remainingRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), reader.CurrentRoot, changes, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
         bundle.CompleteLeafChanges();
         PbtReferenceModel.SetAccount(model, TestItem.AddressB, 4, 43, bigCode);
         PbtReferenceModel.SetAccount(model, TestItem.AddressE, 2, 0);
