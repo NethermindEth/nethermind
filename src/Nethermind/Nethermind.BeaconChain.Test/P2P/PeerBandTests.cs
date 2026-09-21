@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -16,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -157,6 +159,43 @@ public class PeerBandTests
 
             PeerManager.PeerDiagnostics trimmed = peerManager.GetPeerDiagnostics().Single(d => d.HeadSlot != AnchorSlot + 100 && d.DisconnectCount > 0);
             Assert.That(trimmed.LastDisconnectReason, Is.EqualTo("TooManyPeers"));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_static_peer_that_connected_to_us_first_is_still_exempt_from_trimming(CancellationToken token)
+    {
+        // An inbound session is keyed by the address the remote came from, never by its configured
+        // static address, so an exemption matched on the address string would trim the static peer.
+        Node staticPeer = CreateNode();
+        Node other = CreateNode();
+        Node local = CreateNode();
+        SetMatchingStatus(staticPeer, other, local);
+        staticPeer.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot;
+        other.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot + 100;
+
+        await using (local.P2P)
+        await using (staticPeer.P2P)
+        await using (other.P2P)
+        {
+            await staticPeer.P2P.StartAsync(token);
+            await other.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            local.Config.StaticPeers = LoopbackAddress(staticPeer.P2P);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+            await staticPeer.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await WaitUntilAsync(() => peerManager.PeerCount == 1, token, "the static peer's inbound session was never admitted");
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token), Is.True);
+
+            local.Config.MaxPeerCount = 1;
+            local.Config.TargetPeerCount = 1;
+            await peerManager.RunMaintenanceRoundAsync(token);
+
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "must trim down to the target");
+            Assert.That(peerManager.GetBestPeers(0).Single().HeadSlot, Is.EqualTo(AnchorSlot),
+                "the static peer is the worse one by head slot and must still be the one kept");
         }
     }
 
@@ -323,6 +362,15 @@ public class PeerBandTests
             await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
             await WaitUntilAsync(() => peerManager.PeerCount == 1, token, "the inbound session was never admitted");
 
+            // Straight at the libp2p layer: the manager's own dial path short-circuits on "already
+            // connected" before it ever dials, so only a direct dial exercises the session reuse.
+            ISession reused = await local.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(remote.P2P)), token);
+
+            Assert.That(local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? established), Is.True);
+            Assert.That(reused, Is.SameAs(established), "the dial must hand back the session the remote opened, not open a second one");
+            Assert.That((await local.P2P.GetSessionInfoAsync(reused, token)).Direction, Is.EqualTo(PeerDirection.Inbound));
+            Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1), "one connection, not a second outbound one");
+
             Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True, "already connected counts as success");
 
             IPeerDirectory directory = peerManager;
@@ -354,15 +402,49 @@ public class PeerBandTests
             await knocking.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
 
             string knockingId = knocking.P2P.LocalPeerId!.ToString();
-            await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), token, "the refusal was never recorded");
+            // The knocking side losing its session proves the refusal ran to its disconnect, so the
+            // record check below cannot pass merely by looking before the refusal happened.
+            await WaitUntilAsync(() => knocking.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 1, token, "the refused session was not torn down");
-            PeerManager.PeerDiagnostics refused = peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(peerManager.PeerCount, Is.EqualTo(1), "an inbound session must not take the pool past MaxPeerCount");
-                Assert.That(refused.Connected, Is.False);
-                Assert.That(refused.LastDisconnectReason, Is.EqualTo("TooManyPeers"));
+                Assert.That(peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
+                    "a never-admitted id must not get a record: distinct knockers at the ceiling would otherwise evict real peers' history");
             }
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_refusal_at_the_peer_band_ceiling_leaves_the_consecutive_fault_streak_untouched(CancellationToken token)
+    {
+        Node dialed = CreateNode();
+        Node knocking = CreateNode();
+        Node local = CreateNode();
+        SetMatchingStatus(dialed, knocking, local);
+        local.Config.MaxPeerCount = 1;
+        local.Config.FaultDisconnectsBeforeBan = 2;
+
+        await using (local.P2P)
+        await using (dialed.P2P)
+        await using (knocking.P2P)
+        {
+            await dialed.P2P.StartAsync(token);
+            await knocking.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+            string knockingId = knocking.P2P.LocalPeerId!.ToString();
+            peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
+
+            await knocking.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId).LastDisconnectReason == "TooManyPeers", token, "the refusal was never recorded");
+
+            // Being turned away while we are full says nothing about the peer's behaviour: the fault
+            // before it and the fault after it must still add up to the threshold of two.
+            peerManager.RecordDisconnect(knockingId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+            Assert.That(peerManager.IsBannedForTest(knockingId), Is.True);
         }
     }
 
@@ -392,6 +474,56 @@ public class PeerBandTests
             await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == bannedId).LastDisconnectReason == "Banned", token, "the refusal was never recorded");
             await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
             Assert.That(peerManager.PeerCount, Is.EqualTo(0), "a ban must hold against a peer that connects to us, not only against our own dials");
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token)
+    {
+        RefusingStatusSource refusing = new();
+        Node remote = CreateNode(refusing);
+        Node local = CreateNode();
+        SetMatchingStatus(local);
+
+        await using (local.P2P)
+        await using (remote.P2P)
+        {
+            await remote.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+            await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+
+            // Both status versions were refused over the open session, so the admission provably threw
+            // after the session existed: a count of zero below cannot be the pre-connect zero.
+            await WaitUntilAsync(() => refusing.Requests >= 2, token, "the status exchange never reached the remote");
+            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_dialed_session_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token)
+    {
+        RefusingStatusSource refusing = new();
+        Node remote = CreateNode(refusing);
+        Node local = CreateNode();
+        SetMatchingStatus(local);
+
+        await using (local.P2P)
+        await using (remote.P2P)
+        {
+            await remote.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+
+            Assert.That(refusing.Requests, Is.GreaterThanOrEqualTo(2), "the status exchange never reached the remote");
+            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(0));
         }
     }
 
@@ -661,13 +793,32 @@ public class PeerBandTests
 
     private record Node(BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config);
 
-    private static Node CreateNode()
+    /// <param name="statusSource">What the node serves over <c>status</c>; defaults to its own settable holder.</param>
+    private static Node CreateNode(IBeaconChainStatusSource? statusSource = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
-        BeaconP2P p2p = new(config, Spec, store, statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+        BeaconP2P p2p = new(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
         return new Node(p2p, statusHolder, config);
+    }
+
+    /// <summary>Answers every <c>status</c> request with an error chunk, so a status exchange with this
+    /// node fails only after the session is already open and identified.</summary>
+    private sealed class RefusingStatusSource : IBeaconChainStatusSource
+    {
+        private int _requests;
+
+        public int Requests => Volatile.Read(ref _requests);
+
+        public StatusMessageV2 CurrentStatus
+        {
+            get
+            {
+                Interlocked.Increment(ref _requests);
+                throw new Eth2ReqRespException("status refused for the test");
+            }
+        }
     }
 }
