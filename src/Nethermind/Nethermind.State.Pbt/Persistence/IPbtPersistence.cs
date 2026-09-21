@@ -57,6 +57,8 @@ public interface IPbtPersistence
         /// <summary>Stages the whole run keyed by <paramref name="runKey"/> (a <see cref="SlotRun.RunKey"/>); an empty run deletes it. The run is borrowed for the call.</summary>
         void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run);
         void SetCode(in ValueHash256 codeHash, CodeInfo code);
+        /// <summary>Deletes every persisted run of <paramref name="addressHash"/>.</summary>
+        /// <remarks>Only persisted runs are deleted: a run staged earlier in this batch survives, so clear before staging the address's runs.</remarks>
         void ClearStorage(in ValueHash256 addressHash);
         /// <summary>Stages a complete group replacement, or deletes the group when the payload is null.</summary>
         /// <remarks>

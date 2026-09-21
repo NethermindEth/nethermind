@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -254,29 +253,9 @@ public sealed class PbtSnapshotBundle(
         return null;
     }
 
-    public void SelfDestruct(Address address)
-    {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
-        long start = Stopwatch.GetTimestamp();
-        ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
-        SortedDictionary<PbtStorageTreeKey, EvmWord> changes = new(PbtStorageKeyLayout.Comparer);
-        bool clearedInLayer = false;
-        foreach (PbtSnapshot snapshot in snapshots) ApplyChanges(snapshot.Content);
-        ApplyChanges(WriteBuffer);
-        if (!clearedInLayer)
-            foreach ((PbtStorageTreeKey key, _) in readOnlyBundle.EnumerateStorage(hash))
-                if (!changes.ContainsKey(key)) SetPbtLeaf(key, null);
-        foreach ((PbtStorageTreeKey key, EvmWord value) in changes)
-            if (!EvmWordSlot.IsZero(value)) SetPbtLeaf(key, null);
-        WriteBuffer.ClearStorage(hash);
-        Metrics.PbtSelfDestructTime.Observe(Stopwatch.GetTimestamp() - start);
-
-        void ApplyChanges(PbtSnapshotContent content)
-        {
-            PbtFlatState.ApplyStorage(changes, content, hash);
-            clearedInLayer |= content.SelfDestructedStorageAddresses.ContainsKey(hash);
-        }
-    }
+    // Clearing existing storage (isNewStorage: false) is not supported in PBT: under EIP-6780 a contract only loses
+    // its storage when destroyed in its creating transaction, so no persisted run or trie leaf ever needs deleting.
+    public void SelfDestruct(Address address) => WriteBuffer.ClearStorage(PbtKeyDerivation.AddressKeyHash(address), isNewStorage: true);
 
     /// <summary>Stores bytecode written in this block; its chunk leaves are staged by the account writes that reference it.</summary>
     internal void SetCode(in ValueHash256 codeHash, CodeInfo code)
