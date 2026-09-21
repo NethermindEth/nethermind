@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
