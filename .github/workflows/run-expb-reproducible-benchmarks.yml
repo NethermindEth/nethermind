@@ -924,8 +924,12 @@ jobs:
             aarch64|arm64) yq_arch="arm64" ;;
             *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
           esac
-          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          # -f so an HTTP error is a failure rather than an error page written to ${YQ}, and retries
+          # because the release CDN does return the occasional 504.
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
           chmod +x "${YQ}"
+          # A truncated download is still a file; fail here rather than at the first rewrite below.
+          "${YQ}" --version
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
@@ -2410,8 +2414,12 @@ jobs:
             aarch64|arm64) yq_arch="arm64" ;;
             *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
           esac
-          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          # -f so an HTTP error is a failure rather than an error page written to ${YQ}, and retries
+          # because the release CDN does return the occasional 504.
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
           chmod +x "${YQ}"
+          # A truncated download is still a file; fail here rather than at the first rewrite below.
+          "${YQ}" --version
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
