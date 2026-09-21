@@ -27,7 +27,6 @@ public sealed class TransactionChangesetBuilder(
     internal const int WarnAfterAttempts = 8;
     internal static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RepeatedFailureInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan StopReportInterval = TimeSpan.FromSeconds(5);
 
@@ -217,13 +216,12 @@ public sealed class TransactionChangesetBuilder(
 
     public Task StopAsync() => Task.Run(Dispose);
 
-    /// <summary>Waits for every thread on one budget: the databases they read close right after this, so a thread
-    /// left running is a use after disposal rather than a slow shutdown, and waiting is worth doing. It stays bounded
-    /// all the same, because this is on the service-stopper path and a worker wedged inside a long read would
-    /// otherwise hold up the whole shutdown sequence. A wait that drags on names the thread every few seconds; past
-    /// the budget the thread is left to finish and what it is still using is deliberately not disposed, so a wedged
-    /// worker costs a leak on a process that is exiting rather than a process that will not exit. Every thread owns
-    /// and disposes the executor it runs on, so that leak is the token source and nothing more.</summary>
+    /// <summary>Waits for every thread. <see cref="IStoppableService"/> runs every service's stop before anything is
+    /// disposed, and the stopper applies no timeout of its own, so returning here says the workers are done and lets
+    /// the root container close the history, index and block databases they read. Returning early would say that
+    /// while a worker is still inside one. The wait names the thread every few seconds instead, so a step that has
+    /// stopped observing cancellation is visible in the log rather than silent; bounding it belongs where the
+    /// databases can be kept alive past the deadline, not here.</summary>
     public void Dispose()
     {
         lock (_shutdown)
@@ -232,11 +230,7 @@ public sealed class TransactionChangesetBuilder(
             _disposed = true;
 
             _cancellation.Cancel();
-            long startedAt = Stopwatch.GetTimestamp();
-            bool everyThreadStopped = true;
-            foreach (Thread thread in _threads) everyThreadStopped &= Join(thread, startedAt);
-            if (!everyThreadStopped) return;
-
+            foreach (Thread thread in _threads) Join(thread);
             try
             {
                 _tipExecutor?.Dispose();
@@ -248,21 +242,12 @@ public sealed class TransactionChangesetBuilder(
         }
     }
 
-    private bool Join(Thread thread, long startedAt)
+    private void Join(Thread thread)
     {
         while (!thread.Join(StopReportInterval))
         {
-            if (Stopwatch.GetElapsedTime(startedAt) >= ShutdownBudget)
-            {
-                if (_logger.IsWarn) _logger.Warn(
-                    $"\"{thread.Name}\" has not stopped within {ShutdownBudget.TotalSeconds:F0}s; leaving it to finish on its own.");
-                return false;
-            }
-
             if (_logger.IsWarn) _logger.Warn($"Still waiting for \"{thread.Name}\" to stop before the index databases close.");
         }
-
-        return true;
     }
 
     private Thread StartThread(Action body, string name)

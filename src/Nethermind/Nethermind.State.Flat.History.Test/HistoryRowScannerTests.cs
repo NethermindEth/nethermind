@@ -310,7 +310,7 @@ public class HistoryRowScannerTests
     public void ScratchVerification_WhenStorageWasCleared_ChecksTheSurvivingState(
         [Values] bool rlpWrapped,
         [Values(4UL, 5UL, 6UL)] ulong clearAt,
-        [Values] bool corrupt)
+        [Values] ScratchCorruption corruption)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> source = new();
         using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> scratch = new();
@@ -337,14 +337,41 @@ public class HistoryRowScannerTests
         BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 8);
         foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
             state.ImportPage(Store(source, column), format, column, 10, CancellationToken.None);
-        if (corrupt)
-            scratch.GetColumnDb(BulkFillScratchState.Columns.Accounts).PutSpan(address.Bytes, AccountDecoder.Slim.EncodeAsBytes(account.WithChangedBalance(99)));
+        // A slot row is only decoded as RLP in the wrapped format, so the malformed-slot case has nothing to corrupt
+        // in the other one and is left as a passing run there.
+        bool slotCorruptionApplies = corruption == ScratchCorruption.MalformedSlotRow && rlpWrapped;
+        switch (corruption)
+        {
+            case ScratchCorruption.WrongBalance:
+                scratch.GetColumnDb(BulkFillScratchState.Columns.Accounts).PutSpan(address.Bytes, AccountDecoder.Slim.EncodeAsBytes(account.WithChangedBalance(99)));
+                break;
+            case ScratchCorruption.MalformedAccountRow:
+                scratch.GetColumnDb(BulkFillScratchState.Columns.Accounts).PutSpan(address.Bytes, [0xff]);
+                break;
+            case ScratchCorruption.MalformedSlotRow when slotCorruptionApplies:
+                Span<byte> malformed = stackalloc byte[sizeof(ulong) + 1];
+                BinaryPrimitives.WriteUInt64BigEndian(malformed, 5);
+                malformed[sizeof(ulong)] = 0xff;
+                scratch.GetColumnDb(BulkFillScratchState.Columns.Storage).PutSpan(storageKey, malformed);
+                break;
+        }
 
-        if (corrupt)
+        bool expectsFailure = corruption == ScratchCorruption.WrongBalance
+            || corruption == ScratchCorruption.MalformedAccountRow
+            || slotCorruptionApplies;
+        if (expectsFailure)
             Assert.Throws<ScratchStateUnusableException>(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None),
-                "a base that fails verification stays wrong on every retry, so it must carry the type the replay stops on");
+                "a base that fails verification stays wrong on every retry, so it must carry the type the replay stops on rather than one it retries");
         else
             Assert.DoesNotThrow(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None));
+    }
+
+    public enum ScratchCorruption
+    {
+        None,
+        WrongBalance,
+        MalformedAccountRow,
+        MalformedSlotRow
     }
 
     [Test]

@@ -46,9 +46,21 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
             hasPrevious = true;
             ReadOnlySpan<byte> row = accounts.CurrentValue;
             if (row.IsEmpty) continue;
-            RlpReader decoder = new(row);
-            if (!AccountDecoder.Slim.TryDecodeStruct(ref decoder, out AccountStruct account) || decoder.Position != row.Length)
-                throw new ScratchStateUnusableException("Invalid scratch account value.");
+            AccountStruct account;
+            // A row that is not RLP at all throws out of the decoder rather than returning false, and scratch data
+            // does not heal: left as a decoding failure it reaches the worker's retry and the same bytes are verified
+            // again every pass, forever.
+            try
+            {
+                RlpReader decoder = new(row);
+                if (!AccountDecoder.Slim.TryDecodeStruct(ref decoder, out account) || decoder.Position != row.Length)
+                    throw new ScratchStateUnusableException($"Invalid scratch account value for {path}.");
+            }
+            catch (RlpException exception)
+            {
+                throw new ScratchStateUnusableException($"Invalid scratch account value for {path}.", exception);
+            }
+
             ValueHash256 storage = VerifyStorage(path, rlpWrappedSlots, storageBuilder, token);
             if (storage != account.StorageRoot)
                 throw new ScratchStateUnusableException($"Scratch storage root mismatch for {path} at {anchor}: expected {account.StorageRoot}, actual {storage}.");
@@ -91,9 +103,16 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
             if (value.IsEmpty) continue;
             if (rlpWrapped)
             {
-                RlpReader decoder = new(value);
-                value = decoder.DecodeByteArraySpan();
-                if (decoder.Position != decoder.Length) throw new ScratchStateUnusableException("Trailing bytes in a scratch slot.");
+                try
+                {
+                    RlpReader decoder = new(value);
+                    value = decoder.DecodeByteArraySpan();
+                    if (decoder.Position != decoder.Length) throw new ScratchStateUnusableException($"Trailing bytes in a scratch slot of {account}.");
+                }
+                catch (RlpException exception)
+                {
+                    throw new ScratchStateUnusableException($"Invalid scratch slot value for {account}.", exception);
+                }
             }
             if (value.Length > Hash256.Size) throw new ScratchStateUnusableException("Scratch slot exceeds 256 bits.");
             value = value.TrimStart((byte)0);
