@@ -238,7 +238,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// second dial to an already-connected peer fails the upgrade with a session-exists error
     /// instead of reusing the connection. The same check runs again after a failed dial: when both
     /// sides dial at once ours loses the upgrade to the session the remote opened, and that session
-    /// is the connection to hand back, not a failure.
+    /// is the connection to hand back, not a failure. The caller's own cancellation is neither: it
+    /// propagates even when such a session exists.
     /// </remarks>
     public async Task<ISession> DialPeerAsync(Multiaddress address, CancellationToken token)
     {
@@ -253,7 +254,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         {
             return await localPeer.DialAsync(address, token);
         }
-        catch (Exception) when (remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced))
+        catch (Exception e) when ((e is not OperationCanceledException || !token.IsCancellationRequested)
+                                  && remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced))
         {
             return raced;
         }
