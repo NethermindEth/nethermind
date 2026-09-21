@@ -169,6 +169,8 @@ public class BlockchainProcessorTests
 
             public event EventHandler<BlockEventArgs>? BlockProcessing;
 
+            public event EventHandler<BlockProcessedEventArgs>? BlockExecuted { add { } remove { } }
+
             public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         }
 
@@ -456,6 +458,8 @@ public class BlockchainProcessorTests
             return this;
         }
 
+        public Task WaitUntilRemoved(Block block) => _processor.WaitUntilRemovedAsync(block.Hash!).AsTask();
+
         public ProcessingTestContext CountIs(int expectedCount)
         {
             Assert.That(() => _processor.Count, Is.EqualTo(expectedCount).After(ProcessingWait, 10));
@@ -611,6 +615,25 @@ public class BlockchainProcessorTests
         _blockC2D100 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(98).TestObject;
         _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
         _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
+    }
+
+    /// <summary>
+    /// A waiter follows the block from enqueue to removal: pending while it is queued or processing, released when
+    /// the queue lets it go, and never held for a block the queue has not seen.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_removed_follows_the_block_through_the_queue()
+    {
+        ProcessingTestContext context = When.ProcessingBlocks.FullyProcessed(_block0).BecomesGenesis().Suggested(_block1D2);
+
+        Task waiting = context.WaitUntilRemoved(_block1D2);
+        Assert.That(waiting.IsCompleted, Is.False, "the block is queued, so the wait is pending");
+        Assert.That(context.WaitUntilRemoved(_blockB2D4).IsCompleted, Is.True, "a block the queue never saw holds nobody");
+
+        context.Processed(_block1D2).BecomesNewHead();
+
+        await waiting.WaitAsync(TimeSpan.FromMilliseconds(ProcessingWait));
+        Assert.That(context.WaitUntilRemoved(_block1D2).IsCompleted, Is.True, "once removed, the block holds nobody either");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

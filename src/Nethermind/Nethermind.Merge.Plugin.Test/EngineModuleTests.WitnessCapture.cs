@@ -808,6 +808,12 @@ public partial class EngineModuleTests
     private sealed class CountingBranchProcessorDecorator(IBranchProcessor inner, Action onProcess)
         : IBranchProcessor
     {
+        public event EventHandler<BlockProcessedEventArgs>? BlockExecuted
+        {
+            add => inner.BlockExecuted += value;
+            remove => inner.BlockExecuted -= value;
+        }
+
         public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
         {
             add => inner.BlockProcessed += value;

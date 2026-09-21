@@ -107,6 +107,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (mergeConfig.NewPayloadCacheSize > 0)
             _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+        _processingQueue.BlockExecuted += GetProcessingQueueOnBlockExecuted;
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
 
@@ -531,6 +532,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
             AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask().TimeoutOn(timeoutTask);
 
+            // A payload sent again while its first copy is between verdict and commit is known but not yet marked
+            // processed; queued again it would be skipped as not better than head and answered INVALID, so let the
+            // first copy finish first.
+            if (addResult == AddBlockResult.AlreadyKnown)
+            {
+                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!).AsTask();
+                if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
+            }
+
             result = addResult switch
             {
                 AddBlockResult.InvalidBlock => ValidationResult.Invalid,
@@ -581,6 +591,22 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
+    }
+
+    /// <summary>
+    /// The verdict, delivered as soon as the block is executed and validated: the commit and the chain update it
+    /// still has ahead of it do not change the answer, and the CL's next call waits for them where it has to
+    /// (<see cref="IBlockProcessingQueue.WaitUntilRemovedAsync"/>). Any other outcome still comes through
+    /// <see cref="GetProcessingQueueOnBlockRemoved"/>, and a verdict already given makes that a no-op.
+    /// </summary>
+    private void GetProcessingQueueOnBlockExecuted(object? o, BlockHashEventArgs e)
+    {
+        if (!_blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed)) return;
+
+        ValidationResult result = e.ProcessingResult == ProcessingResult.InclusionListUnsatisfied
+            ? ValidationResult.InclusionListUnsatisfied
+            : ValidationResult.Valid;
+        blockProcessed.TrySetResult((result, null));
     }
 
     private void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
@@ -680,7 +706,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return true;
     }
 
-    public void Dispose() => _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+    public void Dispose()
+    {
+        _processingQueue.BlockExecuted -= GetProcessingQueueOnBlockExecuted;
+        _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+    }
 
     internal enum ValidationResult
     {

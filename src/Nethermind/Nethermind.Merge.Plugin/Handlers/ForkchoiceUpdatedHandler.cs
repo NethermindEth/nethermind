@@ -179,6 +179,15 @@ public class ForkchoiceUpdatedHandler(
 
         if (!blockInfo.WasProcessed)
         {
+            // newPayload answers VALID once the block is executed, before it is committed and marked processed; the
+            // CL's forkchoice follows at once and must see the committed block, not SYNCING. The wait is bounded by
+            // the block's own processing: a block that is not in the queue returns immediately.
+            await processingQueue.WaitUntilRemovedAsync(newHeadHeader.Hash!);
+            blockInfo = _blockTree.GetInfo(newHeadHeader.Number, newHeadHeader.Hash!).Info ?? blockInfo;
+        }
+
+        if (!blockInfo.WasProcessed)
+        {
             if (IsOnMainChainBehindFinalized(newHeadHeader, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
             {
                 return errorResult;

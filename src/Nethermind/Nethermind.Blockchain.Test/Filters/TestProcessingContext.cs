@@ -19,6 +19,8 @@ namespace Nethermind.Blockchain.Test.Filters;
 /// </summary>
 internal class TestBranchProcessor : IBranchProcessor
 {
+    public event EventHandler<BlockProcessedEventArgs>? BlockExecuted { add { } remove { } }
+
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing { add { } remove { } }
     public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted { add { } remove { } }

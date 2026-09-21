@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -75,6 +76,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private bool _recoveryComplete = false;
     private int _queueCount;
     private bool _disposed;
+    // Every block between Enqueue and its BlockRemoved. The value is created only by a waiter, so a block nobody
+    // waits for costs an entry and nothing else.
+    private readonly ConcurrentDictionary<Hash256, TaskCompletionSource?> _inFlight = new();
 
     private readonly IProcessingStats _stats;
 
@@ -123,7 +127,36 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
+        _branchProcessor.BlockExecuted += OnBlockExecuted;
         if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
+    }
+
+    private void OnBlockExecuted(object? sender, BlockProcessedEventArgs e)
+    {
+        EventHandler<BlockHashEventArgs>? handler = BlockExecuted;
+        if (handler is null) return;
+        Block block = e.Block;
+        handler(this, new BlockHashEventArgs(block.Hash!, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied));
+    }
+
+    public ValueTask WaitUntilRemovedAsync(Hash256 blockHash)
+    {
+        if (!_inFlight.TryGetValue(blockHash, out TaskCompletionSource? removed)) return ValueTask.CompletedTask;
+        if (removed is null)
+        {
+            TaskCompletionSource created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            // Lost the race to another waiter, or to the removal itself: re-read, and a missing entry means removed.
+            if (!_inFlight.TryUpdate(blockHash, created, null) && !_inFlight.TryGetValue(blockHash, out removed)) return ValueTask.CompletedTask;
+            removed ??= created;
+        }
+
+        return new ValueTask(removed.Task);
+    }
+
+    private void OnBlockRemoved(BlockRemovedEventArgs e)
+    {
+        if (_inFlight.TryRemove(e.BlockHash, out TaskCompletionSource? removed)) removed?.TrySetResult();
+        BlockRemoved?.Invoke(this, e);
     }
 
     private void Preprocess(Block block) => _branchBuilder.PreprocessQueued(block);
@@ -161,6 +194,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (!_recoveryComplete)
         {
             Interlocked.Increment(ref _queueCount);
+            _inFlight.TryAdd(blockHash, null);
             BlockAdded?.Invoke(this, new BlockEventArgs(block));
 
             _lastProcessedBlock = DateTime.UtcNow;
@@ -192,7 +226,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             catch (Exception e)
             {
                 Interlocked.Decrement(ref _queueCount);
-                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
+                OnBlockRemoved(new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
                 if (e is not InvalidOperationException || !_recoveryComplete)
                 {
                     throw;
@@ -259,6 +293,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
+        _branchProcessor.BlockExecuted -= OnBlockExecuted;
+        // Blocks still queued when the loops ended get no BlockRemoved; whoever waits for them is let go here.
+        foreach (KeyValuePair<Hash256, TaskCompletionSource?> inFlight in _inFlight)
+        {
+            inFlight.Value?.TrySetResult();
+        }
+
+        _inFlight.Clear();
         if (isStarted && _logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} shutdown complete.");
     }
 
@@ -282,7 +324,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void DecrementQueue(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
     {
         Interlocked.Decrement(ref _queueCount);
-        BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, processingResult, exception));
+        OnBlockRemoved(new BlockRemovedEventArgs(blockHash, processingResult, exception));
         FireProcessingQueueEmpty();
     }
 
@@ -414,7 +456,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 else
                 {
                     if (isTrace) TraceProcessed(block);
-                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
+                    OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                 }
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
@@ -431,27 +473,27 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void NotifyException(BlockRef blockRef, Exception exception)
         {
             if (_logger.IsWarn) _logger.Warn($"Processing block failed. Block: {blockRef}, Exception: {exception}");
-            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void NotifyFailedOrSkipped(BlockRef blockRef, Block block, string error)
         {
             if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void NotifyInclusionListUnsatisfied(BlockRef blockRef, Block block)
         {
             if (_logger.IsTrace) _logger.Trace($"Inclusion list unsatisfied for block {block.ToString(Block.Format.Full)}");
-            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied));
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied));
         }
 
         [DoesNotReturn]
         void ThrowIncorrectBlockReference(BlockRef blockRef)
         {
-            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
+            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
             throw new InvalidOperationException("Block processing expects only resolved blocks");
         }
 
@@ -471,6 +513,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     }
 
     public event EventHandler? ProcessingQueueEmpty;
+    public event EventHandler<BlockHashEventArgs>? BlockExecuted;
     public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
     public event EventHandler<BlockEventArgs>? BlockAdded;
     public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? InvalidBlock;

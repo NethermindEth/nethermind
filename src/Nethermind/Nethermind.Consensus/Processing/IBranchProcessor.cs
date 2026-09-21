@@ -28,6 +28,18 @@ public interface IBranchProcessor
         CancellationToken token = default);
 
     /// <summary>
+    /// Fired once a block has been executed and validated against its header, before its state is committed and
+    /// the chain is updated. Everything that follows is bookkeeping the block's validity no longer depends on, so
+    /// a consumer that only needs the verdict, such as the engine API's newPayload, can answer on this rather than
+    /// on <see cref="BlockProcessed"/>.
+    /// </summary>
+    /// <remarks>
+    /// The block is not readable through the chain yet: the block tree marks it processed and moves the head only
+    /// after this. A consumer that needs the committed block waits for the processing queue to remove it.
+    /// </remarks>
+    event EventHandler<BlockProcessedEventArgs> BlockExecuted;
+
+    /// <summary>
     /// Fired after a single block has been processed.
     /// </summary>
     event EventHandler<BlockProcessedEventArgs> BlockProcessed;

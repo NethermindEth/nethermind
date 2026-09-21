@@ -32,6 +32,8 @@ public class BranchProcessor(
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
+    public event EventHandler<BlockProcessedEventArgs>? BlockExecuted;
+
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
@@ -163,6 +165,14 @@ public class BranchProcessor(
                     || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
                 processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
                 suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
+
+                // The verdict is final here: the roots matched and the inclusion list is judged. The prewarm join,
+                // the commit and the chain update below are what the block's readers need, not its validity, so
+                // whoever only waits for the verdict is told now rather than after them.
+                if (notReadOnly)
+                {
+                    BlockExecuted?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
+                }
 
                 QueueClearCaches(preWarmTask);
                 // Hint producers touch the active snapshot bundle, which CommitTree rotates.

@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -42,7 +43,22 @@ namespace Nethermind.Consensus.Processing
         event EventHandler ProcessingQueueEmpty;
 
         event EventHandler<BlockEventArgs> BlockAdded;
+        /// <summary>
+        /// Raised when a queued block has been executed and validated, before it is committed and before
+        /// <see cref="BlockRemoved"/>. The result is <see cref="ProcessingResult.Success"/> or
+        /// <see cref="ProcessingResult.InclusionListUnsatisfied"/>; every other outcome arrives through
+        /// <see cref="BlockRemoved"/> alone.
+        /// </summary>
+        event EventHandler<BlockHashEventArgs> BlockExecuted;
+
         event EventHandler<BlockRemovedEventArgs> BlockRemoved;
+
+        /// <summary>
+        /// Completes once the block is no longer queued or being processed - at once if it is neither - so a
+        /// caller that learnt the verdict from <see cref="BlockExecuted"/> can wait for the block to become
+        /// readable through the chain.
+        /// </summary>
+        ValueTask WaitUntilRemovedAsync(Hash256 blockHash);
 
         /// <summary>
         /// Fired when processing of a block failed and the block was marked invalid.
