@@ -433,7 +433,7 @@ public class BlockProcessorTests
             .TestObject;
 
         using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
-        TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
+        TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new(parentStateRoot);
         using BlockAccessListManager balManager = new(
             stateProvider,
             LimboLogs.Instance,
@@ -1815,7 +1815,7 @@ public class BlockProcessorTests
             LimboLogs.Instance);
     }
 
-    private sealed class TrackingReadOnlyTxProcessingEnvFactory : IReadOnlyTxProcessingEnvFactory
+    private sealed class TrackingReadOnlyTxProcessingEnvFactory(Hash256 parentStateRoot) : IReadOnlyTxProcessingEnvFactory
     {
         private readonly ITransactionProcessor _transactionProcessor = Substitute.For<ITransactionProcessor>();
 
@@ -1823,6 +1823,7 @@ public class BlockProcessorTests
         public int DisposedScopes { get; private set; }
         public List<BlockHeader?> BuiltHeaders { get; } = [];
         public List<IWorldState> BuiltWorldStates { get; } = [];
+        public Hash256 ParentStateRoot { get; } = parentStateRoot;
 
         public IReadOnlyTxProcessorSource Create()
         {
@@ -1841,6 +1842,7 @@ public class BlockProcessorTests
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 IWorldState worldState = Substitute.For<IWorldState>();
+                worldState.StateRoot.Returns(factory.ParentStateRoot);
                 factory.BuiltHeaders.Add(targetBlock);
                 factory.BuiltWorldStates.Add(worldState);
                 scope = new Scope(factory, transactionProcessor, worldState);

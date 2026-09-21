@@ -11,7 +11,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Test;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
