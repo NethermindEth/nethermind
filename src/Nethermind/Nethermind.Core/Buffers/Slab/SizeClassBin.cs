@@ -98,6 +98,22 @@ internal sealed class SizeClassBin
         }
     }
 
+    /// <summary>
+    /// Frees a slab whose finalizer ran, unless a dead thread cache's flush handed it back to this bin first: a finalizer
+    /// runs after the slab was found unreachable, and the cache (finalizable too, in no fixed order) may have resurrected it
+    /// meanwhile, in which case it is live again and its finalizer is re-armed.
+    /// </summary>
+    internal void ReleaseUnreachable(Slab slab)
+    {
+        lock (_lock)
+        {
+            if (ReferenceEquals(_spareEmpty, slab) || slab.PreviousInBin is not null || ReferenceEquals(_headByFreeCount[slab.FreeCount], slab))
+                GC.ReRegisterForFinalize(slab);
+            else
+                slab.Release();
+        }
+    }
+
     /// <summary>Drops the retained empty slab, once the allocator no longer serves requests.</summary>
     public void ReleaseSpare()
     {

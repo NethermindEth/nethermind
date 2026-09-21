@@ -35,7 +35,7 @@ internal sealed unsafe class Slab
         GC.AddMemoryPressure(size);
     }
 
-    ~Slab() => Release();
+    ~Slab() => Bin.ReleaseUnreachable(this);
 
     public SizeClassBin Bin { get; }
     public int Size { get; }

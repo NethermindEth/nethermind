@@ -213,7 +213,7 @@ public unsafe class SlabMemoryAllocatorTests
         Thread worker = new(() =>
         {
             SlabAllocation[] blocks = new SlabAllocation[4];
-            for (int i = 0; i < blocks.Length; i++) blocks[i] = allocator.Allocate(128);
+            for (int i = 0; i < blocks.Length; i++) blocks[i] = allocator.Allocate(PageSize / blocks.Length);
             for (int i = 0; i < blocks.Length; i++) allocator.Free(in blocks[i]);
         });
         worker.Start();
@@ -228,6 +228,12 @@ public unsafe class SlabMemoryAllocatorTests
         }
 
         Assert.That(allocator.OutstandingBytes, Is.Zero);
+
+        // The cache held every region of its slab, so the slab was unreachable too and its finalizer must not free
+        // the block the flush handed back to the bin.
+        SlabAllocation again = allocator.Allocate(PageSize / 4);
+        Assert.That(((Core.Buffers.Slab.Slab)again.Owner!).IsReleased, Is.False, "the flushed slab is handed out again");
+        allocator.Free(in again);
     }
 
     [Test]
