@@ -12,6 +12,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
@@ -51,12 +52,12 @@ internal static class DebugEndpoints
             nodes[i] = new ForkChoiceNodeDto(
                 node.Slot.ToString(),
                 node.Root.ToString(),
-                node.ParentRoot?.ToString(),
+                node.ParentRoot?.ToString() ?? Hash256.Zero.ToString(),
                 node.JustifiedEpoch.ToString(),
                 node.FinalizedEpoch.ToString(),
                 node.Weight.ToString(),
                 ValidityWireName(node.ExecutionStatus),
-                node.ExecutionBlockHash?.ToString());
+                node.ExecutionBlockHash?.ToString() ?? Hash256.Zero.ToString());
         }
 
         ForkChoiceDto dto = new(
@@ -140,17 +141,17 @@ internal static class DebugEndpoints
         [property: JsonPropertyName("epoch")] string Epoch,
         [property: JsonPropertyName("root")] string Root);
 
-    // parent_root and execution_block_hash are omitted rather than zero-filled where the node has
-    // none: the tree root's parent is not in the tree, and a fabricated zero root is not a root.
+    // parent_root and execution_block_hash are required by the beacon-API Node schema, so a node
+    // that has neither carries the zero root rather than omitting the field.
     private sealed record ForkChoiceNodeDto(
         [property: JsonPropertyName("slot")] string Slot,
         [property: JsonPropertyName("block_root")] string BlockRoot,
-        [property: JsonPropertyName("parent_root"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ParentRoot,
+        [property: JsonPropertyName("parent_root")] string ParentRoot,
         [property: JsonPropertyName("justified_epoch")] string JustifiedEpoch,
         [property: JsonPropertyName("finalized_epoch")] string FinalizedEpoch,
         [property: JsonPropertyName("weight")] string Weight,
         [property: JsonPropertyName("validity")] string Validity,
-        [property: JsonPropertyName("execution_block_hash"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ExecutionBlockHash);
+        [property: JsonPropertyName("execution_block_hash")] string ExecutionBlockHash);
 
     private sealed record ForkChoiceExtraDataDto([property: JsonPropertyName("proposer_boost_root")] string ProposerBoostRoot);
 
