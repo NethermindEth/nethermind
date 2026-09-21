@@ -128,7 +128,7 @@ public class PbtMetricsTests
         if (snapshotHit)
         {
             content.Accounts[addressHash] = deleted ? null : account;
-            if (scenario == "selfdestruct") content.ClearStorage(addressHash);
+            if (scenario == "selfdestruct") content.ClearStorage(addressHash, isNewStorage: false);
             else
             {
                 content.SetSlot(headerStorageKey, deleted ? default : slot);

@@ -46,7 +46,7 @@ public class PbtSnapshotCompactor(
             for (int i = 0; i < chainOldestFirst.Count; i++)
             {
                 PbtSnapshotContent content = chainOldestFirst[i].Content;
-                foreach ((ValueHash256 addressHash, _) in content.SelfDestructedStorageAddresses) merged.ClearStorage(addressHash);
+                foreach ((ValueHash256 addressHash, bool isNewStorage) in content.SelfDestructedStorageAddresses) merged.ClearStorage(addressHash, isNewStorage);
                 foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) merged.Accounts[addressHash] = account;
                 foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in content.Storages) merged.SetRun(runKey, run.Clone());
                 foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) merged.Codes[codeHash] = code;

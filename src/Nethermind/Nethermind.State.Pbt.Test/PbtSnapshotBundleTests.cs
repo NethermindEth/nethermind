@@ -94,7 +94,7 @@ public class PbtSnapshotBundleTests
         Reader reader = new(default, null) { Storage = persisted };
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = new();
-        content.ClearStorage(addressHash);
+        content.ClearStorage(addressHash, isNewStorage: false);
         content.SetSlot(rewritten, original);
         content.SetSlot(deleted, original);
         PbtSnapshotPooledList snapshots = new(1) { new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing) };

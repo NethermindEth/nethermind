@@ -516,6 +516,38 @@ public class PbtDbManagerTests
         return transient;
     }
 
+    [Test]
+    public void Persistence_ClearsStorageOnlyForAddressesWithExistingStorage()
+    {
+        PbtConfig config = new() { CompactSize = 1, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 1 };
+        PbtResourcePool pool = new(config);
+        PbtSnapshotRepository repository = new();
+        using MemDb metadata = new();
+        ValueHash256 existing = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 fresh = PbtKeyDerivation.AddressKeyHash(TestItem.AddressB);
+        IPbtPersistence persistence = Substitute.For<IPbtPersistence>();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.CurrentState.Returns(PersistenceState(0));
+        persistence.CreateReader().Returns(reader);
+        IPbtPersistence.IWriteBatch batch = Substitute.For<IPbtPersistence.IWriteBatch>();
+        persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>()).Returns(batch);
+        PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence, repository, new PbtCompactionSchedule(metadata, config, LimboLogs.Instance), NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        try
+        {
+            PbtSnapshot snapshot = PersistenceSnapshot(0, 1, pool);
+            snapshot.Content.ClearStorage(existing, isNewStorage: false);
+            snapshot.Content.ClearStorage(fresh, isNewStorage: true);
+            repository.TryAdd(snapshot);
+            Assert.That(coordinator.PersistUpTo(PersistenceState(1)), Is.True);
+            batch.Received(1).ClearStorage(existing);
+            batch.DidNotReceive().ClearStorage(fresh);
+        }
+        finally
+        {
+            repository.RemoveStatesUntil(ulong.MaxValue);
+        }
+    }
+
     private static StateId PersistenceState(int number) => new((ulong)number, TestItem.KeccakA.ValueHash256);
 
     private static PbtSnapshot PersistenceSnapshot(int from, int to, PbtResourcePool pool) =>
