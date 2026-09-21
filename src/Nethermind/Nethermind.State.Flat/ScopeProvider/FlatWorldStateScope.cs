@@ -33,6 +33,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Hash256 _initialStateRoot;
     private StateTree? _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private StorageRootBuilder? _storageRootBuilder;
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
 
@@ -95,12 +96,34 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
 
+        // The storage root builder takes the committed writes instead, so the two never run together.
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
-            && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
+            && !configuration.ParallelStorageRoot && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
+
+        _storageRootBuilder = CreateStorageRootBuilder();
+    }
+
+    // VerifyWithTrie reads the tries on the block thread during execution, which the builder jobs must own exclusively.
+    private StorageRootBuilder? CreateStorageRootBuilder() =>
+        _configuration.ParallelStorageRoot && !_configuration.VerifyWithTrie && !_isReadOnly && !_trieless
+            ? new StorageRootBuilder(_configuration.ParallelStorageRootThreads, _configuration.ParallelStorageRootBatchSize, _configuration.ParallelStorageRootEagerHash, _logManager)
+            : null;
+
+    /// <summary>The builder to hand committed storage writes to, or null once it is closed or faulted.</summary>
+    internal StorageRootBuilder? StorageRootBuilder =>
+        _storageRootBuilder is { IsFaulted: false, IsClosed: false } ? _storageRootBuilder : null;
+
+    /// <summary>The builder the flush finalizes each storage trie against, or null when the feature is off.</summary>
+    internal StorageRootBuilder? StorageRootBuilderForFinalization => _storageRootBuilder;
+
+    private void WaitForBuilderJobs()
+    {
+        if (_storageRootBuilder is null) return;
+        foreach (FlatStorageTree storage in _storages.Values) storage.WaitForJob();
     }
 
     internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
@@ -132,6 +155,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
+        _storageRootBuilder?.Close();
+        WaitForBuilderJobs();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -517,12 +542,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
+        // From here on the flush owns the tries: no new job starts, each contract's write batch joins its own job.
+        _storageRootBuilder?.Close();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        _storageRootBuilder?.Close();
+        WaitForBuilderJobs();
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
@@ -554,6 +583,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         _currentStateId = newStateId;
+        _storageRootBuilder = CreateStorageRootBuilder();
         _pausePrewarmer = false;
 
         if (_earlyApplier is not null) ReportEarlyApply(blockNumber);
