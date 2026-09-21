@@ -60,6 +60,7 @@ public sealed class BeaconChainService(
             }
 
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.EffectiveCheckpointSyncUrl}");
+            store.EnsureSchemaVersion();
             (BeaconStateFulu state, SignedBeaconBlock? block, Hash256 blockRoot) = await InitializeAnchorAsync(_cancellationTokenSource.Token);
             if (block is null)
             {
