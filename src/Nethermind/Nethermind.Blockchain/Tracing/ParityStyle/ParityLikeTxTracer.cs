@@ -495,6 +495,9 @@ public class ParityLikeTxTracer : TxTracer
         // TODO: use memory pool?
         _currentVmTrace.VmTrace.Code = byteCode.ToArray();
 
-    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) =>
+    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
+    {
         _currentOperation!.Used = gasAvailable;
+        _currentOperation.Push = _currentPushList.ToArray();
+    }
 }

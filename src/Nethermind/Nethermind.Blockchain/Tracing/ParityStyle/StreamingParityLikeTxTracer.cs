@@ -388,7 +388,11 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.ReportGasUpdateForVmTrace(refund, gasAvailable); return; }
 
-        if (_hasPendingOp) _pendingUsed = gasAvailable;
+        if (_hasPendingOp)
+        {
+            _pendingUsed = gasAvailable;
+            _pushAssigned = true;
+        }
     }
 
     protected override void OnEnterVmFrame(ParityTraceAction action)

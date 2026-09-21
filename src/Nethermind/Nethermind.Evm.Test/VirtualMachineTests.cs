@@ -1271,9 +1271,11 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     {
         const ulong gasLimit = 1_000_000;
         (Block block, Transaction transaction) = PrepareTx(
-            MainnetSpecProvider.AmsterdamActivation,
+            Activation,
             gasLimit,
             code);
+        block.Header.Number = MainnetSpecProvider.AmsterdamActivation.BlockNumber;
+        block.Header.Timestamp = MainnetSpecProvider.AmsterdamBlockTimestamp;
         configureState?.Invoke(TestState);
 
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);

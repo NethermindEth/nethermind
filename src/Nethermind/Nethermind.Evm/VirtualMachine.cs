@@ -1379,6 +1379,10 @@ public partial class VirtualMachine<TGasPolicy>(
             }
             if (pushResult != EvmExceptionType.None) return new(pushResult);
 
+            if (TTracingInst.IsActive)
+            {
+                _txTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(vmState.Gas));
+            }
             if (IsTracingActions)
             {
                 _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
@@ -1548,13 +1552,21 @@ public partial class VirtualMachine<TGasPolicy>(
 
     private void EndInstructionTrace(ITxTracer tracer, ulong gasAvailable, EvmExceptionType? evmExceptionType = null)
     {
-        if (!_isInstructionTraceActive) return;
+        if (!_isInstructionTraceActive)
+        {
+            if (evmExceptionType is not null)
+            {
+                tracer.ReportGasUpdateForVmTrace(0, gasAvailable);
+                tracer.ReportOperationError(evmExceptionType.Value);
+            }
+            return;
+        }
 
         _isInstructionTraceActive = false;
         tracer.ReportOperationRemainingGas(gasAvailable);
         if (evmExceptionType is not null)
             tracer.ReportOperationError(evmExceptionType.Value);
-        if (_isCancelableCached && _txTracer.IsCancelled)
+        if (_isCancelableCached && _txTracer.Any<CancellationTxTracer>(static cancellationTracer => cancellationTracer.IsCancelled))
             ThrowOperationCanceledException();
     }
 

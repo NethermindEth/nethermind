@@ -124,6 +124,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         public bool GasMatches { get; private set; } = true;
         public int Errors { get; private set; }
         public override void ReportOperationRemainingGas(ulong gas) => _instructionGas = gas;
+        public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) => _instructionGas = gasAvailable;
         public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
 
         public override void ReportActionError(EvmExceptionType evmExceptionType)
