@@ -498,8 +498,7 @@ public sealed class BeaconSyncOrchestrator(
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
                 // Includes per-request timeouts, which cancel the request without cancelling the sync.
-                bool sessionDead = e.Message.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || e.Message.Contains("session", StringComparison.OrdinalIgnoreCase);
-                peer.ReportFailure(sessionDead ? PeerFailureReason.SessionClosed : PeerFailureReason.RequestFailed, $"Blocks-by-root for {root} failed: {e.Message}");
+                peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Blocks-by-root for {root} failed: {e.Message}");
                 continue;
             }
 

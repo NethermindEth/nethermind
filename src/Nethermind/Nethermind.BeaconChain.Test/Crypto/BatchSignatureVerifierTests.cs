@@ -124,6 +124,52 @@ public class BatchSignatureVerifierTests
         Assert.That(set, Is.Null);
     }
 
+    // ethereum/bls12-381-tests v0.1.2, deserialization_G1/deserialization_fails_not_in_G1 and
+    // deserialization_G2/deserialization_fails_not_in_G2: x-coordinates that decode to an on-curve point
+    // outside the prime-order subgroup, so only the InGroup check can reject them.
+    private static readonly byte[] NotInG1Pubkey = Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    private static readonly byte[] NotInG2Signature = Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+
+    [Test]
+    public void Off_subgroup_public_key_rejected()
+    {
+        Bls.P1Affine point = new(new long[Bls.P1Affine.Sz]);
+        bool decodes = point.TryDecode(NotInG1Pubkey, out _);
+        bool isInfinity = point.IsInf();
+        bool inGroup = point.InGroup();
+        Assert.Multiple(() =>
+        {
+            Assert.That(decodes, Is.True, "the vector must decode, or this pins the encoding branch instead of the subgroup branch");
+            Assert.That(isInfinity, Is.False, "the vector must not be infinity, or this pins the infinity branch instead of the subgroup branch");
+            Assert.That(inGroup, Is.False, "the vector must lie outside G1");
+        });
+
+        byte[] message = Msg(0x22);
+        byte[] sig = Sign(DeriveKey(3), message);
+
+        Assert.That(BlsSignatureSet.TryCreate(NotInG1Pubkey, message, sig, out BlsSignatureSet? set), Is.False);
+        Assert.That(set, Is.Null);
+    }
+
+    [Test]
+    public void Off_subgroup_signature_rejected()
+    {
+        Bls.P2Affine point = new(new long[Bls.P2Affine.Sz]);
+        bool decodes = point.TryDecode(NotInG2Signature, out _);
+        bool inGroup = point.InGroup();
+        Assert.Multiple(() =>
+        {
+            Assert.That(decodes, Is.True, "the vector must decode, or this pins the encoding branch instead of the subgroup branch");
+            Assert.That(inGroup, Is.False, "the vector must lie outside G2");
+        });
+
+        byte[] message = Msg(0x33);
+        byte[] pk = CompressedPubkey(DeriveKey(3));
+
+        Assert.That(BlsSignatureSet.TryCreate(pk, message, NotInG2Signature, out BlsSignatureSet? set), Is.False);
+        Assert.That(set, Is.Null);
+    }
+
     // Choice: an empty batch has no constraint to violate, so it verifies true - the same
     // vacuous-truth convention a serial loop over zero sets (all() of an empty sequence) gives.
     [Test]
