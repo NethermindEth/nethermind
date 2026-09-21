@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -39,7 +40,7 @@ public class BeaconJsonBodiesTests
     [SetUp]
     public void ResetSharedState()
     {
-        Metrics.BeaconChainElInSync = 0;
+        _host.StatusHolder.ExecutionInSync = false;
         _host.SetStatus(Hash256.Zero, Hash256.Zero, 0);
     }
 
@@ -131,27 +132,22 @@ public class BeaconJsonBodiesTests
     [Test]
     public async Task Block_json_execution_optimistic_and_finalized_flags_track_the_drivers_own_signals()
     {
+        const ulong slot = Slot + 3;
         Hash256 root = BeaconApiTestHost.TestRoot(0x11);
-        _host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(slot, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.SetCanonicalRoot(slot, root);
 
-        try
-        {
-            Metrics.BeaconChainElInSync = 0;
-            _host.SetStatus(root, Hash256.Zero, 0);
-            JsonElement optimistic = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
-            Assert.That(optimistic.GetProperty("execution_optimistic").GetBoolean(), Is.True, "the EL has not validated the head: a caller must not treat this body as verified");
-            Assert.That(optimistic.GetProperty("finalized").GetBoolean(), Is.False);
+        _host.StatusHolder.ExecutionInSync = false;
+        _host.SetStatus(root, Hash256.Zero, 0);
+        JsonElement optimistic = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
+        Assert.That(optimistic.GetProperty("execution_optimistic").GetBoolean(), Is.True, "the EL has not validated the head: a caller must not treat this body as verified");
+        Assert.That(optimistic.GetProperty("finalized").GetBoolean(), Is.False);
 
-            Metrics.BeaconChainElInSync = 1;
-            _host.SetStatus(root, root, 412_501);
-            JsonElement confirmed = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
-            Assert.That(confirmed.GetProperty("execution_optimistic").GetBoolean(), Is.False, "the orchestrator flipped the in-sync gauge after a VALID verdict");
-            Assert.That(confirmed.GetProperty("finalized").GetBoolean(), Is.True, "epoch 412,500 is at or before finalized epoch 412,501");
-        }
-        finally
-        {
-            Metrics.BeaconChainElInSync = 0;
-        }
+        _host.StatusHolder.ExecutionInSync = true;
+        _host.SetStatus(root, root, 412_501);
+        JsonElement confirmed = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json))).RootElement;
+        Assert.That(confirmed.GetProperty("execution_optimistic").GetBoolean(), Is.False, "the orchestrator flipped the in-sync flag after a VALID verdict");
+        Assert.That(confirmed.GetProperty("finalized").GetBoolean(), Is.True, "epoch 412,500 is at or before finalized epoch 412,501");
     }
 
     [Test]
@@ -328,6 +324,25 @@ public class BeaconJsonBodiesTests
     }
 
     [Test]
+    public async Task Headers_by_parent_root_checks_the_parent_exists_without_decoding_it()
+    {
+        Hash256 parent = BeaconApiTestHost.TestRoot(0x35);
+        Hash256 child = BeaconApiTestHost.TestRoot(0x36);
+        _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 1, parent));
+        // Only the children are listed, so the parent's own bytes must never be read: a parent that
+        // no longer decodes still has an exact child list to serve.
+        _host.Db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(parent.Bytes, [9]);
+
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
+        string raw = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        JsonElement data = JsonDocument.Parse(raw).RootElement.GetProperty("data");
+        Assert.That(data.GetArrayLength(), Is.EqualTo(1));
+        Assert.That(data[0].GetProperty("root").GetString(), Is.EqualTo(child.ToString()));
+    }
+
+    [Test]
     public async Task Headers_by_parent_root_returns_an_honest_empty_list_and_forgets_pruned_children()
     {
         Hash256 parent = BeaconApiTestHost.TestRoot(0x40);
@@ -352,7 +367,8 @@ public class BeaconJsonBodiesTests
         Hash256 parent = BeaconApiTestHost.TestRoot(0x50);
         Hash256 child = BeaconApiTestHost.TestRoot(0x51);
         _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
-        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 1, parent));
+        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 8, parent));
+        _host.Store.SetCanonicalRoot(Slot + 8, child);
 
         _host.SetStatus(child, child, 412_500);
         JsonElement finalized = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json))).RootElement;
@@ -361,6 +377,22 @@ public class BeaconJsonBodiesTests
         _host.SetStatus(child, Hash256.Zero, 412_499);
         JsonElement notFinalized = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json))).RootElement;
         Assert.That(notFinalized.GetProperty("finalized").GetBoolean(), Is.False);
+    }
+
+    [Test]
+    public async Task Headers_by_parent_root_is_not_finalized_when_the_slot_filter_excludes_every_child()
+    {
+        Hash256 parent = BeaconApiTestHost.TestRoot(0x55);
+        Hash256 child = BeaconApiTestHost.TestRoot(0x56);
+        _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 9, parent));
+        _host.Store.SetCanonicalRoot(Slot + 9, child);
+        _host.SetStatus(child, child, 412_500);
+
+        JsonElement body = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}&slot={Slot + 10}", Json))).RootElement;
+
+        Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+        Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False, "an empty answer references no finalized history, however finalized the children it filtered out are");
     }
 
     [Test]
@@ -387,6 +419,31 @@ public class BeaconJsonBodiesTests
         JsonElement body = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?slot={Slot + 20}", Json))).RootElement;
         Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(1));
         Assert.That(body.GetProperty("data")[0].GetProperty("root").GetString(), Is.EqualTo(root.ToString()));
+    }
+
+    /// <summary>
+    /// A state is keyed by the root of the block it came from, and slot processing advances it past
+    /// that block, so the canonical lookup behind the finalized flag has to use the block's slot.
+    /// A checkpoint-synced node's anchor state is exactly this shape, so reading the state's own
+    /// slot reports finalized:false on the one state such a node is certain about.
+    /// </summary>
+    [Test]
+    public async Task State_finalized_flag_uses_the_slot_of_the_block_the_state_is_keyed_by()
+    {
+        Hash256 root = BeaconApiTestHost.TestRoot(0x21);
+        BeaconStateFulu state = BeaconApiTestHost.RichState(BeaconChainSpec.Mainnet, Slot);
+        _host.Store.PutState(root, BeaconStateFulu.Encode(state));
+
+        // Canonical at the block's slot only; the state's own slot is left empty, as it is after
+        // slot processing advances a state past its block.
+        _host.Store.SetCanonicalRoot(state.LatestBlockHeader!.Slot, root);
+        _host.SetStatus(root, root, BeaconChainSpec.Mainnet.GetEpoch(Slot));
+
+        HttpResponseMessage response = await _host.GetAsync("/eth/v2/debug/beacon/states/head", Json);
+        string raw = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw.Length > 500 ? raw[..500] : raw);
+        Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("finalized").GetBoolean(), Is.True,
+            "the state is canonical at its block's slot, which is what finalization vouches for");
     }
 }
 
@@ -416,4 +473,27 @@ public class BeaconJsonBodiesGloasTests
         HttpResponseMessage ssz = await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", "application/octet-stream");
         Assert.That(ssz.StatusCode, Is.EqualTo(HttpStatusCode.OK));
     }
+
+    [Test]
+    public async Task Headers_by_parent_root_names_the_fork_only_when_every_listed_child_is_in_the_same_one()
+    {
+        ulong gloasSlot = BeaconChainSpec.Sepolia.GloasForkEpoch * BeaconChainSpec.Sepolia.SlotsPerEpoch;
+        Hash256 parent = BeaconApiTestHost.TestRoot(0x81);
+        Hash256 fuluChild = BeaconApiTestHost.TestRoot(0x82);
+        Hash256 gloasChild = BeaconApiTestHost.TestRoot(0x83);
+        _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(gloasSlot - 5, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.PutBlock(fuluChild, BeaconApiTestHost.RichBlock(gloasSlot - 2, parent));
+        _host.Store.PutBlock(gloasChild, BeaconApiTestHost.RichBlock(gloasSlot + 1, parent));
+
+        HttpResponseMessage mixed = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", "application/json");
+        string raw = await mixed.Content.ReadAsStringAsync();
+        Assert.That(mixed.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(2));
+        Assert.That(mixed.Headers.Contains("Eth-Consensus-Version"), Is.False, "children straddle the Gloas boundary, so no single fork name is true of the list");
+
+        HttpResponseMessage gloasOnly = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}&slot={gloasSlot + 1}", "application/json");
+        Assert.That(gloasOnly.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(gloasOnly.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"), "the fork is named for the listed children, not for every child in the index");
+    }
+
 }

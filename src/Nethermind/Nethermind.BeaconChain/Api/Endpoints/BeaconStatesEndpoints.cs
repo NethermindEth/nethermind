@@ -52,8 +52,8 @@ internal static class BeaconStatesEndpoints
             fork.Epoch.ToString());
 
         return BeaconApiJson.WriteEnvelopeAsync(c, dto,
-            ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, resolved.State.Slot),
+            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
             c.RequestAborted);
     }
 
@@ -73,8 +73,8 @@ internal static class BeaconStatesEndpoints
 
         RootDto dto = new(resolved.Block.Message!.StateRoot!.ToString());
         return BeaconApiJson.WriteEnvelopeAsync(c, dto,
-            ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, resolved.Block.Message.Slot),
+            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.IsFinalized(ctx, resolved.Block.Message.Slot, resolved.Root),
             c.RequestAborted);
     }
 
@@ -96,8 +96,8 @@ internal static class BeaconStatesEndpoints
             ToCheckpointDto(resolved.State.FinalizedCheckpoint!));
 
         return BeaconApiJson.WriteEnvelopeAsync(c, dto,
-            ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, resolved.State.Slot),
+            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
             c.RequestAborted);
     }
 
@@ -152,8 +152,8 @@ internal static class BeaconStatesEndpoints
         }
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, state.Slot),
+            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
 
@@ -188,8 +188,8 @@ internal static class BeaconStatesEndpoints
         ValidatorEntryDto entry = ToValidatorEntry(index, validator, state.Balances![index], ValidatorStatus.Classify(validator, epoch));
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entry,
-            ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, state.Slot),
+            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
 
@@ -237,8 +237,8 @@ internal static class BeaconStatesEndpoints
         }
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, state.Slot),
+            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
 
@@ -333,8 +333,8 @@ internal static class BeaconStatesEndpoints
         }
 
         return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(),
-            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, state.Slot),
+            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
+            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
             c.RequestAborted);
     }
 

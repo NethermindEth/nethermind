@@ -71,7 +71,7 @@ internal static class EventsEndpoint
                 {
                     lastHead = status.HeadRoot;
                     await WriteEventAsync(c, "head",
-                        new HeadEventDto(status.HeadSlot.ToString(), status.HeadRoot!.ToString(), ResponseEnvelope.ExecutionOptimistic()));
+                        new HeadEventDto(status.HeadSlot.ToString(), status.HeadRoot!.ToString(), ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource)));
                 }
 
                 if (wantsFinalized && status.FinalizedRoot != Hash256.Zero && status.FinalizedEpoch != lastFinalizedEpoch)

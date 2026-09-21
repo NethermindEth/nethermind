@@ -116,6 +116,36 @@ public class BeaconChainStoreChildrenIndexTests
     }
 
     [Test]
+    public void Deleting_a_block_whose_parent_root_is_zero_unlinks_it_like_any_other_child()
+    {
+        Hash256 childA = TestRoot(2);
+        Hash256 childB = TestRoot(3);
+        _store.PutBlock(childA, CreateBlock(101, parent: Hash256.Zero));
+        _store.PutBlock(childB, CreateBlock(102, parent: Hash256.Zero));
+
+        _store.DeleteBlock(childA);
+
+        Assert.That(_store.TryGetChildren(Hash256.Zero, out Hash256[] children, out _), Is.True);
+        Assert.That(children, Is.EqualTo(new[] { childB }), "the zero root is a legal parent root, not a sentinel: its list must forget a deleted block like any other parent's");
+    }
+
+    [Test]
+    public void A_block_stored_after_its_own_child_still_unlinks_from_its_parent_on_delete()
+    {
+        Hash256 grandparent = TestRoot(1);
+        Hash256 parent = TestRoot(2);
+        Hash256 child = TestRoot(3);
+        _store.PutBlock(grandparent, CreateBlock(100, parent: TestRoot(0)));
+        _store.PutBlock(child, CreateBlock(102, parent)); // backfill order: the child's entry for its parent does not know the grandparent yet
+        _store.PutBlock(parent, CreateBlock(101, grandparent));
+
+        _store.DeleteBlock(parent);
+
+        Assert.That(_store.TryGetChildren(grandparent, out Hash256[] children, out _), Is.True);
+        Assert.That(children, Is.Empty, "the parent's own store must record the grandparent, or its later delete has nothing to unlink from");
+    }
+
+    [Test]
     public void Deleting_a_legacy_block_does_not_touch_its_parents_list()
     {
         Hash256 legacyParent = TestRoot(1);

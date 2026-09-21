@@ -32,7 +32,7 @@ public class BeaconChainStoreTests
         new Random(42).NextBytes(stateSsz);
         store.PutState(blockRoot, stateSsz);
 
-        store.PutMetadata("schemaVersion", [1]);
+        store.PutMetadata("probe", [1]);
         store.SetAnchor(blockRoot, 12_345_678);
 
         Assert.Multiple(() =>
@@ -40,6 +40,8 @@ public class BeaconChainStoreTests
             Assert.That(store.TryGetBlock(blockRoot, out SignedBeaconBlock? readBlock), Is.True);
             Assert.That(SignedBeaconBlock.Encode(readBlock!), Is.EqualTo(SignedBeaconBlock.Encode(block)));
             Assert.That(store.TryGetBlock(missingRoot, out _), Is.False);
+            Assert.That(store.HasBlock(blockRoot), Is.True);
+            Assert.That(store.HasBlock(missingRoot), Is.False);
 
             Assert.That(store.TryGetCanonicalRoot(12_345_678, out Hash256? canonicalRoot), Is.True);
             Assert.That(canonicalRoot, Is.EqualTo(blockRoot));
@@ -49,13 +51,38 @@ public class BeaconChainStoreTests
             Assert.That(readState, Is.EqualTo(stateSsz));
             Assert.That(store.TryGetState(missingRoot, out _), Is.False);
 
-            Assert.That(store.GetMetadata("schemaVersion"), Is.EqualTo(new byte[] { 1 }));
+            Assert.That(store.GetMetadata("probe"), Is.EqualTo(new byte[] { 1 }));
             Assert.That(store.GetMetadata("missing"), Is.Null);
 
             Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot), Is.True);
             Assert.That(anchorRoot, Is.EqualTo(blockRoot));
             Assert.That(anchorSlot, Is.EqualTo(12_345_678ul));
         });
+    }
+
+    [Test]
+    public void An_unversioned_database_is_stamped_with_the_current_schema_version()
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        Assert.That(store.TryGetSchemaVersion(out _), Is.False);
+
+        store.EnsureSchemaVersion();
+
+        Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
+        Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+    }
+
+    [Test]
+    public void A_database_from_a_newer_schema_version_is_refused_and_left_unstamped()
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        uint newer = BeaconChainStore.CurrentSchemaVersion + 1;
+        store.SetSchemaVersion(newer);
+
+        Assert.That(store.EnsureSchemaVersion, Throws.InvalidOperationException.With.Message.Contains("delete the beaconChain database"));
+
+        Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
+        Assert.That(version, Is.EqualTo(newer), "a refused database must not be restamped as one this build can read");
     }
 
     private static SignedBeaconBlock CreateMinimalBlock(ulong slot) => new()
