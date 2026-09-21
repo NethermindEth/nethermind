@@ -16,8 +16,9 @@ internal static class ApiErrors
     {
         if (ctx.Response.HasStarted)
         {
-            // A handler already wrote (partial) success bytes; there is no clean way to turn those
-            // into an error body without corrupting the stream, so give up rather than send garbage.
+            // Success bytes are already on the wire. Completing the response normally would hand the
+            // client a well-terminated 200 with a truncated body, so abort the connection instead.
+            ctx.Abort();
             return Task.CompletedTask;
         }
 
