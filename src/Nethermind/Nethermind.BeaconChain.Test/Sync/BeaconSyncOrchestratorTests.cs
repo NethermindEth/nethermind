@@ -164,6 +164,68 @@ public class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[150, 151]), "parent imported, then the queued child — nothing else");
     }
 
+    /// <summary>
+    /// A gossip block whose columns trail it must not be dropped for good: it is retried directly
+    /// through <see cref="BeaconSyncOrchestrator.ImportBlockAsync"/> on a later slot tick, not through
+    /// <see cref="BeaconSyncOrchestrator.ProcessGossipBlockAsync"/> (whose seen-proposal gate would
+    /// otherwise drop the retry as a repeat).
+    /// </summary>
+    [Test]
+    public async Task Gossip_block_with_unavailable_data_is_retried_and_imported_once_columns_arrive()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
+        harness.Importer.Known.Add(anchorRoot);
+        BeaconSyncOrchestrator orchestrator = harness.Orchestrator;
+
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 4);
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        SignedBeaconBlock block = chain[0];
+        Hash256 blockRoot = SszRoots.HashTreeRoot(block.Message!);
+        harness.Importer.Unavailable.Add(blockRoot);
+
+        await orchestrator.ProcessGossipBlockAsync(block, CancellationToken.None);
+
+        Assert.That(harness.Importer.Known, Does.Not.Contain(blockRoot), "nothing may be recorded while the block's data is unavailable");
+
+        // The missing columns arrive; the next slot tick must retry and import the block without
+        // gossip seeing it again.
+        harness.Importer.Unavailable.Remove(blockRoot);
+        await orchestrator.ProcessSlotAsync(151, CancellationToken.None);
+
+        Assert.That(harness.Importer.Known, Does.Contain(blockRoot), "the retry must import the block once its data becomes available");
+    }
+
+    /// <summary>The retry list is bounded by finality, not just by size: a block finality has passed stops being retried even after its data becomes available.</summary>
+    [Test]
+    public async Task Gossip_block_with_unavailable_data_stops_being_retried_once_finality_passes_its_slot()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
+        harness.Importer.Known.Add(anchorRoot);
+        BeaconSyncOrchestrator orchestrator = harness.Orchestrator;
+
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: 4); // finalized start slot 128
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        SignedBeaconBlock block = chain[0]; // slot 150, still ahead of finality
+        Hash256 blockRoot = SszRoots.HashTreeRoot(block.Message!);
+        harness.Importer.Unavailable.Add(blockRoot);
+        await orchestrator.ProcessGossipBlockAsync(block, CancellationToken.None);
+
+        // Finality advances past slot 150 (epoch 6 starts at slot 192) before the block is retried.
+        harness.Importer.Head = harness.Importer.Head with { Finalized = new CheckpointRef(6, TestItem.KeccakB) };
+        harness.Importer.Unavailable.Remove(blockRoot);
+        await orchestrator.ProcessSlotAsync(200, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(harness.Importer.Known, Does.Not.Contain(blockRoot), "a block pruned behind finality must not be retried even once its data arrives");
+            Assert.That(harness.Importer.Imports.Count(i => i.Root == blockRoot), Is.EqualTo(1), "the pruned entry must not be retried again on a later tick");
+        });
+    }
+
     [Test]
     public async Task Replay_imports_canonical_store_blocks_without_network_and_stops_at_a_linkage_break()
     {
@@ -244,6 +306,10 @@ public class BeaconSyncOrchestratorTests
     private sealed class ScriptedImporter : IBlockImporter
     {
         public HashSet<Hash256> Known { get; } = [];
+
+        /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.DataUnavailable"/> instead of importing.</summary>
+        public HashSet<Hash256> Unavailable { get; } = [];
+
         public List<(ulong Slot, Hash256 Root, bool VerifySignatures)> Imports { get; } = [];
         public List<ulong> Ticks { get; } = [];
         public List<(Hash256 Root, Hash256? LatestValidHash)> InvalidatedPayloads { get; } = [];
@@ -262,6 +328,7 @@ public class BeaconSyncOrchestratorTests
             Imports.Add((block.Message!.Slot, blockRoot, verifySignatures));
             if (Known.Contains(blockRoot)) return BlockImportResult.AlreadyKnown;
             if (!Known.Contains(block.Message.ParentRoot!)) return BlockImportResult.UnknownParent;
+            if (Unavailable.Contains(blockRoot)) return BlockImportResult.DataUnavailable;
             Known.Add(blockRoot);
             return BlockImportResult.Imported;
         }
