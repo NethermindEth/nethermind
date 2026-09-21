@@ -99,9 +99,27 @@ public class RangeOverlayTests
         {
             Assert.That(one, Is.EqualTo(UInt256.Zero));
             Assert.That(two, Is.EqualTo((UInt256)0x33));
-            Assert.That(account!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(account!.StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash),
+                "the block wrote a slot after its own wipe, so the account holds storage again");
             Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(Code)));
         }
+    }
+
+    [Test]
+    public void AnAccountRecreatedWithStorageAfterAnOlderBlockWipedIt_DoesNotReportAnEmptyRoot()
+    {
+        RangeOverlay destroyed = Chain(null, 7, c => c.Deleted(TestItem.AddressA));
+        RangeOverlay recreated = Chain(destroyed, 8, c =>
+        {
+            c.Balance(TestItem.AddressA, 3);
+            c.Storage(SlotOne, [0x44]);
+        });
+        RangeOverlay later = Chain(recreated, 9, c => c.Balance(TestItem.AddressB, 1));
+
+        later.TryGetAccount(TestItem.AddressA, Parent, out Account? account);
+
+        Assert.That(account!.StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash),
+            "a wipe in an older block says nothing once a newer one wrote slots again; reported empty, a CREATE over this account later in the run would skip its wipe and read these slots back instead of zero");
     }
 
     [Test]

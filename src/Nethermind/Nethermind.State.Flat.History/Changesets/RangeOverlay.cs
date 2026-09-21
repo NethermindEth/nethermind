@@ -84,11 +84,11 @@ internal sealed class RangeOverlay : IStateReadOverlay
         return node;
     }
 
-    /// <remarks>The storage root is the one field this chain does not maintain exactly: an account wiped in any
-    /// block of the chain reports the empty root even when a later block wrote slots again, the same approximation
-    /// <see cref="MidBlockReadOverlay"/> makes within one block. It is safe where this overlay is read, because
-    /// storage is served slot by slot through the overlay and the scope's storage tree only ever turns an empty
-    /// root into a non-empty one, never the reverse; nothing on the trace path reads the root for anything else.</remarks>
+    /// <remarks>The storage root is the one field this chain does not maintain exactly: it says whether the account
+    /// holds storage, not what the root is. It errs towards non-empty, which is the safe direction, because the
+    /// root is read on the trace path: the storage provider decides from it whether a wipe has anything to clear,
+    /// and an account wrongly reported empty would have its wipe skipped and its old slots read back afterwards
+    /// instead of zero.</remarks>
     public bool TryGetAccount(Address address, Account? underlying, out Account? overlaid)
     {
         if (_refused.Contains(address))
@@ -100,11 +100,15 @@ internal sealed class RangeOverlay : IStateReadOverlay
         UInt256? nonce = null;
         UInt256? balance = null;
         ValueHash256? codeHash = null;
-        bool wiped = false;
+        bool? storageEmpty = null;
         bool hit = false;
         Account? basis = underlying;
         for (RangeOverlay? node = this; node is not null; node = node._older)
         {
+            // The newest node that says anything about this account's storage settles it: slots written after a wipe
+            // leave the account holding storage again, so an older block's wipe must not reach the root reported here.
+            if (storageEmpty is null && node._storageAccounts.Contains(address)) storageEmpty = false;
+
             if (!node._accounts.TryGetValue(address, out AccountEnd end)) continue;
 
             hit = true;
@@ -117,10 +121,11 @@ internal sealed class RangeOverlay : IStateReadOverlay
             nonce ??= end.Nonce;
             balance ??= end.Balance;
             codeHash ??= end.CodeHash;
-            wiped |= end.Wiped;
+            if (storageEmpty is null && (end.Wiped || end.Gone)) storageEmpty = true;
             if (end.Emptied)
             {
                 basis = Account.TotallyEmpty;
+                storageEmpty ??= true;
                 break;
             }
         }
@@ -135,10 +140,21 @@ internal sealed class RangeOverlay : IStateReadOverlay
         overlaid = new Account(
             nonce is { } n ? (ulong)n : basis.Nonce,
             balance ?? basis.Balance,
-            wiped ? Keccak.EmptyTreeHash : basis.StorageRoot,
+            StorageRootOf(storageEmpty, basis),
             codeHash is { } c ? (Hash256)c : basis.CodeHash);
         return true;
     }
+
+    /// <summary>An account the chain left holding slots must not report the empty root even when its basis is the
+    /// empty account, which is what a destroy-and-recreate leaves behind: the storage provider reads this root to
+    /// decide whether a wipe has anything to clear, and on an empty one it skips the wipe and the account's old
+    /// slots read back afterwards instead of zero.</summary>
+    private static Hash256 StorageRootOf(bool? storageEmpty, Account basis) => storageEmpty switch
+    {
+        true => Keccak.EmptyTreeHash,
+        false when basis.StorageRoot == Keccak.EmptyTreeHash => IStateReadOverlay.NonEmptyStorageRoot,
+        _ => basis.StorageRoot
+    };
 
     public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value)
     {
