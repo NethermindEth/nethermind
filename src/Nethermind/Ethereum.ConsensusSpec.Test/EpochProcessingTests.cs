@@ -85,9 +85,9 @@ public class EpochProcessingTests
 
                 FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
             }
-            else if (thrown is null)
+            else
             {
-                Assert.Fail("expected the sub-transition to be rejected as invalid, but it completed without error");
+                FuluDriverSupport.AssertRejected(thrown, "the sub-transition");
             }
         });
 
