@@ -190,8 +190,14 @@ public static class GloasBlockProcessing
             ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures);
         }
         RejectIfPresent(body.Attestations, "attestations");
-        RejectIfPresent(body.VoluntaryExits, "voluntary exits");
-        RejectIfPresent(body.BlsToExecutionChanges, "BLS-to-execution changes");
+        foreach (SignedVoluntaryExit exit in body.VoluntaryExits ?? [])
+        {
+            ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures);
+        }
+        foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges ?? [])
+        {
+            ProcessBlsToExecutionChange(state, change, verifySignatures);
+        }
         RejectIfPresent(body.PayloadAttestations, "payload attestations");
     }
 
@@ -313,6 +319,55 @@ public static class GloasBlockProcessing
                 return false;
         }
         return !verifySignature || GloasSignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys);
+    }
+
+    /// <summary>Spec <c>process_voluntary_exit</c> (Electra, unmodified in Gloas); the exit it initiates draws on the EIP-8061 exit churn.</summary>
+    public static void ProcessVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true)
+    {
+        VoluntaryExit exit = signedExit.Message!;
+        if (exit.ValidatorIndex >= (ulong)state.Validators!.Length)
+            throw new BeaconStateException($"Voluntary exit validator index {exit.ValidatorIndex} is out of range");
+
+        Validator validator = state.Validators[(int)exit.ValidatorIndex];
+        ulong currentEpoch = state.GetCurrentEpoch();
+        if (!validator.IsActiveValidator(currentEpoch))
+            throw new BeaconStateException($"Exiting validator {exit.ValidatorIndex} is not active");
+        if (validator.ExitEpoch != Presets.FarFutureEpoch)
+            throw new BeaconStateException($"Validator {exit.ValidatorIndex} already initiated an exit");
+        if (currentEpoch < exit.Epoch)
+            throw new BeaconStateException($"Voluntary exit is not valid before epoch {exit.Epoch}");
+        if (currentEpoch < validator.ActivationEpoch + Presets.ShardCommitteePeriod)
+            throw new BeaconStateException($"Validator {exit.ValidatorIndex} has not been active long enough");
+        if (state.GetPendingBalanceToWithdraw((int)exit.ValidatorIndex) != 0)
+            throw new BeaconStateException($"Validator {exit.ValidatorIndex} has pending partial withdrawals");
+        if (verifySignature && !GloasSignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys))
+            throw new BeaconStateException("Invalid voluntary exit signature");
+
+        state.InitiateValidatorExit((int)exit.ValidatorIndex, cache);
+    }
+
+    /// <summary>Spec <c>process_bls_to_execution_change</c> (Capella, unmodified in Gloas).</summary>
+    public static void ProcessBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, bool verifySignature = true)
+    {
+        BlsToExecutionChange change = signedChange.Message!;
+        if (change.ValidatorIndex >= (ulong)state.Validators!.Length)
+            throw new BeaconStateException($"BLS change validator index {change.ValidatorIndex} is out of range");
+
+        Validator validator = state.Validators[(int)change.ValidatorIndex];
+        ReadOnlySpan<byte> credentials = validator.WithdrawalCredentials!.Bytes;
+        if (credentials[0] != Presets.BlsWithdrawalPrefix)
+            throw new BeaconStateException($"Validator {change.ValidatorIndex} does not have BLS withdrawal credentials");
+        if (!credentials[1..].SequenceEqual(SHA256.HashData(change.FromBlsPubkey.Bytes).AsSpan(1)))
+            throw new BeaconStateException("BLS change pubkey does not match the withdrawal credentials");
+        if (verifySignature && !GloasSignatureSets.VerifyBlsToExecutionChange(state, signedChange))
+            throw new BeaconStateException("Invalid BLS to execution change signature");
+
+        Span<byte> newCredentials = stackalloc byte[32];
+        newCredentials[0] = Presets.EthWithdrawalPrefix;
+        change.ToExecutionAddress!.Bytes.CopyTo(newCredentials[12..]);
+        Validator updated = validator.Clone();
+        updated.WithdrawalCredentials = new Hash256(newCredentials);
+        state.Validators[(int)change.ValidatorIndex] = updated;
     }
 
     /// <summary>
