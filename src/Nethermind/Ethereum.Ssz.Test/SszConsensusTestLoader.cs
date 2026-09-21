@@ -49,7 +49,7 @@ public static class SszConsensusTestLoader
     private static string GetTestsRoot() =>
         s_testsRoot ??= TestFixtureDownloader.EnsureDownloaded(
             "SszTests", ArchiveUrlTemplate, DefaultVersion, DefaultArchive,
-            entry => TestFixtureDownloader.PathUnderPrefix(entry, SszGenericPrefix));
+            entry => TestFixtureDownloader.PathUnderPrefix(entry, SszGenericPrefix), extractionTag: SszGenericPrefix);
 
     /// <summary>
     /// Returns the path to the ssz_generic test directory for a given type handler.
