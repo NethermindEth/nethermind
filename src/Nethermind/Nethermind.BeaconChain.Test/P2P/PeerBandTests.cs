@@ -820,5 +820,11 @@ public class PeerBandTests
                 throw new Eth2ReqRespException("status refused for the test");
             }
         }
+
+        // Unused here: this double exists to fail the status exchange, and nothing on the peer
+        // path reads the API's view of the chain.
+        public Hash256 JustifiedRoot => Hash256.Zero;
+
+        public bool ExecutionInSync => false;
     }
 }
