@@ -124,7 +124,7 @@ public class BeaconApiEnvelopeTests
     /// true or false in ResponseEnvelope.ExecutionOptimistic would have passed every one of them.
     /// </summary>
     [Test]
-    public async Task Header_execution_optimistic_tracks_the_el_in_sync_metric_both_ways()
+    public async Task Header_execution_optimistic_tracks_the_status_sources_el_in_sync_flag_both_ways()
     {
         const ulong slot = 13_200_000;
         SignedBeaconBlock block = CreateMinimalBlock(slot);
@@ -133,25 +133,17 @@ public class BeaconApiEnvelopeTests
         _store.SetCanonicalRoot(slot, root);
         _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero };
 
-        try
-        {
-            Metrics.BeaconChainElInSync = 0;
-            HttpResponseMessage optimistic = await _client.GetAsync($"/eth/v1/beacon/headers/{root}");
-            JsonDocument optimisticBody = JsonDocument.Parse(await optimistic.Content.ReadAsStringAsync());
-            Assert.That(optimisticBody.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True,
-                "EL not yet confirmed VALID by the orchestrator");
+        _statusHolder.ExecutionInSync = false;
+        HttpResponseMessage optimistic = await _client.GetAsync($"/eth/v1/beacon/headers/{root}");
+        JsonDocument optimisticBody = JsonDocument.Parse(await optimistic.Content.ReadAsStringAsync());
+        Assert.That(optimisticBody.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True,
+            "EL not yet confirmed VALID by the orchestrator");
 
-            Metrics.BeaconChainElInSync = 1;
-            HttpResponseMessage confirmed = await _client.GetAsync($"/eth/v1/beacon/headers/{root}");
-            JsonDocument confirmedBody = JsonDocument.Parse(await confirmed.Content.ReadAsStringAsync());
-            Assert.That(confirmedBody.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False,
-                "EL confirmed VALID by the orchestrator");
-        }
-        finally
-        {
-            // Metrics.BeaconChainElInSync is process-wide static state; do not leak it into later tests.
-            Metrics.BeaconChainElInSync = 0;
-        }
+        _statusHolder.ExecutionInSync = true;
+        HttpResponseMessage confirmed = await _client.GetAsync($"/eth/v1/beacon/headers/{root}");
+        JsonDocument confirmedBody = JsonDocument.Parse(await confirmed.Content.ReadAsStringAsync());
+        Assert.That(confirmedBody.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False,
+            "EL confirmed VALID by the orchestrator");
     }
 
     [Test]

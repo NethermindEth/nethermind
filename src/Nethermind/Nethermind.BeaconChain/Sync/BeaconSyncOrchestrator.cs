@@ -557,6 +557,8 @@ public sealed class BeaconSyncOrchestrator(
         Metrics.BeaconChainFinalizedEpoch = head.Finalized.Epoch;
         Metrics.BeaconChainJustifiedEpoch = head.Justified.Epoch;
         Metrics.BeaconChainElInSync = _elInSync ? 1 : 0;
+        statusHolder.JustifiedRoot = head.Justified.Root;
+        statusHolder.ExecutionInSync = _elInSync;
         statusHolder.CurrentStatus = new StatusMessageV2
         {
             ForkDigest = _currentDigest,
