@@ -163,6 +163,43 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(60_000)]
+    public async Task A_static_peer_that_connected_to_us_first_is_still_exempt_from_trimming(CancellationToken token)
+    {
+        // An inbound session is keyed by the address the remote came from, never by its configured
+        // static address, so an exemption matched on the address string would trim the static peer.
+        Node staticPeer = CreateNode();
+        Node other = CreateNode();
+        Node local = CreateNode();
+        SetMatchingStatus(staticPeer, other, local);
+        staticPeer.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot;
+        other.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot + 100;
+
+        await using (local.P2P)
+        await using (staticPeer.P2P)
+        await using (other.P2P)
+        {
+            await staticPeer.P2P.StartAsync(token);
+            await other.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            local.Config.StaticPeers = LoopbackAddress(staticPeer.P2P);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+            await staticPeer.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await WaitUntilAsync(() => peerManager.PeerCount == 1, token, "the static peer's inbound session was never admitted");
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token), Is.True);
+
+            local.Config.MaxPeerCount = 1;
+            local.Config.TargetPeerCount = 1;
+            await peerManager.RunMaintenanceRoundAsync(token);
+
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "must trim down to the target");
+            Assert.That(peerManager.GetBestPeers(0).Single().HeadSlot, Is.EqualTo(AnchorSlot),
+                "the static peer is the worse one by head slot and must still be the one kept");
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
     public async Task A_banned_static_peer_is_not_reconnected_even_though_it_is_reachable(CancellationToken token)
     {
         Node server = CreateNode();
