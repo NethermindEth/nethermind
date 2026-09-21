@@ -290,6 +290,22 @@ public class PbtWorldStateScopeTests
         }
     }
 
+    [Test]
+    public async Task ContainsCode_AnswersFromPbtLayersOnly()
+    {
+        byte[] code = Bytes.FromHexString("6001");
+        Hash256 codeHash = Keccak.Compute(code);
+        await using PbtTestContext ctx = new();
+        ctx.CodeDb[codeHash.Bytes] = code;
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+
+        // Code the code DB already holds must still be written, or its chunk leaves never enter the tree.
+        Assert.That(scope.CodeDb.ContainsCode(codeHash.ValueHash256), Is.False);
+        using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
+            codeWriter.Set(codeHash.ValueHash256, code);
+        Assert.That(scope.CodeDb.ContainsCode(codeHash.ValueHash256), Is.True);
+    }
+
     [TestCase(7u, false)]
     [TestCase(1000u, false)]
     [TestCase(1000u, true)]

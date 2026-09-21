@@ -22,7 +22,8 @@ public sealed class PbtCodeDb(IWorldStateScopeProvider.ICodeDb inner, PbtSnapsho
 
     public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CapturingCodeSetter(inner.BeginCodeWrite(), bundle);
 
-    public bool ContainsCode(in ValueHash256 codeHash) => bundle.GetCode(codeHash) is not null || inner.ContainsCode(codeHash);
+    // The world state skips the code write on true, and only a code held by a PBT layer has its chunk leaves in the tree.
+    public bool ContainsCode(in ValueHash256 codeHash) => bundle.GetCode(codeHash) is not null;
 
     public void MarkCodePersisted(in ValueHash256 codeHash) => inner.MarkCodePersisted(codeHash);
 
