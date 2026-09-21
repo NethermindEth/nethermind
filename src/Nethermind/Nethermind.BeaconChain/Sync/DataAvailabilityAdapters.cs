@@ -6,7 +6,6 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.Enr;
 
 namespace Nethermind.BeaconChain.Sync;
 
@@ -23,9 +22,10 @@ internal sealed class DataColumnPoolSource(DataColumnSidecarPool pool) : IDataCo
 
 /// <summary>
 /// This node's column custody, read from discovery once it has started. The importer is built before
-/// discovery starts, so the identity cannot be captured up front; it is resolved on first use and
-/// then fixed, since the node key never changes within a run. With no discovery at all (the P2P-less
-/// configuration tests run) there is no identity, and the rule fed from here fails closed.
+/// discovery starts, so the identity cannot be captured up front; it is resolved at check time from
+/// the custody discovery currently advertises and re-derived only when that custody's node id or
+/// group count changes. With no discovery at all (the P2P-less configuration tests run) there is no
+/// identity, and the rule fed from here fails closed.
 /// </summary>
 internal sealed class DiscoveryNodeCustodySource(BeaconDiscovery? discovery) : INodeColumnCustodySource
 {
@@ -35,26 +35,19 @@ internal sealed class DiscoveryNodeCustodySource(BeaconDiscovery? discovery) : I
     {
         get
         {
-            if (_current is not null)
-            {
-                return _current;
-            }
-
-            // Both are assigned inside Start; a null custody means discovery has not run yet.
+            // Assigned inside Start; a null custody means discovery has not run yet.
             if (discovery?.LocalCustody is not { } custody)
             {
                 return null;
             }
 
-            return _current = new NodeColumnCustody(NodeIdOf(discovery.LocalNodeRecord), custody.CustodyGroupCount);
+            NodeColumnCustody? current = _current;
+            if (current is null || current.NodeId != custody.NodeId || current.CustodyGroupCount != custody.CustodyGroupCount)
+            {
+                _current = current = new NodeColumnCustody(custody.NodeId, custody.CustodyGroupCount);
+            }
+
+            return current;
         }
     }
-
-    /// <summary>
-    /// The discv5 node id behind an ENR: <c>keccak256(uncompressed secp256k1 key)</c>, the exact value
-    /// <see cref="BeaconDiscovery.LocalCustody"/> was derived from, so the columns demanded here are
-    /// the columns advertised there.
-    /// </summary>
-    internal static Hash256 NodeIdOf(NodeRecord record) =>
-        record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress().Hash;
 }
