@@ -54,6 +54,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private const int MaxDiscoveryCandidates = 16;
     private const int MaxDiscoveryRounds = 6;
+    /// <summary>
+    /// Rounds that ran ready candidates, found nothing new and were not charged because a sender was still pending.
+    /// Each one drops the candidates that ran, so it shrinks the set, but it also re-executes them: this keeps the
+    /// speculative work bounded at <see cref="MaxDiscoveryRounds"/> plus this many block re-executions. Senders land
+    /// within a round or two, so the cap is rarely reached.
+    /// </summary>
+    private const int MaxUnchargedRounds = 2;
     internal const int MaxDiscoveredCells = 8192;
     // Iterative discovery is substantially costlier than ordinary warmup; reserve it for exceptional transactions.
     private const ulong StorageDiscoveryGasThreshold = 10_000_000;
@@ -240,6 +247,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         List<(int Index, Transaction Tx)> nextRoundCandidates = new(candidates.Count);
         List<(int Index, Transaction Tx)> admitted = new(candidates.Count);
         List<(int Index, Transaction Tx)> deferred = new(candidates.Count);
+        int uncharged = 0;
 
         for (int round = 0; round < MaxDiscoveryRounds && currentCandidates.Count > 0; round++)
         {
@@ -306,9 +314,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             else if (awaiting > 0)
             {
                 // The candidates that ran would only repeat themselves; the ones still waiting for a sender go on,
-                // and the round is not charged to the depth budget they have not used yet.
+                // and the round is not charged to the depth budget they have not used yet - up to MaxUnchargedRounds
+                // times, since unlike the wait above this round did execute.
                 nextRoundCandidates.RemoveRange(awaiting, productive);
-                round--;
+                if (uncharged++ < MaxUnchargedRounds) round--;
             }
 
             // Survivors: productive candidates plus the ones this round's budget deferred, back in block order.
@@ -1491,13 +1500,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             while (wanted-- > 0)
             {
+                TxWarmupWorker helper = Rent();
                 if (Interlocked.Increment(ref _active) > Degree)
                 {
                     Interlocked.Decrement(ref _active);
+                    Park(helper);
                     return;
                 }
 
-                TxWarmupWorker helper = Rent();
                 Interlocked.Increment(ref _helpers);
                 try
                 {
@@ -1643,12 +1653,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         public void Dispose()
         {
-            for (TxWarmupWorker? worker = _parked; worker is not null; worker = worker.NextParked)
+            using (_parkedLock.EnterScope())
             {
-                worker.Dispose();
+                for (TxWarmupWorker? worker = _parked; worker is not null; worker = worker.NextParked)
+                {
+                    worker.Dispose();
+                }
+
+                _parked = null;
             }
 
-            _parked = null;
             _scratch.Dispose();
         }
     }
@@ -1715,7 +1729,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// <summary>
         /// A helper recruited for a wave of late senders. Nothing may escape a pool work item, and the block joins
         /// helpers on the count <see cref="WarmupQueue.HelperExited"/> lowers, so the env is rented and returned
-        /// inside the guarded region and the count is lowered last, whatever happened before.
+        /// inside the guarded region and the count is lowered whatever happened before. Parking comes last: a parked
+        /// worker can be rented and queued again at once, so it must not be reachable while this frame still runs.
         /// </summary>
         public void Execute()
         {
@@ -1729,7 +1744,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 }
                 finally
                 {
-                    Park();
+                    Detach();
                 }
             }
             catch (OperationCanceledException)
@@ -1743,6 +1758,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             finally
             {
                 _queue.HelperExited();
+                Park();
             }
         }
 
