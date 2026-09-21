@@ -38,6 +38,13 @@ public sealed class ProcessingTransactionIndexBulkFill(
     private readonly ILogger _logger = logs.GetClassLogger<ProcessingTransactionIndexBulkFill>();
     public bool Enabled => config.HistoryTransactionIndexBulkFillEnabled;
 
+    internal static ILifetimeScope BuildReplayScope(ILifetimeScope root, BulkFillScopeProvider provider, IBlockValidationModule[] validationModules) =>
+        root.BeginLifetimeScope(builder => builder
+            .AddModule(validationModules)
+            .AddSingleton<IWorldStateScopeProvider>(provider)
+            .AddSingleton<IStateReader>(provider)
+            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>());
+
     public void Run(CancellationToken token)
     {
         if (!Enabled) return;
@@ -95,11 +102,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
         sessions.ValidateSource(checkpoint);
         session.CleanStorage(token);
         BulkFillScopeProvider provider = new(session, root.Resolve<ITrieNodeCache>(), root.Resolve<IResourcePool>(), config, logs);
-        using ILifetimeScope scope = root.BeginLifetimeScope(builder => builder
-            .AddModule(validationModules)
-            .AddSingleton<IWorldStateScopeProvider>(provider)
-            .AddSingleton<IStateReader>(provider)
-            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>());
+        using ILifetimeScope scope = BuildReplayScope(root, provider, validationModules);
         IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
         long reportedAt = Stopwatch.GetTimestamp();
         ulong reportedBlock = session.CurrentState.BlockNumber;
