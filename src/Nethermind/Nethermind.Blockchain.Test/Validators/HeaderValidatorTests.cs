@@ -168,8 +168,10 @@ public class HeaderValidatorTests
         }
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_orphaned_amsterdam_header_has_no_slot_number()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(3ul, true, null)]
+    [TestCase(null, false, BlockErrorMessages.MissingSlotNumber)]
+    public void When_orphaned_amsterdam_header_slot_presence_matches_fork(ulong? slotNumber, bool expectedResult, string? expectedError)
     {
         TestSpecProvider specProvider = new(Amsterdam.Instance);
         _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
@@ -182,15 +184,15 @@ public class HeaderValidatorTests
             .WithEmptyRequestsHash()
             .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
             .TestObject;
-        _block.Header.SlotNumber = null;
+        _block.Header.SlotNumber = slotNumber;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.False);
-            Assert.That(error, Is.EqualTo(BlockErrorMessages.MissingSlotNumber));
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, Is.EqualTo(expectedError));
         }
     }
 
@@ -208,32 +210,6 @@ public class HeaderValidatorTests
         {
             Assert.That(result, Is.False);
             Assert.That(error, Is.EqualTo(BlockErrorMessages.SlotNumberNotEnabled));
-        }
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_orphaned_amsterdam_header_has_slot_number()
-    {
-        TestSpecProvider specProvider = new(Amsterdam.Instance);
-        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
-            new OneLoggerLogManager(new(_testLogger)));
-
-        _block = Build.A.Block
-            .WithNumber(6)
-            .WithSlotNumber(3)
-            .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithEmptyRequestsHash()
-            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
-            .TestObject;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result, Is.True);
-            Assert.That(error, Is.Null);
         }
     }
 
