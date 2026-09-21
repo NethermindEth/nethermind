@@ -30,7 +30,7 @@ namespace Nethermind.BeaconChain.Test.Sync;
 /// <summary>
 /// The production data availability gate as <see cref="BlockImporter"/> applies it, driven end to
 /// end through <see cref="BlockImporter.Import"/> with a genuinely valid signed blob block
-/// (<see cref="ImportableBlobBlock"/>): availability is the only check left that can reject it.
+/// (<see cref="ImportableBlobBlock"/>): availability is the only check left that can defer it.
 /// At the base of this change the importer passed no columns at all to a rule that demands every
 /// column, so every blob-carrying block was rejected; the positive case here is what proves the
 /// gate now admits the blocks a base-custody node is actually able to verify.
@@ -62,7 +62,7 @@ public class BlockImporterTests
     }
 
     [Test]
-    public void Blob_block_missing_one_custody_column_is_rejected()
+    public void Blob_block_missing_one_custody_column_is_deferred()
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
@@ -76,14 +76,14 @@ public class BlockImporterTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "missing columns are retryable, not a permanent rejection");
             Assert.That(importer.IsKnown(chain.BlockRoot), Is.False, "a block whose data is unavailable must not enter fork choice");
-            Assert.That(warnings.Warnings, Has.Some.Contains("blob data available"), "rejected for availability, not for some other reason");
+            Assert.That(warnings.Warnings, Has.Some.Contains("blob data is not yet available"), "deferred for availability, not for some other reason");
         });
     }
 
     [Test]
-    public void Blob_block_missing_a_sampled_but_not_custodied_column_is_rejected()
+    public void Blob_block_missing_a_sampled_but_not_custodied_column_is_deferred()
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         NodeColumnCustody custody = BaseCustody();
@@ -94,11 +94,11 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "custody columns alone are not enough: the per-slot sample must succeed too");
+        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "custody columns alone are not enough: the per-slot sample must succeed too");
     }
 
     [Test]
-    public void Blob_block_is_rejected_while_the_node_identity_is_unknown()
+    public void Blob_block_is_deferred_while_the_node_identity_is_unknown()
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         DataColumnSidecarPool pool = new();
@@ -107,7 +107,7 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "a rule that cannot say which columns it needs cannot say a block is available, even holding all 128");
+        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "a rule that cannot say which columns it needs cannot say a block is available, even holding all 128");
     }
 
     [Test]
@@ -125,7 +125,7 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "holding a column is not availability; the column must verify against the block's commitments");
+        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "holding a column is not availability; the column must verify against the block's commitments");
     }
 
     [Test]
@@ -141,7 +141,7 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable));
     }
 
     [Test]
@@ -201,7 +201,7 @@ public class BlockImporterTests
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
-        Assert.That(result, Is.EqualTo(BlockImportResult.Invalid), "no discovery means no node id, so the custody rule has no columns to demand and must refuse rather than pass");
+        Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable), "no discovery means no node id, so the custody rule has no columns to demand and must defer rather than pass");
     }
 
     private static void Hold(DataColumnSidecarPool pool, ImportableBlobBlock chain, IEnumerable<ulong> columns)
@@ -274,6 +274,56 @@ public class BlockImporterTests
         });
     }
 
+    /// <summary>
+    /// A block trailing its columns must never reach the engine at all: the availability check has
+    /// to run before <c>newPayload</c>, not just produce the right label afterwards. A test that
+    /// only asserted the returned result would still pass if a future edit moved the check back
+    /// after the transition (gap 111's failure mode), so this asserts against a spy engine instead.
+    /// </summary>
+    [Test]
+    public void Blob_block_missing_columns_never_calls_the_engine()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        NodeColumnCustody custody = BaseCustody();
+        DataColumnSidecarPool pool = new();
+        ulong missing = custody.CustodyColumns[0];
+        Hold(pool, chain, custody.SampledColumns.Where(c => c != missing));
+        EngineCallSpy engine = new();
+        BlockImporter importer = CreateImporter(chain, custody, pool, engine: engine);
+
+        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.DataUnavailable));
+            Assert.That(engine.HasAnsweredNewPayload, Is.False, "the engine must not be consulted for a block that cannot be recorded anyway");
+        });
+    }
+
+    /// <summary>The same block must import once its missing columns are later pooled, not stay dropped forever.</summary>
+    [Test]
+    public void Blob_block_missing_columns_imports_once_the_missing_column_is_pooled()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        NodeColumnCustody custody = BaseCustody();
+        DataColumnSidecarPool pool = new();
+        ulong missing = custody.CustodyColumns[0];
+        Hold(pool, chain, custody.SampledColumns.Where(c => c != missing));
+        BlockImporter importer = CreateImporter(chain, custody, pool);
+
+        BlockImportResult deferred = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+        bool knownWhileDeferred = importer.IsKnown(chain.BlockRoot);
+        Hold(pool, chain, [missing]);
+        BlockImportResult retried = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(deferred, Is.EqualTo(BlockImportResult.DataUnavailable));
+            Assert.That(knownWhileDeferred, Is.False, "nothing may be recorded while a column is still missing");
+            Assert.That(retried, Is.EqualTo(BlockImportResult.Imported), "the same block must import once the missing column arrives");
+        });
+    }
+
     private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null) =>
         new(
             chain.Spec,
@@ -299,6 +349,28 @@ public class BlockImporterTests
     }
 
     private sealed class ValidPayloadEngine : IEngineDriver
+    {
+        public SignedBeaconBlock? CurrentBlock { get; set; }
+
+        public bool HasAnsweredNewPayload { get; private set; }
+
+        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
+            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
+
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+        {
+            HasAnsweredNewPayload = true;
+            return ExecutionStatus.Valid;
+        }
+    }
+
+    /// <summary>
+    /// Records whether <c>newPayload</c> was ever called, for the hoisted-availability-check tests.
+    /// Kept private to this file rather than shared: a hand-written <see cref="IEngineDriver"/> used
+    /// elsewhere to check envelope-support enforcement must stay the only such double, or the two
+    /// would collide.
+    /// </summary>
+    private sealed class EngineCallSpy : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
 

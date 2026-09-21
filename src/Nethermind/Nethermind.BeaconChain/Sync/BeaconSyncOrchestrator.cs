@@ -59,6 +59,10 @@ public sealed class BeaconSyncOrchestrator(
     private const int MaxBackfillPeersPerRequest = 3;
 
     private const int MaxPendingGossipBlocks = 128;
+
+    /// <summary>Cap on blocks awaiting a data/engine-availability retry, so a stuck peer or a stalled EL cannot grow this without bound.</summary>
+    private const int MaxPendingRetryBlocks = 128;
+
     private const int WorkQueueCapacity = 512;
 
     /// <summary>Head-step cadence while the work queue never drains (deep range sync).</summary>
@@ -79,6 +83,9 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Gossip blocks waiting for their parent, keyed by the unknown parent root.</summary>
     private readonly Dictionary<Hash256, List<SignedBeaconBlock>> _pendingByParent = [];
+
+    /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/> or <see cref="BlockImportResult.EngineUnavailable"/>, keyed by block root, awaiting a slot-tick retry.</summary>
+    private readonly Dictionary<Hash256, SignedBeaconBlock> _pendingRetry = [];
 
     private readonly ConcurrentDictionary<string, byte> _dialedPeerIds = new();
     private readonly Stopwatch _progressStopwatch = new();
@@ -278,7 +285,13 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Imports one block and, on success, drains any gossip blocks that were waiting for it.</summary>
+    /// <summary>
+    /// Imports one block and, on success, drains any gossip blocks that were waiting for it. The
+    /// single choke point for all four callers of <see cref="IBlockImporter.Import"/>, so this is
+    /// also where a <see cref="BlockImportResult.DataUnavailable"/> or
+    /// <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry —
+    /// wiring it in at only one call site would leave the other three silently dropping it.
+    /// </summary>
     internal async Task<BlockImportResult> ImportBlockAsync(SignedBeaconBlock block, CancellationToken token)
     {
         Hash256 root = SszRoots.HashTreeRoot(block.Message!);
@@ -288,10 +301,58 @@ public sealed class BeaconSyncOrchestrator(
         {
             Metrics.BeaconChainBlocksImported++;
             Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
+            _pendingRetry.Remove(root);
             await OnImportedAsync(root, block.Message!.Slot, token);
+        }
+        else if (result is BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable)
+        {
+            QueuePendingRetry(root, block);
+        }
+        else
+        {
+            _pendingRetry.Remove(root);
         }
 
         return result;
+    }
+
+    /// <summary>Remembers a block for <see cref="DrainPendingRetriesAsync"/>; silently drops it once <see cref="MaxPendingRetryBlocks"/> is reached, same as <see cref="QueuePendingGossipBlock"/> does for its list.</summary>
+    private void QueuePendingRetry(Hash256 root, SignedBeaconBlock block)
+    {
+        if (_pendingRetry.ContainsKey(root) || _pendingRetry.Count >= MaxPendingRetryBlocks)
+        {
+            return;
+        }
+
+        _pendingRetry[root] = block;
+    }
+
+    /// <summary>
+    /// Retries every pending block once per slot tick, straight through <see cref="ImportBlockAsync"/>
+    /// — never through <see cref="ProcessGossipBlockAsync"/>, whose seen-proposal gate would drop the
+    /// retry as a repeat. A pending block whose slot has fallen behind the finalized checkpoint is
+    /// dropped instead of retried: that, together with <see cref="MaxPendingRetryBlocks"/>, is what
+    /// stops a stuck block from being retried forever.
+    /// </summary>
+    private async Task DrainPendingRetriesAsync(CancellationToken token)
+    {
+        if (_pendingRetry.Count == 0)
+        {
+            return;
+        }
+
+        ulong finalizedSlot = _lastHead is { } head ? BeaconStateAccessors.ComputeStartSlotAtEpoch(head.Finalized.Epoch) : 0;
+        List<KeyValuePair<Hash256, SignedBeaconBlock>> retries = [.. _pendingRetry];
+        foreach ((Hash256 root, SignedBeaconBlock block) in retries)
+        {
+            if (block.Message!.Slot <= finalizedSlot)
+            {
+                _pendingRetry.Remove(root);
+                continue;
+            }
+
+            await ImportBlockAsync(block, token);
+        }
     }
 
     private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token)
@@ -537,6 +598,7 @@ public sealed class BeaconSyncOrchestrator(
     {
         _importer!.OnSlotTick(slot);
         await RunHeadStepAsync(token);
+        await DrainPendingRetriesAsync(token);
 
         ulong epoch = spec.GetEpoch(slot);
         if (_nextRotation is { } rotation && epoch >= rotation.Epoch)
