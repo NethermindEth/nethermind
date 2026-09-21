@@ -60,7 +60,6 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     }
 
     /// <summary>Retains a group under its path and subtree hash, superseding an older hash at the same path; the caller keeps its own lease.</summary>
-    /// <remarks>A payload with more than 20% pool slack, or one borrowed from RocksDB, is copied rather than leased.</remarks>
     internal void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
     {
         if (IsStorage(path)) Add(_storage, groupHash, path, payload);
@@ -118,16 +117,18 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         Clear();
     }
 
-    // RocksDB memory pins a block-cache block, so it is always copied; a pooled buffer is copied only when its slack exceeds a fifth of the value.
-    private static bool ShouldCopy(RefCountingMemory payload) => payload.IsRocksDbBacked || payload.Capacity * 5L > payload.GetSpan().Length * 6L;
-
-    private static long EntrySize(RefCountingMemory payload) => (ShouldCopy(payload) ? payload.GetSpan().Length : payload.Capacity) + EntryOverhead;
+    private static long EntrySize(RefCountingMemory payload) => payload.Capacity + EntryOverhead;
 
     private static int ShardIndex(int hash) => (int)((uint)hash >> 24);
 
+    /// <summary>Takes the cache's own lease on <paramref name="payload"/>.</summary>
+    /// <remarks>
+    /// The cache never copies a payload, whatever backs it. Memory handed to the cache must already be safe
+    /// to hold for the cache's lifetime; making it so is the backing store's responsibility, not a property
+    /// the consumer inspects. Do not reintroduce a copy or a backing-kind check here.
+    /// </remarks>
     private static RefCountingMemory Retain(RefCountingMemory payload)
     {
-        if (ShouldCopy(payload)) return RefCountingMemory.Wrapping(payload.GetSpan().ToArray());
         payload.AcquireLease();
         return payload;
     }
@@ -263,13 +264,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         internal void Set<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             if (payload is null) return;
-            RefCountingMemory retained;
-            if (payload.IsRocksDbBacked) retained = RefCountingMemory.Wrapping(payload.GetSpan().ToArray());
-            else
-            {
-                payload.AcquireLease();
-                retained = payload;
-            }
+            RefCountingMemory retained = Retain(payload);
             if (IsStorage(path)) Set(Storage, groupHash, path, retained);
             else Set(IsCode(path) ? Code : Account, groupHash, path, retained);
         }
