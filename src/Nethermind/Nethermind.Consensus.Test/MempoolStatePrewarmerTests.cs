@@ -29,18 +29,23 @@ namespace Nethermind.Consensus.Test;
 public class MempoolStatePrewarmerTests
 {
     [Test]
-    public void SelectDelta_WhenEmpty_ReturnsEmpty()
+    public void SelectDelta_WhenEmpty_ReturnsEmpty([Values] bool missingSender)
     {
-        Transaction[] delta = MempoolStatePrewarmer.SelectDelta([], []);
+        Transaction[] delta = MempoolStatePrewarmer.SelectDelta(missingSender ? [new Transaction()] : [], []);
 
         Assert.That(delta, Is.Empty, "an empty selection yields no transactions to warm");
     }
 
     [Test]
-    public void SelectDelta_FirstPass_SelectsEverySender()
+    public void SelectDelta_FirstPass_SelectsEverySender([Values] bool reused)
     {
         Transaction[] ordered = [.. BuildSenderTxs(TestItem.PrivateKeyA, 3), .. BuildSenderTxs(TestItem.PrivateKeyB, 2)];
         Dictionary<AddressAsKey, int> warmedPerSender = [];
+        if (reused)
+        {
+            MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
+            warmedPerSender.Clear();
+        }
 
         Transaction[] delta = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
 
@@ -71,6 +76,44 @@ public class MempoolStatePrewarmerTests
         Transaction[] secondPass = MempoolStatePrewarmer.SelectDelta(BuildSenderTxs(TestItem.PrivateKeyA, 4), warmedPerSender);
 
         Assert.That(secondPass.Length, Is.EqualTo(4), "when new transactions arrive the sender's full group is replayed so predecessors are present");
+    }
+
+    [Test]
+    public void SelectDelta_ReusedScratchPreservesInterleavedSenderOrder([Values(2, 257)] int count)
+    {
+        Transaction[] a = BuildSenderTxs(TestItem.PrivateKeyA, count);
+        Transaction[] b = BuildSenderTxs(TestItem.PrivateKeyB, count);
+        Transaction[] interleaved = a.Zip(b).SelectMany(pair => new[] { pair.First, pair.Second }).ToArray();
+        Dictionary<AddressAsKey, int> warmed = [];
+        Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> scratch = [];
+
+        Transaction[] first = MempoolStatePrewarmer.SelectDelta(interleaved, warmed, scratch);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(a.Concat(b)));
+            Assert.That(scratch, Is.Empty);
+        }
+        Assert.That(MempoolStatePrewarmer.SelectDelta(interleaved, warmed, scratch), Is.Empty);
+
+        Transaction[] extended = BuildSenderTxs(TestItem.PrivateKeyB, count + 1);
+        Assert.That(MempoolStatePrewarmer.SelectDelta(extended.Concat(a), warmed, scratch), Is.EqualTo(extended));
+        Assert.That(scratch, Is.Empty);
+    }
+
+    [Test]
+    public void SelectDelta_ReusedScratchRecoversAfterSourceThrows()
+    {
+        Transaction[] transactions = BuildSenderTxs(TestItem.PrivateKeyA, 2);
+        Dictionary<AddressAsKey, int> warmed = [];
+        Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> scratch = [];
+        Assert.Throws<InvalidOperationException>(() => MempoolStatePrewarmer.SelectDelta(FailingSource(), warmed, scratch));
+        Assert.That(MempoolStatePrewarmer.SelectDelta(transactions, warmed, scratch), Is.EqualTo(transactions));
+
+        IEnumerable<Transaction> FailingSource()
+        {
+            yield return transactions[0];
+            throw new InvalidOperationException();
+        }
     }
 
     [Test]

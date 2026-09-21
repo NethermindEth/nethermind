@@ -34,11 +34,15 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
     internal int NodeGroupCount => AccountNodeGroups.Count + CodeNodeGroups.Count + StorageNodeGroups.Count;
 
-    internal void ClearStorage(in ValueHash256 addressHash)
+    /// <summary>Drops this layer's runs of <paramref name="addressHash"/> and marks its storage cleared.</summary>
+    /// <param name="addressHash">The address whose storage is cleared.</param>
+    /// <param name="isNewStorage">Whether no layer below this one holds storage for the address, so persistence has nothing to delete. A clear of existing storage is sticky: a later clear of new storage does not lift it.</param>
+    internal void ClearStorage(in ValueHash256 addressHash, bool isNewStorage)
     {
         foreach ((HashedKey<PbtStorageTreeKey> key, _) in Storages)
             if (PbtFlatState.StorageAddress(key) == addressHash && Storages.TryRemove(key, out ISlotRun? removed)) SlotRun.Return(removed);
-        SelfDestructedStorageAddresses[addressHash] = true;
+        if (isNewStorage) SelfDestructedStorageAddresses.TryAdd(addressHash, true);
+        else SelfDestructedStorageAddresses[addressHash] = false;
     }
 
     /// <summary>Whether this layer holds the run of <paramref name="runKey"/>, borrowed; a held run answers for all of its slots.</summary>

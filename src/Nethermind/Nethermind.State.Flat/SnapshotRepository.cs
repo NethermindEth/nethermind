@@ -32,7 +32,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // individually-locked. A `To` can live in more than one bucket (a base and a compacted snapshot
     // can share it).
     private readonly ISnapshotCatalog _catalog;
-    private readonly ulong _compactSize;
     private readonly PersistedSnapshotBucket _base;
     private readonly PersistedSnapshotBucket _smallCompacted;
     private readonly PersistedSnapshotBucket _largeCompacted;
@@ -75,7 +74,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _smallCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedSmallCompacted, _logger);
         _largeCompacted = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedLargeCompacted, _logger);
         _compactSized = new PersistedSnapshotBucket(_catalog, SnapshotTier.PersistedCompactSized, _logger);
-        _compactSize = config.CompactSize;
     }
 
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
@@ -139,7 +137,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         if (Height(seed) <= Height(currentPersistedState)) return (null, null);
 
         int estimatedSize = (int)Math.Clamp(seed.BlockNumber - currentPersistedState.BlockNumber, 4, 4096);
-        FindPersistPolicy policy = new(currentPersistedState, compactSize);
+        FindPersistPolicy policy = new(currentPersistedState, compactSize, this);
         using AssembledSnapshotResult result = WalkAndAssemble(seed, estimatedSize, ref policy);
 
         // Candidate is the chain terminus (oldest); re-lease it and let the `using` drop the rest. The
@@ -575,7 +573,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private bool CanReachState(in StateId from, in StateId target)
     {
         if (from == target) return true;
-        if (from.BlockNumber <= target.BlockNumber) return false;
+        if (Height(from) <= Height(target)) return false;
 
         // Order-independent reachability, so a stack DFS suffices; each lease is read for its From then
         // disposed immediately. Same hardcoded in-mem-cannot-follow-persisted invariant as WalkAndAssemble.
@@ -654,22 +652,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket for
     /// <paramref name="tier"/> (must be a <c>Persisted*</c> value). Caller disposes the lease.
     /// </summary>
-    public bool TryLeasePersistedState(in StateId toState, SnapshotTier tier, [NotNullWhen(true)] out PersistedSnapshot? snapshot) => tier switch
-    {
-        SnapshotTier.PersistedBase => TryLeaseFrom(_base, toState, out snapshot),
-        SnapshotTier.PersistedSmallCompacted => TryLeaseFrom(_smallCompacted, toState, out snapshot),
-        SnapshotTier.PersistedLargeCompacted => TryLeaseFrom(_largeCompacted, toState, out snapshot),
-        SnapshotTier.PersistedCompactSized => TryLeaseFrom(_compactSized, toState, out snapshot),
-        _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
-    };
-
-    private static bool TryLeaseFrom(PersistedSnapshotBucket bucket, in StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
-    {
-        if (bucket.TryGet(toState, out snapshot) && snapshot.TryAcquire())
-            return true;
-        snapshot = null;
-        return false;
-    }
+    public bool TryLeasePersistedState(in StateId toState, SnapshotTier tier, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
+        BucketFor(tier).TryLease(toState, out snapshot);
 
     /// <summary>The bucket for a persisted tier — a 1:1 map.</summary>
     private PersistedSnapshotBucket BucketFor(SnapshotTier tier) => tier switch
@@ -693,7 +677,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         // `from` can be PreGenesis (genesis-spanning range); Height() keeps the walk running down to it.
         while (current != from && Height(current) > Height(from))
         {
-            if (!_base.TryGet(current, out PersistedSnapshot? snapshot) || !snapshot.TryAcquire())
+            if (!_base.TryLease(current, out PersistedSnapshot? snapshot))
                 break;
             result.Add(snapshot);
             if (snapshot.From == current)
@@ -860,13 +844,28 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         Hash256? GetRoot(ulong height)
         {
-            if (_finalizedRoots.TryGetValue(height, out Hash256? root)) return root;
             if (unavailableHeights.Contains(height)) return null;
-            root = _finalizedStateProvider.GetFinalizedHeader(height)?.StateRoot;
-            if (root is not null) _finalizedRoots.Add(height, root);
-            else unavailableHeights.Add(height);
+            Hash256? root = GetFinalizedRootLocked(height);
+            if (root is null) unavailableHeights.Add(height);
             return root;
         }
+    }
+
+    private Hash256? GetFinalizedRoot(ulong height, ref HashSet<ulong>? unavailableRoots)
+    {
+        if (unavailableRoots?.Contains(height) == true) return null;
+        using Lock.Scope scope = _finalityCacheLock.EnterScope();
+        Hash256? root = GetFinalizedRootLocked(height);
+        if (root is null) (unavailableRoots ??= []).Add(height);
+        return root;
+    }
+
+    private Hash256? GetFinalizedRootLocked(ulong height)
+    {
+        if (_finalizedRoots.TryGetValue(height, out Hash256? root)) return root;
+        root = _finalizedStateProvider.GetFinalizedHeader(height)?.StateRoot;
+        if (root is not null) _finalizedRoots.Add(height, root);
+        return root;
     }
 
     /// <summary>Keep verified ancestry when <paramref name="head"/> extends the head it was verified against; a reorg discards it.</summary>
@@ -910,13 +909,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public bool HasBasePersistedSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
 
-    public bool TryLeaseBasePersistedSnapshot(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
-    {
-        if (_base.TryGet(to, out snapshot) && snapshot.TryAcquire()) return true;
-
-        snapshot = null;
-        return false;
-    }
+    public bool TryLeaseBasePersistedSnapshot(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
+        _base.TryLease(to, out snapshot);
 
     public IEnumerable<PersistedSnapshot> PersistedSnapshots
     {
@@ -1056,9 +1050,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // FindSnapshotToPersist navigation: walk From-edges down to currentPersistedState, winning at the first
     // edge reaching it that spans at most CompactSize. The >CompactSize large-compacted is a navigation-only
     // skip-pointer (followed above the target, never won onto it). Dedup runs only on retained edges, so a
-    // skipped edge can't shadow the real candidate edge to the same target.
-    private readonly struct FindPersistPolicy(StateId currentPersistedState, ulong compactSize) : IAssemblePolicy
+    // skipped edge can't shadow the real candidate edge to the same target. A terminal
+    // edge conflicting with a known finalized root is skipped so a narrower canonical edge can still win.
+    private struct FindPersistPolicy(StateId currentPersistedState, ulong compactSize, SnapshotRepository finality) : IAssemblePolicy
     {
+        private HashSet<ulong>? _unavailableRoots;
         // LargeCompacted (>CompactSize) leads as a navigation-only skip-pointer; the rest are candidates,
         // CompactSized (the ==CompactSize boundary unit) first.
         public ReadOnlySpan<SnapshotTier> EdgePriority =>
@@ -1069,7 +1065,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             if (from == currentPersistedState)
                 // Any chunk spanning at most CompactSize is persistable; a wider large-compacted is skip-only.
                 // from == PreGenesis makes to - from wrap to to + 1 (the genesis-spanning span), as intended.
-                return to.BlockNumber - from.BlockNumber <= compactSize ? AssembleStep.WinAndStop : AssembleStep.Skip;
+                return to.BlockNumber - from.BlockNumber <= compactSize
+                    && (finality.GetFinalizedRoot(to.BlockNumber, ref _unavailableRoots) is not { } root || to.StateRoot == root)
+                    ? AssembleStep.WinAndStop : AssembleStep.Skip;
             return Height(from) > Height(currentPersistedState) ? AssembleStep.Traverse : AssembleStep.Skip;
         }
     }
@@ -1119,7 +1117,16 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                         (snapshot, from) = (inMemory, inMemory.From);
                     }
 
-                    AssembleStep step = policy.Decide(node.Current, from, tier);
+                    AssembleStep step;
+                    try
+                    {
+                        step = policy.Decide(node.Current, from, tier);
+                    }
+                    catch
+                    {
+                        snapshot.Dispose();
+                        throw;
+                    }
                     if (step == AssembleStep.Skip) { snapshot.Dispose(); continue; }
                     // Cycle detection — dedup AFTER Decide so a skipped (non-candidate) edge doesn't claim
                     // its target and shadow a later candidate edge to the same node. No-op for policies

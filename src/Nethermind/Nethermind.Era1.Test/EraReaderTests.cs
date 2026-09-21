@@ -23,7 +23,7 @@ internal class EraReaderTests
         public string FilePath => _tmpFile.Path;
         public List<(Block, TxReceipt[])> AddedContents { get; }
 
-        public static async Task<PopulatedTestFile> Create()
+        public static async Task<PopulatedTestFile> Create(Transaction? transaction = null)
         {
             TempPath tmpFile = TempPath.GetTempFile();
             using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
@@ -41,6 +41,7 @@ internal class EraReaderTests
 
             await AddBlock(
                 Build.A.Block.WithNumber(0)
+                    .WithTransactions(transaction is null ? [] : [transaction])
                     .WithDifficulty(0)
                     .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
                 [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
@@ -69,6 +70,25 @@ internal class EraReaderTests
         }
 
         public void Dispose() => _tmpFile.Dispose();
+    }
+
+    [Test, NonParallelizable]
+    public async Task Imported_transactions_do_not_consume_the_network_pool()
+    {
+        Transaction source = Build.A.Transaction.Signed().TestObject;
+        using PopulatedTestFile file = await PopulatedTestFile.Create(source);
+        HashSet<Transaction> pooled = new(ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
+        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+
+        using EraReader reader = new(file.FilePath);
+        (Block block, _) = await reader.GetBlockByNumber(0);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions[0].Hash, Is.EqualTo(source.Hash));
+            Assert.That(pooled.Contains(block.Transactions[0]), Is.False);
+        }
     }
 
     [Test]

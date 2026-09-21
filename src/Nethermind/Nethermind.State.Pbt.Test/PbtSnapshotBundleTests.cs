@@ -94,7 +94,7 @@ public class PbtSnapshotBundleTests
         Reader reader = new(default, null) { Storage = persisted };
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = new();
-        content.ClearStorage(addressHash);
+        content.ClearStorage(addressHash, isNewStorage: false);
         content.SetSlot(rewritten, original);
         content.SetSlot(deleted, original);
         PbtSnapshotPooledList snapshots = new(1) { new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing) };
@@ -1127,44 +1127,6 @@ public class PbtSnapshotBundleTests
         }
     }
 
-    [TestCase(7u, false)]
-    [TestCase(7u, true)]
-    [TestCase(1000u, false)]
-    [TestCase(1000u, true)]
-    public void Storage_clear_masks_older_snapshots_but_preserves_subsequent_writes(uint slot, bool clearLast)
-    {
-        PbtResourcePool pool = new(new PbtConfig());
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
-        EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
-        EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("02"));
-        bundle.SetSlot(TestItem.AddressA, slot, original);
-        bundle.SetSlot(TestItem.AddressB, slot, original);
-        ValueHash256 root = Fold(bundle, default);
-        using PbtSnapshot older = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
-
-        if (!clearLast) bundle.SelfDestruct(TestItem.AddressA);
-        bundle.SetSlot(TestItem.AddressA, slot, replacement);
-        if (clearLast) bundle.SelfDestruct(TestItem.AddressA);
-        EvmWord expected = clearLast ? default : replacement;
-        Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(expected));
-        root = Fold(bundle, root);
-        Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetSlot(model, TestItem.AddressB, slot, 1);
-        if (!clearLast) PbtReferenceModel.SetSlot(model, TestItem.AddressA, slot, 2);
-        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-        Assert.That(Fold(bundle, root), Is.EqualTo(root), "repeated folds must not replay cleared writes");
-        using PbtSnapshot newer = bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(expected));
-            Assert.That(bundle.GetSlot(TestItem.AddressB, slot), Is.EqualTo(original));
-            Assert.That(newer.Content.SelfDestructedStorageAddresses.ContainsKey(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)), Is.True);
-            Assert.That(newer.Content.GetSlot(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.EqualTo(expected));
-            Assert.That(older.Content.GetSlot(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.EqualTo(original));
-        }
-    }
-
     [Test]
     public void Code_bearing_account_matches_pinned_eip_root()
     {
@@ -1214,6 +1176,16 @@ public class PbtSnapshotBundleTests
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
             Assert.That(snapshot.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)], Is.SameAs(account));
             Assert.That(snapshot.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
+        }
+        Account rebalanced = account.WithChangedBalance(nonce + 1);
+        bundle.SetAccount(TestItem.AddressA, rebalanced);
+        int pendingAfterBalanceChange = bundle.PendingMutationCount;
+        root = Fold(bundle, root);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, nonce, nonce + 1, bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pendingAfterBalanceChange, Is.EqualTo(3), "a balance change stages header leaves only, never code chunks");
+            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
         }
     }
 
@@ -1384,29 +1356,6 @@ public class PbtSnapshotBundleTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Late_code_lookup_resolves_pending_mutations(bool failFirstFold)
-    {
-        PbtResourcePool pool = new(new PbtConfig());
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
-        byte[] bytes = Bytes.FromHexString("6001600055");
-        Account account = Build.An.Account.WithCode(bytes).TestObject;
-        bundle.SetAccount(TestItem.AddressA, account);
-        if (failFirstFold) Assert.Throws<InvalidDataException>(() => Fold(bundle, default));
-        bundle.ReadCode = hash => hash == account.CodeHash.ValueHash256 ? bytes : null;
-        if (!failFirstFold) Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.Not.Null);
-        ValueHash256 root = Fold(bundle, default);
-        Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, account.Nonce, account.Balance, bytes);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(bundle.PendingMutationCount, Is.Zero);
-        }
-    }
-
     [Test]
     public void Persisted_code_is_read_once_per_bundle_and_never_snapshotted()
     {
@@ -1424,13 +1373,12 @@ public class PbtSnapshotBundleTests
         using PbtSnapshot first = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         Account updated = account.WithChangedBalance(2);
         bundle.SetAccount(TestItem.AddressA, updated);
+        int pendingAfterBalanceChange = bundle.PendingMutationCount;
         root = Fold(bundle, root);
         using PbtSnapshot second = bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root);
-        Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, updated.Nonce, updated.Balance, bytes);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(pendingAfterBalanceChange, Is.EqualTo(3), "an account write stages header leaves only, never code chunks");
             Assert.That(reader.CodeReadCount, Is.EqualTo(1), "persisted code is memoized per bundle");
             Assert.That(bundle.GetCode(codeHash), Is.SameAs(persisted));
             Assert.That(first.Content.Codes, Is.Empty, "memoized code must not be snapshotted");

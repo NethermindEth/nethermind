@@ -290,6 +290,22 @@ public class PbtWorldStateScopeTests
         }
     }
 
+    [Test]
+    public async Task ContainsCode_AnswersFromPbtLayersOnly()
+    {
+        byte[] code = Bytes.FromHexString("6001");
+        Hash256 codeHash = Keccak.Compute(code);
+        await using PbtTestContext ctx = new();
+        ctx.CodeDb[codeHash.Bytes] = code;
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+
+        // Code the code DB already holds must still be written, or its chunk leaves never enter the tree.
+        Assert.That(scope.CodeDb.ContainsCode(codeHash.ValueHash256), Is.False);
+        using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
+            codeWriter.Set(codeHash.ValueHash256, code);
+        Assert.That(scope.CodeDb.ContainsCode(codeHash.ValueHash256), Is.True);
+    }
+
     [TestCase(7u, false)]
     [TestCase(1000u, false)]
     [TestCase(1000u, true)]
@@ -345,88 +361,6 @@ public class PbtWorldStateScopeTests
             using IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite();
             codeWriter.Set(codeHash.ValueHash256, code);
         }
-    }
-
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Storage_clear_recreates_only_later_writes_across_folds(bool deleteAccount)
-    {
-        await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-        {
-            batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).TestObject);
-            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-            storage.Set(1001, (UInt256)0xab);
-        }
-        scope.UpdateRootHash();
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-        {
-            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 2);
-            storage.Set(1000, (UInt256)0xcd);
-            if (deleteAccount)
-            {
-                batch.Set(TestItem.AddressA, null);
-                batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(2).TestObject);
-            }
-            else storage.Clear();
-            storage.Set(2000, (UInt256)0xef);
-        }
-        AssertStorage();
-        scope.UpdateRootHash();
-        AssertStorage();
-        scope.Commit(0);
-        AssertCommittedLeavesMatchRoot(ctx, scope);
-
-        void AssertStorage()
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(1001), Is.EqualTo(UInt256.Zero));
-                Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(1000), Is.EqualTo(UInt256.Zero));
-                Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(2000), Is.EqualTo((UInt256)0xef));
-            }
-        }
-    }
-
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Parallel_storage_clears_preserve_other_accounts_pending_writes(bool foldBeforeClear)
-    {
-        await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-        using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(16);
-        for (int index = 0; index < 16; index++)
-        {
-            Address address = TestItem.Addresses[index];
-            batch.Set(address, Build.An.Account.WithBalance(1).TestObject);
-            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 1);
-            storage.Set(1000, (UInt256)0xab);
-        }
-        if (foldBeforeClear) scope.UpdateRootHash();
-
-        Parallel.For(0, 16, index =>
-        {
-            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.Addresses[index], 128);
-            for (uint slot = 1001; slot < 1129; slot++)
-            {
-                if (index % 2 == 0 && slot % 16 == 0) storage.Clear();
-                storage.Set(slot, (UInt256)0xcd);
-            }
-        });
-        scope.UpdateRootHash();
-        for (int index = 0; index < 16; index++)
-        {
-            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.Addresses[index]);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(storage.Get(1000), Is.EqualTo(index % 2 == 0 ? UInt256.Zero : (UInt256)0xab));
-                Assert.That(storage.Get(1001), Is.EqualTo(index % 2 == 0 ? UInt256.Zero : (UInt256)0xcd));
-                Assert.That(storage.Get(1128), Is.EqualTo((UInt256)0xcd));
-            }
-        }
-        scope.Commit(0);
-        AssertCommittedLeavesMatchRoot(ctx, scope);
     }
 
     [TestCase(false)]

@@ -177,7 +177,8 @@ public class PbtPersistenceCoordinator(
         PbtSnapshotContent content = snapshot.Content;
         using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To, snapshot.TreeRoot, WriteFlags.None);
 
-        foreach ((ValueHash256 addressHash, _) in content.SelfDestructedStorageAddresses) batch.ClearStorage(addressHash);
+        foreach ((ValueHash256 addressHash, bool isNewStorage) in content.SelfDestructedStorageAddresses)
+            if (!isNewStorage) batch.ClearStorage(addressHash);
         foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) batch.SetAccount(addressHash, account);
         foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in content.Storages) batch.SetSlotRun(runKey, run);
         foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
