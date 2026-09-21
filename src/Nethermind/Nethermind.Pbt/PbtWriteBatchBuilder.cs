@@ -14,8 +14,6 @@ namespace Nethermind.Pbt;
 /// <param name="shardNibbleIndex">The zero-based key nibble used to select a shard.</param>
 public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposable, IResettable where TKey : struct, IPbtKey<TKey>
 {
-    // Full inline keys and values make dictionary entries substantially larger than stem-map entries.
-    private const int RetainedShardEntries = 512;
     private const int ShardCount = 16;
     private static readonly ObjectPool<Shard> ShardPool = new DefaultObjectPool<Shard>(new ShardPoolPolicy(), ShardCount * 2);
     private ShardBuffer _shards;
@@ -28,23 +26,27 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
         return shardNibbleIndex;
     }
 
-    private sealed class Shard
+    private sealed class Shard(int capacity)
     {
         internal readonly Lock Lock = new();
-        internal Dictionary<TKey, ValueHash256?>? Entries;
+        internal readonly Dictionary<TKey, ValueHash256?> Entries = new(capacity);
     }
 
+    /// <remarks>
+    /// A returned shard keeps its grown tables, and a new shard starts at the largest unique-key count any shard of
+    /// this key type has held, so a dense block does not regrow the dictionaries from empty every time.
+    /// </remarks>
     private sealed class ShardPoolPolicy : IPooledObjectPolicy<Shard>
     {
-        public Shard Create() => new();
+        private int _createCapacity;
+
+        public Shard Create() => new(Volatile.Read(ref _createCapacity));
 
         public bool Return(Shard shard)
         {
-            if (shard.Entries is { } entries)
-            {
-                if (entries.Count > RetainedShardEntries) shard.Entries = null;
-                else entries.Clear();
-            }
+            int count = shard.Entries.Count;
+            if (count > Volatile.Read(ref _createCapacity)) Volatile.Write(ref _createCapacity, count);
+            shard.Entries.Clear();
             return true;
         }
     }
@@ -82,7 +84,7 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
             if (shard is null) shard = rented;
             else ShardPool.Return(rented);
         }
-        lock (shard.Lock) (shard.Entries ??= [])[key] = value;
+        lock (shard.Lock) shard.Entries[key] = value;
     }
 
     /// <summary>Gets the number of pending unique mutations.</summary>
@@ -91,7 +93,7 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
         get
         {
             int count = 0;
-            foreach (Shard? shard in _shards) count += shard?.Entries?.Count ?? 0;
+            foreach (Shard? shard in _shards) count += shard?.Entries.Count ?? 0;
             return count;
         }
     }
@@ -102,8 +104,8 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
         {
             for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {
-                if (_shards[shardIndex]?.Entries is not { } entries) continue;
-                foreach (KeyValuePair<TKey, ValueHash256?> entry in entries) yield return entry;
+                if (_shards[shardIndex] is not { } shard) continue;
+                foreach (KeyValuePair<TKey, ValueHash256?> entry in shard.Entries) yield return entry;
             }
         }
     }
@@ -140,8 +142,8 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
             int offset = 0;
             for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {
-                if (_shards[shardIndex]?.Entries is not { } entries) continue;
-                foreach ((TKey key, ValueHash256? value) in entries)
+                if (_shards[shardIndex] is not { } shard) continue;
+                foreach ((TKey key, ValueHash256? value) in shard.Entries)
                     operations[offset++] = new(key, value.GetValueOrDefault());
             }
             return new PbtWriteBatch<TKey>(operations, table, _shardNibbleIndex);
@@ -155,6 +157,8 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
     }
 
     internal void CompleteDrain() => Reset();
+
+    internal int ShardCapacity(int shardIndex) => _shards[shardIndex]?.Entries.Capacity ?? 0;
 
     /// <summary>Discards pending mutations and returns shards to the pool.</summary>
     public void Reset()
