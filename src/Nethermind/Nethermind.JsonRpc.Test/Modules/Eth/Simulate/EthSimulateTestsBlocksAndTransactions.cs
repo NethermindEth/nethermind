@@ -30,6 +30,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
+    private const ulong StateGasBlockLimit = 200_000;
+    private const ulong RemainingStateGasAfterSstore = StateGasBlockLimit - (ulong)GasCostOf.SSetState;
+
     public static SimulatePayload<TransactionForRpc> CreateSerializationPayload(TestRpcBlockchain chain)
     {
         ulong nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
@@ -1215,7 +1218,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
     }
 
-    [Test, Combinatorial]
+    [Test]
     public async Task eth_simulateV1_clamps_omitted_gas_to_remaining_state_budget(
         [Values] bool eip8037Enabled,
         [Values] bool validation)
@@ -1235,18 +1238,48 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(calls[0].Error, Is.Null);
         Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
 
-        ulong cumulativePaidGas = calls.Aggregate(0UL, static (total, call) => total + call.GasUsed!.Value);
-        ulong cumulativeStateGas = eip8037Enabled ? (ulong)GasCostOf.SSetState : 0;
-        ulong expectedBlockGas = eip8037Enabled
-            ? Math.Max(cumulativePaidGas - cumulativeStateGas, cumulativeStateGas)
-            : cumulativePaidGas;
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(calls[1].Error, eip8037Enabled ? Is.Not.Null : Is.Null);
-            Assert.That(calls[1].GasUsed, eip8037Enabled ? Is.EqualTo(102_080) : Is.LessThan(102_080));
-            Assert.That(block.GasLimit, Is.EqualTo(200_000));
-            Assert.That(block.GasUsed, Is.EqualTo(expectedBlockGas));
+            Assert.That(calls[1].GasUsed, eip8037Enabled ? Is.EqualTo(RemainingStateGasAfterSstore) : Is.LessThan(RemainingStateGasAfterSstore));
+            Assert.That(block.GasLimit, Is.EqualTo(StateGasBlockLimit));
+        }
+    }
+
+    [Test]
+    public async Task eth_simulateV1_deliberately_rejects_state_free_call_clamped_below_intrinsic_gas()
+    {
+        const ulong blockGasLimit = (ulong)GasCostOf.SSetState + GasCostOf.TransactionEip2780 - 1;
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = blockGasLimit },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                        { TestItem.AddressC, new AccountOverride { Code = Bytes.FromHexString("0x600160003555") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = StateGasBlockLimit, GasPrice = UInt256.Zero, Input = new byte[32] },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = false
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("intrinsic gas").IgnoreCase);
         }
     }
 
@@ -1268,13 +1301,13 @@ public class EthSimulateTestsBlocksAndTransactions
         {
             Assert.That(calls.Select(static call => call.Error), Is.All.Null);
             Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
-            Assert.That(block.GasLimit, Is.EqualTo(200_000));
+            Assert.That(block.GasLimit, Is.EqualTo(StateGasBlockLimit));
             Assert.That(block.GasUsed, Is.EqualTo(2 * (ulong)GasCostOf.SSetState));
         }
     }
 
-    [TestCase(102_080ul, Core.ResultType.Success, TestName = "state budget exact fit is admitted")]
-    [TestCase(102_081ul, Core.ResultType.Failure, TestName = "state budget exceeded by one is rejected")]
+    [TestCase(RemainingStateGasAfterSstore, Core.ResultType.Success, TestName = "state budget exact fit is admitted")]
+    [TestCase(RemainingStateGasAfterSstore + 1, Core.ResultType.Failure, TestName = "state budget exceeded by one is rejected")]
     public async Task eth_simulateV1_enforces_remaining_state_budget_at_inclusion(ulong secondGas, Core.ResultType expectedResult)
     {
         using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
@@ -1310,7 +1343,7 @@ public class EthSimulateTestsBlocksAndTransactions
             [
                 new()
                 {
-                    BlockOverrides = new BlockOverride { GasLimit = 200_000 },
+                    BlockOverrides = new BlockOverride { GasLimit = StateGasBlockLimit },
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
@@ -1318,7 +1351,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     },
                     Calls =
                     [
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 200_000, GasPrice = UInt256.Zero, Input = new byte[32] },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = StateGasBlockLimit, GasPrice = UInt256.Zero, Input = new byte[32] },
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = secondGas, GasPrice = UInt256.Zero, Input = secondSlot }
                     ]
                 }

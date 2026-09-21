@@ -914,10 +914,15 @@ public class BlockchainBridgeTests
         Assert.That(_blockchainBridge.HasStateForBlock(header), Is.False);
     }
 
-    [TestCase(30_000ul, 30_000ul, TestName = "Simulate adapter subtracts state gas from budget")]
-    [TestCase(60_000ul, 0ul, TestName = "Simulate adapter accepts exact state gas budget")]
-    [TestCase(60_001ul, 0ul, TestName = "Simulate adapter saturates state gas budget exceeded by one")]
-    public void Simulate_adapter_uses_block_gas_used_for_budgets(ulong blockStateGasUsed, ulong expectedBlockStateGasLeft)
+    [TestCase(50_000ul, 30_000ul, 50_000ul, 30_000ul, 30_000ul, TestName = "Simulate adapter subtracts gas from all budgets")]
+    [TestCase(80_000ul, 60_000ul, 20_000ul, 0ul, 0ul, TestName = "Simulate adapter accepts exact block and state budgets")]
+    [TestCase(100_001ul, 60_001ul, 0ul, 0ul, 0ul, TestName = "Simulate adapter saturates all budgets exceeded by one")]
+    public void Simulate_adapter_uses_block_gas_used_for_budgets(
+        ulong blockGasUsed,
+        ulong blockStateGasUsed,
+        ulong expectedTotalGasLeft,
+        ulong expectedBlockGasLeft,
+        ulong expectedBlockStateGasLeft)
     {
         SimulateRequestState simulateRequestState = new()
         {
@@ -941,8 +946,9 @@ public class BlockchainBridgeTests
             {
                 Transaction tx = ci.Arg<Transaction>();
                 tx.SpentGas = 10_000;
-                tx.BlockGasUsed = 50_000;
-                tx.BlockStateGasUsed = blockStateGasUsed;
+                tx.BlockGasUsed = blockGasUsed;
+                GasConsumed gasConsumed = new(10_000, blockGasUsed, blockGasUsed, blockStateGasUsed);
+                ci.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, gasConsumed, [], []);
                 return TransactionResult.Ok;
             });
 
@@ -950,12 +956,13 @@ public class BlockchainBridgeTests
         Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
             .WithGasLimit(60_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-        adapter.Execute(transaction, Substitute.For<ITxTracer>());
+        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(transaction);
+        ExecuteWithReceiptsTracer(adapter, receiptsTracer, transaction);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(simulateRequestState.TotalGasLeft, Is.EqualTo(50_000));
-            Assert.That(simulateRequestState.BlockGasLeft, Is.EqualTo(30_000));
+            Assert.That(simulateRequestState.TotalGasLeft, Is.EqualTo(expectedTotalGasLeft));
+            Assert.That(simulateRequestState.BlockGasLeft, Is.EqualTo(expectedBlockGasLeft));
             Assert.That(simulateRequestState.BlockStateGasLeft, Is.EqualTo(expectedBlockStateGasLeft));
         }
     }
@@ -963,11 +970,13 @@ public class BlockchainBridgeTests
     [Test]
     public void Simulate_adapter_clamps_omitted_gas_to_remaining_state_budget()
     {
+        const ulong blockStateGasLimit = 200_000;
+        const ulong blockStateGasUsed = (ulong)GasCostOf.SSetState;
         SimulateRequestState simulateRequestState = new()
         {
             TotalGasLeft = 500_000,
             BlockGasLeft = 300_000,
-            BlockStateGasLeft = 200_000,
+            BlockStateGasLeft = blockStateGasLimit,
             Validate = false,
         };
         simulateRequestState.SetTxsWithExplicitGas(
@@ -985,14 +994,81 @@ public class BlockchainBridgeTests
                 executedGasLimits.Add(tx.GasLimit);
                 tx.SpentGas = 10_000;
                 tx.BlockGasUsed = 10_000;
-                tx.BlockStateGasUsed = executedGasLimits.Count == 1 ? 97_920UL : 0;
+                ulong stateGasUsed = executedGasLimits.Count == 1 ? blockStateGasUsed : 0;
+                GasConsumed gasConsumed = new(10_000, 10_000, 10_000, stateGasUsed);
+                ci.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, gasConsumed, [], []);
                 return TransactionResult.Ok;
             });
 
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
-        adapter.Execute(new Transaction { GasLimit = 200_000 }, Substitute.For<ITxTracer>());
-        adapter.Execute(new Transaction { GasLimit = 500_000 }, Substitute.For<ITxTracer>());
+        Transaction first = new() { GasLimit = blockStateGasLimit };
+        Transaction second = new() { GasLimit = 500_000 };
+        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(first, second);
+        ExecuteWithReceiptsTracer(adapter, receiptsTracer, first);
+        ExecuteWithReceiptsTracer(adapter, receiptsTracer, second);
 
-        Assert.That(executedGasLimits, Is.EqualTo(new ulong[] { 200_000, 102_080 }));
+        Assert.That(executedGasLimits, Is.EqualTo(new ulong[] { blockStateGasLimit, blockStateGasLimit - blockStateGasUsed }));
+    }
+
+    [Test]
+    public void Simulate_adapter_saturates_execution_budget_before_clamping_following_omitted_gas()
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 300_000,
+            BlockGasLeft = 80_000,
+            BlockStateGasLeft = 300_000,
+            Validate = false,
+        };
+        simulateRequestState.SetTxsWithExplicitGas(
+            [
+                new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
+                new() { HadGasLimitInRequest = false, Transaction = new Transaction() }
+            ]);
+
+        List<ulong> executedGasLimits = [];
+        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        processor.Trace(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(ci =>
+            {
+                Transaction tx = ci.Arg<Transaction>();
+                executedGasLimits.Add(tx.GasLimit);
+                ulong blockGasUsed = executedGasLimits.Count == 1 ? 100_000UL : 0;
+                tx.BlockGasUsed = blockGasUsed;
+                GasConsumed gasConsumed = new(blockGasUsed, blockGasUsed, blockGasUsed);
+                ci.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, gasConsumed, [], []);
+                return TransactionResult.Ok;
+            });
+
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        Transaction first = new() { GasLimit = 200_000 };
+        Transaction second = new() { GasLimit = 500_000 };
+        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(first, second);
+        ExecuteWithReceiptsTracer(adapter, receiptsTracer, first);
+        ExecuteWithReceiptsTracer(adapter, receiptsTracer, second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executedGasLimits, Is.EqualTo(new ulong[] { 200_000, 0 }));
+            Assert.That(simulateRequestState.TotalGasLeft, Is.EqualTo(200_000));
+            Assert.That(simulateRequestState.BlockGasLeft, Is.Zero);
+        }
+    }
+
+    private static BlockReceiptsTracer CreateReceiptsTracer(params Transaction[] transactions)
+    {
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(Build.A.Block.WithTransactions(transactions).TestObject);
+        return receiptsTracer;
+    }
+
+    private static void ExecuteWithReceiptsTracer(
+        SimulateTransactionProcessorAdapter adapter,
+        BlockReceiptsTracer receiptsTracer,
+        Transaction transaction)
+    {
+        using ITxTracer tracer = receiptsTracer.StartNewTxTrace(transaction);
+        adapter.Execute(transaction, receiptsTracer);
+        receiptsTracer.EndTxTrace();
     }
 }

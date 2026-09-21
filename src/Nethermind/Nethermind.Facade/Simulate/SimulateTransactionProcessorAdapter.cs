@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -28,13 +29,17 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         PrepareForInclusionCheck(transaction, simulateRequestState.BlockStateGasLeft);
         transaction.Hash = transaction.CalculateHash();
 
+        BlockReceiptsTracer? receiptsTracer = txTracer.GetTracer<BlockReceiptsTracer>();
+        ulong cumulativeStateGasBefore = receiptsTracer?.BlockStateGasUsed ?? 0;
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
 
-        // Keep track of gas left
         ulong blockGasUsed = transaction.BlockGasUsed;
-        simulateRequestState.TotalGasLeft -= blockGasUsed;
-        simulateRequestState.BlockGasLeft -= blockGasUsed;
-        simulateRequestState.BlockStateGasLeft = simulateRequestState.BlockStateGasLeft.SaturatingSub(transaction.BlockStateGasUsed);
+        ulong blockStateGasUsed = receiptsTracer?.BlockStateGasUsed.SaturatingSub(cumulativeStateGasBefore) ?? 0;
+        // Validation refreshes the state budget from receipt totals before the next transaction;
+        // no-validation simulation relies on this running value instead.
+        simulateRequestState.TotalGasLeft = simulateRequestState.TotalGasLeft.SaturatingSub(blockGasUsed);
+        simulateRequestState.BlockGasLeft = simulateRequestState.BlockGasLeft.SaturatingSub(blockGasUsed);
+        simulateRequestState.BlockStateGasLeft = simulateRequestState.BlockStateGasLeft.SaturatingSub(blockStateGasUsed);
 
         _currentTxIndex++;
         return result;
@@ -54,6 +59,8 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         // The per-dimension budgets shrink as the block is processed.
         if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
         {
+            // State gas is known only after execution, so this conservative cap can reject a state-free
+            // transaction when the remaining state budget is below its intrinsic execution gas.
             transaction.GasLimit = Math.Min(
                 Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable),
                 simulateRequestState.TotalGasLeft);

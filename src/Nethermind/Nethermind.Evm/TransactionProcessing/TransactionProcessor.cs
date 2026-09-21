@@ -645,7 +645,6 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!opts.HasFlag(ExecutionOptions.Warmup))
             {
                 tx.BlockGasUsed = spentGas.EffectiveBlockGas;
-                tx.BlockStateGasUsed = spentGas.BlockStateGas;
             }
 
             //only main thread updates transaction
