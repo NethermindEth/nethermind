@@ -81,8 +81,8 @@ namespace Nethermind.Blockchain
 
         /// <summary>Reads the head-derived facts the transaction pool gates on off <paramref name="header"/>.</summary>
         /// <remarks>Shared with the constructor, so a node that has seen no <see cref="IBlockTree.BlockAddedToMain"/>
-        /// yet gates on its own head rather than on the defaults. <see cref="HeadNumber"/> is set by the callers,
-        /// which read it off the block rather than the header.</remarks>
+        /// yet gates on its own head rather than on the defaults. <see cref="HeadNumber"/> stays with the callers
+        /// because it is seeded even for a genesis head, which the facts here are not.</remarks>
         private void ReadHead(BlockHeader header)
         {
             IReleaseSpec spec = SpecProvider.GetSpec(header);
