@@ -177,8 +177,10 @@ public sealed class ForkChoiceRunner
     /// realized and unrealized checkpoints, and registers the block with the proto-array.
     /// </summary>
     /// <remarks>
-    /// Also minus the body replay the spec's <c>on_block</c> ends with: <c>on_attestation</c> for
-    /// every body attestation and <c>on_attester_slashing</c> for every body attester slashing.
+    /// This does not replay the block's body operations. The spec's <c>on_block</c> does not either:
+    /// the fork_choice test format treats an <c>on_block</c> step as implying <c>on_attestation</c>
+    /// for every body attestation and <c>on_attester_slashing</c> for every body attester slashing,
+    /// and that convention is the caller's to honour.
     /// After this returns, the caller must feed <c>Body.Attestations</c> to
     /// <see cref="OnAttestation"/> with <c>isFromBlock: true</c> and <c>Body.AttesterSlashings</c>
     /// to <see cref="OnAttesterSlashing"/>, both with signature verification off (the transition

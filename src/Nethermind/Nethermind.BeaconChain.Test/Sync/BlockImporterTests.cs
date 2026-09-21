@@ -368,7 +368,10 @@ public class BlockImporterTests
         UnsignedChain chain = UnsignedChain.Create();
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
         UnsignedChain.ChainBlock a = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
-        UnsignedChain.ChainBlock strayVote = chain.Extend(a.Root, slot: 2, payloadHashByte: 0xa2, attestations: [chain.Vote(1, UnknownBlockRoot)]);
+        // One vote the store accepts and one it refuses, so a counter that fires per attestation
+        // rather than per refusal reports two and fails here.
+        UnsignedChain.ChainBlock strayVote = chain.Extend(a.Root, slot: 2, payloadHashByte: 0xa2,
+            attestations: [chain.Vote(1, a.Root), chain.Vote(1, UnknownBlockRoot)]);
         long refusedBefore = RefusedByForkChoice("body_attestation");
 
         BlockImportResult parent = importer.Import(a.Block, a.Root, verifySignatures: false);
