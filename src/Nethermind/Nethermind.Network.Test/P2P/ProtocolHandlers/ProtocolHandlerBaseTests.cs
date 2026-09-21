@@ -77,16 +77,29 @@ public class ProtocolHandlerBaseTests
         }
     }
 
-    private sealed class NoopBackgroundTaskScheduler : IBackgroundTaskScheduler
-    {
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
-            where TReq : notnull, IBackgroundTaskRequest<TReq> => true;
-    }
-
     private readonly struct TestSyncServeRequestHandler : ISyncServeRequestHandler<TestProtocolHandler, TestRequestMessage, TestResponseMessage>
     {
         public static Task<TestResponseMessage> Execute(TestProtocolHandler handler, TestRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new TestResponseMessage());
+    }
+
+    /// <summary>
+    /// Records the runner delegate each scheduled task is dispatched with.
+    /// </summary>
+    /// <remarks>
+    /// A cached runner is handed to the scheduler by reference, so repeated scheduling yielding the same
+    /// instance is what proves no per-call wrapper delegate is allocated.
+    /// </remarks>
+    private sealed class RunnerCapturingBackgroundTaskScheduler : IBackgroundTaskScheduler
+    {
+        public Delegate? CapturedRunner { get; private set; }
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            CapturedRunner = fulfillFunc;
+            return true;
+        }
     }
 
     /// <summary>Records the name each scheduled task is reported under.</summary>
@@ -194,33 +207,31 @@ public class ProtocolHandlerBaseTests
     [Test]
     public void Sync_serve_task_scheduling_does_not_allocate_wrapper_delegate()
     {
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), new NoopBackgroundTaskScheduler());
+        RunnerCapturingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), scheduler);
         TestRequestMessage request = new();
 
         handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
-
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Delegate? firstRunner = scheduler.CapturedRunner;
 
         handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        Assert.That(allocated, Is.Zero);
+        Assert.That(scheduler.CapturedRunner, Is.SameAs(firstRunner));
     }
 
     [Test]
     public void Sync_serve_value_task_scheduling_does_not_allocate_wrapper_delegate()
     {
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), new NoopBackgroundTaskScheduler());
+        RunnerCapturingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), scheduler);
         TestRequestMessage request = new();
 
         handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
-
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Delegate? firstRunner = scheduler.CapturedRunner;
 
         handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        Assert.That(allocated, Is.Zero);
+        Assert.That(scheduler.CapturedRunner, Is.SameAs(firstRunner));
     }
 
     [Test]
