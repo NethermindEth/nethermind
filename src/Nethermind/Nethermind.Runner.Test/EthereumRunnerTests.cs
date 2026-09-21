@@ -32,6 +32,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -48,6 +49,7 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -79,6 +81,12 @@ public class EthereumRunnerTests
 
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
+
+    /// <summary>Budget for a single start or stop of a runner under test.</summary>
+    /// <remarks><see cref="MaxTimeAttribute"/> only reports once the test returns, so it cannot end a
+    /// start or stop that never completes; without a bound, one takes the whole assembly into the CI
+    /// hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
+    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
 
     private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
 
@@ -256,6 +264,12 @@ public class EthereumRunnerTests
                 api.Context.Resolve<IBeaconPivot>();
                 api.Context.Resolve<BeaconPivot>();
             }
+            if (api.Context.IsRegistered<NoSyncGcRegionStrategy>())
+            {
+                Assert.That(api.Context.Resolve<IGCStrategy>(), Is.TypeOf(api.Config<IInitConfig>().DisableGcOnNewPayload
+                    ? typeof(NoSyncGcRegionStrategy)
+                    : typeof(NoGCStrategy)));
+            }
             api.Context.Resolve<IPoSSwitcher>();
             api.Context.Resolve<ISynchronizer>();
             api.Context.Resolve<IAdminEraService>();
@@ -331,7 +345,7 @@ public class EthereumRunnerTests
         }
         finally
         {
-            await runner.StopAsync();
+            await runner.StopAsync().WaitAsync(RunnerTimeout);
         }
     }
 
@@ -379,13 +393,13 @@ public class EthereumRunnerTests
                     cts.Cancel();
                 }
 
-                await task;
+                await task.WaitAsync(RunnerTimeout);
             }
             finally
             {
                 try
                 {
-                    await runner.StopAsync();
+                    await runner.StopAsync().WaitAsync(RunnerTimeout);
                 }
                 catch (Exception e)
                 {
