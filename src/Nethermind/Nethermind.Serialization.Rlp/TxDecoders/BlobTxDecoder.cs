@@ -144,11 +144,9 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         BlobCellMask cellMask = default;
         byte[][]? cells = null;
 
-        // Bound the peek to THIS transaction's wrapper sequence. Without the bound it counts to
-        // the end of the whole buffer, so in a multi-transaction array (the processed-blob-txs
-        // entry written per block) a following transaction is mistaken for the cell mask that
-        // pre-#11094 entries simply do not have.
-        if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(networkWrapperCheck, maxSearch: 2) > 0)
+        // Pre-#11094 entries have no cellMask/cells. Bound the peek to this wrapper so the next
+        // transaction in a per-block array is not mistaken for those two fields.
+        if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(networkWrapperCheck, maxSearch: 2) == 2)
         {
             cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
             byte[][] decodedCells = decoderContext.DecodeByteArrays(NetworkWrapperCellProofsCountLimit);
