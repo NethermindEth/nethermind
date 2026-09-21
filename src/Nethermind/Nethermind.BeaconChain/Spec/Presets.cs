@@ -147,6 +147,11 @@ public static class Presets
     public const ulong MinPerEpochChurnLimitElectra = 128_000_000_000;
     public const ulong MaxPerEpochActivationExitChurnLimit = 256_000_000_000;
 
+    // Gloas - EIP-8061 validator cycle (specs/gloas/beacon-chain.md "Configuration/Validator cycle")
+    public const ulong ChurnLimitQuotientGloas = 1UL << 15;
+    public const ulong ConsolidationChurnLimitQuotient = 1UL << 16;
+    public const ulong MaxPerEpochActivationChurnLimitGloas = 256_000_000_000;
+
     // Config — time parameters
     public const ulong SecondsPerSlot = 12;
     /// <summary>Phase0 fork-choice <c>INTERVALS_PER_SLOT</c>: a block is timely (proposer boost) when it arrives in the first interval of its slot.</summary>
