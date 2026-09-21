@@ -21,6 +21,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using MemoryAllowance = Nethermind.TxPool.MemoryAllowance;
@@ -29,6 +30,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
+        protected const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
@@ -356,7 +359,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 Block? block = SyncServer.Find(hashes[i]);
                 if (block is null)
                 {
-                    // GetBlockBodies responses are sparse: unavailable hashes are omitted from the response.
                     continue;
                 }
 
@@ -398,10 +400,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-            ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
+            ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
 
             ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Length; i++)
+            for (int i = 0; i < hashes.Length && i < MaxReceiptsLookups; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
