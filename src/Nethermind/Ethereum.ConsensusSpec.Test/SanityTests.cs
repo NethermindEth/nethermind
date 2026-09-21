@@ -78,9 +78,9 @@ public class SanityTests
 
                 FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
             }
-            else if (thrown is null)
+            else
             {
-                Assert.Fail("expected block application to fail at some point, but the whole sequence completed without error");
+                FuluDriverSupport.AssertRejected(thrown, "the block sequence");
             }
         });
 
