@@ -1253,6 +1253,62 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
     }
 
+    [Test, Combinatorial]
+    public async Task eth_simulateV1_reports_multidimensional_block_gas_used(
+        [Values] bool eip8037Enabled,
+        [Values] bool validation)
+    {
+        IReleaseSpec spec = eip8037Enabled ? Amsterdam.Instance : Osaka.Instance;
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
+
+        byte[] secondSlot = new byte[32];
+        secondSlot[^1] = 1;
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                        { TestItem.AddressC, new AccountOverride { Code = Bytes.FromHexString("0x600160003555") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 200_000, GasPrice = UInt256.Zero, Input = new byte[32] },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 200_000, GasPrice = UInt256.Zero, Input = secondSlot }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        SimulateBlockResult<SimulateCallResult> block = result.Data![0];
+        SimulateCallResult[] calls = block.Calls.ToArray();
+        Assert.That(calls.Select(static call => call.Error), Is.All.Null);
+        Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
+
+        ulong cumulativePaidGas = calls.Aggregate(0UL, static (total, call) => total + call.GasUsed!.Value);
+        ulong cumulativeStateGas = eip8037Enabled ? 2 * (ulong)GasCostOf.SSetState : 0;
+        ulong cumulativeExecutionGas = cumulativePaidGas - cumulativeStateGas;
+        ulong expectedBlockGas = Math.Max(cumulativeExecutionGas, cumulativeStateGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.GasUsed, Is.EqualTo(expectedBlockGas));
+            if (eip8037Enabled)
+            {
+                Assert.That(cumulativeStateGas, Is.GreaterThan(cumulativeExecutionGas));
+            }
+        }
+    }
+
     /// <summary>
     /// Regression test: blob tx rejected when <c>maxFeePerBlobGas</c> is below the <c>blobBaseFee</c>
     /// block override. The decorated calculator must be used for validation, not the static

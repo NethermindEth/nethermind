@@ -33,7 +33,6 @@ public class SimulateBlockValidationTransactionsExecutor(
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
         CancellationToken token = default)
     {
-        ulong startingGasLeft = simulateState.TotalGasLeft;
         if (!simulateState.Validate)
         {
             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
@@ -48,8 +47,6 @@ public class SimulateBlockValidationTransactionsExecutor(
             currentGasUsedTotal += txReceipt.GasUsed;
             txReceipt.GasUsedTotal = currentGasUsedTotal;
         }
-
-        block.Header.GasUsed = startingGasLeft - simulateState.TotalGasLeft;
 
         // SimulateTransactionProcessorAdapter change gas limit as block is processed. So need to recalculate.
         block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
