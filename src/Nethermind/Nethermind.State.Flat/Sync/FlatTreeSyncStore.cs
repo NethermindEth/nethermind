@@ -47,8 +47,8 @@ public class FlatTreeSyncStore(
 
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)
     {
-        EnsureStateSyncBegun();
         if (_wasFinalized) throw new InvalidOperationException("Db was finalized");
+        EnsureStateSyncBegun();
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);

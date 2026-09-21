@@ -5,6 +5,8 @@ using System.Diagnostics;
 
 namespace Nethermind.State.Flat;
 
+/// <summary>Serializes the passes of every sweep sharing it and makes each pass pay for itself: after a pass that took
+/// <c>t</c>, the next one may not start for another <c>t</c>, so the sweeps together use at most half of the wall clock.</summary>
 public sealed class SweepPacer
 {
     private readonly SemaphoreSlim _turn = new(1, 1);

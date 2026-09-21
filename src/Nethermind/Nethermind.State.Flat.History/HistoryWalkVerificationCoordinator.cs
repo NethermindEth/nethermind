@@ -31,8 +31,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     private readonly ILogger _logger;
     private readonly TimeSpan _pollDelay;
     private readonly OrphanStorageRowSweep? _rowSweep;
-    private volatile bool _rowSweepDone;
-    private volatile bool _discardPending;
+    private bool _rowSweepSubscribed;
     private readonly CancellationTokenSource _cts = new();
     private Task _loop = Task.CompletedTask;
     private HistoryWalkVerdict? _verdict;
@@ -66,9 +65,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         TimeSpan? pollDelay,
         OrphanStorageRowSweep? rowSweep = null)
     {
-        _rowSweep = rowSweep;
-        if (rowSweep is { Supported: true, AlreadyHandled: false }) rowSweep.Completed += OnRowSweepCompleted;
-        else _rowSweepDone = true;
+        _rowSweep = rowSweep is { Supported: true } ? rowSweep : null;
         _history = history;
         _availability = availability;
         _config = config;
@@ -93,6 +90,14 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     /// resolving the singleton has no side effects. No-op when the flag is off or already started.</summary>
     public void Start()
     {
+        // Subscribed here rather than in the constructor: a sweep that already completed replays its report to a late
+        // subscriber, and that report is acted on at once, which resolving the singleton must not do.
+        if (_rowSweep is not null && !_rowSweepSubscribed)
+        {
+            _rowSweepSubscribed = true;
+            _rowSweep.Completed += OnRowSweepCompleted;
+        }
+
         if (!Started)
         {
             AbandonLeftoverWalk();
@@ -136,19 +141,12 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         {
             while (!token.IsCancellationRequested)
             {
-                // A pending row sweep may still rewrite the rows the walk reads; a walk over rows about to change
-                // proves nothing, so it waits, and a repair that changed rows invalidates every commitment built from them.
-                if (!_rowSweepDone)
+                // A pending row sweep may still delete rows the walk reads, and a walk over rows about to change proves
+                // nothing. It waits until the sweep has ended in this process or the database is recorded as handled.
+                if (RowSweepPending)
                 {
                     await Task.Delay(_pollDelay, token);
                     continue;
-                }
-
-                if (_discardPending)
-                {
-                    _discardPending = false;
-                    _metadata.DiscardAfterRowRepair();
-                    if (_logger.IsInfo) _logger.Info("Archive proof commitments discarded: the history orphan storage row sweep changed the rows they were built from, so the tip series and the walk start again from clean rows.");
                 }
 
                 if (_availability.TryGetWatermark(out ulong watermark) && watermark > 0)
@@ -301,10 +299,16 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         return true;
     }
 
+    private bool RowSweepPending => _rowSweep is { Settled: false } sweep && !sweep.AlreadyHandled;
+
+    /// <summary>Runs on the sweep thread before the database is stamped as swept: every commitment built from the deleted rows
+    /// is discarded first, so a crash between the two leaves the stamp unwritten and the sweep repeats the tail and this call.</summary>
     private void OnRowSweepCompleted(OrphanStorageRowReport report)
     {
-        _discardPending = report.OrphanAccounts > 0;
-        _rowSweepDone = true;
+        if (report.OrphanRows == 0) return;
+
+        _metadata.DiscardAfterRowRepair();
+        if (_logger.IsInfo) _logger.Info($"Archive proof commitments discarded: the history orphan storage row sweep deleted {report.OrphanRows:N0} rows they were built from, so the tip series and the walk start again from clean rows.");
     }
 
     private bool TipCovers(ulong fromInclusive, ulong toInclusive) =>

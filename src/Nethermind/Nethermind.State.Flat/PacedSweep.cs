@@ -11,6 +11,13 @@ using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat;
 
+/// <summary>
+/// A one-time repair pass over a flat database that runs on its own thread after startup, takes at most half of the
+/// wall clock through its <see cref="SweepPacer"/>, and checkpoints its cursor and tallies in the flat metadata column
+/// so a restart continues where it stopped. The marker under <paramref name="markerName"/> records the outcome for the
+/// life of the database: <c>Swept</c> once a repair pass has seen every key, <c>Unsupported</c> when the database's
+/// layout cannot be judged; either means "handled" and no automatic pass runs again.
+/// </summary>
 public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, IPersistenceManager persistenceManager, string markerName, string progressName, int tallyLength, SweepPacer pacer, ILogger logger) : IDisposable
 {
     protected const byte Swept = 1;
@@ -31,6 +38,8 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, IPersistenceMan
     private bool _checkInconclusive;
     private bool _tallyLoaded;
     private long _lastProgressAt;
+    private volatile bool _settled;
+    private int _disposed;
 
     protected readonly long[] Tally = new long[tallyLength];
     protected readonly ILogger Logger = logger;
@@ -59,14 +68,26 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, IPersistenceMan
     {
     }
 
+    /// <summary>Whether this database owes no automatic pass: a repair pass has completed, or the layout was recorded as unsupported.</summary>
     public bool AlreadyHandled => _flatMetadata.Get(_markerKey) is [Swept or Unsupported];
 
+    /// <summary>Whether a repair pass has seen every key of this database. Narrower than <see cref="AlreadyHandled"/>: an unsupported layout is handled but not swept.</summary>
     public bool IsSwept => _flatMetadata.Get(_markerKey) is [Swept];
+
+    /// <summary>
+    /// Whether the background loop started by <see cref="Start"/> has ended in this process, whichever way: stamped without
+    /// a scan, completed, or failed. A waiter that must not act while the sweep may still change the database polls this
+    /// together with <see cref="AlreadyHandled"/>; no single exit of the loop is guaranteed to raise an event.
+    /// </summary>
+    public bool Settled => _settled;
 
     internal bool CheckInconclusive => _checkInconclusive;
 
+    /// <summary>Records that this database's layout cannot be judged, so no automatic pass is owed.</summary>
     public void MarkUnsupported() => _flatMetadata.PutSpan(_markerKey, [Unsupported]);
 
+    /// <summary>Starts the background loop: a repair pass deletes what it finds and stamps the database when every key has been seen;
+    /// a check only counts. The loop first waits for the persisted flat state to reach <paramref name="drainedAtBlock"/>.</summary>
     public void Start(bool repair, ulong drainedAtBlock)
     {
         if (_loop is not null) return;
@@ -142,6 +163,18 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, IPersistenceMan
     }
 
     private void RunLoop(bool repair, ulong drainedAtBlock)
+    {
+        try
+        {
+            RunLoopCore(repair, drainedAtBlock);
+        }
+        finally
+        {
+            _settled = true;
+        }
+    }
+
+    private void RunLoopCore(bool repair, ulong drainedAtBlock)
     {
         CancellationToken token = _cts.Token;
         try
@@ -238,6 +271,8 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, IPersistenceMan
         return true;
     }
 
+    /// <summary>Checkpoints <paramref name="cursor"/> with the tallies as they stand, including what the pass counted past it:
+    /// a pass resumed from here rescans a range whose orphans are already deleted, and only the checkpoint remembers them.</summary>
     protected void WriteProgress(ReadOnlySpan<byte> cursor)
     {
         if (cursor.Length > MaxCursorLength) throw new ArgumentOutOfRangeException(nameof(cursor));
@@ -252,6 +287,8 @@ public abstract class PacedSweep(IColumnsDb<FlatDbColumns> flat, IPersistenceMan
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
         _cts.Cancel();
         _loop?.Join();
         _cts.Dispose();

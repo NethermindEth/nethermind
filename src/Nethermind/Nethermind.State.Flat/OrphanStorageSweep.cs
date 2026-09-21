@@ -12,6 +12,12 @@ using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat;
 
+/// <summary>
+/// Deletes flat storage slots and storage trie nodes that belong to accounts which do not exist or have an empty storage
+/// root. No valid state contains such entries; versions before #12935 left them behind when a contract was created and
+/// destroyed in the same block. Slots are judged on a snapshot and deleted through <see cref="IPersistenceManager.RunMaintenance"/>,
+/// where the account is read again under the persistence lock so an account that gained storage meanwhile keeps its slots.
+/// </summary>
 public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenceManager persistenceManager, SweepPacer pacer, ILogManager logManager)
     : PacedSweep(db, persistenceManager, "OrphanStorageSwept", "OrphanStorageSweepProgress", TallyLength, pacer, logManager.GetClassLogger<OrphanStorageSweep>())
 {
@@ -201,4 +207,5 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
     }
 }
 
+/// <summary>What a flat orphan storage pass counted: slots seen, orphaned slots, and the orphaned accounts split by why they are orphans.</summary>
 public readonly record struct OrphanStorageReport(long SlotsScanned, long OrphanSlots, long OrphanAccounts, long MissingAccounts, long EmptyRootAccounts);

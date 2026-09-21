@@ -12,6 +12,12 @@ using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 
+/// <summary>
+/// Deletes flat history storage rows recorded at a block where their account had no storage: absent, or with an empty
+/// storage root. Versions before #12935 wrote such rows when a contract was created and destroyed in the same block.
+/// Sound only over post-value rows captured contiguously from genesis, so a windowed history or one carrying a published
+/// floor is <see cref="Supported"/> = false and recorded as handled without a pass.
+/// </summary>
 public sealed class OrphanStorageRowSweep(
     IColumnsDb<FlatHistoryColumns> history,
     IColumnsDb<FlatDbColumns> flat,
@@ -40,6 +46,13 @@ public sealed class OrphanStorageRowSweep(
     private OrphanStorageRowReport? _completedReport;
     private long _orphanPrefix = -1;
 
+    /// <summary>
+    /// Raised on the sweep thread when a repair pass has seen every row, before the database is stamped as swept, so a
+    /// consumer that must react to the deleted rows does so before the stamp lands: if it throws, the stamp is not written
+    /// and the next start repeats the tail of the pass and raises this again. A subscriber that arrives after the pass
+    /// completed receives the same report at once. Not raised by a check, by a pass that failed, or by a database stamped
+    /// without a scan; wait on <see cref="PacedSweep.Settled"/> for those.
+    /// </summary>
     public event Action<OrphanStorageRowReport> Completed
     {
         add
@@ -62,10 +75,13 @@ public sealed class OrphanStorageRowSweep(
         }
     }
 
+    /// <summary>Whether this history's rows can be judged: post-value rows with no published floor.</summary>
     public bool Supported => !rowFormat.IsV3 && !availability.TryGetGlobalFloor(out _);
 
+    /// <summary>The counts so far, or of the completed pass.</summary>
     public OrphanStorageRowReport Report => new(Tally[RowsScanned], Tally[OrphanRows], Tally[OrphanAccounts]);
 
+    /// <summary>The report of a repair pass that completed in this process, if one has.</summary>
     public bool TryGetCompletedReport(out OrphanStorageRowReport report)
     {
         lock (_completionLock)
@@ -110,14 +126,9 @@ public sealed class OrphanStorageRowSweep(
             _completed = null;
         }
 
-        try
-        {
-            subscribers?.Invoke(report);
-        }
-        catch (Exception e)
-        {
-            if (Logger.IsError) Logger.Error("A consumer of the flat history orphan storage row sweep failed while handling its completion; the sweep itself is complete.", e);
-        }
+        // A consumer that throws here leaves the stamp unwritten: the next start resumes the pass from its cursor and
+        // raises the completion again, so what the consumer had to do about the deleted rows is never skipped.
+        subscribers?.Invoke(report);
     }
 
     protected override bool Scan(bool repair, ReadOnlySpan<byte> start, long maxUnits, TimeSpan budget, out byte[]? next, CancellationToken token)
@@ -169,7 +180,10 @@ public sealed class OrphanStorageRowSweep(
             if (view.CurrentValue.IsEmpty) continue;
 
             ValueHash256 identity = IdentityOf(key);
-            if (!_timelines.TryGetValue(identity, out AccountTimeline? timeline) || timeline.HasNewerRow(accountRows, rowFormat, identity))
+            ulong block = rowFormat.DecodeSuffixBlock(key[BaseFlatPersistence.StorageKeyLength..]);
+            // A cached timeline judges every row at or below its newest account row: those rows are history and do not
+            // change. A storage row above it can only be judged once the account rows the tip wrote since are loaded.
+            if (!_timelines.TryGetValue(identity, out AccountTimeline? timeline) || timeline.NewestBlock is not { } newest || block > newest)
             {
                 long loadStartedAt = Stopwatch.GetTimestamp();
                 timeline = AccountTimeline.Load(accountRows, rowFormat, identity, token);
@@ -177,7 +191,6 @@ public sealed class OrphanStorageRowSweep(
                 _timelines[identity] = timeline;
             }
 
-            ulong block = rowFormat.DecodeSuffixBlock(key[BaseFlatPersistence.StorageKeyLength..]);
             if (timeline.HasStorageAt(block)) continue;
 
             Tally[OrphanRows]++;
@@ -230,22 +243,7 @@ public sealed class OrphanStorageRowSweep(
             upper[^1] = 0x00;
         }
 
-        public bool HasNewerRow(ISortedKeyValueStore accountRows, HistoryRowFormat rowFormat, in ValueHash256 identity)
-        {
-            Span<byte> lower = stackalloc byte[AccountRowKeyLength];
-            Span<byte> upper = stackalloc byte[AccountRowKeyLength + 1];
-            WriteBounds(identity, lower, upper);
-            using ISortedView view = accountRows.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss);
-            while (view.MoveNext())
-            {
-                ReadOnlySpan<byte> key = view.CurrentKey;
-                if (key.Length != AccountRowKeyLength) continue;
-
-                return _newestBlock is not { } newest || rowFormat.DecodeSuffixBlock(key[Hash256.Size..]) > newest;
-            }
-
-            return _newestBlock is not null;
-        }
+        public ulong? NewestBlock => _newestBlock;
 
         public static AccountTimeline Load(ISortedKeyValueStore accountRows, HistoryRowFormat rowFormat, in ValueHash256 identity, CancellationToken token)
         {
@@ -298,4 +296,5 @@ public sealed class OrphanStorageRowSweep(
     }
 }
 
+/// <summary>What a history orphan storage row pass counted: rows seen, orphaned rows, and the accounts they belong to.</summary>
 public readonly record struct OrphanStorageRowReport(long RowsScanned, long OrphanRows, long OrphanAccounts);

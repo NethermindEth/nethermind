@@ -497,7 +497,7 @@ public class PersistenceManager(
 
     public void BeginStateSync()
     {
-        _persistenceLock.Wait();
+        _persistenceLock.Wait(_cts.Token);
         try
         {
             _stateSyncWriting = true;
@@ -510,7 +510,7 @@ public class PersistenceManager(
 
     public void ClearForStateSync()
     {
-        _persistenceLock.Wait();
+        _persistenceLock.Wait(_cts.Token);
         try
         {
             _stateSyncWriting = true;
@@ -524,7 +524,7 @@ public class PersistenceManager(
 
     public void EndStateSync()
     {
-        _persistenceLock.Wait();
+        _persistenceLock.Wait(_cts.Token);
         try
         {
             using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);

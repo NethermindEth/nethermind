@@ -15,6 +15,7 @@ using Nethermind.Trie;
 using System.Threading;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
+using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -614,6 +615,88 @@ public class HistoryWalkVerificationCoordinatorTests
             Assert.That(seriesBeforeSweep, Is.True);
             Assert.That(metadata.TryGetTipSeries(out _, out _), Is.False, "a sweep that repaired rows invalidates every commitment built from them, so the tip series is discarded before the walk starts");
             Assert.That(coordinator.LastVerdict?.Verified, Is.True, "the walk then runs over the repaired rows and passes");
+        }
+    }
+
+    [Test]
+    public async Task ARowSweepThatCompletedBeforeTheCoordinatorStarted_StillDiscardsTheCommitmentsItInvalidated()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 2; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        HistoryColumnsWriter.RecordAccount(_historyColumns, TestItem.AddressB, block: 1, null);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, TestItem.AddressB, 1, block: 1, [0x0C]);
+        availability.PublishWatermark(2, rowFormat.FormatVersion);
+        using CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        metadata.AdvanceTipSeries(0, 2, out _);
+
+        using OrphanStorageRowSweep sweep = new(_historyColumns, _db, Substitute.For<IPersistenceManager>(), availability, rowFormat, new SweepPacer(), LimboLogs.Instance);
+        sweep.RunToCompletion(repair: true, CancellationToken.None);
+        bool seriesAfterSweep = metadata.TryGetTipSeries(out _, out _);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10), sweep);
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sweep.AlreadyHandled, Is.True, "precondition: the sweep finished and stamped before the coordinator existed");
+            Assert.That(seriesAfterSweep, Is.True, "precondition: nobody was subscribed when the sweep completed");
+            Assert.That(metadata.TryGetTipSeries(out _, out _), Is.False, "the completed report is replayed to the late subscriber, and a stamped database must not keep commitments built from the rows the sweep deleted");
+            Assert.That(coordinator.LastVerdict?.Verified, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task ARowSweepThatEndsWithoutRepairing_ReleasesTheWalk()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
+        FakeHeaders headers = new();
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            for (ulong block = 0; block <= 2; block++)
+            {
+                headers.Roots[block] = emptyRoot;
+                HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
+            }
+        }
+
+        availability.PublishWatermark(2, rowFormat.FormatVersion);
+        IPersistence flatPersistence = new RocksDbPersistence(_db, LimboLogs.Instance);
+        using (flatPersistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.EmptyTreeHash)))
+        {
+        }
+
+        using CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
+        using OrphanStorageRowSweep sweep = new(_historyColumns, _db, Substitute.For<IPersistenceManager>(), availability, rowFormat, new SweepPacer(), LimboLogs.Instance);
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config, CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10), sweep);
+        coordinator.Start();
+        await Task.Delay(100);
+        HistoryWalkVerdict? verdictWhilePending = coordinator.LastVerdict;
+
+        sweep.Start(repair: false, drainedAtBlock: 1);
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdictWhilePending, Is.Null);
+            Assert.That(sweep.AlreadyHandled, Is.False, "a check stamps nothing, so the walk cannot wait for the stamp");
+            Assert.That(sweep.Settled, Is.True);
+            Assert.That(coordinator.LastVerdict?.Verified, Is.True, "a sweep that ended without deleting anything releases the walk; only a raised completion is not enough to wait for");
         }
     }
 }

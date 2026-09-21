@@ -333,4 +333,46 @@ public class OrphanStorageRowSweepTests
         HistoryReader reader = new(_flat, _history, _availability, _rowFormat, LimboLogs.Instance);
         return reader.TryGetStorage(block, address, slot, out UInt256 value) ? (int)(value.u0 & 0xFF) : 0;
     }
+
+    [Test]
+    public void A_database_stamped_without_a_scan_settles_without_raising_a_completion()
+    {
+        using OrphanStorageRowSweep sweep = new(_history, _flat, Substitute.For<IPersistenceManager>(), _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
+        bool announced = false;
+        sweep.Completed += _ => announced = true;
+
+        sweep.Start(repair: true, drainedAtBlock: 0);
+
+        Assert.That(() => sweep.Settled, Is.True.After(10_000, 50), "every exit of the loop settles the sweep, so a waiter is never held for an event that this exit does not raise");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sweep.AlreadyHandled, Is.True);
+            Assert.That(announced, Is.False, "nothing was judged, so there is no report");
+            Assert.That(sweep.TryGetCompletedReport(out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void A_consumer_that_fails_on_completion_leaves_the_stamp_unwritten_so_the_next_run_completes_it()
+    {
+        using (OrphanStorageRowSweep first = new(_history, _flat, Substitute.For<IPersistenceManager>(), _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance))
+        {
+            first.Completed += _ => throw new InvalidOperationException("the consumer could not act on the deleted rows");
+
+            Assert.That(() => first.RunToCompletion(repair: true, CancellationToken.None), Throws.InvalidOperationException);
+            Assert.That(first.AlreadyHandled, Is.False, "what the consumer had to do about the deleted rows was not done, so the database is not recorded as swept");
+        }
+
+        using OrphanStorageRowSweep second = new(_history, _flat, Substitute.For<IPersistenceManager>(), _availability, _rowFormat, new SweepPacer(), LimboLogs.Instance);
+        OrphanStorageRowReport? announced = null;
+        second.Completed += report => announced = report;
+        second.RunToCompletion(repair: true, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(announced, Is.Not.Null, "the next run completes the pass and raises the completion again");
+            Assert.That(second.AlreadyHandled, Is.True);
+            Assert.That(Slot(DestroyedAtBirth, 1, 7), Is.Zero);
+        }
+    }
 }
