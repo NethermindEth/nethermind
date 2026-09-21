@@ -85,16 +85,19 @@ public class InclusionListBuilderTests
         Transaction head = TxOfSize(5 * 1024, 0, TestItem.PrivateKeyA);
         Transaction skipped = TxOfSize(4 * 1024, 1, TestItem.PrivateKeyA);
         Transaction afterSkipped = TxOfSize(50, 2, TestItem.PrivateKeyA);
-        Transaction otherSender = TxOfSize(50, 0, TestItem.PrivateKeyB);
+        // B's run outlives A's, so the rounds after the skip hold only B and no draw order can hide a
+        // premature stop: the space freed by the skip must still reach another sender.
+        Transaction[] otherSender = [.. Enumerable.Range(0, 4).Select(n => TxOfSize(50, n, TestItem.PrivateKeyB))];
+        Hash256?[] expected = [head.Hash, .. otherSender.Select(tx => tx.Hash)];
 
-        using InclusionListBytes il = BuildBuilder(PoolOf(head, skipped, afterSkipped, otherSender)).GetInclusionList();
+        using InclusionListBytes il = BuildBuilder(PoolOf([head, skipped, afterSkipped, .. otherSender])).GetInclusionList();
 
         using (Assert.EnterMultipleScope())
         {
             // The scenario is a short remaining budget, not a transaction too big for any list.
             Assert.That(TxDecoder.Instance.GetLength(skipped, RlpBehaviors.SkipTypedWrapping),
                 Is.LessThan(Eip7805Constants.MaxBytesPerInclusionList));
-            Assert.That(il.Select(b => Decode(b).Hash), Is.EquivalentTo(new[] { head.Hash, otherSender.Hash }));
+            Assert.That(il.Select(b => Decode(b).Hash), Is.EquivalentTo(expected));
             Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
         }
     }
