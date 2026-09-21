@@ -183,7 +183,7 @@ public class PbtSnapshotBundleTests
                 foreach (long size in expectedNodeBytes) nodeBytes += size;
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(content.NodeGroups, Has.Count.EqualTo(groupCount));
+                    Assert.That(content.NodeGroupCount, Is.EqualTo(groupCount));
                     Assert.That(content.GetPayloadSize(), Is.EqualTo(new PbtSnapshotPayloadSize(0, nodeBytes)));
                     Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount * (tombstone ? 1 : 2)));
                 }
@@ -192,7 +192,7 @@ public class PbtSnapshotBundleTests
                 content.Reset();
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(content.NodeGroups, Is.Empty);
+                    Assert.That(content.NodeGroupCount, Is.Zero);
                     Assert.That(content.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
                     Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount));
                     for (int index = 0; index < groupCount; index++)
@@ -1097,7 +1097,7 @@ public class PbtSnapshotBundleTests
             Assert.That(store.ApplyCount, Is.Zero);
             Assert.That(snapshot.Content.Storages, Has.Count.EqualTo(1));
             Assert.That(snapshot.Content.GetSlot(originalLeafKey), Is.EqualTo(EvmWordSlot.FromStripped(originalLeafValue.Bytes)));
-            Assert.That(snapshot.Content.NodeGroups, Has.Count.EqualTo(1));
+            Assert.That(snapshot.Content.NodeGroupCount, Is.EqualTo(1));
             Assert.That(foundGroup, Is.True);
             Assert.That(group!.GetSpan().ToArray(), Is.EqualTo(originalNode));
         }
@@ -1546,7 +1546,7 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(snapshot.Content.Storages, Has.Count.EqualTo(1));
             Assert.That(snapshot.Content.TryGetSlot(leafKey, out _), Is.True);
-            Assert.That(snapshot.Content.NodeGroups, Has.Count.EqualTo(1));
+            Assert.That(snapshot.Content.NodeGroupCount, Is.EqualTo(1));
             Assert.That(foundGroup, Is.True);
             Assert.That(actual!.GetSpan().ToArray(), Is.EqualTo(node));
         }

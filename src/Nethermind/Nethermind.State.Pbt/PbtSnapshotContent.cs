@@ -9,6 +9,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt;
@@ -26,7 +27,12 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal readonly ConcurrentDictionary<HashedKey<PbtStorageTreeKey>, ISlotRun> Storages = new();
     internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     internal readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
-    internal readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> NodeGroups = new();
+    // Partitioned like PbtTrieNodeCache: account and code groups key on the narrower PbtNodePath; only storage pays for PbtStorageNodePath.
+    internal readonly ConcurrentDictionary<PbtNodePath, RefCountingMemory?> AccountNodeGroups = new();
+    internal readonly ConcurrentDictionary<PbtNodePath, RefCountingMemory?> CodeNodeGroups = new();
+    internal readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> StorageNodeGroups = new();
+
+    internal int NodeGroupCount => AccountNodeGroups.Count + CodeNodeGroups.Count + StorageNodeGroups.Count;
 
     internal void ClearStorage(in ValueHash256 addressHash)
     {
@@ -53,18 +59,27 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
         if (payload is not null) PbtNodeGroupCodec.ValidateFraming(groupKey.BitDepth, payload.GetSpan());
-        PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
+        switch (PbtRocksDbPersistence.PartitionColumn(groupKey))
+        {
+            case PbtColumns.StorageNodeGroups: SetNodeGroup(StorageNodeGroups, groupKey.ToPath<PbtStorageNodePath>(), payload); break;
+            case PbtColumns.CodeNodeGroups: SetNodeGroup(CodeNodeGroups, groupKey.ToPath<PbtNodePath>(), payload); break;
+            default: SetNodeGroup(AccountNodeGroups, groupKey.ToPath<PbtNodePath>(), payload); break;
+        }
+    }
+
+    private static void SetNodeGroup<TStored>(ConcurrentDictionary<TStored, RefCountingMemory?> partition, TStored groupKey, RefCountingMemory? payload) where TStored : struct, IPbtNodePath<TStored>
+    {
         payload?.AcquireLease();
         RefCountingMemory? previous;
         try
         {
             while (true)
             {
-                if (NodeGroups.TryGetValue(storagePath, out previous))
+                if (partition.TryGetValue(groupKey, out previous))
                 {
-                    if (NodeGroups.TryUpdate(storagePath, payload, previous)) break;
+                    if (partition.TryUpdate(groupKey, payload, previous)) break;
                 }
-                else if (NodeGroups.TryAdd(storagePath, payload)) break;
+                else if (partition.TryAdd(groupKey, payload)) break;
             }
         }
         catch
@@ -78,7 +93,12 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// <summary>Returns a caller-owned group lease or a null tombstone; false means this layer has no entry.</summary>
     internal bool TryGetNodeGroup<TPath>(TPath groupKey, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
-        bool found = NodeGroups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out payload);
+        bool found = PbtRocksDbPersistence.PartitionColumn(groupKey) switch
+        {
+            PbtColumns.StorageNodeGroups => StorageNodeGroups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out payload),
+            PbtColumns.CodeNodeGroups => CodeNodeGroups.TryGetValue(groupKey.ToPath<PbtNodePath>(), out payload),
+            _ => AccountNodeGroups.TryGetValue(groupKey.ToPath<PbtNodePath>(), out payload),
+        };
         payload?.AcquireLease();
         return found;
     }
@@ -90,22 +110,33 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         Storages.NoLockClear();
         Codes.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
-        foreach ((_, RefCountingMemory? payload) in NodeGroups) ((IDisposable?)payload)?.Dispose();
-        NodeGroups.NoLockClear();
+        Reset(AccountNodeGroups);
+        Reset(CodeNodeGroups);
+        Reset(StorageNodeGroups);
+    }
+
+    private static void Reset<TStored>(ConcurrentDictionary<TStored, RefCountingMemory?> partition) where TStored : struct, IPbtNodePath<TStored>
+    {
+        foreach ((_, RefCountingMemory? payload) in partition) ((IDisposable?)payload)?.Dispose();
+        partition.NoLockClear();
     }
 
     internal PbtSnapshotPayloadSize GetPayloadSize()
     {
         long leafBytes = Accounts.Count * (ValueHash256.MemorySize + 128L)
             + SelfDestructedStorageAddresses.Count * ValueHash256.MemorySize;
-        long nodeBytes = 0;
         foreach ((HashedKey<PbtStorageTreeKey> key, ISlotRun run) in Storages) leafBytes += key.Key.Length + run.Count * ValueHash256.MemorySize;
         foreach ((_, CodeInfo code) in Codes) leafBytes += ValueHash256.MemorySize + code.Code.Length;
 
-        foreach ((PbtStorageNodePath path, RefCountingMemory? payload) in NodeGroups)
-            nodeBytes += ((path.BitDepth + 7) >> 3) + (payload?.Memory.Length ?? 0);
+        return new PbtSnapshotPayloadSize(leafBytes, NodeBytes(AccountNodeGroups) + NodeBytes(CodeNodeGroups) + NodeBytes(StorageNodeGroups));
+    }
 
-        return new PbtSnapshotPayloadSize(leafBytes, nodeBytes);
+    private static long NodeBytes<TStored>(ConcurrentDictionary<TStored, RefCountingMemory?> partition) where TStored : struct, IPbtNodePath<TStored>
+    {
+        long nodeBytes = 0;
+        foreach ((TStored path, RefCountingMemory? payload) in partition)
+            nodeBytes += ((path.BitDepth + 7) >> 3) + (payload?.Memory.Length ?? 0);
+        return nodeBytes;
     }
 
     public void Dispose() => Reset();

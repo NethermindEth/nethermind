@@ -135,7 +135,8 @@ public class PbtMetricsTests
                 content.SetSlot(storageKey, deleted ? default : slot);
             }
             if (!deleted) payload.AcquireLease();
-            content.NodeGroups[groupKey.ToPath<PbtStorageNodePath>()] = deleted ? null : payload;
+            if (partition == "storage") content.StorageNodeGroups[groupKey.ToPath<PbtStorageNodePath>()] = deleted ? null : payload;
+            else (partition == "code" ? content.CodeNodeGroups : content.AccountNodeGroups)[groupKey] = deleted ? null : payload;
             if (!deleted) content.Codes[codeHash] = code;
         }
         PbtSnapshotPooledList snapshots = new(2);

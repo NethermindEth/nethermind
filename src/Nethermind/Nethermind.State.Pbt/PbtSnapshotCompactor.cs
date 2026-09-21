@@ -50,7 +50,9 @@ public class PbtSnapshotCompactor(
                 foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) merged.Accounts[addressHash] = account;
                 foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in content.Storages) merged.SetRun(runKey, run.Clone());
                 foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) merged.Codes[codeHash] = code;
-                foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.NodeGroups) merged.SetNodeGroup(groupKey, payload);
+                foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.AccountNodeGroups) merged.SetNodeGroup(groupKey, payload);
+                foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.CodeNodeGroups) merged.SetNodeGroup(groupKey, payload);
+                foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.StorageNodeGroups) merged.SetNodeGroup(groupKey, payload);
             }
 
             PbtSnapshot newest = chainOldestFirst[^1];
