@@ -8,6 +8,7 @@ using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -31,7 +32,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.Tracing;
 
 public class GethStyleTracer(
-    IReceiptStorage receiptStorage,
+    [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
     IBlockTree blockTree,
     IBadBlockStore badBlockStore,
     ISpecProvider specProvider,
@@ -76,7 +77,7 @@ public class GethStyleTracer(
 
     public GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
-        Hash256? blockHash = receiptStorage.FindBlockHash(txHash);
+        Hash256? blockHash = receiptFinder.FindBlockHash(txHash);
         if (blockHash is null) return null;
 
         Block? block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
@@ -204,7 +205,7 @@ public class GethStyleTracer(
         GethTraceOptions filtered = options with { TxHash = txHash };
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider)
+            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, useBlockAsBase ? null : GetLogIndexStart)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -222,10 +223,11 @@ public class GethStyleTracer(
         }
     }
 
-    public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
+    public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider, Func<Block, Transaction, int>? logIndexStart = null) =>
         options switch
         {
-            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(
+                logIndexStart is null ? options : options with { LogIndexStart = () => logIndexStart(b, tx) }, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
         };
@@ -247,7 +249,7 @@ public class GethStyleTracer(
         BlockHeader parent = FindParent(block);
         if (allowIndexed && writer is null && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
             && parallelTracer.TryTrace(block, parent,
-                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider),
+                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, GetLogIndexStart),
                 afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
         {
             return new GethLikeTxTraceCollection(parallel);
@@ -257,7 +259,7 @@ public class GethStyleTracer(
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider)
+            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, GetLogIndexStart)
             : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -274,6 +276,12 @@ public class GethStyleTracer(
             tracer.TryDispose();
             throw;
         }
+    }
+
+    private int GetLogIndexStart(Block block, Transaction tx)
+    {
+        int txIndex = Array.FindIndex(block.Transactions, t => t.Hash == tx.Hash);
+        return txIndex > 0 ? receiptFinder.Get(block).GetBlockLogFirstIndex(txIndex) : 0;
     }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
