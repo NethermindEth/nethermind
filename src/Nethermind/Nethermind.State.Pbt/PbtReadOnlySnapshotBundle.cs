@@ -124,15 +124,6 @@ public sealed class PbtReadOnlySnapshotBundle(
         while (storage.MoveNext()) yield return storage.Current;
     }
 
-    internal IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves() =>
-        PbtFlatState.EnumerateLeaves(EnumerateAccounts(), EnumerateStorage(), hash => GetCode(hash));
-
-    internal IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(PbtStorageTreeKey prefix)
-    {
-        foreach (KeyValuePair<PbtStorageTreeKey, ValueHash256> leaf in EnumerateLeaves())
-            if (prefix.IsPrefixOf(leaf.Key)) yield return leaf;
-    }
-
     public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address));
 
     internal Account? GetAccount(in ValueHash256 addressHash)

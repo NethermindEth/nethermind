@@ -7,7 +7,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
-using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
@@ -39,37 +38,6 @@ internal static class PbtFlatState
             ValueHash256 value = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
             if (value != default) yield return new(PbtStateKey.Code(addressHash, account.CodeHash.ValueHash256, chunkId), value);
         }
-    }
-
-    internal static IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(IPbtPersistence.IReader reader)
-    {
-        return EnumerateLeaves(Accounts(), Storage(), hash => reader.GetCode(hash));
-
-        IEnumerable<KeyValuePair<ValueHash256, Account>> Accounts()
-        {
-            using IPbtIterator<KeyValuePair<ValueHash256, Account>> accounts = reader.EnumerateAccounts();
-            while (accounts.MoveNext()) yield return accounts.Current;
-        }
-
-        IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> Storage()
-        {
-            using IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> storage = reader.EnumerateStorage();
-            while (storage.MoveNext()) yield return storage.Current;
-        }
-    }
-
-    internal static IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(
-        IEnumerable<KeyValuePair<ValueHash256, Account>> accounts,
-        IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> storages,
-        Func<ValueHash256, CodeInfo?> getCode)
-    {
-        SortedDictionary<PbtStorageTreeKey, ValueHash256> leaves = [];
-        foreach ((ValueHash256 addressHash, Account account) in accounts)
-            foreach ((PbtPath key, ValueHash256 value) in AccountLeaves(addressHash, account, account.HasCode ? getCode(account.CodeHash.ValueHash256) : null))
-                leaves[(PbtStorageTreeKey)key] = value;
-        foreach ((PbtStorageTreeKey key, EvmWord value) in storages)
-            if (!EvmWordSlot.IsZero(value)) leaves[key] = new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
-        return leaves;
     }
 
     internal static ValueHash256 StorageAddress(in PbtStorageTreeKey key) => new(key.Bytes.Slice(1, ValueHash256.MemorySize));
