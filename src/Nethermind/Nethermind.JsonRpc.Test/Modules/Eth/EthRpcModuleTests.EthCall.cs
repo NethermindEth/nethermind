@@ -712,6 +712,27 @@ public partial class EthRpcModuleTests
         Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
 
+    /// <summary>
+    /// A gas-less call defaults its gas limit to the RPC gas cap, which is unbounded when
+    /// <c>JsonRpc.GasCap</c> is unset or <c>0</c>. EIP-8037 rejects any transaction above
+    /// TX_MAX_TOTAL_GAS_LIMIT regardless of validation being skipped, so the default has to be
+    /// clamped to the consensus cap or the call is rejected before it runs.
+    /// </summary>
+    [TestCase(0UL, TestName = "Eth_call_without_gas_is_clamped_to_eip8037_total_cap(uncapped)")]
+    [TestCase(1_000_000_000_000UL, TestName = "Eth_call_without_gas_is_clamped_to_eip8037_total_cap(above cap)")]
+    public async Task Eth_call_without_gas_is_clamped_to_eip8037_total_cap(ulong gasCap)
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"{SecondaryTestAddress}\"}}")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
+    }
+
     [Test]
     public async Task Eth_call_ignores_invalid_nonce()
     {

@@ -58,6 +58,16 @@ public static partial class IReleaseSpecExtensions
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
 
+        /// <summary>The per-transaction gas limit cap.</summary>
+        /// <remarks>
+        /// EIP-8037's absolute cap on <c>tx.gas</c> across both gas dimensions, EIP-7825's execution-gas
+        /// cap before it, uncapped earlier.
+        /// </remarks>
+        public ulong GetTxGasLimitCap()
+            => spec.IsEip8037Enabled ? Eip8037Constants.TxMaxTotalGasLimit
+                : spec.IsEip7825Enabled ? Eip7825Constants.DefaultTxGasLimitCap
+                : ulong.MaxValue;
+
         /// <summary>
         /// Returns a spec with EIP-158 disabled so state-override commits preserve synthetic accounts with storage.
         /// </summary>

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -893,6 +894,59 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
         if (expectedMessage is not null)
             Assert.That(result.Result!.Error, Is.EqualTo(expectedMessage));
+    }
+
+    /// <summary>
+    /// An explicit <c>gas</c> above EIP-8037's TX_MAX_TOTAL_GAS_LIMIT must be reported as invalid input
+    /// rather than falling through to <c>-32603 Internal error</c>.
+    /// </summary>
+    /// <remarks>
+    /// Only reachable when the RPC gas cap does not already clamp the request, i.e. when
+    /// <c>JsonRpc.GasCap</c> is the "no cap" sentinel <c>0</c> or is itself above the consensus cap.
+    /// </remarks>
+    [Test]
+    public async Task eth_simulateV1_gas_above_eip8037_total_cap_returns_invalid_input()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
+        chain.RpcConfig.GasCap = 0;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    // Above the cap so the block-level EIP-8037 inclusion check cannot reject first.
+                    BlockOverrides = new BlockOverride { GasLimit = Eip8037Constants.TxMaxTotalGasLimit + 1_000_000 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = UInt256.Zero,
+                            Gas = Eip8037Constants.TxMaxTotalGasLimit + 1,
+                            GasPrice = UInt256.Zero
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(result.Result!.Error, Does.Contain(
+                TxErrorMessages.TxGasLimitCapExceeded(Eip8037Constants.TxMaxTotalGasLimit + 1, Eip8037Constants.TxMaxTotalGasLimit)));
+        }
     }
 
     /// <summary>
