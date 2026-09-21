@@ -130,6 +130,22 @@ public class BeaconChainStoreChildrenIndexTests
     }
 
     [Test]
+    public void A_block_stored_after_its_own_child_still_unlinks_from_its_parent_on_delete()
+    {
+        Hash256 grandparent = TestRoot(1);
+        Hash256 parent = TestRoot(2);
+        Hash256 child = TestRoot(3);
+        _store.PutBlock(grandparent, CreateBlock(100, parent: TestRoot(0)));
+        _store.PutBlock(child, CreateBlock(102, parent)); // backfill order: the child's entry for its parent does not know the grandparent yet
+        _store.PutBlock(parent, CreateBlock(101, grandparent));
+
+        _store.DeleteBlock(parent);
+
+        Assert.That(_store.TryGetChildren(grandparent, out Hash256[] children, out _), Is.True);
+        Assert.That(children, Is.Empty, "the parent's own store must record the grandparent, or its later delete has nothing to unlink from");
+    }
+
+    [Test]
     public void Deleting_a_legacy_block_does_not_touch_its_parents_list()
     {
         Hash256 legacyParent = TestRoot(1);
