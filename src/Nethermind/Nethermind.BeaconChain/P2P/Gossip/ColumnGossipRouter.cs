@@ -219,7 +219,11 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
         // hash or a field comparison; the pubsub library invokes this validator inline on its message
         // read loop, so this call blocks that loop for however long the native batch verify takes
         // (not benchmarked here - it scales with the sidecar's commitment count, unlike the O(1) checks
-        // above).
+        // above). The seen-check above keys on slot and proposer index from this same unverified
+        // header, plus the column index from the sidecar itself; nothing this router checks ties any
+        // of them to the real proposer. An attacker who mints their own header therefore controls the
+        // key, so this cost is paid once per distinct key the attacker chooses to send, not once per
+        // real sidecar - the deferred proposer signature check is what would actually bound it.
         if (!DataColumnSidecarVerifier.VerifyKzgProofs(sidecar))
         {
             Drop(ColumnGossipDropReason.FailedKzgProofs);
