@@ -4381,8 +4381,10 @@ namespace Nethermind.TxPool.Test
         /// stale entry ahead of one already at the account nonce, and must read it as spent rather than as a gap
         /// blocking everything behind it.
         /// </summary>
+        /// <remarks>Run through both readiness callers: this is the only one of these shapes with no keyed
+        /// transaction in it, so it is what pins the production path when EIP-8250 is off.</remarks>
         [Test]
-        public void Stale_ordinary_tx_does_not_hide_the_next_one_at_the_account_nonce()
+        public void Stale_ordinary_tx_does_not_hide_the_next_one_at_the_account_nonce([Values] bool forProduction)
         {
             _txPool = CreatePool();
             Address sender = TestItem.PrivateKeyA.Address;
@@ -4400,7 +4402,9 @@ namespace Nethermind.TxPool.Test
             _stateProvider.IncrementNonce(sender);
             _txPool.ResetAddress(sender);
 
-            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingTransactionsBySender(filterToReadyTx: true);
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> ready = forProduction
+                ? _txPool.GetPendingForProduction(_blockTree.Head!.Header, filterToReadyTx: true, UInt256.Zero).Transactions
+                : _txPool.GetPendingTransactionsBySender(filterToReadyTx: true).AsReadOnly();
 
             using (Assert.EnterMultipleScope())
             {
