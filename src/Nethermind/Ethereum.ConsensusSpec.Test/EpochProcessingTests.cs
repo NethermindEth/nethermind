@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
@@ -14,7 +13,9 @@ namespace Ethereum.ConsensusSpec.Test;
 /// <summary>
 /// Runs the consensus-specs <c>epoch_processing</c> suite: each sub-transition folder maps directly to
 /// one <c>EpochProcessing.Process*</c> method, applied to the fixture's pre-state and compared by root
-/// against its post-state. Fulu-only, for the same reason as <see cref="OperationsTests"/>.
+/// against its post-state. Driven for the same forks as <see cref="OperationsTests"/>, through the same
+/// <see cref="ForkDriver"/>; no sub-transition reads the proposer index, so the Electra carry-through
+/// needs nothing beyond the fork's state shape.
 /// </summary>
 [TestFixture]
 public class EpochProcessingTests
@@ -45,21 +46,23 @@ public class EpochProcessingTests
     public void Vector_mainnet(EpochProcessingCase testCase) => Execute(testCase);
 
     private static void Execute(EpochProcessingCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("epoch_processing", "fulu", testCase.Preset, testCase.VectorName, () =>
+        ConsensusSpecTestSummary.RunAndRecord("epoch_processing", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
         {
             if (testCase.Preset == nameof(ConsensusPreset.Minimal))
             {
                 throw new NotImplementedInDriverException(
-                    "BeaconStateFulu's SSZ shape hard-codes mainnet-preset-scaled vector bounds, so it cannot decode a " +
+                    "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds, so they cannot decode a " +
                     "minimal-preset pre.ssz_snappy at all; this suite only runs for real against the mainnet preset " +
                     "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
             }
 
+            ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
+
             if (!Handlers.TryGetValue(testCase.SubTransitionName, out Action<BeaconStateFulu, EpochCache>? apply))
                 throw new NotImplementedInDriverException($"epoch sub-transition '{testCase.SubTransitionName}' has no handler in this driver.");
 
-            BeaconStateFulu state = FuluDriverSupport.DecodeState(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
-            EpochCache cache = new();
+            BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
+            EpochCache cache = driver.NewCache();
 
             // Most epoch_processing vectors are unconditional (no invalid-input case: a sub-transition
             // is a mechanical fold over existing state, not a signature or bounds check on attacker
@@ -80,14 +83,7 @@ public class EpochProcessingTests
                 if (thrown is not null)
                     Assert.Fail($"expected the sub-transition to succeed, but it threw: {thrown}");
 
-                BeaconStateFulu expectedPost = FuluDriverSupport.DecodeState(postPath);
-                Hash256 expectedRoot = FuluDriverSupport.StateRoot(expectedPost);
-                Hash256 actualRoot = FuluDriverSupport.StateRoot(state);
-                if (expectedRoot != actualRoot)
-                {
-                    List<string> diff = FuluDriverSupport.Diff(expectedPost, state, "state");
-                    Assert.Fail($"post-state root mismatch: expected {expectedRoot}, actual {actualRoot}. Diverging fields: {(diff.Count > 0 ? string.Join("; ", diff) : "(none found - roots differ anyway)")}");
-                }
+                FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
             }
             else if (thrown is null)
             {
@@ -107,24 +103,27 @@ public class EpochProcessingTests
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
     {
-        string? epochProcessingRoot = ConsensusSpecArchive.SuitePath(preset, "fulu", "epoch_processing");
-        if (epochProcessingRoot is null)
-            yield break;
-
-        foreach (string subDir in Directory.GetDirectories(epochProcessingRoot))
+        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
-            string subName = Path.GetFileName(subDir);
-            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(subDir, "pre.ssz_snappy"))
+            string? epochProcessingRoot = ConsensusSpecArchive.SuitePath(preset, fork, "epoch_processing");
+            if (epochProcessingRoot is null)
+                continue;
+
+            foreach (string subDir in Directory.GetDirectories(epochProcessingRoot))
             {
-                string vectorName = $"{preset}/fulu/epoch_processing/{subName}/{Path.GetFileName(caseDir)}";
-                EpochProcessingCase testCase = new(preset.ToString(), subName, caseDir, vectorName);
-                yield return new TestCaseData(testCase).SetName(vectorName);
+                string subName = Path.GetFileName(subDir);
+                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(subDir, "pre.ssz_snappy"))
+                {
+                    string vectorName = $"{preset}/{fork}/epoch_processing/{subName}/{Path.GetFileName(caseDir)}";
+                    EpochProcessingCase testCase = new(preset.ToString(), fork, subName, caseDir, vectorName);
+                    yield return new TestCaseData(testCase).SetName(vectorName);
+                }
             }
         }
     }
 }
 
-public readonly record struct EpochProcessingCase(string Preset, string SubTransitionName, string CasePath, string VectorName)
+public readonly record struct EpochProcessingCase(string Preset, string Fork, string SubTransitionName, string CasePath, string VectorName)
 {
     public override string ToString() => VectorName;
 }

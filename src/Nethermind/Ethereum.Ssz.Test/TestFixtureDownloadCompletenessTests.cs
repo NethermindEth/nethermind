@@ -28,7 +28,10 @@ namespace Ethereum.Ssz.Test;
 [TestFixture]
 public class TestFixtureDownloadCompletenessTests
 {
-    private const string EntryPath = "tests/general/phase0/ssz_generic/uints/valid/uint_8.data";
+    private const string EntrySubtree = "tests/general/phase0/ssz_generic";
+    private const string EntryPath = EntrySubtree + "/uints/valid/uint_8.data";
+    private const string SecondSubtree = "tests/general/phase0/ssz_static";
+    private const string SecondEntryPath = SecondSubtree + "/Checkpoint/ssz_random/case_0/serialized.ssz_snappy";
     private static readonly byte[] EntryContent = [1, 2, 3, 4];
 
     [Test]
@@ -36,7 +39,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length + 4096);
-        string suite = "TruncatedDownloadTest";
+        string suite = UniqueSuite("TruncatedDownloadTest");
         string target = CachePathFor(suite);
 
         try
@@ -62,7 +65,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = "CompleteDownloadTest";
+        string suite = UniqueSuite("CompleteDownloadTest");
         string target = CachePathFor(suite);
 
         try
@@ -71,7 +74,8 @@ public class TestFixtureDownloadCompletenessTests
 
             Assert.Multiple(() =>
             {
-                Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.True);
+                Assert.That(File.ReadAllLines(Path.Combine(target, ".completed")), Is.EqualTo(new[] { "v0", EntrySubtree }),
+                    "the marker must record the version and every extracted subtree, so a later loss of a subtree is detectable");
                 Assert.That(File.ReadAllBytes(Path.Combine(extracted, EntryPath.Replace('/', Path.DirectorySeparatorChar))),
                     Is.EqualTo(EntryContent));
             });
@@ -87,7 +91,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = "EmptyCacheTest";
+        string suite = UniqueSuite("EmptyCacheTest");
         string target = CachePathFor(suite);
 
         try
@@ -112,12 +116,15 @@ public class TestFixtureDownloadCompletenessTests
         }
     }
 
-    [Test]
-    public void A_marker_over_a_populated_directory_is_still_honored_without_a_download()
+    // A marker written before subtrees were recorded holds only the version; it stays valid as long
+    // as the directory has content, so no cache is re-downloaded just because the marker got richer.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void A_marker_over_a_populated_directory_is_still_honored_without_a_download(bool recordsSubtree)
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = "PopulatedCacheTest";
+        string suite = UniqueSuite("PopulatedCacheTest");
         string target = CachePathFor(suite);
 
         try
@@ -125,12 +132,46 @@ public class TestFixtureDownloadCompletenessTests
             string entryOnDisk = Path.Combine(target, EntryPath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(entryOnDisk)!);
             File.WriteAllBytes(entryOnDisk, EntryContent);
-            File.WriteAllText(Path.Combine(target, ".completed"), "v0");
+            File.WriteAllLines(Path.Combine(target, ".completed"), recordsSubtree ? ["v0", EntrySubtree] : ["v0"]);
 
             TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz");
 
             Assert.That(server.RequestCount, Is.EqualTo(0),
                 "the content check must only defeat the fast path when there is nothing to run, not on every call");
+        }
+        finally
+        {
+            Cleanup(target);
+        }
+    }
+
+    // A cache that lost one fork or suite subtree still holds files elsewhere, so the whole-directory
+    // content check cannot see the loss; only the subtrees recorded at extraction time can.
+    [Test]
+    public void A_marker_over_a_cache_missing_a_recorded_subtree_is_treated_as_absent_and_the_archive_is_downloaded_again()
+    {
+        byte[] archive = BuildArchive(EntryPath, SecondEntryPath);
+        string suite = UniqueSuite("MissingSubtreeCacheTest");
+        string target = CachePathFor(suite);
+
+        try
+        {
+            using (StubArchiveServer first = new(archive, contentLength: archive.Length))
+            {
+                TestFixtureDownloader.EnsureDownloaded(suite, first.UrlTemplate, "v0", "general.tar.gz");
+            }
+            Directory.Delete(Path.Combine(target, SecondSubtree.Replace('/', Path.DirectorySeparatorChar)), true);
+
+            using StubArchiveServer second = new(archive, contentLength: archive.Length);
+            TestFixtureDownloader.EnsureDownloaded(suite, second.UrlTemplate, "v0", "general.tar.gz");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(second.RequestCount, Is.EqualTo(1),
+                    "a marker over a cache missing a recorded subtree must not short-circuit the download: every suite over that subtree runs zero vectors");
+                Assert.That(File.Exists(Path.Combine(target, SecondEntryPath.Replace('/', Path.DirectorySeparatorChar))), Is.True,
+                    "the re-download must restore the missing subtree");
+            });
         }
         finally
         {
@@ -145,7 +186,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = "StaleTagCacheTest";
+        string suite = UniqueSuite("StaleTagCacheTest");
         string target = CachePathFor(suite);
 
         try
@@ -162,7 +203,7 @@ public class TestFixtureDownloadCompletenessTests
                 Assert.That(server.RequestCount, Is.EqualTo(1),
                     "a marker for a narrower filter must not short-circuit the download: the subtrees the wider filter keeps are missing");
                 Assert.That(File.Exists(staleEntry), Is.False, "the stale extraction must be replaced, not merged into");
-                Assert.That(File.ReadAllText(Path.Combine(target, ".completed")), Is.EqualTo("ssz_static=*;operations=fulu"),
+                Assert.That(File.ReadAllLines(Path.Combine(target, ".completed"))[0], Is.EqualTo("ssz_static=*;operations=fulu"),
                     "the marker must record the filter that produced the extraction");
             });
         }
@@ -181,7 +222,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = extractionTag is null ? "VersionMarkerUntaggedTest" : "VersionMarkerTaggedTest";
+        string suite = UniqueSuite(extractionTag is null ? "VersionMarkerUntaggedTest" : "VersionMarkerTaggedTest");
         string target = CachePathFor(suite);
 
         try
@@ -196,7 +237,7 @@ public class TestFixtureDownloadCompletenessTests
             Assert.Multiple(() =>
             {
                 Assert.That(server.RequestCount, Is.EqualTo(expectedDownloads));
-                Assert.That(File.ReadAllText(Path.Combine(target, ".completed")), Is.EqualTo(extractionTag ?? "v0"));
+                Assert.That(File.ReadAllLines(Path.Combine(target, ".completed"))[0], Is.EqualTo(extractionTag ?? "v0"));
             });
         }
         finally
@@ -213,7 +254,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = selective ? BuildArchive() : BuildDirectoryOnlyArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = selective ? "FilteredToNothingTest" : "DirectoryOnlyArchiveTest";
+        string suite = UniqueSuite(selective ? "FilteredToNothingTest" : "DirectoryOnlyArchiveTest");
         string target = CachePathFor(suite);
 
         try
@@ -235,6 +276,9 @@ public class TestFixtureDownloadCompletenessTests
         }
     }
 
+    /// <summary>The cache root is shared with every other test process on the machine; a fixed suite name lets two runs delete each other's directories.</summary>
+    private static string UniqueSuite(string name) => $"{name}-{Guid.NewGuid():N}";
+
     private static string CachePathFor(string suite) =>
         Path.Combine(Path.GetTempPath(), "nethermind-eest", suite, "v0", "general");
 
@@ -244,13 +288,18 @@ public class TestFixtureDownloadCompletenessTests
         if (Directory.Exists(suiteRoot)) Directory.Delete(suiteRoot, true);
     }
 
-    private static byte[] BuildArchive()
+    private static byte[] BuildArchive() => BuildArchive(EntryPath);
+
+    private static byte[] BuildArchive(params string[] entryPaths)
     {
         using MemoryStream tar = new();
         using (TarWriter writer = new(tar, leaveOpen: true))
         {
-            PaxTarEntry entry = new(TarEntryType.RegularFile, EntryPath) { DataStream = new MemoryStream(EntryContent) };
-            writer.WriteEntry(entry);
+            foreach (string entryPath in entryPaths)
+            {
+                PaxTarEntry entry = new(TarEntryType.RegularFile, entryPath) { DataStream = new MemoryStream(EntryContent) };
+                writer.WriteEntry(entry);
+            }
         }
 
         tar.Position = 0;

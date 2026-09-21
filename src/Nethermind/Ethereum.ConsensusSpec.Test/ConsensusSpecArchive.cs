@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using Ethereum.Ssz.Test;
 using Ethereum.Test.Base;
@@ -39,12 +40,37 @@ public static class ConsensusSpecArchive
     private static readonly Lock RootsLock = new();
 
     /// <summary>
-    /// The suite subtrees this driver knows how to run: ssz_static for every fork this repo models a
-    /// container for, and operations/epoch_processing/sanity/fork_choice for the fulu fork only (the
-    /// only fork whose beacon state this repo's process_block/process_epoch pipeline accepts - see
-    /// ForkedStateTransition's remarks). fork_choice needs its full fixture set (steps.yaml plus the
-    /// anchor/block/attestation SSZ files it references), not just manifest.yaml.
+    /// The forks whose operations/epoch_processing/sanity vectors are extracted and enumerated: exactly
+    /// the forks <see cref="ForkDriver"/> can decode a beacon state for and carry through this repo's
+    /// process_block/process_epoch pipeline. Phase0..Deneb have no state container in this repo at all,
+    /// so their vectors are neither extracted (about 1 GB more of mainnet fixtures) nor enumerated.
     /// </summary>
+    public static readonly string[] StateTransitionForks = ["electra", "fulu"];
+
+    /// <summary>
+    /// The suite subtrees this driver knows how to run: ssz_static for every fork this repo models a
+    /// container for, the state-driven suites for <see cref="StateTransitionForks"/>, and fork_choice
+    /// for fulu only. fork_choice needs its full fixture set (steps.yaml plus the anchor/block/attestation
+    /// SSZ files it references), not just manifest.yaml. <see cref="ExtractionTag"/> is derived from this
+    /// same table, so widening it invalidates the cached extraction by itself.
+    /// </summary>
+    private static readonly (string Suite, string[]? Forks)[] ExtractedSuites =
+    [
+        ("ssz_static", null),
+        ("operations", StateTransitionForks),
+        ("epoch_processing", StateTransitionForks),
+        ("sanity", StateTransitionForks),
+        ("fork_choice", ["fulu"]),
+    ];
+
+    /// <summary>
+    /// Written into the cache's completion marker. A cache extracted under a narrower filter is
+    /// complete for the subtrees it kept and silently empty for the ones it dropped - a suite over the
+    /// missing subtree enumerates zero vectors and passes - so a marker carrying another tag is stale.
+    /// </summary>
+    public static readonly string ExtractionTag = string.Join(";",
+        ExtractedSuites.Select(s => $"{s.Suite}={(s.Forks is null ? "*" : string.Join(",", s.Forks))}"));
+
     private static bool ShouldExtract(string entryPath)
     {
         int firstSlash = entryPath.IndexOf('/');
@@ -55,12 +81,12 @@ public static class ConsensusSpecArchive
         string fork = parts[2];
         string suite = parts[3];
 
-        return suite switch
+        foreach ((string Suite, string[]? Forks) extracted in ExtractedSuites)
         {
-            "ssz_static" => true,
-            "operations" or "epoch_processing" or "sanity" or "fork_choice" => fork == "fulu",
-            _ => false,
-        };
+            if (extracted.Suite == suite)
+                return extracted.Forks is null || Array.IndexOf(extracted.Forks, fork) >= 0;
+        }
+        return false;
     }
 
     /// <summary>Returns the extraction root for <paramref name="preset"/>, downloading and unpacking it on first use.</summary>
@@ -74,7 +100,7 @@ public static class ConsensusSpecArchive
             string archiveName = preset == ConsensusPreset.Mainnet ? "mainnet.tar.gz" : "minimal.tar.gz";
             string suiteName = preset == ConsensusPreset.Mainnet ? "ConsensusMainnet" : "ConsensusMinimal";
             string root = TestFixtureDownloader.EnsureDownloaded(
-                suiteName, SszConsensusTestLoader.ArchiveUrlTemplate, SszConsensusTestLoader.DefaultVersion, archiveName, ShouldExtract);
+                suiteName, SszConsensusTestLoader.ArchiveUrlTemplate, SszConsensusTestLoader.DefaultVersion, archiveName, ShouldExtract, ExtractionTag);
             Roots[preset] = root;
             return root;
         }

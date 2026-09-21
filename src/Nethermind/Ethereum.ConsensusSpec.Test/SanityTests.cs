@@ -7,18 +7,17 @@ using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
-using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
 /// <summary>
 /// Runs the consensus-specs <c>sanity</c> suite: <c>blocks</c> (apply a sequence of signed blocks via
-/// <see cref="StateTransition"/>) and <c>slots</c> (advance slots via <see cref="SlotProcessing"/>).
-/// Fulu-only, for the same reason as <see cref="OperationsTests"/>.
+/// the fork's <c>state_transition</c>) and <c>slots</c> (advance slots via the fork's
+/// <c>process_slots</c>), both through the vector's <see cref="ForkDriver"/>. Driven for the same forks
+/// as <see cref="OperationsTests"/>.
 /// </summary>
 [TestFixture]
 public class SanityTests
@@ -41,11 +40,12 @@ public class SanityTests
     public void Slots_mainnet(SanityCase testCase) => ExecuteSlots(testCase);
 
     private static void ExecuteBlocks(SanityCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("sanity/blocks", "fulu", testCase.Preset, testCase.VectorName, () =>
+        ConsensusSpecTestSummary.RunAndRecord("sanity/blocks", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
         {
             RequireMainnetPreset(testCase.Preset);
-            BeaconStateFulu state = FuluDriverSupport.DecodeState(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
-            EpochCache cache = new();
+            ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
+            BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
+            EpochCache cache = driver.NewCache();
             PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(state);
             bool verifySignatures = FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath);
 
@@ -63,7 +63,7 @@ public class SanityTests
                     byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, $"blocks_{i}.ssz_snappy"));
                     SignedBeaconBlock.Decode(ssz, out SignedBeaconBlock signedBlock);
                     FixedNewPayloadNotifier notifier = new(valid: true);
-                    StateTransition.Apply(state, signedBlock, cache, pubkeys, notifier, BeaconChainSpec.Mainnet, validateResult: true, verifySignatures);
+                    driver.ApplyBlock(state, signedBlock, cache, pubkeys, notifier, verifySignatures);
                 }
             }
             catch (Exception ex)
@@ -76,14 +76,7 @@ public class SanityTests
                 if (thrown is not null)
                     Assert.Fail($"expected all {blocksCount} block(s) to apply, but it threw: {thrown}");
 
-                BeaconStateFulu expectedPost = FuluDriverSupport.DecodeState(postPath);
-                Hash256 expectedRoot = FuluDriverSupport.StateRoot(expectedPost);
-                Hash256 actualRoot = FuluDriverSupport.StateRoot(state);
-                if (expectedRoot != actualRoot)
-                {
-                    List<string> diff = FuluDriverSupport.Diff(expectedPost, state, "state");
-                    Assert.Fail($"post-state root mismatch: expected {expectedRoot}, actual {actualRoot}. Diverging fields: {(diff.Count > 0 ? string.Join("; ", diff) : "(none found - roots differ anyway)")}");
-                }
+                FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
             }
             else if (thrown is null)
             {
@@ -92,23 +85,17 @@ public class SanityTests
         });
 
     private static void ExecuteSlots(SanityCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("sanity/slots", "fulu", testCase.Preset, testCase.VectorName, () =>
+        ConsensusSpecTestSummary.RunAndRecord("sanity/slots", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
         {
             RequireMainnetPreset(testCase.Preset);
-            BeaconStateFulu state = FuluDriverSupport.DecodeState(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
-            EpochCache cache = new();
+            ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
+            BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
+            EpochCache cache = driver.NewCache();
             int slots = FuluDriverSupport.ParseScalarInt(Path.Combine(testCase.CasePath, "slots.yaml"));
 
-            SlotProcessing.ProcessSlots(state, state.Slot + (ulong)slots, cache);
+            driver.ProcessSlots(state, state.Slot + (ulong)slots, cache);
 
-            BeaconStateFulu expectedPost = FuluDriverSupport.DecodeState(Path.Combine(testCase.CasePath, "post.ssz_snappy"));
-            Hash256 expectedRoot = FuluDriverSupport.StateRoot(expectedPost);
-            Hash256 actualRoot = FuluDriverSupport.StateRoot(state);
-            if (expectedRoot != actualRoot)
-            {
-                List<string> diff = FuluDriverSupport.Diff(expectedPost, state, "state");
-                Assert.Fail($"post-state root mismatch: expected {expectedRoot}, actual {actualRoot}. Diverging fields: {(diff.Count > 0 ? string.Join("; ", diff) : "(none found - roots differ anyway)")}");
-            }
+            FuluDriverSupport.AssertPostStateRoot(driver, Path.Combine(testCase.CasePath, "post.ssz_snappy"), state);
         });
 
     private static void RequireMainnetPreset(string preset)
@@ -116,7 +103,7 @@ public class SanityTests
         if (preset == nameof(ConsensusPreset.Minimal))
         {
             throw new NotImplementedInDriverException(
-                "BeaconStateFulu's SSZ shape hard-codes mainnet-preset-scaled vector bounds, so it cannot decode a " +
+                "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds, so they cannot decode a " +
                 "minimal-preset pre.ssz_snappy at all; this suite only runs for real against the mainnet preset " +
                 "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
         }
@@ -139,21 +126,24 @@ public class SanityTests
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset, string subSuite, string marker)
     {
-        string? sanityRoot = ConsensusSpecArchive.SuitePath(preset, "fulu", "sanity");
-        if (sanityRoot is null)
-            yield break;
-
-        string subDir = Path.Combine(sanityRoot, subSuite);
-        foreach (string caseDir in ConsensusSpecArchive.LeafDirs(subDir, marker))
+        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
-            string vectorName = $"{preset}/fulu/sanity/{subSuite}/{Path.GetFileName(caseDir)}";
-            SanityCase testCase = new(preset.ToString(), caseDir, vectorName);
-            yield return new TestCaseData(testCase).SetName(vectorName);
+            string? sanityRoot = ConsensusSpecArchive.SuitePath(preset, fork, "sanity");
+            if (sanityRoot is null)
+                continue;
+
+            string subDir = Path.Combine(sanityRoot, subSuite);
+            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(subDir, marker))
+            {
+                string vectorName = $"{preset}/{fork}/sanity/{subSuite}/{Path.GetFileName(caseDir)}";
+                SanityCase testCase = new(preset.ToString(), fork, caseDir, vectorName);
+                yield return new TestCaseData(testCase).SetName(vectorName);
+            }
         }
     }
 }
 
-public readonly record struct SanityCase(string Preset, string CasePath, string VectorName)
+public readonly record struct SanityCase(string Preset, string Fork, string CasePath, string VectorName)
 {
     public override string ToString() => VectorName;
 }
