@@ -22,6 +22,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
     public void Clear()
     {
         BasePersistence.ClearAllColumns(db);
+        db.Flush();
         db.AcknowledgeRepair();
     }
 

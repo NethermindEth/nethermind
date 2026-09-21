@@ -98,6 +98,27 @@ public class FlatStateActivationPolicyTests
     }
 
     [Test]
+    public void Repaired_empty_flat_with_patricia_stays_patricia()
+    {
+        PolicySetup setup = CreateSetup(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: false,
+            patriciaHasData: true,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            wasRepairedOnOpen: true,
+            onRepair: FlatDbOnRepair.Resync);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.False);
+            setup.Persistence.DidNotReceive().Clear();
+        }
+    }
+
+    [Test]
     public void Repaired_with_resync_clears_so_finder_sees_pregenesis()
     {
         PolicySetup setup = CreateSetup(

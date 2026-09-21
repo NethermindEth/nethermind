@@ -58,9 +58,18 @@ public sealed class FlatStateActivationPolicy(
         }
 
         IPersistence persistence = flatPersistence.Value;
+        bool flatHasData;
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+        {
+            flatHasData = reader.CurrentState != StateId.PreGenesis;
+        }
+
         if (persistence.WasRepairedOnOpen)
         {
-            if (flatDbConfig.OnRepair == FlatDbOnRepair.Resync)
+            // Only resync when flat was the active backend. An unused empty flat DB that RocksDB
+            // repaired must not flip a healthy patricia node onto Flat.
+            bool flatWasActive = flatHasData || !patriciaStateDb.Value.GetAllKeys().Any();
+            if (flatDbConfig.OnRepair == FlatDbOnRepair.Resync && flatWasActive)
             {
                 if (logger.IsError)
                     logger.Error("Flat DB was auto-repaired by RocksDB; wiping flat state and re-entering state sync (FlatDb.OnRepair=Resync).");
@@ -72,8 +81,7 @@ public sealed class FlatStateActivationPolicy(
                 logger.Error("Flat DB was auto-repaired by RocksDB; keeping repaired data (FlatDb.OnRepair=Ignore). This node may diverge.");
         }
 
-        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        if (reader.CurrentState != StateId.PreGenesis)
+        if (flatHasData)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (existing flat DB detected).");
             return true;

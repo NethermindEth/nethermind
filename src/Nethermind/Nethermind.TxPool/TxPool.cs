@@ -1890,10 +1890,11 @@ namespace Nethermind.TxPool
                     }
                     catch (MissingTrieNodeException)
                     {
-                        // Head can exist (headers kept) while state was wiped — e.g. FlatDb.OnRepair=Resync.
-                        // TxPool must not fail startup; treat as empty so persisted blobs are dropped.
+                        // Head can exist (headers kept) while state is unavailable — e.g. after
+                        // FlatDb.OnRepair=Resync wipes flat state, or mid state-sync. Unknown state
+                        // is not an empty account, so it must not be cached: report absent for this
+                        // call and let the next one retry once state is back.
                         account = AccountStruct.TotallyEmpty;
-                        cache.Set(address, account);
                         return false;
                     }
                     cache.Set(address, account);

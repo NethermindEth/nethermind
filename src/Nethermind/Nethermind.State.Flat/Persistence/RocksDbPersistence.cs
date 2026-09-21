@@ -18,6 +18,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
     public void Clear()
     {
         BasePersistence.ClearAllColumns(db);
+        db.Flush();
         db.AcknowledgeRepair();
     }
 

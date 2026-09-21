@@ -40,6 +40,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
     public void Clear()
     {
         BasePersistence.ClearAllColumns(db);
+        db.Flush();
         db.AcknowledgeRepair();
     }
 

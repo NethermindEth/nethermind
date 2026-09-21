@@ -378,8 +378,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public void AcknowledgeRepair()
     {
-        WasRepairedOnOpen = false;
         _fileSystem.File.Delete(RepairedMarkerPath);
+        WasRepairedOnOpen = false;
     }
 
     protected virtual void RepairDb(DbOptions dbOptions, string path) => RocksDb.Repair(dbOptions, path);
