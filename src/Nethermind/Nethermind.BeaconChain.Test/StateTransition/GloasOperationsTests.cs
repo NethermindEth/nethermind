@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using NUnit.Framework;
@@ -215,6 +216,145 @@ public class GloasOperationsTests
             Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound), new PubkeyCache(), verifySignature: false), Is.True);
             Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound + 1), new PubkeyCache(), verifySignature: false), Is.False);
         });
+    }
+
+    // ---- Voluntary exits ----
+
+    /// <summary>Well past SHARD_COMMITTEE_PERIOD, so a genesis-activated validator may exit; the block-root window still covers the epoch boundary.</summary>
+    private static readonly ulong ExitEligibleSlot = (Presets.ShardCommitteePeriod + 1) * Presets.SlotsPerEpoch;
+
+    [Test]
+    public void ProcessVoluntaryExit_initiates_the_exit_and_queues_it_where_the_fulu_pipeline_would()
+    {
+        BeaconStateFulu pre = CreateFuluStateAtBoundary(ValidatorCount);
+        BeaconStateFulu fulu = pre.Clone();
+        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
+        PubkeyCache pubkeys = InstallRealValidatorKeys(gloas);
+        fulu.Slot = ExitEligibleSlot;
+        gloas.Slot = ExitEligibleSlot;
+        const int exiting = 9;
+        SignedVoluntaryExit exit = SignedExit(gloas, exiting, epoch: 3);
+
+        GloasBlockProcessing.ProcessVoluntaryExit(gloas, exit, new EpochCache(), pubkeys, verifySignature: true);
+        // The Fulu twin still carries placeholder pubkeys; only the queueing is compared, not the signature.
+        BlockProcessing.ProcessVoluntaryExit(fulu, exit, new EpochCache(), new PubkeyCache(), verifySignature: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(gloas.Validators![exiting].ExitEpoch, Is.EqualTo(BeaconStateAccessors.ComputeActivationExitEpoch(Presets.ShardCommitteePeriod + 1)));
+            Assert.That(gloas.Validators[exiting].ExitEpoch, Is.EqualTo(fulu.Validators![exiting].ExitEpoch));
+            Assert.That(gloas.Validators[exiting].WithdrawableEpoch, Is.EqualTo(fulu.Validators[exiting].WithdrawableEpoch));
+            Assert.That(gloas.EarliestExitEpoch, Is.EqualTo(fulu.EarliestExitEpoch));
+            Assert.That(gloas.ExitBalanceToConsume, Is.EqualTo(fulu.ExitBalanceToConsume));
+        });
+    }
+
+    [TestCase("bad signature", "Invalid voluntary exit signature")]
+    [TestCase("pending partial withdrawal", "pending partial withdrawals")]
+    [TestCase("already exiting", "already initiated an exit")]
+    [TestCase("too recently activated", "not been active long enough")]
+    [TestCase("exit epoch in the future", "not valid before epoch")]
+    public void ProcessVoluntaryExit_rejects_an_invalid_exit_and_mutates_nothing(string defect, string expectedMessage)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        const int exiting = 9;
+        SignedVoluntaryExit exit;
+        switch (defect)
+        {
+            case "too recently activated":
+                // Still at the fixture's epoch 1, under SHARD_COMMITTEE_PERIOD since activation.
+                state.Slot = BoundarySlot;
+                exit = SignedExit(state, exiting, epoch: 1);
+                break;
+            case "exit epoch in the future":
+                state.Slot = ExitEligibleSlot;
+                exit = SignedExit(state, exiting, epoch: Presets.ShardCommitteePeriod + 5);
+                break;
+            default:
+                state.Slot = ExitEligibleSlot;
+                exit = SignedExit(state, exiting, epoch: 3);
+                break;
+        }
+        switch (defect)
+        {
+            case "bad signature":
+                exit.Signature = Corrupt(exit.Signature);
+                break;
+            case "pending partial withdrawal":
+                state.PendingPartialWithdrawals = [new PendingPartialWithdrawal { ValidatorIndex = exiting, Amount = Gwei, WithdrawableEpoch = 1 }];
+                break;
+            case "already exiting":
+                Validator exitingValidator = state.Validators![exiting].Clone();
+                exitingValidator.ExitEpoch = Presets.ShardCommitteePeriod + 9;
+                state.Validators[exiting] = exitingValidator;
+                break;
+        }
+        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
+
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            GloasBlockProcessing.ProcessVoluntaryExit(state, exit, new EpochCache(), pubkeys, verifySignature: true))!;
+
+        Assert.That(ex.Message, Does.Contain(expectedMessage));
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected exit must leave the state untouched");
+    }
+
+    // ---- BLS-to-execution changes ----
+
+    [Test]
+    public void ProcessBlsToExecutionChange_rewrites_the_bls_credentials_to_the_execution_address_as_the_fulu_pipeline_does()
+    {
+        BeaconStateFulu pre = CreateFuluStateAtBoundary(ValidatorCount);
+        const int changing = 4;
+        Bls.SecretKey fromKey = DeriveKey(500);
+        Validator withBlsCredentials = pre.Validators![changing].Clone();
+        withBlsCredentials.WithdrawalCredentials = BlsWithdrawalCredentials(new BlsPublicKey(new Bls.P1(fromKey).Compress()));
+        pre.Validators[changing] = withBlsCredentials;
+        BeaconStateFulu fulu = pre.Clone();
+        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
+        Address toAddress = new(Hash(0xE7).Bytes[12..]);
+        SignedBlsToExecutionChange change = SignedBlsChange(gloas, changing, fromKey, toAddress);
+
+        GloasBlockProcessing.ProcessBlsToExecutionChange(gloas, change, verifySignature: true);
+        BlockProcessing.ProcessBlsToExecutionChange(fulu, change, verifySignature: true);
+
+        byte[] expectedBytes = new byte[32];
+        expectedBytes[0] = Presets.EthWithdrawalPrefix;
+        toAddress.Bytes.CopyTo(expectedBytes.AsSpan(12));
+        Hash256 expected = new(expectedBytes);
+        Assert.Multiple(() =>
+        {
+            Assert.That(gloas.Validators![changing].WithdrawalCredentials, Is.EqualTo(expected));
+            Assert.That(gloas.Validators[changing].WithdrawalCredentials, Is.EqualTo(fulu.Validators![changing].WithdrawalCredentials));
+        });
+    }
+
+    [TestCase("bad signature", "Invalid BLS to execution change signature")]
+    [TestCase("credentials of another key", "does not match the withdrawal credentials")]
+    [TestCase("execution credentials already", "does not have BLS withdrawal credentials")]
+    public void ProcessBlsToExecutionChange_rejects_an_invalid_change_and_mutates_nothing(string defect, string expectedMessage)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        const int changing = 4;
+        Bls.SecretKey fromKey = DeriveKey(500);
+        Validator validator = state.Validators![changing].Clone();
+        validator.WithdrawalCredentials = defect switch
+        {
+            "credentials of another key" => BlsWithdrawalCredentials(new BlsPublicKey(new Bls.P1(DeriveKey(501)).Compress())),
+            "execution credentials already" => EthWithdrawalCredentials(0xAB),
+            _ => BlsWithdrawalCredentials(new BlsPublicKey(new Bls.P1(fromKey).Compress())),
+        };
+        state.Validators[changing] = validator;
+        SignedBlsToExecutionChange change = SignedBlsChange(state, changing, fromKey, new Address(Hash(0xE7).Bytes[12..]));
+        if (defect == "bad signature")
+            change.Signature = Corrupt(change.Signature);
+        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
+
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            GloasBlockProcessing.ProcessBlsToExecutionChange(state, change, verifySignature: true))!;
+
+        Assert.That(ex.Message, Does.Contain(expectedMessage));
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), "a rejected change must leave the state untouched");
     }
 
     [Test]
