@@ -159,10 +159,117 @@ public class BeaconApiHostTests
     }
 
     [Test]
-    public async Task Peers_listing_is_501_not_a_fabricated_empty_list()
+    public async Task Peers_listing_with_no_peer_manager_is_an_empty_list_not_an_error()
     {
         HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/peers");
-        Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)501));
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        JsonDocument body = await ReadJsonAsync(response);
+        Assert.That(body.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+        Assert.That(body.RootElement.GetProperty("meta").GetProperty("count").GetInt32(), Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task PeerById_is_404_for_any_id_when_no_peer_manager_is_registered()
+    {
+        HttpResponseMessage response = await _client.GetAsync("/eth/v1/node/peers/16Uiu2HAmNoSuchPeer");
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+    }
+
+    [Test]
+    public async Task Peers_listing_reports_the_full_wire_shape_for_a_tracked_peer()
+    {
+        const string address = "/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAmTestPeerShape";
+        const string expectedEnr = "enr:-shape-test";
+        (BeaconApiHost host, HttpClient client, PeerManager peerManager) = await StartHostWithPeerManagerAsync();
+        try
+        {
+            peerManager.ReserveDialingForTest(address, expectedEnr);
+
+            HttpResponseMessage response = await client.GetAsync("/eth/v1/node/peers");
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            JsonDocument body = await ReadJsonAsync(response);
+            JsonElement peer = body.RootElement.GetProperty("data")[0];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.GetProperty("peer_id").GetString(), Is.EqualTo("16Uiu2HAmTestPeerShape"));
+                Assert.That(peer.GetProperty("enr").GetString(), Is.EqualTo(expectedEnr), "a peer this driver discovered itself must report its real ENR, not null");
+                Assert.That(peer.GetProperty("last_seen_p2p_address").GetString(), Is.EqualTo(address));
+                Assert.That(peer.GetProperty("state").GetString(), Is.EqualTo("connecting"));
+                Assert.That(peer.GetProperty("direction").GetString(), Is.EqualTo("outbound"));
+            }
+
+            Assert.That(body.RootElement.GetProperty("meta").GetProperty("count").GetInt32(), Is.EqualTo(1));
+        }
+        finally
+        {
+            client.Dispose();
+            await host.DisposeAsync();
+        }
+    }
+
+    [TestCase("state=connecting", 1)]
+    [TestCase("state=connected", 0)]
+    [TestCase("direction=outbound", 1)]
+    [TestCase("direction=inbound", 0)]
+    public async Task Peers_listing_narrows_by_state_and_direction_query_parameters(string query, int expectedCount)
+    {
+        (BeaconApiHost host, HttpClient client, PeerManager peerManager) = await StartHostWithPeerManagerAsync();
+        try
+        {
+            peerManager.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAmTestPeerFilter", "enr:-filter-test");
+
+            HttpResponseMessage response = await client.GetAsync($"/eth/v1/node/peers?{query}");
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            JsonDocument body = await ReadJsonAsync(response);
+            // A filter that silently includes or excludes the wrong peers is worse than one that 400s:
+            // meta.count must track data's length, not the manager's unfiltered total.
+            Assert.That(body.RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(expectedCount));
+            Assert.That(body.RootElement.GetProperty("meta").GetProperty("count").GetInt32(), Is.EqualTo(expectedCount));
+        }
+        finally
+        {
+            client.Dispose();
+            await host.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Peers_listing_is_400_for_an_unrecognized_state_value()
+    {
+        (BeaconApiHost host, HttpClient client, PeerManager _) = await StartHostWithPeerManagerAsync();
+        try
+        {
+            HttpResponseMessage response = await client.GetAsync("/eth/v1/node/peers?state=bogus");
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        }
+        finally
+        {
+            client.Dispose();
+            await host.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task PeerById_returns_the_matched_peer_and_404_for_an_unknown_one()
+    {
+        (BeaconApiHost host, HttpClient client, PeerManager peerManager) = await StartHostWithPeerManagerAsync();
+        try
+        {
+            peerManager.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAmTestPeerLookup", "enr:-lookup-test");
+
+            HttpResponseMessage found = await client.GetAsync("/eth/v1/node/peers/16Uiu2HAmTestPeerLookup");
+            Assert.That(found.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            JsonDocument foundBody = await ReadJsonAsync(found);
+            Assert.That(foundBody.RootElement.GetProperty("data").GetProperty("peer_id").GetString(), Is.EqualTo("16Uiu2HAmTestPeerLookup"));
+
+            HttpResponseMessage missing = await client.GetAsync("/eth/v1/node/peers/16Uiu2HAmNoSuchPeer");
+            Assert.That(missing.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+        }
+        finally
+        {
+            client.Dispose();
+            await host.DisposeAsync();
+        }
     }
 
     [Test]
@@ -307,6 +414,30 @@ public class BeaconApiHostTests
 
     private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    /// <summary>
+    /// A second, ad hoc host with a real (but unstarted - no socket bound) <see cref="PeerManager"/>,
+    /// for the node/peers tests: <see cref="_host"/>'s shared fixture always runs with a null one.
+    /// <see cref="PeerManager"/> is a concrete class with no interface to fake through
+    /// <see cref="BeaconApiContext"/>, so tests seed it via <see cref="PeerManager.ReserveDialingForTest"/>
+    /// (the same lightweight-construction pattern PeerBandTests.cs uses) rather than a live dial.
+    /// </summary>
+    private static async Task<(BeaconApiHost Host, HttpClient Client, PeerManager PeerManager)> StartHostWithPeerManagerAsync()
+    {
+        BeaconChainConfig config = new() { P2PPort = 0 };
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
+        LocalMetadataSource metadataSource = new();
+        BeaconP2P p2p = new(config, Spec, store, statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+        PeerManager peerManager = new(p2p, config, statusHolder, LimboLogs.Instance);
+
+        BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
+        BeaconApiHost host = new(apiConfig, config, Spec, statusHolder, new SlotClock(Spec, Timestamper.Default), store,
+            metadataSource, new FakeEngineDriver(), new FakeProcessExitSource(), LimboLogs.Instance, peerManager: peerManager);
+        await host.StartAsync(CancellationToken.None);
+        HttpClient client = new() { BaseAddress = new Uri($"http://127.0.0.1:{host.Port}") };
+        return (host, client, peerManager);
+    }
 
     private static SignedBeaconBlock CreateMinimalBlock(ulong slot) => new()
     {
