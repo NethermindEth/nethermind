@@ -11,7 +11,6 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
-using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
@@ -67,7 +66,6 @@ public class BeaconChainModule : Module
             .AddSingleton<IBlockImporterFactory, BlockImporterFactory>()
             .AddSingleton<ExternalClDetector>()
             .AddSingleton<EngineDriver>()
-            .Bind<INewPayloadNotifier, EngineDriver>()
             .Bind<IEngineDriver, EngineDriver>()
             .AddDecorator<IEngineRpcModule, ExternalClInterceptingEngineRpcModule>()
             .AddColumnDatabase<BeaconChainDbColumns>("beaconChain")
