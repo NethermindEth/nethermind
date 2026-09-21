@@ -24,13 +24,6 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// </summary>
 public static class GloasStateAccessors
 {
-    // EIP-8061 churn parameters (specs/gloas/beacon-chain.md "Configuration/Validator cycle" at the
-    // pinned commit). They belong beside their Electra siblings in Spec/Presets.cs, which this
-    // change could not touch; move them there when that file is next edited.
-    internal const ulong ChurnLimitQuotientGloas = 1UL << 15;
-    internal const ulong ConsolidationChurnLimitQuotient = 1UL << 16;
-    internal const ulong MaxPerEpochActivationChurnLimitGloas = 256_000_000_000;
-
     public static ulong GetCurrentEpoch(this BeaconStateGloas state) => BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
 
     public static ulong GetPreviousEpoch(this BeaconStateGloas state)
@@ -214,12 +207,12 @@ public static class GloasStateAccessors
     /// pending deposits consume. Exits no longer share this budget - see <see cref="GetExitChurnLimit"/>.
     /// </summary>
     public static ulong GetActivationChurnLimit(this BeaconStateGloas state, EpochCache cache) =>
-        Math.Min(MaxPerEpochActivationChurnLimitGloas, state.GetExitChurnLimit(cache));
+        Math.Min(Presets.MaxPerEpochActivationChurnLimitGloas, state.GetExitChurnLimit(cache));
 
     /// <summary>Spec <c>get_exit_churn_limit</c> (EIP-8061, new in Gloas): the uncapped per-epoch exit churn.</summary>
     public static ulong GetExitChurnLimit(this BeaconStateGloas state, EpochCache cache)
     {
-        ulong churn = Math.Max(Presets.MinPerEpochChurnLimitElectra, state.GetTotalActiveBalance(cache) / ChurnLimitQuotientGloas);
+        ulong churn = Math.Max(Presets.MinPerEpochChurnLimitElectra, state.GetTotalActiveBalance(cache) / Presets.ChurnLimitQuotientGloas);
         return churn - churn % Presets.EffectiveBalanceIncrement;
     }
 
@@ -229,7 +222,7 @@ public static class GloasStateAccessors
     /// </summary>
     public static ulong GetConsolidationChurnLimit(this BeaconStateGloas state, EpochCache cache)
     {
-        ulong churn = state.GetTotalActiveBalance(cache) / ConsolidationChurnLimitQuotient;
+        ulong churn = state.GetTotalActiveBalance(cache) / Presets.ConsolidationChurnLimitQuotient;
         return churn - churn % Presets.EffectiveBalanceIncrement;
     }
 
