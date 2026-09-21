@@ -292,6 +292,9 @@ public class PeerBandTests
                 Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected));
                 Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"));
                 Assert.That(record.AgentVersion, Is.EqualTo("test-remote/inbound-1.2.3"), "the identify agent string the remote advertised, not null and not our own");
+                // A session the remote opened was never discovered by us, so there is no ENR to
+                // attribute - fabricating one here would be worse than reporting the honest gap.
+                Assert.That(record.Enr, Is.Null);
             }
 
             Assert.That(directory.TryGetPeer(record.PeerId, out PeerRecord lookedUp), Is.True);
@@ -522,12 +525,13 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task Peers_surface_reports_peer_id_direction_state_multiaddr_and_agent_for_a_connected_peer(CancellationToken token)
+    public async Task Peers_surface_reports_peer_id_direction_state_multiaddr_agent_and_enr_for_a_connected_peer(CancellationToken token)
     {
         Node server = CreateNode();
         Node client = CreateNode();
         SetMatchingStatus(server, client);
         server.P2P.IdentifySettingsForTest.AgentVersion = "test-remote/outbound-4.5.6";
+        const string discoveredEnr = "enr:-discovered-test-record";
 
         await using (client.P2P)
         await using (server.P2P)
@@ -538,7 +542,9 @@ public class PeerBandTests
             string address = LoopbackAddress(server.P2P);
             string expectedPeerId = PeerManager.ExtractPeerIdForTest(address);
             PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(address, token), Is.True);
+            // Passed the way the discovery dial loop passes it (see BeaconSyncOrchestrator.DialCandidateAsync),
+            // not the plain two-arg overload a static-peer reconnect uses.
+            Assert.That(await peerManager.TryAddPeerAsync(address, token, discoveredEnr), Is.True);
 
             IPeerDirectory directory = peerManager;
             PeerRecord record = directory.Peers.Single();
@@ -551,10 +557,14 @@ public class PeerBandTests
                 // or the pre-connect dial address (which uses 0.0.0.0, not 127.0.0.1, before rewrite).
                 Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"));
                 Assert.That(record.AgentVersion, Is.EqualTo("test-remote/outbound-4.5.6"), "the identify agent string the server advertised, not null and not our own");
+                // The Beacon API's node/peers endpoint reads this straight off the record; dropping it
+                // here silently regresses that endpoint back to reporting null for a discovered peer.
+                Assert.That(record.Enr, Is.EqualTo(discoveredEnr));
             }
 
             Assert.That(directory.TryGetPeer(expectedPeerId, out PeerRecord lookedUp), Is.True);
             Assert.That(lookedUp.PeerId, Is.EqualTo(expectedPeerId));
+            Assert.That(lookedUp.Enr, Is.EqualTo(discoveredEnr));
         }
     }
 
