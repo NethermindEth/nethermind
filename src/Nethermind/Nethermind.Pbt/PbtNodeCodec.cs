@@ -23,6 +23,9 @@ internal static class PbtNodeCodec
     /// <summary>The length of a branch's hash preimage, which starts its encoding.</summary>
     internal static int BranchPreimageLength(int bitCount) => 3 + PbtBitPrefix.ByteCount(bitCount) + 64;
 
+    /// <summary>The longest branch preimage a tree can hold: a prefix is bounded by the longest complete key.</summary>
+    internal const int MaxBranchPreimageLength = 3 + PbtStorageTreeKey.MaxLength + 64;
+
     /// <summary>The length of a complete branch encoding.</summary>
     internal static int BranchLength(int bitCount, int leftKeyLength, int rightKeyLength) =>
         BranchPreimageLength(bitCount) + BranchTrailerHeaderLength + leftKeyLength + rightKeyLength;

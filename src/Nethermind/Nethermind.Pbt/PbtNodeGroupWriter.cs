@@ -124,6 +124,32 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         return hash;
     }
 
+    /// <summary>
+    /// <see cref="Write{TKey}(in PbtTraversalPath, int, int, ref TrieUpdater{TKey, TPath}.TraversalSubtree, TrieUpdaterMetrics?)"/>,
+    /// except that a branch whose hash is not yet known is left for the caller to hash: its preimage is copied
+    /// into <paramref name="pendingPreimage"/>, <paramref name="pendingPreimageLength"/> set, and default returned.
+    /// </summary>
+    /// <remarks>The copy is needed because the committed encoding may be omitted from the group and the writer's span is only borrowed until its next operation.</remarks>
+    internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, int depth, ref TrieUpdater<TKey, TPath>.TraversalSubtree node, TrieUpdaterMetrics? metrics,
+        scoped Span<byte> pendingPreimage, out int pendingPreimageLength)
+        where TKey : struct, IPbtKey<TKey>
+    {
+        pendingPreimageLength = 0;
+        if (node.IsEmpty) return default;
+        if (node.IsLeaf && position != PbtFourLevelGroupGeometry.RootPosition)
+        {
+            ValueHash256 leafHash = node.Node.LeafHash;
+            node.Node = default;
+            return leafHash;
+        }
+        Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
+        ValueHash256 hash = node.EncodeDeferringHash(encoding, depth, metrics, out pendingPreimageLength);
+        encoding[..pendingPreimageLength].CopyTo(pendingPreimage);
+        Commit(path);
+        node.Node = default;
+        return hash;
+    }
+
     /// <summary>Appends a validated source group's contiguous entry range at unchanged positions.</summary>
     internal int CopyRange(ReadOnlySpan<byte> entries, ReadOnlySpan<int> offsets, ReadOnlySpan<int> lengths,
         int firstPosition, int lastPosition)

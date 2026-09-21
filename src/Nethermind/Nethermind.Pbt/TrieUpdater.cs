@@ -557,11 +557,14 @@ internal static partial class TrieUpdater<TKey, TPath>
     internal static TraversalSubtree Compose(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, TrieUpdaterMetrics? metrics, scoped ref Frontier frontier, Span<byte> sourceBuffer)
     {
         ComposeFrameBuffer frames = default;
+        // A left child's preimage waits here, one slice per frame, until its sibling is written and both can be hashed at once.
+        Span<byte> pendingPreimages = stackalloc byte[(PbtFourLevelGroupGeometry.LevelsPerGroup + 1) * PbtNodeCodec.MaxBranchPreimageLength];
         int frameCount = 1;
         TraversalSubtree result = default;
         while (frameCount != 0)
         {
             ref ComposeFrame frame = ref frames[frameCount - 1];
+            Span<byte> leftPreimage = pendingPreimages.Slice((frameCount - 1) * PbtNodeCodec.MaxBranchPreimageLength, PbtNodeCodec.MaxBranchPreimageLength);
             int position = frame.Path.Position;
             int width = frame.Path.Width;
             if (frame.Stage == ComposeStage.LeftCompleted)
@@ -580,7 +583,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                     // A leaf child is not written; the branch composed below inlines its key.
                     frame.LeftIsLeaf = result.IsLeaf;
                     if (result.IsLeaf) frame.LeftKey = result.Node.LeafKey;
-                    frame.LeftHash = writer.Write(path, position - width, reader.BitDepth + frame.Path.Length + 1, ref result, metrics);
+                    frame.LeftHash = writer.Write(path, position - width, reader.BitDepth + frame.Path.Length + 1, ref result, metrics, leftPreimage, out frame.LeftPreimageLength);
                     frame.Stage = ComposeStage.RightCompleted;
                 }
                 if (width == 2)
@@ -598,7 +601,9 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 bool rightIsLeaf = result.IsLeaf;
                 TKey rightKey = rightIsLeaf ? result.Node.LeafKey : default;
-                ValueHash256 rightHash = writer.Write(path, position - 1, reader.BitDepth + frame.Path.Length + 1, ref result, metrics);
+                Span<byte> rightPreimage = pendingPreimages[^PbtNodeCodec.MaxBranchPreimageLength..];
+                ValueHash256 rightHash = writer.Write(path, position - 1, reader.BitDepth + frame.Path.Length + 1, ref result, metrics, rightPreimage, out int rightPreimageLength);
+                HashPending(leftPreimage[..frame.LeftPreimageLength], ref frame.LeftHash, rightPreimage[..rightPreimageLength], ref rightHash, metrics);
                 byte leafChildren = (byte)((frame.LeftIsLeaf ? Subtree.LeftLeaf : 0) | (rightIsLeaf ? Subtree.RightLeaf : 0));
                 result = new TraversalSubtree(path, new Subtree(frame.Path, frame.LeftHash, rightHash, frame.LeftKey, rightKey, leafChildren));
                 frameCount--;
@@ -628,6 +633,27 @@ internal static partial class TrieUpdater<TKey, TPath>
         return result;
     }
 
+    /// <summary>Hashes the sibling preimages left pending by <see cref="PbtNodeGroupWriter{TPath}.Write{TKey}(in PbtTraversalPath, int, int, ref TraversalSubtree, TrieUpdaterMetrics?, scoped Span{byte}, out int)"/>, together when both are pending.</summary>
+    private static void HashPending(ReadOnlySpan<byte> leftPreimage, ref ValueHash256 leftHash, ReadOnlySpan<byte> rightPreimage, ref ValueHash256 rightHash, TrieUpdaterMetrics? metrics)
+    {
+        if (leftPreimage.IsEmpty && rightPreimage.IsEmpty) return;
+        if (leftPreimage.IsEmpty)
+        {
+            metrics?.IncrementNodeHashes();
+            rightHash = Blake3Hash.Hash(rightPreimage);
+        }
+        else if (rightPreimage.IsEmpty)
+        {
+            metrics?.IncrementNodeHashes();
+            leftHash = Blake3Hash.Hash(leftPreimage);
+        }
+        else
+        {
+            metrics?.AddNodeHashes(2);
+            Blake3Hash.HashTwo(leftPreimage, rightPreimage, out leftHash, out rightHash);
+        }
+    }
+
     private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted }
 
     private struct ComposeFrame(NodeGroupPath path)
@@ -635,6 +661,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal NodeGroupPath Path = path;
         internal ComposeStage Stage;
         internal ValueHash256 LeftHash;
+        /// <summary>The length of the left child's preimage awaiting its sibling, or zero when its hash is already known.</summary>
+        internal int LeftPreimageLength;
         internal TKey LeftKey;
         internal bool LeftIsLeaf;
     }
@@ -792,4 +820,5 @@ internal sealed class TrieUpdaterMetrics
     internal void IncrementGroupParses() => GroupParses++;
     internal void IncrementGroupFrameResolutions() => GroupFrameResolutions++;
     internal void IncrementNodeHashes() => NodeHashes++;
+    internal void AddNodeHashes(int count) => NodeHashes += count;
 }

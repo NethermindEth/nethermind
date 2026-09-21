@@ -172,6 +172,20 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         internal readonly ValueHash256 Encode(Span<byte> encoding, int depth, TrieUpdaterMetrics? metrics)
         {
+            ValueHash256 hash = EncodeDeferringHash(encoding, depth, metrics, out int preimageLength);
+            if (preimageLength == 0) return hash;
+            metrics?.IncrementNodeHashes();
+            return Blake3Hash.Hash(encoding[..preimageLength]);
+        }
+
+        /// <summary>
+        /// <see cref="Encode"/>, except that a branch whose hash is not yet known is left unhashed: the result is
+        /// default and <paramref name="preimageLength"/> the length of its preimage at the start of
+        /// <paramref name="encoding"/>, so the caller can hash it together with another node.
+        /// </summary>
+        internal readonly ValueHash256 EncodeDeferringHash(Span<byte> encoding, int depth, TrieUpdaterMetrics? metrics, out int preimageLength)
+        {
+            preimageLength = 0;
             if (IsLeaf)
             {
                 PbtNodeCodec.EncodeLeaf(encoding, Node.LeafKey);
@@ -187,12 +201,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             int bitCount = BranchDepth - depth;
             PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, Node.LeftHash, Node.RightHash);
             CopyBranchBits(depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
-            int preimageLength = PbtNodeCodec.BranchPreimageLength(bitCount);
-            Node.WriteLeafKeys(encoding[preimageLength..]);
+            int branchPreimageLength = PbtNodeCodec.BranchPreimageLength(bitCount);
+            Node.WriteLeafKeys(encoding[branchPreimageLength..]);
             // An omitted branch reacquired at its own anchor is the node its parent already hashed.
             if (depth == AnchorDepth && Node.KnownHash != default) return Node.KnownHash;
-            metrics?.IncrementNodeHashes();
-            return Blake3Hash.Hash(encoding[..preimageLength]);
+            preimageLength = branchPreimageLength;
+            return default;
         }
 
         private readonly ValueHash256 SourceHash(TrieUpdaterMetrics? metrics)
