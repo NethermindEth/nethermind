@@ -11,14 +11,14 @@ using Nethermind.TxPool.Collections;
 namespace Nethermind.TxPool.Filters;
 
 /// <summary>
-/// Charges MATCHA width for every pending EIP-8250 keyed-nonce frame transaction a sender admits beyond its
-/// free baseline of <see cref="ITxPoolConfig.MaxPendingTxsPerSender"/>.
+/// Charges MATCHA width for every pending EIP-8250 keyed-nonce frame transaction a sender admits beyond the
+/// single EIP-8141 baseline transaction.
 /// </summary>
 /// <remarks>
-/// Sender-keyed only: the sender pays whether or not a paymaster sponsors the transaction, and the charge is
-/// flat. A replacement displaces a pending entry rather than adding one, so it is judged against the count
-/// without the incumbent. The spend is taken before the pool inserts, so the pool refunds it on every path
-/// that leaves the transaction unpooled. Inert unless <see cref="ITxPoolConfig.FrameTxWidthEnabled"/>.
+/// Sender-keyed only: the sender pays whether or not a paymaster sponsors the transaction, and the charge scales
+/// with the transaction's admission gas. A replacement displaces a pending entry rather than adding one, so it is judged against the count
+/// without the incumbent. Spent width is never returned, which is what bounds repeated mass invalidation.
+/// Inert unless <see cref="ITxPoolConfig.FrameTxWidthEnabled"/>.
 /// </remarks>
 internal sealed class FrameTxWidthFilter(
     ITxPoolConfig txPoolConfig,
@@ -37,12 +37,12 @@ internal sealed class FrameTxWidthFilter(
         Address sender = tx.SenderAddress!;
         int pending = standardPool.GetBucketCount(sender) + blobPool.GetBucketCount(sender);
         if (PendingReplacement.Find(tx, standardPool, blobPool) is not null) pending--;
-        if (pending < txPoolConfig.MaxPendingTxsPerSender)
+        if (pending < FrameTxWidthCharge.Eip8141PublicMempoolBaseline)
         {
             return AcceptTxResult.Accepted;
         }
 
-        UInt256 cost = txPoolConfig.FrameTxWidthCostPerAdmission;
+        UInt256 cost = FrameTxWidthCharge.For(tx, txPoolConfig.FrameTxWidthSafetyFactorPermille);
         if (!senderWidth.TrySpend(sender, cost))
         {
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
@@ -51,7 +51,6 @@ internal sealed class FrameTxWidthFilter(
             return AcceptTxResult.WidthUnmet;
         }
 
-        senderWidth.RecordCharge(tx.Hash!.ValueHash256, sender, cost);
         return AcceptTxResult.Accepted;
     }
 }

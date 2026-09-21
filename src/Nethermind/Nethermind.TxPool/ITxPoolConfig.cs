@@ -67,8 +67,11 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "false", Description = "Whether each pending EIP-8250 keyed-nonce frame transaction a sender admits beyond its first `MaxPendingTxsPerSender` must spend sender width, earned from the gas the sender's included keyed-nonce frame transactions paid. A `MaxPendingTxsPerSender` of `0` gives no free baseline here. Experimental.")]
     bool FrameTxWidthEnabled { get; set; }
 
-    [ConfigItem(DefaultValue = "21000", Description = "The width, in gas, one pending EIP-8250 keyed-nonce frame transaction beyond the sender's `MaxPendingTxsPerSender` baseline spends on admission and gets back when it leaves the pool. Used only when `FrameTxWidthEnabled` is set.")]
-    ulong FrameTxWidthCostPerAdmission { get; set; }
+    [ConfigItem(DefaultValue = "1000", Description = "EIP-8141 MATCHA `safety_factor`, in permille of a keyed-nonce frame transaction's `admission_gas`, that fixes the width its admission and each revalidation spends: `charge = ceil(safety_factor * admission_gas)`. `1000` charges the measured admission gas; a higher value adds headroom for client work EVM gas does not measure. Spent width is never returned. Used only when `FrameTxWidthEnabled` is set.")]
+    ulong FrameTxWidthSafetyFactorPermille { get; set; }
+
+    [ConfigItem(DefaultValue = "0", Description = "EIP-8141 MATCHA `width_cap`: the max width, in gas, a sender may hold. Newly finalized gas earns width only up to this cap. `0` lifts the cap. Used only when `FrameTxWidthEnabled` is set.")]
+    ulong FrameTxWidthCap { get; set; }
 
     [ConfigItem(DefaultValue = "524288",
         Description = "The max number of cached hashes of already known transactions. Set automatically by the memory hint.")]
