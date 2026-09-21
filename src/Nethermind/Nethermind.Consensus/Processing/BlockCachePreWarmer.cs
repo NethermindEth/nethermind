@@ -518,7 +518,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, int maxDegreeOfParallelism, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        BlockState blockState = new(this, block, parent, spec, speculativelyWarmed);
+        BlockState blockState = new(this, block, parent, spec, speculativelyWarmed) { Warmed = new bool[block.Transactions.Length] };
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
         Volatile.Write(ref _mainThreadTxIndex, -1);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
@@ -702,7 +702,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 {
                     System.Text.StringBuilder reasons = new();
                     foreach (KeyValuePair<string, int> kv in blockState.Reasons) reasons.Append(kv.Key.Replace(' ', '_')).Append('=').Append(kv.Value).Append(',');
-                    _logger.Info($"PrewarmOutcome block={blockState.Block.Number} txs={blockState.Block.Transactions.Length} ok={blockState.Ok} reverted={blockState.Reverted} invalid={blockState.Invalid} skipped={blockState.Skipped} main={MainThreadTxIndex} reasons={reasons}");
+                    bool[] warmedFlags = blockState.Warmed!;
+                    int[] byIdx = new int[6];
+                    int[] byEnd = new int[4];
+                    int unwarmed = 0;
+                    int firstUnwarmed = -1;
+                    for (int i = 0; i < warmedFlags.Length; i++)
+                    {
+                        if (warmedFlags[i]) continue;
+                        unwarmed++;
+                        if (firstUnwarmed < 0) firstUnwarmed = i;
+                        byIdx[i < 10 ? 0 : i < 30 ? 1 : i < 100 ? 2 : i < 200 ? 3 : i < 400 ? 4 : 5]++;
+                        int fromEnd = warmedFlags.Length - 1 - i;
+                        byEnd[fromEnd < 3 ? 0 : fromEnd < 10 ? 1 : fromEnd < 30 ? 2 : 3]++;
+                    }
+                    _logger.Info($"PrewarmOutcome block={blockState.Block.Number} txs={blockState.Block.Transactions.Length} ok={blockState.Ok} reverted={blockState.Reverted} invalid={blockState.Invalid} skipped={blockState.Skipped} jobskip={blockState.JobSkipped} passes={blockState.Passes} main={MainThreadTxIndex} unwarmed={unwarmed} first={firstUnwarmed} idx={string.Join('/', byIdx)} fromEnd={string.Join('/', byEnd)} reasons={reasons}");
                 }
             }
 
@@ -808,6 +822,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private bool WarmupRecoveredTransactions(BlockState blockState, ParallelOptions parallelOptions, bool[] claimed)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return false;
+        blockState.Passes++;
 
         try
         {
@@ -843,7 +858,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         // Indices are ascending, so if the main thread has started the job's last tx
                         // it has started them all; the per-tx guard would discard each one, so skip
                         // before building a scope.
-                        if (blockState.PreWarmer.MainThreadTxIndex >= job.LastIndex) return worker;
+                        if (blockState.PreWarmer.MainThreadTxIndex >= job.LastIndex) { Interlocked.Add(ref blockState.JobSkipped, job.Transactions.Count); return worker; }
 
                         using IReadOnlyTxProcessingScope scope = worker.Env.Build(blockState.Parent);
                         BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
@@ -1037,6 +1052,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (!result) { Interlocked.Increment(ref blockState.Invalid); blockState.Reasons.AddOrUpdate(result.ToString(), 1, static (_, c) => c + 1); }
             else if (outcome.Failed) { Interlocked.Increment(ref blockState.Reverted); blockState.Reasons.AddOrUpdate("revert:" + (outcome.Error ?? "?"), 1, static (_, c) => c + 1); }
             else Interlocked.Increment(ref blockState.Ok);
+            blockState.Warmed![txIndex] = true;
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
@@ -1328,7 +1344,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null)
     {
-        public int Ok, Reverted, Invalid, Skipped;
+        public int Ok, Reverted, Invalid, Skipped, JobSkipped, Passes;
+        public bool[]? Warmed;
         public readonly ConcurrentDictionary<string, int> Reasons = new();
     }
 
