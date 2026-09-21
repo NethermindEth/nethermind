@@ -16,29 +16,54 @@ public class ChangesetTxTracerTests
     private static readonly byte[] Delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
 
     [TestCaseSource(nameof(CodeChanges))]
-    public void ReportCodeChange_WhenCodeChanges_ReportsExpectedWipe(byte[]? before, byte[] after, bool expected, string reason) =>
-        Assert.That(ReportsWipe(before, after), Is.EqualTo(expected), reason);
+    public void ReportCodeChange_DoesNotInferAWipe(byte[]? before, byte[] after) =>
+        Assert.That(WipedBy(tracer => tracer.ReportCodeChange(TestItem.AddressA, before, after)), Is.False,
+            "a wipe is recorded where it is observed, not inferred from code appearing over an account");
 
     private static TestCaseData[] CodeChanges =>
     [
-        new TestCaseData(Contract, OtherContract, true, "recreation replaces existing code").SetName("ContractCodeReplacingContractCode_IsAWipe"),
-        new TestCaseData(Array.Empty<byte>(), Contract, true, "creation clears existing storage").SetName("ContractCodeOnAnAccountThatExistedWithoutCode_IsAWipe"),
-        new TestCaseData(Contract, Array.Empty<byte>(), true, "empty runtime recreation still clears storage").SetName("EmptyCodeReplacingContractCode_IsAWipe"),
-        new TestCaseData(null, Contract, false, "a fresh account has no storage to clear").SetName("ContractCodeOnAFreshAccount_IsNotAWipe"),
-        new TestCaseData(Array.Empty<byte>(), Delegation, false, "delegation keeps storage").SetName("SettingADelegation_IsNotAWipe"),
-        new TestCaseData(Delegation, Array.Empty<byte>(), false, "revocation keeps storage").SetName("RevokingADelegation_IsNotAWipe"),
-        new TestCaseData(Delegation, (byte[])[.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes], false, "replacement delegation keeps storage").SetName("ReplacingADelegation_IsNotAWipe")
+        new TestCaseData(Contract, OtherContract).SetName("ContractCodeReplacingContractCode"),
+        new TestCaseData(Array.Empty<byte>(), Contract).SetName("ContractCodeOnAnAccountThatExistedWithoutCode"),
+        new TestCaseData(Contract, Array.Empty<byte>()).SetName("EmptyCodeReplacingContractCode"),
+        new TestCaseData(null, Contract).SetName("ContractCodeOnAFreshAccount"),
+        new TestCaseData(Array.Empty<byte>(), Delegation).SetName("SettingADelegation"),
+        new TestCaseData(Delegation, Array.Empty<byte>()).SetName("RevokingADelegation"),
+        new TestCaseData(Delegation, (byte[])[.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes]).SetName("ReplacingADelegation")
     ];
 
-    private static bool ReportsWipe(byte[]? before, byte[] after)
+    [Test]
+    public void ReportStorageClear_IsWhatRecordsAWipe() =>
+        Assert.That(WipedBy(tracer => tracer.ReportStorageClear(TestItem.AddressA)), Is.True,
+            "every path that clears storage inside a transaction journals the clear and reports it here");
+
+    [Test]
+    public void ReportCodeChange_WithoutCode_RecordsTheAccountAsDeleted()
     {
         ChangesetCollector collector = new();
-        new ChangesetTxTracer(collector).ReportCodeChange(TestItem.AddressA, before, after);
+        new ChangesetTxTracer(collector).ReportCodeChange(TestItem.AddressA, Contract, null);
+        MidBlockOverlay overlay = Fold(collector);
+
+        overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account);
+
+        Assert.That(account!.Emptied && !account.Exists, Is.True);
+    }
+
+    private static bool WipedBy(Action<ChangesetTxTracer> report)
+    {
+        ChangesetCollector collector = new();
+        report(new ChangesetTxTracer(collector));
+        MidBlockOverlay overlay = Fold(collector);
+
+        return overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account)
+            && account.StorageClearedAt != MidBlockOverlay.NeverCleared;
+    }
+
+    private static MidBlockOverlay Fold(ChangesetCollector collector)
+    {
         MidBlockOverlay overlay = new();
         overlay.Reset(1);
         overlay.Fold(0, collector.Pack());
         collector.Release();
-
-        return overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account) && account.StorageClearedAt != MidBlockOverlay.NeverCleared;
+        return overlay;
     }
 }
