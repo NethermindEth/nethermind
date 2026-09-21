@@ -56,19 +56,17 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// next block, matching the task's own framing ("applied to state one block later") more precisely
 /// than a same-step read would.
 /// <para/>
-/// <b>Scope actually covered here</b> (see the task's stated order of value): block header and
-/// RANDAO, bid processing, envelope verification, withdrawals computed from state, and the builder
-/// payment/deposit/exit machinery - including a parent payload whose execution requests are
-/// non-empty, via the full deposit/withdrawal/consolidation/builder-deposit/builder-exit request
-/// pipeline in <see cref="ApplyParentExecutionPayload"/> - are all fully implemented, with the
-/// payment window addressed exactly as the spec does now that <see cref="GloasEpochProcessing"/>
-/// rotates it at every epoch boundary.
-/// Left as a declared, by-name gap rather than a partial or approximated implementation: attester/
-/// proposer slashings, attestations, voluntary exits, BLS-to-execution changes and payload
-/// attestations inside a Gloas block body - attestation and PTC processing pull in the whole
-/// committee-shuffling stack, a separate large piece of work or of scope even than the rest of this.
-/// Every one of these throws <see cref="NotSupportedException"/> by name rather than silently
-/// skipping the step.
+/// <b>Scope.</b> The whole of <c>process_block</c>: block header and RANDAO, bid processing,
+/// envelope verification, withdrawals computed from state, the builder payment/deposit/exit
+/// machinery - including a parent payload whose execution requests are non-empty, via the full
+/// deposit/withdrawal/consolidation/builder-deposit/builder-exit request pipeline in
+/// <see cref="ApplyParentExecutionPayload"/> - with the payment window addressed exactly as the
+/// spec does now that <see cref="GloasEpochProcessing"/> rotates it at every epoch boundary, and
+/// every block-body operation (<see cref="ProcessOperations"/>), attestations with their builder
+/// payment weight and PTC payload attestations included. The operations inherited unchanged from
+/// Electra are ported to the Gloas state type rather than shared with <see cref="BlockProcessing"/>,
+/// for the reason given on <see cref="GloasStateAccessors"/>; their signature checks live in
+/// <see cref="GloasSignatureSets"/>.
 /// </remarks>
 public static class GloasBlockProcessing
 {
@@ -164,9 +162,8 @@ public static class GloasBlockProcessing
 
     /// <summary>
     /// Spec <c>process_operations</c> (Gloas): the deposit-request/withdrawal-request/
-    /// consolidation-request dispatch is gone (moved to <see cref="ApplyParentExecutionPayload"/>);
-    /// payload attestations are added. See this type's remarks for exactly which operation kinds
-    /// this method processes versus rejects by name.
+    /// consolidation-request dispatch is gone (moved to <see cref="ApplyParentExecutionPayload"/>),
+    /// payload attestations are added, and attestations learn the parent block's slot.
     /// </summary>
     public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
     {
@@ -202,7 +199,10 @@ public static class GloasBlockProcessing
         {
             ProcessBlsToExecutionChange(state, change, verifySignatures);
         }
-        RejectIfPresent(body.PayloadAttestations, "payload attestations");
+        foreach (PayloadAttestation attestation in body.PayloadAttestations ?? [])
+        {
+            ProcessPayloadAttestation(state, attestation, pubkeys, verifySignatures);
+        }
     }
 
     private static void RequireAtMost<T>(T[]? operations, int limit, string name)
@@ -213,13 +213,41 @@ public static class GloasBlockProcessing
     }
 
     /// <summary>
-    /// Fails loudly by name for a non-empty list of operations this driver does not process yet
-    /// (see this type's remarks). An empty list is a true no-op, not a gap.
+    /// Spec <c>process_payload_attestation</c> (new in Gloas): a PTC vote on the parent block's
+    /// payload, valid only for the parent and the previous slot. Pure verification - the vote's
+    /// content feeds fork choice, not the state.
     /// </summary>
-    private static void RejectIfPresent<T>(T[]? operations, string name)
+    public static void ProcessPayloadAttestation(BeaconStateGloas state, PayloadAttestation attestation, PubkeyCache pubkeys, bool verifySignature = true)
     {
-        if ((operations?.Length ?? 0) > 0)
-            throw new NotSupportedException($"Gloas block processing of {name} is not implemented");
+        PayloadAttestationData data = attestation.Data!;
+        if (data.BeaconBlockRoot != state.LatestBlockHeader!.ParentRoot)
+            throw new BeaconStateException("Payload attestation is not for the parent beacon block");
+        if (data.Slot + 1 != state.Slot)
+            throw new BeaconStateException($"Payload attestation for slot {data.Slot} is not for the slot before {state.Slot}");
+
+        IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation);
+        if (!IsValidIndexedPayloadAttestation(state, indexed, pubkeys, verifySignature))
+            throw new BeaconStateException("Invalid indexed payload attestation");
+    }
+
+    /// <summary>
+    /// Spec <c>is_valid_indexed_payload_attestation</c>: indices must be non-empty, sorted (a PTC
+    /// is sampled with replacement, so repeats are legitimate) and in range, and the aggregate
+    /// signature must verify.
+    /// </summary>
+    public static bool IsValidIndexedPayloadAttestation(BeaconStateGloas state, IndexedPayloadAttestation attestation, PubkeyCache pubkeys, bool verifySignature)
+    {
+        ulong[] indices = attestation.AttestingIndices ?? [];
+        if (indices.Length == 0)
+            return false;
+        for (int i = 0; i < indices.Length; i++)
+        {
+            if (i > 0 && indices[i - 1] > indices[i])
+                return false;
+            if (indices[i] >= (ulong)state.Validators!.Length)
+                return false;
+        }
+        return !verifySignature || GloasSignatureSets.VerifyIndexedPayloadAttestation(state, attestation, pubkeys);
     }
 
     /// <summary>
