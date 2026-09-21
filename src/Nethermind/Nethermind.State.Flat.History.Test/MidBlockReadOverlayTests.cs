@@ -107,6 +107,37 @@ public class MidBlockReadOverlayTests
     }
 
     [Test]
+    public void AnAccountWithSlotsWrittenAfterItsWipe_DoesNotReportAnEmptyRoot()
+    {
+        Fold(0, c =>
+        {
+            c.StorageCleared(TestItem.AddressA);
+            c.Storage(SlotOne, [0x77]);
+        });
+
+        _read.TryGetAccount(TestItem.AddressA, Parent, out Account? account);
+
+        Assert.That(account!.StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash),
+            "the account holds a slot again; reported empty, a wipe later in the trace would find nothing to clear and these slots would read back instead of zero");
+    }
+
+    [Test]
+    public void ARecreatedAccountThatWritesSlots_DoesNotReportAnEmptyRoot()
+    {
+        Fold(0, c => c.Deleted(TestItem.AddressA));
+        Fold(1, c =>
+        {
+            c.Balance(TestItem.AddressA, 7);
+            c.Storage(SlotOne, [0x77]);
+        });
+
+        _read.TryGetAccount(TestItem.AddressA, Parent, out Account? account);
+
+        Assert.That(account!.StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash),
+            "the basis is the empty account, but the prefix has written storage onto it since");
+    }
+
+    [Test]
     public void AWrittenSlot_IsAnswered_AndAnUntouchedOneIsNot()
     {
         Fold(0, c => c.Storage(SlotOne, [0x77]));

@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -21,6 +22,19 @@ public sealed class InlineChangesetCaptureModule : Module, IMainProcessingModule
 {
     protected override void Load(ContainerBuilder builder) =>
         builder.AddDecorator<IBlockProcessor>((ctx, inner) => new InlineCaptureBlockProcessor(inner, ctx.Resolve<InlineChangesetCapture>()));
+}
+
+/// <summary>Captures a block only once it is far enough below the best header that no reorg reaches it, and only on
+/// forks the index can serve at all.</summary>
+public sealed class InlineCapturePolicy(IBlockTree blockTree, ISpecProvider specProvider) : IInlineCapturePolicy
+{
+    /// <summary>A block this far below the best header the node knows of is sync, not the tip: no reorg reaches it.</summary>
+    internal const ulong TipDistance = 256;
+
+    public bool ShouldCapture(Block block) =>
+        !specProvider.GetSpec(block.Header).BlockLevelAccessListsEnabled
+        && blockTree.BestSuggestedHeader is { } best
+        && best.Number >= block.Number + TipDistance;
 }
 
 public sealed class InlineCaptureBlockProcessor(IBlockProcessor inner, InlineChangesetCapture capture) : IBlockProcessor

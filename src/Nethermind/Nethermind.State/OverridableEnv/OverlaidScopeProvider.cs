@@ -16,8 +16,6 @@ namespace Nethermind.State.OverridableEnv;
 /// an account the overlay holds slots of, since the storage provider skips the tree entirely on an empty root.</summary>
 public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider
 {
-    private static readonly Hash256 OverlaidRoot = Keccak.Compute("state read overlay");
-
     public bool HasRoot(BlockHeader? baseBlock) => inner.HasRoot(baseBlock);
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new Scope(inner.BeginScope(baseBlock, metrics), slot);
@@ -37,6 +35,9 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public Account? Get(Address address)
         {
+            IStateReadOverlay? overlay = slot.Current;
+            if (overlay is not null && overlay.TryGetAccountWithoutBasis(address, out Account? standalone)) return standalone;
+
             Account? underlying;
             if (slot.Cache is { } cache)
             {
@@ -51,7 +52,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
                 underlying = inner.Get(address);
             }
 
-            return slot.Current is { } overlay && overlay.TryGetAccount(address, underlying, out Account? overlaid) ? overlaid : underlying;
+            return overlay is not null && overlay.TryGetAccount(address, underlying, out Account? overlaid) ? overlaid : underlying;
         }
 
         public void HintGet(Address address, Account? account) => inner.HintGet(address, account);
@@ -76,7 +77,9 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
             get
             {
                 Hash256 root = inner.RootHash;
-                return slot.Current is { } overlay && overlay.HasStorage(address) && root == Keccak.EmptyTreeHash ? OverlaidRoot : root;
+                return slot.Current is { } overlay && overlay.HasStorage(address) && root == Keccak.EmptyTreeHash
+                    ? IStateReadOverlay.NonEmptyStorageRoot
+                    : root;
             }
         }
 

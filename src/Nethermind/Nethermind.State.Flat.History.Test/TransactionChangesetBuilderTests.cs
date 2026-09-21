@@ -49,6 +49,45 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void TryBuildNext_WhenTheRowsOfTheCanonicalBlockAreAlreadyThere_ClaimsWithoutExecuting()
+    {
+        Capture(upTo: 5);
+        TransactionChangesetIndex index = Index();
+        index.TryClaim(3, 3);
+        Block block = Build.A.Block.WithNumber(4).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        WriteInline(index, block);
+        _executor.CanonicalHashes[4] = block.Hash!;
+        using TransactionChangesetBuilder builder = Builder(index);
+
+        bool built = builder.TryBuildNext();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(index.Covers(4), Is.True);
+            Assert.That(_executor.Executed, Is.Empty,
+                "the rows and their block hash are written in one batch, so a matching hash proves them complete");
+        }
+    }
+
+    [Test]
+    public void TryBuildNext_WhenTheRowsBelongToASiblingOfTheCanonicalBlock_ExecutesTheBlock()
+    {
+        Capture(upTo: 5);
+        TransactionChangesetIndex index = Index();
+        index.TryClaim(3, 3);
+        Block sibling = Build.A.Block.WithNumber(4).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        WriteInline(index, sibling);
+        _executor.CanonicalHashes[4] = TestItem.KeccakA;
+        using TransactionChangesetBuilder builder = Builder(index);
+
+        builder.TryBuildNext();
+
+        Assert.That(_executor.Executed, Does.Contain((ulong)4),
+            "rows tagged with a block that lost a reorg say nothing about the canonical one at that height");
+    }
+
+    [Test]
     public void TryBuildNext_WhenWatermarkIsPastSupportedFork_IndexesSupportedHistory([Values] bool alreadyCovered)
     {
         Capture(upTo: 20);
@@ -532,6 +571,27 @@ public class TransactionChangesetBuilderTests
     private TransactionChangesetBuilder Builder(TransactionChangesetIndex index) =>
         new(index, _executor, _availability, _config, LimboLogs.Instance);
 
+    /// <summary>Writes a block's rows the way the inline capture does on the processing path: complete rows and the
+    /// block-hash row, in one batch, with no claim on coverage.</summary>
+    private static void WriteInline(TransactionChangesetIndex index, Block block)
+    {
+        InlineChangesetCapture capture = new(index, new CaptureEverything(), LimboLogs.Instance);
+        capture.StartNewBlockTrace(block);
+        foreach (Transaction transaction in block.Transactions)
+        {
+            ITxTracer tracer = capture.StartNewTxTrace(transaction);
+            if (tracer.IsTracingState) tracer.ReportNonceChange(TestItem.AddressA, UInt256.Zero, UInt256.One);
+            capture.EndTxTrace();
+        }
+
+        capture.EndBlockTrace();
+    }
+
+    private sealed class CaptureEverything : IInlineCapturePolicy
+    {
+        public bool ShouldCapture(Block block) => true;
+    }
+
     private void Capture(ulong upTo)
     {
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _columns.StartWriteBatch())
@@ -573,8 +633,11 @@ public class TransactionChangesetBuilderTests
         public ulong LastSupportedBlock { get; set; } = ulong.MaxValue;
         public int RunsOpened { get; set; }
         public int RunsDisposed { get; set; }
+        public Dictionary<ulong, Hash256> CanonicalHashes { get; } = [];
 
         public ulong? GetLastSupportedBlock(ulong lowerBound, ulong upperBound) => Math.Min(LastSupportedBlock, upperBound) is ulong supported && supported >= lowerBound ? supported : null;
+
+        public Hash256? GetCanonicalHash(ulong block) => CanonicalHashes.GetValueOrDefault(block);
 
         public IHistoryBlockExecutor Create() => this;
 

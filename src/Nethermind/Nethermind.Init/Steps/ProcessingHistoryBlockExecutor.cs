@@ -67,7 +67,10 @@ public sealed class ProcessingHistoryBlockExecutor(
             {
                 isolated.DisposeAccountChanges();
             }
-            _next = executor.FindCanonical((ulong)block.Number + 1);
+            // The run keeps one state open on the block just executed, so the next block must be its child. If the
+            // canonical chain moved between the two lookups, end the run rather than execute a sibling's child here.
+            Block? candidate = executor.FindCanonical((ulong)block.Number + 1);
+            _next = candidate?.Header.ParentHash == block.Hash ? candidate : null;
             return true;
         }
 
@@ -144,6 +147,8 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
         }
         return supported;
     }
+
+    public Hash256? GetCanonicalHash(ulong block) => blockTree.FindHeader(block, BlockTreeLookupOptions.RequireCanonical)?.Hash;
 
     public IHistoryBlockExecutor Create()
     {

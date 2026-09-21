@@ -67,7 +67,9 @@ public sealed class TransactionChangesetIndex
     /// <summary>Creates a caller-owned capture. Dispose after committing, or to discard an incomplete capture.</summary>
     public BlockCapture StartBlock(ulong block) => new(this, block);
 
-    /// <summary>Writes a whole block's changesets, already collected, and claims it when it touches coverage.</summary>
+    /// <summary>Writes a whole block's changesets, already collected. Coverage is not claimed here: inline capture
+    /// runs before the block is validated, so the claim is left to the builder, which only claims a height once the
+    /// block carrying these rows is the canonical one.</summary>
     internal bool WriteBlock(Block block, ReadOnlySpan<ChangesetCollector?> collectors)
     {
         ulong number = (ulong)block.Number;
@@ -93,7 +95,7 @@ public sealed class TransactionChangesetIndex
             CommitBatch(number, batch);
         }
 
-        return _store.TryExtendCoverage(number, number);
+        return true;
     }
 
     /// <summary>Claims a range of durable, complete blocks as covered; only a range touching the existing coverage
@@ -101,6 +103,12 @@ public sealed class TransactionChangesetIndex
     public bool TryClaim(ulong fromBlock, ulong toBlock) => _store.TryExtendCoverage(fromBlock, toBlock);
 
     public void SyncWal() => _columns.SyncWal();
+
+    /// <summary>Whether this height already holds the rows of exactly this block. The hash row is written in the same
+    /// atomic batch as the rows, so a matching hash proves the rows are there and whole, and the block can be claimed
+    /// without executing it again.</summary>
+    internal bool HasRowsOf(ulong block, Hash256 blockHash) =>
+        Enabled && _store.TryGetBlockHash(block, out ValueHash256 indexed) && indexed == blockHash;
 
     /// <summary>Follows the history floor: a block whose history is gone cannot be traced, so its changesets have
     /// nothing left to serve.</summary>

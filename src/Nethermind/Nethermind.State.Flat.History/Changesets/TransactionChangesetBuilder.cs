@@ -27,6 +27,7 @@ public sealed class TransactionChangesetBuilder(
     internal const int WarnAfterAttempts = 8;
     internal static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RepeatedFailureInterval = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan StopReportInterval = TimeSpan.FromSeconds(5);
 
@@ -80,7 +81,19 @@ public sealed class TransactionChangesetBuilder(
         if (!TryNextBlock(out ulong block)) return false;
 
         _tipExecutor ??= executors.Create();
-        if (!Build(block, _tipExecutor)) return false;
+        return TryBuildNext(block, _tipExecutor);
+    }
+
+    /// <summary>The inline capture writes whole blocks ahead of coverage, so a height whose rows already carry the
+    /// canonical block's hash is claimed as it stands: the rows and that hash are written in one atomic batch, so a
+    /// matching hash proves them complete. Without this a single gap leaves the tip thread re-executing blocks that
+    /// are already on disk, at a fraction of the rate sync produces them.</summary>
+    private bool TryBuildNext(ulong block, IHistoryBlockExecutor executor)
+    {
+        if (executors.GetCanonicalHash(block) is not { } canonicalHash || !index.HasRowsOf(block, canonicalHash))
+        {
+            if (!Build(block, executor)) return false;
+        }
 
         index.TryClaim(block, block);
         return true;
@@ -204,9 +217,13 @@ public sealed class TransactionChangesetBuilder(
 
     public Task StopAsync() => Task.Run(Dispose);
 
-    /// <summary>Waits for every thread: the databases they read close right after this, so a thread left running
-    /// would be a use after disposal, not a slow shutdown. A wait that drags on is said so, every few seconds, naming
-    /// the thread, so a step that stopped observing cancellation is visible in the log instead of a silent hang.</summary>
+    /// <summary>Waits for every thread on one budget: the databases they read close right after this, so a thread
+    /// left running is a use after disposal rather than a slow shutdown, and waiting is worth doing. It stays bounded
+    /// all the same, because this is on the service-stopper path and a worker wedged inside a long read would
+    /// otherwise hold up the whole shutdown sequence. A wait that drags on names the thread every few seconds; past
+    /// the budget the thread is left to finish and what it is still using is deliberately not disposed, so a wedged
+    /// worker costs a leak on a process that is exiting rather than a process that will not exit. Every thread owns
+    /// and disposes the executor it runs on, so that leak is the token source and nothing more.</summary>
     public void Dispose()
     {
         lock (_shutdown)
@@ -215,7 +232,11 @@ public sealed class TransactionChangesetBuilder(
             _disposed = true;
 
             _cancellation.Cancel();
-            foreach (Thread thread in _threads) Join(thread);
+            long startedAt = Stopwatch.GetTimestamp();
+            bool everyThreadStopped = true;
+            foreach (Thread thread in _threads) everyThreadStopped &= Join(thread, startedAt);
+            if (!everyThreadStopped) return;
+
             try
             {
                 _tipExecutor?.Dispose();
@@ -227,12 +248,21 @@ public sealed class TransactionChangesetBuilder(
         }
     }
 
-    private void Join(Thread thread)
+    private bool Join(Thread thread, long startedAt)
     {
         while (!thread.Join(StopReportInterval))
         {
+            if (Stopwatch.GetElapsedTime(startedAt) >= ShutdownBudget)
+            {
+                if (_logger.IsWarn) _logger.Warn(
+                    $"\"{thread.Name}\" has not stopped within {ShutdownBudget.TotalSeconds:F0}s; leaving it to finish on its own.");
+                return false;
+            }
+
             if (_logger.IsWarn) _logger.Warn($"Still waiting for \"{thread.Name}\" to stop before the index databases close.");
         }
+
+        return true;
     }
 
     private Thread StartThread(Action body, string name)
@@ -261,10 +291,11 @@ public sealed class TransactionChangesetBuilder(
     private void FollowTip()
     {
         CancellationToken token = _cancellation.Token;
+        using IHistoryBlockExecutor executor = executors.Create();
         while (!token.IsCancellationRequested)
         {
             long startedAt = Stopwatch.GetTimestamp();
-            bool built = Guarded(TryBuildNext, token);
+            bool built = Guarded(() => TryNextBlock(out ulong block) && TryBuildNext(block, executor), token);
             if (token.IsCancellationRequested) return;
 
             ReportProgress();

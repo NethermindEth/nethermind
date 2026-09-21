@@ -64,6 +64,11 @@ internal sealed class MidBlockOverlay
     public bool HasStorage(Address address) =>
         _storageAccounts.Contains(address) || (_accounts.TryGetValue(address, out AccountOverlay? account) && account.StorageClearedAt != NeverCleared);
 
+    /// <summary>Whether the prefix wrote any slot of the account, wipe or no wipe. A write recorded before a wipe in
+    /// the same block does not survive it, so this errs towards saying there is storage, which is the safe direction
+    /// for a reader deciding whether a wipe has anything to clear.</summary>
+    public bool HasStorageWrites(Address address) => _storageAccounts.Contains(address);
+
     /// <summary>A wiped account answers zero even where the overlay holds no write for the slot: the wipe applies to
     /// every slot the account held, not only to those the block touched.</summary>
     public bool TryGetStorage(in StorageCell cell, out UInt256 value)

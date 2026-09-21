@@ -32,21 +32,13 @@ internal sealed class ChangesetTxTracer(ChangesetCollector collector) : TxTracer
         else collector.Deleted(address);
     }
 
-    /// <summary>Code appearing where an account already existed means the account was destroyed and re-created in
-    /// this transaction, or created over an account that could only have held storage the create wipes. Either way
-    /// its slots read as zero from here on, which no write record can say. Setting or revoking a delegation leaves
-    /// storage alone, and a revocation is told apart from a destroy-and-recreate that deploys empty code by what was
-    /// there before: a delegation designator, or real code.</summary>
+    /// <summary>A wipe is not inferred from code appearing over an existing account: every path that clears storage
+    /// inside a transaction goes through IWorldState.ClearStorage, and every committed clear is journaled and
+    /// reported through ReportStorageClear, so inferring one from a code change would only add a way to disagree.</summary>
     public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
-        if (after is null)
-        {
-            collector.Deleted(address);
-            return;
-        }
-
-        if (before is not null && !Eip7702Constants.IsDelegatedCode(before) && !Eip7702Constants.IsDelegatedCode(after)) collector.StorageCleared(address);
-        collector.Code(address, after);
+        if (after is null) collector.Deleted(address);
+        else collector.Code(address, after);
     }
 
     public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) =>

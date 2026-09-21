@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
@@ -11,9 +12,24 @@ namespace Nethermind.Evm.State;
 /// state the scope stands on, without that state being changed.</summary>
 public interface IStateReadOverlay
 {
+    /// <summary>Stands in for the storage root of an account the overlay knows holds slots but whose real root it
+    /// does not have. It only ever replaces the empty root, never the reverse, so that a reader asking whether
+    /// there is storage to clear is never told there is none when there is; nothing on the trace path uses the
+    /// root for anything else.</summary>
+    static readonly Hash256 NonEmptyStorageRoot = Keccak.Compute("state read overlay");
+
     /// <summary>True when the overlay knows the account; <paramref name="overlaid"/> is then the account as the
     /// overlay sees it, null for one it knows to be gone.</summary>
     bool TryGetAccount(Address address, Account? underlying, out Account? overlaid);
+
+    /// <summary>The same answer for the accounts the overlay can answer for on its own, so that reading one costs no
+    /// read of the state underneath. False means the answer needs that state as its basis, and
+    /// <see cref="TryGetAccount"/> is asked with it.</summary>
+    bool TryGetAccountWithoutBasis(Address address, out Account? overlaid)
+    {
+        overlaid = null;
+        return false;
+    }
 
     /// <summary>True supplies a known slot value, including zero after a clear. False requires an underlying read; the out value is ignored.</summary>
     bool TryGetStorage(Address address, in UInt256 index, out UInt256 value);
