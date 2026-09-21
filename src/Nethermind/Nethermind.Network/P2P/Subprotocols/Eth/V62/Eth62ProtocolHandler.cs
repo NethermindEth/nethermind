@@ -17,6 +17,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -63,7 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private protected bool IsTransactionGossipAllowed() => _floodController.IsAllowed();
 
-        private protected void ReportPooledTransactionRequest(ReadOnlySpan<Hash256> hashes) =>
+        private protected void ReportPooledTransactionRequest(ReadOnlySpan<ValueHash256> hashes) =>
             _floodController.ReportPooledTransactionRequest(hashes);
 
         internal long RequestedPooledTransactionHashes => _floodController.RequestedPooledTransactionHashes;
@@ -259,10 +260,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
             if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler))
             {
-                foreach (Transaction tx in iList)
-                {
-                    tx.ClearPreHash();
-                }
+                ReturnUnsubmittedTransactions(iList.AsSpan());
                 iList.Dispose();
                 return false;
             }
@@ -305,19 +303,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         return ValueTask.CompletedTask;
                     }
 
-                    PrepareAndSubmitTransaction(transactionsSpan[currentIdx], isTrace);
-                    currentIdx++;
+                    // Submission can publish the transaction before throwing; ownership has escaped.
+                    PrepareAndSubmitTransaction(transactionsSpan[currentIdx++], isTrace);
                 }
             }
             finally
             {
                 if (!isTransferred)
                 {
-                    while (currentIdx < transactionsSpan.Length)
-                    {
-                        transactionsSpan[currentIdx].ClearPreHash();
-                        currentIdx++;
-                    }
+                    ReturnUnsubmittedTransactions(transactionsSpan[currentIdx..]);
                     transactions.Dispose();
                 }
             }
@@ -325,6 +319,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return ValueTask.CompletedTask;
         }
 
+        protected static void ReturnUnsubmittedTransactions(ReadOnlySpan<Transaction> transactions)
+        {
+            foreach (Transaction tx in transactions)
+            {
+                tx.ClearPreHash();
+                TxDecoder.TxObjectPool.Return(tx);
+            }
+        }
+
+        /// <summary>Submits an inbound transaction, transferring ownership to the pool or recycling it.</summary>
+        /// <remarks>The caller must not access the transaction after submission.</remarks>
         protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
             tx.Timestamp = _timestamper.UnixTime.Seconds;
@@ -333,9 +338,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 NotifiedTransactions.Set(tx.Hash.ValueHash256);
             }
 
-            AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            bool canRecycle = false;
+            AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
+                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
+                : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
+            if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }
