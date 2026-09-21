@@ -630,7 +630,7 @@ public class BlockchainProcessorTests
         Assert.That(waiting.IsCompleted, Is.False, "the block is queued, so the wait is pending");
         Assert.That(context.WaitUntilRemoved(_blockB2D4).IsCompleted, Is.True, "a block the queue never saw holds nobody");
 
-        context.Processed(_block1D2).BecomesNewHead();
+        context.Recovered(_block1D2).Processed(_block1D2).BecomesNewHead();
 
         await waiting.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(context.WaitUntilRemoved(_block1D2).IsCompleted, Is.True, "once removed, the block holds nobody either");
