@@ -185,7 +185,10 @@ public static class GloasBlockProcessing
         {
             ProcessProposerSlashing(state, slashing, cache, pubkeys, verifySignatures);
         }
-        RejectIfPresent(body.AttesterSlashings, "attester slashings");
+        foreach (AttesterSlashingGloas slashing in body.AttesterSlashings ?? [])
+        {
+            ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures);
+        }
         RejectIfPresent(body.Attestations, "attestations");
         RejectIfPresent(body.VoluntaryExits, "voluntary exits");
         RejectIfPresent(body.BlsToExecutionChanges, "BLS-to-execution changes");
@@ -262,6 +265,55 @@ public static class GloasBlockProcessing
     /// <summary>Spec <c>BuilderPendingPayment.empty()</c>, in the shape <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/> and <see cref="SettleBuilderPayment"/> write.</summary>
     private static BuilderPendingPayment EmptyBuilderPendingPayment() =>
         new() { Withdrawal = new BuilderPendingWithdrawal() };
+
+    /// <summary>Spec <c>process_attester_slashing</c> (unmodified in Gloas): slashes every still-slashable validator attesting in both votes.</summary>
+    public static void ProcessAttesterSlashing(BeaconStateGloas state, AttesterSlashingGloas slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    {
+        IndexedAttestationGloas attestation1 = slashing.Attestation1!;
+        IndexedAttestationGloas attestation2 = slashing.Attestation2!;
+
+        if (!BeaconStateAccessors.IsSlashableAttestationData(attestation1.Data!, attestation2.Data!))
+            throw new BeaconStateException("Attester slashing votes are not slashable");
+        if (!IsValidIndexedAttestation(state, attestation1, pubkeys, verifySignatures))
+            throw new BeaconStateException("Attester slashing attestation 1 is invalid");
+        if (!IsValidIndexedAttestation(state, attestation2, pubkeys, verifySignatures))
+            throw new BeaconStateException("Attester slashing attestation 2 is invalid");
+
+        ulong currentEpoch = state.GetCurrentEpoch();
+        HashSet<ulong> indices2 = [.. attestation2.AttestingIndices!];
+        bool slashedAny = false;
+        // attestation_1's indices are validated ascending, so the intersection is visited in sorted order.
+        foreach (ulong index in attestation1.AttestingIndices!)
+        {
+            if (indices2.Contains(index) && state.Validators![(int)index].IsSlashableValidator(currentEpoch))
+            {
+                state.SlashValidator((int)index, cache);
+                slashedAny = true;
+            }
+        }
+        if (!slashedAny)
+            throw new BeaconStateException("Attester slashing slashed no validator");
+    }
+
+    /// <summary>
+    /// Spec <c>is_valid_indexed_attestation</c> (Gloas): indices must be non-empty, within the
+    /// EIP-7688 bound that replaced the list's SSZ limit, sorted, unique and in range, and the
+    /// aggregate signature must verify.
+    /// </summary>
+    public static bool IsValidIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys, bool verifySignature)
+    {
+        ulong[] indices = attestation.AttestingIndices ?? [];
+        if (indices.Length == 0 || indices.Length > Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot)
+            return false;
+        for (int i = 0; i < indices.Length; i++)
+        {
+            if (i > 0 && indices[i - 1] >= indices[i])
+                return false;
+            if (indices[i] >= (ulong)state.Validators!.Length)
+                return false;
+        }
+        return !verifySignature || GloasSignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys);
+    }
 
     /// <summary>
     /// Spec <c>process_sync_aggregate</c> (Altair): unchanged semantics, ported to
