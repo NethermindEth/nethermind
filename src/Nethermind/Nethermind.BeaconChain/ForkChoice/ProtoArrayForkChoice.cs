@@ -71,6 +71,9 @@ public sealed class ProtoArrayForkChoice
     /// <summary>The number of nodes in the proto-array.</summary>
     public int Count => _protoArray.Nodes.Count;
 
+    /// <summary>Every node in proto-array order (parents before children); a live view, valid only until the next mutation.</summary>
+    public IReadOnlyList<ProtoNode> Nodes => _protoArray.Nodes;
+
     public int PruneThreshold
     {
         get => _protoArray.PruneThreshold;

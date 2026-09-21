@@ -222,6 +222,47 @@ public class BlockImporterTests
     }
 
     [Test]
+    public void ComputeHead_publishes_a_fork_choice_snapshot_carrying_the_head_it_chose()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        NodeColumnCustody custody = BaseCustody();
+        DataColumnSidecarPool pool = new();
+        Hold(pool, chain, custody.SampledColumns);
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporter importer = CreateImporter(chain, custody, pool, forkChoiceSnapshots: snapshots);
+        ForkChoiceSnapshot? beforeAnyHead = snapshots.Current;
+
+        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+        HeadView head = importer.ComputeHead();
+        ForkChoiceSnapshot? published = snapshots.Current;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(beforeAnyHead, Is.Null, "nothing is published until a head has been computed");
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(published, Is.Not.Null);
+            Assert.That(published!.Nodes.Select(n => n.Root), Is.EqualTo(new[] { chain.AnchorRoot, chain.BlockRoot }));
+            Assert.That(published.Nodes[1].ExecutionStatus, Is.EqualTo(ExecutionStatus.Valid), "the engine's verdict reached fork choice before the copy was taken");
+            Assert.That(published.JustifiedCheckpoint, Is.EqualTo(head.Justified));
+            Assert.That(published.FinalizedCheckpoint, Is.EqualTo(head.Finalized));
+            Assert.That(published.Nodes.Select(n => n.Root), Does.Contain(head.HeadRoot));
+        });
+    }
+
+    [Test]
+    public void Factory_built_importer_publishes_into_the_holder_it_is_given()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporterFactory factory = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, new DataColumnSidecarPool(), forkChoiceSnapshots: snapshots);
+        IBlockImporter importer = factory.Create(chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+
+        importer.ComputeHead();
+
+        Assert.That(snapshots.Current?.Nodes.Select(n => n.Root), Is.EqualTo(new[] { chain.AnchorRoot }), "the container's holder must be the one the importer writes to");
+    }
+
+    [Test]
     public void Factory_built_importer_measures_the_window_against_the_clock_it_is_given()
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
@@ -430,7 +471,7 @@ public class BlockImporterTests
     private static long RefusedByForkChoice(string operation) =>
         Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
-    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null) =>
+    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null) =>
         new(
             chain.Spec,
             new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
@@ -441,7 +482,8 @@ public class BlockImporterTests
             new CustodySamplingAvailability(new FixedCustodySource(custody), new DataColumnPoolSource(pool), clock ?? chain.ClockAtEpoch(0)),
             chain.AnchorState,
             chain.AnchorBlock,
-            chain.AnchorRoot);
+            chain.AnchorRoot,
+            forkChoiceSnapshots);
 
     private sealed class FixedCustodySource(NodeColumnCustody? custody) : INodeColumnCustodySource
     {
