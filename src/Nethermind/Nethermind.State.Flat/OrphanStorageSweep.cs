@@ -28,6 +28,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
     private const int EmptyRootAccounts = 4;
     private const int TallyLength = 5;
     private const int AccountBuffer = 256;
+    private const int ProgressCheckInterval = 1 << 20;
     private const int IdentityLength = BaseFlatPersistence.AccountKeyLength;
     private const int StorageKeyLength = BaseFlatPersistence.StorageKeyLength;
     private const int SlotOffset = BasePersistence.StoragePrefixPortion;
@@ -130,6 +131,7 @@ public sealed class OrphanStorageSweep(IColumnsDb<FlatDbColumns> db, IPersistenc
 
             slotsThisPass++;
             Tally[SlotsScanned]++;
+            if ((slotsThisPass & (ProgressCheckInterval - 1)) == 0) LogProgress(repair, key);
             ValueHash256 identity = IdentityOf(key);
             if (!decided.TryGetValue(identity, out bool orphan))
             {
