@@ -42,6 +42,8 @@ namespace Nethermind.Evm.Test
 
         public long Refund { get; private set; }
 
+        public int AccessReportCount { get; private set; }
+
         public readonly record struct ActionTrace(ulong Gas, UInt256 Value, Address From, Address To, ExecutionType CallType, bool IsPrecompileCall);
 
         public List<ActionTrace> Actions { get; } = [];
@@ -72,6 +74,8 @@ namespace Nethermind.Evm.Test
         public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => ReportedActionErrors.Add(EvmExceptionType.Revert);
 
         public override void ReportRefund(long refund) => Refund += refund;
+
+        public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) => AccessReportCount++;
 
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
             => Actions.Add(new ActionTrace(gas, value, from, to, callType, isPrecompileCall));

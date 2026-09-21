@@ -49,20 +49,30 @@ public class SimpleTransferFastPathDifferentialTests
     {
         None,
         AllOn,
-        ActionsNoState
+        ActionsNoState,
+        ActionsNoAccess
     }
+
+    private sealed record ReceiptCapture(
+        byte Status,
+        Address Recipient,
+        GasConsumed GasConsumed,
+        string? Error,
+        string Output,
+        string Logs,
+        Hash256? StateRoot);
 
     private sealed record ExecutionCapture(
         bool Executed,
-        byte Status,
-        string? Error,
-        ulong GasSpent,
-        ulong EffectiveBlockGas,
+        EvmExceptionType EvmExceptionType,
+        ReceiptCapture? Receipt,
         ulong HeaderGasUsed,
         Hash256? StateRoot,
         UInt256 SenderBalance,
         UInt256 RecipientBalance,
         long FastPathEngaged,
+        string[] AccessReports,
+        long[] Refunds,
         string[] TracerEvents);
 
     private static IEnumerable<TestCaseData> Scenarios()
@@ -109,17 +119,65 @@ public class SimpleTransferFastPathDifferentialTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fast.Executed, Is.EqualTo(slow.Executed), "executed");
-            Assert.That(fast.Status, Is.EqualTo(slow.Status), "status code");
-            Assert.That(fast.Error, Is.EqualTo(slow.Error), "error");
-            Assert.That(fast.GasSpent, Is.EqualTo(slow.GasSpent), "spent gas");
-            Assert.That(fast.EffectiveBlockGas, Is.EqualTo(slow.EffectiveBlockGas), "effective block gas");
+            Assert.That(fast.EvmExceptionType, Is.EqualTo(slow.EvmExceptionType), "EVM exception");
+            Assert.That(fast.Receipt, Is.EqualTo(slow.Receipt), "receipt");
             Assert.That(fast.HeaderGasUsed, Is.EqualTo(slow.HeaderGasUsed), "header GasUsed");
             Assert.That(fast.SenderBalance, Is.EqualTo(slow.SenderBalance), "sender balance");
             Assert.That(fast.RecipientBalance, Is.EqualTo(slow.RecipientBalance), "recipient balance");
             Assert.That(fast.StateRoot, Is.EqualTo(slow.StateRoot), "state root");
+            Assert.That(fast.Refunds, Is.EqualTo(slow.Refunds), "refund reports");
             Assert.That(WithoutAccountReads(fast.TracerEvents), Is.EqualTo(WithoutAccountReads(slow.TracerEvents)), "tracer event sequence");
             Assert.That(StateReportedAddresses(fast.TracerEvents), Is.EquivalentTo(StateReportedAddresses(slow.TracerEvents)), "state-reported address set");
             Assert.That(fast.FastPathEngaged, Is.EqualTo(fastPathExpectedToEngage ? 1 : 0), "fast path engaged");
+            Assert.That(slow.FastPathEngaged, Is.Zero, "forced EVM path did not engage the fast path");
+        }
+    }
+
+    private static IEnumerable<TestCaseData> Eip8037StateGasBoundaries()
+    {
+        yield return StateGasBoundary(0, expectedStatus: StatusCode.Failure, TracerShape.AllOn, "empty");
+        yield return StateGasBoundary((ulong)GasCostOf.NewAccountState - 1, expectedStatus: StatusCode.Failure, TracerShape.AllOn, "one_short");
+        yield return StateGasBoundary((ulong)GasCostOf.NewAccountState, expectedStatus: StatusCode.Success, TracerShape.AllOn, "exact");
+        yield return StateGasBoundary((ulong)GasCostOf.NewAccountState + 1, expectedStatus: StatusCode.Success, TracerShape.AllOn, "sufficient");
+        yield return StateGasBoundary((ulong)GasCostOf.NewAccountState - 1, expectedStatus: StatusCode.Failure, TracerShape.ActionsNoAccess, "one_short_non_access_tracing");
+    }
+
+    private static TestCaseData StateGasBoundary(ulong availableGas, byte expectedStatus, TracerShape tracerShape, string name) =>
+        new TestCaseData(availableGas, expectedStatus, tracerShape).SetName($"Eip8037_dead_account_{name}");
+
+    [TestCaseSource(nameof(Eip8037StateGasBoundaries))]
+    public void Eip8037_dead_account_state_gas_boundaries_are_equivalent(ulong availableGas, byte expectedStatus, TracerShape tracerShape)
+    {
+        ExecutionCapture fast = Run(forceEvmPath: false, value: 1_000_000, RecipientKind.Nonexistent,
+            eip7708: true, dataLength: 0, tracerShape, Mode.Execute, eip8037: true, availableGas);
+        ExecutionCapture slow = Run(forceEvmPath: true, value: 1_000_000, RecipientKind.Nonexistent,
+            eip7708: true, dataLength: 0, tracerShape, Mode.Execute, eip8037: true, availableGas);
+
+        string accessReport =
+            $"Access([{string.Join('|', new[] { Address.Zero, TestItem.AddressA, TestItem.AddressC }
+                .Select(static a => a.ToString())
+                .OrderBy(static a => a, StringComparer.Ordinal))}],[])";
+        string[] expectedAccessReports = tracerShape is TracerShape.ActionsNoAccess ? [] : [accessReport];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast.Executed, Is.True, "fast path executed");
+            Assert.That(slow.Executed, Is.True, "EVM path executed");
+            Assert.That(fast.EvmExceptionType, Is.EqualTo(slow.EvmExceptionType), "EVM exception");
+            Assert.That(fast.Receipt?.Status, Is.EqualTo(expectedStatus), "fast status");
+            Assert.That(slow.Receipt?.Status, Is.EqualTo(expectedStatus), "EVM status");
+            Assert.That(fast.Receipt, Is.EqualTo(slow.Receipt), "receipt");
+            Assert.That(fast.Receipt?.GasConsumed.OperationGas, Is.EqualTo(slow.Receipt?.GasConsumed.OperationGas), "execution gas");
+            Assert.That(fast.Receipt?.GasConsumed.EffectiveBlockGas, Is.EqualTo(slow.Receipt?.GasConsumed.EffectiveBlockGas), "block execution gas");
+            Assert.That(fast.Receipt?.GasConsumed.BlockStateGas, Is.EqualTo(slow.Receipt?.GasConsumed.BlockStateGas), "block state gas");
+            Assert.That(fast.HeaderGasUsed, Is.EqualTo(slow.HeaderGasUsed), "header GasUsed");
+            Assert.That(fast.StateRoot, Is.EqualTo(slow.StateRoot), "state root");
+            Assert.That(fast.SenderBalance, Is.EqualTo(slow.SenderBalance), "sender balance");
+            Assert.That(fast.RecipientBalance, Is.EqualTo(slow.RecipientBalance), "recipient balance");
+            Assert.That(fast.Refunds, Is.EqualTo(slow.Refunds), "refund reports");
+            Assert.That(fast.Receipt?.GasConsumed.GasRefund, Is.EqualTo(slow.Receipt?.GasConsumed.GasRefund), "gas refund");
+            Assert.That(fast.AccessReports, Is.EqualTo(expectedAccessReports), "fast access reports");
+            Assert.That(slow.AccessReports, Is.EqualTo(expectedAccessReports), "EVM access reports");
+            Assert.That(fast.FastPathEngaged, Is.EqualTo(1), "fast path engaged");
             Assert.That(slow.FastPathEngaged, Is.Zero, "forced EVM path did not engage the fast path");
         }
     }
@@ -149,9 +207,12 @@ public class SimpleTransferFastPathDifferentialTests
         bool eip7708,
         int dataLength,
         TracerShape tracerShape,
-        Mode mode)
+        Mode mode,
+        bool eip8037 = false,
+        ulong? availableGas = null)
     {
-        OverridableReleaseSpec spec = new(Prague.Instance) { IsEip7708Enabled = eip7708 };
+        IReleaseSpec fork = eip8037 ? Amsterdam.Instance : Prague.Instance;
+        OverridableReleaseSpec spec = new(fork) { IsEip7708Enabled = eip7708 };
         TestSpecProvider specProvider = new(spec);
         IWorldState state = TestWorldStateFactory.CreateForTest();
         using IDisposable worldScope = state.BeginScope(IWorldState.PreGenesis);
@@ -201,9 +262,14 @@ public class SimpleTransferFastPathDifferentialTests
             .SignedAndResolved(ecdsa, TestItem.PrivateKeyA)
             .TestObject;
 
+        if (availableGas is not null)
+        {
+            tx.GasLimit = IntrinsicGasCalculator.Calculate(tx, spec).Standard + availableGas.Value;
+        }
+
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTimestamp(eip8037 ? MainnetSpecProvider.AmsterdamBlockTimestamp : MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10_000_000)
             .TestObject;
@@ -235,15 +301,15 @@ public class SimpleTransferFastPathDifferentialTests
 
             return new ExecutionCapture(
                 Executed: result.TransactionExecuted,
-                Status: recordingTracer?.Status ?? 0,
-                Error: recordingTracer?.Error,
-                GasSpent: recordingTracer?.GasSpent ?? 0,
-                EffectiveBlockGas: recordingTracer?.EffectiveBlockGas ?? 0,
+                EvmExceptionType: result.EvmExceptionType,
+                Receipt: recordingTracer?.Receipt,
                 HeaderGasUsed: block.Header.GasUsed,
                 StateRoot: stateRoot,
                 SenderBalance: state.GetBalance(TestItem.AddressA),
                 RecipientBalance: state.GetBalance(recipient),
                 FastPathEngaged: fastPathEngaged,
+                AccessReports: recordingTracer?.AccessReports.ToArray() ?? [],
+                Refunds: recordingTracer?.Refunds.ToArray() ?? [],
                 TracerEvents: recordingTracer?.Events.ToArray() ?? []);
         }
         finally
@@ -255,17 +321,16 @@ public class SimpleTransferFastPathDifferentialTests
     private sealed class RecordingTracer : TxTracer
     {
         public List<string> Events { get; } = [];
-        public byte Status { get; private set; }
-        public string? Error { get; private set; }
-        public ulong GasSpent { get; private set; }
-        public ulong EffectiveBlockGas { get; private set; }
+        public List<string> AccessReports { get; } = [];
+        public List<long> Refunds { get; } = [];
+        public ReceiptCapture? Receipt { get; private set; }
 
         public RecordingTracer(TracerShape shape)
         {
             IsTracingReceipt = true;
             IsTracingActions = true;
             IsTracingLogs = true;
-            IsTracingAccess = true;
+            IsTracingAccess = shape is not TracerShape.ActionsNoAccess;
             IsTracingFees = true;
             IsTracingRefunds = true;
             IsTracingCode = true;
@@ -297,14 +362,21 @@ public class SimpleTransferFastPathDifferentialTests
         public override void ReportLog(LogEntry log) =>
             Events.Add($"Log({log.Address},{string.Join('|', log.Topics.Select(static t => t.ToString()))},{log.Data.ToHexString()})");
 
-        public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) =>
-            Events.Add($"Access([{string.Join('|', accessedAddresses.Select(static a => a.ToString()).OrderBy(static a => a, StringComparer.Ordinal))}],[{string.Join('|', accessedStorageCells.Select(static c => c.ToString()).OrderBy(static c => c, StringComparer.Ordinal))}])");
+        public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
+        {
+            string report = $"Access([{string.Join('|', accessedAddresses.Select(static a => a.ToString()).OrderBy(static a => a, StringComparer.Ordinal))}],[{string.Join('|', accessedStorageCells.Select(static c => c.ToString()).OrderBy(static c => c, StringComparer.Ordinal))}])";
+            AccessReports.Add(report);
+            Events.Add(report);
+        }
 
         public override void ReportFees(UInt256 fees, UInt256 burntFees) =>
             Events.Add($"Fees({fees},{burntFees})");
 
-        public override void ReportRefund(long refund) =>
+        public override void ReportRefund(long refund)
+        {
+            Refunds.Add(refund);
             Events.Add($"Refund({refund})");
+        }
 
         public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after) =>
             Events.Add($"Balance({address},{before?.ToString() ?? "null"},{after?.ToString() ?? "null"})");
@@ -326,19 +398,20 @@ public class SimpleTransferFastPathDifferentialTests
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
-            Status = StatusCode.Success;
-            GasSpent = gasSpent.SpentGas;
-            EffectiveBlockGas = gasSpent.EffectiveBlockGas;
+            Receipt = CaptureReceipt(StatusCode.Success, recipient, in gasSpent, error: null, output, logs, stateRoot);
             Events.Add($"Success({recipient},{gasSpent.SpentGas},{output.ToHexString()},logs:{logs.Length})");
         }
 
         public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
-            Status = StatusCode.Failure;
-            Error = error;
-            GasSpent = gasSpent.SpentGas;
-            EffectiveBlockGas = gasSpent.EffectiveBlockGas;
+            Receipt = CaptureReceipt(StatusCode.Failure, recipient, in gasSpent, error, output, [], stateRoot);
             Events.Add($"Failed({recipient},{gasSpent.SpentGas},{error})");
         }
+
+        private static ReceiptCapture CaptureReceipt(byte status, Address recipient, in GasConsumed gasConsumed,
+            string? error, byte[] output, LogEntry[] logs, Hash256? stateRoot) =>
+            new(status, recipient, gasConsumed, error, output.ToHexString(),
+                string.Join(';', logs.Select(static log => $"{log.Address}:{string.Join('|', log.Topics)}:{log.Data.ToHexString()}")),
+                stateRoot);
     }
 }
