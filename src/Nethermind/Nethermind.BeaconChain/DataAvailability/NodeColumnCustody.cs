@@ -18,7 +18,7 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// </remarks>
 public sealed class NodeColumnCustody
 {
-    /// <param name="nodeId">The node's discv5 node id, as <see cref="CustodyGroups.GetCustodyGroups"/> expects it.</param>
+    /// <param name="nodeId">The node's raw discv5 node id, as <see cref="CustodyGroups.GetCustodyGroups"/> expects it.</param>
     /// <param name="custodyGroupCount">The custody group count this node advertises (<c>cgc</c>).</param>
     public NodeColumnCustody(Hash256 nodeId, ulong custodyGroupCount)
     {
