@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -93,6 +94,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
                 // The writer overload decompresses directly into our buffer, avoiding Snappier's temporary rental and copy.
                 Snappy.Decompress(new ReadOnlySequence<byte>(content.Array.AsMemory(content.ArrayOffset + content.ReaderIndex, readableBytes)),
                     _snappyOutputWriter);
+                Debug.Assert(output.ReadableBytes == uncompressedLength, "Validated Snappy output must match its declared length.");
             }
             catch (InvalidDataException exception)
             {

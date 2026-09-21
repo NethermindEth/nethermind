@@ -80,7 +80,7 @@ public class ZeroNettyFrameMergerTests
     }
 
     [Test]
-    public void Decodes_encrypted_packets_across_socket_read_boundaries([Values(1, 17, 4096)] int readSize, [Values] bool combinedEncoder)
+    public void Decodes_encrypted_packets_across_socket_read_boundaries([Values(-1, 0, 1, 17, 4096)] int readSize, [Values] bool combinedEncoder)
     {
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
         using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
@@ -92,6 +92,7 @@ public class ZeroNettyFrameMergerTests
         byte[][] payloads = [Enumerable.Range(0, 31).Select(i => (byte)i).ToArray(),
             Enumerable.Range(0, 2050).Select(i => (byte)i).ToArray(), [99]];
         using DisposableByteBuffer wire = Unpooled.Buffer().AsDisposable();
+        Random random = new(13592);
         try
         {
             for (int i = 0; i < payloads.Length; i++)
@@ -105,7 +106,15 @@ public class ZeroNettyFrameMergerTests
             }
 
             while (wire.IsReadable())
-                inbound.WriteInbound(wire.ReadBytes(Math.Min(readSize, wire.ReadableBytes)));
+            {
+                int chunkSize = readSize switch
+                {
+                    -1 => wire.ReadableBytes,
+                    0 => random.Next(1, 1025),
+                    _ => readSize
+                };
+                inbound.WriteInbound(wire.ReadBytes(Math.Min(chunkSize, wire.ReadableBytes)));
+            }
 
             for (int i = 0; i < payloads.Length; i++)
             {

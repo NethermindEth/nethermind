@@ -512,7 +512,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         count = 0;
         if (index.Length != ProcessedBlockIndexLength) return false;
         count = BinaryPrimitives.ReadInt32BigEndian(index[1..]);
-        return count > 0;
+        return count > 0 && (ulong)count <= RlpLimit.MaxBlockGas / GasCostOf.TransactionEip2780 + 1;
     }
 
     private static void RemoveProcessedTransactionRecords(IWriteBatch batch, Span<byte> key, int start, int count)

@@ -1384,6 +1384,9 @@ public class RetryCacheTests
         _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
         _cache.ProcessRetryTick();
         Assert.That(_cache.ResourcesInRetryQueue, Is.EqualTo(keepPending ? 1 : 0));
+        Assert.That(_cache.ExpiringQueueCapacity, Is.GreaterThanOrEqualTo(count));
+        _cache.ProcessRetryTick();
+        _cache.ProcessRetryTick();
         if (keepPending)
         {
             Assert.That(_cache.ExpiringQueueCapacity, Is.LessThan(count));
@@ -1396,6 +1399,33 @@ public class RetryCacheTests
             Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
             Assert.That(_cache.ExpiringQueueCapacity, Is.LessThan(count));
         }
+    }
+
+    [Test]
+    public void Expiring_queue_keeps_capacity_across_recurring_bursts()
+    {
+        const int count = 16_385;
+        TestHandler source = new();
+        for (int burst = 0; burst < 4; burst++)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                int resource = burst * count + i;
+                _cache.Announced(resource, source);
+                _cache.Received(resource);
+            }
+            int capacity = _cache.ExpiringQueueCapacity;
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            _cache.ProcessRetryTick();
+            _cache.ProcessRetryTick();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+                Assert.That(_cache.ExpiringQueueCapacity, Is.EqualTo(capacity));
+            }
+        }
+        _cache.ProcessRetryTick();
+        Assert.That(_cache.ExpiringQueueCapacity, Is.LessThan(count));
     }
 
     [Test]

@@ -13,7 +13,7 @@ public class BlockBodyDecoderTests
 {
     [Test, NonParallelizable]
     public void Transaction_pool_use_matches_decoder_ownership(
-        [Values("body", "unwrapped-body", "block")] string format,
+        [Values("body", "unwrapped-body", "default-unwrapped-body", "block")] string format,
         [Values] bool skipPooledTransactions)
     {
         BlockBody body = new([Build.A.Transaction.Signed().TestObject], []);
@@ -28,18 +28,19 @@ public class BlockBodyDecoderTests
 
         RlpReader reader = new(bytes);
         RlpBehaviors behaviors = skipPooledTransactions ? RlpBehaviors.SkipPooledTransactions : RlpBehaviors.None;
-        if (format == "unwrapped-body") reader.ReadSequenceLength();
+        if (format is "unwrapped-body" or "default-unwrapped-body") reader.ReadSequenceLength();
         BlockBody decoded = format switch
         {
             "block" => blockDecoder.DecodeGuardNotNull(ref reader, behaviors).Body,
             "body" => BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader, behaviors),
-            _ => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, behaviors)
+            "default-unwrapped-body" => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length),
+            _ => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions: !skipPooledTransactions)
         };
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded, Is.EqualTo(body).UsingBlockBodyComparer());
-            Assert.That(pooled.Contains(decoded.Transactions[0]), Is.EqualTo(format != "block" && !skipPooledTransactions));
+            Assert.That(pooled.Contains(decoded.Transactions[0]), Is.EqualTo(format is "body" or "unwrapped-body" && !skipPooledTransactions));
         }
     }
 

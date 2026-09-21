@@ -591,6 +591,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
+        AssertRequestedHashes(hashes);
     }
 
     [Test]
@@ -700,6 +701,16 @@ public class Eth68ProtocolHandlerTests
 
         _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 256));
         _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 44));
+        AssertRequestedHashes(txHashes);
+    }
+
+    private void AssertRequestedHashes(System.Collections.Generic.IEnumerable<ValueHash256> expected)
+    {
+        ValueHash256[] actual = _session.ReceivedCalls()
+            .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage>())
+            .SelectMany(static message => message.EthMessage.Hashes)
+            .ToArray();
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]

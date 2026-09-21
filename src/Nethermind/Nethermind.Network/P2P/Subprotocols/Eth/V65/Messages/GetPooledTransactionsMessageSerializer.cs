@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 
         public int GetLength(T message, out int contentLength)
         {
-            contentLength = checked(message.Hashes.Count * 33);
+            contentLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
             return Rlp.LengthOfSequence(contentLength);
         }
 

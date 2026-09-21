@@ -144,6 +144,40 @@ public class ZeroNettyFrameDecoderTests
     }
 
     [Test]
+    public void Authenticated_header_enforces_default_frame_limit([Range(-1, 1)] int delta)
+    {
+        using PooledBufferLeakDetector detector = new();
+        (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
+        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        int length = ZeroFrameDecoder.DefaultMaxInboundFrameSize + delta;
+        byte[] header = new byte[Frame.HeaderSize + Frame.MacSize];
+        header[0] = (byte)(length >> 16);
+        header[1] = (byte)(length >> 8);
+        header[2] = (byte)length;
+        header[3] = 0xc2;
+        header[4] = header[5] = 0x80;
+        new FrameCipher(a.AesSecret).Encrypt(header, 0, Frame.HeaderSize, header, 0);
+        outboundMac.AddMac(header, 0, Frame.HeaderSize, header, Frame.HeaderSize, true);
+        EmbeddedChannel channel = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
+        channel.Configuration.Allocator = detector.Allocator;
+        try
+        {
+            IByteBuffer input = detector.Allocator.Buffer(header.Length).WriteBytes(header);
+            if (delta > 0)
+                Assert.That(() => channel.WriteInbound(input), Throws.InstanceOf<DecoderException>());
+            else
+                Assert.That(channel.WriteInbound(input), Is.False, "a valid header alone must not publish a frame");
+            Assert.That(channel.ReadInbound<IByteBuffer>(), Is.Null);
+        }
+        finally
+        {
+            channel.Pipeline.Remove<ZeroFrameDecoder>();
+            channel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
     public void Rejects_zero_size_frame()
     {
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();

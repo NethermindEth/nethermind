@@ -93,31 +93,21 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             return null;
         }
 
-        return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength, rlpBehaviors);
+        return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength,
+            usePooledTransactions: (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) == 0);
     }
-
-    /// <summary>Decodes body contents with pooled transactions after the outer sequence prefix has been consumed.</summary>
-    /// <remarks>
-    /// The caller owns the decoded transactions. Return them to <see cref="TxDecoder.TxObjectPool"/> only after
-    /// all consumers have finished, and at most once. Network bodies use <see cref="OwnedBlockBodies"/> with a
-    /// memory owner for this lifetime. For retained bodies, use the regular Decode entry point with
-    /// <see cref="RlpBehaviors.SkipPooledTransactions"/> instead.
-    /// </remarks>
-    public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
-        => DecodeUnwrapped(ref ctx, lastPosition, RlpBehaviors.None);
 
     /// <summary>Decodes body contents after the outer sequence prefix, with optional transaction pooling.</summary>
     /// <param name="ctx">Reader positioned at the transaction sequence.</param>
     /// <param name="lastPosition">Expected reader position after the body contents.</param>
-    /// <param name="rlpBehaviors">
-    /// Only <see cref="RlpBehaviors.SkipPooledTransactions"/> is honored. Set it for retained blocks;
-    /// network bodies leave it unset and return transactions through <see cref="OwnedBlockBodies.Dispose"/>
-    /// unless ownership is transferred with <see cref="OwnedBlockBodies.Disown"/>.
+    /// <param name="usePooledTransactions">
+    /// Rent exclusively owned transactions. Return them to <see cref="TxDecoder.TxObjectPool"/> at most once,
+    /// after all consumers finish. Leave false for retained blocks.
     /// </param>
-    internal BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, RlpBehaviors rlpBehaviors)
+    public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, bool usePooledTransactions = false)
     {
         Transaction[] transactions = _txDecoder.DecodeNonNullArray(
-            ref ctx, rlpBehaviors & RlpBehaviors.SkipPooledTransactions,
+            ref ctx, usePooledTransactions ? RlpBehaviors.None : RlpBehaviors.SkipPooledTransactions,
             limit: TransactionsCountLimit);
         BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;

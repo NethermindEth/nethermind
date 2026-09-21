@@ -45,7 +45,7 @@ public class BlobTxStorageTests
 
     [Test]
     public void Invalid_processed_index_is_a_cache_miss(
-        [Values("", "00", "000000", "000000000001", "0000000000", "00ffffffff")] string encodedIndex)
+        [Values("", "00", "000000", "000000000001", "0000000000", "00ffffffff", "007fffffff", "0000014587")] string encodedIndex)
     {
         using MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);

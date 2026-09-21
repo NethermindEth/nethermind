@@ -116,7 +116,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
                 sizesLength += Rlp.LengthOf(size);
             }
 
-            int hashesLength = checked(message.Hashes.Count * 33);
+            int hashesLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
 
             int totalSize = Rlp.LengthOf(message.Types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
 

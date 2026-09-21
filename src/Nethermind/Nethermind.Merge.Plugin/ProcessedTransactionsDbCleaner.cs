@@ -43,6 +43,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
 
     private void CleanProcessedTransactionsDb(ulong newlyFinalizedBlockNumber)
     {
+        // BlobTxStorage tolerates missing payloads during reads; this unsynchronized cleaner must only delete records.
         try
         {
             using (IWriteBatch writeBatch = _processedTxsDb.StartWriteBatch())

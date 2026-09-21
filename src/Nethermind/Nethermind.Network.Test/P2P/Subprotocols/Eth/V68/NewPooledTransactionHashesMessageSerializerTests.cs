@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
@@ -163,7 +164,8 @@ public class NewPooledTransactionHashesMessageSerializerTests
     [Test]
     [NonParallelizable]
     public void Partial_decode_failure_does_not_contaminate_next_message(
-        [Values("c502c164c180", "c502c164c1c0", "c402c1c0c0", "c502c164c181")] string malformed)
+        [Values("c502c164c180", "c502c164c1c0", "c402c1c0c0", "c502c164c181",
+            "c802c164fb7fffffff", "c802c164fbffffffff", "c702fb7fffffffc0", "c702fbffffffffc0")] string malformed)
     {
         NewPooledTransactionHashesMessageSerializer serializer = new();
         Assert.That(() => serializer.Deserialize(Convert.FromHexString(malformed)), Throws.InstanceOf<RlpException>());
@@ -203,6 +205,56 @@ public class NewPooledTransactionHashesMessageSerializerTests
                 foreach (NewPooledTransactionHashesMessage68 message in messages) message?.Dispose();
             }
         });
+    }
+
+    [Test, NonParallelizable]
+    public void Every_truncation_is_rejected_without_contaminating_the_next_lease()
+    {
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+        using NewPooledTransactionHashesMessage68 source = new(
+            new byte[] { 0, 1, 2 }.ToPooledList(),
+            new[] { 1, 128, 65536 }.ToPooledList(),
+            new[] { TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256 }.ToPooledList());
+        byte[] bytes = serializer.Serialize(source);
+        using DisposableByteBuffer buffer = Unpooled.Buffer(bytes.Length + 7).WriteZero(7).WriteBytes(bytes).AsDisposable();
+        for (int length = 0; length < bytes.Length; length++)
+        {
+            buffer.SetIndex(7, 7 + length);
+            Exception error = Assert.Catch(() => serializer.Deserialize(buffer), $"cut {length}");
+            Assert.That(error, Is.InstanceOf<RlpException>().Or.InstanceOf<IndexOutOfRangeException>()
+                .Or.InstanceOf<ArgumentOutOfRangeException>(), $"cut {length}");
+            using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);
+            Assert.That(serializer.Serialize(next), Is.EqualTo(bytes), $"lease after cut {length}");
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Announcement_list_limits_are_enforced_independently(
+        [Values("types", "sizes", "hashes")] string field, [Range(-1, 1)] int delta)
+    {
+        int count = NethermindSyncLimits.MaxHashesFetch + delta;
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+        using NewPooledTransactionHashesMessage68 source = new(
+            Enumerable.Repeat((byte)2, field == "types" ? count : 1).ToPooledList(count),
+            Enumerable.Repeat(100, field == "sizes" ? count : 1).ToPooledList(count),
+            Enumerable.Repeat(TestItem.KeccakA.ValueHash256, field == "hashes" ? count : 1).ToPooledList(count));
+        byte[] bytes = serializer.Serialize(source);
+        if (delta > 0)
+        {
+            Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
+        }
+        else
+        {
+            using NewPooledTransactionHashesMessage68 decoded = serializer.Deserialize(bytes);
+            Assert.That(serializer.Serialize(decoded), Is.EqualTo(bytes));
+        }
+        using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(Convert.FromHexString("c380c0c0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.Types, Is.Empty);
+            Assert.That(next.Sizes, Is.Empty);
+            Assert.That(next.Hashes, Is.Empty);
+        }
     }
 
 }

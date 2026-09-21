@@ -271,6 +271,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         private const int MaxRetainedCapacity = 16_384;
         private readonly Lock _lock = new();
         private readonly Queue<(TResourceId ResourceId, long RequestGeneration, long EnqueuedAt)> _queue = new();
+        private int _lowUsageTicks;
 
         public int Capacity
         {
@@ -284,13 +285,27 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             lock (_lock)
             {
-                if (_queue.Count <= MaxRetainedCapacity / 2 && _queue.EnsureCapacity(0) > MaxRetainedCapacity) _queue.TrimExcess();
+                if (_queue.Count > MaxRetainedCapacity / 2 || _queue.EnsureCapacity(0) <= MaxRetainedCapacity)
+                {
+                    _lowUsageTicks = 0;
+                    return;
+                }
+                // Keep burst capacity until demand has stayed low across several retry ticks.
+                if (++_lowUsageTicks >= 3)
+                {
+                    _queue.TrimExcess();
+                    _lowUsageTicks = 0;
+                }
             }
         }
 
         public void Enqueue((TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
         {
-            lock (_lock) _queue.Enqueue(item);
+            lock (_lock)
+            {
+                _queue.Enqueue(item);
+                if (_queue.Count > MaxRetainedCapacity / 2) _lowUsageTicks = 0;
+            }
         }
 
         public bool TryDequeueExpired(TimeProvider timeProvider, TimeSpan timeout,
