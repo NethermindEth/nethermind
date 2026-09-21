@@ -183,6 +183,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             Assert.That(ServeReceipts(receipts).TxReceipts, Is.Empty);
         }
 
+        [Test]
+        public void Should_bound_receipt_lookups_for_blocks_without_transactions()
+        {
+            // A block with no transactions has no receipts, and an empty receipt array adds nothing
+            // to the size estimate, so the soft size limit alone never ends the loop.
+            ServeReceipts([]);
+
+            _ctx.SyncServer.Received(2 * NethermindSyncLimits.MaxReceiptFetch).GetReceipts(Arg.Any<Hash256>());
+        }
+
         private ReceiptsMessage ServeReceipts(TxReceipt[] receipts)
         {
             _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);

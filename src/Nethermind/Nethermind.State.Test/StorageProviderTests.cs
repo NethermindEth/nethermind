@@ -2090,7 +2090,8 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Set_empty_value_for_storage_cell_without_read_clears_data([Values(2, 1000)] int numItems)
+    public void Set_empty_value_for_storage_cell_without_read_clears_data(
+        [Values(2, 1000)] int numItems, [Values] bool overwriteBeforeDelete)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
@@ -2110,6 +2111,12 @@ public class StorageProviderTests(bool useFlat)
 
         Hash256 fullHash = worldState.StateRoot;
         Assert.That(fullHash, Is.Not.EqualTo(emptyHash));
+
+        if (overwriteBeforeDelete)
+        {
+            for (int i = 0; i < numItems; i++) worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), (UInt256)999);
+            worldState.Commit(Prague.Instance, commitRoots: false);
+        }
 
         for (int i = 0; i < numItems; i++)
         {

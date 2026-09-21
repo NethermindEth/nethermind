@@ -4,6 +4,7 @@
 using System;
 using CkzgLib;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -136,24 +137,64 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
         }
         else
         {
-            blobs = decoderContext.DecodeByteArrays(NetworkWrapperBlobsCountLimit);
+            blobs = (rlpBehaviors & RlpBehaviors.PoolBlobBuffers) != 0
+                ? DecodePooledBlobs(ref decoderContext)
+                : decoderContext.DecodeByteArrays(NetworkWrapperBlobsCountLimit);
         }
-        byte[][] commitments = decoderContext.DecodeByteArrays(NetworkWrapperCommitmentsCountLimit);
-        RlpLimit proofsCountLimit = version is ProofVersion.V1 ? NetworkWrapperCellProofsCountLimit : NetworkWrapperProofsCountLimit;
-        byte[][] proofs = decoderContext.DecodeByteArrays(proofsCountLimit);
-        BlobCellMask cellMask = default;
-        byte[][]? cells = null;
-
-        // Pre-#11094 entries have no cellMask/cells. Bound the peek to this wrapper so the next
-        // transaction in a per-block array is not mistaken for those two fields.
-        if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(networkWrapperCheck, maxSearch: 2) == 2)
+        PooledBlobBuffers? pooledBuffers = blobs.Length != 0 && (rlpBehaviors & RlpBehaviors.PoolBlobBuffers) != 0
+            ? new(blobs) : null;
+        try
         {
-            cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
-            byte[][] decodedCells = decoderContext.DecodeByteArrays(NetworkWrapperCellProofsCountLimit);
-            cells = cellMask.IsEmpty && decodedCells.Length == 0 ? null : decodedCells;
-        }
+            byte[][] commitments = decoderContext.DecodeByteArrays(NetworkWrapperCommitmentsCountLimit);
+            RlpLimit proofsCountLimit = version is ProofVersion.V1 ? NetworkWrapperCellProofsCountLimit : NetworkWrapperProofsCountLimit;
+            byte[][] proofs = decoderContext.DecodeByteArrays(proofsCountLimit);
+            BlobCellMask cellMask = default;
+            byte[][]? cells = null;
 
-        transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version, cellMask, cells);
+            // Pre-#11094 entries have no cellMask/cells. Bound the peek to this wrapper so the next
+            // transaction in a per-block array is not mistaken for those two fields.
+            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(networkWrapperCheck, maxSearch: 2) == 2)
+            {
+                cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
+                byte[][] decodedCells = decoderContext.DecodeByteArrays(NetworkWrapperCellProofsCountLimit);
+                cells = cellMask.IsEmpty && decodedCells.Length == 0 ? null : decodedCells;
+            }
+
+            transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version, cellMask, cells)
+            {
+                PooledBuffers = pooledBuffers
+            };
+        }
+        catch
+        {
+            pooledBuffers?.Return();
+            throw;
+        }
+    }
+
+    private static byte[][] DecodePooledBlobs(ref RlpReader reader)
+    {
+        int end = reader.ReadSequenceLength() + reader.Position;
+        int count = reader.PeekNumberOfItemsRemaining(end, maxSearch: BlobCountLimit + 1);
+        reader.GuardLimit(count, NetworkWrapperBlobsCountLimit);
+        if (count == 0)
+        {
+            reader.Check(end);
+            return [];
+        }
+        byte[][] blobs = new byte[count][];
+        try
+        {
+            for (int i = 0; i < count; i++)
+                blobs[i] = PooledBlobBuffers.Copy(reader.DecodeByteArraySpan());
+            reader.Check(end);
+            return blobs;
+        }
+        catch
+        {
+            new PooledBlobBuffers(blobs).Return();
+            throw;
+        }
     }
 
     private static Hash256 CalculateHashForNetworkPayloadForm(ReadOnlySpan<byte> transactionSequence)
