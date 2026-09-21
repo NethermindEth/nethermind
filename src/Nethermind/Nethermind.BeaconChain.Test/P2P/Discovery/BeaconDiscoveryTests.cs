@@ -142,7 +142,7 @@ public class BeaconDiscoveryTests
     }
 
     [Test]
-    public void Derives_peer_id_and_multiaddr_matching_libp2p_identity()
+    public void Derives_peer_id_and_multiaddr_matching_libp2p_identity_and_carries_the_source_enr()
     {
         PrivateKey key = TestItem.PrivateKeyA;
         // The libp2p library itself is the reference for the expected peer id.
@@ -156,6 +156,9 @@ public class BeaconDiscoveryTests
             Assert.That(candidate.Multiaddress, Is.EqualTo($"/ip4/8.8.8.8/tcp/9000/p2p/{expectedPeerId}"));
             Assert.That(candidate.ForkDigest, Is.EqualTo(CurrentDigest));
             Assert.That(candidate.EnrSequence, Is.EqualTo(1ul));
+            // The Beacon API's node/peers endpoint reads this straight from the admitted peer; a
+            // candidate that silently drops it forces that endpoint back to reporting null.
+            Assert.That(candidate.Enr, Is.EqualTo(record.ToString()));
         }
     }
 

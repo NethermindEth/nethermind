@@ -76,19 +76,22 @@ public enum PeerConnectionState
 
 /// <summary>
 /// A read-only snapshot of what this plugin knows about one peer, shaped for the Beacon API's
-/// <c>/eth/v1/node/peers</c> and <c>/eth/v1/node/peers/{peer_id}</c> endpoints. This type only
-/// describes the data; no endpoint reads it yet.
+/// <c>/eth/v1/node/peers</c> and <c>/eth/v1/node/peers/{peer_id}</c> endpoints.
 /// </summary>
 /// <param name="PeerId">The libp2p peer id, not the transport address.</param>
 /// <param name="LastKnownMultiaddr">The most recently known multiaddr for this peer id.</param>
 /// <param name="AgentVersion">The identify protocol's agent/client-version string, when the
 /// implementer has it available; <c>null</c> otherwise.</param>
+/// <param name="Enr">The peer's discv5 ENR text, when the implementer discovered this peer itself;
+/// <c>null</c> for a statically configured peer, an inbound session, or any peer whose ENR the
+/// implementer never observed.</param>
 public readonly record struct PeerRecord(
     string PeerId,
     PeerDirection Direction,
     PeerConnectionState State,
     string LastKnownMultiaddr,
-    string? AgentVersion);
+    string? AgentVersion,
+    string? Enr);
 
 /// <summary>Read-only peer directory the Beacon API's <c>node/peers</c> endpoints need. Kept separate
 /// from <see cref="IBeaconSyncPeerPool"/> so a range-sync consumer does not have to depend on
