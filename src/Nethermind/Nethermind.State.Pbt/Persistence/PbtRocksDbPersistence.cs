@@ -364,8 +364,6 @@ public class PbtRocksDbPersistence(
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
-        private readonly Dictionary<ValueHash256, HashSet<PbtStorageTreeKey>> _stagedStorageKeys = [];
-
         public void SetAccount(in ValueHash256 addressHash, Account? account)
         {
             IWriteBatch accounts = _batch.GetColumnBatch(PbtColumns.Accounts);
@@ -390,10 +388,6 @@ public class PbtRocksDbPersistence(
                 run.Encode(encoded);
                 storage.PutSpan(encodedKey, encoded, flags);
             }
-            ValueHash256 addressHash = new(runKey.Bytes.Slice(1, ValueHash256.MemorySize));
-            if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtStorageTreeKey>? keys))
-                _stagedStorageKeys[addressHash] = keys = [];
-            keys.Add(runKey);
         }
 
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) =>
@@ -404,16 +398,8 @@ public class PbtRocksDbPersistence(
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
             ISortedKeyValueStore persisted = (ISortedKeyValueStore)db.GetColumnDb(PbtColumns.Storages);
             Span<byte> upper = stackalloc byte[PbtStorageTreeKey.MaxLength + 1];
-            using (ISortedView view = persisted.GetViewBetween(addressHash.Bytes, PrefixUpperBound(addressHash.Bytes, upper)))
-            {
-                while (view.MoveNext()) storage.Set(view.CurrentKey, null, flags);
-            }
-            // The database view does not include earlier writes in this batch.
-            if (_stagedStorageKeys.Remove(addressHash, out HashSet<PbtStorageTreeKey>? keys))
-            {
-                Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
-                foreach (PbtStorageTreeKey key in keys) storage.Set(PbtStorageKeyLayout.Encode(key, persistedKey), null, flags);
-            }
+            using ISortedView view = persisted.GetViewBetween(addressHash.Bytes, PrefixUpperBound(addressHash.Bytes, upper));
+            while (view.MoveNext()) storage.Set(view.CurrentKey, null, flags);
         }
 
         private static bool IsStorageKey(ReadOnlySpan<byte> key) =>
