@@ -1132,6 +1132,81 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    /// <summary>
+    /// Selection runs while recovery is in flight, so the heaviest candidates - the ones ascending recovery reaches
+    /// last - routinely arrive without a sender. Discovery waits for one rather than dropping the candidate.
+    /// </summary>
+    [Test]
+    public void DiscoverAndWarmStorage_WaitsForACandidateWhoseSenderIsStillPending()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Address sender = heavy.SenderAddress!;
+            heavy.SenderAddress = null;
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
+
+            using ManualResetEventSlim discoveryEntered = new();
+            Task recovery = Task.Run(() =>
+            {
+                discoveryEntered.Wait(TimeSpan.FromSeconds(10));
+                // The event only says discovery was entered; the pause puts the sender's arrival inside the wait.
+                Thread.Sleep(50);
+                heavy.SenderAddress = sender;
+            });
+
+            Task discovery = Task.Run(() =>
+            {
+                discoveryEntered.Set();
+                preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+            });
+
+            Assert.That(Task.WhenAll(discovery, recovery).Wait(TimeSpan.FromSeconds(30)), Is.True, "the wait must end when the sender lands");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.True,
+                "the candidate must be discovered once its sender arrives");
+        }
+    }
+
+    /// <summary>
+    /// The sender may never arrive at all, so the wait is bounded by the main thread reaching the candidate: past that
+    /// point discovering its reads only contends with the execution that is already doing them.
+    /// </summary>
+    [Test]
+    public void DiscoverAndWarmStorage_StopsWaitingForASenderOnceTheMainThreadArrives()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
+
+            using ManualResetEventSlim discoveryEntered = new();
+            Task mainThread = Task.Run(() =>
+            {
+                discoveryEntered.Wait(TimeSpan.FromSeconds(10));
+                // The event only says discovery was entered; the pause puts the main thread's arrival inside the wait
+                // rather than before the skip test that opens the candidate.
+                Thread.Sleep(50);
+                preWarmer.OnBeforeTxExecution();
+            });
+
+            Task discovery = Task.Run(() =>
+            {
+                discoveryEntered.Set();
+                preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+            });
+
+            Assert.That(Task.WhenAll(discovery, mainThread).Wait(TimeSpan.FromSeconds(30)), Is.True, "the wait must end when the main thread arrives");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.False,
+                "a candidate the main thread has reached must not be re-executed by discovery");
+        }
+    }
+
     [Test]
     public void DiscoverAndWarmStorage_EnforcesCellBudgetBeforeWarming()
     {

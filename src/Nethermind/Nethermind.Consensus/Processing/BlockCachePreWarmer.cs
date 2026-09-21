@@ -336,17 +336,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <summary>Waits for a candidate's sender; <c>false</c> once the main thread has passed it or the block is done.</summary>
+    /// <remarks>
+    /// Sleeps without the spin phase the other waits open with: the same ascending-recovery argument that makes this
+    /// wait worth taking makes it a long one, and several discovery workers spinning would take cores from the very
+    /// recovery they are waiting on.
+    /// </remarks>
     private bool WaitForSender((int Index, Transaction Tx) candidate, DiscoveryRound round)
     {
-        long start = Stopwatch.GetTimestamp();
-        SpinWait spinner = default;
         while (candidate.Tx.SenderAddress is null)
         {
             // Once the main thread is there, discovering its reads no longer helps and only contends.
             if (round.CancellationToken.IsCancellationRequested || MainThreadTxIndex >= candidate.Index) return false;
-
-            if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
-            else if (SleepUnlessDone(round.CancellationToken)) return false;
+            if (SleepUnlessDone(round.CancellationToken)) return false;
         }
 
         return true;
@@ -358,10 +359,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (MainThreadTxIndex >= candidate.Index) return;
 
         Transaction tx = candidate.Tx;
-        // Recovery hands senders out in ascending order and so reaches the heaviest transactions last, which
-        // are exactly the ones selected here. Wait for this one rather than spend a round on it: rounds are
-        // the chained-read depth budget, and six of them elapse well inside the recovery latency.
-        if (tx.SenderAddress is null && !WaitForSender(candidate, round)) return;
+        if (tx.SenderAddress is null)
+        {
+            // Recovery hands senders out in ascending order and so reaches the heaviest transactions last, which
+            // are exactly the ones selected here. Wait for this one rather than spend a round on it: rounds are
+            // the chained-read depth budget, and six of them elapse well inside the recovery latency.
+            if (!WaitForSender(candidate, round)) return;
+            // The sender can land just as the main thread arrives; re-check before speculating on a heavy transaction.
+            if (MainThreadTxIndex >= candidate.Index) return;
+        }
 
         IReadOnlyTxProcessorSource env = _envPool.Get();
         try
@@ -1196,10 +1202,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 // Nothing left, or the main thread has executed everything still pending — warming an account
                 // it has already read only contends with it. A sender that never arrives exits here too.
-                // MainThreadTxIndex only counts block transactions, so an inclusion-list index waits on the
-                // block's last one instead, which is when warming it stops being useful anyway.
+                if (lastPending < 0) return false;
+
+                // MainThreadTxIndex only counts block transactions, so a pending inclusion-list index waits on the
+                // block's last one: those are warmed for a later block, but the caches are handed over once this one
+                // is executed. A block carrying none of its own has no main-thread progress to ride, and there the
+                // token is the only bound — it fires as soon as that (near-empty) block is done.
                 int lastPendingTx = Math.Min(lastPending, block.Transactions.Length - 1);
-                if (lastPending < 0 || PreWarmer.MainThreadTxIndex >= lastPendingTx) return false;
+                if (lastPendingTx >= 0 && PreWarmer.MainThreadTxIndex >= lastPendingTx) return false;
 
                 if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
                 else if (SleepUnlessDone(cancellationToken)) return false;
