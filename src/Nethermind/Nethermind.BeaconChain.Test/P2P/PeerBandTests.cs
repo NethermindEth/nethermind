@@ -629,34 +629,6 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task Legacy_ReportFailure_overload_still_classifies_a_dead_session_as_fatal(CancellationToken token)
-    {
-        // Preserves the exact substring rule the single-overload method used to apply inline, for
-        // callers this change could not reach (RangeSync.cs) - see crossStreamRisks in the report.
-        Node server = CreateNode();
-        Node client = CreateNode();
-        SetMatchingStatus(server, client);
-
-        await using (client.P2P)
-        await using (server.P2P)
-        {
-            await server.P2P.StartAsync(token);
-            await client.P2P.StartAsync(token);
-
-            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
-            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
-            IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
-
-            long before = FailureCount("SessionClosed");
-            peer.ReportFailure("Blocks-by-range [1, 17) failed: Channel closed unexpectedly");
-            long after = FailureCount("SessionClosed");
-
-            Assert.That(after - before, Is.EqualTo(1), "a 'Channel closed' free-text reason must still classify as SessionClosed");
-        }
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
     public async Task Peers_surface_reports_peer_id_direction_state_multiaddr_agent_and_enr_for_a_connected_peer(CancellationToken token)
     {
         Node server = CreateNode();

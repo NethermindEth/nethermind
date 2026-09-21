@@ -39,14 +39,8 @@ public interface IBeaconSyncPeer
     Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token);
 
     /// <summary>Records a protocol violation or failure with a closed-cardinality reason; repeated
-    /// reports get the peer pruned. Prefer this over the free-text overload below.</summary>
+    /// reports get the peer pruned.</summary>
     void ReportFailure(PeerFailureReason reason, string? detail = null);
-
-    /// <summary>Legacy free-text overload, kept only for call sites outside this change's file
-    /// boundary. Classifies <paramref name="reason"/> into <see cref="PeerFailureReason"/> by the
-    /// same substring rule the fatal-session detection always used, so the failure metric stays
-    /// bounded even for callers not yet migrated to the typed overload above.</summary>
-    void ReportFailure(string reason);
 }
 
 /// <summary>The pool of sync-usable peers maintained by the peer manager.</summary>
