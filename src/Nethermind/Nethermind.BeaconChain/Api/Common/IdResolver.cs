@@ -8,7 +8,7 @@ namespace Nethermind.BeaconChain.Api.Common;
 
 /// <summary>
 /// Resolves a beacon-api <c>block_id</c>/<c>state_id</c> path parameter to a block root. Shared by
-/// every endpoint that takes one of these identifiers, so "head"/"finalized"/"genesis"/slot/root
+/// every endpoint that takes one of these identifiers, so "head"/"finalized"/"justified"/"genesis"/slot/root
 /// parsing is defined exactly once.
 /// </summary>
 internal static class IdResolver
@@ -53,9 +53,15 @@ internal static class IdResolver
                 return true;
 
             case "justified":
-                errorStatus = StatusCodes.Status400BadRequest;
-                errorMessage = "id 'justified' is not supported: the justified checkpoint's root is only tracked inside fork choice, which is not exposed to this host.";
-                return false;
+                root = ctx.StatusSource.JustifiedRoot;
+                if (root == Hash256.Zero)
+                {
+                    root = null;
+                    errorStatus = StatusCodes.Status503ServiceUnavailable;
+                    errorMessage = "The driver has not established a justified checkpoint yet.";
+                    return false;
+                }
+                return true;
 
             default:
                 if (ulong.TryParse(id, out ulong slot))
@@ -75,7 +81,7 @@ internal static class IdResolver
                 }
 
                 errorStatus = StatusCodes.Status400BadRequest;
-                errorMessage = "Invalid id: expected 'head', 'finalized', 'genesis', a slot number, or a 0x-prefixed 32-byte root.";
+                errorMessage = "Invalid id: expected 'head', 'finalized', 'justified', 'genesis', a slot number, or a 0x-prefixed 32-byte root.";
                 return false;
         }
     }
