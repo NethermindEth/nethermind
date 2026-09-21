@@ -240,9 +240,15 @@ public class FrameTxFloodMeasurement
     /// verify_frame_gas 320,000 + signature_gas 2,800); 236,285 stays as a curve-shape interior point below
     /// the stock MAX_VERIFY_GAS cap, same as before. 322,800 exceeds <see cref="Eip8141Constants.MaxVerifyGas"/>
     /// (300,000), so of the methods this array feeds, only the signature-stuffed ones — refused before they
-    /// ever reach that cap — produce a row at that point; every keccak-wide/production/ramp arm is gated by
-    /// it and Assert.Ignores instead.</remarks>
+    /// ever reach that cap — produce a row at that point; every keccak-wide arm is gated by it and
+    /// Assert.Ignores instead. The cap bounds mempool validation only, so the signature-stuffed production
+    /// arm runs its recoveries at that ceiling too.</remarks>
     private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
+
+    private static readonly int[] AdmissionRates = [50, 100, 150, 200, 250, 300, 350, 400];
+
+    /// <summary>The producer cliff falls inside one 50 tx/s step, so its ramp carries two extra points.</summary>
+    private static readonly int[] ProductionRates = [50, 75, 100, 125, 150, 200, 250, 300, 350, 400];
 
     /// <summary>Maximum drift between the idle baselines bracketing a flood run.</summary>
     private const double MaxBaselineDriftPercent = 5.0;
@@ -666,15 +672,13 @@ public class FrameTxFloodMeasurement
         rig.RunFor(WarmupWindow);
         double w0 = Percentile(rig.Measure(MeasureWindow), 0.50);
 
+        Assert.That(rig.FailingExecutions, Is.GreaterThan(0),
+            "the producer never re-executed the failing transaction, so this measures an ordinary block");
+
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
         RunRateRamp(ceiling, shape, "production_rate_ramp", "production_capacity", extraFields: "", w0,
             rate => MeasureProductionUnderFlood(rig, rate, rejectionCounter), ProductionRates);
     }
-
-    /// <summary>The producer cliff falls inside one 50 tx/s step, so its ramp carries two extra points.</summary>
-    private static readonly int[] ProductionRates = [50, 75, 100, 125, 150, 200, 250, 300, 350, 400];
-
-    private static readonly int[] AdmissionRates = [50, 100, 150, 200, 250, 300, 350, 400];
 
     private void RunRateRamp(
         ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields, double w0,
@@ -970,7 +974,7 @@ public class FrameTxFloodMeasurement
         bool stuffed = shape == "signature-stuffed";
 
         // Block production does not set ExecutionOptions.FrameSignaturesPreValidated, so every attempt
-        // re-runs the recoveries; the prefix still never approves, which is what drives the retry.
+        // re-runs the recoveries. Validation rejects before the frame loop, so the prefix never runs.
         TxFrameSignature[] signatures = stuffed
             ? FrameTxTestFrames.RecoveredSecp256k1Signatures(
                 new EthereumEcdsa(TestBlockchainIds.ChainId), StuffedSignatureCount(ceiling))
