@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -10,14 +12,71 @@ using NUnit.Framework;
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
 /// <summary>
-/// No official <c>get_custody_groups</c> test vectors were located for this session (das-core.md
-/// gives only the algorithm, not fixture data), so these test the invariants the spec's own
-/// assertions require - right count, all distinct, all in range, deterministic - rather than a
-/// specific expected set. See 'unresolved' in the delivering task report.
+/// Pins <c>get_custody_groups</c> to the consensus-spec-tests networking vectors
+/// (<c>tests/minimal/fulu/networking/get_custody_groups/pyspec_tests</c>, v1.7.0-alpha.13), then
+/// checks the invariants the spec's own assertions require. This project has no fixture loader for
+/// the networking suite (the fork-choice fixtures are hand-written C#), so every vector is
+/// transcribed from its <c>meta.yaml</c>. <c>NUMBER_OF_CUSTODY_GROUPS</c> is 128 under both the
+/// minimal and mainnet presets, so the results hold for the mainnet constants this code uses.
 /// </summary>
 public class CustodyGroupsTests
 {
     private static Hash256 NodeId(byte fill) => new(Enumerable.Repeat(fill, 32).ToArray());
+
+    /// <summary>
+    /// <c>meta.yaml</c> gives <c>node_id</c> as a decimal integer. The raw discv5 node id is its
+    /// big-endian encoding, which is how the Lighthouse and Prysm spec-test adapters feed it, so
+    /// these vectors pin the raw-bytes contract of <see cref="CustodyGroups.GetCustodyGroups"/>,
+    /// not only the integer algorithm.
+    /// </summary>
+    private static Hash256 RawNodeId(string decimalNodeId)
+    {
+        byte[] bigEndian = BigInteger.Parse(decimalNodeId).ToByteArray(isUnsigned: true, isBigEndian: true);
+        byte[] raw = new byte[32];
+        bigEndian.CopyTo(raw, raw.Length - bigEndian.Length);
+        return new Hash256(raw);
+    }
+
+    private const string MaxNodeId = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+    private const string MaxNodeIdMinus1 = "115792089237316195423570985008687907853269984665640564039457584007913129639934";
+
+    private static ulong[] AllGroups => Enumerable.Range(0, (int)Eip7594DasConstants.NumberOfCustodyGroups).Select(i => (ulong)i).ToArray();
+
+    // 2**256-1 is the same byte string read in either byte order, so its vectors cannot tell a
+    // big-endian from a little-endian input; short_node_id, max_node_id_minus_1 and the three seeded
+    // cases can, and each of them fails if the raw id is hashed unreversed.
+    public static IEnumerable<TestCaseData> PyspecVectors { get; } =
+    [
+        new TestCaseData("0", 0ul, Array.Empty<ulong>()).SetName("min_node_id_min_custody_group_count"),
+        new TestCaseData("0", 128ul, AllGroups).SetName("min_node_id_max_custody_group_count"),
+        new TestCaseData(MaxNodeId, 0ul, Array.Empty<ulong>()).SetName("max_node_id_min_custody_group_count"),
+        new TestCaseData(MaxNodeId, 128ul, AllGroups).SetName("max_node_id_max_custody_group_count"),
+        new TestCaseData(MaxNodeIdMinus1, 128ul, AllGroups).SetName("max_node_id_minus_1_max_custody_group_count"),
+        new TestCaseData("1048576", 1ul, new ulong[] { 65 }).SetName("short_node_id"),
+        new TestCaseData(MaxNodeId, 4ul, new ulong[] { 1, 47, 87, 102 }).SetName("max_node_id_custody_group_count_is_4"),
+        new TestCaseData(MaxNodeIdMinus1, 4ul, new ulong[] { 1, 47, 87, 102 }).SetName("max_node_id_minus_1_custody_group_count_is_4"),
+        new TestCaseData("51781405571328938149219259614021022118347017557305093857689627172914154745642", 47ul, new ulong[]
+        {
+            3, 6, 7, 8, 9, 12, 25, 26, 29, 30, 32, 40, 42, 47, 52, 53, 54, 55, 56, 57, 69, 70, 71, 72, 74, 77, 80, 81,
+            83, 88, 93, 94, 95, 98, 101, 105, 106, 112, 114, 116, 118, 120, 121, 123, 124, 125, 127,
+        }).SetName("get_custody_groups_1"),
+        new TestCaseData("84065159290331321853352677657753050104170032838956724170714636178275273565505", 6ul, new ulong[] { 27, 29, 58, 67, 96, 117 }).SetName("get_custody_groups_2"),
+        new TestCaseData("62524992026686681062927724650084164361416283301810167550777687366062873585350", 93ul, new ulong[]
+        {
+            0, 1, 2, 4, 5, 6, 7, 9, 10, 13, 14, 16, 19, 20, 21, 22, 23, 24, 25, 26, 29, 30, 31, 34, 36, 37, 38, 39, 40, 41,
+            42, 44, 45, 46, 49, 50, 53, 54, 55, 56, 57, 58, 60, 62, 66, 67, 68, 70, 71, 72, 74, 75, 76, 77, 78, 79, 80, 81,
+            82, 83, 84, 86, 87, 88, 89, 90, 91, 92, 93, 95, 96, 98, 99, 100, 101, 103, 104, 105, 107, 108, 109, 111, 112,
+            113, 114, 115, 117, 118, 120, 122, 123, 126, 127,
+        }).SetName("get_custody_groups_3"),
+    ];
+
+    [TestCaseSource(nameof(PyspecVectors))]
+    public void GetCustodyGroups_matches_the_consensus_spec_test_vector(string nodeId, ulong custodyGroupCount, ulong[] expected)
+    {
+        ulong[] groups = CustodyGroups.GetCustodyGroups(RawNodeId(nodeId), custodyGroupCount);
+
+        Assert.That(groups, Is.EqualTo(expected));
+    }
 
     [TestCase((byte)0x00)]
     [TestCase((byte)0x01)]

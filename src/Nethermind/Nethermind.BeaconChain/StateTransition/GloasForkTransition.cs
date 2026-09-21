@@ -122,11 +122,8 @@ public static class GloasForkTransition
                 Value = 0,
                 ExecutionPayment = 0,
                 BlobKzgCommitments = [],
-                // hash_tree_root(ExecutionRequests.empty()): the spec's bare `ExecutionRequests` name
-                // here resolves in the gloas module's own namespace (every other bare container name
-                // in this function - Validators, Builders, BlobKZGCommitments - is unambiguously the
-                // Gloas type), so this is ExecutionRequestsGloas's zero-value root, not the pre-Gloas
-                // ExecutionRequests' - see 'unresolved' for the case this reading could be wrong.
+                // hash_tree_root(ExecutionRequests.empty()): the gloas module's ExecutionRequests, the
+                // 5-field ProgressiveContainer (specs/gloas/beacon-chain.md, Modified containers), at consensus-specs a8475719.
                 ExecutionRequestsRoot = SszRoots.HashTreeRoot(new ExecutionRequestsGloas()),
             },
             PayloadExpectedWithdrawals = [],

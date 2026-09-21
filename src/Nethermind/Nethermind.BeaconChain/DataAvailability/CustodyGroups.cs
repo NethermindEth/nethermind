@@ -19,11 +19,11 @@ public static class CustodyGroups
     /// <see cref="Eip7594DasConstants.NumberOfCustodyGroups"/>.
     /// </summary>
     /// <param name="nodeId">
-    /// The 32-byte <c>node_id</c>, already encoded per SSZ's Uint256 wire convention (little-endian;
-    /// confirmed against <c>bytes_to_uint64</c>'s <c>ENDIANNESS = 'little'</c> in
-    /// consensus-specs/specs/phase0/beacon-chain.md). How a raw discv5 NodeID is mapped onto this
-    /// value is a separate, unverified concern for the caller - see 'unresolved' in the delivering
-    /// task report.
+    /// The raw 32-byte discv5 node id (<c>keccak256</c> of the uncompressed public key), which is
+    /// the big-endian encoding of the spec's <c>NodeID</c> integer. <c>get_custody_groups</c> hashes
+    /// <c>uint_to_bytes(current_id)</c>, the SSZ little-endian serialization, so the bytes are
+    /// reversed here before hashing and incrementing; hashing them unreversed would select a
+    /// different set of groups from every other client.
     /// </param>
     /// <param name="custodyGroupCount">
     /// The number of groups to select; must not exceed <see cref="Eip7594DasConstants.NumberOfCustodyGroups"/>.
@@ -42,8 +42,10 @@ public static class CustodyGroups
             return all;
         }
 
+        // The raw id is big-endian; the walk below works on the SSZ little-endian encoding.
         Span<byte> currentId = stackalloc byte[32];
         nodeId.Bytes.CopyTo(currentId);
+        currentId.Reverse();
 
         // NUMBER_OF_CUSTODY_GROUPS (128) is small and fixed: a presence array is simpler and
         // allocation-free compared to a HashSet, and membership/sort fall out of one final scan.

@@ -31,6 +31,8 @@ public static class DataAvailabilitySampling
     /// <paramref name="custodyGroupCount"/> groups are always a subset of this set - the spec's own
     /// invariant, not an incidental one.
     /// </summary>
+    /// <param name="nodeId">The node's raw discv5 node id, as <see cref="CustodyGroups.GetCustodyGroups"/> expects it.</param>
+    /// <param name="custodyGroupCount">The custody group count this node advertises (<c>cgc</c>).</param>
     public static ulong[] GetColumnsToSample(Hash256 nodeId, ulong custodyGroupCount)
     {
         ulong samplingSize = GetSamplingSize(custodyGroupCount);
