@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
@@ -23,6 +24,12 @@ public static class TestFixtureDownloader
     private const string MarkerFileName = ".completed";
 
     /// <summary>
+    /// Path depth at which extracted subtrees are recorded in the marker: <c>tests/{preset}/{fork}/{suite}</c>
+    /// in the consensus-specs archives, so a missing fork or suite is caught without walking every file.
+    /// </summary>
+    private const int SubtreeDepth = 4;
+
+    /// <summary>
     /// Ensures that the archive identified by <paramref name="urlTemplate"/>,
     /// <paramref name="version"/>, and <paramref name="archiveName"/> is downloaded
     /// and extracted. Returns the path to the extraction directory.
@@ -40,10 +47,10 @@ public static class TestFixtureDownloader
     /// </param>
     /// <param name="extractionTag">
     /// Identifies what <paramref name="shouldExtract"/> keeps. It is written into the completion
-    /// marker, and a cached marker carrying a different tag is treated as absent, so widening the
-    /// filter re-downloads instead of leaving the new subtrees silently missing from a "complete"
-    /// cache. Callers that extract everything can leave it null; their marker then holds the version,
-    /// as it always has, and its content is not checked.
+    /// marker's first line, and a cached marker carrying a different tag is treated as absent, so
+    /// widening the filter re-downloads instead of leaving the new subtrees silently missing from a
+    /// "complete" cache. Callers that extract everything can leave it null; their marker's first line
+    /// then holds the version, as it always has, and is not checked.
     /// </param>
     /// <returns>The path to the extracted fixtures directory.</returns>
     public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName, Func<string, bool>? shouldExtract = null, string? extractionTag = null)
@@ -70,7 +77,7 @@ public static class TestFixtureDownloader
 
             Console.WriteLine($"Downloading {suiteName} fixtures ({archiveName} {version})...");
             DownloadAndExtract(urlTemplate, version, archiveName, targetDir, shouldExtract);
-            File.WriteAllText(markerPath, extractionTag ?? version);
+            File.WriteAllLines(markerPath, [extractionTag ?? version, .. PopulatedSubtrees(targetDir)]);
             Console.WriteLine($"{suiteName} fixtures extracted to {targetDir}");
         }
         finally
@@ -85,17 +92,34 @@ public static class TestFixtureDownloader
     /// A marker over an emptied or never-populated directory was seen in the wild, and every suite over
     /// it ran zero vectors and passed; only a marker over at least one real file counts as complete.
     /// A marker written for a different extraction filter is equally hollow for the subtrees the
-    /// current filter keeps, so it is refused too when a tag is given.
+    /// current filter keeps, so it is refused too when a tag is given. A partially emptied cache is
+    /// just as hollow for the subtrees it lost, so every subtree the marker recorded must still hold
+    /// a file; a marker that predates subtree recording falls back to the whole-directory check.
     /// </summary>
     private static bool IsComplete(string targetDir, string markerPath, string? extractionTag)
     {
         if (!File.Exists(markerPath))
             return false;
 
-        if (extractionTag is not null && !string.Equals(File.ReadAllText(markerPath), extractionTag, StringComparison.Ordinal))
+        string[] marker = File.ReadAllLines(markerPath);
+        string header = marker.Length > 0 ? marker[0] : string.Empty;
+        if (extractionTag is not null && !string.Equals(header, extractionTag, StringComparison.Ordinal))
         {
             Console.WriteLine($"Ignoring completion marker written for a different extraction filter ({targetDir}); re-downloading.");
             return false;
+        }
+
+        if (marker.Length > 1)
+        {
+            for (int i = 1; i < marker.Length; i++)
+            {
+                if (HasAnyFile(Path.Combine(targetDir, marker[i])))
+                    continue;
+
+                Console.WriteLine($"Ignoring completion marker whose extracted subtree '{marker[i]}' is missing ({targetDir}); re-downloading.");
+                return false;
+            }
+            return true;
         }
 
         if (HasExtractedContent(targetDir))
@@ -110,6 +134,32 @@ public static class TestFixtureDownloader
         Directory.Exists(targetDir)
         && Directory.EnumerateFiles(targetDir, "*", SearchOption.AllDirectories)
             .Any(file => !string.Equals(Path.GetFileName(file), MarkerFileName, StringComparison.Ordinal));
+
+    private static bool HasAnyFile(string directory) =>
+        Directory.Exists(directory) && Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories).Any();
+
+    /// <summary>
+    /// The directories <see cref="SubtreeDepth"/> levels below <paramref name="targetDir"/> that hold at
+    /// least one file, as forward-slash relative paths; an archive too shallow to have any records none.
+    /// </summary>
+    private static List<string> PopulatedSubtrees(string targetDir)
+    {
+        List<string> subtrees = [];
+        CollectPopulatedSubtrees(targetDir, string.Empty, SubtreeDepth, subtrees);
+        return subtrees;
+    }
+
+    private static void CollectPopulatedSubtrees(string directory, string relativePath, int depth, List<string> into)
+    {
+        foreach (string child in Directory.EnumerateDirectories(directory))
+        {
+            string childRelative = relativePath.Length == 0 ? Path.GetFileName(child) : $"{relativePath}/{Path.GetFileName(child)}";
+            if (depth > 1)
+                CollectPopulatedSubtrees(child, childRelative, depth - 1, into);
+            else if (HasAnyFile(child))
+                into.Add(childRelative);
+        }
+    }
 
     /// <summary>
     /// Strips archive extensions (e.g. ".tar.gz", ".zip") to derive the directory stem.
