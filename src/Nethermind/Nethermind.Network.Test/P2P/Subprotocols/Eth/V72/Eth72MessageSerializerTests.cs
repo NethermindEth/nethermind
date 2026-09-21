@@ -508,6 +508,16 @@ public class Eth72MessageSerializerTests
     [Test, NonParallelizable]
     public void Announcement_decoding_and_reading_hashes_has_bounded_allocations([Values(128, 4096)] int count)
     {
+        long baseline = MeasureAnnouncementAllocations(1);
+        long allocated = MeasureAnnouncementAllocations(count);
+
+        TestContext.Out.WriteLine($"Allocated bytes per {count}-hash announcement: {allocated}; one-hash baseline: {baseline}");
+        // DEBUG list wrappers capture stack traces; compare growth through the same decoder path.
+        Assert.That(allocated - baseline, Is.LessThan((count - 1) * 16), "Decoding and consuming hashes must not allocate an object per hash.");
+    }
+
+    private static long MeasureAnnouncementAllocations(int count)
+    {
         byte[] types = new byte[count];
         int[] sizes = new int[count];
         ValueHash256[] hashes = new ValueHash256[count];
@@ -536,8 +546,7 @@ public class Eth72MessageSerializerTests
         }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        TestContext.Out.WriteLine($"Allocated bytes per {count}-hash announcement: {allocated / 100.0}");
-        Assert.That(allocated / 100, Is.LessThan(count * 16), "Decoding and consuming hashes must not allocate an object per hash.");
+        return allocated / 100;
 
         void DecodeAndReadHashes()
         {
