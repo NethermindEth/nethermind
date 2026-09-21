@@ -419,7 +419,9 @@ public static class GloasStateAccessors
     /// <exception cref="BeaconStateException">The bitvector's length is not the PTC size, or the slot's PTC is not available.</exception>
     public static IndexedPayloadAttestation GetIndexedPayloadAttestation(this BeaconStateGloas state, PayloadAttestation attestation)
     {
-        ulong[] ptc = state.GetPtc(attestation.Data!.Slot).Indices!;
+        // The pre-fork history is the spec's default committee (validator 0 at every position), which
+        // the upgrade leaves unpopulated; a vote for one of those slots is invalid, not a crash.
+        ulong[] ptc = state.GetPtc(attestation.Data!.Slot).Indices ?? new ulong[Presets.PtcSize];
         BitArray bits = attestation.AggregationBits!;
         if (bits.Length != ptc.Length)
             throw new BeaconStateException($"Payload attestation has {bits.Length} aggregation bits, expected {ptc.Length}");

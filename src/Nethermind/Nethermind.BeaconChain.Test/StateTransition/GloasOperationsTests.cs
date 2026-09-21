@@ -408,6 +408,135 @@ public class GloasOperationsTests
         Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
     }
 
+    // ---- Payload attestations ----
+
+    /// <summary>
+    /// A state at slot 33 in the middle of processing a block there: the block-32 header has been
+    /// replaced by block 33's, whose parent root is what a PTC vote must name.
+    /// </summary>
+    private static BeaconStateGloas StateProcessingBlock33(out PubkeyCache pubkeys, out Hash256 parentRoot)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        pubkeys = InstallRealValidatorKeys(state);
+        EpochCache cache = new();
+        ApplyBlock(state, MinimalBlock(state, SelfBuildBid(state, state.LatestBlockHash!, Hash(0x99))), cache);
+        GloasSlotProcessing.ProcessSlots(state, 33, cache);
+        GloasBlockProcessing.ProcessBlockHeader(state, MinimalBlock(state, SelfBuildBid(state, state.LatestBlockHash!, Hash(0x9A))).Message!);
+        parentRoot = state.LatestBlockHeader!.ParentRoot!;
+        Assert.That(parentRoot, Is.EqualTo(state.GetBlockRootAtSlot(32)), "fixture bug: the parent must be the slot-32 block");
+        return state;
+    }
+
+    [Test]
+    public void ProcessPayloadAttestation_accepts_a_ptc_vote_for_the_parent_block_signed_by_the_set_members()
+    {
+        BeaconStateGloas state = StateProcessingBlock33(out PubkeyCache pubkeys, out Hash256 parentRoot);
+        int[] positions = [0, 1, 2, 5, 9];
+        PayloadAttestationData data = new() { BeaconBlockRoot = parentRoot, Slot = 32, PayloadPresent = true, BlobDataAvailable = true };
+        PayloadAttestation attestation = PtcAttestation(state, data, positions, sign: true);
+
+        Assert.DoesNotThrow(() => GloasBlockProcessing.ProcessPayloadAttestation(state, attestation, pubkeys, verifySignature: true));
+
+        ulong[] ptc = state.GetPtc(32).Indices!;
+        IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation);
+        Assert.Multiple(() =>
+        {
+            Assert.That(indexed.AttestingIndices, Is.EqualTo(positions.Select(p => ptc[p]).Order()).AsCollection);
+            Assert.That(indexed.AttestingIndices!.Distinct().Count(), Is.GreaterThan(1), "fixture bug: the vote must carry several real committee members");
+        });
+    }
+
+    [TestCase("wrong block root", "not for the parent beacon block")]
+    [TestCase("wrong slot", "not for the slot before")]
+    [TestCase("bad signature", "Invalid indexed payload attestation")]
+    [TestCase("no bits set", "Invalid indexed payload attestation")]
+    public void ProcessPayloadAttestation_rejects_an_invalid_vote(string defect, string expectedMessage)
+    {
+        BeaconStateGloas state = StateProcessingBlock33(out PubkeyCache pubkeys, out Hash256 parentRoot);
+        PayloadAttestationData data = new()
+        {
+            BeaconBlockRoot = defect == "wrong block root" ? Hash(0x44) : parentRoot,
+            Slot = defect == "wrong slot" ? 31UL : 32UL,
+            PayloadPresent = true,
+            BlobDataAvailable = true,
+        };
+        // A pre-fork slot has no populated committee to sign as; its rejection comes before the signature.
+        PayloadAttestation attestation = PtcAttestation(state, data, defect == "no bits set" ? [] : [0, 1, 2], sign: defect is not ("no bits set" or "wrong slot"));
+        if (defect == "bad signature")
+            attestation.Signature = Corrupt(attestation.Signature);
+
+        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
+            GloasBlockProcessing.ProcessPayloadAttestation(state, attestation, pubkeys, verifySignature: true))!;
+
+        Assert.That(ex.Message, Does.Contain(expectedMessage));
+    }
+
+    [Test]
+    public void GetIndexedPayloadAttestation_resolves_a_vote_for_a_pre_fork_slot_against_the_default_committee_instead_of_crashing()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        Assert.That(state.GetPtc(31).Indices, Is.Null, "fixture bug: the upgrade leaves the pre-fork half unpopulated");
+        PayloadAttestation attestation = PtcAttestation(state, new PayloadAttestationData { BeaconBlockRoot = Hash(0x31), Slot = 31 }, [0, 1, 2], sign: false);
+
+        IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation);
+
+        Assert.That(indexed.AttestingIndices, Is.EqualTo(new ulong[] { 0, 0, 0 }).AsCollection);
+    }
+
+    [Test]
+    public void GetPtc_reads_the_window_entry_for_the_slots_epoch_and_refuses_slots_outside_it()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        GloasSlotProcessing.ProcessSlots(state, 2 * SlotsPerEpoch);
+        PayloadTimelinessCommittee[] window = state.PtcWindow!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.GetPtc(63), Is.SameAs(window[31]), "previous epoch: the first SLOTS_PER_EPOCH entries");
+            Assert.That(state.GetPtc(64), Is.SameAs(window[32]), "current epoch");
+            Assert.That(state.GetPtc(96), Is.SameAs(window[64]), "one epoch of lookahead");
+            Assert.That(() => state.GetPtc(31), Throws.TypeOf<BeaconStateException>(), "two epochs back is outside the window");
+            Assert.That(() => state.GetPtc(128), Throws.TypeOf<BeaconStateException>(), "beyond MIN_SEED_LOOKAHEAD is outside the window");
+        });
+    }
+
+    // ---- The block-level wiring: every operation kind the body carries is applied ----
+
+    [Test]
+    public void ProcessBlock_applies_every_operation_kind_the_body_carries()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        EpochCache cache = new();
+        ApplyBlock(state, MinimalBlock(state, SelfBuildBid(state, state.LatestBlockHash!, Hash(0x99))), cache);
+        GloasSlotProcessing.ProcessSlots(state, 33, cache);
+        const int slashedProposer = 5;
+        const int credentialsChanger = 4;
+        Bls.SecretKey fromKey = DeriveKey(500);
+        Validator withBlsCredentials = state.Validators![credentialsChanger].Clone();
+        withBlsCredentials.WithdrawalCredentials = BlsWithdrawalCredentials(new BlsPublicKey(new Bls.P1(fromKey).Compress()));
+        state.Validators[credentialsChanger] = withBlsCredentials;
+        CommitteeCache committees = cache.GetCommitteeCache(state, 1);
+        Hash256 block32Root = state.GetBlockRootAtSlot(32);
+        AttestationGloas attestation = CommitteeAttestation(state, VoteFor(state, slot: 32, targetEpoch: 1, block32Root), committees, committeeIndex: 0, sign: false);
+
+        SignedBeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, state.LatestBlockHash!, Hash(0x9A)));
+        BeaconBlockBodyGloas body = block.Message!.Body!;
+        body.ProposerSlashings = [Equivocation(state, slot: 32, slashedProposer)];
+        body.Attestations = [attestation];
+        body.BlsToExecutionChanges = [SignedBlsChange(state, credentialsChanger, fromKey, new Address(Hash(0xE7).Bytes[12..]))];
+        body.PayloadAttestations = [PtcAttestation(state, new PayloadAttestationData { BeaconBlockRoot = block32Root, Slot = 32, PayloadPresent = true, BlobDataAvailable = true }, [0, 1, 2], sign: false)];
+
+        ApplyBlock(state, block, cache);
+
+        ulong[] attesters = state.GetAttestingIndices(attestation, committees);
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.Validators[slashedProposer].Slashed, Is.True);
+            Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111));
+            Assert.That(state.Validators[credentialsChanger].WithdrawalCredentials!.Bytes[0], Is.EqualTo(Presets.EthWithdrawalPrefix));
+        });
+    }
+
     // ---- Voluntary exits ----
 
     /// <summary>Well past SHARD_COMMITTEE_PERIOD, so a genesis-activated validator may exit; the block-root window still covers the epoch boundary.</summary>

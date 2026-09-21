@@ -313,6 +313,30 @@ internal static class GloasTestFixtures
         Target = new Checkpoint { Epoch = targetEpoch, Root = state.GetBlockRoot(targetEpoch) },
     };
 
+    /// <summary>
+    /// A PTC aggregate for <c>data.Slot</c> with the committee <paramref name="positions"/> set,
+    /// signed (when <paramref name="sign"/>) by the validators at those positions under
+    /// <c>DOMAIN_PTC_ATTESTER</c>, once per position since a repeated member is aggregated per occurrence.
+    /// </summary>
+    public static PayloadAttestation PtcAttestation(BeaconStateGloas state, PayloadAttestationData data, int[] positions, bool sign)
+    {
+        ulong[] ptc = state.GetPtc(data.Slot).Indices ?? new ulong[Presets.PtcSize];
+        BitArray bits = new((int)Presets.PtcSize);
+        foreach (int position in positions)
+        {
+            bits[position] = true;
+        }
+
+        BlsSignature signature = default;
+        if (sign)
+        {
+            Hash256 domain = state.GetDomain(DomainType.PtcAttester, BeaconStateAccessors.ComputeEpochAtSlot(data.Slot));
+            signature = AggregateSignature(Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain), [.. positions.Select(p => (int)ptc[p])]);
+        }
+
+        return new PayloadAttestation { AggregationBits = bits, Data = data, Signature = signature };
+    }
+
     /// <summary>The aggregate of each listed validator's signature over <paramref name="signingRoot"/>; a repeated index signs (and so must be aggregated) once per occurrence.</summary>
     public static BlsSignature AggregateSignature(Hash256 signingRoot, IReadOnlyList<int> validatorIndices)
     {
