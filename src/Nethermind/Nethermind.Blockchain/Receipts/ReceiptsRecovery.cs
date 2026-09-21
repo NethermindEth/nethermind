@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
                 // The log-count heuristic below assumes a failed transaction has no logs; a frame transaction
                 // can fail while carrying the logs of the frames that succeeded (EIP-8141).
-                if (receipt.StatusCode != StatusCode.Success && receipt.TxType != TxType.FrameTx)
+                if (receipt.StatusCode != StatusCode.Success && !receipt.TxType.SupportsFrames())
                 {
                     receipt.StatusCode = (receipt.Logs?.Length ?? 0) == 0 ? StatusCode.Failure : StatusCode.Success;
                 }
@@ -142,7 +142,7 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.ContractAddress = (transaction.CreatesTopLevelContract && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce) : Address.Zero)!.ToStructRef();
                 receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
                 // See the note on the same heuristic in the overload above.
-                if (receipt.StatusCode != StatusCode.Success && receipt.TxType != TxType.FrameTx)
+                if (receipt.StatusCode != StatusCode.Success && !receipt.TxType.SupportsFrames())
                 {
                     receipt.StatusCode = (receipt.Logs?.Length ?? 0) == 0 ? StatusCode.Failure : StatusCode.Success;
                 }
