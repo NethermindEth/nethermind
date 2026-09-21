@@ -40,6 +40,8 @@ public class BeaconChainStoreTests
             Assert.That(store.TryGetBlock(blockRoot, out SignedBeaconBlock? readBlock), Is.True);
             Assert.That(SignedBeaconBlock.Encode(readBlock!), Is.EqualTo(SignedBeaconBlock.Encode(block)));
             Assert.That(store.TryGetBlock(missingRoot, out _), Is.False);
+            Assert.That(store.HasBlock(blockRoot), Is.True);
+            Assert.That(store.HasBlock(missingRoot), Is.False);
 
             Assert.That(store.TryGetCanonicalRoot(12_345_678, out Hash256? canonicalRoot), Is.True);
             Assert.That(canonicalRoot, Is.EqualTo(blockRoot));

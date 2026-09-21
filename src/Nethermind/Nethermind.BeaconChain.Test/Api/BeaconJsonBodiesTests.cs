@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -325,6 +326,25 @@ public class BeaconJsonBodiesTests
 
         HttpResponseMessage badSlot = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}&slot=abc", Json);
         Assert.That(badSlot.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+    }
+
+    [Test]
+    public async Task Headers_by_parent_root_checks_the_parent_exists_without_decoding_it()
+    {
+        Hash256 parent = BeaconApiTestHost.TestRoot(0x35);
+        Hash256 child = BeaconApiTestHost.TestRoot(0x36);
+        _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
+        _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 1, parent));
+        // Only the children are listed, so the parent's own bytes must never be read: a parent that
+        // no longer decodes still has an exact child list to serve.
+        _host.Db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(parent.Bytes, [9]);
+
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
+        string raw = await response.Content.ReadAsStringAsync();
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        JsonElement data = JsonDocument.Parse(raw).RootElement.GetProperty("data");
+        Assert.That(data.GetArrayLength(), Is.EqualTo(1));
+        Assert.That(data[0].GetProperty("root").GetString(), Is.EqualTo(child.ToString()));
     }
 
     [Test]
