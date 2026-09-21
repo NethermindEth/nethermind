@@ -475,7 +475,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return;
 
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
-        _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+        try
+        {
+            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+        }
+        catch (Exception e)
+        {
+            // Best-effort: the processing-queue preprocessor recovers anything still missing, so failing
+            // to queue the early recovery must not fail an otherwise valid payload.
+            if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed to start for block {request.BlockNumber}: {e}");
+        }
     }
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)

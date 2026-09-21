@@ -340,9 +340,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Waits for a candidate's sender; <c>false</c> once the main thread has passed it or the block is done.</summary>
     /// <remarks>
-    /// Without the 1 ms spin window the other waits open with: the same ascending-recovery argument that makes this
-    /// wait worth taking makes it a long one, and several discovery workers spinning would take cores from the very
-    /// recovery they are waiting on. It still opens with a handful of <see cref="SpinWait.SpinOnce()"/> iterations,
+    /// This wait skips the 1 ms spin window the other two open with: the same ascending-recovery argument that
+    /// makes the wait worth taking makes it a long one, and several discovery workers spinning would take cores
+    /// from the very recovery they are waiting on. It still opens with a handful of <see cref="SpinWait.SpinOnce()"/> iterations,
     /// which yield rather than burn a core past the first few, because the sleep below is
     /// <see cref="WaitHandle.WaitOne(int)"/> and rounds up to the platform timer tick — some 15 ms on Windows at the
     /// default resolution, against a discovery window of tens.

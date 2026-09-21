@@ -23,10 +23,17 @@ namespace Nethermind.Consensus.Processing
         /// recovery already running for the same transactions.
         /// </summary>
         /// <remarks>
-        /// Only that queue tolerates a sender still arriving: the transaction processor recovers a missing one
-        /// inline and the prewarmer warms transactions as they are recovered. Every other caller — tracing,
-        /// one-time processing — reads transaction fields before execution and so keeps <see cref="RecoverData"/>,
-        /// which returns with every sender recovered.
+        /// That queue tolerates a sender still arriving: the transaction processor recovers a missing one inline
+        /// and the prewarmer warms transactions as they are recovered. Tracing and one-time processing read
+        /// transaction fields before execution, so they keep <see cref="RecoverData"/> and its guarantee that
+        /// every sender is recovered on return.
+        /// <para>
+        /// The block producer's branch builder reaches this too, and its transaction picker drops a transaction
+        /// whose sender is null rather than failing. It is safe because it never sees one: producing implies
+        /// <c>ForceProcessing</c>, so only the block being produced is preprocessed, and its transactions come
+        /// from the transaction source with senders already recovered. A new caller needs that argument or the
+        /// total <see cref="RecoverData"/>.
+        /// </para>
         /// </remarks>
         void RecoverDataForQueuedProcessing(Block block) => RecoverData(block);
     }
