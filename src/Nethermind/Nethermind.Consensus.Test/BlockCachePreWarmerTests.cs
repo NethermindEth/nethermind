@@ -802,6 +802,27 @@ public class BlockCachePreWarmerTests
         Assert.That(hint.Calls, Is.EqualTo(2), "once a pass has warmed the slot, the later ones must reuse it");
     }
 
+    /// <summary>
+    /// The inverse of the case above: a hint that never recovers must not charge a warm pass to every idle pass for
+    /// the rest of the gap.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_APassWhoseHintsKeepFailing_RetiresThePredictedSlotAfterAFewTries()
+    {
+        CountingAccessListHint hint = new(failCalls: int.MaxValue);
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
+
+        BlockHeader head = BuildParentHeader();
+        Block sameSlot = BuildEmptyChild(head, timestamp: 12);
+
+        Assert.That(
+            RunIdleSession(preWarmer, head, _ => (sameSlot, Osaka.Instance), () => hint.Calls > BlockCachePreWarmer.MaxSystemWarmAttempts, TimeSpan.FromSeconds(1)),
+            Is.False, "a slot whose hints keep failing must be retired rather than retried for the rest of the gap");
+
+        Assert.That(hint.Calls, Is.EqualTo(BlockCachePreWarmer.MaxSystemWarmAttempts));
+    }
+
     private const ulong Eip4788HistoryBufferLength = 8191;
 
     private static Block BuildEmptyChild(BlockHeader head, ulong timestamp) =>
@@ -816,13 +837,13 @@ public class BlockCachePreWarmerTests
 
     /// <summary>Runs an idle session over <paramref name="nextDelta"/> until <paramref name="until"/> holds, then joins it.</summary>
     /// <returns>Whether <paramref name="until"/> held before the wait timed out.</returns>
-    private static bool RunIdleSession(BlockCachePreWarmer preWarmer, BlockHeader head, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, Func<bool> until)
+    private static bool RunIdleSession(BlockCachePreWarmer preWarmer, BlockHeader head, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, Func<bool> until, TimeSpan? timeout = null)
     {
         using CancellationTokenSource cancellation = new();
         Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, nextDelta, idlePassDelayMs: 1, cancellation.Token);
         try
         {
-            return SpinWait.SpinUntil(until, TimeSpan.FromSeconds(5));
+            return SpinWait.SpinUntil(until, timeout ?? TimeSpan.FromSeconds(5));
         }
         finally
         {

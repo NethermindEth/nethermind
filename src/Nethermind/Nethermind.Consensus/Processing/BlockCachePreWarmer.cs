@@ -51,6 +51,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     internal const int MaxDiscoveredCells = 8192;
     // Iterative discovery is substantially costlier than ordinary warmup; reserve it for exceptional transactions.
     private const ulong StorageDiscoveryGasThreshold = 10_000_000;
+    // How many idle passes may try to warm one predicted slot's system hints before the slot is left cold.
+    internal const int MaxSystemWarmAttempts = 3;
 
     private static readonly IComparer<StorageCell> _cellAddressComparer =
         Comparer<StorageCell>.Create(static (left, right) => left.Address.CompareTo(right.Address));
@@ -523,6 +525,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // The EIP-4788 ring-buffer cells are indexed by the predicted timestamp, so the system warm is redone only
             // when the prediction moves to another slot (a missed slot), not on every pass.
             ulong? warmedSystemTimestamp = null;
+            ulong attemptedSystemTimestamp = 0;
+            int systemWarmAttempts = 0;
             while (!token.IsCancellationRequested)
             {
                 (Block Block, IReleaseSpec Spec)? next = nextDelta(token);
@@ -537,9 +541,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         bool systemWarmed = WarmDeltaSync(delta, head, deltaSpec, warmSystemAccessLists, token);
                         // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
                         if (token.IsCancellationRequested) break;
-                        // Retire the slot only once its hints actually landed: the address warmer swallows its failures,
-                        // and re-warming on the next pass is cheaper than leaving the slot cold for the rest of the gap.
-                        if (systemWarmed) warmedSystemTimestamp = delta.Timestamp;
+                        if (warmSystemAccessLists)
+                        {
+                            systemWarmAttempts = attemptedSystemTimestamp == delta.Timestamp ? systemWarmAttempts + 1 : 1;
+                            attemptedSystemTimestamp = delta.Timestamp;
+                            // Retire the slot only once its hints actually landed, since re-warming on the next pass is
+                            // cheaper than leaving the slot cold for the rest of the gap - but give up after a few
+                            // tries, so a hint that never recovers cannot charge a warm pass to every pass in the gap.
+                            if (systemWarmed || systemWarmAttempts >= MaxSystemWarmAttempts) warmedSystemTimestamp = delta.Timestamp;
+                        }
                         foreach (Transaction tx in delta.Transactions)
                         {
                             if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
@@ -989,8 +999,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         {
                             // Evaluated here rather than up front: the hints read state, and the only world state with an
                             // open scope on the speculative path is this env's own.
-                            WarmupSystemAccessLists(env.SystemAccessLists, scope.WorldState);
-                            Volatile.Write(ref _systemAccessListsWarmed, true);
+                            if (WarmupSystemAccessLists(env.SystemAccessLists, scope.WorldState))
+                            {
+                                Volatile.Write(ref _systemAccessListsWarmed, true);
+                            }
                         }
                     }
                     finally
@@ -1029,12 +1041,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
+        /// <summary>Warms every system-contract hint.</summary>
+        /// <returns>Whether all of them landed.</returns>
         /// <remarks>
         /// Tolerates a pruned root the same way <see cref="WarmupSender"/> does: losing a hint costs a cold read, it is
-        /// not a reason to abandon the rest of the pass.
+        /// not a reason to abandon the rest of the pass. The hints are plugin-supplied, so any other failure is
+        /// contained here as well rather than costing the pass its transaction warming too.
         /// </remarks>
-        private void WarmupSystemAccessLists(ReadOnlySpan<IHasAccessList> systemAccessLists, IWorldState worldState)
+        private bool WarmupSystemAccessLists(ReadOnlySpan<IHasAccessList> systemAccessLists, IWorldState worldState)
         {
+            bool warmed = true;
             foreach (IHasAccessList systemAccessList in systemAccessLists)
             {
                 try
@@ -1043,8 +1059,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 }
                 catch (MissingTrieNodeException)
                 {
+                    warmed = false;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    PreWarmer._logger.DebugError($"Error pre-warming the {systemAccessList.GetType().Name} access list", ex);
+                    warmed = false;
                 }
             }
+
+            return warmed;
         }
 
         private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
