@@ -71,6 +71,9 @@ public class FlatHistoryModule : Module
             .AddStep(typeof(StartHistoryWalkVerification))
             .AddSingleton<TransactionChangesetIndex>()
             .AddSingleton<IHistoryBlockExecutorFactory, ProcessingHistoryBlockExecutorFactory>()
+            .AddSingleton<BulkFillSessionFactory>()
+            .AddSingleton<TransactionIndexGenesisBootstrap>()
+            .AddSingleton<ITransactionIndexBulkFill, ProcessingTransactionIndexBulkFill>()
             .AddSingleton<TransactionChangesetBuilder>()
             .AddStep(typeof(StartTransactionChangesetBuilder))
             .AddSingleton<IPrefixStateSeedSource, ChangesetPrefixStateSeedSource>();

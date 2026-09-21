@@ -130,6 +130,99 @@ public class FlatDbManagerPersistedTests
         Assert.DoesNotThrowAsync(async () => await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit));
     }
 
+    [TestCase(0, TestName = "DisposeAsync_WhenPersistenceSucceeds_DrainsQueuedCompactions")]
+    [TestCase(1, TestName = "DisposeAsync_WhenPersistenceIsCanceled_ReleasesBlockedCompactor")]
+    [TestCase(2, TestName = "DisposeAsync_WhenAPersistFails_ReleasesBlockedCompactorAndPersistsTheRest")]
+    public async Task DisposeAsync_WhenPersistenceStops_ReleasesBlockedCompactor(int completionMode)
+    {
+        // Hold the first persist, fill its queue, then finish, cancel or fail it with the next compaction waiting for space.
+        _config.InlineCompaction = false;
+        using FlatTestContainer tier = new(_config, arenaFileSizeBytes: 4096);
+        TaskCompletionSource persistenceStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource persistenceResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource lastCompactionStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IPersistenceManager persistence = Substitute.For<IPersistenceManager>();
+        persistence.GetCurrentPersistedStateId().Returns(StateId.PreGenesis);
+        persistence.AddToPersistence(Arg.Any<StateId>()).Returns(_ =>
+        {
+            persistenceStarted.TrySetResult();
+            return persistenceResult.Task;
+        });
+        ISnapshotCompactor compactor = Substitute.For<ISnapshotCompactor>();
+        ulong blockedBlock = (ulong)_config.MaxInFlightCompactJob + 2;
+        compactor.DoCompactSnapshot(Arg.Any<StateId>()).Returns(call =>
+        {
+            if (call.Arg<StateId>().BlockNumber == blockedBlock) lastCompactionStarted.TrySetResult();
+            return false;
+        });
+        FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
+            Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
+            Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
+
+        Task? disposal = null;
+        try
+        {
+            StateId previous = new(0, Keccak.EmptyTreeHash);
+            for (ulong number = 1; number <= blockedBlock; number++)
+            {
+                StateId next = new(number, Keccak.Compute(number.ToString()));
+                Commit(manager, tier.ResourcePool, previous, next, 1);
+                previous = next;
+                if (number == 1) await persistenceStarted.Task.WaitAsync(DisposeWaitLimit);
+            }
+            await lastCompactionStarted.Task.WaitAsync(DisposeWaitLimit);
+            Assert.That(persistenceResult.Task.IsCompleted, Is.False, "the consumer must still hold the first persist");
+            disposal = manager.DisposeAsync().AsTask();
+            Assert.That(disposal.IsCompleted, Is.False, "the pending persist must keep disposal waiting");
+
+            if (completionMode == 1)
+            {
+                _cts.Cancel();
+                persistenceResult.SetCanceled(_cts.Token);
+                await disposal.WaitAsync(DisposeWaitLimit);
+            }
+            else
+            {
+                if (completionMode == 2) persistenceResult.SetException(new IOException("persist failed"));
+                else persistenceResult.SetResult();
+                await disposal.WaitAsync(DisposeWaitLimit);
+                await persistence.Received((int)blockedBlock).AddToPersistence(Arg.Any<StateId>());
+            }
+            Assert.That(disposal.IsCompleted, Is.True, "a stopped consumer must not strand the compactor");
+        }
+        finally
+        {
+            persistenceResult.TrySetCanceled();
+            disposal ??= manager.DisposeAsync().AsTask();
+            await Task.WhenAny(disposal, Task.Delay(DisposeWaitLimit));
+            _ = disposal.Exception;
+        }
+    }
+
+    [Test]
+    public async Task AddSnapshot_WhenACompactionFails_CompactsAndPersistsTheNextSnapshot()
+    {
+        _config.InlineCompaction = false;
+        using FlatTestContainer tier = new(_config, arenaFileSizeBytes: 4096);
+        IPersistenceManager persistence = Substitute.For<IPersistenceManager>();
+        persistence.GetCurrentPersistedStateId().Returns(StateId.PreGenesis);
+        persistence.AddToPersistence(Arg.Any<StateId>()).Returns(Task.CompletedTask);
+        StateId failing = new(1, Keccak.Compute("1"));
+        StateId next = new(2, Keccak.Compute("2"));
+        ISnapshotCompactor compactor = Substitute.For<ISnapshotCompactor>();
+        compactor.DoCompactSnapshot(failing).Returns(_ => throw new IOException("compaction failed"));
+        FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
+            Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
+            Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
+
+        Commit(manager, tier.ResourcePool, new StateId(0, Keccak.EmptyTreeHash), failing, 1);
+        Commit(manager, tier.ResourcePool, failing, next, 2);
+        await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit);
+
+        await persistence.DidNotReceive().AddToPersistence(failing);
+        await persistence.Received(1).AddToPersistence(next);
+    }
+
     // The head-reset sequence: commit a branch, reset to its base, commit again from the base. The abandoned
     // branch must be gone and the new one served, through the real repository, compactor and persistence manager.
     [Test]

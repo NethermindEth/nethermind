@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 
@@ -17,6 +18,14 @@ public interface IPrefixStateSeedSource
     /// <paramref name="transactionIndex"/> wrote; reads of the scope in flight then see it ahead of the parent state.
     /// False leaves the slot untouched and means the caller replays the prefix as it always did.</summary>
     bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot);
+
+    /// <summary>Opens a block every transaction of which can be seeded, so that its transactions may be traced in any
+    /// order and in parallel, each on the state before it. False means the block is traced by replaying it.</summary>
+    bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
+    {
+        covered = null;
+        return false;
+    }
 }
 
 public sealed class NullPrefixStateSeedSource : IPrefixStateSeedSource
@@ -30,4 +39,10 @@ public sealed class NullPrefixStateSeedSource : IPrefixStateSeedSource
     public bool Enabled => false;
 
     public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot) => false;
+
+    public bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
+    {
+        covered = null;
+        return false;
+    }
 }

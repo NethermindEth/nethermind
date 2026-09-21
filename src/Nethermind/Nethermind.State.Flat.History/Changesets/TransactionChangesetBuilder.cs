@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Collections;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -19,14 +20,15 @@ public sealed class TransactionChangesetBuilder(
     IHistoryBlockExecutorFactory executors,
     HistoryAvailability availability,
     IFlatDbConfig config,
-    ILogManager logManager) : IDisposable
+    ILogManager logManager,
+    ITransactionIndexBulkFill? bulkFill = null) : IDisposable, IStoppableService
 {
     internal const ulong ChunkBlocks = 128;
     internal const int WarnAfterAttempts = 8;
     internal static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RepeatedFailureInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan StopReportInterval = TimeSpan.FromSeconds(5);
 
     private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
     private readonly ulong _retrofitFromBlock = config.HistoryTransactionIndexRetrofitFromBlock;
@@ -34,6 +36,7 @@ public sealed class TransactionChangesetBuilder(
     private readonly ILogger _logger = logManager.GetClassLogger<TransactionChangesetBuilder>();
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Lock _chunks = new();
+    private readonly Lock _shutdown = new();
     private readonly Stack<Chunk> _retry = new();
     private readonly Dictionary<ulong, ulong> _completedByTop = [];
     private readonly HashSet<ulong> _stalledTops = [];
@@ -46,23 +49,29 @@ public sealed class TransactionChangesetBuilder(
     private bool _wasRetrofitting;
     private ulong? _reportedUnsupportedBoundary;
     private long _builtSinceReport;
-    private int _disposed;
+    private bool _disposed;
 
-    private bool RetrofitOnWorkers => _retrofitFromBlock != 0 && _workers > 1;
+    private bool RetrofitOnWorkers => bulkFill is { Enabled: true } || _retrofitFromBlock != 0 && _workers > 1;
 
     public void Start()
     {
         if (!index.Enabled || _threads.Count > 0) return;
 
         _threads.Add(StartThread(FollowTip, "Transaction changeset builder"));
-        if (RetrofitOnWorkers)
+        if (bulkFill is { Enabled: true })
+        {
+            _threads.Add(StartThread(() => bulkFill.Run(_cancellation.Token), "Transaction changeset bulk fill"));
+        }
+        else if (RetrofitOnWorkers)
         {
             for (int worker = 0; worker < _workers; worker++) _threads.Add(StartThread(Retrofit, $"Transaction changeset retrofit {worker}"));
         }
 
+        index.ReportCoverage();
         if (_logger.IsInfo) _logger.Info(
             $"Transaction changeset index building at {_dutyCyclePercent}% duty cycle" +
-            (_retrofitFromBlock == 0 ? "." : $", retrofitting down to block {_retrofitFromBlock} on {(RetrofitOnWorkers ? _workers : 1)} thread(s)."));
+            (bulkFill is { Enabled: true } ? $", using isolated bulk replay from block {_retrofitFromBlock}." :
+                _retrofitFromBlock == 0 ? "." : $", retrofitting down to block {_retrofitFromBlock} on {(RetrofitOnWorkers ? _workers : 1)} thread(s)."));
     }
 
     /// <summary>One step of the tip thread: the next block above coverage, or, without workers, the next below it.</summary>
@@ -205,32 +214,39 @@ public sealed class TransactionChangesetBuilder(
         }
     }
 
-    /// <summary>Every thread owns and disposes the executor it runs on, so shutdown only has to wait for them, and it
-    /// waits on a fixed budget rather than per thread. A thread still running past it is left to finish on its own and
-    /// the token source is left undisposed, since that thread is still waiting on it: a bounded leak on a wedged
-    /// worker, rather than a node that will not exit.</summary>
+    public Task StopAsync() => Task.Run(Dispose);
+
+    /// <summary>Waits for every thread. <see cref="IStoppableService"/> runs every service's stop before anything is
+    /// disposed, and the stopper applies no timeout of its own, so returning here says the workers are done and lets
+    /// the root container close the history, index and block databases they read. Returning early would say that
+    /// while a worker is still inside one. The wait names the thread every few seconds instead, so a step that has
+    /// stopped observing cancellation is visible in the log rather than silent; bounding it belongs where the
+    /// databases can be kept alive past the deadline, not here.</summary>
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        lock (_shutdown)
+        {
+            if (_disposed) return;
+            _disposed = true;
 
-        _cancellation.Cancel();
-        long startedAt = Stopwatch.GetTimestamp();
-        bool everyThreadStopped = true;
-        foreach (Thread thread in _threads)
-        {
-            TimeSpan remaining = ShutdownBudget - Stopwatch.GetElapsedTime(startedAt);
-            everyThreadStopped &= thread.Join(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
+            _cancellation.Cancel();
+            foreach (Thread thread in _threads) Join(thread);
+            try
+            {
+                _tipExecutor?.Dispose();
+            }
+            finally
+            {
+                _cancellation.Dispose();
+            }
         }
+    }
 
-        try
+    private void Join(Thread thread)
+    {
+        while (!thread.Join(StopReportInterval))
         {
-            _tipExecutor?.Dispose();
-        }
-        finally
-        {
-            if (everyThreadStopped) _cancellation.Dispose();
-            else if (_logger.IsWarn) _logger.Warn(
-                $"Transaction changeset indexing did not stop within {ShutdownBudget.TotalSeconds:F0}s; leaving it to finish on its own.");
+            if (_logger.IsWarn) _logger.Warn($"Still waiting for \"{thread.Name}\" to stop before the index databases close.");
         }
     }
 
@@ -350,6 +366,7 @@ public sealed class TransactionChangesetBuilder(
 
     private void ReportProgress()
     {
+        index.ReportCoverage();
         if (!_logger.IsInfo) return;
 
         long now = Stopwatch.GetTimestamp();
@@ -375,9 +392,12 @@ public sealed class TransactionChangesetBuilder(
 
         long built = Interlocked.Exchange(ref _builtSinceReport, 0);
         double blocksPerSecond = built / elapsed.TotalSeconds;
-        _logger.Info(
-            $"Transaction changeset index covers {from}-{to}, {blocksPerSecond:F1} blocks/s, {from - _retrofitFromBlock} blocks to {_retrofitFromBlock}, " +
-            $"about {TimeSpan.FromSeconds((from - _retrofitFromBlock) / Math.Max(blocksPerSecond, 0.001)):d\\.hh\\:mm}");
+        if (bulkFill is { Enabled: true })
+            _logger.Info($"Transaction changeset index covers {from}-{to}; tip-following {blocksPerSecond:F1} blocks/s. Historical bulk replay reports progress separately.");
+        else
+            _logger.Info(
+                $"Transaction changeset index covers {from}-{to}, {blocksPerSecond:F1} blocks/s, {from - _retrofitFromBlock} blocks to {_retrofitFromBlock}, " +
+                $"about {TimeSpan.FromSeconds((from - _retrofitFromBlock) / Math.Max(blocksPerSecond, 0.001)):d\\.hh\\:mm}");
         _progressReportedAt = now;
     }
 

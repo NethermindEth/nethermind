@@ -13,10 +13,10 @@ namespace Nethermind.Consensus.Tracing;
 public sealed class TransactionTraceBoundary : IBlockTracer
 {
     private readonly IBlockTracer _inner;
-    private readonly Hash256 _transactionHash;
+    private readonly Hash256? _transactionHash;
     private readonly IPrefixStateSeedSource? _seeds;
 
-    private TransactionTraceBoundary(IBlockTracer inner, Hash256 transactionHash, IPrefixStateSeedSource? seeds)
+    private TransactionTraceBoundary(IBlockTracer inner, Hash256? transactionHash, IPrefixStateSeedSource? seeds)
     {
         _inner = inner;
         _transactionHash = transactionHash;
@@ -24,10 +24,17 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     }
 
     private bool _isTarget;
+    private bool _suppressed;
     internal bool IsComplete { get; private set; }
     internal IBlockTracer Inner => _inner;
 
     internal IPrefixStateSeedSource? Seeds => _seeds;
+    internal bool IsExecutionRequired { get; set; }
+    internal bool HasExecuted { get; set; }
+
+    /// <summary>No transaction is traced: a seed can replace the whole block, or a refused seed can replay it
+    /// silently before tracing rewards.</summary>
+    internal bool SkipsTransactions => _transactionHash is null;
 
     /// <summary>Wraps a transaction tracer for early completion in a supported read-only replay environment.</summary>
     /// <param name="tracer">The tracer to forward callbacks to; reward tracing retains full replay.</param>
@@ -37,9 +44,15 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     public static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash, IPrefixStateSeedSource? seeds = null) =>
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds);
 
+    /// <summary>Wraps a tracer that wants only what comes after the transactions: the seed for the end of the block
+    /// stays armed through the rewards and withdrawals, so they are applied and traced on the state the last
+    /// transaction left, as in the replay. A refused seed replays transactions without forwarding their traces.</summary>
+    public static TransactionTraceBoundary AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new(tracer, null, seeds) { IsExecutionRequired = true };
+
     internal int IndexOf(Block block)
     {
         Transaction[] transactions = block.Transactions;
+        if (_transactionHash is null) return transactions.Length;
         for (int i = 0; i < transactions.Length; i++)
         {
             if (transactions[i].Hash == _transactionHash) return i;
@@ -61,18 +74,28 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     public void StartNewBlockTrace(Block block)
     {
         IsComplete = false;
+        HasExecuted = false;
         _isTarget = false;
+        _suppressed = false;
         _inner.StartNewBlockTrace(block);
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        _isTarget = tx?.Hash == _transactionHash;
+        // Reward placeholders have no transaction and must reach the inner tracer even during a reward-only pass.
+        _suppressed = SkipsTransactions && tx is not null;
+        if (_suppressed) return NullTxTracer.Instance;
+        _isTarget = _transactionHash is not null && tx?.Hash == _transactionHash;
         return _inner.StartNewTxTrace(tx);
     }
 
     public void EndTxTrace()
     {
+        if (_suppressed)
+        {
+            _suppressed = false;
+            return;
+        }
         _inner.EndTxTrace();
         IsComplete |= _isTarget && !_inner.IsTracingRewards;
         _isTarget = false;

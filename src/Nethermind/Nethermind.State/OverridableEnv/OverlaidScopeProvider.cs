@@ -23,6 +23,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
     private sealed class Scope(IWorldStateScopeProvider.IScope inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider.IScope
     {
         public Hash256 RootHash => inner.RootHash;
+        public bool StorageRootsAreAuthoritative => inner.StorageRootsAreAuthoritative;
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => inner.CodeDb;
 
@@ -37,7 +38,20 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
             IStateReadOverlay? overlay = slot.Current;
             if (overlay is not null && overlay.TryGetAccountWithoutBasis(address, out Account? standalone)) return standalone;
 
-            Account? underlying = inner.Get(address);
+            Account? underlying;
+            if (slot.Cache is { } cache)
+            {
+                if (!cache.TryGetAccount(address, out underlying))
+                {
+                    underlying = inner.Get(address);
+                    cache.SetAccount(address, underlying);
+                }
+            }
+            else
+            {
+                underlying = inner.Get(address);
+            }
+
             return overlay is not null && overlay.TryGetAccount(address, underlying, out Account? overlaid) ? overlaid : underlying;
         }
 
@@ -73,7 +87,16 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         {
             if (slot.Current is { } overlay && overlay.TryGetStorage(address, in index, out value)) return;
 
+            if (slot.Cache is not { } cache)
+            {
+                inner.Get(in index, out value);
+                return;
+            }
+
+            if (cache.TryGetSlot(address, in index, out value)) return;
+
             inner.Get(in index, out value);
+            cache.SetSlot(address, in index, in value);
         }
 
         public void HintSet(in UInt256 index) => inner.HintSet(in index);

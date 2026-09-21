@@ -31,6 +31,26 @@ public class TransactionChangesetIndexTests
     public void TearDown() => _columns.Dispose();
 
     [Test]
+    [NonParallelizable]
+    public void ReportCoverage_AfterPruningAllRows_ClearsPublishedRange()
+    {
+        Capture(transactions: 3);
+        _index.ReportCoverage();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Flat.Metrics.TransactionChangesetIndexFrom, Is.EqualTo(7));
+            Assert.That(Flat.Metrics.TransactionChangesetIndexTo, Is.EqualTo(7));
+        }
+        _index.PruneBelow(8);
+        _index.ReportCoverage();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Flat.Metrics.TransactionChangesetIndexFrom, Is.Zero);
+            Assert.That(Flat.Metrics.TransactionChangesetIndexTo, Is.Zero);
+        }
+    }
+
+    [Test]
     public void TheBlockTheRowsWereBuiltFrom_IsServed()
     {
         Capture(transactions: 3);

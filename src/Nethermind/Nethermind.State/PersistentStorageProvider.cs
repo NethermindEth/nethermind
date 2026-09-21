@@ -733,11 +733,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         bool? rootUpdate = _toUpdateRoots.TryGetValue(address, out bool currentRootUpdate) ? currentRootUpdate : null;
         contractState ??= GetOrCreateStorage(address);
+        bool wasCleared = contractState.WasCleared;
         DefaultableDictionary.ClearSnapshot blockChange = contractState.ClearRevertibly();
         _toUpdateRoots[address] = true;
         if (contractState.TakeAccountWarmHint()) currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
         int journalIndex = _storageClearJournal.Count;
-        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate));
+        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate, wasCleared));
         PushStorageClear(journalIndex);
     }
 
@@ -766,7 +767,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return true;
         }
 
-        return CurrentScope.Get(address)?.HasStorage == true;
+        return !CurrentScope.StorageRootsAreAuthoritative || CurrentScope.Get(address)?.HasStorage == true;
     }
 
     protected override void RestoreStorageClear(int journalIndex)
@@ -779,7 +780,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         StorageClearChange change = _storageClearJournal[journalIndex];
         _storageClearJournal.RemoveAt(journalIndex);
-        GetOrCreateStorage(change.Address).RestoreClear(change.BlockChange);
+        GetOrCreateStorage(change.Address).RestoreClear(change.BlockChange, change.WasCleared);
 
         _lastCapturedCell = default;
         foreach (StorageCell cell in _originalValues.Keys)
@@ -809,7 +810,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Address Address,
         DefaultableDictionary.ClearSnapshot BlockChange,
         List<KeyValuePair<StorageCell, UInt256>>? OriginalValues,
-        bool? RootUpdate);
+        bool? RootUpdate,
+        bool WasCleared);
 
     private sealed class DefaultableDictionary()
     {
@@ -1013,7 +1015,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             _backend = Provider.CurrentScope.CreateStorageTree(Address);
 
-            bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
+            bool isEmpty = Provider.CurrentScope.StorageRootsAreAuthoritative && _backend.RootHash == Keccak.EmptyTreeHash;
             if (!_storageRootSeen)
             {
                 _storageRootSeen = true;
@@ -1039,14 +1041,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public DefaultableDictionary.ClearSnapshot ClearRevertibly()
         {
             EnsureStorageTree();
-            // Stays set if the clear is reverted: a cache then drops slots it could have kept, never keeps stale ones.
             _wasCleared = true;
             ForgetLastRead();
             return BlockChange.ClearRevertibly();
         }
 
-        public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot)
+        public bool WasCleared => _wasCleared;
+
+        public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot, bool wasCleared)
         {
+            _wasCleared = wasCleared;
             ForgetLastRead();
             BlockChange.Restore(snapshot);
         }

@@ -15,6 +15,8 @@ public sealed class StartTransactionChangesetBuilder(TransactionChangesetBuilder
 {
     public Task Execute(CancellationToken cancellationToken)
     {
+        // The builder is stopped before disposal by the service-stopper middleware, which registers every
+        // IStoppableService it activates; registering it here as well would only queue the same instance twice.
         builder.Start();
         return Task.CompletedTask;
     }

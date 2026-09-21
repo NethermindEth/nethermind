@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -8,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Tracing;
@@ -22,12 +24,20 @@ public sealed class TransactionTraceExecutor(
     StateReadOverlaySlot? readOverlay = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
+    /// <summary>Probes basic overlay support without requiring full BAL construction.</summary>
+    /// <remarks>Applies an empty overlay on a fresh scope, which may invalidate account caches. This does not
+    /// guarantee that a populated overlay will be accepted; conditional refusal falls back to prefix replay.</remarks>
+    public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList
+        && state.TryApplyAccountOverlay(EmptyOverlay.Instance);
+
+    /// <inheritdoc />
     public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
 
+    /// <inheritdoc />
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token)
     {
         TransactionTraceBoundary? boundary = TransactionTraceBoundary.Get(tracer.OtherTracer, options);
-        if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || boundary.IsTracingRewards)
+        if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || (boundary.IsTracingRewards && !boundary.SkipsTransactions))
             return inner.ProcessTransactions(block, options, tracer, token);
 
         Metrics.ResetBlockStats();
@@ -39,21 +49,44 @@ public sealed class TransactionTraceExecutor(
         try
         {
             int first = 0;
+            int target = -1;
             if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
             {
-                int target = boundary.IndexOf(block);
+                target = boundary.IndexOf(block);
                 if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
                 {
                     if (state.TryApplyAccountOverlay(overlay)) first = target;
                     else readOverlay.Disarm();
                 }
             }
-            return Execute(block, options, tracer, token, boundary, first);
+            if (boundary.IsExecutionRequired && target < 0)
+                throw new InvalidOperationException("The indexed trace could not locate its transaction boundary.");
+            TxReceipt[] receipts = Execute(block, options, tracer, token, boundary, first);
+            boundary.HasExecuted = true;
+            return receipts;
         }
         finally
         {
-            readOverlay?.Disarm();
+            // What follows the transactions, the rewards and withdrawals, must see the seeded end state too when the
+            // seed stood for the whole block; the environment disarms the slot when its scope closes.
+            if (!boundary.SkipsTransactions) readOverlay?.Disarm();
         }
+    }
+
+    private sealed class EmptyOverlay : IStateReadOverlay
+    {
+        public static readonly EmptyOverlay Instance = new();
+        public bool TryGetAccount(Address address, Account? underlying, out Account? overlaid)
+        {
+            overlaid = null;
+            return false;
+        }
+        public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value)
+        {
+            value = default;
+            return false;
+        }
+        public bool HasStorage(Address address) => false;
     }
 
     private TxReceipt[] Execute(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token, TransactionTraceBoundary boundary, int first)

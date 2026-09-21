@@ -44,22 +44,28 @@ public sealed class StateReadOverlaySlot
 {
     private IStateReadOverlay? _current;
     private IDisposable? _lease;
+    private BlockReadCache? _cache;
 
     /// <summary>The borrowed overlay for the current scope; null when disarmed.</summary>
     public IStateReadOverlay? Current => _current;
 
+    /// <summary>Reads of the state underneath the overlay, shared by every transaction armed from the same block.</summary>
+    public BlockReadCache? Cache => _cache;
+
     /// <summary>Takes ownership of the lease, replacing and releasing any previous one.</summary>
-    public void Arm(IStateReadOverlay overlay, IDisposable lease)
+    public void Arm(IStateReadOverlay overlay, IDisposable lease, BlockReadCache? cache = null)
     {
         Disarm();
         _current = overlay;
         _lease = lease;
+        _cache = cache;
     }
 
     /// <summary>Clears the overlay and releases its lease. Repeated calls are harmless.</summary>
     public void Disarm()
     {
         _current = null;
+        _cache = null;
         _lease?.Dispose();
         _lease = null;
     }

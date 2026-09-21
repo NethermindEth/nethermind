@@ -81,7 +81,7 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
         }
         catch (InvalidDataException)
         {
-            Flat.Metrics.UnreadableTransactionChangesetRows++;
+            Flat.Metrics.RecordUnreadableTransactionChangesetRow();
 
             lock (_lock)
             {

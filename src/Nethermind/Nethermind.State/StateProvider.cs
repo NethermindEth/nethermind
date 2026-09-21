@@ -586,6 +586,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             Dictionary<AddressAsKey, ChangeTrace> trace = [];
             CommitChanges<OnFlag>(changes, removeEmptyAccounts, isTracing, trace);
+            // Reporting code changes reads both the code DB and the lookup recycled by the flush worker.
+            AwaitCodeFlush(codeFlushTask);
             trace.ReportStateTrace(stateTracer, _nullAccountReads, this);
         }
         else
@@ -931,14 +933,24 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     internal void SetState(Address address, Account? account)
     {
         _metrics.IncrementAccountWrites();
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out bool exists);
         if (account is null)
         {
             _metrics.IncrementAccountDeleted();
+            // A block that removes an account it never read has nothing to compare against, so the removal would go
+            // unrecorded and the storage that goes with the account would stay readable to a cache that cannot infer
+            // the wipe from a root. Resolved here rather than through GetState: the block did not read this account,
+            // and the read counters must keep saying so.
+            if (!exists)
+            {
+                Account? removed = Tree.Get(address);
+                accountChanges = new(removed, removed);
+            }
+            // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
+            if (accountChanges.After is { } previous && (previous.HasStorage || !Tree.StorageRootsAreAuthoritative))
+                _removedWithStorage.Add(address);
         }
 
-        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
-        // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
-        if (account is null && accountChanges.After?.HasStorage == true) _removedWithStorage.Add(address);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }

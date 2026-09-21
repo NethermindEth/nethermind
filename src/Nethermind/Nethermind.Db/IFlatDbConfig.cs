@@ -55,6 +55,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Index, per transaction, what each transaction of a block wrote, so that a trace of one transaction resolves the state before it instead of replaying the transactions ahead of it. Captured inline while syncing, when the node executes each block anyway, and re-executed in the background behind the history watermark at the tip and for the retrofit; never on the tip's processing path. Pre-Amsterdam only: BAL-enabled blocks are neither indexed nor seeded. Kept in its own column. Off by default; a node that leaves it off pays nothing.", DefaultValue = "false")]
     bool HistoryTransactionIndexEnabled { get; set; }
 
+    [ConfigItem(Description = "Maximum active indexed block-tracing workers shared by debug and trace RPC. 0 uses the processor count capped at 16; 1 disables parallel block tracing. Explicit values are clamped to 1-16. Each namespace keeps its own environment pool and up to twice this many background workers.", DefaultValue = "0")]
+    int HistoryTransactionIndexTraceParallelism { get; set; }
+
     [ConfigItem(Description = "Share of its wall clock the transaction index builder may spend working; it sleeps out the rest so that re-executing blocks stays invisible to the RPC the node is serving. 100 lets it run flat out.", DefaultValue = "25")]
     int HistoryTransactionIndexDutyCyclePercent { get; set; }
 
@@ -63,6 +66,12 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Threads re-executing blocks for the backwards retrofit of the transaction index, each on its own block range with its own processing environment. The tip is always followed by one thread regardless. 1 runs the retrofit on that same thread. Each worker holds the state its current 128-block chunk wrote, a few hundred thousand entries on mainnet, so the count is a memory knob as well as a throughput one.", DefaultValue = "1")]
     int HistoryTransactionIndexWorkers { get; set; }
+
+    [ConfigItem(Description = "Experimental mainnet v2 archive retrofit using one isolated disk-backed replay state. Replaces retrofit workers, not tip following. Requires a nonzero HistoryTransactionIndexRetrofitFromBlock; coverage joins only after the ascending range completes.", DefaultValue = "false")]
+    bool HistoryTransactionIndexBulkFillEnabled { get; set; }
+
+    [ConfigItem(Description = "Maximum scratch database size in GiB for bulk transaction-index replay. Reaching the limit pauses replay without dropping its checkpoint.", DefaultValue = "1024")]
+    int HistoryTransactionIndexBulkFillMaxGiB { get; set; }
 
     [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]
     bool ArchiveProofServeEnabled { get; set; }
