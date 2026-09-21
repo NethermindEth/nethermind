@@ -490,6 +490,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
             Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
             Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, contractAddress, block.Header.GasBeneficiary! }));
         }
     }
 
@@ -509,6 +510,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, initCode, value: 0, blockGasLimit: DynamicStatePricingBlockGasLimit);
         transaction.To = null;
         transaction.Data = initCode;
+        Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
 
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
@@ -517,6 +519,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
             Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, contractAddress, block.Header.GasBeneficiary! }));
         }
     }
 
