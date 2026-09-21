@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -54,6 +56,46 @@ public partial class DebugRpcModuleTests
         await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
 
         Assert.That(header.BaseFeePerGas, Is.EqualTo(baseFee), "block override must not write into the block-tree-cached header");
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_callTracer_log_index_continues_from_preceding_transactions()
+    {
+        using Context context = await Context.Create();
+
+        ulong nonce = context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction first = Build.A.Transaction
+            .WithNonce(nonce)
+            .WithCode(Prepare.EvmCode.Log(0, 0).Log(0, 0).STOP().Done)
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Transaction second = Build.A.Transaction
+            .WithNonce(nonce + 1)
+            .WithCode(Prepare.EvmCode.Log(0, 0).STOP().Done)
+            .WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await context.Blockchain.AddBlock(first, second);
+
+        GethTraceOptions options = new()
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""")
+        };
+        string trace = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", second.Hash, options);
+        string blockTrace = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", context.Blockchain.BlockTree.Head!.Number, options);
+        string receipt = await RpcTest.TestSerializedRequest(context.Blockchain.EthRpcModule, "eth_getTransactionReceipt", second.Hash);
+
+        JToken traceLog = JToken.Parse(trace)["result"]!["logs"]!.Single();
+        JToken blockTraceLog = JToken.Parse(blockTrace)["result"]![1]!["result"]!["logs"]!.Single();
+        JToken receiptLog = JToken.Parse(receipt)["result"]!["logs"]!.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string)receiptLog["logIndex"]!, Is.EqualTo("0x2"));
+            Assert.That((string)traceLog["index"]!, Is.EqualTo("0x2"));
+            Assert.That((string)blockTraceLog["index"]!, Is.EqualTo("0x2"));
+        }
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]

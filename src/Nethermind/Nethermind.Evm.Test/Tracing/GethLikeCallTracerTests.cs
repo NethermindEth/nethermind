@@ -243,6 +243,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x2",
       "position": "0x2"
     }
   ],
@@ -261,6 +262,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
           "data": "0x",
           "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
+          "index": "0x0",
           "position": "0x1"
         }
       ],
@@ -291,6 +293,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
           "data": "0x",
           "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
+          "index": "0x1",
           "position": "0x1"
         }
       ],
@@ -351,12 +354,30 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x2",
       "position": "0x0"
     }
   ]
 }
 """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test]
+    public void Test_CallTrace_WithLog_LogIndexStart_OffsetsIndex()
+    {
+        byte[] code = CreateNestedCallsCode();
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog) with { LogIndexStart = () => 5 });
+        using GethLikeTxTrace trace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Calls[0].Logs!.AssertSingle().Index, Is.EqualTo(5UL));
+            Assert.That(topFrame.Calls[1].Logs!.AssertSingle().Index, Is.EqualTo(6UL));
+            Assert.That(topFrame.Logs!.AssertSingle().Index, Is.EqualTo(7UL));
+        }
     }
 
     [Test]
@@ -442,6 +463,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x0",
       "position": "0x2"
     }
   ],
@@ -530,6 +552,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             NativeCallTracerLogEntry catcherLog = catchFrame.Logs.AssertSingle();
             Assert.That(catcherLog.Address, Is.EqualTo(catchAddress));
             Assert.That(catcherLog.Position, Is.EqualTo(1UL));
+            Assert.That(catcherLog.Index, Is.EqualTo(0UL));
 
             Assert.That(revertFrame.To, Is.EqualTo(revertAddress));
             Assert.That(revertFrame.Error, Is.EqualTo("execution reverted"));

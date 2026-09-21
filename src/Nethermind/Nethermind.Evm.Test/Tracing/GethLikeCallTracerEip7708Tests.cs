@@ -42,9 +42,9 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
             Prepare.EvmCode.Create(Prepare.EvmCode.STOP().Done, InnerValue).STOP().Done;
     }
 
-    private static NativeCallTracerLogEntry ExpectedTransferLog(Address from, Address to, byte value, ulong position) => new(
+    private static NativeCallTracerLogEntry ExpectedTransferLog(Address from, Address to, byte value, ulong index, ulong position) => new(
         TransferLog.Sender, data: Hash256.FromBytesWithPadding([value]).BytesToArray(),
-        topics: [TransferLog.TransferSignature, new(from.ToHash()), new(to.ToHash())], position
+        topics: [TransferLog.TransferSignature, new(from.ToHash()), new(to.ToHash())], index, position
     );
 
     public sealed record TransferLogScenario(byte[]? RecipientCode, bool ExpectsChildFrame, string? Config = WithLog);
@@ -55,7 +55,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = TraceValueTransfer(scenario.RecipientCode, scenario.Config);
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
-        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
+        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL, 0UL);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer());
@@ -65,7 +65,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         if (scenario.ExpectsChildFrame)
         {
             NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
-            NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, childFrame.To!, InnerValue, 0UL);
+            NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, childFrame.To!, InnerValue, 1UL, 0UL);
             Assert.That(childFrame.Logs, Is.EqualTo([expectedInner]).UsingPropertiesComparer());
         }
     }
@@ -81,7 +81,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
 
         NativeCallTracerCallFrame childFrame = topFrame.Calls.AssertSingle();
 
-        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
+        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL, 0UL);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer(), "successful parent frame must keep its log");
@@ -103,7 +103,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         NativeCallTracerCallFrame childFrame = topFrame.Calls.AssertSingle();
         NativeCallTracerCallFrame grandchildFrame = childFrame.Calls.AssertSingle();
 
-        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
+        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL, 0UL);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer(), "successful top frame must keep its log");
