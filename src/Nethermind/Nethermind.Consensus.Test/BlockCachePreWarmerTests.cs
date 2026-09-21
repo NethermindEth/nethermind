@@ -1517,6 +1517,65 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// A transaction whose sender lands after the block's jobs were grouped is warmed by the same fan-out: a
+    /// worker claims it once the sender is there, with no second pass over the block.
+    /// </summary>
+    [Test]
+    [CancelAfter(15_000)]
+    public void PreWarmCaches_WarmsATransactionWhoseSenderArrivesDuringTheFanOut(CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        using ManualResetEventSlim gate = new(initialState: false);
+        using CountdownEvent txScopesInFlight = new(1);
+        int warmedTxs = 0;
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
+            onTxScope: static () => { },
+            onWarmup: () => Interlocked.Increment(ref warmedTxs));
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            minPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        Transaction late = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        late.SenderAddress = null;
+        Block block = Build.A.Block
+            .WithTransactions(GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000), late)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: a worker must be parked inside the first job's scope setup");
+
+                // The sender lands while the fan-out is already running, as background recovery does on a real block.
+                late.SenderAddress = TestItem.AddressB;
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        Assert.That(warmedTxs, Is.EqualTo(2), "the transaction whose sender arrived late must be warmed by the running fan-out");
+    }
+
+    /// <summary>
     /// Verifies that warm workers rent one environment for their whole lifetime instead of one
     /// per job: two workers parked on their first jobs then draining four jobs must produce
     /// exactly two tx-warm env returns, not four.
@@ -2112,7 +2171,7 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void GroupTransactionsBySender_ClaimsGroupedTransactionsAndPicksUpLateSendersNextPass()
+    public void GroupTransactionsBySender_ClaimsGroupedTransactionsAndLeavesUnrecoveredOnesUnclaimed()
     {
         Transaction late = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
         late.SenderAddress = null;
@@ -2120,13 +2179,13 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
             late,
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000)).TestObject;
-        bool[] claimed = new bool[3];
+        int[] claimed = new int[3];
 
         ArrayPoolList<BlockCachePreWarmer.WarmupJob> firstPass = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4, claimed: claimed);
         try
         {
-            Assert.That(firstPass.Count, Is.EqualTo(1), "the unrecovered tx is left for a later pass");
-            Assert.That(claimed, Is.EqualTo(new[] { true, false, true }));
+            Assert.That(firstPass.Count, Is.EqualTo(1), "the unrecovered tx is left unclaimed for a worker to pick up once its sender lands");
+            Assert.That(claimed, Is.EqualTo(new[] { 1, 0, 1 }));
         }
         finally
         {
@@ -2139,7 +2198,7 @@ public class BlockCachePreWarmerTests
         {
             Assert.That(secondPass.Count, Is.EqualTo(1));
             Assert.That(FindGroup(secondPass, TestItem.AddressB)[0].Index, Is.EqualTo(1));
-            Assert.That(claimed, Is.All.True);
+            Assert.That(claimed, Is.All.EqualTo(1));
         }
         finally
         {
