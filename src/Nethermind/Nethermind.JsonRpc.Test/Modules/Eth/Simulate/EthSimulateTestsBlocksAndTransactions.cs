@@ -1052,6 +1052,47 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// Regression test: under EIP-8037 the block <c>gasUsed</c> reported by eth_simulateV1 must be
+    /// the two-dimensional block accounting <c>max(Σ execution, Σ state)</c>, not the execution
+    /// dimension alone (and not the gas-limit budget tracked for the gas cap). Value transfers
+    /// materialising dead recipients charge <c>NEW_ACCOUNT</c> state gas that far exceeds the
+    /// transactions' execution gas, so the state dimension dominates.
+    /// </summary>
+    [TestCase(true, TestName = "block gasUsed includes the EIP-8037 state dimension (validation=true)")]
+    [TestCase(false, TestName = "block gasUsed includes the EIP-8037 state dimension (validation=false)")]
+    public async Task eth_simulateV1_block_gas_used_is_max_of_execution_and_state_dimensions(bool validation)
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7778), Value = 1000, Gas = 300_000, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7779), Value = 1000, Gas = 300_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
+        Assert.That(result.Data![0].GasUsed, Is.EqualTo(2 * (ulong)GasCostOf.NewAccountState));
+    }
+
+    /// <summary>
     /// Regression test for #12692: under EIP-7928 the block-access-list path must honour
     /// <c>validation:false</c>. Routing its tx processors through the simulate adapter makes the BAL
     /// path pick <c>Trace</c> (skipping sender validation) instead of always calling <c>Execute</c>,
