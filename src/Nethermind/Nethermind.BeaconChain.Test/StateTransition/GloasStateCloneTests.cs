@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.BeaconChain.Spec;
@@ -68,6 +69,53 @@ public class GloasStateCloneTests
             Assert.That(SameContent(expected!, actual!), Is.True, $"{property.Name} differs between source and clone");
         }
     }
+
+    /// <summary>
+    /// The split <see cref="GloasStateClone"/> is built on: a field the transition writes in place
+    /// is copied (shallowly - its elements stay shared), everything it only ever replaces wholesale
+    /// is shared by reference. Moving a field across the split, or starting to mutate a shared
+    /// element, must update this list together with the write that justifies it.
+    /// </summary>
+    [Test]
+    public void Clone_copies_exactly_the_in_place_written_fields_and_shares_the_rest()
+    {
+        BeaconStateGloas source = CreateGloasState(out _, out _);
+        source.HistoricalSummaries = [new HistoricalSummary { BlockSummaryRoot = Hash(0x51), StateSummaryRoot = Hash(0x52) }];
+        BeaconStateGloas clone = source.Clone();
+
+        foreach (PropertyInfo property in typeof(BeaconStateGloas).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.PropertyType.IsValueType)
+                continue;
+            object? expected = property.GetValue(source);
+            Assert.That(expected, Is.Not.Null, $"fixture bug: {property.Name} must be populated for this test to see it");
+            object? actual = property.GetValue(clone);
+            bool copied = CopiedFields.Contains(property.Name);
+            Assert.That(ReferenceEquals(expected, actual), Is.EqualTo(!copied), $"{property.Name} must be {(copied ? "copied" : "shared by reference")}");
+            if (copied && expected is Array { Length: > 0 } sourceArray && !sourceArray.GetType().GetElementType()!.IsValueType)
+                Assert.That(((Array)actual!).Cast<object?>().Zip(sourceArray.Cast<object?>()).All(static pair => ReferenceEquals(pair.First, pair.Second)), $"{property.Name} must be a shallow copy");
+        }
+    }
+
+    private static readonly HashSet<string> CopiedFields =
+    [
+        nameof(BeaconStateGloas.LatestBlockHeader),
+        nameof(BeaconStateGloas.BlockRoots),
+        nameof(BeaconStateGloas.StateRoots),
+        nameof(BeaconStateGloas.Validators),
+        nameof(BeaconStateGloas.Balances),
+        nameof(BeaconStateGloas.RandaoMixes),
+        nameof(BeaconStateGloas.Slashings),
+        nameof(BeaconStateGloas.PreviousEpochParticipation),
+        nameof(BeaconStateGloas.CurrentEpochParticipation),
+        nameof(BeaconStateGloas.JustificationBits),
+        nameof(BeaconStateGloas.InactivityScores),
+        nameof(BeaconStateGloas.ProposerLookahead),
+        nameof(BeaconStateGloas.Builders),
+        nameof(BeaconStateGloas.ExecutionPayloadAvailability),
+        nameof(BeaconStateGloas.BuilderPendingPayments),
+        nameof(BeaconStateGloas.PtcWindow),
+    ];
 
     private static void Advance(BeaconStateGloas state, Bls.SecretKey builderSk)
     {
