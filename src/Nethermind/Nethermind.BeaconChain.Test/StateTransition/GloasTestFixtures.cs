@@ -235,6 +235,37 @@ internal static class GloasTestFixtures
         };
     }
 
+    /// <summary>A voluntary exit for <paramref name="validatorIndex"/>, signed with its <see cref="ValidatorKey"/> over the fork-agnostic Capella exit domain.</summary>
+    public static SignedVoluntaryExit SignedExit(BeaconStateGloas state, int validatorIndex, ulong epoch)
+    {
+        VoluntaryExit exit = new() { Epoch = epoch, ValidatorIndex = (ulong)validatorIndex };
+        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, Presets.CapellaForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
+        return new SignedVoluntaryExit { Message = exit, Signature = Sign(ValidatorKey(validatorIndex), signingRoot) };
+    }
+
+    /// <summary>A BLS-to-execution change for <paramref name="validatorIndex"/> from <paramref name="fromKey"/>'s pubkey, signed by that key over the genesis-version domain.</summary>
+    public static SignedBlsToExecutionChange SignedBlsChange(BeaconStateGloas state, int validatorIndex, Bls.SecretKey fromKey, Address toAddress)
+    {
+        BlsToExecutionChange change = new()
+        {
+            ValidatorIndex = (ulong)validatorIndex,
+            FromBlsPubkey = new BlsPublicKey(new Bls.P1(fromKey).Compress()),
+            ToExecutionAddress = toAddress,
+        };
+        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, Presets.GenesisForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
+        return new SignedBlsToExecutionChange { Message = change, Signature = Sign(fromKey, signingRoot) };
+    }
+
+    /// <summary>The 0x00-prefixed withdrawal credentials committing to <paramref name="pubkey"/>.</summary>
+    public static Hash256 BlsWithdrawalCredentials(BlsPublicKey pubkey)
+    {
+        byte[] credentials = System.Security.Cryptography.SHA256.HashData(pubkey.Bytes);
+        credentials[0] = Presets.BlsWithdrawalPrefix;
+        return new Hash256(credentials);
+    }
+
     /// <summary>The aggregate of each listed validator's signature over <paramref name="signingRoot"/>; a repeated index signs (and so must be aggregated) once per occurrence.</summary>
     public static BlsSignature AggregateSignature(Hash256 signingRoot, IReadOnlyList<int> validatorIndices)
     {
