@@ -327,37 +327,46 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(expectedUInt256));
         }
 
-        [Test]
-        public void GetFeeHistory_Eip7778_RewardPercentilesUsePostRefundReceiptGas()
+        // Rewards are weighted by receipt gas, or by tx GasLimit when receipts are unavailable; the
+        // percentile threshold must use that same total rather than the header GasUsed, which is
+        // pre-refund under EIP-7778 and never matched the GasLimit weights.
+        [TestCase(2_000_000ul, new ulong[] { 100_000, 100_000 }, 50.0, 1ul, TestName = "Post-refund receipt gas, not the pre-refund header total")]
+        [TestCase(50_000ul, null, 60.0, 10ul, TestName = "Tx gas limits when receipts are pruned, not the header total")]
+        public void GetFeeHistory_RewardPercentilesUseTheWeightTotal_NotHeaderGasUsed(
+            ulong headerGasUsed, ulong[]? receiptGasUsed, double percentile, ulong expectedReward)
         {
-            // EIP-7778: header GasUsed is pre-refund (gross), receipts are post-refund (net).
-            // Rewards weight by receipt gas (fees are paid on post-refund gas), so percentiles
-            // must be relative to the post-refund total, not the header.
-            Transaction[] transactions = new Transaction[]
-            {
+            const ulong gasLimitPerTx = 100_000;
+            Transaction[] transactions =
+            [
                 Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(1)
-                    .WithType(TxType.EIP1559).TestObject,
+                    .WithType(TxType.EIP1559).WithGasLimit(gasLimitPerTx).TestObject,
                 Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(10)
-                    .WithType(TxType.EIP1559).TestObject,
-            };
-            const ulong preRefundPerTx = 1_000_000;
-            const ulong postRefundPerTx = 100_000;
+                    .WithType(TxType.EIP1559).WithGasLimit(gasLimitPerTx).TestObject,
+            ];
             Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3)
-                .WithGasUsed(preRefundPerTx * (ulong)transactions.Length)
+                .WithGasUsed(headerGasUsed)
                 .WithTransactions(transactions).TestObject;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             BlockParameter newestBlockParameter = new(0UL);
             blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
-            IReceiptStorage? receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, [postRefundPerTx, postRefundPerTx]);
+
+            IReceiptStorage receiptStorage;
+            if (receiptGasUsed is null)
+            {
+                receiptStorage = Substitute.For<IReceiptStorage>();
+                receiptStorage.Get(headBlock, false).Returns([]);
+            }
+            else
+            {
+                receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, receiptGasUsed);
+            }
+
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, [50]);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, [percentile]);
 
-            // Post-refund total is 200k, so p50 threshold is 100k and the first (cheapest) tx covers it.
-            // The pre-refund header total (2M) would have pushed the threshold to 1M and wrongly
-            // returned the most expensive premium.
             Assert.That(resultWrapper.Data.Reward!.Count, Is.EqualTo(1));
-            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(new UInt256[] { 1 }));
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(new UInt256[] { expectedReward }));
         }
 
         private static IEnumerable<TestCaseData> GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
