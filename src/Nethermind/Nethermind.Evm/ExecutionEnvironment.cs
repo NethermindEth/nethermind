@@ -69,7 +69,7 @@ namespace Nethermind.Evm
             ExecutionEnvironment env = _pool.TryDequeue(out ExecutionEnvironment? pooled) ? pooled : new();
 #if DEBUG
             env._isRented = true;
-            env._rentStackTrace = new System.Diagnostics.StackTrace();
+            env._rentSite = PooledObjectLeakDetector.RentSite();
 #endif
             env.CodeInfo = codeInfo;
             env.ExecutingAccount = executingAccount;
@@ -88,6 +88,8 @@ namespace Nethermind.Evm
         {
 #if DEBUG
             _isRented = false;
+            // Not held past the rental: a pooled instance would otherwise retain its last site indefinitely.
+            _rentSite = null;
 #endif
             if (ExecutingAccount is not null)
             {
@@ -104,7 +106,7 @@ namespace Nethermind.Evm
 
 #if DEBUG
         private bool _isRented;
-        private System.Diagnostics.StackTrace? _rentStackTrace;
+        private System.Diagnostics.StackTrace? _rentSite;
 
         /// <remarks>
         /// A leak is an instance still rented when collected; a disposed one the pool drops (dead thread tier,
@@ -115,7 +117,7 @@ namespace Nethermind.Evm
         {
             if (_isRented)
             {
-                Console.Error.WriteLine($"Warning: {nameof(ExecutionEnvironment)} was not disposed. Rented at: {_rentStackTrace}");
+                PooledObjectLeakDetector.Report(nameof(ExecutionEnvironment), _rentSite);
             }
         }
 #endif

@@ -5,6 +5,8 @@
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
@@ -27,28 +29,52 @@ namespace Nethermind.Evm.Test;
 [NonParallelizable]
 public class PooledObjectLeakDetectionTests
 {
-    // Warnings from other fixtures can land in the capture window, so every assertion keys off the frame of
-    // the helper that rented the instance under test rather than the buffer being empty.
-    private static string Probe(Action action, [CallerMemberName] string caller = "")
+    private bool _capturedSites;
+
+    // Every assertion keys off the renting frame, so the opt-in site capture has to be on for the fixture.
+    [OneTimeSetUp]
+    public void EnableSiteCapture()
     {
+        _capturedSites = PooledObjectLeakDetector.CaptureSites;
+        PooledObjectLeakDetector.CaptureSites = true;
+    }
+
+    [OneTimeTearDown]
+    public void RestoreSiteCapture() => PooledObjectLeakDetector.CaptureSites = _capturedSites;
+
+    private static string Probe(Action action)
+    {
+        // Finalize whatever earlier fixtures leaked before the window opens, so their warnings do not land in it.
+        Drain();
+
+        StringBuilder buffer = new();
+        // Synchronized because Console.Error is process-wide: the finalizer thread need not be the only writer.
+        TextWriter captured = TextWriter.Synchronized(new StringWriter(buffer));
         TextWriter original = Console.Error;
-        StringWriter captured = new();
         Console.SetError(captured);
         try
         {
             action();
-            for (int i = 0; i < 2; i++)
-            {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-            }
+            Drain();
         }
         finally
         {
             Console.SetError(original);
         }
 
-        return captured.ToString();
+        // A background GC can queue finalizers after the drain above, so restore first and drain once more:
+        // no writer can then be mid-append into the buffer being read.
+        GC.WaitForPendingFinalizers();
+        return buffer.ToString();
+    }
+
+    private static void Drain()
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
     }
 
     private static ExecutionEnvironment RentEnv(Address? executingAccount = null) =>
@@ -69,9 +95,6 @@ public class PooledObjectLeakDetectionTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void DisposeEnv() => RentEnv(TestItem.AddressA).Dispose();
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
     private static VmState<EthereumGasPolicy> RentState(ExecutionEnvironment env) =>
         VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(1000), ExecutionType.TRANSACTION, env, new StackAccessTracker(), Snapshot.Empty);
@@ -86,15 +109,51 @@ public class PooledObjectLeakDetectionTests
         RentState(second);
     }
 
+    // Dispose puts the instance in the pool's thread-static local tier, which roots it for as long as the
+    // renting thread runs. The collector only reaches a disposed instance once that thread has exited, so the
+    // negative cases dispose on a thread of their own; the returned reference is what proves they did.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void DisposeState()
+    private static WeakReference OnDyingThread(Func<object> body)
+    {
+        WeakReference? tracked = null;
+        Thread thread = new(() => tracked = new WeakReference(body()));
+        thread.Start();
+        thread.Join();
+        return tracked!;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference DisposeEnv() => OnDyingThread(static () =>
+    {
+        ExecutionEnvironment env = RentEnv(TestItem.AddressA);
+        env.Dispose();
+        return env;
+    });
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference DisposeState() => OnDyingThread(static () =>
     {
         using ExecutionEnvironment env = RentEnv(TestItem.AddressA);
-        RentState(env).Dispose();
-    }
+        VmState<EthereumGasPolicy> state = RentState(env);
+        state.Dispose();
+        return state;
+    });
 
     private static void AssertReported(Action leak, string type, string marker) =>
         Assert.That(Probe(leak), Does.Contain($"{type} was not disposed").And.Contain(marker));
+
+    private static void AssertNotReported(Func<WeakReference> disposeOnDyingThread, string type)
+    {
+        WeakReference tracked = null!;
+        string reported = Probe(() => tracked = disposeOnDyingThread());
+        using (Assert.EnterMultipleScope())
+        {
+            // Dispose clears the rent site, so the instance cannot be named; this is what keeps the case from
+            // being vacuous — an instance the pool still roots is never finalized whatever the condition says.
+            Assert.That(tracked.IsAlive, Is.False, "the disposed instance was not collected");
+            Assert.That(reported, Does.Not.Contain($"{type} was not disposed"));
+        }
+    }
 
     [Test]
     public void Leaked_environment_is_reported() =>
@@ -113,11 +172,11 @@ public class PooledObjectLeakDetectionTests
         AssertReported(LeakRecycledState, "VmState", nameof(LeakRecycledState));
 
     [Test]
-    public void Disposed_environment_is_not_reported() =>
-        Assert.That(Probe(DisposeEnv), Does.Not.Contain(nameof(DisposeEnv)));
+    public void Collected_disposed_environment_is_not_reported() =>
+        AssertNotReported(DisposeEnv, nameof(ExecutionEnvironment));
 
     [Test]
-    public void Disposed_state_is_not_reported() =>
-        Assert.That(Probe(DisposeState), Does.Not.Contain(nameof(DisposeState)));
+    public void Collected_disposed_state_is_not_reported() =>
+        AssertNotReported(DisposeState, "VmState");
 }
 #endif
