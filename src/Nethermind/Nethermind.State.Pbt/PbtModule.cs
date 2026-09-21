@@ -61,6 +61,9 @@ public class PbtModule(IPbtConfig config) : Module
             .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
             .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>();
 
+        if (config.CarryForwardCache)
+            builder.AddDecorator<IPbtPersistence, PbtCarryForwardCachingPersistence>();
+
         if (config.FakeMatchingStateRoot)
             builder.AddSingleton<IPbtChildHeaderSource, PbtBlockTreeChildHeaderSource>();
         else

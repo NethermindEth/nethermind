@@ -103,6 +103,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Which prefixless branches without inline leaves are left out of stored node groups and recomputed from their children on read: Interior (relative depths 1-3), OddLevels (relative depths 1 and 3, keeping depth 2) or None (store every node). All layouts are readable, so the setting can change on an existing database; groups convert as they are rewritten.", DefaultValue = "Interior", HiddenFromDocs = true)]
     PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; set; }
 
+    [ConfigItem(Description = "Cache persisted account and storage-run reads across heads, so a new head does not re-read the serving working set from the database. Only the write-set of each persisted batch is dropped.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool CarryForwardCache { get; set; }
+
     [ConfigItem(Description = "Keep node-group payloads in slab-allocated native memory sized to jemalloc-style classes. Off rents pooled managed arrays in power-of-two buckets instead.", DefaultValue = "true", HiddenFromDocs = true)]
     bool NativeNodeGroupMemory { get; set; }
 

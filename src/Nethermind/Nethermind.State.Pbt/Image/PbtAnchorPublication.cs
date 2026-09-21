@@ -176,7 +176,7 @@ internal sealed class PbtAnchorPublication(
 
             // The import bypassed the live persistence: drop what it cached before the write.
             coordinator.ResetPersistedStateId();
-            (persistence as PbtCachedReaderPersistence)?.ClearReaderCache();
+            persistence.ClearCaches();
             if (_logger.IsInfo) _logger.Info($"Imported the PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} with root {root}.");
             return root;
         }

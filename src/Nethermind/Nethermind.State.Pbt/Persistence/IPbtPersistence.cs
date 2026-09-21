@@ -20,6 +20,9 @@ public interface IPbtPersistence
 
     void Flush();
 
+    /// <summary>Drops cached reads so the next reader observes writes made behind this persistence.</summary>
+    void ClearCaches() { }
+
     public interface IReader : IDisposable
     {
         StateId CurrentState { get; }

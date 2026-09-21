@@ -38,6 +38,7 @@ public class PbtConfig : IPbtConfig
 
     public PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; } = PbtNodeGroupKeyLayout.Padded;
     public PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; set; } = PbtPrefixlessBranchOmission.Interior;
+    public bool CarryForwardCache { get; set; } = true;
     public bool NativeNodeGroupMemory { get; set; } = true;
 
     public string RocksDbOptions { get; set; } =

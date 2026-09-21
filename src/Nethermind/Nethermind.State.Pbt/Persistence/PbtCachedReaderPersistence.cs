@@ -60,6 +60,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
 
     public void Flush() => _inner.Flush();
 
+    public void ClearCaches() => ClearReaderCache();
+
     private void PinReaderCache()
     {
         using Lock.Scope _ = _cacheLock.EnterScope();
