@@ -1581,7 +1581,8 @@ public class BlockCachePreWarmerTests
             .WithGasLimit(30_000_000)
             .TestObject;
 
-        int warmedTxs = RunGatedFanOut(block, testToken, whileParked: () => late.SenderAddress = TestItem.AddressB);
+        FakeSenderRecovery recovery = new();
+        int warmedTxs = RunGatedFanOut(block, testToken, whileParked: () => recovery.Publish(late, TestItem.AddressB), recovery: recovery);
 
         Assert.That(warmedTxs, Is.EqualTo(3), "the transaction whose sender arrived late must be warmed by the running fan-out");
     }
@@ -1607,13 +1608,15 @@ public class BlockCachePreWarmerTests
             .TestObject;
 
         BlockCachePreWarmer? preWarmer = null;
+        // Left incomplete: a completed recovery would end the wait before the arrival is ever reported.
+        FakeSenderRecovery recovery = new();
         int warmedTxs = RunGatedFanOut(block, testToken, whileParked: () =>
         {
             // The main thread reaches the late transaction before its sender does, then the sender lands.
             preWarmer!.OnBeforeTxExecution();
             preWarmer.OnBeforeTxExecution();
-            late.SenderAddress = TestItem.AddressB;
-        }, created: created => preWarmer = created);
+            recovery.Publish(late, TestItem.AddressB);
+        }, created: created => preWarmer = created, recovery: recovery);
 
         Assert.That(warmedTxs, Is.EqualTo(2), "only the two transactions ahead of the main thread are warmed; the overtaken ones are skipped, not spun on");
     }
@@ -1660,7 +1663,8 @@ public class BlockCachePreWarmerTests
     /// warm has started, waits until <paramref name="parkedScopes"/> workers are parked inside a job's scope, runs
     /// <paramref name="whileParked"/>, releases them and returns how many transactions were warmed. A worker that
     /// returns its env without ever building a scope ran dry and left; <paramref name="workerLeftDry"/> is set when
-    /// one does.
+    /// one does. The warm always has a recovery in flight to wait on, <paramref name="recovery"/> or one nobody
+    /// publishes through, since without one no worker waits at all.
     /// </summary>
     private int RunGatedFanOut(
         Block block,
@@ -1671,8 +1675,9 @@ public class BlockCachePreWarmerTests
         int parkedScopes = 2,
         Action? beforeParked = null,
         ManualResetEventSlim? workerLeftDry = null,
-        ISenderRecoveryTracker? recovery = null)
+        FakeSenderRecovery? recovery = null)
     {
+        recovery ??= new FakeSenderRecovery();
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
@@ -2242,11 +2247,6 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// Gates transaction-warm scopes at <c>SetBlockExecutionContext</c> — which the address
-    /// warmer never calls, so its scope builds on the shared env pool pass through ungated —
-    /// signalling arrival and counting warm executions for deterministic overtake tests.
-    /// </summary>
-    /// <summary>
     /// The recovery a test drives by hand: a published sender bumps the count and pulses the waiters, the way the real
     /// one's batches and completion do.
     /// </summary>
@@ -2288,6 +2288,11 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    /// <summary>
+    /// Gates transaction-warm scopes at <c>SetBlockExecutionContext</c> — which the address
+    /// warmer never calls, so its scope builds on the shared env pool pass through ungated —
+    /// signalling arrival and counting warm executions for deterministic overtake tests.
+    /// </summary>
     private sealed class TxWarmGatePolicy(
         PrewarmerEnvFactory factory,
         PreBlockCaches caches,
@@ -2373,6 +2378,18 @@ public class BlockCachePreWarmerTests
                 inner.SetBlockExecutionContext(in blockExecutionContext);
             }
         }
+    }
+
+    /// <summary>
+    /// The prewarmer waits on the recovery the engine handler started, so the tracker the container hands it must be
+    /// the pipeline's own instance; any other would report nothing in flight and every late sender would be final.
+    /// </summary>
+    [Test]
+    public void PreWarmer_IsHandedThePipelineSenderRecovery()
+    {
+        BlockCachePreWarmer preWarmer = (BlockCachePreWarmer)_processingScope.Resolve<IBlockCachePreWarmer>();
+
+        Assert.That(preWarmer.SenderRecovery, Is.SameAs(_container.Resolve<RecoverSignatures>()));
     }
 
     [Test]

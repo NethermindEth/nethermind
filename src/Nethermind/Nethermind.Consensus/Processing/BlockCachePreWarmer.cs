@@ -422,9 +422,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// candidate, the recovery finished without it, or the block is done.
     /// </summary>
     /// <remarks>
-    /// Nothing is polled but the recovery's own count: the sender is re-read only when it has moved, and past the spin
-    /// window the wait is on the recovery's completion, which pulses it awake. Only the discovery thread waits here,
-    /// between rounds, so the spin window costs one core for a millisecond at most.
+    /// Inside the spin window the sender is re-read only when the recovery's count has moved; past it the wait is on
+    /// the recovery's completion, which pulses it awake, and every wake re-reads. Only the discovery thread waits
+    /// here, between rounds, so the spin window costs one core for a millisecond at most.
     /// </remarks>
     private bool WaitForSender((int Index, Transaction Tx) candidate, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
     {
@@ -446,8 +446,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (completed) return false;
             }
 
-            if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
-            else recovery.WaitForCompletion(1);
+            if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow)
+            {
+                spinner.SpinOnce(sleep1Threshold: -1);
+            }
+            else
+            {
+                // Past the window every wake re-reads the sender: it may have been filled in by a path the count
+                // never sees, such as the transaction processor recovering it inline.
+                recovery.WaitForCompletion(1);
+                seen = -1;
+            }
         }
 
         return false;
@@ -1558,8 +1567,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// it first - so the caller always makes progress before asking again.
         /// </summary>
         /// <remarks>
-        /// The table is rescanned only when the recovery's count has moved, and past the spin window the wait is on
-        /// the recovery's completion, which pulses it awake; nothing polls the transactions. The speculative caller
+        /// Inside the spin window the table is rescanned only when the recovery's count has moved; past it the wait
+        /// is on the recovery's completion, which pulses it awake, and every wake rescans. The speculative caller
         /// has no recovery in flight and never enters the loop; neither does a block whose recovery ended before it
         /// was warmed, where an unclaimed transaction can only be one with an invalid signature.
         /// </remarks>
@@ -1600,9 +1609,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 // The threshold disables SpinWait's own Sleep(1) backoff, so SenderArrivalWindow is the only bound
                 // on the busy spin; past it the wait is the recovery's, bounded so cancellation is seen within a
-                // millisecond.
-                if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
-                else recovery.WaitForCompletion(1);
+                // millisecond, and every wake rescans: a sender can be filled in by a path the count never sees,
+                // such as the transaction processor recovering it inline.
+                if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow)
+                {
+                    spinner.SpinOnce(sleep1Threshold: -1);
+                }
+                else
+                {
+                    recovery.WaitForCompletion(1);
+                    seen = -1;
+                }
             }
 
             return false;
@@ -1651,8 +1668,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
+        /// <remarks>
+        /// The prewarmer joins only its speculative session before disposing, so a reactive warm may still be running
+        /// here; its lists and jobs are then left to the collector rather than returned under a fan-out still
+        /// indexing them, since a pooled array returned twice corrupts the pool silently.
+        /// </remarks>
         public void Dispose()
         {
+            if (!TryAcquire()) return;
+
             using (_parkedLock.EnterScope())
             {
                 for (TxWarmupWorker? worker = _parked; worker is not null; worker = worker.NextParked)
