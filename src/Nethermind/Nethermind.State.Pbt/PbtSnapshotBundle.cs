@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -131,43 +132,6 @@ public sealed class PbtSnapshotBundle(
         if (_transientResource.NodeGroups.TryGet(groupHash, storagePath, out payload)) return payload;
         if (trieNodeCache?.TryGet(groupHash, storagePath, out payload) == true) return payload;
         return readOnlyBundle.GetNodeGroup(storagePath);
-    }
-
-    internal IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
-    {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
-        SortedDictionary<PbtStorageTreeKey, EvmWord> changes = new(PbtStorageKeyLayout.Comparer);
-        HashSet<ValueHash256> clearedAddresses = [];
-        foreach (PbtSnapshot snapshot in snapshots) ApplyChanges(snapshot.Content);
-        ApplyChanges(WriteBuffer);
-        using IEnumerator<KeyValuePair<PbtStorageTreeKey, EvmWord>> changed = changes.GetEnumerator();
-        bool hasChange = changed.MoveNext();
-        foreach (KeyValuePair<PbtStorageTreeKey, EvmWord> persisted in readOnlyBundle.EnumerateStorage(addressFilter))
-        {
-            while (hasChange && PbtStorageKeyLayout.Comparer.Compare(changed.Current.Key, persisted.Key) < 0)
-            {
-                if (!EvmWordSlot.IsZero(changed.Current.Value)) yield return changed.Current;
-                hasChange = changed.MoveNext();
-            }
-            if (hasChange && changed.Current.Key == persisted.Key)
-            {
-                if (!EvmWordSlot.IsZero(changed.Current.Value)) yield return changed.Current;
-                hasChange = changed.MoveNext();
-            }
-            else if (!clearedAddresses.Contains(PbtFlatState.StorageAddress(persisted.Key))) yield return persisted;
-        }
-        while (hasChange)
-        {
-            if (!EvmWordSlot.IsZero(changed.Current.Value)) yield return changed.Current;
-            hasChange = changed.MoveNext();
-        }
-
-        void ApplyChanges(PbtSnapshotContent content)
-        {
-            PbtFlatState.ApplyStorage(changes, content, addressFilter);
-            foreach ((ValueHash256 addressHash, _) in content.SelfDestructedStorageAddresses)
-                if (addressFilter is null || addressHash == addressFilter.Value) clearedAddresses.Add(addressHash);
-        }
     }
 
     public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AddressKeyHash(address));
@@ -302,9 +266,26 @@ public sealed class PbtSnapshotBundle(
 
     public void SelfDestruct(Address address)
     {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        long start = Stopwatch.GetTimestamp();
         ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
-        foreach ((PbtStorageTreeKey key, _) in EnumerateStorage(hash)) SetPbtLeaf(key, null);
+        SortedDictionary<PbtStorageTreeKey, EvmWord> changes = new(PbtStorageKeyLayout.Comparer);
+        bool clearedInLayer = false;
+        foreach (PbtSnapshot snapshot in snapshots) ApplyChanges(snapshot.Content);
+        ApplyChanges(WriteBuffer);
+        if (!clearedInLayer)
+            foreach ((PbtStorageTreeKey key, _) in readOnlyBundle.EnumerateStorage(hash))
+                if (!changes.ContainsKey(key)) SetPbtLeaf(key, null);
+        foreach ((PbtStorageTreeKey key, EvmWord value) in changes)
+            if (!EvmWordSlot.IsZero(value)) SetPbtLeaf(key, null);
         WriteBuffer.ClearStorage(hash);
+        Metrics.PbtSelfDestructTime.Observe(Stopwatch.GetTimestamp() - start);
+
+        void ApplyChanges(PbtSnapshotContent content)
+        {
+            PbtFlatState.ApplyStorage(changes, content, hash);
+            clearedInLayer |= content.SelfDestructedStorageAddresses.ContainsKey(hash);
+        }
     }
 
     internal void SetCode(in ValueHash256 codeHash, CodeInfo code)

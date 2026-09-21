@@ -22,12 +22,10 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtSnapshotBundleTests
 {
-    [TestCase(false, false, false)]
-    [TestCase(false, true, false)]
-    [TestCase(true, true, false)]
-    [TestCase(false, true, true)]
-    [TestCase(true, true, true)]
-    public void Enumeration_streams_base_and_disposes_iterator_on_early_exit(bool writable, bool storage, bool filtered)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Enumeration_streams_base_and_disposes_iterator_on_early_exit(bool storage, bool filtered)
     {
         PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, 1);
         Reader reader = new(key, new ValueHash256(Value(1)))
@@ -35,13 +33,11 @@ public class PbtSnapshotBundleTests
             Accounts = [new(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), new Account(1, 1))],
             ThrowAfterFirst = true
         };
-        PbtResourcePool pool = new(new PbtConfig());
         PbtReadOnlySnapshotBundle readOnly = new(new(0), reader);
-        using PbtSnapshotBundle bundle = new(new(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing);
         if (storage)
         {
             ValueHash256? addressFilter = filtered ? PbtKeyDerivation.AddressKeyHash(TestItem.AddressA) : (ValueHash256?)null;
-            using IEnumerator<KeyValuePair<PbtStorageTreeKey, EvmWord>> iterator = (writable ? bundle.EnumerateStorage(addressFilter) : readOnly.EnumerateStorage(addressFilter)).GetEnumerator();
+            using IEnumerator<KeyValuePair<PbtStorageTreeKey, EvmWord>> iterator = readOnly.EnumerateStorage(addressFilter).GetEnumerator();
             Assert.That(iterator.MoveNext(), Is.True);
         }
         else
@@ -55,7 +51,6 @@ public class PbtSnapshotBundleTests
     [Test]
     public void First_write_to_a_run_seeds_the_whole_run_from_the_newest_layer_holding_it([Values] bool heldByLayer)
     {
-        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         // Slots 3, 5 and 6 share one run.
         PbtStorageTreeKey persistedKey = PbtStateKey.Storage(TestItem.AddressA, 5);
         PbtStorageTreeKey layerKey = PbtStateKey.Storage(TestItem.AddressA, 6);
@@ -73,20 +68,20 @@ public class PbtSnapshotBundleTests
         bundle.SetSlot(TestItem.AddressA, 3, local);
         EvmWord[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
-        KeyValuePair<PbtStorageTreeKey, EvmWord>[] afterClear = bundle.EnumerateStorage(addressHash).ToArray();
+        EvmWord[] afterClear = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SelfDestruct(TestItem.AddressA);
         bundle.SetSlot(TestItem.AddressA, 5, local);
         using (Assert.EnterMultipleScope())
         {
             // A layer holding the run answers for all of it, so the persisted slot is masked when a layer holds the run.
             Assert.That(afterWrite, Is.EqualTo(new[] { local, heldByLayer ? default : persisted, heldByLayer ? layer : default }));
-            Assert.That(afterClear.Select(slot => slot.Key), Is.EqualTo(new[] { PbtStateKey.Storage(TestItem.AddressA, 3) }));
+            Assert.That(afterClear, Is.EqualTo(new[] { local, default, default }));
             Assert.That(new[] { bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6) }, Is.EqualTo(new[] { default, local, default }));
         }
     }
 
     [Test]
-    public void Enumeration_merges_local_deletes_clears_and_same_layer_rewrites([Values] bool filtered)
+    public void SelfDestruct_nulls_only_the_live_slots_merged_across_local_deletes_clears_and_rewrites()
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         PbtStorageTreeKey deleted = PbtStateKey.Storage(TestItem.AddressA, 1);
@@ -106,9 +101,15 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = new(snapshots, new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetSlot(TestItem.AddressA, 1, default);
         bundle.SetSlot(TestItem.AddressA, 1000, replacement);
-        SortedDictionary<PbtStorageTreeKey, EvmWord> expected = new(PbtStorageKeyLayout.Comparer) { [rewritten] = replacement };
-        if (!filtered) expected[other] = original;
-        Assert.That(bundle.EnumerateStorage(filtered ? addressHash : (ValueHash256?)null), Is.EqualTo(expected));
+        bundle.SelfDestruct(TestItem.AddressA);
+        using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
+        using (Assert.EnterMultipleScope())
+        {
+            // The header slot 1 and the wide slot 1000 were already written locally; the persisted-only cleared slot and the other address stay untouched.
+            Assert.That(changes.Account?.Count ?? 0, Is.EqualTo(1));
+            Assert.That(changes.Storage?.Count ?? 0, Is.EqualTo(1));
+            Assert.That(bundle.GetSlot(TestItem.AddressA, 1000), Is.EqualTo(default(EvmWord)));
+        }
     }
 
     [Test]
