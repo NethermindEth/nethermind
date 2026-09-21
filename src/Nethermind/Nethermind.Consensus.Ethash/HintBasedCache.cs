@@ -36,12 +36,19 @@ namespace Nethermind.Consensus.Ethash
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Hint(Guid guid, ulong start, ulong end)
         {
-            uint startEpoch = (uint)(start / Ethash.EpochLength);
-            uint endEpoch = (uint)(end / Ethash.EpochLength);
+            // Widened to ulong: a truncating cast to uint would wrap an out-of-range block number down to a
+            // small epoch and silently accept it.
+            ulong startEpoch = start / Ethash.EpochLength;
+            ulong endEpoch = end / Ethash.EpochLength;
 
             if (endEpoch < startEpoch || endEpoch - startEpoch > 10)
             {
                 throw new InvalidOperationException("Hint too wide");
+            }
+
+            if (endEpoch > Ethash.MaxEpoch)
+            {
+                throw new InvalidOperationException($"Hint epoch {endEpoch} exceeds the maximum supported epoch {Ethash.MaxEpoch}");
             }
 
             ref HashSet<uint>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_epochsPerGuid, guid, out bool exists);
@@ -86,8 +93,6 @@ namespace Nethermind.Consensus.Ethash
 
             if (currentMin > startEpoch || currentMax < endEpoch)
             {
-                // Widened counter: an inclusive `uint` loop never terminates when endEpoch is uint.MaxValue,
-                // which a peer-selected block number can produce via the truncating cast above.
                 for (ulong i = startEpoch; i <= endEpoch; i++)
                 {
                     uint epoch = (uint)i;

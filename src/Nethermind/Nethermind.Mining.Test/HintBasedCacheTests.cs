@@ -211,21 +211,37 @@ public class HintBasedCacheTests
     }
 
     [Test]
-    public async Task Hint_at_the_maximum_epoch_terminates()
+    public void Throws_on_hint_above_the_maximum_epoch()
     {
         HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
         ulong blockNumber = (ulong)uint.MaxValue * Ethash.EpochLength;
-        Assert.That(Ethash.GetEpoch(blockNumber), Is.EqualTo(uint.MaxValue), "precondition: the epoch saturates uint");
 
-        Task hint = Task.Run(() => hintBasedCache.Hint(_guidA, blockNumber, blockNumber));
-        Assert.That(await Task.WhenAny(hint, Task.Delay(TimeSpan.FromSeconds(5))), Is.SameAs(hint),
-            "Hint did not terminate: the inclusive epoch loop wrapped past uint.MaxValue");
+        Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, blockNumber, blockNumber));
+    }
+
+    [Test]
+    public void Throws_on_hint_whose_epoch_only_fits_uint_when_truncated()
+    {
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        // Truncating this epoch to uint would wrap it to 5 and accept it as an ordinary early epoch.
+        ulong epoch = (1UL << 32) + 5;
+        ulong blockNumber = epoch * Ethash.EpochLength;
+
+        Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, blockNumber, blockNumber));
+    }
+
+    [Test]
+    public void Builds_a_single_epoch_at_the_maximum_supported_epoch()
+    {
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        ulong blockNumber = Ethash.MaxEpoch * Ethash.EpochLength;
+
+        hintBasedCache.Hint(_guidA, blockNumber, blockNumber);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(hintBasedCache.CachedEpochsCount, Is.EqualTo(1));
-            Assert.That(hintBasedCache.Get(uint.MaxValue), Is.Not.Null);
+            Assert.That(hintBasedCache.Get(Ethash.MaxEpoch), Is.Not.Null);
         }
     }
-
 }

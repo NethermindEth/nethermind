@@ -66,6 +66,12 @@ namespace Nethermind.Consensus.Ethash
         }
 
         /// <summary>
+        /// The largest epoch whose cache size is representable; above it the <see cref="GetCacheSize"/>
+        /// arithmetic overflows and the resulting size is arbitrary rather than merely large.
+        /// </summary>
+        public static uint MaxEpoch => (uint.MaxValue - CacheBytesInit / (uint)HashBytes) / (CacheBytesGrowth / (uint)HashBytes);
+
+        /// <summary>
         /// Improvement from @AndreaLanfranchi
         /// Finds the largest prime number given an upper limit
         /// </summary>
@@ -202,7 +208,7 @@ namespace Nethermind.Consensus.Ethash
             if (dataSet is null)
             {
                 // Callers must hint the validation range before validating. Building the cache on demand here
-                // would let a peer-selected header number drive unbounded Ethash cache construction (F-15).
+                // would let a peer-selected header number drive unbounded Ethash cache construction.
                 if (_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
                 return false;
             }

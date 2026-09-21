@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network;
 using Nethermind.Specs;
@@ -213,6 +214,33 @@ public partial class ForwardHeaderProviderTests
             ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
             // No seal may be looked at: the forged number selects the Ethash epoch, and validating it
             // builds that epoch's cache synchronously before the response could be rejected.
+            sealValidator.DidNotReceiveWithAnyArgs().ValidateSeal(null!, default);
+        }
+    }
+
+    [Test]
+    public async Task Throws_on_batch_outside_requested_window_before_validating_seals()
+    {
+        ISealValidator sealValidator = Substitute.For<ISealValidator>();
+        sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(sealValidator));
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.ShiftedWindow));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.HeadNumber.Returns(1024UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+        Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
             sealValidator.DidNotReceiveWithAnyArgs().ValidateSeal(null!, default);
         }
     }
@@ -528,6 +556,7 @@ public partial class ForwardHeaderProviderTests
         AllKnown = 16,
         TimeoutOnFullBatch = 32,
         ForgedLastNumber = 64,
+        ShiftedWindow = 256,
         WithTransactions = 128,
     }
 
@@ -735,6 +764,7 @@ public partial class ForwardHeaderProviderTests
             bool allKnown = flags.HasFlag(Response.AllKnown);
             bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
             bool forgedLastNumber = flags.HasFlag(Response.ForgedLastNumber);
+            bool shiftedWindow = flags.HasFlag(Response.ShiftedWindow);
             bool withTransaction = flags.HasFlag(Response.WithTransactions);
 
             if (timeoutOnFullBatch && number == SyncBatchSizeMax)
@@ -775,6 +805,24 @@ public partial class ForwardHeaderProviderTests
             foreach (BlockHeader header in headers)
             {
                 _headers[header.Hash!] = header;
+            }
+
+            if (shiftedWindow && number > 1)
+            {
+                // Consecutive and hash-linked, but rooted outside the requested window: only the
+                // requested-start anchor can reject this.
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    BlockHeader shifted = headers[i].Clone();
+                    shifted.Number += 1_000_000;
+                    if (i > 0)
+                    {
+                        shifted.ParentHash = headers[i - 1].Hash;
+                    }
+
+                    shifted.Hash = shifted.CalculateHash();
+                    headers[i] = shifted;
+                }
             }
 
             if (forgedLastNumber && number > 1)
