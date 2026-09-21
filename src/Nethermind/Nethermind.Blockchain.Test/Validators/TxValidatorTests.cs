@@ -699,6 +699,30 @@ public class TxValidatorTests
         }
     }
 
+    // EIP-8037 caps tx.gas as a whole at TX_MAX_TOTAL_GAS_LIMIT once the EIP-7825 execution-gas
+    // cap no longer applies to it directly.
+    [Test]
+    public void IsWellFormed_TransactionWithGasLimitAroundEip8037MaxTotalCap_ValidatesAgainstTotalCap()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(Eip8037Constants.TxMaxTotalGasLimit)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        Assert.That(txValidator.IsWellFormed(tx, Amsterdam.Instance).AsBool, Is.True, "at-cap must pass");
+
+        tx.GasLimit += 1;
+        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip8037Constants.TxMaxTotalGasLimit)));
+            Assert.That(result.IsIntrinsicGasError, Is.False);
+        }
+    }
+
     [Test]
     public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse([Values] bool skipErrorDetails, [Values] bool skipMemo)
     {
