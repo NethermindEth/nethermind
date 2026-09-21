@@ -45,6 +45,7 @@ public class InclusionListPoolSeamTests
         KeyedFrameAndOrdinaryAhead,
         OrdinaryAhead,
         OrdinaryAtTheNonceButPricedOut,
+        AccountDomainFrameAtTheNonce,
     }
 
     private static readonly ISpecProvider PoolSpecProvider =
@@ -56,6 +57,9 @@ public class InclusionListPoolSeamTests
     [TestCase(Bucket.KeyedFrameAndOrdinaryAhead, false)]
     [TestCase(Bucket.OrdinaryAhead, false)]
     [TestCase(Bucket.OrdinaryAtTheNonceButPricedOut, false)]
+    // The one shape the two filters disagree on for a reason other than keyed reads: SupportsFrames skips it,
+    // UsesKeyedNonce would not, so HasReadyTransaction vouches for a bucket the builder still strips to nothing.
+    [TestCase(Bucket.AccountDomainFrameAtTheNonce, false)]
     public async Task Pool_vouches_for_exactly_the_buckets_the_builder_can_draw_from(Bucket bucket, bool expectedReady)
     {
         UInt256 nextBaseFee = bucket == Bucket.OrdinaryAtTheNonceButPricedOut ? 2 : UInt256.Zero;
@@ -106,7 +110,12 @@ public class InclusionListPoolSeamTests
     {
         if (bucket is Bucket.KeyedFrameOnly or Bucket.KeyedFrameAndOrdinaryAtTheNonce or Bucket.KeyedFrameAndOrdinaryAhead)
         {
-            yield return KeyedFrameTx();
+            yield return FrameTxWithNonceKeys([1]);
+        }
+        else if (bucket is Bucket.AccountDomainFrameAtTheNonce)
+        {
+            // [0] aliases the account nonce, so this frame tx is account-domain: UsesKeyedNonce is false for it.
+            yield return FrameTxWithNonceKeys([0]);
         }
 
         switch (bucket)
@@ -135,13 +144,13 @@ public class InclusionListPoolSeamTests
 
     /// <remarks>A frame transaction authenticates by its frame signatures, so it carries a sender rather than an
     /// outer signature.</remarks>
-    private static Transaction KeyedFrameTx()
+    private static Transaction FrameTxWithNonceKeys(UInt256[] nonceKeys)
     {
         Transaction tx = FrameTxTestFrames.FrameTx(
             TestItem.PrivateKeyA.Address, [], FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas));
         tx.ChainId = PoolSpecProvider.ChainId;
         tx.Nonce = 0;
-        tx.NonceKeys = [1];
+        tx.NonceKeys = nonceKeys;
         tx.GasLimit = 1_000_000;
         tx.GasPrice = 1.GWei;
         tx.DecodedMaxFeePerGas = 1.GWei;
