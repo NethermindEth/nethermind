@@ -5,9 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -268,13 +270,16 @@ public class InclusionListBuilderTests
         Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { txs[0].Hash }));
     }
 
-    // A misconfigured share must fail loudly: clamping or truncating it hands back the shipped default.
-    [TestCase(double.NaN)]
-    [TestCase(double.PositiveInfinity)]
-    [TestCase(-0.1)]
-    [TestCase(1.5)]
-    public void Rejects_a_share_that_is_not_a_fraction(double oldestShare) =>
-        Assert.That(() => BuildBuilder(PoolOf(), oldestShare: oldestShare), Throws.InstanceOf<ArgumentOutOfRangeException>());
+    // A misconfigured tier must fail loudly: clamping or truncating it hands back the shipped default.
+    [TestCase(double.NaN, 200)]
+    [TestCase(double.PositiveInfinity, 200)]
+    [TestCase(-0.1, 200)]
+    [TestCase(1.5, 200)]
+    [TestCase(0.5, -1)]
+    public void Rejects_a_tier_it_cannot_honour(double oldestShare, int oldestCount) =>
+        Assert.That(() => BuildBuilder(PoolOf(), oldestShare: oldestShare, oldestCount: oldestCount),
+            Throws.InstanceOf<InvalidConfigurationException>()
+                .With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
 
     /// <summary>Entries one draw fits in the byte cap, asserting no sender reached the list twice.</summary>
     private static int ListedCount(Transaction[] txs, double oldestShare, int oldestCount)

@@ -86,7 +86,7 @@ public interface IMergeConfig : IConfig
     double InclusionListOldestSenderShare { get; set; }
 
     [ConfigItem(Description = """
-            [EXPERIMENTAL] How many of the longest-pending senders `InclusionListOldestSenderShare` samples from. Ignored when that share is `0`, and pools no larger than this are drawn uniformly.
+            [EXPERIMENTAL] How many of the longest-pending senders `InclusionListOldestSenderShare` samples from. Ignored when that share is `0`, and pools no larger than this are drawn uniformly. `0` turns the tier off as well; a negative value is rejected at startup.
 
             It sets both sides of the trade at once: it is what an attacker must outbid to crowd the cohort out, and it is the cohort's weight in the pool, which is the share below which the knob does nothing. Keep it well above the share's part of the senders a list draws, or every committee member samples the same fixed set of senders.
             """, DefaultValue = "200", HiddenFromDocs = true)]

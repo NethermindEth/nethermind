@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -23,22 +25,41 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     // Orders the age cohort newest first, so its head is the member an older sender displaces.
     private static readonly IComparer<ulong> NewestFirst = Comparer<ulong>.Create(static (a, b) => b.CompareTo(a));
 
-    private readonly int _oldestSenderDraw = OldestSenderDraw(mergeConfig.InclusionListOldestSenderShare);
-    private readonly int _oldestSenderCount = int.Max(0, mergeConfig.InclusionListOldestSenderCount);
+    private readonly int _oldestSenderDraw = OldestSenderDraw(mergeConfig);
+    private readonly int _oldestSenderCount = mergeConfig.InclusionListOldestSenderCount;
+
+    /// <summary>Rejects an oldest-sender tier this builder cannot honour.</summary>
+    /// <remarks>Also called from <see cref="InitializeMergePlugin"/>, since this type is built with the lazily
+    /// resolved engine RPC module: left to the constructor, a malformed value would fail every engine call
+    /// instead of aborting the node.</remarks>
+    /// <exception cref="InvalidConfigurationException">The share is not a number between 0 and 1, or the
+    /// cohort size is negative.</exception>
+    internal static void ValidateOldestSenderTier(IMergeConfig mergeConfig)
+    {
+        double share = mergeConfig.InclusionListOldestSenderShare;
+        if (!double.IsFinite(share) || share is < 0 or > 1)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(IMergeConfig.InclusionListOldestSenderShare)} must be between 0 and 1, but was {share}.",
+                ExitCodes.ForbiddenOptionValue);
+        }
+
+        int count = mergeConfig.InclusionListOldestSenderCount;
+        if (count < 0)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(IMergeConfig.InclusionListOldestSenderCount)} cannot be negative, but was {count}.",
+                ExitCodes.ForbiddenOptionValue);
+        }
+    }
 
     /// <summary>Slots of the draw <see cref="IMergeConfig.InclusionListOldestSenderShare"/> reserves.</summary>
     /// <remarks>Rounded up, so a share worth less than a whole slot still turns the tier on: truncating it to
     /// zero would silently ship the default on a knob an operator is calibrating.</remarks>
-    /// <exception cref="ArgumentOutOfRangeException">The share is not a number between 0 and 1.</exception>
-    private static int OldestSenderDraw(double share)
+    private static int OldestSenderDraw(IMergeConfig mergeConfig)
     {
-        if (!double.IsFinite(share) || share is < 0 or > 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(IMergeConfig.InclusionListOldestSenderShare), share,
-                $"{nameof(IMergeConfig.InclusionListOldestSenderShare)} must be between 0 and 1.");
-        }
-
-        return (int)double.Ceiling(share * SenderSampleCapacity);
+        ValidateOldestSenderTier(mergeConfig);
+        return (int)double.Ceiling(mergeConfig.InclusionListOldestSenderShare * SenderSampleCapacity);
     }
 
     /// <summary>Draws pending transactions for an inclusion list, up to the per-list byte cap.</summary>
