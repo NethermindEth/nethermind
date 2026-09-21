@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -395,6 +396,56 @@ public class PeerBandTests
         }
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_session_the_remote_opened_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token)
+    {
+        RefusingStatusSource refusing = new();
+        Node remote = CreateNode(refusing);
+        Node local = CreateNode();
+        SetMatchingStatus(local);
+
+        await using (local.P2P)
+        await using (remote.P2P)
+        {
+            await remote.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+            await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+
+            // Both status versions were refused over the open session, so the admission provably threw
+            // after the session existed: a count of zero below cannot be the pre-connect zero.
+            await WaitUntilAsync(() => refusing.Requests >= 2, token, "the status exchange never reached the remote");
+            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_dialed_session_whose_status_exchange_fails_is_closed_not_left_open(CancellationToken token)
+    {
+        RefusingStatusSource refusing = new();
+        Node remote = CreateNode(refusing);
+        Node local = CreateNode();
+        SetMatchingStatus(local);
+
+        await using (local.P2P)
+        await using (remote.P2P)
+        {
+            await remote.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.False);
+
+            Assert.That(refusing.Requests, Is.GreaterThanOrEqualTo(2), "the status exchange never reached the remote");
+            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(0));
+        }
+    }
+
     /// <summary>Polls a condition with a short cadence; the caller's token bounds the wait.</summary>
     private static async Task WaitUntilAsync(Func<bool> condition, CancellationToken token, string failure)
     {
@@ -661,13 +712,32 @@ public class PeerBandTests
 
     private record Node(BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config);
 
-    private static Node CreateNode()
+    /// <param name="statusSource">What the node serves over <c>status</c>; defaults to its own settable holder.</param>
+    private static Node CreateNode(IBeaconChainStatusSource? statusSource = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
-        BeaconP2P p2p = new(config, Spec, store, statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+        BeaconP2P p2p = new(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
         return new Node(p2p, statusHolder, config);
+    }
+
+    /// <summary>Answers every <c>status</c> request with an error chunk, so a status exchange with this
+    /// node fails only after the session is already open and identified.</summary>
+    private sealed class RefusingStatusSource : IBeaconChainStatusSource
+    {
+        private int _requests;
+
+        public int Requests => Volatile.Read(ref _requests);
+
+        public StatusMessageV2 CurrentStatus
+        {
+            get
+            {
+                Interlocked.Increment(ref _requests);
+                throw new Eth2ReqRespException("status refused for the test");
+            }
+        }
     }
 }
