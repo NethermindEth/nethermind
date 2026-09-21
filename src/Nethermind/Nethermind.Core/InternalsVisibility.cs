@@ -10,3 +10,6 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Nethermind.Evm")]
 [assembly: InternalsVisibleTo("Nethermind.Trie")]
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Serialization.Rlp")]
+[assembly: InternalsVisibleTo("Nethermind.Network")]
+[assembly: InternalsVisibleTo("Nethermind.TxPool")]

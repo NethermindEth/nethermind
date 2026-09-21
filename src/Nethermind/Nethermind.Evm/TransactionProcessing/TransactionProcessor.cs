@@ -1073,7 +1073,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return opcodeGasPrice;
         }
 
-        protected bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
+        protected virtual bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
             tx.TryCalculatePremiumPerGas(baseFee, out premiumPerGas);
 
         protected virtual TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
@@ -1348,7 +1348,6 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
                 substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
-                TGasPolicy.ClearExecutionGas(ref gasAvailable);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
                 gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
                 goto Complete;
@@ -1399,7 +1398,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
                     substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                     gasAvailable = state.Gas;
-                    TGasPolicy.ClearExecutionGas(ref gasAvailable);
                     WorldState.Restore(snapshot);
                     TGasPolicy createStateOogIntrinsicGasStandard = gas.Standard;
                     gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in createStateOogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
@@ -1486,10 +1484,6 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 ShouldRestoreRipemdTouch = shouldRestoreRipemdTouch,
             };
-            if (spec.ChargeForTopLevelCreate)
-            {
-                TGasPolicy.ClearExecutionGas(ref gasAvailable);
-            }
             WorldState.Restore(snapshot);
             VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, substate.ShouldRestoreRipemdTouch);
             TGasPolicy intrinsicGasStandard = gas.Standard;
@@ -1521,11 +1515,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        // Common EIP-8037 halt-prepare-then-restore sequence shared by FailContractCreate
-        // and the substate.IsError branch of Refund. AggressiveInlining keeps codegen
-        // identical to the prior inline form on both hot paths.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private GasConsumed CompleteEip8037Halt(
+        internal GasConsumed CompleteEip8037Halt(
             Transaction tx,
             IReleaseSpec spec,
             ExecutionOptions opts,
@@ -1548,7 +1539,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             RefundRevertedExecutionStateGas(spec, postHaltIntrinsicStateGas, ref gas);
-            // EIP-8037 restores the reservoir to its frame-entry value; any refilled spill is execution gas and burns on halt.
             long postHaltStateReservoir = postIntrinsicStateReservoir;
             if (refundedTopLevelCreateStateGas > 0)
             {
@@ -1556,6 +1546,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, postHaltIntrinsicStateGas);
+            // EIP-8037: burn execution gas after rollback, including any refilled state-gas spill.
+            TGasPolicy.ClearExecutionGas(ref gas);
             return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, codeInsertExecutionRefund);
         }
 

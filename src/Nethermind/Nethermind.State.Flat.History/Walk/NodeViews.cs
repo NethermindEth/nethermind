@@ -93,6 +93,25 @@ internal static class NodeViews
         return isLeaf ? NodeView.Leaf(nibbles, payload) : NodeView.Extension(nibbles, payload);
     }
 
+    internal static NodeView Prepend(ReadOnlySpan<byte> prefix, in NodeView child)
+    {
+        if (prefix.IsEmpty || prefix.Length > MaxNibbles || child.Kind == NodeViewKind.Empty)
+            throw new ArgumentException("A nonempty path and child are required.", nameof(prefix));
+
+        if (child.Kind == NodeViewKind.Branch)
+        {
+            Span<byte> reference = stackalloc byte[Hash256.Size];
+            child.CopyReferenceTo(reference);
+            return NodeView.Extension(prefix, reference[..child.ReferenceLength]);
+        }
+
+        Span<byte> merged = stackalloc byte[MaxNibbles];
+        prefix.CopyTo(merged);
+        bool isLeaf = DecodeShortNode(child.Rlp, merged[prefix.Length..], out int nibbleCount, out ReadOnlySpan<byte> payload);
+        ReadOnlySpan<byte> path = merged[..(prefix.Length + nibbleCount)];
+        return isLeaf ? NodeView.Leaf(path, payload) : NodeView.Extension(path, payload);
+    }
+
     private static NodeView AsBranch(ReadOnlySpan<byte> rlp, Hash256? knownHash)
     {
         ChildVector children = ChildVector.Rent();

@@ -94,13 +94,15 @@ internal sealed class HistoryWalkRun
 
     public HistoryWalkVerdict Execute(int workers)
     {
-        bool resuming = _metadata.TryGetWalkInProgress(out ulong from, out ulong to) && from == _from && to == _to;
+        bool buildCommitments = _emitterSource is not null;
+        bool resuming = _metadata.TryGetWalkInProgress(out ulong from, out ulong to) && from == _from && to == _to
+            && _metadata.WalkModeMatches(buildCommitments);
         using (SeriesWriter scratch = new(_history))
         {
             if (!resuming)
             {
                 scratch.DeleteAllScratch();
-                _metadata.BeginWalk(_from, _to, WorkItems, _token);
+                _metadata.BeginWalk(_from, _to, WorkItems, buildCommitments, _token);
             }
             else
             {

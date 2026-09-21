@@ -2,19 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -25,13 +21,10 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
 {
     public MainProcessingContext(
         ILifetimeScope rootLifetimeScope,
-        IReceiptConfig receiptConfig,
         IInitConfig initConfig,
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
-        IReadOnlyList<IBlockPreprocessorStep> blockPreprocessorSteps,
-        IBlockTree blockTree,
         IProcessExitSource processExitSource,
         ILogManager logManager)
     {
@@ -53,26 +46,14 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats, IEnumerable<IBlockTracer>, ISpecProvider>((branchProcessor, processingStats, blockTracers, specProvider) =>
-                    new BlockchainProcessor(
-                        blockTree,
-                        branchProcessor,
-                        specProvider,
-                        blockPreprocessorSteps,
-                        worldStateManager.GlobalStateReader,
-                        logManager,
-                        new BlockchainProcessor.Options
-                        {
-                            StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                            DumpOptions = initConfig.AutoDump
-                        },
-                        processingStats,
-                        blockTracers)
-                    {
-                        IsMainProcessor = true // Manual construction because of this flag
-                    })
-                .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
-                .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
+                .AddScoped<BlockchainProcessor.Options, IReceiptConfig>(receiptConfig => new()
+                {
+                    StoreReceiptsByDefault = receiptConfig.StoreReceipts,
+                    DumpOptions = initConfig.AutoDump
+                })
+                .AddScoped<BlockchainProcessor>()
+                .Bind<IBlockchainProcessor, BlockchainProcessor>()
+                .Bind<IBlockProcessingQueue, BlockchainProcessor>()
                 // And finally, to wrap things up.
                 .AddScoped<Components>()
                 ;
