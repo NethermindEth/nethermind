@@ -160,9 +160,9 @@ public class MempoolStatePrewarmerTests
         public CacheType ClearCaches() => default;
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
-        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
+        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
         {
-            CapturedHeader.TrySetResult(nextDelta(CancellationToken.None)?.Header);
+            CapturedHeader.TrySetResult(nextDelta(CancellationToken.None)?.Block.Header);
             return Task.CompletedTask;
         }
 

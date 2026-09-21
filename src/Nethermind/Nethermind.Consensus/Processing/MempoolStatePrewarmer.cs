@@ -145,13 +145,14 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
     /// <remarks>
     /// The prediction is redone every pass so a missed slot moves the warm onto the slot that will actually land,
-    /// rather than leaving the whole gap warming the cells of a block that never arrived.
+    /// rather than leaving the whole gap warming the cells of a block that never arrived. Its spec travels with it, so a
+    /// fork activating inside the gap warms under the spec the predicted block would run rather than the session's.
     /// </remarks>
-    private Block BuildDeltaBlock(BlockHeader parent, Dictionary<AddressAsKey, int> warmedPerSender)
+    private (Block Block, IReleaseSpec Spec) BuildDeltaBlock(BlockHeader parent, Dictionary<AddressAsKey, int> warmedPerSender)
     {
         NextBlockContext next = PrepareNextBlockContext(parent);
         Transaction[] delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender);
-        return new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null));
+        return (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
     }
 
     /// <summary>

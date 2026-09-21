@@ -452,7 +452,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, bool warmSystemAccessLists, CancellationToken token)
+    /// <returns>Whether the system-contract hints were warmed; false when they were requested but the pass did not reach them.</returns>
+    private bool WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, bool warmSystemAccessLists, CancellationToken token)
     {
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists);
         ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
@@ -464,6 +465,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             isPreparation: true,
             transactionCount: delta.Transactions.Length,
             cancellationToken: token);
+
+        // PreWarmCachesParallel joins the address warmer before returning, so the flag is settled here.
+        return addressWarmer.SystemAccessListsWarmed;
     }
 
     private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists)
@@ -479,7 +483,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return (blockState, parallelOptions, addressWarmer);
     }
 
-    public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
+    public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
     {
         if (_preBlockCaches is null || !ShouldPreWarm(spec) || _concurrencyLevel <= 1) return Task.CompletedTask;
         if (head.Hash is not Hash256 headHash) return Task.CompletedTask;
@@ -509,7 +513,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken token)
+    private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken token)
     {
         // _warmedTxHashes is reused across sessions (cleared at session start); only the small marker is per-session.
         WarmMarker marker = new(headHash, spec, _warmedTxHashes);
@@ -521,23 +525,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             ulong? warmedSystemTimestamp = null;
             while (!token.IsCancellationRequested)
             {
-                Block? delta = nextDelta(token);
+                (Block Block, IReleaseSpec Spec)? next = nextDelta(token);
                 if (token.IsCancellationRequested) break;
 
-                if (delta is not null)
+                if (next is (Block delta, IReleaseSpec deltaSpec))
                 {
                     bool warmSystemAccessLists = warmedSystemTimestamp != delta.Timestamp;
                     // An empty delta still warms the system-contract slots and the beneficiary for the predicted block.
                     if (warmSystemAccessLists || delta.Transactions.Length > 0)
                     {
-                        WarmDeltaSync(delta, head, spec, warmSystemAccessLists, token);
+                        bool systemWarmed = WarmDeltaSync(delta, head, deltaSpec, warmSystemAccessLists, token);
                         // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
                         if (token.IsCancellationRequested) break;
-                        warmedSystemTimestamp = delta.Timestamp;
+                        // Retire the slot only once its hints actually landed: the address warmer swallows its failures,
+                        // and re-warming on the next pass is cheaper than leaving the slot cold for the rest of the gap.
+                        if (systemWarmed) warmedSystemTimestamp = delta.Timestamp;
                         foreach (Transaction tx in delta.Transactions)
                         {
                             if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
                         }
+                        // A fork activating inside the gap moves the predicted spec; the marker must name the one warmed.
+                        if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
                         Volatile.Write(ref _warmMarker, marker);
                     }
                 }
@@ -919,8 +927,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private readonly ReadOnlyBlockAccessList? Bal = bal;
         private readonly bool WarmWithdrawals = bal is null && spec.WithdrawalsEnabled && block.Withdrawals?.Length > 0;
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
+        private bool _systemAccessListsWarmed;
 
         public bool HasBal => Bal is not null;
+
+        /// <summary>Whether the system-contract hints were evaluated and warmed; false if the pass was cancelled or faulted.</summary>
+        /// <remarks>Only meaningful after <see cref="Wait"/>, which orders this read after the warming thread's write.</remarks>
+        public bool SystemAccessListsWarmed => Volatile.Read(ref _systemAccessListsWarmed);
 
         public void Wait() => _doneEvent.Wait();
 
@@ -972,9 +985,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             }
                         }
 
-                        // Evaluated here rather than up front: the hints read state, and the only world state with an
-                        // open scope on the speculative path is this env's own.
-                        if (warmSystemAccessLists) WarmupSystemAccessLists(env.SystemAccessLists, scope.WorldState);
+                        if (warmSystemAccessLists)
+                        {
+                            // Evaluated here rather than up front: the hints read state, and the only world state with an
+                            // open scope on the speculative path is this env's own.
+                            WarmupSystemAccessLists(env.SystemAccessLists, scope.WorldState);
+                            Volatile.Write(ref _systemAccessListsWarmed, true);
+                        }
                     }
                     finally
                     {

@@ -767,37 +767,39 @@ public class BlockCachePreWarmerTests
     {
         CountingAccessListHint hint = new();
         using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
-
-        BlocksConfig config = new() { PreWarming = PreWarmMode.BlockAndMempool, PreWarmStateConcurrency = 2 };
-        using BlockCachePreWarmer preWarmer = new(
-            hintScope.Resolve<PrewarmerEnvFactory>(),
-            config,
-            hintScope.Resolve<NodeStorageCache>(),
-            hintScope.Resolve<PreBlockCaches>(),
-            LimboLogs.Instance);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
 
         BlockHeader head = BuildParentHeader();
         Block sameSlot = BuildEmptyChild(head, timestamp: 12);
         Block missedSlot = BuildEmptyChild(head, timestamp: 24);
 
         int passes = 0;
-        using CancellationTokenSource cancellation = new();
-        Task session = preWarmer.StartSpeculativePreWarm(
-            head, Osaka.Instance, generation: 1,
-            _ => Interlocked.Increment(ref passes) <= 5 ? sameSlot : missedSlot,
-            idlePassDelayMs: 1, cancellation.Token);
-        try
-        {
-            Assert.That(SpinWait.SpinUntil(() => hint.Calls >= 2, TimeSpan.FromSeconds(5)), Is.True,
-                "the prediction moving to the next slot must redo the system warm");
-        }
-        finally
-        {
-            cancellation.Cancel();
-            session.GetAwaiter().GetResult();
-        }
+        Assert.That(
+            RunIdleSession(preWarmer, head, _ => (Interlocked.Increment(ref passes) <= 5 ? sameSlot : missedSlot, Osaka.Instance), () => hint.Calls >= 2),
+            Is.True, "the prediction moving to the next slot must redo the system warm");
 
         Assert.That(hint.Calls, Is.EqualTo(2), "the passes sharing a predicted timestamp must reuse the first warm");
+    }
+
+    /// <summary>
+    /// A pass whose hints threw warmed nothing, and the address warmer swallows that failure; retiring the predicted
+    /// slot on it would leave the system cells cold for the rest of the gap.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_APassWhoseHintsFailed_DoesNotRetireThePredictedSlot()
+    {
+        CountingAccessListHint hint = new(failCalls: 1);
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
+
+        BlockHeader head = BuildParentHeader();
+        Block sameSlot = BuildEmptyChild(head, timestamp: 12);
+
+        Assert.That(
+            RunIdleSession(preWarmer, head, _ => (sameSlot, Osaka.Instance), () => hint.Calls >= 2),
+            Is.True, "a pass that never reached its hints must leave the slot open for the next one to retry");
+
+        Assert.That(hint.Calls, Is.EqualTo(2), "once a pass has warmed the slot, the later ones must reuse it");
     }
 
     private const ulong Eip4788HistoryBufferLength = 8191;
@@ -805,8 +807,33 @@ public class BlockCachePreWarmerTests
     private static Block BuildEmptyChild(BlockHeader head, ulong timestamp) =>
         Build.A.Block.WithGasLimit(30_000_000).WithParentHash(head.Hash!).WithTimestamp(timestamp).TestObject;
 
+    private static BlockCachePreWarmer CreatePreWarmerWithHints(ILifetimeScope hintScope) =>
+        new(hintScope.Resolve<PrewarmerEnvFactory>(),
+            new BlocksConfig { PreWarming = PreWarmMode.BlockAndMempool, PreWarmStateConcurrency = 2 },
+            hintScope.Resolve<NodeStorageCache>(),
+            hintScope.Resolve<PreBlockCaches>(),
+            LimboLogs.Instance);
+
+    /// <summary>Runs an idle session over <paramref name="nextDelta"/> until <paramref name="until"/> holds, then joins it.</summary>
+    /// <returns>Whether <paramref name="until"/> held before the wait timed out.</returns>
+    private static bool RunIdleSession(BlockCachePreWarmer preWarmer, BlockHeader head, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, Func<bool> until)
+    {
+        using CancellationTokenSource cancellation = new();
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, nextDelta, idlePassDelayMs: 1, cancellation.Token);
+        try
+        {
+            return SpinWait.SpinUntil(until, TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            cancellation.Cancel();
+            session.GetAwaiter().GetResult();
+        }
+    }
+
     /// <summary>Counts how often the idle loop asks for the hints; the slots it names are irrelevant.</summary>
-    private sealed class CountingAccessListHint : IHasAccessList
+    /// <param name="failCalls">How many of the first calls throw, standing in for a hint that cannot read its state.</param>
+    private sealed class CountingAccessListHint(int failCalls = 0) : IHasAccessList
     {
         private int _calls;
 
@@ -814,7 +841,8 @@ public class BlockCachePreWarmerTests
 
         public AccessList GetAccessList(Block block, IReleaseSpec spec)
         {
-            Interlocked.Increment(ref _calls);
+            if (Interlocked.Increment(ref _calls) <= failCalls) throw new InvalidOperationException("hint state unreadable");
+
             return new AccessList.Builder().AddAddress(TestItem.AddressD).Build();
         }
     }
