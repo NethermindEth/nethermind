@@ -111,7 +111,7 @@ internal static class NodeEndpoints
             status.HeadSlot.ToString(),
             distance.ToString(),
             distance > ReadySyncDistance,
-            ResponseEnvelope.ExecutionOptimistic(),
+            ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
             // EngineDriver swallows engine-call exceptions and reports SYNCING instead (see
             // EngineDriver.Unwrap's remarks) - real EL outages and genuine EL sync are
             // indistinguishable from any signal available here. The one thing this can say

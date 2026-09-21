@@ -73,11 +73,9 @@ public class BeaconApiHostTests
     [SetUp]
     public void ResetSharedState()
     {
-        // Metrics.BeaconChainElInSync is process-wide static state (the orchestrator's own real
-        // signal, see ResponseEnvelope.ExecutionOptimistic) - pin it explicitly per test rather
-        // than depend on whatever the previous test left it as.
-        Metrics.BeaconChainElInSync = 0;
         _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero };
+        _statusHolder.JustifiedRoot = Hash256.Zero;
+        _statusHolder.ExecutionInSync = false;
         _engine.HasAnsweredNewPayload = false;
         _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
     }
@@ -137,14 +135,14 @@ public class BeaconApiHostTests
     }
 
     [Test]
-    public async Task Syncing_is_optimistic_tracks_the_orchestrators_own_el_in_sync_metric()
+    public async Task Syncing_is_optimistic_tracks_the_status_sources_el_in_sync_flag()
     {
-        Metrics.BeaconChainElInSync = 0;
+        _statusHolder.ExecutionInSync = false;
         HttpResponseMessage optimistic = await _client.GetAsync("/eth/v1/node/syncing");
         JsonDocument optimisticBody = await ReadJsonAsync(optimistic);
         Assert.That(optimisticBody.RootElement.GetProperty("data").GetProperty("is_optimistic").GetBoolean(), Is.True, "EL not yet confirmed VALID");
 
-        Metrics.BeaconChainElInSync = 1;
+        _statusHolder.ExecutionInSync = true;
         HttpResponseMessage confirmed = await _client.GetAsync("/eth/v1/node/syncing");
         JsonDocument confirmedBody = await ReadJsonAsync(confirmed);
         Assert.That(confirmedBody.RootElement.GetProperty("data").GetProperty("is_optimistic").GetBoolean(), Is.False, "EL confirmed VALID by the orchestrator");
@@ -361,6 +359,24 @@ public class BeaconApiHostTests
         Assert.That(body.RootElement.GetProperty("data").GetProperty("header").GetProperty("message").GetProperty("slot").GetString(), Is.EqualTo(slot.ToString()));
         // Head/finalized are both still zero: this block (slot 13,200,000) is neither, so finalized must be false.
         Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.False);
+    }
+
+    [Test]
+    public async Task Justified_id_is_503_until_the_driver_advertises_a_justified_root_and_then_resolves_to_it()
+    {
+        HttpResponseMessage unknown = await _client.GetAsync("/eth/v1/beacon/headers/justified");
+        string unknownRaw = await unknown.Content.ReadAsStringAsync();
+        Assert.That(unknown.StatusCode, Is.EqualTo(HttpStatusCode.ServiceUnavailable), unknownRaw);
+
+        const ulong slot = 13_200_001; // epoch 412,500 > FuluForkEpoch (411,392) on BeaconChainSpec.Mainnet
+        Hash256 root = TestRoot(5);
+        _store.PutBlock(root, CreateMinimalBlock(slot));
+        _statusHolder.JustifiedRoot = root;
+
+        HttpResponseMessage justified = await _client.GetAsync("/eth/v1/beacon/headers/justified");
+        string raw = await justified.Content.ReadAsStringAsync();
+        Assert.That(justified.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").GetProperty("root").GetString(), Is.EqualTo(root.ToString()));
     }
 
     [Test]
