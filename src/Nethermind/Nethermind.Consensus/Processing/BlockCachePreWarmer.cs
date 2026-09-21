@@ -1143,26 +1143,33 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     // its index went by would lose its account warm for the whole block. Indices keep their
                     // claim once warmed, so later passes only revisit what is still waiting for a sender.
                     bool[] warmed = ArrayPool<bool>.Shared.Rent(count);
-                    Array.Clear(warmed, 0, count);
-                    // Recipients are known up front, so only the first pass warms them; later passes exist
-                    // solely to pick up senders that had not been recovered yet.
-                    bool warmRecipients = true;
-                    do
+                    // End-of-block cancellation throws out of the passes below; that is the routine exit here,
+                    // not an unexpected one, so the rental is returned on it rather than left to the GC.
+                    try
                     {
-                        WarmingState<(Block Block, bool[] Warmed, bool WarmRecipients)> baseState =
-                            new(envPool, (block, warmed, warmRecipients), parent);
-                        ParallelUnbalancedWork.For(
-                            0,
-                            count,
-                            parallelOptions,
-                            baseState.InitThreadState,
-                            WarmupSenderAt,
-                            WarmingState<(Block, bool[], bool)>.FinallyAction);
-                        warmRecipients = false;
+                        Array.Clear(warmed, 0, count);
+                        // Recipients are known up front, so only the first pass warms them; later passes exist
+                        // solely to pick up senders that had not been recovered yet.
+                        bool warmRecipients = true;
+                        do
+                        {
+                            WarmingState<(Block Block, bool[] Warmed, bool WarmRecipients)> baseState =
+                                new(envPool, (block, warmed, warmRecipients), parent);
+                            ParallelUnbalancedWork.For(
+                                0,
+                                count,
+                                parallelOptions,
+                                baseState.InitThreadState,
+                                WarmupSenderAt,
+                                WarmingState<(Block, bool[], bool)>.FinallyAction);
+                            warmRecipients = false;
+                        }
+                        while (WaitForMoreSenders(block, warmed, count, parallelOptions.CancellationToken));
                     }
-                    while (WaitForMoreSenders(block, warmed, count, parallelOptions.CancellationToken));
-
-                    ArrayPool<bool>.Shared.Return(warmed);
+                    finally
+                    {
+                        ArrayPool<bool>.Shared.Return(warmed);
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -1178,8 +1185,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (state.Payload.Warmed[i]) return state;
 
             Transaction tx = TransactionAt(state.Payload.Block, i);
-            WarmupSender(tx.SenderAddress, state.Payload.WarmRecipients ? tx.To : null, state.Scope!.WorldState);
-            if (tx.SenderAddress is not null) state.Payload.Warmed[i] = true;
+            // One read: a sender arriving between warming and claiming would mark the index warmed without it,
+            // and no later pass revisits a claimed index.
+            Address? sender = tx.SenderAddress;
+            WarmupSender(sender, state.Payload.WarmRecipients ? tx.To : null, state.Scope!.WorldState);
+            if (sender is not null) state.Payload.Warmed[i] = true;
 
             return state;
         }
@@ -1210,19 +1220,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 {
                     if (warmed[i]) continue;
                     if (TransactionAt(block, i).SenderAddress is not null) return true;
-                    lastPending = i;
+                    // Only a block transaction can still be waiting on the background recovery. The pipeline step
+                    // recovers inclusion-list entries itself before prewarming starts, so a null sender there is
+                    // an invalid signature and final — waiting on one would rescan for the rest of the block.
+                    if (i < block.Transactions.Length) lastPending = i;
                 }
 
                 // Nothing left, or the main thread has executed everything still pending — warming an account
                 // it has already read only contends with it. A sender that never arrives exits here too.
-                if (lastPending < 0) return false;
-
-                // MainThreadTxIndex only counts block transactions, so a pending inclusion-list index waits on the
-                // block's last one: those are warmed for a later block, but the caches are handed over once this one
-                // is executed. A block carrying none of its own has no main-thread progress to ride, and there the
-                // token is the only bound — it fires as soon as that (near-empty) block is done.
-                int lastPendingTx = Math.Min(lastPending, block.Transactions.Length - 1);
-                if (lastPendingTx >= 0 && PreWarmer.MainThreadTxIndex >= lastPendingTx) return false;
+                if (lastPending < 0 || PreWarmer.MainThreadTxIndex >= lastPending) return false;
 
                 // SenderArrivalWindow is the only bound on the spin: the threshold disables SpinWait's own
                 // Sleep(1) backoff, so past the window this must sleep instead of taking a core from recovery.

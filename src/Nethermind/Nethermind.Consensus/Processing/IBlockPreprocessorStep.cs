@@ -17,5 +17,17 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         /// <param name="block">Block to change / enrich before processing.</param>
         void RecoverData(Block block);
+
+        /// <summary>
+        /// <see cref="RecoverData"/> for the main processing queue, which may leave part of the work to a
+        /// recovery already running for the same transactions.
+        /// </summary>
+        /// <remarks>
+        /// Only that queue tolerates a sender still arriving: the transaction processor recovers a missing one
+        /// inline and the prewarmer warms transactions as they are recovered. Every other caller — tracing,
+        /// one-time processing — reads transaction fields before execution and so keeps <see cref="RecoverData"/>,
+        /// which returns with every sender recovered.
+        /// </remarks>
+        void RecoverDataForQueuedProcessing(Block block) => RecoverData(block);
     }
 }

@@ -44,6 +44,9 @@ namespace Nethermind.Consensus.Test;
 [TestFixture]
 public class BlockCachePreWarmerTests
 {
+    private static readonly TimeSpan PendingProbe = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan DiscoveryTimeout = TimeSpan.FromSeconds(30);
+
     private IContainer _container;
     private ILifetimeScope _processingScope;
     private Nethermind.Core.Crypto.Hash256 _genesisStateRoot;
@@ -1149,24 +1152,28 @@ public class BlockCachePreWarmerTests
             heavy.SenderAddress = null;
             Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
 
-            using ManualResetEventSlim discoveryEntered = new();
-            Task recovery = Task.Run(() =>
-            {
-                discoveryEntered.Wait(TimeSpan.FromSeconds(10));
-                // The event only says discovery was entered; the pause puts the sender's arrival inside the wait.
-                Thread.Sleep(50);
-                heavy.SenderAddress = sender;
-            });
-
+            using CancellationTokenSource cts = new();
             Task discovery = Task.Run(() =>
-            {
-                discoveryEntered.Set();
-                preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
-            });
+                preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, cts.Token));
 
-            Assert.That(Task.WhenAll(discovery, recovery).Wait(TimeSpan.FromSeconds(30)), Is.True, "the wait must end when the sender lands");
-            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.True,
-                "the candidate must be discovered once its sender arrives");
+            try
+            {
+                // Discovery cannot finish while the sender is missing, so completing here is the regression:
+                // the candidate was dropped rather than waited for. Pending is also the handshake - the sender
+                // below is published with the wait demonstrably in progress.
+                Assert.That(discovery.Wait(PendingProbe), Is.False, "discovery must wait for the sender, not drop the candidate");
+
+                heavy.SenderAddress = sender;
+
+                Assert.That(discovery.Wait(DiscoveryTimeout), Is.True, "the wait must end when the sender lands");
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.True,
+                    "the candidate must be discovered once its sender arrives");
+            }
+            finally
+            {
+                cts.Cancel();
+                discovery.Wait(DiscoveryTimeout);
+            }
         }
     }
 
@@ -1185,25 +1192,27 @@ public class BlockCachePreWarmerTests
                 .SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
             Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
 
-            using ManualResetEventSlim discoveryEntered = new();
-            Task mainThread = Task.Run(() =>
-            {
-                discoveryEntered.Wait(TimeSpan.FromSeconds(10));
-                // The event only says discovery was entered; the pause puts the main thread's arrival inside the wait
-                // rather than before the skip test that opens the candidate.
-                Thread.Sleep(50);
-                preWarmer.OnBeforeTxExecution();
-            });
-
+            using CancellationTokenSource cts = new();
             Task discovery = Task.Run(() =>
-            {
-                discoveryEntered.Set();
-                preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
-            });
+                preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, cts.Token));
 
-            Assert.That(Task.WhenAll(discovery, mainThread).Wait(TimeSpan.FromSeconds(30)), Is.True, "the wait must end when the main thread arrives");
-            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.False,
-                "a candidate the main thread has reached must not be re-executed by discovery");
+            try
+            {
+                // Pending means the wait is in progress, so the main thread below arrives inside it rather than
+                // before the skip test that opens the candidate.
+                Assert.That(discovery.Wait(PendingProbe), Is.False, "discovery must wait for the sender, not drop the candidate");
+
+                preWarmer.OnBeforeTxExecution();
+
+                Assert.That(discovery.Wait(DiscoveryTimeout), Is.True, "the wait must end when the main thread arrives");
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.False,
+                    "a candidate the main thread has reached must not be re-executed by discovery");
+            }
+            finally
+            {
+                cts.Cancel();
+                discovery.Wait(DiscoveryTimeout);
+            }
         }
     }
 

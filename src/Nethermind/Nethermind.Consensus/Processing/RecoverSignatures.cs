@@ -29,12 +29,19 @@ namespace Nethermind.Consensus.Processing
 
         private Recovery? _current;
 
-        public void RecoverData(Block block)
+        public void RecoverData(Block block) => RecoverData(block, mayDeferToRecoveryInFlight: false);
+
+        /// <inheritdoc/>
+        public void RecoverDataForQueuedProcessing(Block block) => RecoverData(block, mayDeferToRecoveryInFlight: true);
+
+        private void RecoverData(Block block, bool mayDeferToRecoveryInFlight)
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
 
             Transaction[] txs = block.Transactions;
-            if (txs.Length != 0 && !IsRecoveryInFlight(txs) && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+            if (txs.Length != 0
+                && !(mayDeferToRecoveryInFlight && IsRecoveryInFlight(txs))
+                && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
             {
                 RecoverData(txs, releaseSpec);
             }
@@ -98,7 +105,17 @@ namespace Nethermind.Consensus.Processing
 
             Recovery recovery = new(this, blockHash, txs, releaseSpec);
             Volatile.Write(ref _current, recovery);
-            ThreadPool.UnsafeQueueUserWorkItem(recovery, preferLocal: false);
+            try
+            {
+                ThreadPool.UnsafeQueueUserWorkItem(recovery, preferLocal: false);
+            }
+            catch
+            {
+                // A slot left pointing at a work item that never runs dedupes every later start for this hash
+                // and pins the block's transactions for the process lifetime.
+                Interlocked.CompareExchange(ref _current, null, recovery);
+                throw;
+            }
         }
 
         /// <summary>Whether the recovery started for <paramref name="txs"/> is still running.</summary>
@@ -106,8 +123,9 @@ namespace Nethermind.Consensus.Processing
         /// <see cref="Block"/>'s constructor copies the transaction array, so only the shared transaction objects
         /// can identify the recovery. The test is a heuristic, not an identity: a payload-improvement build reuses
         /// pooled transaction objects, so a different array of the same length starting with the same transaction
-        /// matches. What makes that safe is the fallbacks, not the test — a block wrongly skipped here recovers its
-        /// senders in <c>TransactionProcessor</c> and its authorities in <c>ProcessDelegations</c>, both inline.
+        /// matches. Only <see cref="RecoverDataForQueuedProcessing"/> consults it, and there a false positive costs
+        /// no more than the inline fallbacks it already relies on — <c>TransactionProcessor</c> for the senders,
+        /// <c>ProcessDelegations</c> for the authorities.
         /// </remarks>
         internal bool IsRecoveryInFlight(Transaction[] txs)
         {

@@ -9,10 +9,14 @@ using NSubstitute;
 using Nethermind.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
+using Autofac;
 
 namespace Nethermind.Consensus.Test;
 
@@ -135,12 +139,52 @@ public class RecoverSignaturesTest
 
         sut.StartRecovery(block.Hash!, txs, ReleaseSpecSubstitute.Create());
 
-        Assert.That(sut.IsRecoveryInFlight(block.Transactions), Is.True);
-        sut.RecoverData(block);
-        Assert.That(txs[0].SenderAddress, Is.Null, "the pipeline step must not recover behind the running recovery");
+        // On a regression the step recovers inline and parks on the gate, so it must not run on the test thread.
+        Task step = Task.Run(() => sut.RecoverDataForQueuedProcessing(block));
+        try
+        {
+            Assert.That(sut.IsRecoveryInFlight(block.Transactions), Is.True);
+            Assert.That(step.Wait(DrainTimeoutMs), Is.True, "the pipeline step must not wait for the running recovery");
+            Assert.That(txs[0].SenderAddress, Is.Null, "the pipeline step must not recover behind the running recovery");
+        }
+        finally
+        {
+            ReleaseAndDrain(gate, sut, txs, step);
+        }
 
-        ReleaseAndDrain(gate, sut, txs);
         Assert.That(txs.Select(static tx => tx.SenderAddress), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+    }
+
+    /// <summary>
+    /// Tracing and one-time processing read transaction fields before execution, so their entry point must
+    /// recover every sender even when the in-flight check matches - which it does on any array of the same
+    /// length starting with the same transaction, as a payload-improvement build produces.
+    /// </summary>
+    [Test]
+    public void RecoverData_WhileAnotherRecoveryIsInFlight_StillRecoversEverySender()
+    {
+        using ManualResetEventSlim gate = new();
+        Transaction shared = Signed(TestItem.PrivateKeyA, nonce: 0);
+        Transaction parked = Signed(TestItem.PrivateKeyC, nonce: 1);
+        Transaction[] inFlight = [shared, parked];
+        Transaction[] traced = [shared, Signed(TestItem.PrivateKeyB, nonce: 2)];
+        Block block = new(Build.A.BlockHeader.TestObject, traced, []);
+        RecoverSignatures sut = CreateSut(gate, parked);
+
+        try
+        {
+            sut.StartRecovery(TestItem.KeccakA, inFlight, ReleaseSpecSubstitute.Create());
+
+            Assert.That(sut.IsRecoveryInFlight(block.Transactions), Is.True, "the collision this guards against");
+
+            sut.RecoverData(block);
+
+            Assert.That(traced[1].SenderAddress, Is.EqualTo(TestItem.AddressB));
+        }
+        finally
+        {
+            ReleaseAndDrain(gate, sut, inFlight);
+        }
     }
 
     [Test]
@@ -151,19 +195,42 @@ public class RecoverSignaturesTest
         Transaction[] resent = SignedTransactions(2);
         RecoverSignatures sut = CreateSut(gate, first[0], first[1]);
 
-        sut.StartRecovery(TestItem.KeccakA, first, ReleaseSpecSubstitute.Create());
-        sut.StartRecovery(TestItem.KeccakA, resent, ReleaseSpecSubstitute.Create());
+        try
+        {
+            sut.StartRecovery(TestItem.KeccakA, first, ReleaseSpecSubstitute.Create());
+            sut.StartRecovery(TestItem.KeccakA, resent, ReleaseSpecSubstitute.Create());
 
-        Assert.That(sut.IsRecoveryInFlight(first), Is.True);
-        Assert.That(sut.IsRecoveryInFlight(resent), Is.False, "the resent payload's own transactions stay with the pipeline");
-
-        ReleaseAndDrain(gate, sut, first);
+            Assert.That(sut.IsRecoveryInFlight(first), Is.True);
+            Assert.That(sut.IsRecoveryInFlight(resent), Is.False, "the resent payload's own transactions stay with the pipeline");
+        }
+        finally
+        {
+            ReleaseAndDrain(gate, sut, first);
+        }
     }
 
+    /// <summary>
+    /// <see cref="RecoverSignatures.StartRecovery"/> is called on the injected instance and the skip is read by
+    /// the pipeline step; were those two different instances the check would always be false and every block
+    /// would be recovered twice, with nothing failing.
+    /// </summary>
+    [Test]
+    public void PipelineStepAndInjectedInstance_AreTheSame()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .Build();
+
+        Assert.That(
+            container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>(),
+            Has.Some.SameAs(container.Resolve<RecoverSignatures>()));
+    }
+
+    private static Transaction Signed(PrivateKey signer, ulong nonce) =>
+        Build.A.Transaction.WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
+
     private static Transaction[] SignedTransactions(int count) =>
-        Enumerable.Range(0, count)
-            .Select(static nonce => Build.A.Transaction.WithNonce((ulong)nonce).SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject)
-            .ToArray();
+        Enumerable.Range(0, count).Select(static nonce => Signed(TestItem.PrivateKeyA, (ulong)nonce)).ToArray();
 
     private static RecoverSignatures CreateSut(ManualResetEventSlim gate, params Transaction[] parked)
     {
@@ -174,10 +241,11 @@ public class RecoverSignaturesTest
         return new RecoverSignatures(ecdsa, specProvider, Substitute.For<ILogManager>());
     }
 
-    /// <summary>Lets the parked recoveries through and waits for the work item, so no thread outlives the gate.</summary>
-    private static void ReleaseAndDrain(ManualResetEventSlim gate, RecoverSignatures sut, Transaction[] txs)
+    /// <summary>Lets the parked recoveries through and waits for everything started, so no thread outlives the gate.</summary>
+    private static void ReleaseAndDrain(ManualResetEventSlim gate, RecoverSignatures sut, Transaction[] txs, Task? started = null)
     {
         gate.Set();
+        started?.Wait(DrainTimeoutMs);
         Assert.That(() => sut.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
     }
 
