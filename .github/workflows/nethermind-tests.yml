@@ -212,11 +212,12 @@ jobs:
             exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
+            echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
             dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
           fi
 
       - name: Upload dumps
-        if: ${{ failure() || cancelled() }}
+        if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-${{ matrix.runner }}-dumps
@@ -318,11 +319,12 @@ jobs:
             exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
+            echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
             dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
           fi
 
       - name: Upload dumps
-        if: ${{ failure() || cancelled() }}
+        if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-${{ matrix.runner }}-dumps
@@ -410,11 +412,12 @@ jobs:
             exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
+            echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
             dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
           fi
 
       - name: Upload dumps
-        if: ${{ failure() || cancelled() }}
+        if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.runner }}-dumps
