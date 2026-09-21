@@ -226,6 +226,20 @@ public class RecoverSignaturesTest
             Has.Some.SameAs(container.Resolve<RecoverSignatures>()));
     }
 
+    /// <summary>
+    /// The prewarmer waits on the recovery the engine handler started, so the tracker it is handed must be that same
+    /// instance; a separate one would report nothing in flight and the prewarmer would treat every late sender as final.
+    /// </summary>
+    [Test]
+    public void RecoveryTrackerAndInjectedInstance_AreTheSame()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .Build();
+
+        Assert.That(container.Resolve<ISenderRecoveryTracker>(), Is.SameAs(container.Resolve<RecoverSignatures>()));
+    }
+
     private static Transaction Signed(PrivateKey signer, ulong nonce) =>
         Build.A.Transaction.WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
 

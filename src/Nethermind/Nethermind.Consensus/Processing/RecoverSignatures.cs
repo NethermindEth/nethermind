@@ -21,8 +21,11 @@ namespace Nethermind.Consensus.Processing
     /// <param name="ecdsa">Needed to recover an address from a signature.</param>
     /// <param name="specProvider">Spec Provider</param>
     /// <param name="logManager">Logging</param>
-    public class RecoverSignatures(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, ILogManager? logManager) : IBlockPreprocessorStep
+    public class RecoverSignatures(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, ILogManager? logManager) : IBlockPreprocessorStep, ISenderRecoveryTracker
     {
+        /// <summary>Senders a recovery worker recovers between two publications of its progress.</summary>
+        private const int ProgressBatch = 32;
+
         private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly ILogger _logger = logManager?.GetClassLogger<RecoverSignatures>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -127,13 +130,18 @@ namespace Nethermind.Consensus.Processing
         /// no more than the inline fallbacks it already relies on — <c>TransactionProcessor</c> for the senders,
         /// <c>ProcessDelegations</c> for the authorities.
         /// </remarks>
-        internal bool IsRecoveryInFlight(Transaction[] txs)
+        internal bool IsRecoveryInFlight(Transaction[] txs) => GetInFlight(txs) is not null;
+
+        /// <inheritdoc/>
+        public ISenderRecoveryProgress? GetInFlight(Transaction[] txs)
         {
             Recovery? current = Volatile.Read(ref _current);
             return current is not null
                 && !current.IsCompleted
                 && current.Transactions.Length == txs.Length
-                && ReferenceEquals(current.Transactions[0], txs[0]);
+                && ReferenceEquals(current.Transactions[0], txs[0])
+                ? current
+                : null;
         }
 
         /// <summary>Recovers senders and EIP-7702 authorities for transactions not yet attached to a <see cref="Block"/>.</summary>
@@ -231,13 +239,29 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec) : IThreadPoolWorkItem
+        /// <summary>
+        /// One block's background recovery, and the progress its consumers wait on. Each worker publishes its count
+        /// every <see cref="ProgressBatch"/> senders and the remainder when it leaves, so the shared counter is touched
+        /// once per batch rather than once per transaction; completion is pulsed under the gate the waiters wait on.
+        /// </summary>
+        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec) : IThreadPoolWorkItem, ISenderRecoveryProgress
         {
+            private readonly object _gate = new();
+            private int _recovered;
             private volatile bool _completed;
 
             public Hash256 BlockHash => blockHash;
             public Transaction[] Transactions => txs;
             public bool IsCompleted => _completed;
+            public int Recovered => Volatile.Read(ref _recovered);
+
+            public bool WaitForCompletion(int millisecondsTimeout)
+            {
+                lock (_gate)
+                {
+                    return _completed || Monitor.Wait(_gate, millisecondsTimeout);
+                }
+            }
 
             void IThreadPoolWorkItem.Execute()
             {
@@ -245,7 +269,19 @@ namespace Nethermind.Consensus.Processing
                 {
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
-                    owner.RecoverData(txs, releaseSpec, skipErrors: true);
+                    if (txs.Length > 3)
+                    {
+                        ParallelUnbalancedWork.For(0, txs.Length, ParallelUnbalancedWork.DefaultOptions, StartWorker, RecoverOne, FinishWorker);
+                    }
+                    else
+                    {
+                        foreach (Transaction tx in txs)
+                        {
+                            owner.TryRecover(tx, releaseSpec);
+                        }
+
+                        Interlocked.Add(ref _recovered, txs.Length);
+                    }
                 }
                 catch (Exception e)
                 {
@@ -256,9 +292,42 @@ namespace Nethermind.Consensus.Processing
                 }
                 finally
                 {
-                    _completed = true;
+                    lock (_gate)
+                    {
+                        _completed = true;
+                        Monitor.PulseAll(_gate);
+                    }
+
                     Interlocked.CompareExchange(ref owner._current, null, this);
                 }
+            }
+
+            private Worker StartWorker() => new(this);
+
+            private void Recover(int i) => owner.TryRecover(txs[i], releaseSpec);
+
+            private static Worker RecoverOne(int i, Worker worker)
+            {
+                Recovery recovery = worker.Recovery;
+                recovery.Recover(i);
+                if (++worker.Pending == ProgressBatch)
+                {
+                    Interlocked.Add(ref recovery._recovered, ProgressBatch);
+                    worker.Pending = 0;
+                }
+
+                return worker;
+            }
+
+            private static void FinishWorker(Worker worker)
+            {
+                if (worker.Pending > 0) Interlocked.Add(ref worker.Recovery._recovered, worker.Pending);
+            }
+
+            private struct Worker(Recovery recovery)
+            {
+                public readonly Recovery Recovery = recovery;
+                public int Pending;
             }
         }
     }
