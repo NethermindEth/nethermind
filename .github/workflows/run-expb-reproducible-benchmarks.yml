@@ -1428,7 +1428,7 @@ jobs:
             fi
           }
 
-          # n/a rather than an empty cell when the series this divides by was not collected.
+          # n/a rather than an empty line when the series this divides by was not collected.
           read_mgas_s() {
             local value
             value="$(grep -E "^${1}MGAS_S=" "${metrics_file}" | head -n 1 | cut -d'=' -f2- || true)"
@@ -3025,7 +3025,7 @@ jobs:
             fi
           }
 
-          # n/a rather than an empty cell when the series this divides by was not collected.
+          # n/a rather than an empty line when the series this divides by was not collected.
           read_mgas_s() {
             local value
             value="$(grep -E "^${1}MGAS_S=" "${metrics_dir}/metrics.env" | head -n 1 | cut -d'=' -f2- || true)"
