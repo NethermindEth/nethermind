@@ -57,6 +57,7 @@ public class ExecutionPayloadTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(error is not null, Is.EqualTo(malformed));
+                Assert.That(decoder.TrackedDecodes, Is.GreaterThanOrEqualTo(count), "Payload decoding must route through the tracked decoder.");
                 Assert.That(factoryCalls, Is.Zero, "Payload decoding must bypass the reusable transaction factory.");
                 if (!malformed)
                 {
@@ -76,14 +77,45 @@ public class ExecutionPayloadTests
     private sealed class FactoryTrackingDecoder(
         Func<Transaction> factory, byte[][] inputs, IRlpDecoder<Transaction> fallback) : TxDecoder<Transaction>(factory)
     {
+        private int _trackedDecodes;
+
+        public int TrackedDecodes => Volatile.Read(ref _trackedDecodes);
+
         protected override Transaction? DecodeInternal(ref RlpReader reader, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             // Background work may still decode through the registry; only track this test's buffers.
             foreach (byte[] input in inputs)
             {
-                if (reader.Data.Overlaps(input)) return base.DecodeInternal(ref reader, behaviors);
+                if (reader.Data.Overlaps(input))
+                {
+                    Interlocked.Increment(ref _trackedDecodes);
+                    return base.DecodeInternal(ref reader, behaviors);
+                }
             }
             return fallback.Decode(ref reader, behaviors);
+        }
+    }
+
+    [Test]
+    public void Factory_tracking_forwards_unrelated_buffers()
+    {
+        byte[] tracked = EncodeTx(TxType.Legacy);
+        byte[] unrelated = tracked.ToArray();
+        int factoryCalls = 0;
+        FactoryTrackingDecoder decoder = new(() =>
+        {
+            factoryCalls++;
+            return new Transaction();
+        }, [tracked], new PayloadTestDecoder());
+        RlpReader reader = new(unrelated);
+
+        Transaction transaction = decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.Nonce, Is.EqualTo(1000), "The fallback decoder must handle the unrelated buffer.");
+            Assert.That(decoder.TrackedDecodes, Is.Zero);
+            Assert.That(factoryCalls, Is.Zero);
         }
     }
 
