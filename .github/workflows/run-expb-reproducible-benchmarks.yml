@@ -1446,7 +1446,6 @@ jobs:
             awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
             if [[ -s "${outside_ms}" ]]; then
               compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_file}"
-              emit_mgas_s "OUTSIDE_" "${outside_ms}" "${paired_count}"
             fi
           elif [[ -s "${ttfb_ms}" ]]; then
             # Without the client feed the unprefixed keys hold the k6 request table, and so does their
@@ -1478,10 +1477,9 @@ jobs:
             echo "-----------------------------------------"
             echo "  Request minus processing"
             echo "-----------------------------------------"
-            grep "^OUTSIDE_" "${metrics_file}" | grep -v "^OUTSIDE_MGAS_S=" | while IFS='=' read -r key val; do
+            grep "^OUTSIDE_" "${metrics_file}" | while IFS='=' read -r key val; do
               printf "  %-10s %s ms\n" "${key#OUTSIDE_}" "${val}"
             done
-            printf "  %-10s %s MGas/s\n" "MGAS_S" "$(read_mgas_s "OUTSIDE_")"
           fi
           echo "========================================="
           echo ""
@@ -1856,18 +1854,19 @@ jobs:
               row="${row}$(group_cells "${current_metrics}" "${processing_master}" "OUTSIDE_" "OUTSIDE_" "${metrics[$i]}")"
               append_line "${row}"
             done
-            # One gas total over each group's own time, so the row is built like the timing rows above.
+            # The same gas over each window's own time. The third group is a residue rather than a
+            # window gas is delivered in, so a throughput over it would not describe anything.
             row="| MGas/s |"
             row="${row}$(group_cells "${current_metrics}" "${request_master}" "${request_prefix}" "${master_request_prefix}" "MGAS_S")"
             row="${row}$(group_cells "${current_metrics}" "${processing_master}" "${processing_prefix}" "" "MGAS_S")"
-            row="${row}$(group_cells "${current_metrics}" "${processing_master}" "OUTSIDE_" "OUTSIDE_" "MGAS_S")"
+            row="${row} | | |"
             append_line "${row}"
 
             # The decomposition is a property of the columns, so it is printed whenever this run has
             # all three; the delta direction below needs a baseline to compare against.
             if [[ "${current_source}" == "sse" ]]; then
               append_blank
-              append_line "_Each MGas/s divides one gas total by its own group's time over the same payloads, so the reciprocals add: ms per gas of a request is ms per gas of processing plus ms per gas outside it._"
+              append_line "_Both MGas/s figures divide the same gas total by their own group's time over the same payloads: the request figure is the throughput a consensus client sees, the processing figure the client's own._"
             fi
 
             if [[ "${master_source}" == "sse" ]]; then
@@ -3044,7 +3043,6 @@ jobs:
             awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
             if [[ -s "${outside_ms}" ]]; then
               compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_dir}/metrics.env"
-              emit_mgas_s "OUTSIDE_" "${outside_ms}" "${paired_count}"
             fi
           elif [[ -s "${ttfb_ms}" ]]; then
             # Without the client feed the unprefixed keys hold the k6 request table, and so does their
@@ -3076,10 +3074,9 @@ jobs:
             echo "-----------------------------------------"
             echo "  Request minus processing"
             echo "-----------------------------------------"
-            grep "^OUTSIDE_" "${metrics_dir}/metrics.env" | grep -v "^OUTSIDE_MGAS_S=" | while IFS='=' read -r key val; do
+            grep "^OUTSIDE_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
               printf "  %-10s %s ms\n" "${key#OUTSIDE_}" "${val}"
             done
-            printf "  %-10s %s MGas/s\n" "MGAS_S" "$(read_mgas_s "OUTSIDE_")"
           fi
           echo "========================================="
           echo ""
