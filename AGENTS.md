@@ -1,6 +1,6 @@
 # AGENTS instructions
 
-This guide helps to get started with the Nethermind Ethereum execution client repository. It covers the coding guidelines, testing, and the PR workflow.
+This guide helps to get started with the Nethermind Ethereum execution client repository. It covers the repo layout, coding guidelines, testing, and the PR workflow.
 
 ## Repo structure
 
