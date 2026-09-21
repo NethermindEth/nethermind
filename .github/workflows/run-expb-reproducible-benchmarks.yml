@@ -1390,7 +1390,7 @@ jobs:
           if [[ -s "${client_ms}" ]]; then echo "SOURCE=sse"; else echo "SOURCE=k6"; fi >> "${metrics_file}"
 
           # The k6 table carries the gas used per payload and is parsed whichever series is primary, so
-          # each of the three reported time series gets an MGas/s of its own.
+          # the request and the processing series each get an MGas/s of their own.
           ttfb_table="${RUNNER_TEMP}/expb-ttfb-table.txt"
           ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms.txt"
           ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas.txt"
@@ -1410,8 +1410,8 @@ jobs:
 
           # Throughput over one per-payload time series: the shared gas total over that series' total.
           # Row i of the k6 table is block i of the feed, and the feed reports a block when the next
-          # payload is requested, so it can lack the last one; the limit holds every series to the same
-          # payloads, which is what keeps ms-per-gas additive across request = processing + outside.
+          # payload is requested, so it can lack the last one; the limit holds both series to the same
+          # payloads, so the two figures divide one shared gas total and are directly comparable.
           mgas_s_over() {
             awk -v limit="${2:-0}" '
               NR == FNR { gas[NR] = $1; paired = NR; next }
@@ -1862,9 +1862,9 @@ jobs:
             row="${row} | | |"
             append_line "${row}"
 
-            # The decomposition is a property of the columns, so it is printed whenever this run has
-            # all three; the delta direction below needs a baseline to compare against.
-            if [[ "${current_source}" == "sse" ]]; then
+            # Both figures are a property of the columns, not of the comparison, so the note is
+            # printed whenever the run has them; the delta direction below needs a baseline.
+            if [[ -n "$(load_metric "${current_metrics}" "MGAS_S")" && -n "$(load_metric "${current_metrics}" "TTFB_MGAS_S")" ]]; then
               append_blank
               append_line "_Both MGas/s figures divide the same gas total by their own group's time over the same payloads: the request figure is the throughput a consensus client sees, the processing figure the client's own._"
             fi
@@ -2987,7 +2987,7 @@ jobs:
           if [[ -s "${client_ms}" ]]; then echo "SOURCE=sse"; else echo "SOURCE=k6"; fi >> "${metrics_dir}/metrics.env"
 
           # The k6 table carries the gas used per payload and is parsed whichever series is primary, so
-          # each of the three reported time series gets an MGas/s of its own.
+          # the request and the processing series each get an MGas/s of their own.
           ttfb_table="${RUNNER_TEMP}/expb-ttfb-table-${key}.txt"
           ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms-${key}.txt"
           ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas-${key}.txt"
@@ -3007,8 +3007,8 @@ jobs:
 
           # Throughput over one per-payload time series: the shared gas total over that series' total.
           # Row i of the k6 table is block i of the feed, and the feed reports a block when the next
-          # payload is requested, so it can lack the last one; the limit holds every series to the same
-          # payloads, which is what keeps ms-per-gas additive across request = processing + outside.
+          # payload is requested, so it can lack the last one; the limit holds both series to the same
+          # payloads, so the two figures divide one shared gas total and are directly comparable.
           mgas_s_over() {
             awk -v limit="${2:-0}" '
               NR == FNR { gas[NR] = $1; paired = NR; next }
