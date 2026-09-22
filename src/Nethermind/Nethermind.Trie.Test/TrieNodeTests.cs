@@ -37,6 +37,7 @@ public class TrieNodeTests
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
         [Values(0, 2, 3, 8, 15)] int dirtyBranchCount,
         [Values(0, 3, 4, 16)] int dirtyChildWidth,
+        [Values(false, true)] bool mixChildKinds,
         [Values(false, true)] bool canBeParallel)
     {
         AssertDirtyChildLengthClass(dirtyChildWidth);
@@ -69,22 +70,28 @@ public class TrieNodeTests
         for (int i = 1; i <= dirtyBranchCount; i++)
         {
             int index = (changedIndex + i) % TrieNode.BranchesCount;
-            TrieNode branch = BuildDirtyChild(index, dirtyChildWidth);
-            dirtyChildren.Add(branch);
-            restored.SetChild(index, branch);
-            expected.SetChild(index, branch);
+            // A parent holding both kinds is what lets a leaf join a batch the branches opened.
+            int width = mixChildKinds && (i & 1) == 1 ? 0 : dirtyChildWidth;
+            // Separate instances per side. Sharing them would let the first encoding fix every hash
+            // and the second reuse it, and would keep the fresh parent off the paths taken by a
+            // parent that has no RLP yet.
+            TrieNode restoredChild = BuildDirtyChild(index, width);
+            TrieNode expectedChild = BuildDirtyChild(index, width);
+            dirtyChildren.Add(restoredChild);
+            dirtyChildren.Add(expectedChild);
+            restored.SetChild(index, restoredChild);
+            expected.SetChild(index, expectedChild);
         }
 
         CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
-        CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
         Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
         AssertChildHashesMatchScalarKeccak(dirtyChildren);
     }
 
     /// <remarks>
-    /// The two encodings above share their child nodes, so a wrong child hash reaches both and
-    /// cancels out. Only a comparison against a separately computed digest can see it, which is
-    /// what makes this the assertion that covers the batch kernels.
+    /// The encodings above could still agree on a wrong hash, so only a comparison against a
+    /// separately computed digest covers the batch kernels.
     /// </remarks>
     private static void AssertChildHashesMatchScalarKeccak(List<TrieNode> children)
     {
