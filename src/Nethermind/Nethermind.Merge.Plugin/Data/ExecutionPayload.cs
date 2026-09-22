@@ -243,6 +243,41 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return computation;
     }
 
+    /// <summary>The transactions-trie root of one payload, computed once by whichever thread reaches it first.</summary>
+    /// <remarks>
+    /// Queued on the thread pool so it overlaps the serial work that precedes <see cref="TryGetBlock"/>, and claimed
+    /// by the consumer when the pool has not picked it up yet. The root costs less than a wait for a queued work item
+    /// does on a pool still busy with the previous block, and the thread that waits is the engine API's request
+    /// thread: whoever arrives first does the work, the other blocks only for as long as it takes.
+    /// Nested rather than a file of its own because the stateless executor compiles this file by link, and a new
+    /// file would have to be listed in that project too.
+    /// </remarks>
+    /// <param name="encodedTransactions">The payload's transactions, which must not be mutated once this is started.</param>
+    internal sealed class TxRootComputation(byte[][] encodedTransactions)
+    {
+        private readonly Lock _lock = new();
+        private Hash256? _root;
+
+        /// <summary>Computes the root, or returns at once when another thread has already computed it.</summary>
+        /// <remarks>A thread that arrives while another is computing blocks until that one is done.</remarks>
+        internal void Run()
+        {
+            if (Volatile.Read(ref _root) is not null) return;
+
+            lock (_lock)
+            {
+                _root ??= TxTrie.CalculateRoot(encodedTransactions);
+            }
+        }
+
+        /// <summary>The root, computed here when no thread has started it.</summary>
+        internal Hash256 GetResult()
+        {
+            Run();
+            return _root!;
+        }
+    }
+
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
