@@ -134,6 +134,25 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_filter_reports_reversed_range_before_missing_state()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong headNumber = blockchain.BlockTree.Head!.Number;
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(false);
+        using ILifetimeScope scope = blockchain.Container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IBlockchainBridge>(bridge).AddSingleton<TraceModuleFactory>());
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
+            new { fromBlock = $"0x{headNumber:x}", toBlock = $"0x{headNumber - 2:x}" });
+        Assert.That(response, Is.EqualTo(
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidInput},\"message\":\"From block number: {headNumber} is greater than to block number {headNumber - 2}\"}},\"id\":67}}"));
+    }
+
+    [Test]
     public async Task Tx_positions_are_fine()
     {
         Context context = new();
