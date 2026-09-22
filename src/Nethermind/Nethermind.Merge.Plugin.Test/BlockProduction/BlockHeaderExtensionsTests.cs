@@ -12,24 +12,14 @@ namespace Nethermind.Merge.Plugin.Test.BlockProduction;
 [TestFixture]
 public class BlockHeaderExtensionsTests
 {
-    [Test]
-    public void GenerateSimulatedPayload_advances_parent_slot_number()
+    [TestCase(7UL, 8UL)]
+    [TestCase(null, null)]
+    public void GenerateSimulatedPayload_advances_parent_slot_number(ulong? parentSlotNumber, ulong? expected)
     {
-        BlockHeader parent = Build.A.BlockHeader.WithSlotNumber(7).TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithSlotNumber(parentSlotNumber).TestObject;
 
         PayloadAttributes attributes = parent.GenerateSimulatedPayload();
 
-        Assert.That(attributes.SlotNumber, Is.EqualTo(8));
-    }
-
-    [Test]
-    public void GenerateSimulatedPayload_without_parent_slot_stays_without_slot()
-    {
-        BlockHeader parent = Build.A.BlockHeader.TestObject;
-        parent.SlotNumber = null;
-
-        PayloadAttributes attributes = parent.GenerateSimulatedPayload();
-
-        Assert.That(attributes.SlotNumber, Is.Null);
+        Assert.That(attributes.SlotNumber, Is.EqualTo(expected));
     }
 }
