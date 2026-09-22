@@ -405,14 +405,23 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         }
     }
 
-    private static void FilterTrace(ParityLikeTxTrace trace) => trace.Action = null;
+    // A reward entry survives FilterRewards only when rewards are requested; its action is the reward itself, as in live replay.
+    private static void FilterTrace(ParityLikeTxTrace trace)
+    {
+        if (!IsReward(trace))
+        {
+            trace.Action = null;
+        }
+    }
+
+    private static bool IsReward(ParityLikeTxTrace trace) => trace.TransactionHash is null && trace.Action?.Type == "reward";
 
     private static void FilterRewards(List<ParityLikeTxTrace> traces)
     {
         for (int i = traces.Count - 1; i >= 0; i--)
         {
             ParityLikeTxTrace trace = traces[i];
-            if (trace.TransactionHash is null && trace.Action?.Type == "reward")
+            if (IsReward(trace))
             {
                 traces.RemoveAt(i);
             }
