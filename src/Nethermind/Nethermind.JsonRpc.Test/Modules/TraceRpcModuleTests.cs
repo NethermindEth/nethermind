@@ -83,6 +83,27 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_filter_from_genesis_skips_only_genesis(
+        [Values("earliest", "0x0")] string fromBlock, [Values] bool streaming, [Values] bool genesisOnly)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        string toBlock = genesisOnly ? "0x0" : "latest";
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", new { fromBlock, toBlock });
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result), Is.True, response);
+        if (genesisOnly) Assert.That(result.GetArrayLength(), Is.Zero);
+        else
+        {
+            string expected = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", new { fromBlock = "0x1", toBlock });
+            Assert.That(response, Is.EqualTo(expected));
+            Assert.That(result.GetArrayLength(), Is.GreaterThan(0));
+        }
+    }
+
+    [Test]
     public async Task Trace_filter_returns_error_for_missing_state(
         [Values] bool streaming, [Values(0, 1, 2)] int missingStateOffset)
     {

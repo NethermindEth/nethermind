@@ -281,6 +281,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockParameter toBlock = traceFilterForRpc.ToBlock ?? BlockParameter.Latest;
 
             List<(Block Block, BlockHeader Parent)> blocks = [];
+            BlockHeader? previous = null;
             foreach (SearchResult<Block> blockSearch in blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock))
             {
                 if (blockSearch.IsError)
@@ -288,24 +289,33 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
                 }
                 Block block = blockSearch.Object!;
+                if (block.IsGenesis) continue;
                 if (!blockchainBridge.HasStateForBlock(block.Header))
                 {
                     return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
                 }
 
-                SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
-                if (parentSearch.IsError)
+                BlockHeader parentHeader;
+                if (previous is not null && previous.Hash == block.Header.ParentHash)
                 {
-                    return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
+                    parentHeader = previous;
                 }
-
-                BlockHeader parentHeader = parentSearch.Object!;
-                if (!blockchainBridge.HasStateForBlock(parentHeader))
+                else
                 {
-                    return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentHeader);
+                    SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+                    if (parentSearch.IsError)
+                    {
+                        return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
+                    }
+                    parentHeader = parentSearch.Object!;
+                    if (!blockchainBridge.HasStateForBlock(parentHeader))
+                    {
+                        return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentHeader);
+                    }
                 }
 
                 blocks.Add((block, parentHeader));
+                previous = block.Header;
             }
 
             ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
