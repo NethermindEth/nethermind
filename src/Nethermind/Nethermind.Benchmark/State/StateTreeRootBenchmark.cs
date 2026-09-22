@@ -19,6 +19,14 @@ namespace Nethermind.Benchmarks.State;
 /// two-block (&gt;= 136-byte) population in this tree is branch nodes, not leaves (see
 /// <see cref="GenerateAccount"/> for the measurement).
 /// </summary>
+/// <remarks>
+/// The timed region covers the <c>Set</c> loop as well as the root walk. On a 9950X at 500 dirty
+/// accounts it reports about 1.8 ms, of which the walk is about 0.35 ms; trie descent and node
+/// resolution account for the rest. Read it as an A/B between arms, not as a root-walk timing. The
+/// writes cannot move to <see cref="IterationSetup"/> as it stands, because BenchmarkDotNet invokes
+/// the method several times per iteration and a repeated write leaves the nodes clean; splitting
+/// them out needs <c>UnrollFactor = 1</c> and a per-invocation variant index.
+/// </remarks>
 [MemoryDiagnoser]
 [NoTieredCompilation]
 public class StateTreeRootBenchmark
