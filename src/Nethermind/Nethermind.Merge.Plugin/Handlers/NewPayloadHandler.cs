@@ -33,8 +33,6 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-using ValidationCompletion = TaskCompletionSource<(NewPayloadHandler.ValidationResult? validationResult, string? validationMessage)>;
-
 /// <summary>
 /// Provides an execution payload handler as defined in Engine API
 /// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
@@ -516,15 +514,23 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
+        ValidationCompletion? completion = null;
+
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
         {
             // Cache terminal outcomes only; SYNCING isn't terminal (we haven't processed the block yet).
             if (result is ValidationResult.Invalid or ValidationResult.Valid or ValidationResult.InclusionListUnsatisfied)
+            {
                 _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest));
+                // The verdict is given before the commit, so the block can be gone without committing by the time
+                // this runs. Whichever of the two marks the completion first, the other takes the entry back out.
+                if (completion?.MarkAnswerCached() == false) _latestBlocks?.Delete(block.GetOrCalculateHash());
+            }
             return result;
         }
 
         (ValidationResult? result, string? validationMessage) = (null, null);
+        ValidationResult terminalResult = ValidationResult.Syncing;
 
         // If duplicate, reuse results
         if (_latestBlocks is not null
@@ -544,10 +550,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
-        ValidationCompletion blockProcessed =
-            _blockValidationTasks.GetOrAdd(
-                block.Hash!,
-                static (k) => new(TaskCreationOptions.RunContinuationsAsynchronously));
+        ValidationCompletion blockProcessed = _blockValidationTasks.GetOrAdd(block.Hash!, static _ => new());
+        completion = blockProcessed;
 
         try
         {
@@ -572,7 +576,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 if (blockProcessed.Task.IsFaulted) await blockProcessed.Task;
                 if (blockProcessed.Task.IsCompleted)
                 {
-                    blockProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    blockProcessed = new();
+                    completion = blockProcessed;
                     _blockValidationTasks[block.Hash!] = blockProcessed;
                 }
             }
@@ -628,12 +633,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         finally
         {
-            // Blocks that exit before the processing queue publishes BlockRemoved would otherwise
-            // leave their completion source pinned in _blockValidationTasks forever.
+            // Cached before the completion is dropped, so a block that fails to commit meanwhile still has
+            // something to hand the entry back through. Afterwards the removal deletes the entry directly.
+            // Dropping it also keeps blocks that exit before the queue publishes BlockRemoved - a timeout, a
+            // throw - from pinning their completion in _blockValidationTasks forever.
+            terminalResult = TryCacheResult(result ?? ValidationResult.Syncing, validationMessage);
             _blockValidationTasks.TryRemove(block.Hash!, out _);
         }
 
-        return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
+        return (terminalResult, validationMessage);
     }
 
     /// <summary>
@@ -644,7 +652,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </summary>
     private void GetProcessingQueueOnBlockExecuted(object? o, BlockHashEventArgs e)
     {
-        if (!_blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed)) return;
+        // Left in place rather than taken: the request has its answer but not its cache entry yet, and a commit
+        // that fails next needs the completion to stop that entry from standing.
+        if (!_blockValidationTasks.TryGetValue(e.BlockHash, out ValidationCompletion? blockProcessed)) return;
 
         ValidationResult result = e.ProcessingResult == ProcessingResult.InclusionListUnsatisfied
             ? ValidationResult.InclusionListUnsatisfied
@@ -668,14 +678,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
     {
+        bool uncommitted = LeftTheQueueUncommitted(e.ProcessingResult);
         if (!_blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed))
         {
-            // Answered on the verdict already, or nobody was waiting. A failure after the verdict - the commit or the
-            // chain update threw - must not leave that VALID cached as terminal: the CL's retry would be answered from
-            // the cache without the block ever being queued again. Evicted, the retry re-processes it.
-            if (e.ProcessingResult is not (ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied)) _latestBlocks?.Delete(e.BlockHash);
+            // The request is done and has taken its completion with it, so its answer is cached by now. A block that
+            // never committed must not leave that standing: the CL's retry would be answered from the cache without
+            // the block ever being queued again. Deleted, the retry re-processes it.
+            if (uncommitted) _latestBlocks?.Delete(e.BlockHash);
             return;
         }
+
+        // The request is still between its verdict and its cache write. Whichever of the two marks the completion
+        // first, the other takes the entry out, so no answer for an uncommitted block can survive either order.
+        if (uncommitted && blockProcessed.MarkBlockUncommitted()) _latestBlocks?.Delete(e.BlockHash);
 
         if (e.ProcessingResult == ProcessingResult.Exception)
         {
@@ -781,5 +796,35 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     }
 
     // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
+    /// <summary>Whether a block left the processing queue without committing.</summary>
+    /// <remarks>
+    /// A block judged invalid did leave a terminal answer behind and that answer is worth caching; one whose commit,
+    /// chain update or enqueue threw left none, however its execution had been judged.
+    /// </remarks>
+    private static bool LeftTheQueueUncommitted(ProcessingResult result) =>
+        result is ProcessingResult.Exception or ProcessingResult.QueueException or ProcessingResult.MissingBlock;
+
+    /// <summary>One request's completion, and the arbiter of whether its answer may stay cached.</summary>
+    /// <remarks>
+    /// The verdict reaches the request before the block is committed, so a commit that then fails races the
+    /// request's own cache write. Both mark here, and whichever arrives second finds the other's mark and deletes
+    /// the entry, so an uncommitted block never leaves a terminal answer for the next request to be answered from.
+    /// </remarks>
+    private sealed class ValidationCompletion()
+        : TaskCompletionSource<(ValidationResult? validationResult, string? validationMessage)>(TaskCreationOptions.RunContinuationsAsynchronously)
+    {
+        private const int Cached = 1;
+        private const int Uncommitted = 2;
+        private int _state;
+
+        /// <summary>Marks the answer as cached.</summary>
+        /// <returns><c>false</c> when the block has already failed to commit, so the entry must be deleted.</returns>
+        public bool MarkAnswerCached() => Interlocked.Exchange(ref _state, Cached) != Uncommitted;
+
+        /// <summary>Marks the block as gone without committing.</summary>
+        /// <returns><c>true</c> when the answer is already cached, so the entry must be deleted.</returns>
+        public bool MarkBlockUncommitted() => Interlocked.Exchange(ref _state, Uncommitted) == Cached;
+    }
+
     private readonly record struct CachedPayloadResult(ValidationResult Result, string? Message, ValueHash256 InclusionListDigest);
 }

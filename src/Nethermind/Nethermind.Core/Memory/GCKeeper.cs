@@ -55,7 +55,7 @@ public class GCKeeper : IDisposable
             _pendingGcCts?.Cancel();
             region = _region;
         }
-        region?.Dispose();
+        region?.ForceRelease();
     }
 
     /// <summary>Cancels the delayed collection if it has not yet been claimed for execution.</summary>
@@ -83,6 +83,10 @@ public class GCKeeper : IDisposable
             Interlocked.Increment(ref _payloadsSinceDecommit);
             if (_region is not null)
             {
+                // A payload that starts while the previous one is still inside its region shares that region rather
+                // than running unprotected: it then ends when the last payload leaves, not when the first returns.
+                // The newcomer keeps a lease of its own so its scheduler pause and its collection stay its own.
+                if (_region.TryAddLease()) return new SharedRegionLease(_region, region);
                 if (_logger.IsDebug) _logger.Debug("No-GC region entry skipped: previous entry or region is still active.");
                 return region;
             }
@@ -115,6 +119,19 @@ public class GCKeeper : IDisposable
         private bool _released;
         private bool _starting;
         private bool _active;
+        private int _leases = 1;
+
+        /// <summary>Takes a lease for a payload that starts while this region is open.</summary>
+        /// <returns><c>false</c> when the region is already on its way out and can cover nothing.</returns>
+        public bool TryAddLease()
+        {
+            lock (_stateLock)
+            {
+                if (_released) return false;
+                _leases++;
+                return true;
+            }
+        }
 
         public void Execute()
         {
@@ -153,13 +170,21 @@ public class GCKeeper : IDisposable
             else keeper.ReleaseRegion(this);
         }
 
-        public void Dispose()
+        public void Dispose() => Release();
+
+        /// <summary>Ends the region whatever is still leased, for the keeper's own shutdown.</summary>
+        public void ForceRelease() => Release(force: true);
+
+        public void Release(bool force = false)
         {
             bool end;
             bool release;
             lock (_stateLock)
             {
                 if (_released) return;
+                if (force) _leases = 0; else _leases--;
+                // Still covering another payload: the region is not this lease's to end.
+                if (_leases > 0) return;
                 _released = true;
                 end = _active;
                 _active = false;
@@ -193,6 +218,21 @@ public class GCKeeper : IDisposable
             {
                 keeper.ReleaseRegion(this);
             }
+        }
+    }
+
+    /// <summary>One overlapping payload's hold on a region another payload admitted.</summary>
+    /// <param name="shared">The region covering this payload, released when the last payload in it is done.</param>
+    /// <param name="own">This payload's own region, never admitted, carrying its scheduler pause and its collection.</param>
+    private sealed class SharedRegionLease(NoGCRegion shared, NoGCRegion own) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            shared.Release();
+            own.Dispose();
         }
     }
 

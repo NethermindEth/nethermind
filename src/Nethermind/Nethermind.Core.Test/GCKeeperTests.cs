@@ -305,6 +305,60 @@ public class GCKeeperTests
         Assert.That(runtime.Collections, Is.EqualTo(new[] { (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No) }));
     }
 
+    // A payload can start while the previous one is still inside its region: newPayload answers before its block
+    // is committed and keeps the region for that commit. The region has to cover both and end when the last one
+    // leaves, otherwise the newcomer runs with collections resumed under it.
+    [Test]
+    public void Overlapping_payload_is_covered_until_the_last_one_leaves()
+    {
+        List<IThreadPoolWorkItem> queued = [];
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+
+        IDisposable first = keeper.TryStartNoGCRegion();
+        queued[0].Execute();
+        Assert.That(runtime.IsActive, Is.True);
+
+        IDisposable second = keeper.TryStartNoGCRegion();
+        first.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.IsActive, Is.True, "the region still covers the payload inside it");
+            Assert.That(runtime.Ends, Is.Zero);
+            Assert.That(queued, Has.Count.EqualTo(1), "the overlapping payload shares the region rather than admitting another");
+        }
+
+        second.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.IsActive, Is.False);
+            Assert.That(runtime.Ends, Is.EqualTo(1));
+        }
+    }
+
+    // Shutdown ends the region whatever is still inside it.
+    [Test]
+    public void Shutdown_ends_a_shared_region()
+    {
+        List<IThreadPoolWorkItem> queued = [];
+        RegionRuntime runtime = new();
+        GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+
+        using IDisposable first = keeper.TryStartNoGCRegion();
+        queued[0].Execute();
+        using IDisposable second = keeper.TryStartNoGCRegion();
+
+        keeper.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.IsActive, Is.False);
+            Assert.That(runtime.Ends, Is.EqualTo(1));
+        }
+    }
+
     private static GCKeeper CreateRegionKeeper(RegionRuntime runtime, Action<IThreadPoolWorkItem> queue)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();

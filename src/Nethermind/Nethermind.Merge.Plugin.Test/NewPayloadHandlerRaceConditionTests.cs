@@ -347,6 +347,60 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     }
 
     /// <summary>
+    /// The verdict is published before the block is committed, so a commit that then fails races the request's own
+    /// cache write. Whichever of the two lands first, the answer must not stay cached: a block that never committed
+    /// has to be processed again when the consensus client re-sends it, not answered VALID from the cache while
+    /// every forkchoice update says SYNCING.
+    /// </summary>
+    [Test, MaxTime(10_000)]
+    public async Task ValidateBlockAndProcess_does_not_leave_a_verdict_cached_for_a_block_that_never_commits()
+    {
+        Block block = Build.A.Block
+            .WithParentHash(TestItem.KeccakC)
+            .WithNumber(1)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .TestObject;
+        block.Header.IsPostMerge = true;
+
+        TaskCompletionSource firstEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                if (!firstEnqueued.TrySetResult()) secondEnqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 5_000);
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // The verdict, and then a commit that throws: the request is answered VALID either way.
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.Exception, new Exception("commit failed")));
+
+        ResultWrapper<PayloadStatusV1> answer = await request.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(answer.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(ExecutionPayload.Create(block));
+        await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        await retry.WaitAsync(TimeSpan.FromSeconds(10));
+
+        await processingQueue.Received(2).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    /// <summary>
     /// A payload whose parent was answered VALID a moment ago finds the parent not yet marked processed. It must wait
     /// for the parent to leave the queue rather than be inserted for beacon sync and answered SYNCING.
     /// </summary>
