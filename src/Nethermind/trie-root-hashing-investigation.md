@@ -1,33 +1,10 @@
-Reth v2.0.0 trie investigation and first port
-==========================================
+Trie root hashing investigation
+===============================
 
 The target workload is Nethermind's flat-state EXPB Fusaka benchmark, triggered by
-the `performance is good` PR label. This prototype ports Reth's two-nibble root
-hashing partition into the existing Patricia trie. It does **not** implement the
-complete persistent sparse-trie cache or concurrent execution/update pipeline,
-and there is no measured Fusaka improvement for this patch yet.
-
-Reth's [announcement](https://www.paradigm.xyz/writing/releasing-reth-2-0) describes
-1–2 ms of final state-root work after updates have already been processed alongside
-execution. It is not a measurement of all trie work for the block.
-
-The v2.0.0 sources show four relevant mechanisms:
-
-- [SparseTrieCacheTask](https://github.com/paradigmxyz/reth/blob/v2.0.0/crates/engine/tree/src/tree/payload_processor/sparse_trie.rs)
-  consumes execution updates, schedules missing proofs, applies updates, and
-  opportunistically computes subtries before the final root. It records total
-  task time and final root/update time separately.
-- [PreservedSparseTrie](https://github.com/paradigmxyz/reth/blob/v2.0.0/crates/engine/tree/src/tree/payload_processor/preserved_sparse_trie.rs)
-  retains a trie anchored to the previous state root. A parent-root mismatch
-  clears its contents; invalid/cancelled payload handling also clears state.
-- [SparseStateTrie](https://github.com/paradigmxyz/reth/blob/v2.0.0/crates/trie/sparse/src/state.rs)
-  retains hot account and storage paths with bounded LFU tracking and prunes
-  other paths to hash references.
-- [ParallelSparseTrie](https://github.com/paradigmxyz/reth/blob/v2.0.0/crates/trie/sparse/src/parallel.rs)
-  and the [arena implementation](https://github.com/paradigmxyz/reth/blob/v2.0.0/crates/trie/sparse/src/arena/mod.rs)
-  partition at two nibbles, compute changed lower subtries in parallel, then
-  finish the upper trie. The arena also replaces pointer-heavy node allocation
-  with indexed storage and reusable traversal/encoding buffers.
+the `performance is good` PR label. This prototype partitions root hashing at two
+nibbles. It does not implement a persistent connected trie cache or concurrent
+execution/update pipeline, and no Fusaka improvement has been measured yet.
 
 Nethermind already skips nodes with a cached hash and loads trie paths lazily.
 Flat state also reuses nodes through snapshots, transient resources, and
@@ -64,12 +41,12 @@ AVX-512VL, so interactions with Nethermind's batched hashing remain unmeasured.
 Reproduce after building the benchmark runner:
 
 ```powershell
-dotnet artifacts/bin/Nethermind.Benchmark.Runner/release/Nethermind.Benchmark.Runner.dll --filter '*TrieRootBenchmark*' --inProcess --warmupCount 5 --iterationCount 20 --launchCount 1 --artifacts artifacts/reth-root-bench-inprocess
+dotnet artifacts/bin/Nethermind.Benchmark.Runner/release/Nethermind.Benchmark.Runner.dll --filter '*TrieRootBenchmark*' --inProcess --warmupCount 5 --iterationCount 20 --launchCount 1 --artifacts artifacts/trie-root-bench-inprocess
 ```
 
 The in-process toolchain avoids BenchmarkDotNet discovering duplicate project
 names in the local `.review-worktrees` directory. Results are in
-`artifacts/reth-root-bench-inprocess/results/Nethermind.Benchmarks.Store.TrieRootBenchmark-report-full-compressed.json`.
+`artifacts/trie-root-bench-inprocess/results/Nethermind.Benchmarks.Store.TrieRootBenchmark-report-full-compressed.json`.
 
 Validation so far: the complete trie suite passed 602 tests and skipped 12,
 including six new cases comparing against a fresh serial trie through deletion,
@@ -91,9 +68,9 @@ timings. Root-only attribution should distinguish `BlockProcessor.ComputeStateRo
 from `CommitStateAndStorageRoots`; the latter includes storage-root work. Slow
 block diagnostics expose those timings separately. A separate sampling profile
 can establish whether root hashing, account updates, storage roots, or trie
-loading dominates before expanding this port.
+loading dominates before expanding this experiment.
 
-A full cache/pipeline port would need a scope-owned mutable working trie,
+A connected cache and update pipeline would need a scope-owned mutable working trie,
 ordered execution updates, bounded retention of account and storage paths,
 parent-root anchoring, and invalid-payload/reorg/cancellation cleanup. Mutating
 nodes shared with flat snapshots or trie warmers would violate existing ownership
