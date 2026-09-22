@@ -85,6 +85,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Minimum number of leaf operations per worker when the buckets a worker takes hold at least FoldLargeSubtreeBytes below them.", DefaultValue = "16")]
     int FoldLargeSubtreeMinOperationsPerWorker { get; set; }
 
+    [ConfigItem(Description = "Stored size, in bytes, below the next node group on a trie-warmer path under which the warm-up stops instead of fetching it: a subtree that small is a single read for the fold, which warming it ahead does not save. 0 warms every path down to its leaf.", DefaultValue = "32768")]
+    long WarmupMinSubtreeBytes { get; set; }
+
     [ConfigItem(Description = "Number of parallel workers copying the source and scanning staged key ranges to derive leaves during the preimage-flat import. 0 uses the processor count. The tree fold runs in a separate single consumer whose zones and wide buckets fold with FoldConcurrency threads.", DefaultValue = "0")]
     int ImportStorageReadConcurrency { get; set; }
 

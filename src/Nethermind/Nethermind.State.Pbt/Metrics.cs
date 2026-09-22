@@ -140,6 +140,14 @@ public static class Metrics
 
     internal static void IncrementPbtTrieWarmerSkippedByDeduplication() => Interlocked.Increment(ref _pbtTrieWarmerSkippedByDeduplication);
 
+    private static long _pbtTrieWarmerStoppedBySmallSubtree;
+
+    [CounterMetric]
+    [Description("Pbt trie-warmer paths stopped before fetching a node group whose subtree is smaller than WarmupMinSubtreeBytes")]
+    public static long PbtTrieWarmerStoppedBySmallSubtree => Volatile.Read(ref _pbtTrieWarmerStoppedBySmallSubtree);
+
+    internal static void IncrementPbtTrieWarmerStoppedBySmallSubtree() => Interlocked.Increment(ref _pbtTrieWarmerStoppedBySmallSubtree);
+
     [GaugeMetric]
     [Description("Number of layers in the most recently assembled pbt read-only snapshot bundle")]
     public static long PbtSnapshotBundleSize { get; set; }

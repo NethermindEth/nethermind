@@ -26,6 +26,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly PbtResourcePool.Usage _usage;
     private readonly ConcurrencyController _foldQuota;
     private readonly FoldFanOut _foldFanOut;
+    private readonly long _warmupMinSubtreeBytes;
     private readonly PbtPrefixlessBranchOmission _prefixlessBranchOmission;
     private readonly IRefCountingMemoryProvider _nodeGroupMemory;
     private readonly IPbtCommitTarget _commitTarget;
@@ -64,6 +65,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtWorldStateScope>();
         _foldQuota = new ConcurrencyController(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
         _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
+        _warmupMinSubtreeBytes = config.WarmupMinSubtreeBytes;
         _prefixlessBranchOmission = config.PrefixlessBranchOmission;
         _nodeGroupMemory = resourcePool.NodeGroupMemory;
         _usage = usage;
@@ -129,7 +131,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         {
             if (_isDisposed || _pausePrewarmer)
                 return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
-            _warmupSession ??= Bundle.CreateTrieWarmupSession(_trieWarmer, _hintSequenceId);
+            _warmupSession ??= Bundle.CreateTrieWarmupSession(_trieWarmer, _hintSequenceId, _warmupMinSubtreeBytes);
             _warmupSession.AcquireLease();
             return _warmupSession;
         }

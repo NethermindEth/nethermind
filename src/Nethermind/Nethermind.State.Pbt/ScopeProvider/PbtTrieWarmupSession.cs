@@ -19,7 +19,8 @@ internal sealed class PbtTrieWarmupSession(
     PbtTransientResource transientResource,
     ITrieWarmer trieWarmer,
     int sequenceId,
-    IPbtTrieNodeCache trieNodeCache) : IWorldStateScopeProvider.ITrieWarmupSession, ITrieWarmer.IAddressWarmer, IPbtStore
+    IPbtTrieNodeCache trieNodeCache,
+    long minSubtreeBytes) : IWorldStateScopeProvider.ITrieWarmupSession, ITrieWarmer.IAddressWarmer, IPbtStore
 {
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer> _storageWarmers = [];
     // The owner's lease, each borrow and each in-flight warm-up hold one count; the last to leave releases the frozen layers.
@@ -92,7 +93,7 @@ internal sealed class PbtTrieWarmupSession(
         if (!TryEnterOperation(jobSequenceId)) return false;
         try
         {
-            PbtTrieWarmer.WarmUpPath(this, TreeRoot, key);
+            if (PbtTrieWarmer.WarmUpPath(this, TreeRoot, key, minSubtreeBytes)) Metrics.IncrementPbtTrieWarmerStoppedBySmallSubtree();
             return true;
         }
         finally
