@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// It will not update the storage data (will discard any changes).
         /// </summary>
-        ReadOnlyChain = 1 | DoNotUpdateHead,
+        ReadOnlyChain = 1,
 
         /// <summary>
         /// Will process the block even if it was processed in the past.
@@ -55,11 +55,6 @@ namespace Nethermind.Consensus.Processing
         /// Combination of switches for block producers when they preprocess block for state root calculation.
         /// </summary>
         ProducingBlock = NoValidation | ReadOnlyChain | ForceProcessing | DoNotUpdateHead,
-
-        /// <summary>
-        /// EVM tracing needs to process blocks without storing the data on chain.
-        /// </summary>
-        Trace = ForceProcessing | ReadOnlyChain | LoadNonceFromState | NoValidation,
 
         /// <summary>
         /// Reprocesses a block sequentially after optimistic block access list execution fails.

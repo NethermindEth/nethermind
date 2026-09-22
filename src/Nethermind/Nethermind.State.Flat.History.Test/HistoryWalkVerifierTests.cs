@@ -630,7 +630,7 @@ public class HistoryWalkVerifierTests
         MarkAll(headers);
 
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
-        metadata.BeginWalk(0, 7, HistoryWalkRun.WorkItems);
+        metadata.BeginWalk(0, 7, HistoryWalkRun.WorkItems, buildCommitments: false);
         for (int item = 0; item < HistoryWalkRun.WorkItems; item++) metadata.MarkWalkItemDone(item, []);
 
         HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);

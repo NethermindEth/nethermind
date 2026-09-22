@@ -504,7 +504,7 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(SloadCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(SloadCallerAddress, SloadSameKeyCode, Spec);
-            stateProvider.Set(new StorageCell(SloadCallerAddress, UInt256.Zero), [0x07]);
+            stateProvider.Set(new StorageCell(SloadCallerAddress, UInt256.Zero), (UInt256)7);
 
             stateProvider.CreateAccount(TestItem.AddressE, UInt256.Zero);
             stateProvider.InsertCode(TestItem.AddressE, PushPopOnlyCode, Spec);
@@ -517,7 +517,7 @@ public class BlockProcessingBenchmark
 
             stateProvider.CreateAccount(SstoreCallerAddress, UInt256.Zero);
             stateProvider.InsertCode(SstoreCallerAddress, SstoreDirtyCode, Spec);
-            stateProvider.Set(new StorageCell(SstoreCallerAddress, UInt256.Zero), [0x05]);
+            stateProvider.Set(new StorageCell(SstoreCallerAddress, UInt256.Zero), (UInt256)5);
 
             stateProvider.CreateAccount(Create2CallerAddress, UInt256.Zero);
             stateProvider.InsertCode(Create2CallerAddress, Create2ImmediateAccessCode, Spec);

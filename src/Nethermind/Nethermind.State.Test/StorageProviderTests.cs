@@ -94,6 +94,55 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Committed_clear_restores_a_slot_rewritten_to_its_original_value()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.Set(cell, 17);
+        provider.Commit(Frontier.Instance);
+        provider.Get(cell, out UInt256 original);
+        provider.ClearStorage(ctx.Address1);
+        provider.Set(cell, original);
+        ReadCollectingStorageTracer tracer = new();
+
+        provider.Commit(Frontier.Instance, tracer);
+        provider.Get(cell, out UInt256 committed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(committed, Is.EqualTo((UInt256)17), "the clear must not discard the restoring write");
+            Assert.That(tracer.Clears, Is.EqualTo(new[] { ctx.Address1 }));
+            Assert.That(tracer.Restores, Has.Count.EqualTo(1));
+            Assert.That(tracer.Restores[0].Cell, Is.EqualTo(cell));
+            Assert.That(tracer.Restores[0].Value, Is.EqualTo(new byte[] { 17 }));
+            Assert.That(tracer.Changes, Is.Empty, "ordinary storage tracers still receive only net changes");
+        }
+    }
+
+    [Test]
+    public void Cancelled_storage_reporting_does_not_leak_clears_into_the_next_commit([Values] bool cancelOnRead)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.Set(cell, 17);
+        provider.Commit(Frontier.Instance);
+        provider.ClearStorage(ctx.Address1);
+        StorageCell readCell = new(ctx.Address2, 1);
+        provider.Get(readCell, out _);
+        provider.GetOriginal(readCell, out _);
+        ReadCollectingStorageTracer cancelled = new() { CancelOnClear = !cancelOnRead, CancelOnRead = cancelOnRead };
+
+        Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
+        provider.Set(cell, 19);
+        ReadCollectingStorageTracer next = new();
+        provider.Commit(Frontier.Instance, next);
+
+        Assert.That(next.Clears, Is.Empty);
+    }
+
+    [Test]
     public void Empty_commit_restore()
     {
         using Context ctx = new(useFlat);
@@ -103,6 +152,82 @@ public class StorageProviderTests(bool useFlat)
     }
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
+
+    /// <summary>A write must be visible to a later read of the same cell, in the same and in later transactions.</summary>
+    /// <remarks>Reads consult the write journal only for contracts known to have journaled a write. This pins
+    /// that gate: were it ever to answer false for a contract that has written, reads would fall through to
+    /// the committed tree value and silently lose the write.</remarks>
+    [Test]
+    public void Write_is_visible_to_later_reads_of_the_same_contract()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        StorageCell written = new(ctx.Address1, (UInt256)1);
+        StorageCell untouched = new(ctx.Address1, (UInt256)2);
+        StorageCell otherContract = new(ctx.Address2, (UInt256)1);
+
+        provider.Set(in written, (UInt256)1);
+        provider.Set(in otherContract, (UInt256)2);
+        provider.Commit(Frontier.Instance);
+
+        provider.Set(in written, (UInt256)3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            provider.Get(in written, out UInt256 sameTransaction);
+            Assert.That(sameTransaction, Is.EqualTo((UInt256)3), "same transaction");
+            provider.Get(in untouched, out UInt256 neverWritten);
+            Assert.That(neverWritten, Is.EqualTo(UInt256.Zero), "never written");
+            provider.Get(in otherContract, out UInt256 committed);
+            Assert.That(committed, Is.EqualTo((UInt256)2), "other contract, committed");
+        }
+
+        provider.Commit(Frontier.Instance);
+
+        provider.Get(in written, out UInt256 afterCommit);
+        Assert.That(afterCommit, Is.EqualTo((UInt256)3), "after commit");
+    }
+
+    /// <summary>A contract that never wrote in this block must read its committed values even while another
+    /// contract's writes sit in the journal.</summary>
+    /// <remarks>This is the branch the journal gate adds: the read-only contract is seeded in a completed
+    /// block, so reopening the committed root rents its state afresh with the flag genuinely false — a
+    /// same-block seed would have marked it and kept the reads on the journal-probe path.</remarks>
+    [Test]
+    public void Write_to_one_contract_does_not_disturb_another()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        StorageCell seeded = new(ctx.Address2, (UInt256)7);
+        StorageCell absent = new(ctx.Address2, (UInt256)8);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.CreateAccount(ctx.Address2, 1);
+            provider.Set(in seeded, (UInt256)2);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            // Address1 writes, so the journal is non-empty, but nothing in it belongs to Address2.
+            provider.Set(new StorageCell(ctx.Address1, (UInt256)1), (UInt256)1);
+
+            using (Assert.EnterMultipleScope())
+            {
+                provider.Get(in seeded, out UInt256 seededValue);
+                Assert.That(seededValue, Is.EqualTo((UInt256)2));
+                provider.Get(in absent, out UInt256 absentValue);
+                Assert.That(absentValue, Is.EqualTo(UInt256.Zero));
+            }
+        }
+    }
 
     [Test]
     public void Storage_access_after_scope_disposal_throws()
@@ -254,6 +379,65 @@ public class StorageProviderTests(bool useFlat)
         provider.Restore(Snapshot.EmptyPosition, -1, Snapshot.EmptyPosition);
         provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 storageValue3);
         Assert.That(storageValue3, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
+    }
+
+    /// <summary>A read-only transaction must not let its memo suppress the next transaction's capture.</summary>
+    /// <remarks>
+    /// Reads are answered from a memo of the last slot read, keyed partly on the originals round. A
+    /// transaction that only reads writes no change, so nothing else drops that memo at commit — without the
+    /// round in the key the next transaction would never record an original, and <c>GetOriginal</c> is what
+    /// SSTORE meters against.
+    /// </remarks>
+    [Test]
+    public void Read_only_transaction_does_not_suppress_the_next_original()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, (UInt256)1);
+        provider.Commit(Frontier.Instance);
+
+        // A transaction that only reads: the second read is served from the memo, and committing it
+        // changes nothing, so nothing invalidates that memo.
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell, out UInt256 firstRead);
+        Assert.That(firstRead, Is.EqualTo((UInt256)1));
+        provider.Get(cell, out UInt256 memoizedRead);
+        Assert.That(memoizedRead, Is.EqualTo((UInt256)1));
+        provider.Commit(Frontier.Instance);
+
+        // The next transaction must still capture its own original for the slot.
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell, out UInt256 nextRead);
+        Assert.That(nextRead, Is.EqualTo((UInt256)1));
+        provider.GetOriginal(cell, out UInt256 nextOriginal);
+        Assert.That(nextOriginal, Is.EqualTo((UInt256)1), "original for the new transaction");
+    }
+
+    /// <summary>A write to a just-read slot must win over the read memo.</summary>
+    /// <remarks>The written cell is answered by the journal before <c>LoadFromTree</c> is reached, so this
+    /// pins the ordering invariant the memo's safety rests on (journal first) rather than the memo itself —
+    /// it passes with the memo deleted, and would fail only if that order were ever inverted.</remarks>
+    [Test]
+    public void Write_after_read_is_not_answered_from_the_read_memo()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, (UInt256)1);
+        provider.Commit(Frontier.Instance);
+
+        provider.Get(cell, out UInt256 firstRead);
+        Assert.That(firstRead, Is.EqualTo((UInt256)1));
+        provider.Get(cell, out UInt256 memoizedRead);
+        Assert.That(memoizedRead, Is.EqualTo((UInt256)1));
+
+        provider.Set(cell, (UInt256)3);
+
+        provider.Get(cell, out UInt256 afterWrite);
+        Assert.That(afterWrite, Is.EqualTo((UInt256)3), "the write must win over the memo");
     }
 
     [Test]
@@ -707,35 +891,44 @@ public class StorageProviderTests(bool useFlat)
     }
 
     /// <summary>A transient write must not allocate: TSTORE is priced per call and can fill a block.</summary>
-    /// <remarks>The warm-up runs first so the journal's amortized growth is out of the measurement and
-    /// what is left is the write itself.</remarks>
+    /// <remarks>
+    /// Reports the cheapest of several identical measurement windows. Allocation by the writes is bounded
+    /// below by zero and every other allocation the runtime charges to this thread only adds to a window,
+    /// so a per-write cost survives the minimum while a one-off chunk landing in one window does not.
+    /// The warm-up runs first so no window pays a first-call cost.
+    /// </remarks>
     [Test]
+    [NonParallelizable]
     public void Transient_write_does_not_allocate()
     {
         const int Iterations = 1000;
+        const int Windows = 5;
 
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell cell = new(ctx.Address1, 2);
 
-        // Alternate two words so no write takes the unchanged-value shortcut: every one journals, which
-        // is what grows the journal past what the measured loop needs. The reset then leaves it empty
-        // with that capacity retained.
-        for (int i = 0; i < Iterations * 4; i++)
-        {
-            provider.SetTransientState(in cell, (UInt256)7);
-            provider.SetTransientState(in cell, (UInt256)9);
-        }
+        Write(provider, in cell, Iterations);
 
-        provider.Reset();
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Iterations; i++)
+        long allocated = long.MaxValue;
+        for (int window = 0; window < Windows; window++)
         {
-            provider.SetTransientState(in cell, (i & 1) == 0 ? (UInt256)7 : (UInt256)9);
+            provider.Reset();
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            Write(provider, in cell, Iterations);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - start);
         }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
 
         Assert.That(allocated, Is.Zero);
+
+        // Alternate two words so no write takes the unchanged-value shortcut.
+        static void Write(WorldState provider, in StorageCell cell, int iterations)
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                provider.SetTransientState(in cell, (i & 1) == 0 ? (UInt256)7 : (UInt256)9);
+            }
+        }
     }
 
     /// <summary>
@@ -1033,6 +1226,80 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(storageValue28, Is.EqualTo(UInt256.Zero));
     }
 
+    /// <summary>The originals-probe memo must not answer across caching rounds.</summary>
+    /// <remarks>tx1 memoizes (cell, v1) while writing v2; after commit the next transaction's original for
+    /// the same cell is v2. A memo without the round in its key silently returns v1, which mis-meters every
+    /// EIP-2200 SSTORE of tx2 without failing anything.</remarks>
+    [Test]
+    public void Get_original_after_commit_is_the_new_rounds_original()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, (UInt256)1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.Set(in cell, (UInt256)1);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(in cell, out _);
+            provider.Set(in cell, (UInt256)2);
+            provider.GetOriginal(in cell, out UInt256 firstTxOriginal);
+            Assert.That(firstTxOriginal, Is.EqualTo((UInt256)1), "tx1 original is the committed value");
+
+            provider.Commit(Frontier.Instance);
+
+            provider.Get(in cell, out _);
+            provider.GetOriginal(in cell, out UInt256 secondTxOriginal);
+            Assert.That(secondTxOriginal, Is.EqualTo((UInt256)2), "tx2 original is tx1's write");
+        }
+    }
+
+    // Rolling a storage clear back drops originals first captured under the clear, so anything caching a probe
+    // of them has to let go: after the rollback the cell recaptures the block value, and only a stale cache can
+    // still answer with the zero the clear planted.
+    [Test]
+    public void Rolling_back_a_storage_clear_forgets_originals_captured_under_the_clear()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(cell, (UInt256)1);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Snapshot snapshot = provider.TakeSnapshot();
+            provider.ClearStorage(TestItem.AddressA);
+
+            provider.Get(cell, out _);
+            provider.GetOriginal(cell, out UInt256 clearedOriginal);
+            Assert.That(clearedOriginal, Is.EqualTo(UInt256.Zero),
+                "precondition: the first capture happens under the clear");
+
+            provider.Restore(snapshot);
+
+            provider.Get(cell, out _);
+            provider.GetOriginal(cell, out UInt256 restoredOriginal);
+            Assert.That(restoredOriginal, Is.EqualTo((UInt256)1));
+        }
+    }
+
     // A batch that drops what it held stops accepting storage writes, so every clear the write-back issues has to be
     // re-checked. Each case leaves two clears to make, and pins that the second is never reached.
     [TestCase(StorageWriteStop.BeforeTheFirstClear, 0)]
@@ -1183,6 +1450,115 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Clearing_storage_preserves_other_accounts_across_restore_and_commit(
+        [Values] bool readBeforeClear, [Values] bool writeBeforeClear)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell clearedCell = new(TestItem.AddressA, 1);
+        StorageCell otherCell = new(TestItem.AddressB, 1);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.CreateAccount(TestItem.AddressB, 1);
+            provider.Set(clearedCell, (UInt256)7);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(otherCell, out _);
+            provider.Set(otherCell, (UInt256)9);
+            if (readBeforeClear) provider.Get(clearedCell, out _);
+            if (writeBeforeClear) provider.Set(clearedCell, (UInt256)8);
+            Snapshot snapshot = provider.TakeSnapshot();
+
+            provider.ClearStorage(TestItem.AddressA);
+            AssertSlots(UInt256.Zero);
+            AssertOtherOriginal();
+            if (!readBeforeClear && !writeBeforeClear)
+            {
+                provider.GetOriginal(clearedCell, out UInt256 original);
+                Assert.That(original, Is.EqualTo(UInt256.Zero));
+            }
+
+            provider.Restore(snapshot);
+            AssertSlots(writeBeforeClear ? (UInt256)8 : (UInt256)7);
+            AssertOtherOriginal();
+
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(1);
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock)) AssertSlots(UInt256.Zero);
+
+        void AssertOtherOriginal()
+        {
+            provider.GetOriginal(otherCell, out UInt256 original);
+            Assert.That(original, Is.EqualTo(UInt256.Zero));
+        }
+
+        void AssertSlots(UInt256 expected)
+        {
+            provider.Get(clearedCell, out UInt256 clearedValue);
+            provider.Get(otherCell, out UInt256 otherValue);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clearedValue, Is.EqualTo(expected));
+                Assert.That(otherValue, Is.EqualTo((UInt256)9));
+            }
+        }
+    }
+
+    [Test]
+    public void Storage_map_release_rejects_pending_writes_and_ends_the_originals_round([Values] bool detach)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(cell, (UInt256)42);
+            Assert.That(DropMap, Throws.InvalidOperationException);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = provider.BeginScope(baseBlock);
+        provider.Get(cell, out _);
+        provider.GetOriginal(cell, out _);
+        Assert.That(DropMap, Throws.Nothing);
+        Assert.That(() => provider.GetOriginal(cell, out _), Throws.InvalidOperationException);
+        provider.Get(cell, out UInt256 value);
+        provider.GetOriginal(cell, out UInt256 original);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo((UInt256)42));
+            Assert.That(original, Is.EqualTo(value));
+        }
+
+        void DropMap()
+        {
+            if (detach)
+            {
+                using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = provider._persistentStorageProvider.DetachBlockChanges();
+            }
+            else
+            {
+                provider._persistentStorageProvider.ClearStorageMap();
+            }
+        }
+    }
+
+    [Test]
     public void Clearing_unaccessed_empty_storage_is_a_noop([Values] bool accountExists)
     {
         using Context ctx = new(useFlat);
@@ -1231,6 +1607,29 @@ public class StorageProviderTests(bool useFlat)
             Assert.That(GetDictionary(blockChange), Is.SameAs(clearedDictionary));
             Assert.That(GetCapacity(blockChange), Is.EqualTo(clearedCapacity));
         }
+    }
+
+    /// <summary>A destroy must drop the read memo with no commit behind it to bump the round.</summary>
+    /// <remarks>Every other destroy test commits between the destroy and the re-read, and that commit's
+    /// round bump invalidates the memo on its own — so they all pass with the destroy's own invalidation
+    /// deleted. This sequence is the one that does not.</remarks>
+    [Test]
+    public void Destroy_without_a_commit_is_not_answered_from_the_read_memo()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.Set(cell, (UInt256)1);
+        provider.Commit(Frontier.Instance);
+
+        provider.Get(cell, out UInt256 armingRead);
+        Assert.That(armingRead, Is.EqualTo((UInt256)1), "precondition: the read arms the memo");
+
+        provider.MarkStorageDestroyed(ctx.Address1);
+
+        provider.Get(cell, out UInt256 afterDestroy);
+        Assert.That(afterDestroy, Is.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -1740,7 +2139,8 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Set_empty_value_for_storage_cell_without_read_clears_data([Values(2, 1000)] int numItems)
+    public void Set_empty_value_for_storage_cell_without_read_clears_data(
+        [Values(2, 1000)] int numItems, [Values] bool overwriteBeforeDelete)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
@@ -1760,6 +2160,12 @@ public class StorageProviderTests(bool useFlat)
 
         Hash256 fullHash = worldState.StateRoot;
         Assert.That(fullHash, Is.Not.EqualTo(emptyHash));
+
+        if (overwriteBeforeDelete)
+        {
+            for (int i = 0; i < numItems; i++) worldState.Set(new StorageCell(TestItem.AddressA, (UInt256)i), (UInt256)999);
+            worldState.Commit(Prague.Instance, commitRoots: false);
+        }
 
         for (int i = 0; i < numItems; i++)
         {
@@ -1975,6 +2381,10 @@ public class StorageProviderTests(bool useFlat)
     {
         public System.Collections.Generic.List<StorageCell> Reads { get; } = [];
         public System.Collections.Generic.List<(StorageCell Cell, byte[] Before, byte[] After)> Changes { get; } = [];
+        public List<Address> Clears { get; } = [];
+        public bool CancelOnClear { get; init; }
+        public bool CancelOnRead { get; init; }
+        public List<(StorageCell Cell, byte[] Value)> Restores { get; } = [];
 
         public bool IsTracingState => false;
         public bool IsTracingStorage => true;
@@ -1985,6 +2395,16 @@ public class StorageProviderTests(bool useFlat)
         public void ReportAccountRead(Address address) { }
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
         public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
-        public void ReportStorageRead(in StorageCell storageCell) => Reads.Add(storageCell);
+        public void ReportStorageRead(in StorageCell storageCell)
+        {
+            if (CancelOnRead) throw new OperationCanceledException();
+            Reads.Add(storageCell);
+        }
+        public void ReportStorageClear(Address address)
+        {
+            if (CancelOnClear) throw new OperationCanceledException();
+            Clears.Add(address);
+        }
+        public void ReportStorageRestore(in StorageCell storageCell, byte[] value) => Restores.Add((storageCell, value));
     }
 }
