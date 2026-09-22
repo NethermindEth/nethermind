@@ -244,6 +244,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Syncing;
         }
 
+        // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
+        // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
+        // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
+        if (!await WaitForParentCommitAsync(parentHeader)) return NewPayloadV1Result.Syncing;
+
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
             if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out string? error, validateHashes: false))
@@ -486,6 +491,25 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // to queue the early recovery must not fail an otherwise valid payload.
             if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed to start for block {request.BlockNumber}: {e}");
         }
+    }
+
+    /// <summary>
+    /// Waits, within the request's budget, for a parent that is still in the processing queue; <c>false</c> when it
+    /// did not leave in time, which is answered SYNCING as an unprocessed parent always was.
+    /// </summary>
+    private async Task<bool> WaitForParentCommitAsync(BlockHeader parent)
+    {
+        Hash256 parentHash = parent.GetOrCalculateHash();
+        if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
+
+        Task removed = _processingQueue.WaitUntilRemovedAsync(parentHash).AsTask();
+        if (removed.IsCompleted) return true;
+
+        using CancellationTokenSource bound = new();
+        bool inTime = await Task.WhenAny(removed, Task.Delay(_timeout, bound.Token)) == removed;
+        if (inTime) bound.Cancel();
+        else if (_logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within {_timeout}. Assume Syncing.");
+        return inTime;
     }
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)

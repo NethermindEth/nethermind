@@ -294,6 +294,63 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await processingQueue.Received(1).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
+    /// <summary>
+    /// A payload whose parent was answered VALID a moment ago finds the parent not yet marked processed. It must wait
+    /// for the parent to leave the queue rather than be inserted for beacon sync and answered SYNCING.
+    /// </summary>
+    [Test, MaxTime(10_000)]
+    public async Task HandleAsync_waits_for_a_parent_still_committing_instead_of_answering_syncing()
+    {
+        Block block = Build.A.Block
+            .WithParentHash(TestItem.KeccakC)
+            .WithNumber(1)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .TestObject;
+        block.Header.IsPostMerge = true;
+
+        bool parentCommitted = false;
+        TaskCompletionSource parentWaitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource parentRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.ParentHash!).Returns(_ =>
+        {
+            parentWaitRequested.TrySetResult();
+            return new ValueTask(parentRemoved.Task);
+        });
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 5_000,
+            parentProcessedNow: () => parentCommitted);
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+
+        await parentWaitRequested.Task;
+        Assert.That(request.IsCompleted, Is.False, "the request waits for the parent rather than answer from its stale flag");
+        await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+
+        parentCommitted = true;
+        parentRemoved.SetResult();
+        await enqueued.Task;
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        ResultWrapper<PayloadStatusV1> result = await request;
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+    }
+
     [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_gives_up_on_a_known_copy_that_never_finishes()
     {
@@ -338,7 +395,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         bool validateSuggestedBlock,
         IBlockProcessingQueue? processingQueue = null,
         int timeoutMs = 50,
-        Func<bool>? wasProcessedNow = null)
+        Func<bool>? wasProcessedNow = null,
+        Func<bool>? parentProcessedNow = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -366,7 +424,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         blockTree.SyncPivot.Returns((0UL, Keccak.Zero));
         blockTree.FindHeader(block.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
         blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(false);
-        blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Returns((new BlockInfo(parent.Hash!, UInt256.Zero) { WasProcessed = true, BlockNumber = parent.Number }, null));
+        blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Returns(_ => (new BlockInfo(parent.Hash!, UInt256.Zero) { WasProcessed = parentProcessedNow?.Invoke() ?? true, BlockNumber = parent.Number }, null));
         blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
             .Returns(ValueTask.FromResult(suggestBlockResult));
         blockTree.WasProcessed(block.Number, block.Hash!).Returns(_ => wasProcessedNow?.Invoke() ?? wasProcessed);

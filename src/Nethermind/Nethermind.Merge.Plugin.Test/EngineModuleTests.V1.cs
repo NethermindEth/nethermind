@@ -933,6 +933,49 @@ public partial class EngineModuleTests
     /// newPayload answers VALID once the block is executed, before it is committed and marked processed. The
     /// forkchoiceUpdated that follows at once must wait for that commit rather than answer SYNCING.
     /// </summary>
+    /// <summary>
+    /// A payload sent right after its parent was answered VALID, while the parent is still committing, must be
+    /// processed once the parent lands - not inserted for beacon sync and answered SYNCING for a parent we have.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task newPayloadV1_waits_for_a_parent_still_committing_and_then_processes()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        Block parent = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        Block child = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+
+        using ManualResetEventSlim commitReleased = new(false);
+        bool parked = false;
+        chain.BranchProcessor.BlockExecuted += (_, args) =>
+        {
+            if (args.Block.Hash != parent.Hash || parked) return;
+            parked = true;
+            commitReleased.Wait(TimeSpan.FromSeconds(10));
+        };
+
+        try
+        {
+            ResultWrapper<PayloadStatusV1> parentResult = await rpc.engine_newPayloadV1(ExecutionPayload.Create(parent));
+            Assert.That(parentResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.WasProcessed(parent.Number, parent.Hash!), Is.False, "precondition: the parent is answered but not committed yet");
+
+            Task<ResultWrapper<PayloadStatusV1>> childRequest = rpc.engine_newPayloadV1(ExecutionPayload.Create(child));
+
+            commitReleased.Set();
+            ResultWrapper<PayloadStatusV1> childResult = await childRequest;
+
+            Assert.That(childResult.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the child is processed once its parent lands");
+            await chain.WaitForCommitted(child.Hash!);
+            Assert.That(chain.BlockTree.WasProcessed(child.Number, child.Hash!), Is.True);
+        }
+        finally
+        {
+            commitReleased.Set();
+        }
+    }
+
     [Test, NonParallelizable]
     public async Task forkChoiceUpdatedV1_waits_for_the_commit_of_a_block_answered_valid_before_it()
     {
