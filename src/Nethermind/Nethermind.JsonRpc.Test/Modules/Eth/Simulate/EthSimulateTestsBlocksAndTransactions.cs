@@ -1197,14 +1197,39 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
     }
 
+    private static IEnumerable<TestCaseData> MissingGasBudgetCases()
+    {
+        // A GasCap of 0 is "uncapped" (GasCapExtensions.EffectiveGasCap), so the block budget or the
+        // EIP-8037 cap is what binds; 100M sits below the EIP-8037 cap and binds ahead of it.
+        (ulong BlockGasLimit, ulong GasCap, string Dimension)[] budgets =
+        [
+            (5_000_000UL, 0UL, "a small block's gas budget (execution dimension)"),
+            (30_000_000UL, 0UL, "a realistic block's gas budget (state dimension)"),
+            (0x200000000UL, 0UL, "the EIP-8037 cap when the block budget exceeds it"),
+            (0x200000000UL, 100_000_000UL, "the RPC gas cap when it is below the EIP-8037 cap")
+        ];
+
+        foreach ((ulong blockGasLimit, ulong gasCap, string dimension) in budgets)
+        {
+            foreach (bool validation in new[] { true, false })
+            {
+                yield return new TestCaseData(blockGasLimit, gasCap, validation)
+                    .SetName($"no-gas call fits {dimension}, validation {validation}");
+            }
+        }
+    }
+
     /// <summary>
-    /// Missing gas defaults to the available block and request budgets, bounded by EIP-8037's total transaction cap.
+    /// #12692 (item 1): a no-gas call defaults to the budget still available rather than to the raw
+    /// RPC <c>GasCap</c>, and never resolves above EIP-8037's <c>TX_MAX_TOTAL_GAS_LIMIT</c>.
     /// </summary>
-    [Test]
-    public async Task eth_simulateV1_defaults_missing_gas_to_available_budget(
-        [Values(5_000_000UL, 30_000_000UL, 0x200000000UL)] ulong blockGasLimit,
-        [Values(0UL, 100_000_000UL, 1_000_000_000_000UL)] ulong gasCap,
-        [Values] bool validation)
+    /// <remarks>
+    /// The cases pin the distinct limits the clamp can resolve to; further <c>GasCap</c> values are not
+    /// separate cases, because with a block budget below the EIP-8037 cap the request cap never binds
+    /// and they resolve to the block budget like the cases already listed.
+    /// </remarks>
+    [TestCaseSource(nameof(MissingGasBudgetCases))]
+    public async Task eth_simulateV1_defaults_missing_gas_to_available_budget(ulong blockGasLimit, ulong gasCap, bool validation)
     {
         using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
         chain.RpcConfig.GasCap = gasCap;

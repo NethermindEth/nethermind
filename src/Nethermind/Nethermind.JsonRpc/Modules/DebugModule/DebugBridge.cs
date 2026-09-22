@@ -247,16 +247,16 @@ public class DebugBridge : IDebugBridge
 
     public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
+        BlockHeader? header = _blockTree.FindHeader(blockParameter);
+        IReleaseSpec? spec = header is null ? null : _specProvider.GetSpec(header);
         foreach (TransactionBundle bundle in bundles)
         {
-            yield return GetBundleTrace(bundle, blockParameter, gasCap, cancellationToken, gethTraceOptions);
+            yield return GetBundleTrace(bundle, blockParameter, gasCap, spec, cancellationToken, gethTraceOptions);
         }
     }
 
-    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
+    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, ulong? gasCap, IReleaseSpec? spec, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
     {
-        BlockHeader? header = _blockTree.FindHeader(blockParameter);
-        IReleaseSpec? spec = header is null ? null : _specProvider.GetSpec(header);
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
