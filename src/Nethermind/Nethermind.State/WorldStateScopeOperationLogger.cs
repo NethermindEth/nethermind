@@ -64,6 +64,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
 
         public Hash256 RootHash => innerScope.RootHash;
+        public bool StorageRootsAreAuthoritative => innerScope.StorageRootsAreAuthoritative;
 
         public void UpdateRootHash()
         {

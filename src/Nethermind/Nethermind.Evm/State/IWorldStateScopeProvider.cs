@@ -100,6 +100,8 @@ public interface IWorldStateScopeProvider
         /// <returns>A borrowed trie-warmer reference bound to this scope.</returns>
         ITrieWarmupSession CreateTrieWarmupSession() => new ITrieWarmupSession.ScopeForwarder(this);
 
+        bool StorageRootsAreAuthoritative => true;
+
         void UpdateRootHash();
 
         /// <summary>
