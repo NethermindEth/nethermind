@@ -1465,4 +1465,21 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(receipt.ReturnValue, Is.EqualTo(input));
         }
     }
+
+    [Test]
+    public void Explicit_fork_activation_does_not_leak_into_later_PrepareTx_calls()
+    {
+        ulong defaultBlockNumber = BlockNumber;
+        ulong defaultTimestamp = Timestamp;
+
+        PrepareTx((MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000UL);
+
+        (Block block, _) = PrepareTx(Activation, 100000UL);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.Number, Is.EqualTo(defaultBlockNumber));
+            Assert.That(block.Header.Timestamp, Is.EqualTo(defaultTimestamp));
+        }
+    }
 }
