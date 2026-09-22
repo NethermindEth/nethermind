@@ -633,8 +633,11 @@ public class BlockchainProcessorTests
         ProcessingTestContext context = When.ProcessingBlocks.FullyProcessed(_block0).BecomesGenesis().Suggested(_block1D2);
 
         Task waiting = context.WaitUntilRemoved(_block1D2);
-        Assert.That(waiting.IsCompleted, Is.False, "the block is queued, so the wait is pending");
-        Assert.That(context.WaitUntilRemoved(_blockB2D4).IsCompleted, Is.True, "a block the queue never saw holds nobody");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting.IsCompleted, Is.False, "the block is queued, so the wait is pending");
+            Assert.That(context.WaitUntilRemoved(_blockB2D4).IsCompleted, Is.True, "a block the queue never saw holds nobody");
+        }
         bool pendingWhenRemovalPublished = false;
         context.OnBlockRemoved((_, args) =>
         {
@@ -644,8 +647,11 @@ public class BlockchainProcessorTests
         context.Recovered(_block1D2).Processed(_block1D2).BecomesNewHead();
 
         await waiting.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.That(pendingWhenRemovalPublished, Is.True, "the removal is published before the waiters are released");
-        Assert.That(context.WaitUntilRemoved(_block1D2).IsCompleted, Is.True, "once removed, the block holds nobody either");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pendingWhenRemovalPublished, Is.True, "the removal is published before the waiters are released");
+            Assert.That(context.WaitUntilRemoved(_block1D2).IsCompleted, Is.True, "once removed, the block holds nobody either");
+        }
     }
 
     /// <summary>
@@ -664,12 +670,40 @@ public class BlockchainProcessorTests
 
         Task first = context.WaitUntilRemoved(_block1D2);
         Task second = context.WaitUntilRemoved(_block2D4);
-        Assert.That(first.IsCompleted, Is.False, "the first block is queued, so its wait is pending");
-        Assert.That(second.IsCompleted, Is.False, "the second block is queued, so its wait is pending");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsCompleted, Is.False, "the first block is queued, so its wait is pending");
+            Assert.That(second.IsCompleted, Is.False, "the second block is queued, so its wait is pending");
+        }
 
         context.Processed(_block1D2).BecomesNewHead();
         await first.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(second.IsCompleted, Is.False, "the block behind is still queued; its waiters stay");
+
+        context.Processed(_block2D4).BecomesNewHead();
+        await second.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    // A subscriber that throws must not make the loop report the removal a second time: a second report takes a copy
+    // off whatever entry the hash names by then, which with another copy queued is a live one, and releases its
+    // waiters while it is still queued.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_removed_survives_a_throwing_removal_subscriber()
+    {
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .Suggested(_block1D2)
+            .Suggested(_block2D4)
+            .Recovered(_block1D2)
+            .Recovered(_block2D4);
+
+        Task first = context.WaitUntilRemoved(_block1D2);
+        Task second = context.WaitUntilRemoved(_block2D4);
+        context.OnBlockRemoved((_, _) => throw new InvalidOperationException("subscriber"));
+
+        context.Processed(_block1D2).BecomesNewHead();
+        await first.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(second.IsCompleted, Is.False, "the block behind is still queued; the throw must not release it");
 
         context.Processed(_block2D4).BecomesNewHead();
         await second.WaitAsync(TimeSpan.FromSeconds(10));

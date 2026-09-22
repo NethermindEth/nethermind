@@ -13,5 +13,6 @@ namespace Nethermind.Consensus.Processing;
 /// </summary>
 public class BlockExecutedEventArgs(Block block) : EventArgs
 {
+    /// <summary>The block as it was suggested, which is what the processing queue answers for.</summary>
     public Block Block { get; } = block;
 }

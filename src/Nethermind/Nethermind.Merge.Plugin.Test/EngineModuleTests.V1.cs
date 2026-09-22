@@ -954,8 +954,11 @@ public partial class EngineModuleTests
         try
         {
             ResultWrapper<PayloadStatusV1> parentResult = await rpc.engine_newPayloadV1(ExecutionPayload.Create(parent));
-            Assert.That(parentResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(chain.BlockTree.WasProcessed(parent.Number, parent.Hash!), Is.False, "precondition: the parent is answered but not committed yet");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parentResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+                Assert.That(chain.BlockTree.WasProcessed(parent.Number, parent.Hash!), Is.False, "precondition: the parent is answered but not committed yet");
+            }
 
             Task<ResultWrapper<PayloadStatusV1>> childRequest = rpc.engine_newPayloadV1(ExecutionPayload.Create(child));
 
@@ -970,6 +973,41 @@ public partial class EngineModuleTests
         {
             commitReleased.Set();
         }
+    }
+
+    /// <summary>
+    /// The wait for a committing head is only worth taking when the head is a moment away. With another block
+    /// occupying the processor the forkchoice answers SYNCING, as it did before the wait existed.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task forkChoiceUpdatedV1_does_not_wait_for_a_head_behind_a_backlog()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig
+        {
+            NewPayloadBlockProcessingTimeout = 100
+        });
+
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        chain.BlockTree.SuggestBlock(block, BlockTreeSuggestOptions.ForceDontSetAsMain);
+
+        chain.ThrottleBlockProcessor(1000);
+        ManualResetEventSlim processingStarted = new(false);
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingStarted = processingStarted;
+
+        // Occupies the processor so the head the forkchoice names is not a moment from landing.
+        Block occupyBlock = Build.A.Block.WithNumber(head.Number + 1).WithParent(head)
+            .WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        occupyBlock.Header.TotalDifficulty = head.TotalDifficulty;
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+            occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+        processingStarted.Wait(TimeSpan.FromSeconds(5));
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result =
+            await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
+
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
     }
 
     /// <summary>
@@ -1003,15 +1041,17 @@ public partial class EngineModuleTests
             Assert.That(verdictGiven.Wait(TimeSpan.FromSeconds(5)), Is.True);
             Assert.That(chain.BlockTree.WasProcessed(block.Number, block.Hash!), Is.False, "precondition: the block is answered but not committed yet");
 
-            // Sent while the commit is still parked; that it waits rather than answers SYNCING is pinned without a clock
-            // in ForkchoiceUpdatedHandlerTests, so here only the outcome once the commit is released is asserted.
+            // Sent while the commit is still parked; the outcome once it is released is what this asserts.
             Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
 
             commitReleased.Set();
             ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
 
-            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(block.Hash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(block.Hash));
+            }
         }
         finally
         {

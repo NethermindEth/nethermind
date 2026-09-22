@@ -185,8 +185,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
         ResultWrapper<PayloadStatusV1> result = await request;
 
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0), "an answered request must not leave its completion behind");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0), "an answered request must not leave its completion behind");
+        }
     }
 
     /// <summary>

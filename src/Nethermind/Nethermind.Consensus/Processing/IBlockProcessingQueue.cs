@@ -49,7 +49,15 @@ namespace Nethermind.Consensus.Processing
         /// <see cref="ProcessingResult.InclusionListUnsatisfied"/>; every other outcome arrives through
         /// <see cref="BlockRemoved"/> alone.
         /// </summary>
-        event EventHandler<BlockHashEventArgs> BlockExecuted;
+        /// <remarks>
+        /// Defaulted so an implementation outside this repository keeps compiling. One that does not raise it leaves
+        /// its callers waiting for <see cref="BlockRemoved"/>, which is where the answer came from before.
+        /// </remarks>
+        event EventHandler<BlockHashEventArgs> BlockExecuted
+        {
+            add { }
+            remove { }
+        }
 
         event EventHandler<BlockRemovedEventArgs> BlockRemoved;
 
@@ -61,7 +69,11 @@ namespace Nethermind.Consensus.Processing
         /// With <paramref name="executedOnly"/> it also completes at once for a block that has not had its verdict
         /// yet: such a block is queued, not committing, and its wait would be as long as its processing.
         /// </summary>
-        ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false);
+        /// <remarks>
+        /// Defaulted to "nothing is queued" so an implementation outside this repository keeps compiling; a caller
+        /// then proceeds as it did before this existed, without waiting.
+        /// </remarks>
+        ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false) => ValueTask.CompletedTask;
 
         /// <summary>
         /// Fired when processing of a block failed and the block was marked invalid.

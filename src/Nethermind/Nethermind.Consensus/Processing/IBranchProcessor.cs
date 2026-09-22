@@ -41,7 +41,16 @@ public interface IBranchProcessor
     /// that needs the committed block waits for the processing queue to remove it. Handlers run synchronously on
     /// the block-processing thread, ahead of the commit: whatever they do is on the block's critical path.
     /// </remarks>
-    event EventHandler<BlockExecutedEventArgs> BlockExecuted;
+    /// <remarks>
+    /// Defaulted so an implementation outside this repository keeps compiling. One that does not raise it leaves
+    /// every consumer waiting for <see cref="IBlockProcessingQueue.BlockRemoved"/>, which is where the answer came
+    /// from before this event existed.
+    /// </remarks>
+    event EventHandler<BlockExecutedEventArgs> BlockExecuted
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>
     /// Fired after a single block has been processed.

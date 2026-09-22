@@ -149,6 +149,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    /// <inheritdoc/>
     public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false)
         => _inFlight.TryGetValue(blockHash, out InFlightBlock? inFlight) && (!executedOnly || inFlight.Executed)
             ? new ValueTask(inFlight.Removed)
@@ -172,6 +173,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         try
         {
             BlockRemoved?.Invoke(this, e);
+        }
+        catch (Exception exception)
+        {
+            // Not rethrown: the processing loop would report this removal a second time through its own catch, and
+            // a second report takes a copy off whatever entry the hash names by then - after a re-enqueue, a live one.
+            if (_logger.IsError) _logger.Error($"Block removed handler failed for {e.BlockHash}.", exception);
         }
         finally
         {
