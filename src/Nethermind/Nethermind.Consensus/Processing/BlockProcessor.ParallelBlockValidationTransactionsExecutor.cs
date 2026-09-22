@@ -298,7 +298,7 @@ public partial class BlockProcessor
 
             foreach (TxProcessedEventArgs pending in _pendingTransactionProcessedEvents)
             {
-                transactionProcessedEventHandler.OnTransactionProcessed(pending);
+                transactionProcessedEventHandler!.OnTransactionProcessed(pending);
             }
         }
 
