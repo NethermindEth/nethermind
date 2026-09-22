@@ -42,7 +42,7 @@ public class DirtyNodeHasherTests
         PatriciaTree tree = BuildDirtyTree(entries, valueLength, ScatteredKey);
         tree.UpdateRootHash(canBeParallel);
 
-        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(entries));
+        AssertEveryNodeHashMatchesScalarKeccak(tree, entries);
     }
 
     [Test]
@@ -72,7 +72,7 @@ public class DirtyNodeHasherTests
         PatriciaTree tree = BuildDirtyTree(entries, valueLength: 40, SharedPrefixKey);
         tree.UpdateRootHash(canBeParallel);
 
-        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(entries));
+        AssertEveryNodeHashMatchesScalarKeccak(tree, entries);
     }
 
     [Test]
@@ -84,20 +84,24 @@ public class DirtyNodeHasherTests
             valueLengthFor: i => ValueLengths[i % ValueLengths.Length]);
         tree.UpdateRootHash(canBeParallel);
 
-        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(120));
+        AssertEveryNodeHashMatchesScalarKeccak(tree, 120);
     }
 
+    /// <remarks>Reads a process-wide counter, so it cannot share the run with the parallel cases.</remarks>
     [Test]
+    [NonParallelizable]
     public void Second_call_rehashes_nothing_and_leaves_the_root_alone([Values] bool canBeParallel)
     {
         PatriciaTree tree = BuildDirtyTree(40, valueLength: 40, ScatteredKey);
         tree.UpdateRootHash(canBeParallel);
         Hash256 first = tree.RootHash;
+        long hashesAfterFirst = Metrics.TreeNodeHashCalculations;
 
         tree.UpdateRootHash(canBeParallel);
 
+        Assert.That(Metrics.TreeNodeHashCalculations, Is.EqualTo(hashesAfterFirst), "a clean trie must not be hashed again");
         Assert.That(tree.RootHash, Is.EqualTo(first));
-        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(40));
+        AssertEveryNodeHashMatchesScalarKeccak(tree, 40);
     }
 
     [Test]
@@ -110,10 +114,11 @@ public class DirtyNodeHasherTests
 
         Assert.That(handled, Is.False, "a budget this small cannot cover a two-hundred entry trie");
         Assert.That(tree.RootRef!.Keccak, Is.Null, "declining must leave the caller's walk everything to do");
+        AssertNothingHashedBelow(tree.RootRef!);
 
         // Declining is only safe if the ordinary walk still produces the same trie.
         tree.UpdateRootHash();
-        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(200));
+        AssertEveryNodeHashMatchesScalarKeccak(tree, 200);
     }
 
     [Test]
@@ -140,9 +145,20 @@ public class DirtyNodeHasherTests
             Is.False, "a root that already carries a hash has nothing below it left to do");
     }
 
-    /// <summary>The root is always hashed, and anything past one entry brings at least one more.</summary>
-    private static int MinimumHashed(int entries) => Math.Min(entries, 2);
+    /// <summary>Asserts the budget check ran before any hashing, not after some of it.</summary>
+    private static void AssertNothingHashedBelow(TrieNode node)
+    {
+        int childCount = ChildCount(node);
+        for (int i = 0; i < childCount; i++)
+        {
+            if (!node.TryGetDirtyChild(i, out TrieNode? child)) continue;
+            Assert.That(child.Keccak, Is.Null, $"a {child.NodeType} was hashed by a call that declined");
+            AssertNothingHashedBelow(child);
+        }
+    }
 
+    /// <param name="minimumHashed">Every entry of a trie keyed by a 32-byte hash is a leaf whose path
+    /// remainder alone is longer than a hash, so the entry count is a lower bound there.</param>
     private static void AssertEveryNodeHashMatchesScalarKeccak(PatriciaTree tree, int minimumHashed, int minimumEmbedded = 0)
     {
         (int hashed, int embedded) = AssertSubtree(tree.RootRef!, isRoot: true);
@@ -174,7 +190,7 @@ public class DirtyNodeHasherTests
             }
         }
 
-        int childCount = node.IsBranch ? 16 : node.IsExtension ? 1 : 0;
+        int childCount = ChildCount(node);
         for (int i = 0; i < childCount; i++)
         {
             if (node.TryGetDirtyChild(i, out TrieNode? child))
@@ -187,6 +203,9 @@ public class DirtyNodeHasherTests
 
         return (hashed, embedded);
     }
+
+    /// <summary>Child slots to ask about; a leaf has none, and asking one throws.</summary>
+    private static int ChildCount(TrieNode node) => node.IsBranch ? 16 : node.IsExtension ? 1 : 0;
 
     private static PatriciaTree BuildDirtyTree(int entries, int valueLength, Func<int, byte[]> key,
         Func<int, int>? valueLengthFor = null)
