@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -206,9 +207,15 @@ public sealed partial class KeccakHash
         StoreHash4(ref output, 3, a0, a1, a2, a3);
     }
 
+    /// <remarks>
+    /// AVX-512 rotates a 64-bit lane in one instruction; without it the rotate costs a shift pair
+    /// plus an or. The check folds at JIT time, so the unused arm is never emitted.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Vector256<ulong> RotateLeft4(Vector256<ulong> value, byte count) =>
-        (value << count) | (value >> (64 - count));
+    private static Vector256<ulong> RotateLeft4(Vector256<ulong> value, [ConstantExpected] byte count) =>
+        Avx512F.VL.IsSupported
+            ? Avx512F.VL.RotateLeft(value, count)
+            : (value << count) | (value >> (64 - count));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     // Offsets select the same rate lane in each of the four padded messages.
