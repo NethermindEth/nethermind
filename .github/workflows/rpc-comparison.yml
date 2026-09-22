@@ -721,6 +721,12 @@ jobs:
             echo "rpc_int (latest) exit code: $rc_latest"
           fi
 
+          executed=$(awk '/^Number of executed tests:/ { total += $NF } END { print total + 0 }' rpc-results/output*.txt)
+          if [ "$executed" -eq 0 ]; then
+            echo "No tests executed; check the API filters and node-type fixture tags."
+            exit 1
+          fi
+
           if [ "$rc" -ne 0 ] || [ "$rc_latest" -ne 0 ]; then
             echo "rpc_int failed (default=$rc, latest=$rc_latest)"
             exit 1
