@@ -8,28 +8,10 @@ using Ethereum.Test.Base;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 
-public class LoadPyspecTestsStrategy : ITestLoadStrategy
+public class LoadPyspecTestsStrategy
 {
     public string ArchiveVersion { get; init; } = Constants.DEFAULT_ARCHIVE_VERSION;
     public string ArchiveName { get; init; } = Constants.DEFAULT_ARCHIVE_NAME;
-
-    public IEnumerable<EthereumTest> Load(string testsDir, string wildcard = null)
-    {
-        string rootDir = ResolveTestsRoot(testsDir);
-        TestType testType = GetTestType(testsDir);
-
-        // Skip absent fork fixtures instead of throwing
-        if (!Directory.Exists(rootDir))
-            return [];
-
-        List<string> testDirs = [];
-        foreach (string testDir in Directory.EnumerateDirectories(rootDir, "*", new EnumerationOptions { RecurseSubdirectories = true }))
-        {
-            testDirs.Add(testDir);
-        }
-
-        return TestLoadStrategy.LoadTestsFromDirectories(testDirs, wildcard, testType);
-    }
 
     /// <summary>
     /// Downloads (if needed) and resolves the fixture root for <paramref name="testsDir"/>.
@@ -58,9 +40,8 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
     }
 
     /// <summary>
-    /// Enumerates fixture files under <paramref name="rootDir"/> in the same order
-    /// <see cref="Load"/> parses them: recursive subdirectories (excluding the root itself),
-    /// top-level files per directory.
+    /// Enumerates fixture files in filesystem enumeration order: recursive subdirectories
+    /// of <paramref name="rootDir"/> (excluding the root itself), then top-level files per directory.
     /// </summary>
     internal static IEnumerable<(string File, string Directory)> EnumerateTestFiles(string rootDir)
     {

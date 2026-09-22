@@ -8,11 +8,15 @@ using System.IO;
 using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using NUnit.Framework;
+
+// Each running case reparses its fixture file, which can be hundreds of megabytes.
+[assembly: LevelOfParallelism(4)]
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 
@@ -146,7 +150,7 @@ public abstract class PyspecTransactionTestFixture<TSelf> : TransactionTestBase
 /// on demand inside the test body via <see cref="PyspecLoader.LoadTest{T}"/>, so discovery
 /// only retains these small handles instead of every parsed fixture for the whole run.
 /// </summary>
-public sealed record PyspecTestRef(string File, int Occurrence, TestType TestType, string Wildcard);
+public sealed record PyspecTestRef(string File, int Occurrence, TestType TestType);
 
 /// <summary>
 /// NUnit-retained handle to a single zkEVM stateless case (one block of one fixture).
@@ -155,8 +159,14 @@ public sealed record PyspecStatelessRef(string File, int Occurrence, int BlockIn
 
 internal static class PyspecLoader
 {
-    private static readonly ConcurrentDictionary<string, IReadOnlyList<RefEntry>> s_refsCache = new();
-    private static readonly ConcurrentDictionary<string, IReadOnlyList<StatelessEntry>> s_statelessCache = new();
+    private static readonly ConcurrentDictionary<string, Lazy<IReadOnlyList<RefEntry>>> s_refsCache = new();
+    private static readonly ConcurrentDictionary<string, Lazy<IReadOnlyList<StatelessEntry>>> s_statelessCache = new();
+
+    // Bounded parallel expansion over fixture files, concatenated in file order so chunking
+    // and test names match a sequential pass. Parallelism is capped well below ProcessorCount:
+    // each in-flight file transiently holds its raw JSON plus the expanded object graph, and
+    // single fixture files reach hundreds of megabytes.
+    private static readonly int s_discoveryParallelism = Math.Max(1, Math.Min(4, Environment.ProcessorCount));
 
     private sealed record RefEntry(PyspecTestRef Ref, string Name, string Category);
     private sealed record StatelessEntry(PyspecStatelessRef Ref, string DisplayName);
@@ -165,10 +175,10 @@ internal static class PyspecLoader
         LoadCases<T>(new LoadPyspecTestsStrategy(),
             $"fixtures/{root}/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>(suffix)}");
 
-    public static IEnumerable<TestCaseData> LoadCases<T>(LoadPyspecTestsStrategy strategy, string testsDir, string wildcard = null) where T : EthereumTest
+    public static IEnumerable<TestCaseData> LoadCases<T>(LoadPyspecTestsStrategy strategy, string testsDir) where T : EthereumTest
     {
         int index = 0;
-        foreach (RefEntry entry in TestChunkFilter.FilterByChunk(GetRefs<T>(strategy, testsDir, wildcard)))
+        foreach (RefEntry entry in TestChunkFilter.FilterByChunk(GetRefs<T>(strategy, testsDir)))
         {
             yield return new TestCaseData(entry.Ref).SetName(GetTestCaseName(entry.Name, entry.Category, index++));
         }
@@ -181,7 +191,7 @@ internal static class PyspecLoader
     /// </summary>
     public static T LoadTest<T>(PyspecTestRef testRef) where T : EthereumTest
     {
-        List<T> tests = LoadFileTests<T>(testRef.File, testRef.TestType, testRef.Wildcard);
+        List<T> tests = LoadFileTests<T>(testRef.File, Path.GetDirectoryName(testRef.File) ?? string.Empty, testRef.TestType, throwOnFailure: true);
         if ((uint)testRef.Occurrence >= (uint)tests.Count)
             throw new InvalidOperationException($"Pyspec fixture '{testRef.File}' holds {tests.Count} tests but case #{testRef.Occurrence} was requested.");
         return tests[testRef.Occurrence];
@@ -197,7 +207,7 @@ internal static class PyspecLoader
 
     public static (string InputBytes, string OutputBytes) LoadZkEvmStatelessBytes(PyspecStatelessRef statelessRef)
     {
-        BlockchainTest test = LoadZkEvmTest(new PyspecTestRef(statelessRef.File, statelessRef.Occurrence, TestType.Blockchain, null));
+        BlockchainTest test = LoadTest<BlockchainTest>(new PyspecTestRef(statelessRef.File, statelessRef.Occurrence, TestType.Blockchain));
         if (test.Blocks is not { Length: > 0 } blocks || (uint)statelessRef.BlockIndex >= (uint)blocks.Length)
             throw new InvalidOperationException($"Pyspec fixture '{statelessRef.File}' case #{statelessRef.Occurrence} has no block #{statelessRef.BlockIndex}.");
         TestBlockJson block = blocks[statelessRef.BlockIndex];
@@ -209,17 +219,17 @@ internal static class PyspecLoader
     public static BlockchainTest LoadZkEvmTest(PyspecTestRef testRef) =>
         ZkEvmFixtures.ZkEvmMutatedWitnessIndex.StampMutatedBlocks([LoadTest<BlockchainTest>(testRef)]).First();
 
-    private static IReadOnlyList<RefEntry> GetRefs<T>(LoadPyspecTestsStrategy strategy, string testsDir, string wildcard) where T : EthereumTest
+    private static IReadOnlyList<RefEntry> GetRefs<T>(LoadPyspecTestsStrategy strategy, string testsDir) where T : EthereumTest
     {
-        string key = $"{strategy.ArchiveVersion}\0{strategy.ArchiveName}\0{testsDir}\0{typeof(T).FullName}\0{wildcard}";
-        return s_refsCache.GetOrAdd(key, _ => BuildRefs<T>(strategy, testsDir, wildcard));
+        string key = $"{strategy.ArchiveVersion}\0{strategy.ArchiveName}\0{testsDir}\0{typeof(T).FullName}";
+        return s_refsCache.GetOrAdd(key, _ => new(() => BuildRefs<T>(strategy, testsDir), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
     }
 
     // One pass over the fixture set: parse each file, record a small handle per case,
     // then drop the parsed objects. Only the handles are retained, so discovery holds
     // megabytes instead of the whole parsed set, and fixture variants sharing a
     // directory share the cached result.
-    private static IReadOnlyList<RefEntry> BuildRefs<T>(LoadPyspecTestsStrategy strategy, string testsDir, string wildcard) where T : EthereumTest
+    private static IReadOnlyList<RefEntry> BuildRefs<T>(LoadPyspecTestsStrategy strategy, string testsDir) where T : EthereumTest
     {
         string rootDir = strategy.ResolveTestsRoot(testsDir);
         if (!Directory.Exists(rootDir))
@@ -230,10 +240,10 @@ internal static class PyspecLoader
         {
             List<RefEntry> refs = [];
             int occurrence = 0;
-            foreach (T test in LoadFileTests<T>(file, directory, type, wildcard))
+            foreach (T test in LoadFileTests<T>(file, directory, type))
             {
                 string name = test.Name ?? test.ToString() ?? test.GetType().Name;
-                refs.Add(new RefEntry(new PyspecTestRef(file, occurrence++, type, wildcard), name, test.Category ?? string.Empty));
+                refs.Add(new RefEntry(new PyspecTestRef(file, occurrence++, type), name, test.Category ?? string.Empty));
             }
 
             return refs;
@@ -243,7 +253,7 @@ internal static class PyspecLoader
     private static IReadOnlyList<StatelessEntry> GetStatelessRefs(LoadPyspecTestsStrategy strategy, string testsDir)
     {
         string key = $"{strategy.ArchiveVersion}\0{strategy.ArchiveName}\0{testsDir}\0stateless";
-        return s_statelessCache.GetOrAdd(key, _ => BuildStatelessRefs(strategy, testsDir));
+        return s_statelessCache.GetOrAdd(key, _ => new(() => BuildStatelessRefs(strategy, testsDir), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
     }
 
     private static IReadOnlyList<StatelessEntry> BuildStatelessRefs(LoadPyspecTestsStrategy strategy, string testsDir)
@@ -257,10 +267,9 @@ internal static class PyspecLoader
         {
             List<StatelessEntry> refs = [];
             int occurrence = 0;
-            foreach (BlockchainTest test in LoadFileTests<BlockchainTest>(file, directory, type, wildcard: null))
+            foreach (BlockchainTest test in LoadFileTests<BlockchainTest>(file, directory, type))
             {
-                BlockchainTest stamped = ZkEvmFixtures.ZkEvmMutatedWitnessIndex.StampMutatedBlocks([test]).First();
-                if (stamped.Blocks is { Length: > 0 } blocks)
+                if (test.Blocks is { Length: > 0 } blocks)
                 {
                     for (int i = 0; i < blocks.Length; i++)
                     {
@@ -268,8 +277,8 @@ internal static class PyspecLoader
                         if (block.StatelessInputBytes is null && block.StatelessOutputBytes is null)
                             continue;
                         if (block.StatelessInputBytes is null || block.StatelessOutputBytes is null)
-                            throw new InvalidDataException($"Incomplete stateless fixture data in {stamped.Name}, block {i}.");
-                        refs.Add(new StatelessEntry(new PyspecStatelessRef(file, occurrence, i), $"{stamped.Name}_stateless_block_{i}"));
+                            throw new InvalidDataException($"Incomplete stateless fixture data in {test.Name}, block {i}.");
+                        refs.Add(new StatelessEntry(new PyspecStatelessRef(file, occurrence, i), $"{test.Name}_stateless_block_{i}"));
                     }
                 }
                 occurrence++;
@@ -278,12 +287,6 @@ internal static class PyspecLoader
             return refs;
         });
     }
-
-    // Bounded parallel expansion over fixture files, concatenated in file order so chunking
-    // and test names match a sequential pass. Parallelism is capped well below ProcessorCount:
-    // each in-flight file transiently holds its raw JSON plus the expanded object graph, and
-    // single fixture files reach hundreds of megabytes.
-    private static readonly int s_discoveryParallelism = Math.Max(1, Math.Min(4, Environment.ProcessorCount));
 
     private static List<TOut> ExpandFiles<TOut>(string rootDir, TestType testType, Func<string, string, TestType, List<TOut>> expandFile)
     {
@@ -319,11 +322,13 @@ internal static class PyspecLoader
 
     // Same per-file pipeline as TestLoadStrategy.LoadTestsFromDirectories: parse, apply
     // fixture exclusions (inside FileTestsSource), then default the category to the directory.
-    private static List<T> LoadFileTests<T>(string file, string directory, TestType testType, string wildcard) where T : EthereumTest
+    private static List<T> LoadFileTests<T>(string file, string directory, TestType testType, bool throwOnFailure = false) where T : EthereumTest
     {
         List<T> tests = [];
-        foreach (EthereumTest test in new FileTestsSource(file, wildcard).LoadTests(testType))
+        foreach (EthereumTest test in new FileTestsSource(file).LoadTests(testType))
         {
+            if (throwOnFailure && test is FailedToLoadTest failed)
+                throw new InvalidDataException($"Pyspec fixture '{file}': {failed.LoadFailure}");
             if (test is T typed)
             {
                 typed.Category ??= directory;
@@ -333,9 +338,6 @@ internal static class PyspecLoader
 
         return tests;
     }
-
-    private static List<T> LoadFileTests<T>(string file, TestType testType, string wildcard) where T : EthereumTest =>
-        LoadFileTests<T>(file, Path.GetDirectoryName(file) ?? string.Empty, testType, wildcard);
 
     private static string GetTestCaseName(string name, string category, int index) =>
         string.IsNullOrEmpty(category) ? $"{name}#{index}" : $"{category}/{name}#{index}";
