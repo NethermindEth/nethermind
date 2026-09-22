@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -35,9 +34,11 @@ namespace Nethermind.Blockchain.Test;
 /// <see cref="Production_cost_by_shape"/> then prices a build for every ranked shape on one rig, so the
 /// three are comparable without carrying CI absolutes onto other hardware.
 ///
-/// Every row carries <c>read_bytes</c> and <c>db_fs</c>. A run whose temp directory is <c>tmpfs</c> has no
-/// block device under it, so no arrangement of caches can make a rung reach one and every figure is a
-/// memory-resident lower bound; point <c>TMPDIR</c> at a disk-backed directory to measure the other regime.
+/// Every row names the environment it ran in rather than the one it asked for: <c>read_bytes</c>,
+/// <c>db_fs</c> for the file system the database sits on, and <c>trie_cache_mb</c> for the trie-store cache
+/// the container resolved. A run whose temp directory is <c>tmpfs</c> has no block device under it, so no
+/// arrangement of caches can make a rung reach one and every figure is a memory-resident lower bound; point
+/// <c>TMPDIR</c> at a disk-backed directory to measure the other regime.
 ///
 /// Rows are appended as <c>RESULT key=value</c> lines to <c>FRAME_FLOOD_OUT</c>, or
 /// <c>frame-tx-storage-producer.txt</c> in the temp directory. Run under <c>taskset -c 0</c>.
@@ -48,11 +49,11 @@ namespace Nethermind.Blockchain.Test;
 public class FrameTxStorageProducerMeasurement
 {
     /// <summary>
-    /// Ceilings that fit the compiled <see cref="Eip8141Constants.MaxVerifyGas"/>. 322,800 is above it, so
-    /// an EVM-executing shape cannot reach it without a source edit; the ranked CPU shapes have the same
-    /// limit and the campaign extrapolates there the same way.
+    /// The swept ceilings, matching the CPU shapes' grid. 322,800 and 352,800 are above the compiled
+    /// <see cref="Eip8141Constants.MaxVerifyGas"/>, so they self-ignore on a stock build and need a run that
+    /// raises the constant.
     /// </summary>
-    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul];
+    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 352_800ul];
 
     /// <summary>Untimed build attempts used to move tiered-JIT work outside measurement.</summary>
     private const int Warmup = 40;
@@ -182,7 +183,7 @@ public class FrameTxStorageProducerMeasurement
                  + $"build_p50_us={p50:F1} build_p90_us={Percentile(byAttempt[attempt], 0.90):F1} "
                  + $"build_min_us={Min(byAttempt[attempt]):F1} "
                  + $"ratio_to_first_attempt={p50 / firstAttempt:F3} "
-                 + $"read_bytes_total={readBytesByAttempt[attempt]}");
+                 + $"read_bytes_total={readBytesByAttempt[attempt]} {_chain.TrieCacheFields}");
         }
 
         Emit($"case=producer_attempt_summary shape={shape} range={range} storage_backend=rocksdb_trie "
@@ -191,7 +192,7 @@ public class FrameTxStorageProducerMeasurement
              + $"later_over_first={secondAttempt / firstAttempt:F3} "
              + $"work_repeats_per_attempt={(secondAttempt >= firstAttempt * ReadsRepeatFloor ? "yes" : "no")} "
              + $"db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} "
-             + $"db_fs={StorageResidency.FileSystemOf(_dbDirectory.Path)}");
+             + $"db_fs={StorageResidency.FileSystemOf(_dbDirectory.Path)} {_chain.TrieCacheFields}");
     }
 
     private int ColdSloadsFor(string shape) => shape == "sload-cold" ? _slotsPerTx : 0;
@@ -269,7 +270,7 @@ public class FrameTxStorageProducerMeasurement
              + $"us_per_kgas={p50 * 1_000 / _ceiling:F3} us_per_Mgas_basis=declared "
              + $"read_bytes_total={readBytes} read_bytes_per_sample={readBytes / Samples} "
              + $"fadvised_files={fadvisedFiles} db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} "
-             + $"db_fs={StorageResidency.FileSystemOf(_dbDirectory.Path)}");
+             + $"db_fs={StorageResidency.FileSystemOf(_dbDirectory.Path)} {_chain.TrieCacheFields}");
     }
 
     private void Prepare(ulong ceiling)
@@ -294,7 +295,7 @@ public class FrameTxStorageProducerMeasurement
 
         int slotsToSeed = Math.Max((rangesNeeded + 1) * _saltStride, paddingSlots);
         _chain = await ColdSloadStorageFixture.BuildChain(
-            _dbDirectory.Path, SloadAttacker, AttackerBalance, slotsToSeed,
+            _dbDirectory.Path, _ceiling, SloadAttacker, AttackerBalance, slotsToSeed,
             [(KeccakAttacker, "keccak-wide"), (SignatureAttacker, "banned-opcode")]);
 
         _chain.DbProvider.StateDb.Flush();
