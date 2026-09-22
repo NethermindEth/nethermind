@@ -11,6 +11,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using NUnit.Framework;
@@ -131,6 +133,65 @@ public class JsonRpcResponseWriterStreamingIdTests
         {
             await pipe.Writer.CompleteAsync();
             await pipe.Reader.CompleteAsync();
+        }
+    }
+
+    [Test]
+    public async Task Trace_transport_cancellation_does_not_complete_success([Values(0, 20_000)] int padding)
+    {
+        using CancellationTokenSource transport = new();
+        using CancellationTokenSource timeout = new();
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = new JsonRpcId(42L),
+            Result = new ParityTxTraceStreamingResult<int>((writer, _, ct) =>
+            {
+                writer.WriteStringValue(new string('x', padding));
+                writer.Flush();
+                transport.Cancel();
+                ct.ThrowIfCancellationRequested();
+            }, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcResponseWriterStreamingIdTests>()),
+            StreamExceptionHandler = _ => throw new AssertionException("A cancelled transport must not receive a replacement response")
+        };
+        using MemoryStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+        try
+        {
+            Assert.ThrowsAsync<OperationCanceledException>(async () =>
+                await JsonRpcResponseWriter.WriteAsync(writer, response, new JsonSerializerOptions(), transport.Token));
+            await writer.CompleteAsync();
+            string envelope = Encoding.UTF8.GetString(stream.ToArray());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(envelope, Does.Not.Contain("\"error\""));
+                Assert.That(envelope, Does.Not.Contain("\"id\":42"));
+                if (padding == 0) Assert.That(envelope, Is.Empty);
+            }
+        }
+        finally
+        {
+            await writer.CompleteAsync();
+        }
+    }
+
+    [Test]
+    public async Task Expired_trace_timeout_does_not_start_execution()
+    {
+        using CancellationTokenSource timeout = new();
+        timeout.Cancel();
+        using ParityTxTraceStreamingResult<int> result = new(
+            (_, _, _) => throw new AssertionException("Expired requests must not execute"),
+            timeout, LimboLogs.Instance.GetClassLogger<JsonRpcResponseWriterStreamingIdTests>());
+        using MemoryStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+        try
+        {
+            Assert.ThrowsAsync<OperationCanceledException>(async () =>
+                await result.WriteToAsync(writer, CancellationToken.None));
+        }
+        finally
+        {
+            await writer.CompleteAsync();
         }
     }
 

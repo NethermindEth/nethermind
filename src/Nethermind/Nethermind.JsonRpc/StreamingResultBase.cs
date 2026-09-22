@@ -36,13 +36,15 @@ public abstract class StreamingResultBase(CancellationTokenSource timeoutCts, IL
 
         try
         {
+            combinedToken.ThrowIfCancellationRequested();
             emitContent(jsonWriter, writer, combinedToken);
             jsonWriter.Flush();
             await writer.FlushAsync(combinedToken);
         }
         catch (OperationCanceledException) when (combinedToken.IsCancellationRequested)
         {
-            if (logger.IsDebug) logger.Debug("JSON-RPC streaming cancelled mid-response; client receives a partial body with the JSON envelope closed by the inner finally blocks.");
+            if (logger.IsDebug) logger.Debug("JSON-RPC streaming cancelled; propagating cancellation to the response writer.");
+            throw;
         }
     }
 

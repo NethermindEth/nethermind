@@ -485,16 +485,17 @@ public class JsonRpcServiceTests
         pool.Received(1).ReturnModule(rpcModule);
     }
 
-    private static IEnumerable<(Exception Exception, int Code)> ReplayFailures()
+    private static IEnumerable<(Exception Exception, int Code, bool CancelTimeout)> ReplayFailures()
     {
-        yield return (new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA), ErrorCodes.ResourceNotFound);
-        yield return (new TargetInvocationException(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA)), ErrorCodes.ResourceNotFound);
-        yield return (new ResourceNotFoundException("History pruned"), ErrorCodes.PrunedHistoryUnavailable);
-        yield return (new InsufficientBalanceException(TestItem.AddressA), ErrorCodes.InvalidInput);
-        yield return (new InvalidOperationException("Replay failed"), ErrorCodes.InternalError);
-        yield return (new ArgumentException("Invalid replay argument"), ErrorCodes.InvalidParams);
-        yield return (new LimitExceededException("limit"), ErrorCodes.LimitExceeded);
-        yield return (new OperationCanceledException("Replay timeout"), ErrorCodes.Timeout);
+        yield return (new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA), ErrorCodes.ResourceNotFound, false);
+        yield return (new TargetInvocationException(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA)), ErrorCodes.ResourceNotFound, false);
+        yield return (new ResourceNotFoundException("History pruned"), ErrorCodes.PrunedHistoryUnavailable, false);
+        yield return (new InsufficientBalanceException(TestItem.AddressA), ErrorCodes.InvalidInput, false);
+        yield return (new InvalidOperationException("Replay failed"), ErrorCodes.InternalError, false);
+        yield return (new ArgumentException("Invalid replay argument"), ErrorCodes.InvalidParams, false);
+        yield return (new LimitExceededException("limit"), ErrorCodes.LimitExceeded, false);
+        yield return (new OperationCanceledException("Replay timeout"), ErrorCodes.Timeout, false);
+        yield return (new OperationCanceledException("Replay timeout"), ErrorCodes.Timeout, true);
     }
 
     [Test]
@@ -520,7 +521,7 @@ public class JsonRpcServiceTests
 
     [Test]
     public async Task Streamed_replay_errors_use_invocation_mapping_before_commit(
-        [ValueSource(nameof(ReplayFailures))] (Exception Exception, int Code) failure,
+        [ValueSource(nameof(ReplayFailures))] (Exception Exception, int Code, bool CancelTimeout) failure,
         [Values] bool blockReplay,
         [Values(0, 1, 2)] int commitMode)
     {
@@ -594,6 +595,7 @@ public class JsonRpcServiceTests
             writer.WriteEndObject();
             writer.Flush();
             if (commitMode == 1) Assert.That(pipeWriter!.FlushAsync(ct).IsCompletedSuccessfully, Is.True);
+            if (failure.CancelTimeout) timeout.Cancel();
             throw failure.Exception;
         }
     }

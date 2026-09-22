@@ -1369,8 +1369,17 @@ public class TraceRpcModuleTests
             using CancellationTokenSource cts = new();
             cts.Cancel();
             System.IO.Pipelines.Pipe pipe = new();
-            await streaming.WriteToAsync(pipe.Writer, cts.Token);
-        })).SetName("Pre-cancelled token: WriteToAsync swallows OperationCanceledException");
+            try
+            {
+                Assert.ThrowsAsync<OperationCanceledException>(async () => await streaming.WriteToAsync(pipe.Writer, cts.Token));
+            }
+            finally
+            {
+                await pipe.Writer.CompleteAsync();
+                await pipe.Reader.CompleteAsync();
+                (streaming as IDisposable)?.Dispose();
+            }
+        })).SetName("Pre-cancelled token: WriteToAsync propagates OperationCanceledException");
 
         yield return new TestCaseData((Func<Task>)(() =>
         {
