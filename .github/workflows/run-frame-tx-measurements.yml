@@ -14,6 +14,7 @@ on:
           - flood
           - producer-retry
           - prefix-retry
+          - storage
         default: both
       groth16_artifacts_version:
         description: >-
@@ -83,13 +84,13 @@ jobs:
             both)           projects=(Nethermind.TxPool.Test Nethermind.Blockchain.Test) ;;
             verify)         projects=(Nethermind.Evm.Test) ;;
             mempool)        projects=(Nethermind.TxPool.Test) ;;
-            flood|producer-retry) projects=(Nethermind.Blockchain.Test) ;;
+            flood|producer-retry|storage) projects=(Nethermind.Blockchain.Test) ;;
             prefix-retry)   projects=(Nethermind.TxPool.Test) ;;
             *)              echo "::error::no build mapping for harness '${HARNESS}'"; exit 1 ;;
           esac
 
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]] && ! command -v taskset >/dev/null; then
-            echo "::error::taskset is not available, so FrameTxFloodMeasurement cannot be confined to one CPU and its figures would describe an uncontended node."
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" || "${HARNESS}" == "storage" ]] && ! command -v taskset >/dev/null; then
+            echo "::error::taskset is not available, so FrameTxFloodMeasurement and the storage harnesses cannot be confined to one CPU and their figures would describe an uncontended node."
             exit 1
           fi
           # Safe to patch: this constant only gates the mempool's prefix simulator, never block validity.
@@ -138,6 +139,41 @@ jobs:
             } >> "${OUTPUT_DIR}/PROVENANCE.txt"
           fi
 
+          # FrameTxStorageIoMeasurement and FrameTxStorageProducerMeasurement put their RocksDB under
+          # TempPath.GetTempDirectory(), i.e. .NET's Path.GetTempPath(), which honours TMPDIR. Left unset
+          # that resolves to /tmp, tmpfs on some hosts, which would measure RAM and call it storage I/O.
+          # /mnt/sda is the runner's real disk (see AGENTS.md's reproducible-benchmarks snapshot paths);
+          # detect rather than assume, since a self-hosted runner's layout can change under this workflow.
+          if [[ "${HARNESS}" == "storage" ]]; then
+            storage_tmpdir=""
+            for candidate_root in /mnt/sda "${RUNNER_TEMP}"; do
+              [[ -d "${candidate_root}" ]] || continue
+              candidate="${candidate_root}/frame-tx-storage-tmp"
+              rm -rf "${candidate}"
+              if mkdir -p "${candidate}" 2>/dev/null; then
+                storage_tmpdir="${candidate}"
+                break
+              fi
+            done
+            if [[ -z "${storage_tmpdir}" ]]; then
+              echo "::error::no writable directory found to host the storage harness's RocksDB (tried /mnt/sda and RUNNER_TEMP)."
+              exit 1
+            fi
+            export TMPDIR="${storage_tmpdir}"
+            if command -v findmnt >/dev/null; then
+              storage_tmpdir_fstype=$(findmnt -no FSTYPE --target "${TMPDIR}" 2>/dev/null || echo unknown)
+            else
+              storage_tmpdir_fstype=$(stat -f -c %T "${TMPDIR}" 2>/dev/null || echo unknown)
+            fi
+            {
+              echo "storage_tmpdir=${TMPDIR}"
+              echo "storage_tmpdir_fstype=${storage_tmpdir_fstype}"
+            } >> "${OUTPUT_DIR}/PROVENANCE.txt"
+            if [[ "${storage_tmpdir_fstype}" == "tmpfs" ]]; then
+              echo "::warning::storage_tmpdir ${TMPDIR} resolved to tmpfs; the storage harness's figures describe RAM, not a block device. Each RESULT row's own db_fs field carries the same reading."
+            fi
+          fi
+
           for project in "${projects[@]}"; do
             dotnet build "${project}/${project}.csproj" -c release || exit 1
           done
@@ -159,6 +195,7 @@ jobs:
             export FRAME_MEMPOOL_DOS_OUT="${results}"
             export FRAME_RETRY_OUT="${results}"
             export FRAME_FLOOD_OUT="${results}"
+            export FRAME_STORAGE_IO_OUT="${results}"
 
             dotnet build-server shutdown || true
 
@@ -166,7 +203,7 @@ jobs:
               dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore
               --no-ansi --output Detailed -- --filter "FullyQualifiedName~${fixture}"
             )
-            if [[ "${fixture}" == "FrameTxFloodMeasurement" ]]; then
+            if [[ "${fixture}" == "FrameTxFloodMeasurement" || "${fixture}" == "FrameTxStorageIoMeasurement" || "${fixture}" == "FrameTxStorageProducerMeasurement" ]]; then
               cmd=(taskset -c 0 "${cmd[@]}")
             fi
 
@@ -213,6 +250,12 @@ jobs:
           fi
           if [[ "${HARNESS}" == "prefix-retry" ]]; then
             run_harness Nethermind.TxPool.Test FrameTxPoolRetentionMeasurement || status=1
+          fi
+          if [[ "${HARNESS}" == "storage" ]]; then
+            storage_io_markers=('case=frame_reject' 'shape=sload-cold')
+            run_harness Nethermind.Blockchain.Test FrameTxStorageIoMeasurement "${storage_io_markers[@]}" || status=1
+            storage_producer_markers=('case=producer_attempt_summary' 'case=production_cost')
+            run_harness Nethermind.Blockchain.Test FrameTxStorageProducerMeasurement "${storage_producer_markers[@]}" || status=1
           fi
 
           if [[ "${ran}" -eq 0 ]]; then
