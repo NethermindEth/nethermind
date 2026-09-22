@@ -56,20 +56,7 @@ public class ForkchoiceUpdatedHandlerTests
             return new ValueTask(removed.Task);
         });
 
-        ForkchoiceUpdatedHandler handler = new(
-            blockTree,
-            Substitute.For<IPoSSwitcher>(),
-            Substitute.For<IPayloadPreparationService>(),
-            processingQueue,
-            Substitute.For<IBlockCacheService>(),
-            Substitute.For<IInvalidChainTracker>(),
-            Substitute.For<IMergeSyncController>(),
-            Substitute.For<IBeaconPivot>(),
-            Substitute.For<IPeerRefresher>(),
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<ISyncPeerPool>(),
-            new MergeConfig { NewPayloadBlockProcessingTimeout = 5_000 },
-            LimboLogs.Instance);
+        ForkchoiceUpdatedHandler handler = CreateHandler(blockTree, processingQueue);
 
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> request = handler.Handle(new ForkchoiceStateV1(newHeadHash, parent.Hash!, parent.Hash!), null, 1);
 
@@ -100,8 +87,17 @@ public class ForkchoiceUpdatedHandlerTests
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
         processingQueue.Count.Returns(2);
 
-        ForkchoiceUpdatedHandler handler = new(
-            blockTree,
+        ForkchoiceUpdatedHandler handler = CreateHandler(blockTree, processingQueue);
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(new ForkchoiceStateV1(newHeadHash, parent.Hash!, parent.Hash!), null, 1);
+
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        await processingQueue.DidNotReceive().WaitUntilRemovedAsync(Arg.Any<Hash256>(), Arg.Any<bool>());
+    }
+
+    /// <summary>The handler with everything but the tree and the queue stubbed away, which are what these cases drive.</summary>
+    private static ForkchoiceUpdatedHandler CreateHandler(IBlockTree blockTree, IBlockProcessingQueue processingQueue) =>
+        new(blockTree,
             Substitute.For<IPoSSwitcher>(),
             Substitute.For<IPayloadPreparationService>(),
             processingQueue,
@@ -114,10 +110,4 @@ public class ForkchoiceUpdatedHandlerTests
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig { NewPayloadBlockProcessingTimeout = 5_000 },
             LimboLogs.Instance);
-
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(new ForkchoiceStateV1(newHeadHash, parent.Hash!, parent.Hash!), null, 1);
-
-        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
-        await processingQueue.DidNotReceive().WaitUntilRemovedAsync(Arg.Any<Hash256>(), Arg.Any<bool>());
-    }
 }

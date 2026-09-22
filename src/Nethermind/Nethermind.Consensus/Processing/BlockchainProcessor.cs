@@ -222,13 +222,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         /// <summary><c>true</c> when this was the last copy, so the entry is to be removed and its waiters are released.</summary>
         /// <remarks>
-        /// Removals are raised once per copy and in sequence today; the clamp keeps a second removal of the last copy,
-        /// should one ever overlap, from stranding the entry at a count nothing can bring back to zero.
+        /// Removals are raised once per copy and in sequence today; the clamps keep a second removal of the last copy,
+        /// should one ever overlap, from stranding the entry at a count nothing can bring back to zero - which would
+        /// leave every waiter on the hash to its full bound and spin the next enqueue of it forever.
         /// </remarks>
         public bool RemoveCopy()
         {
             int copies = Interlocked.Decrement(ref _copies);
-            if (copies != 0) return false;
+            if (copies > 0) return false;
+            // Taken below zero by a removal that overlapped the last one: that one owns the release either way.
+            if (copies < 0) return false;
             // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
             if (Interlocked.CompareExchange(ref _copies, -1, 0) != 0) return false;
             Release();

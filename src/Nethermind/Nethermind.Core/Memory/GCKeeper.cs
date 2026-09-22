@@ -120,14 +120,21 @@ public class GCKeeper : IDisposable
         private bool _starting;
         private bool _active;
         private int _leases = 1;
+        private bool _ownerReleased;
 
-        /// <summary>Takes a lease for a payload that starts while this region is open.</summary>
-        /// <returns><c>false</c> when the region is already on its way out and can cover nothing.</returns>
+        /// <summary>Takes a lease for a payload that starts while the payload that admitted this region is inside it.</summary>
+        /// <remarks>
+        /// Refused once that payload has let go, which bounds the chain at two: the budget is entered once and sized
+        /// for one payload, so a chain that kept renewing itself would spread it over arbitrarily many blocks until
+        /// the runtime ended the region itself mid-block, and would hold the keeper's slot so no region could ever be
+        /// admitted again. A third overlapping payload takes the skipped path instead, as it did before leases.
+        /// </remarks>
+        /// <returns><c>false</c> when the region is on its way out, or its admitting payload has already released.</returns>
         public bool TryAddLease()
         {
             lock (_stateLock)
             {
-                if (_released) return false;
+                if (_released || _ownerReleased) return false;
                 _leases++;
                 return true;
             }
@@ -170,18 +177,20 @@ public class GCKeeper : IDisposable
             else keeper.ReleaseRegion(this);
         }
 
-        public void Dispose() => Release();
+        /// <summary>Released by the payload that admitted the region, after which it takes no new leases.</summary>
+        public void Dispose() => Release(owner: true);
 
         /// <summary>Ends the region whatever is still leased, for the keeper's own shutdown.</summary>
         public void ForceRelease() => Release(force: true);
 
-        public void Release(bool force = false)
+        public void Release(bool owner = false, bool force = false)
         {
             bool end;
             bool release;
             lock (_stateLock)
             {
                 if (_released) return;
+                if (owner) _ownerReleased = true;
                 if (force) _leases = 0; else _leases--;
                 // Still covering another payload: the region is not this lease's to end.
                 if (_leases > 0) return;

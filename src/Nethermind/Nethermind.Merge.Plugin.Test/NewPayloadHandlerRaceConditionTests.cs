@@ -129,13 +129,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     [Test]
     public async Task ValidateBlockAndProcess_cleans_up_completion_when_timeout_happens_before_block_removed()
     {
-        Block block = Build.A.Block
-            .WithParentHash(TestItem.KeccakC)
-            .WithNumber(1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-        block.Header.IsPostMerge = true;
+        Block block = PostMergeBlock();
 
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
         processingQueue
@@ -165,13 +159,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_answers_on_the_verdict_without_waiting_for_removal()
     {
-        Block block = Build.A.Block
-            .WithParentHash(TestItem.KeccakC)
-            .WithNumber(1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-        block.Header.IsPostMerge = true;
+        Block block = PostMergeBlock();
 
         TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
@@ -209,13 +197,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_waits_for_a_known_copy_still_in_the_queue_instead_of_enqueueing_again()
     {
-        Block block = Build.A.Block
-            .WithParentHash(TestItem.KeccakC)
-            .WithNumber(1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-        block.Header.IsPostMerge = true;
+        Block block = PostMergeBlock();
 
         // The first copy is between verdict and commit: the tree knows the block but has not marked it processed.
         bool committed = false;
@@ -251,13 +233,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_does_not_take_the_first_copy_removal_for_a_resubmission_answer()
     {
-        Block block = Build.A.Block
-            .WithParentHash(TestItem.KeccakC)
-            .WithNumber(1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-        block.Header.IsPostMerge = true;
+        Block block = PostMergeBlock();
 
         TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -303,13 +279,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_waits_for_a_processed_first_copy_still_in_flight_before_judging_a_new_inclusion_list()
     {
-        Block block = Build.A.Block
-            .WithParentHash(TestItem.KeccakC)
-            .WithNumber(1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-        block.Header.IsPostMerge = true;
+        Block block = PostMergeBlock();
 
         TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -355,13 +325,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_does_not_leave_a_verdict_cached_for_a_block_that_never_commits()
     {
-        Block block = Build.A.Block
-            .WithParentHash(TestItem.KeccakC)
-            .WithNumber(1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-        block.Header.IsPostMerge = true;
+        Block block = PostMergeBlock();
 
         TaskCompletionSource firstEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -407,13 +371,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     [Test, MaxTime(10_000)]
     public async Task HandleAsync_waits_for_a_parent_still_committing_instead_of_answering_syncing()
     {
-        Block block = Build.A.Block
-            .WithParentHash(TestItem.KeccakC)
-            .WithNumber(1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-        block.Header.IsPostMerge = true;
+        Block block = PostMergeBlock();
 
         bool parentCommitted = false;
         TaskCompletionSource parentWaitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -460,13 +418,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_gives_up_on_a_known_copy_that_never_finishes()
     {
-        Block block = Build.A.Block
-            .WithParentHash(TestItem.KeccakC)
-            .WithNumber(1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-        block.Header.IsPostMerge = true;
+        Block block = PostMergeBlock();
 
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
         processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(new ValueTask(new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task));
@@ -492,6 +444,19 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         return (int)BlockValidationTasksField!.FieldType
             .GetProperty("Count", BindingFlags.Instance | BindingFlags.Public)!
             .GetValue(BlockValidationTasksField.GetValue(handler)!)!;
+    }
+
+    /// <summary>The block every case here drives: post-merge, one past a parent none of them have.</summary>
+    private static Block PostMergeBlock()
+    {
+        Block block = Build.A.Block
+            .WithParentHash(TestItem.KeccakC)
+            .WithNumber(1)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .TestObject;
+        block.Header.IsPostMerge = true;
+        return block;
     }
 
     private static NewPayloadHandler CreateHandler(

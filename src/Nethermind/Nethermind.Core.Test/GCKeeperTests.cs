@@ -338,6 +338,43 @@ public class GCKeeperTests
         }
     }
 
+    // The chain of leases ends with the payload that admitted the region. A budget entered once and sized for one
+    // payload cannot be stretched over a queue of them, and a chain that kept renewing itself would hold the
+    // keeper's slot so that no region could be admitted again.
+    [Test]
+    public void Lease_chain_ends_with_the_payload_that_admitted_the_region()
+    {
+        List<IThreadPoolWorkItem> queued = [];
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+
+        IDisposable first = keeper.TryStartNoGCRegion();
+        queued[0].Execute();
+        IDisposable second = keeper.TryStartNoGCRegion();
+        first.Dispose();
+
+        // The payload that admitted the region has let go, so this one is not taken into it.
+        IDisposable third = keeper.TryStartNoGCRegion();
+        second.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.IsActive, Is.False, "the region ends with the payloads it took in");
+            Assert.That(runtime.Ends, Is.EqualTo(1));
+        }
+
+        third.Dispose();
+        using IDisposable fourth = keeper.TryStartNoGCRegion();
+        queued[1].Execute();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queued, Has.Count.EqualTo(2), "a later payload admits a region of its own");
+            Assert.That(runtime.IsActive, Is.True);
+            Assert.That(runtime.Starts, Is.EqualTo(2));
+        }
+    }
+
     // Shutdown ends the region whatever is still inside it.
     [Test]
     public void Shutdown_ends_a_shared_region()

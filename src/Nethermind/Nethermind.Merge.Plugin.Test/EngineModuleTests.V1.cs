@@ -930,10 +930,6 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
-    /// newPayload answers VALID once the block is executed, before it is committed and marked processed. The
-    /// forkchoiceUpdated that follows at once must wait for that commit rather than answer SYNCING.
-    /// </summary>
-    /// <summary>
     /// A payload sent right after its parent was answered VALID, while the parent is still committing, must be
     /// processed once the parent lands - not inserted for beacon sync and answered SYNCING for a parent we have.
     /// </summary>
@@ -976,6 +972,10 @@ public partial class EngineModuleTests
         }
     }
 
+    /// <summary>
+    /// newPayload answers VALID once the block is executed, before it is committed and marked processed. The
+    /// forkchoiceUpdated that follows at once must wait for that commit rather than answer SYNCING.
+    /// </summary>
     [Test, NonParallelizable]
     public async Task forkChoiceUpdatedV1_waits_for_the_commit_of_a_block_answered_valid_before_it()
     {
