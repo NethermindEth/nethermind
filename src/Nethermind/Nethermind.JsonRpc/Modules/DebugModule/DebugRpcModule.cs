@@ -111,11 +111,13 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail("tracing on top of pending is not supported", ErrorCodes.InvalidInput);
         }
 
-        BlockHeader? header = TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
+        BlockHeader? header = TryGetTraceCallHeader(blockParameter, options?.TxIndex, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
         {
             return headerError;
         }
+
+        if (options?.TxIndex is not null) blockParameter = new BlockParameter(header!.Hash!);
 
         Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
@@ -155,6 +157,31 @@ public class DebugRpcModule(
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+    }
+
+    private BlockHeader? TryGetTraceCallHeader(BlockParameter parameter, ulong? txIndex, out ResultWrapper<GethLikeTxTrace>? error)
+    {
+        if (txIndex is null) return TryGetHeaderAndCheckState(parameter, out error);
+
+        SearchResult<Block> search = blockFinder.SearchForBlock(parameter);
+        if (search.IsError)
+        {
+            error = GetFailureResult<GethLikeTxTrace, Block>(search, debugBridge.HaveNotSyncedHeadersYet());
+            return null;
+        }
+        Block block = search.Object!;
+        if (block.IsGenesis)
+        {
+            error = ResultWrapper<GethLikeTxTrace>.Fail("no transaction in genesis", ErrorCodes.InvalidInput);
+            return null;
+        }
+        if (txIndex >= (ulong)block.Transactions.Length && !(txIndex == 0 && block.Transactions.Length == 0))
+        {
+            error = ResultWrapper<GethLikeTxTrace>.Fail($"transaction index {txIndex} out of range for block {block.Hash}", ErrorCodes.InvalidInput);
+            return null;
+        }
+        TryGetHeaderAndCheckState(block.ParentHash!, out error);
+        return error is null ? block.Header : null;
     }
 
     private bool CanStreamStructLogs(GethTraceOptions? options)

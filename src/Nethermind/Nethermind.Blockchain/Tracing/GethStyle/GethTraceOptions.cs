@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -37,6 +38,29 @@ public record GethTraceOptions
     public string Tracer { get; init; }
 
     public Hash256? TxHash { get; init; }
+
+    /// <summary>For traceCall, selects state before this transaction in the requested block.</summary>
+    [JsonConverter(typeof(TransactionIndexConverter))]
+    public ulong? TxIndex { get; init; }
+
+    /// <summary>Reads a transaction index as an unsigned hexadecimal JSON quantity.</summary>
+    public sealed class TransactionIndexConverter : JsonConverter<ulong>
+    {
+        /// <inheritdoc/>
+        public override ulong Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.String) throw new JsonException("Transaction index must be a hex quantity string.");
+            string value = reader.GetString()!;
+            if (value.Length < 3 || value[0] != '0' || (value[1] != 'x' && value[1] != 'X')
+                || (value.Length > 3 && value[2] == '0')
+                || !ulong.TryParse(value.AsSpan(2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out ulong index))
+                throw new JsonException("Invalid transaction index hex quantity.");
+            return index;
+        }
+
+        /// <inheritdoc/>
+        public override void Write(Utf8JsonWriter writer, ulong value, JsonSerializerOptions options) => writer.WriteStringValue($"0x{value:x}");
+    }
 
     public JsonElement? TracerConfig { get; init; }
 

@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing;
@@ -41,6 +42,7 @@ public class GethStyleTracer(
     IFileSystem fileSystem,
     IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv,
     IPrefixStateSeedSource prefixSeeds,
+    IOverridableCodeInfoRepository codeInfoRepository,
     IParallelBlockTracer? parallelTracer = null
 ) : IGethStyleTracer
 {
@@ -62,6 +64,9 @@ public class GethStyleTracer(
     {
         Block block = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
         tx.Hash ??= tx.CalculateHash();
+        if (options.TxIndex is { } index)
+            return TraceCallAtIndex(block, tx, index, options, cancellationToken, writer, pipeWriter);
+
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
         TransactionProcessorAdapterFactory previousAdapterFactory = transactionProcessorAdapter.CurrentAdapterFactory;
         transactionProcessorAdapter.CurrentAdapterFactory = static processor => new TraceTransactionProcessorAdapter(processor);
@@ -74,6 +79,78 @@ public class GethStyleTracer(
         {
             transactionProcessorAdapter.CurrentAdapterFactory = previousAdapterFactory;
         }
+    }
+
+    private GethLikeTxTrace? TraceCallAtIndex(Block block, Transaction call, ulong index, GethTraceOptions options,
+        CancellationToken cancellationToken, Utf8JsonWriter? writer, PipeWriter? pipeWriter)
+    {
+        if (block.IsGenesis) throw new GenesisNotTraceableException();
+        if (index >= (ulong)block.Transactions.Length && !(index == 0 && block.Transactions.Length == 0))
+            throw new ArgumentOutOfRangeException(nameof(index));
+
+        Transaction[] transactions = new Transaction[(int)index + 1];
+        block.Transactions.AsSpan(0, (int)index).CopyTo(transactions);
+        transactions[^1] = call;
+        Block replay = block.WithReplacedBodyCloned(block.Body.WithChangedTransactions(transactions));
+        BlockHeader callHeader = block.Header.Clone();
+        options.BlockOverrides?.ApplyOverrides(callHeader);
+        if (options.NoBaseFee) callHeader.BaseFeePerGas = UInt256.Zero;
+        IReleaseSpec callSpec = specProvider.GetSpec(callHeader);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(FindParent(block));
+        IWorldState state = scope.Component.WorldState;
+        GethTraceOptions filtered = options with { TxHash = call.Hash };
+        IBlockTracer<GethLikeTxTrace> tracer = writer is null
+            ? CreateOptionsTracer(callHeader, filtered, state, specProvider)
+            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, (long)callSpec.GasCosts.DestroyRefund);
+        TransactionProcessorAdapterFactory previous = transactionProcessorAdapter.CurrentAdapterFactory;
+        try
+        {
+            // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
+            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), call, tracedBlock =>
+            {
+                options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
+                if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
+                state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, callSpec);
+                state.Commit(callSpec.WithoutEip158());
+                call.Nonce = state.GetNonce(call.SenderAddress!);
+                transactionProcessorAdapter.CurrentAdapterFactory = processor =>
+                {
+                    processor.SetBlockExecutionContext(new BlockExecutionContext(tracedBlock.Header, callSpec));
+                    return new TraceTransactionProcessorAdapter(processor);
+                };
+            });
+            IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
+            scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
+            return tracer.BuildResult().SingleOrDefault();
+        }
+        catch
+        {
+            tracer.TryDispose();
+            throw;
+        }
+        finally
+        {
+            transactionProcessorAdapter.CurrentAdapterFactory = previous;
+        }
+    }
+
+    private sealed class CallAtIndexBlockTracer(IBlockTracer inner, Transaction call, Action<Block> prepareCall) : IBlockTracer
+    {
+        private Block _block = null!;
+        public bool IsTracingRewards => inner.IsTracingRewards;
+        public void StartNewBlockTrace(Block block)
+        {
+            _block = block;
+            inner.StartNewBlockTrace(block);
+        }
+        public ITxTracer StartNewTxTrace(Transaction? transaction)
+        {
+            if (ReferenceEquals(transaction, call)) prepareCall(_block);
+            return inner.StartNewTxTrace(transaction);
+        }
+        public void EndTxTrace() => inner.EndTxTrace();
+        public void EndBlockTrace() => inner.EndBlockTrace();
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue) => inner.ReportReward(author, rewardType, rewardValue);
     }
 
     public GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
@@ -189,12 +266,11 @@ public class GethStyleTracer(
 
         // For a synthetic tx trace (`debug_traceCall`), the base block must be the block itself rather than
         // its parent, so that state overrides applied in `BuildAndOverride` bind to the correct state root.
+        BlockHeader baseBlockHeader = useBlockAsBase ? block.Header : FindParent(block);
         if (options.BlockOverrides is not null || options.NoBaseFee)
         {
             block = block.WithReplacedBodyCloned(block.Body);
         }
-
-        BlockHeader baseBlockHeader = useBlockAsBase ? block.Header : FindParent(block);
 
         options.BlockOverrides?.ApplyOverrides(block.Header);
         if (options.NoBaseFee)

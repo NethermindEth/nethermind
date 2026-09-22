@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -30,7 +31,7 @@ public partial class DebugRpcModuleTests
 {
     [Test]
     public async Task Debug_callTracer_log_indices_span_transactions(
-        [Values("debug_traceTransaction", "debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
+        [Values("debug_traceTransaction", "debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock", "debug_traceCall")] string method,
         [Values] bool revertFirst)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
@@ -61,15 +62,20 @@ public partial class DebugRpcModuleTests
             _ => block.Hash!
         };
         object options = new { tracer = "callTracer", tracerConfig = new { withLog = true } };
-        string replayed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter, options);
+        async Task<string> Trace() => method == "debug_traceCall"
+            ? await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method,
+                new { from = TestItem.AddressB.ToString(), input = transactions[2].Data.ToArray().ToHexString(true), gas = "0x186a0" },
+                block.Hash!, new { tracer = "callTracer", tracerConfig = new { withLog = true }, txIndex = "0x2" })
+            : await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter, options);
+        string replayed = await Trace();
         IndexThroughTheCapture(chain, index, block, parent);
-        string indexed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter, options);
+        string indexed = await Trace();
 
         foreach (string response in new[] { replayed, indexed })
         {
             JToken json = JToken.Parse(response);
             Assert.That(json["error"], Is.Null, response);
-            if (method == "debug_traceTransaction")
+            if (method is "debug_traceTransaction" or "debug_traceCall")
                 Assert.That((string?)json["result"]?["logs"]?[0]?["index"], Is.EqualTo(revertFirst ? "0x1" : "0x2"), response);
             else
             {
