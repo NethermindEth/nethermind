@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Usage: REQUESTED_VERSION=vX.Y.Z GH_TOKEN=... RUNNER_TEMP=... GITHUB_ENV=... fetch-artifacts.sh
+# Usage: REQUESTED_VERSION=vX.Y.Z RUNNER_TEMP=... GITHUB_ENV=... [GH_TOKEN=...] fetch-artifacts.sh
+# GH_TOKEN is optional: the release and its assets are public. Set it only to raise the
+# api.github.com call below off the unauthenticated per-IP rate limit on a busy shared runner.
 set -uo pipefail
 
 readonly REPO=NethermindEth/frame-verify-gas
@@ -16,7 +18,7 @@ if [[ ! "${version}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]];
   echo "::error::groth16_artifacts_version '${version}' is not a vMAJOR.MINOR.PATCH release tag."
   exit 1
 fi
-for tool in gh python3 sha256sum tar; do
+for tool in curl python3 sha256sum tar; do
   if ! command -v "${tool}" >/dev/null; then
     echo "::error::${tool} is not installed on this runner."
     exit 1
@@ -35,30 +37,52 @@ trap 'rm -rf "${work}"' EXIT
 assets="${work}/assets"
 mkdir "${assets}" || exit 1
 
-if ! state=$(gh release view "${version}" --repo "${REPO}" --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"' 2>"${work}/gh.err"); then
-  echo "::error::Release ${version} could not be read from ${REPO}: $(paste -sd ' ' "${work}/gh.err")"
+auth_header=()
+if [[ -n "${GH_TOKEN:-}" ]]; then
+  auth_header=(-H "Authorization: Bearer ${GH_TOKEN}")
+fi
+if ! release_json=$(curl -fsS --retry 3 --max-time 30 "${auth_header[@]}" "https://api.github.com/repos/${REPO}/releases/tags/${version}" 2>"${work}/fetch.err"); then
+  echo "::error::Release ${version} could not be read from ${REPO} (a nonexistent, draft or not-yet-published release looks identical here): $(paste -sd ' ' "${work}/fetch.err")"
   exit 1
 fi
+if ! state=$(python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+print("true" if data["draft"] else "false", "true" if data["prerelease"] else "false")
+' <<< "${release_json}" 2>"${work}/fetch.err"); then
+  echo "::error::Release ${version} on ${REPO} returned unparsable JSON: $(paste -sd ' ' "${work}/fetch.err")"
+  exit 1
+fi
+# The tags endpoint above only ever returns published releases (a draft 404s into the branch
+# above, folded into that message), so a draft state here cannot happen; only prerelease is live.
 case "${state}" in
   'false false') ;;
-  'true '*) echo "::error::Release ${version} on ${REPO} is a draft. Supply a published release."; exit 1 ;;
   *' true') echo "::error::Release ${version} on ${REPO} is a prerelease. Supply a full release."; exit 1 ;;
   *) echo "::error::Release ${version} on ${REPO} has unexpected draft/prerelease state '${state}'."; exit 1 ;;
 esac
 
 tarballs=("${LABELS[@]/#/sweep-}")
 tarballs=("${tarballs[@]/%/.tar.gz}")
-patterns=(--pattern SHA256SUMS)
-for tarball in "${tarballs[@]}"; do
-  patterns+=(--pattern "${tarball}")
-done
-if ! gh release download "${version}" --repo "${REPO}" --dir "${assets}" "${patterns[@]}" 2>"${work}/gh.err"; then
-  echo "::error::Downloading release ${version} from ${REPO} failed: $(paste -sd ' ' "${work}/gh.err")"
+# Asset download URLs come from the same JSON already fetched above, so listing assets never
+# costs a second api.github.com call.
+if ! asset_urls=$(python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for a in data.get("assets", []):
+    print(a["name"] + "\t" + a["browser_download_url"])
+' <<< "${release_json}" 2>"${work}/fetch.err"); then
+  echo "::error::Release ${version} on ${REPO} returned an unparsable asset list: $(paste -sd ' ' "${work}/fetch.err")"
   exit 1
 fi
 for asset in SHA256SUMS "${tarballs[@]}"; do
-  if [[ ! -f "${assets}/${asset}" ]]; then
+  url=$(awk -F'\t' -v n="${asset}" '$1 == n { print $2; exit }' <<< "${asset_urls}")
+  if [[ -z "${url}" ]]; then
     echo "::error::Release ${version} on ${REPO} has no ${asset} asset."
+    exit 1
+  fi
+  if ! curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --retry-all-errors --max-time 60 \
+    -o "${assets}/${asset}" "${url}" 2>"${work}/fetch.err"; then
+    echo "::error::Downloading ${asset} from release ${version} of ${REPO} failed: $(paste -sd ' ' "${work}/fetch.err")"
     exit 1
   fi
 done
