@@ -899,7 +899,7 @@ namespace Nethermind.Trie
                             position = Rlp.Encode(destination, position, knownHash);
                             continue;
                         }
-                        if (!TBatch.IsActive && Avx2.IsSupported && !Avx512F.VL.IsSupported && childNode.IsBranch)
+                        if (!TBatch.IsActive && Avx2.IsSupported && !Avx512F.VL.IsSupported)
                             return WriteChildrenRlpBranchNonRlp<OnFlag>(tree, ref path, item, destination, bufferPool, canBeParallel, i, position);
                         path.AppendMut(i);
                         // Once the walk is batching, defer any dirty child: the length decides which
