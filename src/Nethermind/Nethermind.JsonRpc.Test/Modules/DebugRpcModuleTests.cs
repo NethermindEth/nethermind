@@ -204,6 +204,127 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    public static IEnumerable<TestCaseData> OpcodeLoggerLimitCases()
+    {
+        (string Code, bool DisableStack, bool EnableMemory, long Limit, int Count)[] cases =
+        [
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 770, 9),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 771, 10),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1138, 14),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1139, 15),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1290, 15),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1291, 16),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1439, 16),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1440, 17),
+            ("602a600055600060005500", false, false, 507, 5),
+            ("602a600055600060005500", false, false, 508, 6),
+            ("602a600055600060005500", false, false, 752, 6),
+            ("602a600055600060005500", false, false, 753, 7),
+            ("602a61ffff5360006000f3", false, true, 224, 3),
+            ("602a61ffff5360006000f3", false, true, 225, 4),
+            ("602a61ffff5360006000f3", false, true, 141613, 4),
+            ("602a61ffff5360006000f3", false, true, 141614, 5),
+            ("602a60005260206000f3", false, false, -1, 0),
+            ("602a60005260206000f3", false, false, 0, 6),
+            ("602a60005260206000f3", false, false, 1, 1),
+            ("602a60005260206000f3", false, false, 65, 1),
+            ("602a60005260206000f3", false, false, 66, 2),
+            ("602a60005260206000f3", false, false, 137, 2),
+            ("602a60005260206000f3", false, false, 138, 3),
+            ("602a60005260206000f3", false, false, 2147483648, 6),
+            ("602a60005260206000f3", true, false, 54, 1),
+            ("602a60005260206000f3", true, false, 55, 2),
+            ("602a60005260206000f3", true, false, 109, 2),
+            ("602a60005260206000f3", true, false, 110, 3),
+            ("602a60005260206000f3", false, true, 362, 4),
+            ("602a60005260206000f3", false, true, 363, 5),
+            ("602a60005560005460005260206000f3", false, false, 370, 3),
+            ("602a60005560005460005260206000f3", false, false, 371, 4),
+            ("602a60005560005460005260206000f3", false, false, 659, 5),
+            ("602a60005560005460005260206000f3", false, false, 660, 6),
+            ("602a60005260206000fd", false, false, -1, 0),
+            ("602a60005260206000fd", false, false, 1, 1),
+            ("602a60005260206000fd", false, false, 138, 3),
+        ];
+        foreach ((string code, bool disableStack, bool enableMemory, long limit, int count) in cases)
+        {
+            foreach (bool streamMode in new[] { false, true })
+                yield return new TestCaseData(code, disableStack, enableMemory, limit, count, streamMode);
+        }
+    }
+
+    [TestCaseSource(nameof(OpcodeLoggerLimitCases))]
+    public async Task Debug_traceCall_opcode_logger_limit(
+        string code, bool disableStack, bool enableMemory, long limit, int expectedCount, bool streamMode)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x" + code, state = new Dictionary<string, string>() },
+            ["0x0000000000000000000000000000000000009012"] = new { code = "0x602a60005260206000f3" }
+        };
+        object call = new { to = TestItem.AddressC.ToString(), gas = "0x186a0" };
+        string unlimitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            call, "latest", new { streamMode, disableStack, enableMemory, enableReturnData = true, stateOverrides });
+        string limitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            call, "latest", new { streamMode, disableStack, enableMemory, enableReturnData = true, limit = JsonSerializer.SerializeToElement(limit), stateOverrides });
+
+        JToken expected = JToken.Parse(unlimitedResponse)["result"]!;
+        JArray entries = (JArray)expected["structLogs"]!;
+        while (entries.Count > expectedCount)
+            entries.RemoveAt(entries.Count - 1);
+
+        JToken actual = JToken.Parse(limitedResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null, limitedResponse);
+            Assert.That(JToken.DeepEquals(actual["result"], expected), Is.True, limitedResponse);
+        }
+    }
+
+    [TestCase("null", null)]
+    [TestCase("1", 1)]
+    [TestCase("-9223372036854775808", 0)]
+    [TestCase("9223372036854775807", null)]
+    [TestCase("\"1\"", -32602)]
+    [TestCase("\"0x1\"", -32602)]
+    [TestCase("1.0", -32602)]
+    [TestCase("true", -32602)]
+    [TestCase("9223372036854775808", -32602)]
+    public async Task Debug_traceCall_opcode_logger_limit_input(string limitJson, int? expected)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x602a60005260206000f3" }
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
+            new { limit = JsonSerializer.Deserialize<JsonElement>(limitJson), stateOverrides });
+        JToken result = JToken.Parse(response);
+        if (expected == -32602)
+            Assert.That((int?)result["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+        else
+            Assert.That((JArray?)result["result"]?["structLogs"], Has.Count.EqualTo(expected ?? 6), response);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_named_tracer_ignores_opcode_logger_limit([Values(-1, 1)] long limit)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x602a60005260206000f3" }
+        };
+        object call = new { to = TestItem.AddressC.ToString(), gas = "0x186a0" };
+        string unlimited = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            call, "latest", new { tracer = "callTracer", stateOverrides });
+        string limited = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            call, "latest", new { tracer = "callTracer", limit = JsonSerializer.SerializeToElement(limit), stateOverrides });
+
+        Assert.That(JToken.DeepEquals(JToken.Parse(limited), JToken.Parse(unlimited)), Is.True, limited);
+    }
+
     [TestCase(false, "60006000fd", 21006)]
     [TestCase(true, "60006000fd", 21006)]
     [TestCase(false, "fe", 100000)]

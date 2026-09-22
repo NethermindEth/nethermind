@@ -75,6 +75,30 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceBlock_opcode_logger_limit_resets_per_transaction([Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        string unlimited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            "latest", new { streamMode });
+        string limited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            "latest", new { streamMode, limit = 1 });
+
+        JToken expected = JToken.Parse(unlimited);
+        JArray transactions = (JArray)expected["result"]!;
+        Assert.That(transactions, Has.Count.EqualTo(2));
+        foreach (JToken transaction in transactions)
+        {
+            JArray entries = (JArray)transaction["result"]!["structLogs"]!;
+            Assert.That(entries.Count, Is.GreaterThan(1));
+            while (entries.Count > 1)
+                entries.RemoveAt(entries.Count - 1);
+        }
+
+        Assert.That(JToken.DeepEquals(JToken.Parse(limited), expected), Is.True, limited);
+    }
+
+    [Test]
     public async Task Debug_traceBlock_with_invalid_rlp()
     {
         using Context context = await Context.Create();
