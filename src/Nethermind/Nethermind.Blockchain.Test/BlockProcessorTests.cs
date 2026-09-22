@@ -1032,8 +1032,6 @@ public class BlockProcessorTests
             builder
                 .AddModule(validation)
                 .AddModule(new TransactionTraceModule(validation))
-                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddModule(env)
                 .Add<ParallelBlockTracer.Components>();
             if (hideRewardBoundary.HasValue)
@@ -1128,8 +1126,6 @@ public class BlockProcessorTests
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
             .AddModule(validation)
             .AddModule(new TransactionTraceModule(validation))
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddModule(env));
         BlockchainProcessorFacade processor = scope.Resolve<BlockchainProcessorFacade>();
         using IDisposable pinned = env.BuildAndOverride(parent);
@@ -1157,8 +1153,6 @@ public class BlockProcessorTests
             builder
             .AddModule(validation)
             .AddModule(new TransactionTraceModule(validation))
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddModule(env);
             if (!supportsOverlay) builder.AddDecorator<IWorldState, OverlayRefusingState>();
             if (processed is not null) builder.AddSingleton(processed);
@@ -1807,11 +1801,21 @@ public class BlockProcessorTests
             "prewarmer CancellationToken should be cancelled via TransactionsExecuted event after tx processing");
     }
 
+    /// <param name="mispredictedSlot">
+    /// Runs the case the speculative session actually produces: the handoff marker carries no timestamp, so a
+    /// session that warmed the system-contract slots of one predicted header is handed off to a block carrying
+    /// another's. Under Osaka the hints name real EIP-4788 cells, so a prewarmer write reaching committed state, or
+    /// a warm reaching the access tracker, would move the state root or the gas here. Under MuirGlacier every hint
+    /// returns null, which is what keeps the plain handoff case honest.
+    /// </param>
     [Test]
-    public async Task BranchProcessor_tiny_block_handoff_matches_cold_state_root()
+    public async Task BranchProcessor_tiny_block_handoff_matches_cold_state_root([Values] bool mispredictedSlot)
     {
-        (Hash256? coldStateRoot, bool coldHandoff, ulong coldGasUsed) = await ProcessTinyBlock(useHandoff: false);
-        (Hash256? hotStateRoot, bool hotHandoff, ulong hotGasUsed) = await ProcessTinyBlock(useHandoff: true);
+        IReleaseSpec spec = mispredictedSlot ? Osaka.Instance : MuirGlacier.Instance;
+        ulong deltaTimestampOffset = mispredictedSlot ? MissedSlotSeconds : 0;
+
+        (Hash256? coldStateRoot, bool coldHandoff, ulong coldGasUsed) = await ProcessTinyBlock(useHandoff: false, spec, deltaTimestampOffset);
+        (Hash256? hotStateRoot, bool hotHandoff, ulong hotGasUsed) = await ProcessTinyBlock(useHandoff: true, spec, deltaTimestampOffset);
 
         using (Assert.EnterMultipleScope())
         {
@@ -2026,13 +2030,16 @@ public class BlockProcessorTests
 
         public CacheType ClearCaches() => default;
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
-        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Dispose() { }
     }
 
-    private static async Task<(Hash256? StateRoot, bool HandoffObserved, ulong GasUsed)> ProcessTinyBlock(bool useHandoff)
+    /// <summary>A slot the prediction can miss by, so the warmed header names other EIP-4788 cells than the block.</summary>
+    private const ulong MissedSlotSeconds = 12;
+
+    private static async Task<(Hash256? StateRoot, bool HandoffObserved, ulong GasUsed)> ProcessTinyBlock(bool useHandoff, IReleaseSpec spec, ulong deltaTimestampOffset)
     {
-        TestSpecProvider specProvider = new(MuirGlacier.Instance) { AllowTestChainOverride = false };
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(specProvider)
             .Intercept<IBlocksConfig>(blocksConfig =>
@@ -2043,17 +2050,14 @@ public class BlockProcessorTests
             }));
 
         Block parent = chain.BlockTree.Head!;
-        Block block = Build.A.Block
-            .WithParent(parent)
-            .WithAuthor(TestItem.AddressD)
-            .WithTransactions(Build.A.Transaction
-                .WithTo(TestItem.AddressC)
-                .WithNonce(0)
-                .WithValue(1.Wei)
-                .WithGasLimit(GasCostOf.Transaction)
-                .SignedAndResolved(TestItem.PrivateKeyB, MuirGlacier.Instance.IsEip155Enabled)
-                .TestObject)
+        Transaction transaction = Build.A.Transaction
+            .WithTo(TestItem.AddressC)
+            .WithNonce(0)
+            .WithValue(1.Wei)
+            .WithGasLimit(GasCostOf.Transaction)
+            .SignedAndResolved(TestItem.PrivateKeyB, spec.IsEip155Enabled)
             .TestObject;
+        Block block = BuildTinyBlock(parent.Header, spec, transaction, timestampOffset: 0);
 
         MainProcessingContext processingContext = (MainProcessingContext)chain.MainProcessingContext;
         BlockCachePreWarmer preWarmer =
@@ -2062,8 +2066,8 @@ public class BlockProcessorTests
         {
             preWarmer.RunSpeculativePreWarm(
                 parent.Header,
-                MuirGlacier.Instance,
-                block,
+                spec,
+                deltaTimestampOffset == 0 ? block : BuildTinyBlock(parent.Header, spec, transaction, deltaTimestampOffset),
                 () => preWarmer.SpeculativeMarkerPublished);
         }
         else
@@ -2089,6 +2093,24 @@ public class BlockProcessorTests
             NullBlockTracer.Instance)[0];
 
         return (processed.StateRoot, handoffObserved, gasUsed);
+    }
+
+    /// <remarks>
+    /// The speculative delta and the block that arrives differ only in timestamp, so the marker's parent hash, spec
+    /// and warmed transaction all still match and the handoff is taken - which is the case under test.
+    /// </remarks>
+    private static Block BuildTinyBlock(BlockHeader parent, IReleaseSpec spec, Transaction transaction, ulong timestampOffset)
+    {
+        BlockBuilder builder = Build.A.Block
+            .WithParent(parent)
+            .WithTimestamp(parent.Timestamp + 1 + timestampOffset)
+            .WithAuthor(TestItem.AddressD)
+            .WithTransactions(transaction);
+
+        if (spec.IsBeaconBlockRootAvailable) builder.WithParentBeaconBlockRoot(TestItem.KeccakA);
+        if (spec.WithdrawalsEnabled) builder.WithWithdrawals(0);
+
+        return builder.TestObject;
     }
 
     public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()

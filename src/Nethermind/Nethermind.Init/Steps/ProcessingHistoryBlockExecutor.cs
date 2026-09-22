@@ -163,8 +163,6 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
         {
             scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
                 .AddModule(validationModules)
-                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddModule(env));
             return new ProcessingHistoryBlockExecutor(blockTree, specProvider, env, scope.Resolve<BlockchainProcessorFacade>(), scope);
         }
