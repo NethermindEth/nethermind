@@ -902,7 +902,7 @@ esac
         # through `bash <path>`, so a script committed 100644 dies with exit 126 wherever the
         # checkout's mode bits are honoured. The index mode is the only platform-independent record
         # of the bit — a Windows working tree reports nothing useful about it.
-        # rpc-bench plus the two perf-flow scripts one level up, which AGENTS.md documents as commands to
+        # rpc-bench plus the two perf-flow scripts one level up, which the benchmark skills document as commands to
         # run by path. Deliberately not the whole scripts/ tree: unrelated scripts there predate this flow.
         listing = subprocess.run(
             ["git", "ls-files", "-s", "--", "scripts/rpc-bench",
