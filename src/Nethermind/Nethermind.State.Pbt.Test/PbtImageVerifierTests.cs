@@ -99,7 +99,7 @@ public class PbtImageVerifierTests
 
     [Test]
     public void Recomputed_PBT_root_does_not_authorize_malicious_state(
-        [Values("code", "pushdata", "padding", "code-size", "version", "reserved", "nonce", "balance", "storage", "missing-storage", "missing-basic", "missing-code-hash", "missing-code", "delegation-prefix", "delegation-padding", "delegation-size", "delegation-code-hash", "orphan", "missing-account-preimage", "missing-slot-preimage", "wrong-account-preimage", "wrong-slot-preimage")] string corruption)
+        [Values("code", "pushdata", "padding", "code-size", "version", "reserved", "nonce", "balance", "storage", "missing-storage", "missing-basic", "missing-code-hash", "missing-code", "delegation-prefix", "delegation-padding", "delegation-size", "delegation-code-hash", "orphan", "extra-code-chunk", "missing-account-preimage", "missing-slot-preimage", "wrong-account-preimage", "wrong-slot-preimage")] string corruption)
     {
         const string name = "a4";
         PbtImageAnchor anchor = SyntheticAnchor(Metadata(name));
@@ -136,6 +136,10 @@ public class PbtImageVerifierTests
             case "delegation-size": Mutate((PbtStorageTreeKey)PbtStateKey.Account(authority, 0), 7); break;
             case "delegation-code-hash": leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(authority, 1), Keccak.OfAnEmptyString.ValueHash256)); break;
             case "orphan": leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(Address.Zero, 3), Keccak.OfAnEmptyString.ValueHash256)); break;
+            // A chunk past the account's code size: reachable by no code read, so nothing accounts for it.
+            case "extra-code-chunk":
+                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Code(writer, ValueKeccak.Compute(Bytes.FromHexString("60003560005500")), 1), Keccak.OfAnEmptyString.ValueHash256));
+                break;
             case "missing-account-preimage": accounts.RemoveAt(accounts.FindIndex(account => account.Address == writer)); break;
             case "missing-slot-preimage": ChangeSlot(remove: true); break;
             case "wrong-slot-preimage": ChangeSlot(remove: false); break;
