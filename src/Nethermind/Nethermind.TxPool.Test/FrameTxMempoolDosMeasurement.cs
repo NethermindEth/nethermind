@@ -67,12 +67,13 @@ public class FrameTxMempoolDosMeasurement
     private const ulong Ceiling500k = 500_000;
 
     /// <summary>soispoke's declared privacy-pool budget: their <c>activation_manifest.testbed.json</c>
-    /// declares <c>verify_frame_gas</c> 320,000 + <c>signature_gas</c> 2,800.
+    /// declares an EIP-8272 recent-root <c>verify_frame_gas</c> 30,000 + a pool <c>verify_frame_gas</c>
+    /// 320,000 + <c>signature_gas</c> 2,800.
     /// <c>groth16-soispoke</c> below stays clamped to 300,000 because a declared ceiling above the stock
     /// <see cref="Eip8141Constants.MaxVerifyGas"/> can't be admitted for that shape; the signature-stuffed
-    /// shape is refused before it ever reaches that admission check, so it measures the true 322,800
+    /// shape is refused before it ever reaches that admission check, so it measures the true 352,800
     /// number directly instead.</summary>
-    private const ulong SoispokeDeclaredBudget = 322_800;
+    private const ulong SoispokeDeclaredBudget = 352_800;
 
     /// <summary>The plain ceiling sweep shared by the keccak-wide budget-burning and signature-stuffed cases.</summary>
     private static readonly ulong[] SweptCeilings = [Ceiling100k, Ceiling236k, Ceiling300k, SoispokeDeclaredBudget, Ceiling500k];
