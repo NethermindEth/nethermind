@@ -75,8 +75,9 @@ public class PruningTrieStoreModuleTests
         Assert.That(logger.LogList.Any(l => l.Contains("irreversible", StringComparison.OrdinalIgnoreCase)), Is.True);
     }
 
-    [Test]
-    public void Declining_is_not_a_warning()
+    [TestCase(Flags.Drop | Flags.Enabled, 1, Description = "Flat store empty -> say why the trie is kept")]
+    [TestCase(Flags.Drop | Flags.FlatHasData, 0, Description = "Flat DB disabled -> the default-on flag asked for nothing, stay silent")]
+    public void Declining_is_not_a_warning(Flags flags, int expectedInfoLines)
     {
         // TestLogger flattens every level into one list, so the level itself needs a substitute.
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
@@ -84,12 +85,12 @@ public class PruningTrieStoreModuleTests
         logger.IsInfo.Returns(true);
 
         PruningTrieStoreModule.ShouldDropPruningTrieState(
-            Config(Flags.Drop | Flags.FlatHasData),
-            () => Persistence(true),
+            Config(flags),
+            () => Persistence(flags.HasFlag(Flags.FlatHasData)),
             () => new OneLoggerLogManager(new ILogger(logger)));
 
         logger.DidNotReceive().Warn(Arg.Any<string>());
-        logger.Received().Info(Arg.Any<string>());
+        logger.Received(expectedInfoLines).Info(Arg.Any<string>());
     }
 
     [Test]

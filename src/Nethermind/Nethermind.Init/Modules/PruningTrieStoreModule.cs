@@ -127,16 +127,11 @@ public class PruningTrieStoreModule : Module
     internal static bool ShouldDropPruningTrieState(IFlatDbConfig? flatDbConfig, Func<IPersistence> flatPersistence, Func<ILogManager> logManager)
     {
         // Null when nothing registered the flat config: the state DB must still resolve, and
-        // nothing else here may be resolved before the flag is known to be set.
-        if (flatDbConfig?.DropPruningTrieState != true) return false;
+        // nothing else here may be resolved before the drop is known to apply. A disabled flat DB
+        // declines silently: the flag defaults to true, so most such nodes never asked for anything.
+        if (flatDbConfig is not { DropPruningTrieState: true, Enabled: true }) return false;
 
         ILogger logger = logManager().GetClassLogger<PruningTrieStoreModule>();
-
-        if (!flatDbConfig.Enabled)
-        {
-            if (logger.IsInfo) logger.Info($"Keeping the patricia trie state: {nameof(IFlatDbConfig.DropPruningTrieState)} is set but the flat DB is disabled.");
-            return false;
-        }
 
         // ImportFallbackStateBoundary only reads the trie's BestPersistedState while the flat one is
         // null, which is exactly StateId.PreGenesis - the case the next check rejects. So a populated
