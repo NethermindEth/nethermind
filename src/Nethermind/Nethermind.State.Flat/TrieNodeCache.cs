@@ -32,12 +32,16 @@ public sealed class TrieNodeCache : ITrieNodeCache
     private readonly long _maxCacheMemoryThreshold;
     private readonly int _bucketSize;
     private readonly int _bucketMask;
+    private readonly int _retainedDepth;
 
     private int _nextShardToClear = 0;
 
     public TrieNodeCache(IFlatDbConfig flatDbConfig, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<TrieNodeCache>();
+        ArgumentOutOfRangeException.ThrowIfNegative(flatDbConfig.TrieCacheRetainedDepth);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(flatDbConfig.TrieCacheRetainedDepth, 2);
+        _retainedDepth = flatDbConfig.TrieCacheRetainedDepth;
 
         long maxCacheMemoryThreshold = (long)flatDbConfig.TrieCacheMemoryBudget;
         long totalNodeCount = (maxCacheMemoryThreshold / EstimatedSizePerNode);
@@ -120,12 +124,12 @@ public sealed class TrieNodeCache : ITrieNodeCache
         {
             int bucketIdx = hashCode & _bucketMask;
             newNode.PrunePersistedRecursively(1);
-            Interlocked.Add(ref _shardMemoryUsages[shardIdx], newNode.GetMemorySize(false));
+            Interlocked.Add(ref _shardMemoryUsages[shardIdx], newNode.GetMemorySize(newNode.IsRetained));
 
             TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], newNode);
             if (oldNode is not null)
             {
-                long oldMemory = oldNode.GetMemorySize(false);
+                long oldMemory = oldNode.GetMemorySize(oldNode.IsRetained);
                 oldNode.PrunePersistedRecursively(1);
 
                 Interlocked.Add(ref _shardMemoryUsages[shardIdx], -oldMemory);
@@ -168,9 +172,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
             {
                 if (shard[j].node is not { } source) continue;
 
-                TrieNode? newNode = source.IsWarmerOwned
-                    ? TryMaterializeResolvedWarmerNode(source)
-                    : source;
+                int remainingNodes = 64;
+                TrieNode? newNode = _retainedDepth > 0 ? source.CreateRetainedSubtree(_retainedDepth, ref remainingNodes) : null;
+                newNode ??= source.IsWarmerOwned ? TryMaterializeResolvedWarmerNode(source) : source;
                 if (newNode is not null)
                 {
                     AddToCacheWithHashCode(i, shard[j].hashCode, newNode);

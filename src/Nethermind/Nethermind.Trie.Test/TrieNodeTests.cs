@@ -27,6 +27,96 @@ namespace Nethermind.Trie.Test;
 public class TrieNodeTests
 {
     [Test]
+    public void Retained_subtree_respects_node_limit([Values(1, 17, 64)] int limit)
+    {
+        TrieNode Build(int depth)
+        {
+            TrieNode node = new(depth == 0 ? NodeType.Leaf : NodeType.Branch);
+            if (depth == 0)
+            {
+                node.Key = [1];
+                node.Value = new byte[64];
+            }
+            else
+            {
+                for (int i = 0; i < 16; i++) node.SetChild(i, Build(depth - 1));
+            }
+            TreePath path = TreePath.Empty;
+            node.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+            node.Seal();
+            return node;
+        }
+
+        int Count(TrieNode node)
+        {
+            if (!node.IsRetained) return 0;
+            int count = 1;
+            if (node.IsBranch)
+            {
+                TreePath path = TreePath.Empty;
+                for (int i = 0; i < 16; i++) count += Count(node.GetChild(NullTrieNodeResolver.Instance, ref path, i)!);
+            }
+            return count;
+        }
+
+        int remaining = limit;
+        TrieNode copy = Build(2).CreateRetainedSubtree(2, ref remaining)!;
+        long memory = copy.GetMemorySize(true);
+        Assert.That(Count(copy), Is.EqualTo(limit));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remaining, Is.Zero);
+            Assert.That(copy.GetMemorySize(true), Is.EqualTo(memory));
+        }
+    }
+
+    [Test]
+    public void Retained_subtree_survives_pruning_without_growing(
+        [Values] bool extension, [Values] bool iterator, [Values(0, 1)] int depth, [Values(1, 64)] int nodeBudget)
+    {
+        TrieNode leaf = new(NodeType.Leaf) { Key = [1], Value = new byte[64] };
+        TreePath path = TreePath.FromHexString("123456");
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        leaf.Seal();
+        leaf.IsPersisted = true;
+        TrieNode parent = new(extension ? NodeType.Extension : NodeType.Branch);
+        if (extension) parent.Key = [1];
+        parent.SetChild(0, leaf);
+        parent.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        parent.Seal();
+        parent.IsPersisted = true;
+
+        int remaining = nodeBudget;
+        TrieNode retained = parent.CreateRetainedSubtree(depth, ref remaining)!;
+        long memory = retained.GetMemorySize(true);
+        parent.PrunePersistedRecursively(1);
+        retained.PrunePersistedRecursively(1);
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.FindCachedOrUnknown(Arg.Any<TreePath>(), leaf.Keccak!).Returns(leaf);
+
+        for (int i = 0; i < 2; i++)
+        {
+            TrieNode? child = iterator
+                ? retained.CreateChildIterator().GetChildWithChildPath(resolver, ref path, 0)
+                : retained.GetChildWithChildPath(resolver, ref path, 0);
+            Assert.That(child!.Keccak, Is.EqualTo(leaf.Keccak));
+        }
+
+        bool retainedChild = depth > 0 && nodeBudget > 1;
+        resolver.Received(retainedChild ? 0 : 2).FindCachedOrUnknown(Arg.Any<TreePath>(), leaf.Keccak!);
+        TrieNode changed = retained.Clone();
+        changed.SetChild(0, null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retained.GetMemorySize(true), Is.EqualTo(memory));
+            Assert.That(retained.Keccak, Is.EqualTo(parent.Keccak));
+            Assert.That(changed.IsRetained, Is.False);
+            Assert.That(changed.IsDirty, Is.True);
+            Assert.That(remaining, Is.EqualTo(nodeBudget - (retainedChild ? 2 : 1)));
+        }
+    }
+
+    [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
         [Values(0, 2, 4)] int dirtyBranchCount)

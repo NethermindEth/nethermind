@@ -13,6 +13,42 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class TrieNodeCacheTests
 {
+    [Test]
+    public void Retained_descendants_are_charged_to_memory_budget([Values] bool enoughMemory)
+    {
+        TreePath path = TreePath.Empty;
+        TrieNode leaf = new(new LeafData { Key = [1] }) { Value = new byte[64] };
+        leaf.ResolveKey(Trie.Pruning.NullTrieNodeResolver.Instance, ref path);
+        leaf.Seal();
+        leaf.IsPersisted = true;
+        TrieNode root = new(NodeType.Branch);
+        root.SetChild(0, leaf);
+        root.ResolveKey(Trie.Pruning.NullTrieNodeResolver.Instance, ref path);
+        root.Seal();
+        root.IsPersisted = true;
+
+        FlatDbConfig config = new()
+        {
+            TrieCacheRetainedDepth = 2,
+            TrieCacheMemoryBudget = (ulong)(enoughMemory ? root.GetMemorySize(true) : root.GetMemorySize(false))
+        };
+        TrieNodeCache cache = new(config, LimboLogs.Instance);
+        TransientResource resource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        resource.Nodes.Set(null, path, root);
+        cache.Add(resource);
+
+        bool found = cache.TryGet(null, path, root.Keccak!, out TrieNode? retained);
+        Assert.That(found, Is.EqualTo(enoughMemory));
+        if (found)
+        {
+            root.PrunePersistedRecursively(1);
+            Assert.That(retained!.GetChild(Trie.Pruning.NullTrieNodeResolver.Instance, ref path, 0)!.Value.ToArray(), Is.EqualTo(new byte[64]));
+            cache.Clear();
+            Assert.That(cache.TryGet(null, path, root.Keccak!, out _), Is.False);
+        }
+        resource.ReleaseLease();
+    }
+
     private TrieNodeCache _cache = null!;
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;

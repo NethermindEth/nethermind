@@ -968,6 +968,8 @@ namespace Nethermind.Trie
 
         public void ReplaceChildRef(int i, TrieNode child)
         {
+            if (IsRetained) return;
+
             if (child is null)
             {
                 throw new InvalidOperationException();
@@ -1310,6 +1312,8 @@ namespace Nethermind.Trie
         /// <param name="maxLevelsDeep">How many levels deep we will be pruning the child nodes.</param>
         public void PrunePersistedRecursively(int maxLevelsDeep)
         {
+            if (IsRetained) return;
+
             maxLevelsDeep--;
             if (_nodeData is not LeafData leafData)
             {
@@ -1387,8 +1391,9 @@ namespace Nethermind.Trie
 
                         hasStorage = true;
                         TreePath emptyPath = TreePath.Empty;
-                        data.StorageRoot = storageRoot = resolver.GetStorageTrieNodeResolver(storagePath)
+                        storageRoot = resolver.GetStorageTrieNodeResolver(storagePath)
                             .FindCachedOrUnknown(in emptyPath, storageRootKey);
+                        if (!IsRetained) data.StorageRoot = storageRoot;
                     }
                 }
             }
@@ -1436,10 +1441,12 @@ namespace Nethermind.Trie
         private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
         {
             // A resolved child needs no RLP, so the seqlock read stays behind that check.
-            ref object? data = ref _nodeData![i];
-            object? childOrRef = data;
+            ref object? slot = ref _nodeData![i];
+            object? childOrRef = slot;
             if (childOrRef is null)
             {
+                object? retainedSlot = null;
+                ref object? data = ref (IsRetained ? ref retainedSlot : ref slot);
                 CappedArray<byte> rlp = ReadRlp();
                 if (rlp.IsNotNull)
                 {
@@ -1550,6 +1557,8 @@ namespace Nethermind.Trie
 
         internal void UnresolveChild(int i)
         {
+            if (IsRetained) return;
+
             ref object? data = ref _nodeData![i];
             if (IsPersisted)
             {
@@ -1591,10 +1600,12 @@ namespace Nethermind.Trie
             private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
             {
                 // A resolved child needs no RLP, so the seqlock read stays behind that check.
-                ref object? data = ref node._nodeData![i];
-                object? childOrRef = data;
+                ref object? slot = ref node._nodeData![i];
+                object? childOrRef = slot;
                 if (childOrRef is null)
                 {
+                    object? retainedSlot = null;
+                    ref object? data = ref (node.IsRetained ? ref retainedSlot : ref slot);
                     CappedArray<byte> rlp = node.ReadRlp();
                     if (rlp.IsNotNull)
                     {

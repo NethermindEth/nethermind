@@ -31,6 +31,78 @@ namespace Nethermind.Trie.Test
     public class TrieTests
     {
         [Test]
+        public void Retained_roots_match_rebuilt_trie_across_updates_clears_and_forks(
+            [Values(1, 2)] int depth, [Values(1, 32)] int keyLength, [Values(1, 64)] int valueLength)
+        {
+            using MemDb db = new();
+            using IPruningTrieStore store = CreateTrieStore(db);
+            PatriciaTree tree = new(store, _logManager);
+            Dictionary<int, byte[]> values = [];
+            List<(TrieNode? Root, Hash256 Hash, Dictionary<int, byte[]> Values)> history = [];
+
+            byte[] Key(int index)
+            {
+                byte[] key = new byte[keyLength];
+                key[^1] = (byte)index;
+                return key;
+            }
+
+            for (int block = 0; block < 8; block++)
+            {
+                if (block == 4)
+                {
+                    tree.RootHash = Keccak.EmptyTreeHash;
+                    values.Clear();
+                }
+                else if (block == 6)
+                {
+                    tree.SetRootHash(history[2].Hash, false);
+                    tree.RootRef = history[2].Root;
+                    values = new(history[2].Values);
+                }
+
+                for (int i = 0; i < 64; i++)
+                {
+                    if ((i + block) % 4 == 0)
+                    {
+                        tree.Set(Key(i), []);
+                        values.Remove(i);
+                    }
+                    else if (block == 0 || i % 3 == block % 3)
+                    {
+                        byte[] value = new byte[valueLength];
+                        Array.Fill(value, (byte)(block + 1));
+                        tree.Set(Key(i), value);
+                        values[i] = value;
+                    }
+                }
+
+                tree.UpdateRootHash();
+                PatriciaTree expected = new(NullTrieStore.Instance, _logManager);
+                foreach (KeyValuePair<int, byte[]> pair in values) expected.Set(Key(pair.Key), pair.Value);
+                expected.UpdateRootHash();
+                Assert.That(tree.RootHash, Is.EqualTo(expected.RootHash), $"block {block}");
+
+                store.CommitPatriciaTrie((ulong)block, tree);
+                int remaining = 64;
+                TrieNode? retained = tree.RootRef?.CreateRetainedSubtree(depth, ref remaining);
+                Assert.That(retained, Is.Not.Null);
+                tree.RootRef = retained;
+                history.Add((retained, tree.RootHash, new(values)));
+            }
+
+            Parallel.ForEach(history, version =>
+            {
+                PatriciaTree reader = new(store, _logManager);
+                reader.SetRootHash(version.Hash, false);
+                reader.RootRef = version.Root;
+                foreach (KeyValuePair<int, byte[]> pair in version.Values)
+                    Assert.That(reader.Get(Key(pair.Key)).ToArray(), Is.EqualTo(pair.Value));
+                Assert.That(reader.RootHash, Is.EqualTo(version.Hash));
+            });
+        }
+
+        [Test]
         public void Oversized_storage_leaf_is_rejected()
         {
             StorageTree tree = new(NullTrieStore.Instance, LimboLogs.Instance);

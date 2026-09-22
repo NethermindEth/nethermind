@@ -127,6 +127,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     ulong TrieCacheMemoryBudget { get; set; }
 
+    /// <summary>Number of descendant levels retained per cached node, from 0 to 2. Default: 0 (disabled).</summary>
+    [ConfigItem(Description = "Retained trie descendant levels per cached node (0-2; at most 64 nodes per entry), charged to the trie cache memory budget.", DefaultValue = "0")]
+    int TrieCacheRetainedDepth { get; set; }
+
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
