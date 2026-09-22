@@ -691,6 +691,39 @@ public partial class EthRpcModuleTests
         ulong blockGasLimit = Convert.ToUInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
         ulong gasCap = blockGasLimit * 10;
+
+        // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
+        // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
+        UInt256 gasAvailable = await GasAvailableForGaslessCall(ctx, gasCap);
+
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+    }
+
+    /// <summary>
+    /// EIP-7825's execution-gas cap is enforced by <c>TxValidator</c> and the gas estimator, never by the
+    /// transaction processor, so it must not clamp the gas-less default on the validation-skipping call paths.
+    /// 16,777,216 is below both a typical <c>JsonRpc.GasCap</c> and the mainnet block gas limit, so clamping
+    /// there would silently under-execute heavy simulations that omit <c>gas</c>.
+    /// </summary>
+    [Test]
+    public async Task Eth_call_without_gas_under_eip7825_still_defaults_to_gas_cap()
+    {
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        ulong gasCap = Eip7825Constants.DefaultTxGasLimitCap * 4;
+
+        UInt256 gasAvailable = await GasAvailableForGaslessCall(ctx, gasCap);
+
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap),
+            $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not the EIP-7825 execution-gas cap ({Eip7825Constants.DefaultTxGasLimitCap})");
+    }
+
+    /// <summary>
+    /// Runs an <c>eth_call</c> with no <c>gas</c> field against a contract returning the gas available at the
+    /// start of execution, and returns that value.
+    /// </summary>
+    private static async Task<UInt256> GasAvailableForGaslessCall(Context ctx, ulong gasCap)
+    {
         ctx.Test.RpcConfig.GasCap = gasCap;
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
@@ -698,18 +731,12 @@ public partial class EthRpcModuleTests
         object? stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
-        // No gas field — should default to gasCap, not blockGasLimit.
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             """{"to":"0xc200000000000000000000000000000000000000"}""")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
-        string result = JToken.Parse(serialized).Value<string>("result")!;
-        UInt256 gasAvailable = Bytes.FromHexString(result).ToUInt256();
-
-        // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
-        // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
-        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+        return Bytes.FromHexString(JToken.Parse(serialized).Value<string>("result")!).ToUInt256();
     }
 
     /// <summary>

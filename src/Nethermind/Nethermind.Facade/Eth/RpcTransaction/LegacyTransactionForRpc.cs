@@ -118,8 +118,11 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         // is a literal request that fails the intrinsic gas check, not a "missing" signal. An explicit
         // over-cap Gas is deliberately left to fail the consensus cap rather than being silently lowered.
         ulong effectiveCap = gasCap.EffectiveGasCap();
+        // Only EIP-8037's cap is enforced where validation is skipped, so clamping by EIP-7825's
+        // execution-gas cap would lower gas-less calls below the RPC gas cap without preventing anything.
+        ulong consensusCap = spec?.IsEip8037Enabled is true ? Eip8037Constants.TxMaxTotalGasLimit : ulong.MaxValue;
         tx.GasLimit = Gas is null
-            ? Math.Min(effectiveCap, spec?.GetTxGasLimitCap() ?? ulong.MaxValue)
+            ? Math.Min(effectiveCap, consensusCap)
             : Math.Min(Gas.Value, effectiveCap);
 
         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
