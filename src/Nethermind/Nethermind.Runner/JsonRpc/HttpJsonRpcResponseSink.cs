@@ -152,6 +152,27 @@ internal sealed class HttpJsonRpcResponseSink(
             : CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
     }
 
+    /// <summary>Aborts an incomplete response without completing or sending its buffered body.</summary>
+    public void Abort()
+    {
+        if (_completed) return;
+        _completed = true;
+        context.Abort();
+
+        if (_bufferedStream is not null)
+        {
+            try
+            {
+                _writer!.Complete();
+            }
+            finally
+            {
+                _bufferedStream.Dispose();
+                _bufferedStream = null;
+            }
+        }
+    }
+
     private async ValueTask CompleteAfterWriterAsync(ValueTask writerCompleteTask, CancellationToken cancellationToken)
     {
         await writerCompleteTask;

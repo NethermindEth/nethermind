@@ -498,6 +498,13 @@ public class Startup : IStartup
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
         }
+        catch (Exception e) when (responseSink is { BytesWritten: > 0 })
+        {
+            // Appending an error would corrupt the partial result; completing it would hide the truncation.
+            responseSink.Abort();
+            if (e is not OperationCanceledException && e.InnerException is not OperationCanceledException) throw;
+            if (_logger.IsDebug) _logger.Debug("Aborted an incomplete JSON-RPC response after cancellation.");
+        }
         catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
         {
             JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
