@@ -19,7 +19,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -557,13 +556,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
             AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask().TimeoutOn(timeoutTask);
 
-            // A payload sent again while its first copy is between verdict and commit is known but not yet marked
-            // processed; queued again it would be skipped as not better than head and answered INVALID, so let the
-            // first copy finish first.
-            if (addResult == AddBlockResult.AlreadyKnown && !_blockTree.WasProcessed(block.Number, block.Hash!))
+            // A payload sent again while its first copy is between verdict and removal is known, and marked processed
+            // only part way through that window. Queued again before the copy is gone it would be skipped as not
+            // better than head and answered INVALID, or answered by the copy's removal without its own inclusion
+            // list ever judged, so let the first copy finish first. Only a copy that has its verdict is worth waiting
+            // for; one that is merely queued is left to answer this request through the shared completion, as before,
+            // and a copy already gone costs nothing here.
+            if (addResult == AddBlockResult.AlreadyKnown)
             {
-                // Only a copy that has its verdict and is committing is worth waiting for; one that is merely queued
-                // is left to answer this request through the shared completion, as before.
                 Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: true).AsTask();
                 if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
                 // The first copy's own verdict and removal land on whatever completion is registered for the hash,

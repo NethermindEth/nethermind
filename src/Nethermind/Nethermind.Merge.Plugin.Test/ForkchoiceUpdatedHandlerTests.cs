@@ -17,7 +17,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -69,7 +68,7 @@ public class ForkchoiceUpdatedHandlerTests
             Substitute.For<IPeerRefresher>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
-            Substitute.For<IMergeConfig>(),
+            new MergeConfig { NewPayloadBlockProcessingTimeout = 5_000 },
             LimboLogs.Instance);
 
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> request = handler.Handle(new ForkchoiceStateV1(newHeadHash, parent.Hash!, parent.Hash!), null, 1);
@@ -113,7 +112,7 @@ public class ForkchoiceUpdatedHandlerTests
             Substitute.For<IPeerRefresher>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
-            Substitute.For<IMergeConfig>(),
+            new MergeConfig { NewPayloadBlockProcessingTimeout = 5_000 },
             LimboLogs.Instance);
 
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(new ForkchoiceStateV1(newHeadHash, parent.Hash!, parent.Hash!), null, 1);

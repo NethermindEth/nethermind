@@ -132,7 +132,9 @@ public abstract partial class BaseEngineModuleTests
         PayloadAttributes payloadAttributes =
             new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient };
 
-        // we're using payloadService directly, because we can't use fcU for branch
+        // we're using payloadService directly, because we can't use fcU for branch; fcU would have waited for the
+        // parent's commit before building on it, so wait for it here
+        await chain.WaitForCommitted(parentHeader.Hash!);
         string payloadId = chain.PayloadPreparationService.StartPreparingPayload(parentHeader, payloadAttributes)!;
 
         ResultWrapper<ExecutionPayload?> getPayloadResult =
