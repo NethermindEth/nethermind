@@ -47,15 +47,17 @@ public class ClearColumnsTests
         }
     }
 
+    // Acknowledging before the flush is durable would let a crash leave a half-wiped DB that the next start
+    // no longer treats as repaired.
     [Test]
-    public void Clear_acknowledges_repair_after_wiping_columns()
+    public void Clear_flushes_the_wipe_before_acknowledging_the_repair()
     {
-        using AcknowledgeSpyColumnsDb db = new();
+        using ClearOrderSpyColumnsDb db = new();
         RocksDbPersistence persistence = new(db, LimboLogs.Instance);
 
         persistence.Clear();
 
-        Assert.That(db.AcknowledgeRepairCalls, Is.EqualTo(1));
+        Assert.That(db.Events, Is.EqualTo(new[] { ClearOrderSpyColumnsDb.FlushEvent, ClearOrderSpyColumnsDb.AcknowledgeEvent }));
     }
 
     private static IEnumerable<TestCaseData> WipeMarkerLifecycleCases()
@@ -128,10 +130,21 @@ public class ClearColumnsTests
         }
     }
 
-    private sealed class AcknowledgeSpyColumnsDb : SnapshotableMemColumnsDb<FlatDbColumns>, IDbMeta
+    /// <summary>Records, in order, the flush and repair-acknowledge calls made against the columns DB.</summary>
+    private sealed class ClearOrderSpyColumnsDb : SnapshotableMemColumnsDb<FlatDbColumns>, IDbMeta
     {
-        public int AcknowledgeRepairCalls { get; private set; }
-        void IDbMeta.AcknowledgeRepair() => AcknowledgeRepairCalls++;
+        public const string FlushEvent = "flush";
+        public const string AcknowledgeEvent = "acknowledge";
+
+        public List<string> Events { get; } = [];
+
+        void IDbMeta.Flush(bool onlyWal)
+        {
+            Events.Add(FlushEvent);
+            base.Flush(onlyWal);
+        }
+
+        void IDbMeta.AcknowledgeRepair() => Events.Add(AcknowledgeEvent);
     }
 
     /// <summary>Records, in order, the column of every write staged through its batches and each batch commit.</summary>

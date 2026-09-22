@@ -155,7 +155,5 @@ public class FlatTreeSyncStoreTests
         }
 
         public void Clear() => inner.Clear();
-
-        public void AcknowledgeRepair() => inner.AcknowledgeRepair();
     }
 }
