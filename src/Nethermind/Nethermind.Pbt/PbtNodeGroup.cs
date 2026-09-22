@@ -175,7 +175,6 @@ public readonly ref struct PbtNodeGroupReader
     public PbtNodeGroupReader(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload)
     {
         int groupDepth = path.BitDepth;
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupDepth)) throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(path));
         uint availability = PbtNodeGroupCodec.ValidateFraming(groupDepth, payload);
         DescendantBuffer descendantBytes = default;
         PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantBytes);

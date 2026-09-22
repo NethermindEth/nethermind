@@ -30,12 +30,16 @@ internal static class PbtNodeGroupKey
         column == PbtColumns.StorageNodeGroups ? PbtStorageTreeKey.MaxLength : PbtTreeKey.MaxLength;
 
     internal static ReadOnlySpan<byte> Encode<TPath>(PbtNodeGroupKeyLayout layout, PbtColumns column, TPath groupKey, Span<byte> destination)
-        where TPath : struct, IPbtNodePath<TPath> => layout switch
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        if (PbtBitPrefix.ByteCount(groupKey.BitDepth) > PathLength(column)) throw new ArgumentOutOfRangeException(nameof(groupKey));
+        return layout switch
         {
             PbtNodeGroupKeyLayout.Padded => EncodePadded(column, groupKey, destination),
             PbtNodeGroupKeyLayout.Variable => EncodeVariable(column, groupKey, destination),
             _ => throw new ArgumentOutOfRangeException(nameof(layout)),
         };
+    }
 
     internal static PbtStorageNodePath Decode(PbtNodeGroupKeyLayout layout, ReadOnlySpan<byte> key) => layout switch
     {
@@ -50,7 +54,7 @@ internal static class PbtNodeGroupKey
         Span<byte> key = destination[..(PathLength(column) + TrailerLength)];
         Span<byte> path = key[..^TrailerLength];
         path.Clear();
-        groupKey.CopyBitsTo(0, path, 0, groupKey.BitDepth);
+        PbtNodePathOperations.CopyTo(groupKey, path);
         key[^1] = (byte)(groupKey.BitDepth / PbtFourLevelGroupGeometry.LevelsPerGroup);
         return key;
     }
@@ -73,11 +77,8 @@ internal static class PbtNodeGroupKey
     private static ReadOnlySpan<byte> EncodeVariable<TPath>(PbtColumns column, TPath groupKey, Span<byte> destination)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        int pathLength = (groupKey.BitDepth + 7) >> 3;
-        if (pathLength > PathLength(column)) throw new ArgumentOutOfRangeException(nameof(groupKey));
-        Span<byte> key = destination[..(pathLength + TrailerLength)];
-        key[^2] = 0;
-        groupKey.CopyBitsTo(0, key, 0, groupKey.BitDepth);
+        Span<byte> key = destination[..(PbtBitPrefix.ByteCount(groupKey.BitDepth) + TrailerLength)];
+        PbtNodePathOperations.CopyTo(groupKey, key);
         key[^1] = (groupKey.BitDepth & 7) == 0 ? ByteAlignedTrailer : NibbleAlignedTrailer;
         return key;
     }
@@ -101,7 +102,7 @@ internal static class PbtNodeGroupKey
 
     private static PbtStorageNodePath CreatePath(ReadOnlySpan<byte> path, int depth)
     {
-        try { return PbtStorageNodePath.Create(path, depth); }
+        try { return new PbtStorageNodePath(path, depth); }
         catch (ArgumentException exception) { throw new InvalidDataException("Invalid persisted PBT node-group key padding.", exception); }
     }
 }

@@ -15,11 +15,13 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
     /// <inheritdoc/>
     public static int MaxBitDepth => PbtStorageTreeKey.MaxLength * 8;
     /// <inheritdoc/>
-    public static PbtStorageNodePath Create(ReadOnlySpan<byte> path, int bitDepth) => new(path, bitDepth);
+    public static PbtStorageNodePath Create(ReadOnlySpan<byte> path, int bitDepth) => new(path, bitDepth, validated: true);
 
-    public PbtStorageNodePath(ReadOnlySpan<byte> path, int bitDepth)
+    public PbtStorageNodePath(ReadOnlySpan<byte> path, int bitDepth) : this(path, bitDepth, validated: false) { }
+
+    private PbtStorageNodePath(ReadOnlySpan<byte> path, int bitDepth, bool validated)
     {
-        PbtNodePathOperations.Validate(path, bitDepth, MaxBitDepth);
+        if (!validated) PbtNodePathOperations.Validate(path, bitDepth, MaxBitDepth);
         _path = path.IsEmpty ? default : new PbtStorageTreeKey(path);
         BitDepth = bitDepth;
         _hashCode = PbtNodePathOperations.Hash(path, bitDepth);

@@ -120,8 +120,6 @@ public sealed class PbtSnapshotBundle(
 
     internal RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
         if (WriteBuffer.TryGetNodeGroup(storagePath, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)

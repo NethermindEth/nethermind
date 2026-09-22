@@ -28,7 +28,7 @@ public ref struct PbtTraversalPath
     {
         if ((uint)path.BitDepth > (uint)(buffer.Length * 8)) throw new ArgumentOutOfRangeException(nameof(path));
         PbtTraversalPath cursor = new(buffer);
-        path.CopyBitsTo(0, buffer, 0, path.BitDepth);
+        PbtNodePathOperations.CopyTo(path, buffer);
         cursor.BitDepth = path.BitDepth;
         return cursor;
     }

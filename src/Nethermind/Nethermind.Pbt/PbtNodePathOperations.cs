@@ -128,6 +128,12 @@ internal static class PbtNodePathOperations
         PbtBitPrefix.CopyBits(path, sourceBitOffset, bitCount, destination, destinationBitOffset);
     }
 
+    /// <summary>Copies a path's canonical bytes into a zeroed destination of sufficient length.</summary>
+    internal static void CopyTo<TPath>(TPath path, Span<byte> destination) where TPath : struct, IPbtNodePath<TPath>
+    {
+        for (int index = 0; index < (path.BitDepth + 7) >> 3; index++) destination[index] = path.GetByte(index);
+    }
+
     internal static bool MatchesPrefix(ReadOnlySpan<byte> path, int bitDepth, ReadOnlySpan<byte> key, int bitCount)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bitCount);

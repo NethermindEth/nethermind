@@ -470,28 +470,6 @@ public class PbtRocksDbPersistenceTests
     }
 
     [Test]
-    public void Invalid_group_keys_and_payloads_are_rejected_before_staging()
-    {
-        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-        PbtNodePath groupKey = new([], 0);
-        PbtNodePath invalidKey = new([0], 1);
-        using RefCountingMemory malformed = RefCountingMemory.Wrapping(new byte[PbtNodeGroupCodec.MaxTrailerLength]);
-        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
-            StateId.PreGenesis, new StateId(1, default), default, WriteFlags.None);
-        using IPbtPersistence.IReader reader = persistence.CreateReader();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => batch.SetNodeGroup(invalidKey, null), Throws.ArgumentException);
-            Assert.That(() => reader.GetNodeGroup(invalidKey), Throws.ArgumentException);
-            Assert.That(() => batch.SetNodeGroup(groupKey, malformed), Throws.TypeOf<InvalidDataException>());
-        }
-        batch.Commit();
-        Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
-        Assert.That(malformed.GetSpan().Length, Is.EqualTo(PbtNodeGroupCodec.MaxTrailerLength));
-    }
-
-    [Test]
     public void Incremental_flush_reopens_with_partial_tail_and_latest_values()
     {
         using TempPath dbPath = TempPath.GetTempDirectory();

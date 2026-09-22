@@ -48,15 +48,10 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
-    internal RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
-    {
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        return GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
-    }
+    internal RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> =>
+        GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
 
     /// <summary>Returns a caller-owned group lease, or null when no layer has an entry.</summary>
-    /// <remarks>Skips depth validation so a caller can validate once and probe every layer with the same key.</remarks>
     internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey)
     {
         GuardDispose();
