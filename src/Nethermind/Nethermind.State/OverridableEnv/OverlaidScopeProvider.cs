@@ -99,6 +99,6 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
             cache.SetSlot(address, in index, in value);
         }
 
-        public void HintSet(in UInt256 index) => inner.HintSet(in index);
+        public void HintSet(in UInt256 index, in UInt256 value) => inner.HintSet(in index, in value);
     }
 }

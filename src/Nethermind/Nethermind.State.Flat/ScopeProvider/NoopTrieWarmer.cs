@@ -14,6 +14,8 @@ public class NoopTrieWarmer : ITrieWarmer
 
     public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
 
+    public bool PushStorageWriteJob(ITrieWarmer.IStorageWriteApplier storageTree, int sequenceId) => false;
+
     public void OnEnterScope() { }
 
     public void OnExitScope() { }

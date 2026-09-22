@@ -702,6 +702,193 @@ public class FlatWorldStateScopeProviderTests
 
     #endregion
 
+    #region Storage Write Streaming Tests
+
+    // 1. Block 1 commits slots 1 and 2.
+    // 2. Block 2 writes slot 1 and a job applies it, then puts slot 1 back to its block-start value.
+    // 3. The final batch skips slot 1 as unchanged, so the restoring write can only come from the stream, whether a
+    //    job applied it or the final batch catches it up.
+    [TestCase(true, TestName = "HintSet_SlotRestoredAfterJobApplied_EndsBlockAtBlockStartValue")]
+    [TestCase(false, TestName = "HintSet_SlotRestoredWithRestoreStillPending_EndsBlockAtBlockStartValue")]
+    public void HintSet_SlotRestoredToBlockStartValue_EndsBlockAtThatValue(bool restoreApplied)
+    {
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
+        CommitSlots(scope, TestItem.AddressA, 1, (1, 5), (2, 6));
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
+        storageTree.HintSet(1, 7);
+        Assert.That(warmer.RunStorageWriteJobs(), Is.EqualTo(1));
+        storageTree.HintSet(1, 5);
+        if (restoreApplied) Assert.That(warmer.RunStorageWriteJobs(), Is.EqualTo(1));
+        else warmer.DropStorageWriteJobs();
+        CommitSlots(scope, TestItem.AddressA, 2, (3, 8));
+
+        Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(ExpectedStorageRoot((1, 5), (2, 6), (3, 8))));
+    }
+
+    [Test]
+    public void StorageWriteBatch_WhenNoJobRan_AppliesCommittedWrites()
+    {
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
+        CommitSlots(scope, TestItem.AddressA, 1, (1, 5));
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
+        storageTree.HintSet(1, 7);
+        storageTree.HintSet(4, 9);
+        CommitSlots(scope, TestItem.AddressA, 2, (1, 7), (4, 9));
+
+        // The job queued in block 2 belongs to a closed round, so it must leave the committed trie alone.
+        Assert.That(warmer.RunStorageWriteJobs(), Is.EqualTo(1));
+        Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(ExpectedStorageRoot((1, 7), (4, 9))));
+    }
+
+    [Test]
+    public void StorageWriteBatch_Clear_DropsWritesCommittedBeforeIt()
+    {
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
+        CommitSlots(scope, TestItem.AddressA, 1, (1, 5), (2, 6));
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
+        storageTree.HintSet(1, 7);
+        warmer.RunStorageWriteJobs();
+        storageTree.HintSet(3, 3);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storageBatch.Clear();
+            storageBatch.Set(9, 1);
+        }
+        scope.Commit(2);
+
+        Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(ExpectedStorageRoot((9, 1))));
+    }
+
+    // 1. Block 1 commits slots 1 and 2.
+    // 2. Block 2 writes slot 1; the job applies it to the trie and then fails.
+    // 3. Slot 1 goes back to its block-start value, which the final batch skips as unchanged: without the roll back the
+    //    trie would keep the failed job's write.
+    [Test]
+    public void ApplyStorageWrites_WhenJobFailsAfterChangingTrie_FinalBatchRollsItBack()
+    {
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
+        CommitSlots(scope, TestItem.AddressA, 1, (1, 5), (2, 6));
+
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressA);
+        storageTree.OnStorageWritesApplied = static () => throw new InvalidOperationException("job fails after applying");
+        storageTree.HintSet(1, 7);
+        Assert.That(warmer.RunStorageWriteJobs(), Is.EqualTo(1));
+        storageTree.HintSet(1, 5);
+        Assert.That(warmer.RunStorageWriteJobs(), Is.Zero, "a faulted trie takes no more jobs");
+        CommitSlots(scope, TestItem.AddressA, 2, (3, 8));
+
+        Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(ExpectedStorageRoot((1, 5), (2, 6), (3, 8))));
+    }
+
+    [Test]
+    public void ApplyStorageWrites_WhileWriteBatchIsOpen_LeavesTrieAlone()
+    {
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
+
+        FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(TestItem.AddressA);
+        bool applied = false;
+        storageTree.OnStorageWritesApplied = () => applied = true;
+        storageTree.HintSet(1, 7);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            warmer.RunStorageWriteJobs();
+            Assert.That(applied, Is.False, "the write batch owns the trie until it is disposed");
+
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storageBatch.Set(1, 7);
+        }
+        scope.Commit(1);
+
+        Assert.That(scope.Get(TestItem.AddressA)!.StorageRoot, Is.EqualTo(ExpectedStorageRoot((1, 7))));
+    }
+
+    [Test]
+    public void HintSet_WhenStreamingDisabled_SchedulesNoJobs()
+    {
+        ManualTrieWarmer warmer = new();
+        using TestContext ctx = new(new FlatDbConfig { StreamStorageWrites = false }, trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(TestItem.GenerateRandomAccount());
+
+        scope.CreateStorageTree(TestItem.AddressA).HintSet(1, 7);
+
+        Assert.That(warmer.RunStorageWriteJobs(), Is.Zero, "a scope that does not stream storage writes only warms paths");
+    }
+
+    private static void CommitSlots(FlatWorldStateScope scope, Address address, ulong blockNumber, params (int Index, int Value)[] slots)
+    {
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slots.Length);
+            foreach ((int index, int value) in slots) storageBatch.Set((UInt256)index, (UInt256)value);
+        }
+
+        scope.Commit(blockNumber);
+    }
+
+    private static Hash256 ExpectedStorageRoot(params (int Index, int Value)[] slots)
+    {
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        foreach ((int index, int value) in slots) expectedTree.Set((UInt256)index, ((UInt256)value).ToMinimalBigEndian());
+        expectedTree.UpdateRootHash();
+        return expectedTree.RootHash;
+    }
+
+    // Runs storage write jobs only when a test asks, so each test picks where they land relative to the writes.
+    private sealed class ManualTrieWarmer : ITrieWarmer
+    {
+        private readonly List<(ITrieWarmer.IStorageWriteApplier StorageTree, int SequenceId)> _storageWriteJobs = [];
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId) => false;
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
+
+        public bool PushStorageWriteJob(ITrieWarmer.IStorageWriteApplier storageTree, int sequenceId)
+        {
+            _storageWriteJobs.Add((storageTree, sequenceId));
+            return true;
+        }
+
+        public int RunStorageWriteJobs()
+        {
+            (ITrieWarmer.IStorageWriteApplier StorageTree, int SequenceId)[] jobs = [.. _storageWriteJobs];
+            _storageWriteJobs.Clear();
+            foreach ((ITrieWarmer.IStorageWriteApplier storageTree, int sequenceId) in jobs) storageTree.ApplyStorageWrites(sequenceId);
+            return jobs.Length;
+        }
+
+        public void DropStorageWriteJobs() => _storageWriteJobs.Clear();
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
+    }
+
+    #endregion
+
     #region Account Snapshot Commit Tests
 
     [Test]
@@ -1059,17 +1246,17 @@ public class FlatWorldStateScopeProviderTests
     public void StorageHintSet_FallsBackToMpmcBufferWhenSlotRingIsFull(bool slotRingAccepts, bool mpmcAccepts)
     {
         RecordingTrieWarmer warmer = new(slotRingAccepts, mpmcAccepts);
-        using TestContext ctx = new(trieWarmer: warmer);
+        using TestContext ctx = new(new FlatDbConfig { StreamStorageWrites = false }, trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
 
-        storageTree.HintSet((UInt256)1);
+        storageTree.HintSet((UInt256)1, (UInt256)7);
 
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 
         // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
-        storageTree.HintSet((UInt256)1);
+        storageTree.HintSet((UInt256)1, (UInt256)7);
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 
@@ -1287,6 +1474,8 @@ public class FlatWorldStateScopeProviderTests
             }
             return false;
         }
+
+        public bool PushStorageWriteJob(ITrieWarmer.IStorageWriteApplier storageTree, int sequenceId) => false;
 
         public void OnEnterScope() { }
 

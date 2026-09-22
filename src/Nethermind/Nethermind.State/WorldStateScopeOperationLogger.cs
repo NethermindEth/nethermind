@@ -96,7 +96,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             logger.Trace($"{scopeId}: S:{address} Get slot {index}, got {value.ToMinimalBigEndian().ToHexString()}");
         }
 
-        public void HintSet(in UInt256 index) => storageTree.HintSet(in index);
+        public void HintSet(in UInt256 index, in UInt256 value) => storageTree.HintSet(in index, in value);
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch

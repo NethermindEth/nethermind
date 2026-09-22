@@ -185,10 +185,11 @@ public interface IWorldStateScopeProvider
         void Get(in UInt256 index, out UInt256 value);
 
         /// <summary>
-        /// Hint that a slot is being written. Backends may use this to start asynchronous
-        /// trie warm-up for the slot path.
+        /// Hint that a slot write was committed with <paramref name="value"/>. Backends may use this to warm up the
+        /// slot path or to apply the write to the trie ahead of the block's storage root computation.
         /// </summary>
-        void HintSet(in UInt256 index);
+        /// <remarks>Called in commit order, so the last hint for a slot carries its current value.</remarks>
+        void HintSet(in UInt256 index, in UInt256 value);
     }
 
     /// <summary>

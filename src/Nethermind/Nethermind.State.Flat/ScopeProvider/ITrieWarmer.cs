@@ -28,6 +28,12 @@ public interface ITrieWarmer
         Address? path,
         int sequenceId);
 
+    /// <summary>Schedules <paramref name="storageTree"/> to apply the storage writes committed to it so far.</summary>
+    /// <remarks>Safe to call from multiple producer threads.</remarks>
+    public bool PushStorageWriteJob(
+        IStorageWriteApplier storageTree,
+        int sequenceId);
+
     void OnEnterScope();
     void OnExitScope();
 
@@ -39,5 +45,10 @@ public interface ITrieWarmer
     public interface IStorageWarmer
     {
         bool WarmUpStorageTrie(UInt256 index, int sequenceId);
+    }
+
+    public interface IStorageWriteApplier
+    {
+        void ApplyStorageWrites(int sequenceId);
     }
 }
