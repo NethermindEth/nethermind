@@ -350,16 +350,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter newestBlockParameter = new(0UL);
             blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
 
-            IReceiptStorage receiptStorage;
-            if (receiptGasUsed is null)
-            {
-                receiptStorage = Substitute.For<IReceiptStorage>();
-                receiptStorage.Get(headBlock, false).Returns([]);
-            }
-            else
-            {
-                receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, receiptGasUsed);
-            }
+            // A null case means no receipts, which is how the pruned-receipts fallback onto tx gas limits is reached.
+            IReceiptStorage receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, receiptGasUsed ?? []);
 
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
 
@@ -415,13 +407,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
 
             TxReceipt[] txReceiptsArray = new TxReceipt[gasUsedArray.Length];
-            txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = gasUsedArray[0] };
-            for (int i = 1; i < gasUsedArray.Length; i++)
+            ulong gasUsedTotal = 0;
+            for (int i = 0; i < gasUsedArray.Length; i++)
             {
-                txReceiptsArray[i] = new TxReceipt()
-                {
-                    GasUsedTotal = txReceiptsArray[i - 1].GasUsedTotal + gasUsedArray[i]
-                };
+                gasUsedTotal += gasUsedArray[i];
+                txReceiptsArray[i] = new TxReceipt() { GasUsedTotal = gasUsedTotal };
             }
             receiptStorage.Get(block).Returns(txReceiptsArray);
             receiptStorage.Get(block, false).Returns(txReceiptsArray);
