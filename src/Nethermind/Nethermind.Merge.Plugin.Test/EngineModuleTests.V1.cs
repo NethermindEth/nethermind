@@ -1402,6 +1402,7 @@ public partial class EngineModuleTests
             executePayloadRequest.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executePayloadRequest);
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            await chain.WaitForCommitted(executePayloadRequest.BlockHash);
 
             BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(executePayloadRequest.BlockHash);
             Assert.That(chain.StateReader.HasStateForBlock(payloadBlock), Is.True);

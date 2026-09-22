@@ -43,6 +43,7 @@ public class ForkchoiceUpdatedHandlerTests
         blockTree.FindHeader(newHeadHash, Arg.Any<BlockTreeLookupOptions>()).Returns(newHead.Header);
         blockTree.FindHeader(parent.Hash!, Arg.Any<BlockTreeLookupOptions>()).Returns(parent);
         blockTree.GetInfo(newHead.Number, newHeadHash).Returns(_ => (new BlockInfo(newHeadHash, UInt256.Zero) { WasProcessed = committed, BlockNumber = newHead.Number }, null));
+        blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
         // Committed by the time the wait returns, and already the head: the update itself has nothing left to move.
         blockTree.Head.Returns(newHead);
 

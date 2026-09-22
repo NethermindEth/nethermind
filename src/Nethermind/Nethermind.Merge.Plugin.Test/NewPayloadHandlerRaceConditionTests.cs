@@ -338,15 +338,15 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
 
-        await parentWaitRequested.Task;
+        await parentWaitRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(request.IsCompleted, Is.False, "the request waits for the parent rather than answer from its stale flag");
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
 
         parentCommitted = true;
         parentRemoved.SetResult();
-        await enqueued.Task;
+        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request;
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
@@ -420,6 +420,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         parent.TotalDifficulty = UInt256.Zero;
 
         Block head = Build.A.Block.WithHeader(parent).TestObject;
+        // The block builder recomputes its header's hash; the parent keeps the one the block names.
+        parent.Hash = block.ParentHash;
         blockTree.Head.Returns(head);
         blockTree.SyncPivot.Returns((0UL, Keccak.Zero));
         blockTree.FindHeader(block.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
@@ -441,8 +443,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         poSSwitcher.TransitionFinished.Returns(true);
         beaconSyncStrategy.IsBeaconSyncFinished(Arg.Any<BlockHeader?>()).Returns(true);
         stateReader.HasStateForBlock(parent).Returns(true);
-        effectiveProcessingQueue.Count.Returns(0);
-        effectiveProcessingQueue.Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>()).Returns(_ => ValueTask.CompletedTask);
+        if (processingQueue is null)
+        {
+            effectiveProcessingQueue.Count.Returns(0);
+            effectiveProcessingQueue.Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>()).Returns(_ => ValueTask.CompletedTask);
+        }
 
         return new NewPayloadHandler(
             payloadPreparationService,
