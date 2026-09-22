@@ -15,13 +15,15 @@ namespace Nethermind.Blockchain.Test.Proofs;
 [Parallelizable(ParallelScope.All)]
 public class WithdrawalTrieTests
 {
-    private static readonly int[] RootCounts = [0, 1, 2, 8, 15, 16, 17, 64, 65, 127, 128, 129, 255, 256, 257];
+    private static readonly int[] RootCounts = [0, 1, 2, 4, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 64, 65, 127, 128, 129, 255, 256, 257];
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool largeFields)
+    public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values(0, 1, 2)] int fieldMode)
     {
         Withdrawal[] withdrawals = new Withdrawal[count];
         for (int i = 0; i < count; i++)
+        {
+            bool largeFields = fieldMode == 1 || (fieldMode == 2 && i % 2 == 0);
             withdrawals[i] = new Withdrawal
             {
                 Index = largeFields ? ulong.MaxValue - (ulong)i : (ulong)i + 1000,
@@ -29,6 +31,7 @@ public class WithdrawalTrieTests
                 Address = i % 2 == 0 ? TestItem.AddressA : TestItem.AddressB,
                 AmountInGwei = largeFields ? ulong.MaxValue : (ulong)i
             };
+        }
 
         Assert.That(WithdrawalTrie.CalculateRoot(withdrawals), Is.EqualTo(new WithdrawalTrie(withdrawals).RootHash));
     }
