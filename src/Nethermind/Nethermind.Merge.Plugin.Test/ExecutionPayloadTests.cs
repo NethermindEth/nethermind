@@ -269,7 +269,7 @@ public class ExecutionPayloadTests
         byte[][] rlps = EncodeTxs(count: 64);
 
         ExecutionPayload payload = new() { Transactions = rlps };
-        TxRootComputation? rootComputation = payload.StartTxRootComputation();
+        ExecutionPayload.TxRootComputation? rootComputation = payload.StartTxRootComputation();
         Result<Block> block = payload.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
@@ -302,7 +302,7 @@ public class ExecutionPayloadTests
         byte[][] rlps = EncodeTxs(count: 1);
 
         ExecutionPayload payload = new() { Transactions = rlps };
-        TxRootComputation? rootComputation = payload.StartTxRootComputation();
+        ExecutionPayload.TxRootComputation? rootComputation = payload.StartTxRootComputation();
         Result<Block> block = payload.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
@@ -318,7 +318,7 @@ public class ExecutionPayloadTests
     {
         byte[][] rlps = EncodeTxs(count: 64);
 
-        TxRootComputation computation = new(rlps);
+        ExecutionPayload.TxRootComputation computation = new(rlps);
 
         Assert.That(computation.GetResult(), Is.EqualTo(TxTrie.CalculateRoot(rlps)));
     }
@@ -330,7 +330,7 @@ public class ExecutionPayloadTests
         byte[][] rlps = EncodeTxs(count: 64);
         Hash256 expected = TxTrie.CalculateRoot(rlps);
 
-        TxRootComputation computation = new(rlps);
+        ExecutionPayload.TxRootComputation computation = new(rlps);
         Hash256[] roots = new Hash256[8];
         Parallel.For(0, roots.Length, i => roots[i] = computation.GetResult());
 
