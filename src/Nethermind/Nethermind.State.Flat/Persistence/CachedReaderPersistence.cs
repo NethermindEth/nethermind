@@ -105,6 +105,8 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
     public bool WasRepairedOnOpen => _inner.WasRepairedOnOpen;
 
+    public void AcknowledgeRepair() => _inner.AcknowledgeRepair();
+
     private void ClearReaderCache()
     {
         using Lock.Scope _ = _readerCacheLock.EnterScope();

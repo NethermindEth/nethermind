@@ -46,6 +46,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
 
     public bool WasRepairedOnOpen => db.WasRepairedOnOpen;
 
+    public void AcknowledgeRepair() => db.AcknowledgeRepair();
+
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();

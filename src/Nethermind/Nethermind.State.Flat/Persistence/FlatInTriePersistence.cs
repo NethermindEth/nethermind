@@ -28,6 +28,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
 
     public bool WasRepairedOnOpen => db.WasRepairedOnOpen;
 
+    public void AcknowledgeRepair() => db.AcknowledgeRepair();
+
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();

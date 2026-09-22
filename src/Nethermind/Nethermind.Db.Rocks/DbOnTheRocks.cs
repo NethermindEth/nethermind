@@ -359,6 +359,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private void RepairIfCorrupted(DbOptions dbOptions)
     {
         string corruptMarker = CorruptMarkerPath;
+        bool persistRepairMarker = _settings.PersistRepairMarkerUntilAcknowledged;
 
         if (_fileSystem.File.Exists(corruptMarker))
         {
@@ -366,13 +367,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             RepairDb(dbOptions, _fullPath!);
 
             WasRepairedOnOpen = true;
-            _fileSystem.File.WriteAllText(RepairedMarkerPath, DateTime.UtcNow.ToString("O"));
-            if (_logger.IsWarn) _logger.Warn("Repair completed. Some data may be lost. Wrote repaired.marker.");
+            if (persistRepairMarker)
+            {
+                _fileSystem.File.WriteAllText(RepairedMarkerPath, DateTime.UtcNow.ToString("O"));
+                if (_logger.IsWarn) _logger.Warn("Repair completed. Some data may be lost. Wrote repaired.marker.");
+            }
+            else if (_logger.IsWarn)
+            {
+                _logger.Warn("Repair completed. Some data may be lost.");
+            }
+
             _fileSystem.File.Delete(corruptMarker);
             return;
         }
 
-        if (_fileSystem.File.Exists(RepairedMarkerPath))
+        if (persistRepairMarker && _fileSystem.File.Exists(RepairedMarkerPath))
             WasRepairedOnOpen = true;
     }
 

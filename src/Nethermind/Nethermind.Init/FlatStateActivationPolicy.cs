@@ -79,6 +79,7 @@ public sealed class FlatStateActivationPolicy(
 
             if (logger.IsError)
                 logger.Error("Flat DB was auto-repaired by RocksDB; keeping repaired data (FlatDb.OnRepair=Ignore). This node may diverge.");
+            persistence.AcknowledgeRepair();
         }
 
         if (flatHasData)

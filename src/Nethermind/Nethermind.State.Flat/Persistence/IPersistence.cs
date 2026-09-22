@@ -24,8 +24,11 @@ public interface IPersistence
     void Flush();
     void Clear();
 
-    /// <summary>True when the underlying flat DB ran a RocksDB repair during this process open.</summary>
+    /// <summary>True when the underlying flat DB ran a RocksDB repair during this process open, or still has a repair marker from an earlier one.</summary>
     bool WasRepairedOnOpen => false;
+
+    /// <summary>Drops the repair marker without wiping state, so a later open does not treat the DB as newly repaired.</summary>
+    void AcknowledgeRepair();
 
     public interface IPersistenceReader : IDisposable
     {

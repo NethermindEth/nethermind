@@ -94,12 +94,14 @@ public class FlatStateActivationPolicyTests
         {
             Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
             setup.Persistence.Received(1).Clear();
+            setup.Persistence.DidNotReceive().AcknowledgeRepair();
         }
     }
 
     [Test]
     public void Repaired_empty_flat_with_patricia_stays_patricia()
     {
+        TestLogger testLogger = new();
         PolicySetup setup = CreateSetup(
             enabled: true,
             importFromPruning: false,
@@ -107,7 +109,7 @@ public class FlatStateActivationPolicyTests
             patriciaHasData: true,
             layout: FlatLayout.Flat,
             availableMemoryBytes: 32.GiB,
-            logManager: LimboLogs.Instance,
+            logManager: new OneLoggerLogManager(new ILogger(testLogger)),
             wasRepairedOnOpen: true,
             onRepair: FlatDbOnRepair.Resync);
 
@@ -115,6 +117,8 @@ public class FlatStateActivationPolicyTests
         {
             Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.False);
             setup.Persistence.DidNotReceive().Clear();
+            setup.Persistence.Received(1).AcknowledgeRepair();
+            Assert.That(testLogger.LogList.Count(static l => l.Contains("may diverge")), Is.EqualTo(1));
         }
     }
 
@@ -138,6 +142,7 @@ public class FlatStateActivationPolicyTests
         {
             Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
             setup.Persistence.Received(1).Clear();
+            setup.Persistence.DidNotReceive().AcknowledgeRepair();
             Assert.That(setup.Reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
         }
     }
@@ -161,7 +166,8 @@ public class FlatStateActivationPolicyTests
         {
             Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
             setup.Persistence.DidNotReceive().Clear();
-            Assert.That(testLogger.LogList.Any(l => l.Contains(nameof(FlatDbOnRepair.Ignore))), Is.True);
+            setup.Persistence.Received(1).AcknowledgeRepair();
+            Assert.That(testLogger.LogList.Count(static l => l.Contains("may diverge")), Is.EqualTo(1));
         }
     }
 
@@ -183,6 +189,7 @@ public class FlatStateActivationPolicyTests
         {
             Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
             setup.Persistence.DidNotReceive().Clear();
+            setup.Persistence.DidNotReceive().AcknowledgeRepair();
         }
     }
 
