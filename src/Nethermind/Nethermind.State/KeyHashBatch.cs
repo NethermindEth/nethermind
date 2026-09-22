@@ -16,6 +16,8 @@ internal struct KeyHashBatch
     private const int MaximumBatchSize = 8;
     /// <summary>The AVX2 lane width, also the minimum account-batching threshold for both state backends.</summary>
     internal const int MinimumBatchSize = 4;
+    /// <summary>Below this, a batch kernel's setup and lane-clearing is not worth it over one scalar hash.</summary>
+    private const int MinimumBatchCount = 2;
     private const int Rate = 136;
 
     [InlineArray(MaximumBatchSize)]
@@ -75,28 +77,35 @@ internal struct KeyHashBatch
     internal void Flush(Span<PatriciaTree.BulkSetEntry> entries)
     {
         if (_count == 0) return;
-        int batchSize = Avx512F.IsSupported && _count == MaximumBatchSize ? MaximumBatchSize
-            : Avx2.IsSupported && _count >= MinimumBatchSize ? MinimumBatchSize : 0;
+        // A batch kernel costs the same whether its lanes are full or empty, so any count meeting
+        // the entry threshold takes one and zero-fills the rest. The narrowest kernel that covers
+        // the count is preferred: a wider one would permute lanes holding nothing.
+        int batchSize = Avx512F.IsSupported && _count > MinimumBatchSize ? MaximumBatchSize
+            : Avx2.IsSupported && _count >= MinimumBatchCount ? MinimumBatchSize : 0;
         if (batchSize != 0)
         {
             Unsafe.SkipInit(out Scratch scratch);
             Span<byte> buffer = MemoryMarshal.AsBytes((Span<ulong>)scratch);
             Span<byte> inputs = buffer[..(batchSize * Rate)];
             Span<byte> hashes = buffer.Slice(batchSize * Rate, batchSize * Hash256.Size);
-            for (int i = 0; i < batchSize; i++)
+            for (int i = 0; i < _count; i++)
             {
                 Span<byte> input = inputs.Slice(i * Rate, Rate);
                 _keys[i].BytesAsSpan[.._length].CopyTo(input);
                 input[_length..].Clear();
                 input[_length] = 1;
-                input[^1] = 128;
+                input[^1] |= 128;
             }
+            // Lanes beyond _count carry no real key; zero-fill them so the kernel runs, their
+            // digests are never read back below.
+            inputs[(_count * Rate)..].Clear();
+
             if (batchSize == MaximumBatchSize)
                 KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref hashes[0]);
             else
                 KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
 
-            for (int i = 0; i < batchSize; i++)
+            for (int i = 0; i < _count; i++)
             {
                 ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
                 KeccakCache.Store(_keys[i].BytesAsSpan[.._length], in hash);
@@ -104,11 +113,14 @@ internal struct KeyHashBatch
                 entries[index] = new(in hash, entries[index].Value);
             }
         }
-        for (int i = batchSize; i < _count; i++)
+        else
         {
-            KeccakCache.ComputeTo(_keys[i].BytesAsSpan[.._length], out ValueHash256 hash);
-            int index = _indices[i];
-            entries[index] = new(in hash, entries[index].Value);
+            for (int i = 0; i < _count; i++)
+            {
+                KeccakCache.ComputeTo(_keys[i].BytesAsSpan[.._length], out ValueHash256 hash);
+                int index = _indices[i];
+                entries[index] = new(in hash, entries[index].Value);
+            }
         }
         _count = 0;
     }
