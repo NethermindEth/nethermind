@@ -535,7 +535,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // A payload sent again while its first copy is between verdict and commit is known but not yet marked
             // processed; queued again it would be skipped as not better than head and answered INVALID, so let the
             // first copy finish first.
-            if (addResult == AddBlockResult.AlreadyKnown)
+            if (addResult == AddBlockResult.AlreadyKnown && !_blockTree.WasProcessed(block.Number, block.Hash!))
             {
                 Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!).AsTask();
                 if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
@@ -576,10 +576,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                // Off this thread: with the queue empty the processor runs the block synchronously inside Enqueue, on
-                // the caller's thread, and would not hand it back until the block was committed - after the verdict
-                // this request only needs to see. The processing loop raises its own thread's priority, so nothing is
-                // lost by not inheriting this one's. A queue failure still reaches the request through BlockRemoved.
+                // Off this thread: the processing queue's channel allows synchronous continuations
+                // (BlockchainProcessor._blockQueue), so with the queue empty the processor runs the block inside
+                // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
+                // verdict this request only needs to see. The processing loop raises its own thread's priority, so
+                // nothing is lost by not inheriting this one's. A failure once the block is counted in reaches the
+                // request as BlockRemoved(QueueException); one before that leaves the request to its timeout and
+                // SYNCING, which the CL retries.
                 _ = Task.Run(() => EnqueueAsync(block, processingOptions));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
@@ -638,7 +641,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         if (!_blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed))
         {
-            // If we don't have a task for this block, it means it was already processed or removed.
+            // Answered on the verdict already, or nobody was waiting. A failure after the verdict - the commit or the
+            // chain update threw - must not leave that VALID cached as terminal: the CL's retry would be answered from
+            // the cache without the block ever being queued again. Evicted, the retry re-processes it.
+            if (e.ProcessingResult is not (ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied)) _latestBlocks?.Delete(e.BlockHash);
             return;
         }
 

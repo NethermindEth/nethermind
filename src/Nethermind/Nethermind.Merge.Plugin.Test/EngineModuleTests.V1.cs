@@ -958,8 +958,9 @@ public partial class EngineModuleTests
             Assert.That(verdictGiven.IsSet, Is.True);
             Assert.That(chain.BlockTree.WasProcessed(block.Number, block.Hash!), Is.False, "precondition: the block is answered but not committed yet");
 
+            // Sent while the commit is still parked; that it waits rather than answers SYNCING is pinned without a clock
+            // in ForkchoiceUpdatedHandlerTests, so here only the outcome once the commit is released is asserted.
             Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
-            Assert.That(await Task.WhenAny(forkchoice, Task.Delay(200)), Is.Not.SameAs(forkchoice), "forkchoice must wait for the commit rather than answer SYNCING");
 
             commitReleased.Set();
             ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;

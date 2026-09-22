@@ -186,14 +186,16 @@ public class ForkchoiceUpdatedHandler(
             // CL's forkchoice follows at once: give that commit its moment rather than answer SYNCING and make the CL
             // retry. Only when nothing is queued ahead of the block, and bounded, because this wait holds the engine
             // API's lock: a backlog or a slow commit gets the SYNCING it always got.
-            Task removed = processingQueue.WaitUntilRemovedAsync(newHeadHeader.Hash!).AsTask();
+            Task removed = processingQueue.WaitUntilRemovedAsync(newHeadHeader.GetOrCalculateHash()).AsTask();
             if (!removed.IsCompleted)
             {
                 using CancellationTokenSource bound = new();
-                if (await Task.WhenAny(removed, Task.Delay(CommitWait, bound.Token)) == removed) bound.Cancel();
+                if (await Task.WhenAny(removed, Task.Delay(CommitWait, bound.Token)) == removed)
+                {
+                    bound.Cancel();
+                    blockInfo = _blockTree.GetInfo(newHeadHeader.Number, newHeadHeader.GetOrCalculateHash()).Info ?? blockInfo;
+                }
             }
-
-            if (removed.IsCompleted) blockInfo = _blockTree.GetInfo(newHeadHeader.Number, newHeadHeader.Hash!).Info ?? blockInfo;
         }
 
         if (!blockInfo.WasProcessed)

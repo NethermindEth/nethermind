@@ -144,19 +144,30 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private void TrackInFlight(Hash256 blockHash)
     {
-        // An entry whose last copy has just left refuses the copy while its removal is still under way; the next
-        // lookup creates a fresh one.
-        while (!_inFlight.GetOrAdd(blockHash, static _ => new InFlightBlock()).TryAddCopy()) { }
+        // An entry whose last copy has just left refuses the copy while its removal is still under way, a matter of
+        // a few instructions on another thread; the next lookup creates a fresh one.
+        SpinWait spinner = default;
+        while (!_inFlight.GetOrAdd(blockHash, static _ => new InFlightBlock()).TryAddCopy()) spinner.SpinOnce();
     }
 
+    /// <remarks>
+    /// The removal is published before the waiters are released: a waiter that resumes must never find an event of
+    /// the copy it waited out still pending, or it could take that event for its own. The release does not depend on
+    /// the handlers, so a throwing one cannot leave a waiter parked.
+    /// </remarks>
     private void OnBlockRemoved(BlockRemovedEventArgs e)
     {
-        if (_inFlight.TryGetValue(e.BlockHash, out InFlightBlock? inFlight) && inFlight.RemoveCopy())
+        try
         {
-            _inFlight.TryRemove(new KeyValuePair<Hash256, InFlightBlock>(e.BlockHash, inFlight));
+            BlockRemoved?.Invoke(this, e);
         }
-
-        BlockRemoved?.Invoke(this, e);
+        finally
+        {
+            if (_inFlight.TryGetValue(e.BlockHash, out InFlightBlock? inFlight) && inFlight.RemoveCopy())
+            {
+                _inFlight.TryRemove(new KeyValuePair<Hash256, InFlightBlock>(e.BlockHash, inFlight));
+            }
+        }
     }
 
     /// <summary>
@@ -202,9 +213,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         /// <summary><c>true</c> when this was the last copy, so the entry is to be removed and its waiters are released.</summary>
+        /// <remarks>
+        /// Removals are raised once per copy and in sequence today; the clamp keeps a second removal of the last copy,
+        /// should one ever overlap, from stranding the entry at a count nothing can bring back to zero.
+        /// </remarks>
         public bool RemoveCopy()
         {
-            if (Interlocked.Decrement(ref _copies) != 0) return false;
+            int copies = Interlocked.Decrement(ref _copies);
+            if (copies != 0) return false;
             // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
             if (Interlocked.CompareExchange(ref _copies, -1, 0) != 0) return false;
             Release();

@@ -242,6 +242,58 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
+    /// <summary>
+    /// While a re-sent payload waits for its first copy, that copy's own removal lands on the completion registered
+    /// for the hash. It must not become the re-submission's answer: the request re-validates the block with its own
+    /// queue attempt and answers on that attempt's verdict.
+    /// </summary>
+    [Test, MaxTime(10_000)]
+    public async Task ValidateBlockAndProcess_does_not_take_the_first_copys_removal_for_a_resubmissions_answer()
+    {
+        Block block = Build.A.Block
+            .WithParentHash(TestItem.KeccakC)
+            .WithNumber(1)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .TestObject;
+        block.Header.IsPostMerge = true;
+
+        TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.Hash!).Returns(new ValueTask(firstCopyRemoved.Task));
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 5_000);
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+
+        // The first copy's removal, published before the wait it releases completes.
+        processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.Success));
+        Assert.That(request.IsCompleted, Is.False, "the first copy's removal is not this request's answer");
+        firstCopyRemoved.SetResult();
+
+        await enqueued.Task;
+        Assert.That(request.IsCompleted, Is.False, "the request must wait for its own attempt's verdict");
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        ResultWrapper<PayloadStatusV1> result = await request;
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the answer is the re-submission's own verdict");
+        await processingQueue.Received(1).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
     [Test, MaxTime(10_000)]
     public async Task ValidateBlockAndProcess_gives_up_on_a_known_copy_that_never_finishes()
     {

@@ -460,6 +460,12 @@ public class BlockchainProcessorTests
 
         public Task WaitUntilRemoved(Block block) => _processor.WaitUntilRemovedAsync(block.Hash!).AsTask();
 
+        public ProcessingTestContext OnBlockRemoved(EventHandler<BlockRemovedEventArgs> handler)
+        {
+            _processor.BlockRemoved += handler;
+            return this;
+        }
+
         public ProcessingTestContext CountIs(int expectedCount)
         {
             Assert.That(() => _processor.Count, Is.EqualTo(expectedCount).After(ProcessingWait, 10));
@@ -629,10 +635,16 @@ public class BlockchainProcessorTests
         Task waiting = context.WaitUntilRemoved(_block1D2);
         Assert.That(waiting.IsCompleted, Is.False, "the block is queued, so the wait is pending");
         Assert.That(context.WaitUntilRemoved(_blockB2D4).IsCompleted, Is.True, "a block the queue never saw holds nobody");
+        bool pendingWhenRemovalPublished = false;
+        context.OnBlockRemoved((_, args) =>
+        {
+            if (args.BlockHash == _block1D2.Hash) pendingWhenRemovalPublished = !waiting.IsCompleted;
+        });
 
         context.Recovered(_block1D2).Processed(_block1D2).BecomesNewHead();
 
         await waiting.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(pendingWhenRemovalPublished, Is.True, "the removal is published before the waiters are released");
         Assert.That(context.WaitUntilRemoved(_block1D2).IsCompleted, Is.True, "once removed, the block holds nobody either");
     }
 

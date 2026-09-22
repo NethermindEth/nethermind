@@ -54,9 +54,10 @@ namespace Nethermind.Consensus.Processing
         event EventHandler<BlockRemovedEventArgs> BlockRemoved;
 
         /// <summary>
-        /// Completes once the block is no longer queued or being processed - at once if it is neither - so a
-        /// caller that learnt the verdict from <see cref="BlockExecuted"/> can wait for the block to become
-        /// readable through the chain.
+        /// Completes once no copy of the block is queued or being processed - at once if none is - so a caller
+        /// that learnt the verdict from <see cref="BlockExecuted"/> can wait for the block to become readable
+        /// through the chain. It completes only after the last copy's <see cref="BlockRemoved"/> has been raised,
+        /// so a caller that resumes can register for the block afresh without an event of the old copy reaching it.
         /// </summary>
         ValueTask WaitUntilRemovedAsync(Hash256 blockHash);
 
