@@ -188,7 +188,6 @@ public class FrameTxVerifyDosMeasurement
     /// since block execution applies no cap.</remarks>
     [TestCase(100_000L, TestName = "burn at the spec default budget")]
     [TestCase((long)Eip8141Constants.MaxVerifyGas, TestName = "burn at the retainable ceiling")]
-    [TestCase(322_800L, TestName = "burn at the budget soispoke declared until 2026-09-15")]
     [TestCase(352_800L, TestName = "burn at soispoke's declared privacy-pool budget")]
     public void UnpaidBurnPerAttempt(long verifyGas)
     {

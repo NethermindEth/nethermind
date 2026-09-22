@@ -104,8 +104,9 @@ public class FrameTxProducerRetryMeasurement
             .Done;
 
     /// <summary>Measures producer-side retry behavior for a control that approves and a prefix that never does.</summary>
-    /// <remarks>322,800 is soispoke's declared privacy-pool budget (their
-    /// <c>activation_manifest.testbed.json</c>: <c>verify_frame_gas</c> 320,000 + <c>signature_gas</c> 2,800).
+    /// <remarks>352,800 is soispoke's declared privacy-pool budget (their
+    /// <c>activation_manifest.testbed.json</c>: an EIP-8272 recent-root <c>verify_frame_gas</c> 30,000 +
+    /// a pool <c>verify_frame_gas</c> 320,000 + <c>signature_gas</c> 2,800).
     /// The <c>groth16-soispoke</c> sweep entry in the mempool/flood harnesses stays clamped to 300,000
     /// because those harnesses run through <c>CapFrameGas</c>, which enforces the fixed
     /// <see cref="Eip8141Constants.MaxVerifyGas"/> on the simulation path regardless of configuration; this
@@ -194,7 +195,7 @@ public class FrameTxProducerRetryMeasurement
 
     private static IEnumerable<TestCaseData> RetryCases()
     {
-        foreach (ulong verifyGas in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 322_800ul, 352_800ul, 500_000ul })
+        foreach (ulong verifyGas in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 352_800ul, 500_000ul })
         {
             foreach (int kRetry in new int[] { 1, 2, 4, 8 })
             {

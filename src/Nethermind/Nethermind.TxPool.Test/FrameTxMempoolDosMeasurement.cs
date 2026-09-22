@@ -64,7 +64,6 @@ public class FrameTxMempoolDosMeasurement
     private const ulong Ceiling100k = 100_000;
     private const ulong Ceiling236k = 236_285;
     private const ulong Ceiling300k = 300_000;
-    private const ulong Ceiling322k = 322_800;
     private const ulong Ceiling500k = 500_000;
 
     /// <summary>soispoke's declared privacy-pool budget: their <c>activation_manifest.testbed.json</c>
@@ -74,12 +73,10 @@ public class FrameTxMempoolDosMeasurement
     /// <see cref="Eip8141Constants.MaxVerifyGas"/> can't be admitted for that shape; the signature-stuffed
     /// shape is refused before it ever reaches that admission check, so it measures the true 352,800
     /// number directly instead.</summary>
-    /// <remarks>Was 322,800 until the recent-root frame moved into the transaction on 2026-09-15;
-    /// <see cref="Ceiling322k"/> keeps that historical sweep point so the curve stays comparable.</remarks>
     private const ulong SoispokeDeclaredBudget = 352_800;
 
     /// <summary>The plain ceiling sweep shared by the keccak-wide budget-burning and signature-stuffed cases.</summary>
-    private static readonly ulong[] SweptCeilings = [Ceiling100k, Ceiling236k, Ceiling300k, Ceiling322k, SoispokeDeclaredBudget, Ceiling500k];
+    private static readonly ulong[] SweptCeilings = [Ceiling100k, Ceiling236k, Ceiling300k, SoispokeDeclaredBudget, Ceiling500k];
 
     /// <summary>Small frame budget reserved by the signature-stuffing shape.</summary>
     private const ulong MinimalFrameGas = 400;

@@ -236,13 +236,14 @@ public class FrameTxFloodMeasurement
     private const string ProjectCoresVariable = "FRAME_FLOOD_PROJECT_CORES";
 
     /// <summary>The plain ceiling sweep shared by the keccak-wide budget-burning and signature-stuffed cases.</summary>
-    /// <remarks>322,800 is soispoke's declared privacy-pool budget (their activation_manifest.testbed.json:
-    /// verify_frame_gas 320,000 + signature_gas 2,800); 236,285 stays as a curve-shape interior point below
-    /// the stock MAX_VERIFY_GAS cap, same as before. 322,800 exceeds <see cref="Eip8141Constants.MaxVerifyGas"/>
+    /// <remarks>352,800 is soispoke's declared privacy-pool budget (their activation_manifest.testbed.json:
+    /// an EIP-8272 recent-root verify_frame_gas 30,000 + a pool verify_frame_gas 320,000 + signature_gas
+    /// 2,800); 236,285 stays as a curve-shape interior point below the stock MAX_VERIFY_GAS cap.
+    /// 352,800 exceeds <see cref="Eip8141Constants.MaxVerifyGas"/>
     /// (300,000), so of the methods this array feeds, only the signature-stuffed ones — refused before they
     /// ever reach that cap — produce a row at that point; every keccak-wide/production/ramp arm is gated by
     /// it and Assert.Ignores instead.</remarks>
-    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
+    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 352_800ul, 500_000ul];
 
     /// <summary>Maximum drift between the idle baselines bracketing a flood run.</summary>
     private const double MaxBaselineDriftPercent = 5.0;
