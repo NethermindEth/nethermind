@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -116,5 +117,62 @@ public class PbtOfflineSourceTests
         Assert.That(() => PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, ".", snapshot, preimages, manifest,
             cancellationToken: new CancellationToken(cancel)), cancel ? Throws.TypeOf<OperationCanceledException>() : Throws.TypeOf<InvalidDataException>());
         Assert.That(snapshot.Length + preimages.Length + manifest.Length, Is.Zero);
+    }
+
+    /// <summary>A fan-in below the run count forces intermediate merge rounds before the final merge.</summary>
+    [Test]
+    public void Spool_merges_runs_in_key_order_collapsing_duplicates([Values(2, 3, 128)] int maxFanIn)
+    {
+        string directory = Directory.CreateTempSubdirectory("pbt-spool-").FullName;
+        try
+        {
+            // A buffer of a few records per run, so a few hundred records spill into many runs.
+            using PbtSortedSpool spool = new(directory, 512, CancellationToken.None) { MaxFanIn = maxFanIn };
+            SortedDictionary<ValueHash256, byte[]> expected = [];
+            for (int index = 0; index < 400; index++)
+            {
+                ValueHash256 key = ValueKeccak.Compute(BitConverter.GetBytes(index % 250));
+                byte[] value = ValueKeccak.Compute(key.Bytes).Bytes.ToArray();
+                expected[key] = value;
+                // Every key past 250 repeats an earlier one with the same value, so it must collapse.
+                spool.Add(key.Bytes, value);
+            }
+
+            // Read twice: the runs outlive the merge, so a second cursor must replay the same sequence.
+            for (int pass = 0; pass < 2; pass++)
+            {
+                using PbtSortedSpool.Cursor cursor = spool.Read();
+                using IEnumerator<KeyValuePair<ValueHash256, byte[]>> reference = expected.GetEnumerator();
+                while (cursor.MoveNext())
+                {
+                    Assert.That(reference.MoveNext(), Is.True, "more merged records than distinct keys");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(cursor.Key.ToArray(), Is.EqualTo(reference.Current.Key.Bytes.ToArray()), "key");
+                        Assert.That(cursor.Value.ToArray(), Is.EqualTo(reference.Current.Value), "value");
+                    }
+                }
+                Assert.That(reference.MoveNext(), Is.False, "fewer merged records than distinct keys");
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test]
+    public void Spool_rejects_one_key_carrying_two_values([Values(true, false)] bool sameRun)
+    {
+        string directory = Directory.CreateTempSubdirectory("pbt-spool-").FullName;
+        try
+        {
+            // A 512-byte buffer holds both records; padding the first run apart puts them in separate runs.
+            using PbtSortedSpool spool = new(directory, 512, CancellationToken.None) { MaxFanIn = 2 };
+            byte[] key = ValueKeccak.Compute("key"u8).Bytes.ToArray();
+            spool.Add(key, [1]);
+            if (!sameRun) for (int index = 0; index < 16; index++) spool.Add(ValueKeccak.Compute(BitConverter.GetBytes(index)).Bytes, [2]);
+            spool.Add(key, [3]);
+            Assert.That(() => { using PbtSortedSpool.Cursor cursor = spool.Read(); while (cursor.MoveNext()) { } },
+                Throws.TypeOf<InvalidDataException>().With.Message.Contains("Conflicting"));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 }

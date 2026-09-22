@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.PersistedSnapshots.Sorted;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Pbt.Image;
 
@@ -20,8 +24,33 @@ internal sealed record PbtImageAnchor(string ChainId, Hash256 GenesisHash, Block
 internal sealed class PbtImageResourceLimitException(string message) : Exception(message);
 
 /// <summary>Verifies an EIP-8347 image into private disk staging, without publishing client state.</summary>
+/// <remarks>
+/// The snapshot is ordered by PBT key and the preimages by Keccak path, two unrelated orders, so the
+/// preimage-driven MPT reconstruction cannot read the leaves where they lie. Rather than seek per leaf,
+/// the preimage walk emits one request per leaf it will need, keyed by PBT key and carrying the position
+/// it holds in the walk; sorting those and merge-joining them against the snapshot resolves every field
+/// in one sequential pass, and re-reading the results by position replays them in preimage order.
+/// <para>Leaves that no request claims are the code chunks, which are keyed by code hash rather than by
+/// address and so cannot be derived from the preimages. They stay behind in a residual table, small
+/// because it holds one copy of each distinct bytecode, which the code reads seek into directly.
+/// Requiring the residual to be exactly consumed is what stops a snapshot carrying state the preimages
+/// never mention.</para>
+/// </remarks>
 internal static class PbtImageVerifier
 {
+    /// <summary>Sort budget for the request and result spools.</summary>
+    private const int SortBufferBytes = 128 * 1024 * 1024;
+
+    // Request kinds, in the order the preimage walk emits them for one account.
+    private const byte BasicKind = 0;
+    private const byte CodeHashKind = 1;
+    private const byte DelegationKind = 2;
+    private const byte SlotKind = 3;
+
+    private const int SequenceLength = sizeof(ulong);
+    private const int SlotCountLength = sizeof(uint);
+    private const int LeafLength = 32;
+
     public static PbtVerifiedImage Verify(Stream snapshot, Stream preimages, PbtArtifactIdentity identity,
         PbtImageAnchor anchor, string stagingDirectory, CancellationToken cancellationToken = default)
     {
@@ -30,61 +59,37 @@ internal static class PbtImageVerifier
         Directory.CreateDirectory(directory);
         try
         {
-            using LeafSpool leaves = new(Path.Combine(directory, "leaves"));
+            string leafPath = Path.Combine(directory, "leaves");
             (ValueHash256 claimedRoot, ulong count) = PbtSnapshotCodec.ReadHeader(snapshot);
-            foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, count, cancellationToken)) leaves.Add(entry);
-            ValueHash256 root = PbtImageRootCalculator.Calculate(leaves.Enumerate(cancellationToken), cancellationToken);
+            // Snapshot leaves already ascend, so they stream straight into a table with no sort.
+            BuildTable(leafPath, (ref SortedTableBuilder<ArenaBufferWriter> table) =>
+            {
+                foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, count, cancellationToken))
+                    table.Add(entry.Key.Bytes, entry.Leaf.Bytes);
+            });
+            ValueHash256 root = PbtImageRootCalculator.Calculate(Leaves(leafPath, cancellationToken), cancellationToken);
             if (root != claimedRoot) throw new InvalidDataException("PBT snapshot root mismatch.");
+
+            using PbtSortedSpool results = new(directory, SortBufferBytes, cancellationToken);
+            string residualPath = Path.Combine(directory, "residual");
+            long residualCount;
+            using (PbtSortedSpool requests = new(directory, SortBufferBytes, cancellationToken))
+            {
+                EmitRequests(preimages, requests, cancellationToken);
+                residualCount = Join(leafPath, requests, results, residualPath, cancellationToken);
+            }
+
             string logicalPath = Path.Combine(directory, "logical");
+            using (MappedByteFile residual = new(residualPath))
             using (BinaryWriter logical = new(File.Create(logicalPath)))
             {
-                PbtPreimageReader reader = new(preimages);
-                ValueHash256 mptRoot = PbtImageMptRootCalculator.Calculate(Accounts(), cancellationToken);
+                CodeTable code = new(residual);
+                ValueHash256 mptRoot = PbtImageMptRootCalculator.Calculate(
+                    Accounts(results, code, logical, anchor, cancellationToken), cancellationToken);
                 if (mptRoot != anchor.Header.StateRoot!.ValueHash256)
                     throw new InvalidDataException("Snapshot does not reproduce the anchor MPT root.");
-                leaves.RequireAllConsumed(cancellationToken);
-
-                IEnumerable<KeyValuePair<ValueHash256, byte[]>> Accounts()
-                {
-                    while (reader.ReadAccount(out Address? address, out uint slots, cancellationToken))
-                    {
-                        Address accountAddress = address!;
-                        ValueHash256 basic = leaves.Required((PbtStorageTreeKey)PbtStateKey.Account(accountAddress, 0));
-                        if (basic.Bytes[..4].IndexOfAnyExcept((byte)0) >= 0)
-                            throw new InvalidDataException("Nonzero basic-data version or reserved bytes.");
-                        PbtKeyDerivation.UnpackBasicData(basic.Bytes, out ulong nonce, out UInt256 balance);
-                        uint codeSize = PbtKeyDerivation.ReadBasicDataCodeSize(basic.Bytes);
-                        if ((ulong)codeSize + ((ulong)codeSize + 30) / 31 * 32 > (ulong)anchor.MaxBufferedCodeBytes)
-                            throw new PbtImageResourceLimitException("Code verification requires a larger local buffering budget.");
-                        byte[] code = ReadCode(accountAddress, (int)codeSize, leaves, cancellationToken);
-                        if (nonce == 0 && balance.IsZero && code.Length == 0)
-                            throw new InvalidDataException("Empty account violates EIP-7523.");
-                        ValueHash256 storageRoot = PbtImageMptRootCalculator.Calculate(Storage(), cancellationToken);
-                        Account account = new(nonce, balance, storageRoot.ToHash256(), Keccak.Compute(code));
-                        byte[] encoded = AccountDecoder.Instance.Encode(account).Bytes;
-                        logical.Write((byte)1);
-                        logical.Write(accountAddress.Bytes);
-                        logical.Write(encoded.Length);
-                        logical.Write(encoded);
-                        logical.Write(code.Length);
-                        logical.Write(code);
-                        yield return new(ValueKeccak.Compute(accountAddress.Bytes), encoded);
-
-                        IEnumerable<KeyValuePair<ValueHash256, byte[]>> Storage()
-                        {
-                            for (uint index = 0; index < slots; index++)
-                            {
-                                ValueHash256 slot = reader.ReadSlot(cancellationToken);
-                                ValueHash256 value = leaves.Required(PbtStateKey.Storage(accountAddress, new UInt256(slot.Bytes, isBigEndian: true)));
-                                logical.Write((byte)2);
-                                logical.Write(accountAddress.Bytes);
-                                logical.Write(slot.Bytes);
-                                logical.Write(value.Bytes);
-                                yield return new(ValueKeccak.Compute(slot.Bytes), Rlp.Encode(new UInt256(value.Bytes, isBigEndian: true)).Bytes);
-                            }
-                        }
-                    }
-                }
+                if (code.Consumed != residualCount)
+                    throw new InvalidDataException("Snapshot contains leaves not accounted for by its preimages and code.");
             }
             return new PbtVerifiedImage(directory, logicalPath, root);
         }
@@ -93,6 +98,203 @@ internal static class PbtImageVerifier
             Directory.Delete(directory, recursive: true);
             throw;
         }
+    }
+
+    private delegate void TableFill(ref SortedTableBuilder<ArenaBufferWriter> table);
+
+    /// <summary>Stream already-ascending records into one table file.</summary>
+    private static void BuildTable(string path, TableFill fill)
+    {
+        ArenaBufferWriter writer = new(File.Create(path), firstOffset: 0);
+        try
+        {
+            SortedTableBuilder<ArenaBufferWriter> table = new(ref writer);
+            try
+            {
+                fill(ref table);
+                table.Build();
+            }
+            finally { table.Dispose(); }
+        }
+        finally { writer.Dispose(); }
+    }
+
+    private static IEnumerable<RebuildEntry> Leaves(string path, CancellationToken cancellationToken)
+    {
+        using PbtSortedSpool.Cursor cursor = new([path], cancellationToken);
+        while (cursor.MoveNext())
+            yield return new RebuildEntry(new PbtStorageTreeKey(cursor.Key), new ValueHash256(cursor.Value));
+    }
+
+    /// <summary>Emit one request per leaf the preimage walk will need, keyed by its PBT key.</summary>
+    /// <remarks>The request carries the walk position so the join's results replay in preimage order,
+    /// and the account request also carries the address and slot count the fold cannot otherwise recover.</remarks>
+    private static void EmitRequests(Stream preimages, PbtSortedSpool requests, CancellationToken cancellationToken)
+    {
+        PbtPreimageReader reader = new(preimages);
+        // Sized for the largest payload, a slot key; an account's address and slot count are shorter.
+        Span<byte> value = stackalloc byte[SequenceLength + 1 + LeafLength];
+        ulong sequence = 0;
+        while (reader.ReadAccount(out Address? address, out uint slots, cancellationToken))
+        {
+            Address account = address!;
+            BinaryPrimitives.WriteUInt64BigEndian(value, sequence++);
+            value[SequenceLength] = BasicKind;
+            account.Bytes.CopyTo(value[(SequenceLength + 1)..]);
+            BinaryPrimitives.WriteUInt32BigEndian(value[(SequenceLength + 1 + Address.Size)..], slots);
+            requests.Add(((PbtStorageTreeKey)PbtStateKey.Account(account, BasicKind)).Bytes,
+                value[..(SequenceLength + 1 + Address.Size + SlotCountLength)]);
+
+            for (byte kind = CodeHashKind; kind <= DelegationKind; kind++)
+            {
+                BinaryPrimitives.WriteUInt64BigEndian(value, sequence++);
+                value[SequenceLength] = kind;
+                requests.Add(((PbtStorageTreeKey)PbtStateKey.Account(account, kind)).Bytes, value[..(SequenceLength + 1)]);
+            }
+
+            for (uint index = 0; index < slots; index++)
+            {
+                ValueHash256 slot = reader.ReadSlot(cancellationToken);
+                BinaryPrimitives.WriteUInt64BigEndian(value, sequence++);
+                value[SequenceLength] = SlotKind;
+                slot.Bytes.CopyTo(value[(SequenceLength + 1)..]);
+                requests.Add(PbtStateKey.Storage(account, new UInt256(slot.Bytes, isBigEndian: true)).Bytes,
+                    value[..(SequenceLength + 1 + LeafLength)]);
+            }
+        }
+    }
+
+    /// <summary>Merge-join the requests against the snapshot, spilling unclaimed leaves to the residual.</summary>
+    /// <returns>The residual leaf count, which the code reads must consume exactly.</returns>
+    private static long Join(string leafPath, PbtSortedSpool requests, PbtSortedSpool results, string residualPath,
+        CancellationToken cancellationToken)
+    {
+        long residualCount = 0;
+        using PbtSortedSpool.Cursor leaves = new([leafPath], cancellationToken);
+        using PbtSortedSpool.Cursor pending = requests.Read();
+        BuildTable(residualPath, (ref SortedTableBuilder<ArenaBufferWriter> residual) =>
+        {
+            // Kind, presence, the largest payload (a slot key) and the leaf it resolved to.
+            Span<byte> result = stackalloc byte[2 + LeafLength + LeafLength];
+            bool hasLeaf = leaves.MoveNext();
+            while (pending.MoveNext())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                // Leaves below the request belong to no request at all.
+                while (hasLeaf && leaves.Key.SequenceCompareTo(pending.Key) < 0)
+                {
+                    residual.Add(leaves.Key, leaves.Value);
+                    residualCount++;
+                    hasLeaf = leaves.MoveNext();
+                }
+                bool present = hasLeaf && leaves.Key.SequenceEqual(pending.Key);
+                ReadOnlySpan<byte> request = pending.Value;
+                byte kind = request[SequenceLength];
+                ReadOnlySpan<byte> payload = request[(SequenceLength + 1)..];
+                result[0] = kind;
+                result[1] = present ? (byte)1 : (byte)0;
+                payload.CopyTo(result[2..]);
+                int length = 2 + payload.Length;
+                if (present)
+                {
+                    leaves.Value.CopyTo(result[length..]);
+                    length += LeafLength;
+                    hasLeaf = leaves.MoveNext();
+                }
+                results.Add(request[..SequenceLength], result[..length]);
+            }
+            while (hasLeaf)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                residual.Add(leaves.Key, leaves.Value);
+                residualCount++;
+                hasLeaf = leaves.MoveNext();
+            }
+        });
+        return residualCount;
+    }
+
+    /// <summary>Replay the joined fields in preimage order, rebuilding the MPT the anchor commits to.</summary>
+    private static IEnumerable<KeyValuePair<ValueHash256, byte[]>> Accounts(PbtSortedSpool results, CodeTable codes,
+        BinaryWriter logical, PbtImageAnchor anchor, CancellationToken cancellationToken)
+    {
+        using PbtSortedSpool.Cursor cursor = results.Read();
+        while (cursor.MoveNext())
+        {
+            (ValueHash256 basic, Address accountAddress, uint slots) = ReadAccountField(cursor);
+            if (basic.Bytes[..4].IndexOfAnyExcept((byte)0) >= 0)
+                throw new InvalidDataException("Nonzero basic-data version or reserved bytes.");
+            PbtKeyDerivation.UnpackBasicData(basic.Bytes, out ulong nonce, out UInt256 balance);
+            uint codeSize = PbtKeyDerivation.ReadBasicDataCodeSize(basic.Bytes);
+            if ((ulong)codeSize + ((ulong)codeSize + 30) / 31 * 32 > (ulong)anchor.MaxBufferedCodeBytes)
+                throw new PbtImageResourceLimitException("Code verification requires a larger local buffering budget.");
+
+            if (!cursor.MoveNext()) throw new InvalidDataException("Truncated join results.");
+            bool hasCodeHash = ReadOptionalField(cursor, CodeHashKind, out ValueHash256 codeHash);
+            if (!cursor.MoveNext()) throw new InvalidDataException("Truncated join results.");
+            bool hasDelegation = ReadOptionalField(cursor, DelegationKind, out ValueHash256 delegation);
+            byte[] code = ReadCode(accountAddress, (int)codeSize, hasCodeHash, codeHash, hasDelegation, delegation,
+                codes, cancellationToken);
+            if (nonce == 0 && balance.IsZero && code.Length == 0)
+                throw new InvalidDataException("Empty account violates EIP-7523.");
+
+            ValueHash256 storageRoot = PbtImageMptRootCalculator.Calculate(Storage(), cancellationToken);
+            Account account = new(nonce, balance, storageRoot.ToHash256(), Keccak.Compute(code));
+            byte[] encoded = AccountDecoder.Instance.Encode(account).Bytes;
+            logical.Write((byte)1);
+            logical.Write(accountAddress.Bytes);
+            logical.Write(encoded.Length);
+            logical.Write(encoded);
+            logical.Write(code.Length);
+            logical.Write(code);
+            yield return new(ValueKeccak.Compute(accountAddress.Bytes), encoded);
+
+            IEnumerable<KeyValuePair<ValueHash256, byte[]>> Storage()
+            {
+                for (uint index = 0; index < slots; index++)
+                {
+                    if (!cursor.MoveNext()) throw new InvalidDataException("Truncated join results.");
+                    (ValueHash256 value, ValueHash256 slot) = ReadSlotField(cursor);
+                    logical.Write((byte)2);
+                    logical.Write(accountAddress.Bytes);
+                    logical.Write(slot.Bytes);
+                    logical.Write(value.Bytes);
+                    yield return new(ValueKeccak.Compute(slot.Bytes), Rlp.Encode(new UInt256(value.Bytes, isBigEndian: true)).Bytes);
+                }
+            }
+        }
+    }
+
+    /// <summary>Split one join result into its payload and, when the snapshot held it, its leaf.</summary>
+    /// <remarks>The reader lends its buffer only until the next record, and the fold is an iterator, which
+    /// may hold no span across a yield — so every accessor here returns copies.</remarks>
+    private static bool Split(PbtSortedSpool.Cursor cursor, byte kind, out ValueHash256 leaf, out int payloadLength)
+    {
+        ReadOnlySpan<byte> value = cursor.Value;
+        if (value[0] != kind) throw new InvalidDataException("Join results out of order.");
+        bool present = value[1] != 0;
+        payloadLength = value.Length - 2 - (present ? LeafLength : 0);
+        leaf = present ? new ValueHash256(value[(2 + payloadLength)..]) : default;
+        return present;
+    }
+
+    private static (ValueHash256 Basic, Address Address, uint Slots) ReadAccountField(PbtSortedSpool.Cursor cursor)
+    {
+        if (!Split(cursor, BasicKind, out ValueHash256 basic, out _))
+            throw new InvalidDataException("Preimage or required account field has no snapshot leaf.");
+        ReadOnlySpan<byte> payload = cursor.Value[2..];
+        return (basic, new Address(payload[..Address.Size]),
+            BinaryPrimitives.ReadUInt32BigEndian(payload[Address.Size..(Address.Size + SlotCountLength)]));
+    }
+
+    private static bool ReadOptionalField(PbtSortedSpool.Cursor cursor, byte kind, out ValueHash256 leaf) =>
+        Split(cursor, kind, out leaf, out _);
+
+    private static (ValueHash256 Value, ValueHash256 Slot) ReadSlotField(PbtSortedSpool.Cursor cursor)
+    {
+        if (!Split(cursor, SlotKind, out ValueHash256 value, out _))
+            throw new InvalidDataException("Preimage or required account field has no snapshot leaf.");
+        return (value, new ValueHash256(cursor.Value.Slice(2, LeafLength)));
     }
 
     private static void ValidateAnchor(PbtArtifactIdentity identity, PbtImageAnchor anchor)
@@ -108,108 +310,72 @@ internal static class PbtImageVerifier
             throw new InvalidDataException("Artifact identity does not match the consumer's chain anchor.");
     }
 
-    private static byte[] ReadCode(Address address, int size, LeafSpool leaves, CancellationToken cancellationToken)
+    private static byte[] ReadCode(Address address, int size, bool hasCodeHash, in ValueHash256 codeHashLeaf,
+        bool hasDelegation, in ValueHash256 delegation, CodeTable codes, CancellationToken cancellationToken)
     {
-        PbtStorageTreeKey hashKey = (PbtStorageTreeKey)PbtStateKey.Account(address, 1);
-        PbtStorageTreeKey delegationKey = (PbtStorageTreeKey)PbtStateKey.Account(address, 2);
-        if (leaves.TryRead(delegationKey, out ValueHash256 delegation))
+        if (hasDelegation)
         {
             if (size != 23 || delegation.Bytes[23..].IndexOfAnyExcept((byte)0) >= 0 ||
-                !Eip7702Constants.IsDelegatedCode(delegation.Bytes[..23]) || leaves.TryRead(hashKey, out _))
+                !Eip7702Constants.IsDelegatedCode(delegation.Bytes[..23]) || hasCodeHash)
                 throw new InvalidDataException("Invalid delegation header.");
             return delegation.Bytes[..23].ToArray();
         }
-        ValueHash256 codeHash = leaves.Required(hashKey);
+        if (!hasCodeHash) throw new InvalidDataException("Preimage or required account field has no snapshot leaf.");
+        ValueHash256 codeHash = codeHashLeaf;
         byte[] code = new byte[size];
         int chunks = (int)(((long)size + 30) / 31);
         for (int chunk = 0; chunk < chunks; chunk++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (leaves.TryRead((PbtStorageTreeKey)PbtStateKey.Code(address, codeHash, chunk), out ValueHash256 value))
+            if (codes.TryRead(address, codeHash, chunk, out ValueHash256 value))
                 value.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));
         }
         if (ValueKeccak.Compute(code) != codeHash || Eip7702Constants.IsDelegatedCode(code))
             throw new InvalidDataException("Code bytes do not match the account code hash or delegation representation.");
         byte[] encodedChunks = PbtKeyDerivation.ChunkifyCode(code);
+        int present = 0;
         for (int chunk = 0; chunk < chunks; chunk++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ValueHash256 expected = new(encodedChunks.AsSpan(chunk * 32, 32));
-            bool present = leaves.TryRead((PbtStorageTreeKey)PbtStateKey.Code(address, codeHash, chunk), out ValueHash256 actual);
-            if (actual != expected || present != (expected != default))
+            bool stored = codes.TryRead(address, codeHash, chunk, out ValueHash256 actual);
+            if (actual != expected || stored != (expected != default))
                 throw new InvalidDataException("Noncanonical code chunk or PUSHDATA count.");
+            if (stored) present++;
         }
+        codes.Account(codeHash, present);
         return code;
     }
 
-    /// <summary>Fixed-width sorted disk index with one on-disk consumption bit per leaf.</summary>
-    private sealed class LeafSpool(string path) : IDisposable
+    /// <summary>The leaves no request claimed: one copy of each distinct bytecode, keyed by code hash.</summary>
+    /// <remarks>Bytecode is shared between accounts, so <see cref="Consumed"/> counts each chunk once —
+    /// comparing it against the residual size is what proves the snapshot carries nothing extra.</remarks>
+    private sealed class CodeTable(MappedByteFile residual)
     {
-        private const int RecordSize = 100;
-        private readonly FileStream _stream = new(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-        private long _count;
+        private readonly Dictionary<ValueHash256, int> _seen = [];
 
-        public void Add(RebuildEntry entry)
-        {
-            Span<byte> record = stackalloc byte[RecordSize];
-            record.Clear();
-            record[0] = (byte)entry.Key.Length;
-            entry.Key.Bytes.CopyTo(record[1..]);
-            entry.Leaf.Bytes.CopyTo(record[67..]);
-            _stream.Write(record);
-            _count++;
-        }
+        /// <summary>Distinct residual leaves the code reads have accounted for.</summary>
+        public long Consumed { get; private set; }
 
-        public bool TryRead(in PbtStorageTreeKey key, out ValueHash256 value)
+        public bool TryRead(Address address, in ValueHash256 codeHash, int chunk, out ValueHash256 value)
         {
-            Span<byte> record = stackalloc byte[RecordSize];
-            long low = 0, high = _count - 1;
-            while (low <= high)
+            PbtStorageTreeKey key = (PbtStorageTreeKey)PbtStateKey.Code(address, codeHash, chunk);
+            if (!SortedTableReader.TrySeek<MappedByteFile, NoOpPin>(in residual, new Bound(0, residual.Length), key.Bytes, out Bound found))
             {
-                long middle = low + (high - low) / 2;
-                _stream.Position = checked(middle * RecordSize);
-                _stream.ReadExactly(record);
-                int comparison = record.Slice(1, record[0]).SequenceCompareTo(key.Bytes);
-                if (comparison < 0) low = middle + 1;
-                else if (comparison > 0) high = middle - 1;
-                else
-                {
-                    value = new ValueHash256(record.Slice(67, 32));
-                    _stream.Position = checked(middle * RecordSize + 99);
-                    _stream.WriteByte(1);
-                    return true;
-                }
+                value = default;
+                return false;
             }
-            value = default;
-            return false;
+            Span<byte> bytes = stackalloc byte[LeafLength];
+            if (!residual.TryRead(found.Offset, bytes)) throw new InvalidDataException("Truncated residual leaf.");
+            value = new ValueHash256(bytes);
+            return true;
         }
 
-        public ValueHash256 Required(in PbtStorageTreeKey key) => TryRead(key, out ValueHash256 value)
-            ? value : throw new InvalidDataException("Preimage or required account field has no snapshot leaf.");
-
-        public IEnumerable<RebuildEntry> Enumerate(CancellationToken cancellationToken)
+        /// <summary>Count one bytecode's stored chunks, the first time that bytecode is seen.</summary>
+        public void Account(in ValueHash256 codeHash, int storedChunks)
         {
-            byte[] record = new byte[RecordSize];
-            for (long index = 0; index < _count; index++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                _stream.Position = checked(index * RecordSize);
-                _stream.ReadExactly(record);
-                yield return new(new PbtStorageTreeKey(record.AsSpan(1, record[0])), new ValueHash256(record.AsSpan(67, 32)));
-            }
+            if (_seen.TryAdd(codeHash, storedChunks)) Consumed += storedChunks;
         }
-
-        public void RequireAllConsumed(CancellationToken cancellationToken)
-        {
-            for (long index = 0; index < _count; index++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                _stream.Position = checked(index * RecordSize + 99);
-                if (_stream.ReadByte() != 1) throw new InvalidDataException("Snapshot contains leaves not accounted for by its preimages and code.");
-            }
-        }
-
-        public void Dispose() => _stream.Dispose();
     }
 }
 
