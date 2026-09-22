@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -31,6 +32,8 @@ public class BranchProcessor(
 
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
+
+    public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -77,6 +80,7 @@ public class BranchProcessor(
         BlocksProcessingEventArgs? blocksProcessingEventArgs = null;
         int processedBlocksCount = 0;
         Exception? processingException = null;
+        bool verdictGiven = false;
 
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
@@ -164,6 +168,17 @@ public class BranchProcessor(
                 processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
                 suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
 
+                // The verdict is final here: the roots matched and the inclusion list is judged. The prewarm join,
+                // the commit and the chain update below are what the block's readers need, not its validity, so
+                // whoever only waits for the verdict is told now rather than after them. Only the last block of the
+                // branch: an earlier one can still be discarded with the branch if a later one is invalid, and it
+                // is the last one the queue answers for. The suggested block is what the queue knows the branch by.
+                if (notReadOnly && i == blocksCount - 1)
+                {
+                    BlockExecuted?.Invoke(this, new BlockExecutedEventArgs(suggestedBlock));
+                    verdictGiven = true;
+                }
+
                 QueueClearCaches(preWarmTask);
                 // Hint producers touch the active snapshot bundle, which CommitTree rotates.
                 WaitAndClear(ref preWarmTask);
@@ -215,6 +230,13 @@ public class BranchProcessor(
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             QueueClearCaches(preWarmTask);
             WaitAndClear(ref preWarmTask);
+
+            // Answered VALID already, so a failure from here on belongs to the commit, not to the block. Left as an
+            // invalid block it would be deleted from the tree and recorded on the invalid chain, and the forkchoice
+            // that follows the VALID this block was given would answer INVALID for it and for every child of it.
+            if (verdictGiven && ex is InvalidBlockException)
+                throw new InvalidOperationException($"Block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} failed after its verdict.", ex);
+
             throw;
         }
         finally
