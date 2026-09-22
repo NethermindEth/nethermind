@@ -1295,7 +1295,7 @@ public class TraceRpcModuleTests
 
     [Test]
     public async Task Trace_call_preserves_output_without_action_traces(
-        [Values] bool streaming, [Values] bool revert)
+        [Values] bool streaming, [Values] bool revert, [Values] bool stateDiff)
     {
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
@@ -1308,7 +1308,7 @@ public class TraceRpcModuleTests
             $$$"""{"{{{TestItem.AddressC}}}":{"code":"0x602a60005260206000{{{terminalOpcode}}}"}}""");
 
         string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
-            "trace_call", transaction, new[] { "stateDiff" }, "latest", stateOverride);
+            "trace_call", transaction, stateDiff ? new[] { "stateDiff" } : [], "latest", stateOverride);
         using JsonDocument document = JsonDocument.Parse(serialized);
         JsonElement result = document.RootElement.GetProperty("result");
         using (Assert.EnterMultipleScope())
@@ -1316,6 +1316,36 @@ public class TraceRpcModuleTests
             Assert.That(result.GetProperty("output").GetString(), Is.EqualTo("0x" + new string('0', 62) + "2a"));
             Assert.That(result.GetProperty("trace").GetArrayLength(), Is.Zero);
             Assert.That(result.GetProperty("vmTrace").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(result.GetProperty("stateDiff").ValueKind,
+                Is.EqualTo(stateDiff ? JsonValueKind.Object : JsonValueKind.Null));
+        }
+    }
+
+    [Test]
+    public async Task Trace_callMany_accepts_empty_trace_selection([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object? calls = JsonSerializer.Deserialize<object>(
+            $$"""[[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000004","data":"0x1234","gas":"0x186a0"},[]],[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000004","data":"0x5678","gas":"0x186a0"},[]]]""");
+
+        string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
+            "trace_callMany", calls, "latest");
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result");
+        Assert.That(result.GetArrayLength(), Is.EqualTo(2));
+        string[] expectedOutputs = ["0x1234", "0x5678"];
+        for (int i = 0; i < expectedOutputs.Length; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i].GetProperty("output").GetString(), Is.EqualTo(expectedOutputs[i]));
+                Assert.That(result[i].GetProperty("trace").GetArrayLength(), Is.Zero);
+                Assert.That(result[i].GetProperty("stateDiff").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(result[i].GetProperty("vmTrace").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            }
         }
     }
 
