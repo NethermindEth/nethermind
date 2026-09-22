@@ -11,6 +11,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -240,9 +241,15 @@ public class FrameTxFloodMeasurement
     /// verify_frame_gas 320,000 + signature_gas 2,800); 236,285 stays as a curve-shape interior point below
     /// the stock MAX_VERIFY_GAS cap, same as before. 322,800 exceeds <see cref="Eip8141Constants.MaxVerifyGas"/>
     /// (300,000), so of the methods this array feeds, only the signature-stuffed ones — refused before they
-    /// ever reach that cap — produce a row at that point; every keccak-wide/production/ramp arm is gated by
-    /// it and Assert.Ignores instead.</remarks>
+    /// ever reach that cap — produce a row at that point; every keccak-wide arm is gated by it and
+    /// Assert.Ignores instead. The cap bounds mempool validation only, so the signature-stuffed production
+    /// arm runs its recoveries at that ceiling too.</remarks>
     private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
+
+    private static readonly int[] AdmissionRates = [50, 100, 150, 200, 250, 300, 350, 400];
+
+    /// <summary>The producer cliff falls inside one 50 tx/s step, so its ramp carries two extra points.</summary>
+    private static readonly int[] ProductionRates = [50, 75, 100, 125, 150, 200, 250, 300, 350, 400];
 
     /// <summary>Maximum drift between the idle baselines bracketing a flood run, for the stable median.</summary>
     private const double MaxBaselineDriftPercent = 5.0;
@@ -258,6 +265,14 @@ public class FrameTxFloodMeasurement
     private const double BrokenBaselineTailDriftPercent = 100.0;
 
     private const double MaxSustainedLagPeriods = 5.0;
+
+    /// <summary>
+    /// A non-sustained rate point is re-measured this many times before the ramp accepts the break. F-17:
+    /// <see cref="FloodOutcome.MaxLagUs"/> is a running maximum over every submission-lag sample in the
+    /// window, so a single scheduling outlier can fail an otherwise-sustained point and forfeit the rest of
+    /// the ramp. One retry absorbs a transient outlier without letting the ramp run past a genuine ceiling.
+    /// </summary>
+    private const int MaxRatePointRetries = 1;
 
     private const double RateHeldFloor = 0.95;
 
@@ -658,27 +673,38 @@ public class FrameTxFloodMeasurement
             : null;
 
     [TestCaseSource(nameof(CeilingCases))]
-    public async Task Sustainable_rejection_rate_during_block_production(ulong ceiling)
+    public async Task Sustainable_rejection_rate_during_block_production(ulong ceiling) =>
+        await MeasureProductionSustainableRate("keccak-wide", ceiling);
+
+    [TestCaseSource(nameof(CeilingCases))]
+    public async Task Sustainable_rejection_rate_during_block_production_signature_stuffed(ulong ceiling) =>
+        await MeasureProductionSustainableRate("signature-stuffed", ceiling);
+
+    private async Task MeasureProductionSustainableRate(string shape, ulong ceiling)
     {
         SkipUnlessSingleCore();
-        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
-        await BuildChain("keccak-wide", ceiling);
+        if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        await BuildChain(shape, ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling, shape: shape);
         rig.RunFor(WarmupWindow);
         List<double> baseline = rig.Measure(MeasureWindow);
 
-        RunRateRamp(ceiling, "keccak-wide", "production_rate_ramp", "production_capacity", extraFields: "", baseline,
+        Assert.That(rig.FailingExecutions, Is.GreaterThan(0),
+            "the producer never re-executed the failing transaction, so this measures an ordinary block");
+
+        Func<long>? rejectionCounter = RejectionCounterFor(shape);
+        RunRateRamp(ceiling, shape, "production_rate_ramp", "production_capacity", extraFields: "", baseline,
             () => rig.Measure(MeasureWindow),
-            rate => MeasureProductionUnderFlood(rig, rate));
+            rate => MeasureProductionUnderFlood(rig, rate, rejectionCounter), ProductionRates);
     }
 
     private void RunRateRamp(
         ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields,
         List<double> baseline, Func<List<double>> measureBaselineAfter,
-        Func<int, FloodOutcome> measureAtRate)
+        Func<int, FloodOutcome> measureAtRate, int[]? rateGrid = null)
     {
-        int[] rates = [50, 100, 150, 200, 250, 300, 350, 400];
+        int[] rates = rateGrid ?? AdmissionRates;
 
         // The fixture warm-up exercises block processing only, so the first flood of a ramp pays the
         // generator's cold start and can miss the lag budget at a rate the node otherwise sustains.
@@ -692,45 +718,59 @@ public class FrameTxFloodMeasurement
         double firstFailedRate = 0;
         // Rows are held back rather than emitted inline: the drift guard below brackets the whole ramp
         // with a single before/after baseline pair, the same way flood_delay brackets a single flood, so
-        // every row in the ramp needs the after-baseline that only exists once the ramp is over. The
-        // `finally` still flushes whatever rows were collected if an assertion below throws mid-ramp, so a
-        // failure doesn't also erase the rows already measured for earlier, passing rates.
+        // every row in the ramp needs the after-baseline that only exists once the ramp is over. Rows are
+        // still flushed below even if the ramp loop or the after-baseline re-measurement throws, and a
+        // throw from the latter can no longer erase a ramp failure already caught below (see `failure`).
         List<string> rowLines = [];
 
+        Exception? failure = null;
         try
         {
             foreach (int rate in rates)
             {
-                FloodOutcome outcome = measureAtRate(rate);
+                FloodOutcome outcome = default;
+                bool sustained = false;
 
-                double periodUs = 1_000_000.0 / rate;
-                bool rateHeld = outcome.AchievedRate >= rate * RateHeldFloor;
-                bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
+                // F-17: MaxLagUs is a running maximum over every submission-lag sample in the window, so
+                // one scheduling outlier can fail an otherwise-sustained point and forfeit the rest of the
+                // ramp. A bounded single retry absorbs that transient class without letting the ramp run
+                // past a genuine ceiling: a point that fails twice still breaks it.
+                for (int attempt = 1; attempt <= MaxRatePointRetries + 1; attempt++)
+                {
+                    outcome = measureAtRate(rate);
 
-                bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
-                bool sustained = rateHeld && lagBounded;
-                // The plan's no-backlog condition, kept separate from `sustained` above: five CI runs and
-                // every published figure already rest on `sustained`'s current meaning, so it must not change.
-                bool sustainedNoBacklog = sustained && pendingPoolStable;
-                double w = Percentile(outcome.ProcessMicros, 0.50);
+                    double periodUs = 1_000_000.0 / rate;
+                    bool rateHeld = outcome.AchievedRate >= rate * RateHeldFloor;
+                    bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
 
-                rowLines.Add($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
-                     + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
-                     + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
-                     + $"sustained_no_backlog={(sustainedNoBacklog ? "yes" : "no")} "
-                     + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
-                     + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
-                     + $"pending_pool_stable={(pendingPoolStable ? "yes" : "no")} "
-                     + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
-                     + $"shed_pct={ShedPct(outcome):F1} "
-                     + $"pending_pool_growth={outcome.PendingPoolGrowth} "
-                     + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
+                    bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
+                    sustained = rateHeld && lagBounded;
+                    // The plan's no-backlog condition, kept separate from `sustained` above: five CI runs and
+                    // every published figure already rest on `sustained`'s current meaning, so it must not change.
+                    bool sustainedNoBacklog = sustained && pendingPoolStable;
+                    double w = Percentile(outcome.ProcessMicros, 0.50);
 
-                Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
-                    $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
-                    + $"{outcome.Shed} were shed; the rest went missing, so this point measures an idle node for a "
-                    + "reason this harness cannot name. A high shed_pct is the node's own admission bound, not a "
-                    + "defect: read the capacity it produces as a bound on shedding, not on prefix work.");
+                    rowLines.Add($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
+                         + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
+                         + $"attempt={attempt} "
+                         + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
+                         + $"sustained_no_backlog={(sustainedNoBacklog ? "yes" : "no")} "
+                         + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
+                         + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
+                         + $"pending_pool_stable={(pendingPoolStable ? "yes" : "no")} "
+                         + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
+                         + $"shed_pct={ShedPct(outcome):F1} "
+                         + $"pending_pool_growth={outcome.PendingPoolGrowth} "
+                         + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
+
+                    Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
+                        $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
+                        + $"{outcome.Shed} were shed; the rest went missing, so this point measures an idle node for a "
+                        + "reason this harness cannot name. A high shed_pct is the node's own admission bound, not a "
+                        + "defect: read the capacity it produces as a bound on shedding, not on prefix work.");
+
+                    if (sustained) break;
+                }
 
                 if (sustained)
                 {
@@ -744,21 +784,46 @@ public class FrameTxFloodMeasurement
                 }
             }
         }
-        finally
+        catch (Exception ex)
         {
-            // Bracketing baseline drift guard, mirroring flood_delay's: these rows decide R_max and
-            // previously carried no drift check at all.
+            failure = ex;
+        }
+
+        // Bracketing baseline drift guard, mirroring flood_delay's: these rows decide R_max and previously
+        // carried no drift check at all. Measured in its own try so a throw here cannot discard rowLines or
+        // replace a ramp failure already caught above (finding #1 on #13650's review).
+        string driftFields;
+        try
+        {
             List<double> baselineAfter = measureBaselineAfter();
             double w0After = Percentile(baselineAfter, 0.50);
             double w0p99After = Percentile(baselineAfter, 0.99);
             double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
             double baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(w0p99After - w0p99) / w0p99 * 100;
             bool driftValid = baselineDriftPct < MaxBaselineDriftPercent && baselineTailDriftPct < MaxBaselineTailDriftPercent;
-            string driftFields = $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
-                                  + $"valid={(driftValid ? "yes" : "no")}";
-
-            foreach (string rowLine in rowLines) Emit($"{rowLine} {driftFields}");
+            driftFields = $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
+                          + $"valid={(driftValid ? "yes" : "no")}";
         }
+        catch (Exception ex)
+        {
+            driftFields = "baseline_drift_pct=NaN baseline_tail_drift_pct=NaN valid=no";
+            if (failure is null)
+            {
+                failure = ex;
+            }
+            else
+            {
+                // The ramp already failed; that diagnosis takes priority over this second, unrelated one,
+                // but the second failure must not vanish silently either.
+                TestContext.Out.WriteLine(
+                    "DEBUG the after-baseline re-measurement also failed while a ramp failure was already "
+                    + $"in flight: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        foreach (string rowLine in rowLines) Emit($"{rowLine} {driftFields}");
+
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
 
         bool censored = sustainedEveryRate;
 
@@ -769,7 +834,7 @@ public class FrameTxFloodMeasurement
              + $"capacity_sustained_tx_per_s={lastSustained:F1} capacity_lower={lastSustained:F1} "
              + $"capacity_upper={(censored ? "unbounded" : capacityUpper.ToString("F1"))} "
              + $"censored={(censored ? "yes" : "no")} "
-             + $"basis=bounded_submission_lag note=B_not_fixed");
+             + $"basis=bounded_submission_lag note=B_not_fixed {driftFields}");
 
         Assert.That(lastSustained, Is.GreaterThan(0),
             "the node sustained none of the offered rates, so the ramp's lowest point is already saturated");
@@ -806,10 +871,12 @@ public class FrameTxFloodMeasurement
             measure: window => MeasureBlockProcessing(window, TimeSpan.Zero),
             rejectionCounter);
 
-    private FloodOutcome MeasureProductionUnderFlood(ProducerRig rig, int offeredRate) =>
+    private FloodOutcome MeasureProductionUnderFlood(
+        ProducerRig rig, int offeredRate, Func<long>? rejectionCounter = null) =>
         MeasureUnderFloodGeneric(offeredRate,
             warmup: () => { Thread.Sleep(FloodSettle); rig.RunFor(WarmupWindow); },
             measure: rig.Measure,
+            rejectionCounter: rejectionCounter,
             onWindowStart: rig.MarkWindowStart);
 
     /// <summary>
@@ -989,10 +1056,19 @@ public class FrameTxFloodMeasurement
         return tx;
     }
 
-    private static Transaction FrameTx(int salt, ulong ceiling)
+    private static Transaction FrameTx(int salt, ulong ceiling, string shape = "keccak-wide")
     {
         byte[] data = new byte[32];
         BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(28), salt);
+
+        bool stuffed = shape == "signature-stuffed";
+
+        // Block production does not set ExecutionOptions.FrameSignaturesPreValidated, so every attempt
+        // re-runs the recoveries. Validation rejects before the frame loop, so the prefix never runs.
+        TxFrameSignature[] signatures = stuffed
+            ? FrameTxTestFrames.RecoveredSecp256k1Signatures(
+                new EthereumEcdsa(TestBlockchainIds.ChainId), StuffedSignatureCount(ceiling))
+            : [];
 
         Transaction tx = new()
         {
@@ -1000,8 +1076,8 @@ public class FrameTxFloodMeasurement
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = Attacker,
-            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: ceiling, UInt256.Zero, data)],
-            FrameSignatures = [],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: stuffed ? MinimalFrameGas : ceiling, UInt256.Zero, data)],
+            FrameSignatures = signatures,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
@@ -1150,7 +1226,7 @@ public class FrameTxFloodMeasurement
 
         private ProducerRig(
             IReadOnlyTxProcessingScope processingScope, IReadOnlyTxProcessorSource processorSource,
-            IReleaseSpec spec, ulong ceiling, int kRetry)
+            IReleaseSpec spec, ulong ceiling, int kRetry, string shape)
         {
             _processingScope = processingScope;
             _processorSource = processorSource;
@@ -1163,7 +1239,7 @@ public class FrameTxFloodMeasurement
                 .WithBaseFeePerGas(UInt256.Zero)
                 .WithBeneficiary(TestItem.AddressE)
                 .WithGasLimit(BlockGasLimit)
-                .WithTransactions(FrameTx(0, ceiling))
+                .WithTransactions(FrameTx(0, ceiling, shape))
                 .TestObject;
         }
 
@@ -1174,7 +1250,7 @@ public class FrameTxFloodMeasurement
         /// </summary>
         /// <remarks>The returned rig owns the processing scope and its source; nothing else does, so a throw
         /// before the rig is returned has to close them.</remarks>
-        public static ProducerRig Create(FloodTestBlockchain chain, int kRetry, ulong ceiling)
+        public static ProducerRig Create(FloodTestBlockchain chain, int kRetry, ulong ceiling, string shape = "keccak-wide")
         {
             ISpecProvider specProvider = chain.SpecProvider;
             IReleaseSpec spec = specProvider.GenesisSpec;
@@ -1189,7 +1265,7 @@ public class FrameTxFloodMeasurement
                 CountingAdapter adapter = new(
                     new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), measureBurn: false);
 
-                ProducerRig rig = new(scope, source, spec, ceiling, kRetry);
+                ProducerRig rig = new(scope, source, spec, ceiling, kRetry, shape);
 
                 IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
                 balManager.Enabled.Returns(false);
