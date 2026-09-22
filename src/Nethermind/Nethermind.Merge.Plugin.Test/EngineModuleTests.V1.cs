@@ -42,6 +42,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
@@ -1589,6 +1590,108 @@ public partial class EngineModuleTests
     {
         Block targetBlock = chain.BlockTree.FindBlock(target.BlockHash, BlockTreeLookupOptions.None)!;
         chain.BlockTree.TryUpdateMainChain(targetBlock.Header, wereProcessed: false, preloadedBlocks: new[] { targetBlock });
+    }
+
+    /// <summary>Hides the state of selected blocks, standing in for a state backend whose reorg window has moved past them.</summary>
+    private sealed class PrunedStateReader(IStateReader inner, HashSet<Hash256> pruned) : IStateReader
+    {
+        public bool HasStateForBlock(BlockHeader? baseBlock) =>
+            (baseBlock?.Hash is null || !pruned.Contains(baseBlock.Hash)) && inner.HasStateForBlock(baseBlock);
+
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) =>
+            inner.TryGetAccount(baseBlock, address, out account);
+
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) =>
+            inner.GetStorage(baseBlock, address, in index, out value);
+
+        public byte[]? GetCode(Hash256 codeHash) => inner.GetCode(codeHash);
+
+        public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
+
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
+            where TCtx : struct, INodeContext<TCtx> =>
+            inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+    }
+
+    /// <summary>
+    /// A resubmitted block whose post-state has been pruned must be re-executed rather than answered from a
+    /// previous verdict, so that the payload that builds on it is executed instead of answered SYNCING.
+    /// </summary>
+    /// <param name="headAtGenesis">
+    /// Whether the resubmission arrives above the head (the shortcuts in <c>ValidateBlockAndProcess</c>) or at or
+    /// below it (the canonical-chain shortcut).
+    /// </param>
+    [Test]
+    public async Task newPayloadV1_reexecutes_a_resubmitted_block_whose_state_was_pruned([Values] bool headAtGenesis)
+    {
+        HashSet<Hash256> pruned = [];
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        // Executing a block re-creates the state that was pruned, so stop hiding it once that happens.
+        chain.BranchProcessor.BlockProcessed += (_, e) => pruned.Remove(e.Block.Hash!);
+
+        Hash256 genesisHash = chain.BlockTree.HeadHash!;
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        // Nothing is finalized, so moving the head back down is not short-circuited as behind-finalized.
+        ForkchoiceStateV1 toTip = new(blocks[^1].BlockHash, Keccak.Zero, Keccak.Zero);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(toTip)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        ExecutionPayload resubmitted = blocks[0];
+        // Built while the state is still readable; only its submission happens after pruning.
+        ExecutionPayload child = CreateBlockRequest(chain, resubmitted, TestItem.AddressD);
+
+        if (headAtGenesis)
+        {
+            ForkchoiceStateV1 toGenesis = new(genesisHash, Keccak.Zero, Keccak.Zero);
+            Assert.That((await rpc.engine_forkchoiceUpdatedV1(toGenesis)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
+
+        pruned.Add(resubmitted.BlockHash);
+
+        Assert.That((await rpc.engine_newPayloadV1(resubmitted)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        ForkchoiceStateV1 backToOldBlock = new(resubmitted.BlockHash, Keccak.Zero, Keccak.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await rpc.engine_forkchoiceUpdatedV1(backToOldBlock)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
+        }
+
+        Assert.That((await rpc.engine_newPayloadV1(child)).Data.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the child of a block the node just accepted must be executed, not answered SYNCING");
+    }
+
+    /// <summary>
+    /// The canonical-chain shortcut must not answer from the chain-level marker alone: sync sets that marker for
+    /// blocks it has not executed.
+    /// </summary>
+    [Test]
+    public async Task newPayloadV1_does_not_report_valid_for_an_unprocessed_canonical_block([Values] bool markedCanonical)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        ForkchoiceStateV1 toTip = new(blocks[^1].BlockHash, Keccak.Zero, Keccak.Zero);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(toTip)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        // A sibling of blocks[1] carrying a state root no execution of it could produce.
+        Block sibling = chain.BlockTree.FindBlock(blocks[1].BlockHash, BlockTreeLookupOptions.None)!;
+        Block tampered = sibling.WithReplacedHeader(sibling.Header.Clone());
+        tampered.Header.StateRoot = Keccak.OfAnEmptyString;
+        tampered.Header.Hash = tampered.Header.CalculateHash();
+
+        chain.BlockTree.SuggestBlock(tampered, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        if (markedCanonical)
+        {
+            // What forward sync does when it moves a downloaded, not-yet-executed block onto the main chain.
+            chain.BlockTree.TryUpdateMainChain(tampered.Header, wereProcessed: false, preloadedBlocks: new[] { tampered });
+        }
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(ExecutionPayload.Create(tampered));
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid),
+            "an unexecuted block must not be reported valid just because its level marker points at it");
     }
 
     // Y-shape: block1 -> {block2A (sibling), block2B -> block3B}, with head advanced to block1 via FCU.

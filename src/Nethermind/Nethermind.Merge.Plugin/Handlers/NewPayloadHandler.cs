@@ -212,7 +212,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         // An IL is a per-call parameter not bound to block.Hash, so never short-circuit when one is supplied.
-        if (_blockTree.IsOnMainChainBehindOrEqualHead(block.Header))
+        // The canonical marker on its own is too weak to answer from: forward sync and the fast-headers backfill
+        // both mark blocks canonical without executing them, and the state a block committed may since have been
+        // pruned. Fall through in either case so the block is re-executed rather than answered from the marker.
+        if (_blockTree.IsOnMainChainBehindOrEqualHead(block.Header)
+            && (HasInclusionList(block) || CanAnswerFromPreviousExecution(block)))
         {
             if (!HasInclusionList(block))
             {
@@ -330,6 +334,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         throw new InvalidOperationException($"Unknown validation result {result}.");
 
     private static bool HasInclusionList(Block block) => block.InclusionListTransactions is { Length: > 0 };
+
+    /// <summary>Whether a VALID verdict established by an earlier execution of <paramref name="block"/> is still usable.</summary>
+    /// <remarks>
+    /// A VALID answer invites the consensus client to make the block head and build on it, so it holds only while
+    /// this node both executed the block and can still serve the state it committed. When either is missing the
+    /// caller falls through to processing, where <see cref="Nethermind.Consensus.Processing.ProcessingBranchBuilder"/>
+    /// re-executes the block from the nearest ancestor that still has a state.
+    /// </remarks>
+    private bool CanAnswerFromPreviousExecution(Block block) =>
+        _blockTree.GetInfo(block.Number, block.GetOrCalculateHash()).Info is { WasProcessed: true }
+        && _stateReader.HasStateForBlock(block.Header);
 
     // An absent IL digests to default, matching non-IL cache entries.
     private static ValueHash256 ComputeInclusionListDigest(Block block)
@@ -501,10 +516,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         (ValidationResult? result, string? validationMessage) = (null, null);
 
-        // If duplicate, reuse results
+        // If duplicate, reuse results. Invalidity is permanent, but a cached VALID (or unsatisfied-IL) verdict
+        // describes a state this node may no longer hold, so it is only reused while that state survives.
         if (_latestBlocks is not null
             && _latestBlocks.TryGet(block.Hash!, out CachedPayloadResult cachedResult)
-            && cachedResult.InclusionListDigest == ilDigest)
+            && cachedResult.InclusionListDigest == ilDigest
+            && (cachedResult.Result == ValidationResult.Invalid || _stateReader.HasStateForBlock(block.Header)))
         {
             if (cachedResult.Result == ValidationResult.Invalid)
             {
@@ -540,7 +557,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // processed and marked as valid.
                 // if marked as processed by the block tree then return VALID, otherwise null so that it's processed a few lines below
                 // an IL-bearing payload bypasses this shortcut so that the current call's IL is re-validated
-                AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) && !HasInclusionList(block) ? ValidationResult.Valid : null,
+                AddBlockResult.AlreadyKnown => !HasInclusionList(block) && CanAnswerFromPreviousExecution(block) ? ValidationResult.Valid : null,
                 _ => null
             };
 
