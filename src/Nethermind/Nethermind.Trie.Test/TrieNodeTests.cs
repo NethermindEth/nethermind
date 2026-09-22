@@ -27,15 +27,16 @@ namespace Nethermind.Trie.Test;
 public class TrieNodeTests
 {
     /// <param name="dirtyChildWidth">
-    /// Children per dirty branch child, which sets the RLP length that decides how it is hashed:
-    /// 3 fits one Keccak rate block, 4 fits neither batch shape and must fall back, 16 is a
-    /// saturated branch at exactly 532 bytes.
+    /// Shape of each dirty child, which sets the RLP length that decides how it is hashed:
+    /// 0 is a leaf, which always fits one Keccak rate block; 3 is a branch that fits one block;
+    /// 4 is a branch that fits neither batch shape and must fall back; 16 is a saturated branch at
+    /// exactly 532 bytes.
     /// </param>
     [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
         [Values(0, 2, 3, 8, 15)] int dirtyBranchCount,
-        [Values(3, 4, 16)] int dirtyChildWidth,
+        [Values(0, 3, 4, 16)] int dirtyChildWidth,
         [Values(false, true)] bool canBeParallel)
     {
         AssertDirtyChildLengthClass(dirtyChildWidth);
@@ -68,7 +69,7 @@ public class TrieNodeTests
         for (int i = 1; i <= dirtyBranchCount; i++)
         {
             int index = (changedIndex + i) % TrieNode.BranchesCount;
-            TrieNode branch = BuildDirtyBranch(index, dirtyChildWidth);
+            TrieNode branch = BuildDirtyChild(index, dirtyChildWidth);
             dirtyChildren.Add(branch);
             restored.SetChild(index, branch);
             expected.SetChild(index, branch);
@@ -94,8 +95,14 @@ public class TrieNodeTests
         }
     }
 
-    private static TrieNode BuildDirtyBranch(int seed, int width)
+    private static TrieNode BuildDirtyChild(int seed, int width)
     {
+        if (width == 0)
+        {
+            // Long enough to be hashed rather than inlined into the parent, short enough for one block.
+            return TrieNodeFactory.CreateLeaf([(byte)seed, 0x1], new CappedArray<byte>(Keccak.Compute([(byte)seed]).BytesToArray()));
+        }
+
         TrieNode branch = new(NodeType.Branch);
         for (int childIndex = 0; childIndex < width; childIndex++)
         {
@@ -112,9 +119,12 @@ public class TrieNodeTests
     private static void AssertDirtyChildLengthClass(int width)
     {
         TreePath path = TreePath.Empty;
-        int length = BuildDirtyBranch(0, width).RlpEncode(NullTrieNodeResolver.Instance, ref path).Length;
+        int length = BuildDirtyChild(0, width).RlpEncode(NullTrieNodeResolver.Instance, ref path).Length;
         switch (width)
         {
+            case 0:
+                Assert.That(length, Is.InRange(Hash256.Size, 135), "a leaf should be hashed, and fit one Keccak rate block");
+                break;
             case 3:
                 Assert.That(length, Is.LessThanOrEqualTo(135), "width 3 should fit one Keccak rate block");
                 break;

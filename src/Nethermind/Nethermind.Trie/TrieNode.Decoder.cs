@@ -274,16 +274,16 @@ namespace Nethermind.Trie
             }
 
             /// <summary>Whether the measuring walk could pair up child hashes for <see cref="HashPreparedBranches" />.</summary>
-            /// <remarks>Only a dirty branch child is a candidate, and a lone candidate is hashed on its own, so
-            /// a branch without two of them gains nothing from the walk. The walk narrows the set further — a
-            /// candidate whose RLP is not a full branch drops out — so an upper bound is all this needs to be.</remarks>
+            /// <remarks>Only a dirty child is a candidate, and a lone candidate is hashed on its own, so
+            /// a branch without two of them gains nothing from the walk. The walk narrows the set further - a
+            /// candidate whose RLP fits no batch kernel drops out - so an upper bound is all this needs to be.</remarks>
             private static bool HasBatchableChildPair(TrieNode item)
             {
                 const int MinChildrenForBatchedHashing = 2;
                 int candidates = 0;
                 foreach (object? data in BranchChildren(item))
                 {
-                    if (data is TrieNode { IsBranch: true, Keccak: null } && ++candidates >= MinChildrenForBatchedHashing)
+                    if (data is TrieNode { Keccak: null } && ++candidates >= MinChildrenForBatchedHashing)
                     {
                         return true;
                     }
@@ -586,7 +586,7 @@ namespace Nethermind.Trie
                             TreePath path = state.rootPath;
                             path.AppendMut(i);
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            if (Avx512F.VL.IsSupported && childNode is { IsBranch: true, Keccak: null })
+                            if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
                             {
                                 CappedArray<byte> rlp = childNode.PrepareRlp(state.tree, ref path, state.bufferPool, state.canBeParallel);
                                 if (IsBatchableBranchRlp(rlp.Length))
@@ -643,7 +643,7 @@ namespace Nethermind.Trie
                     {
                         path.AppendMut(i);
                         TrieNode childNode = Unsafe.As<TrieNode>(data);
-                        if (Avx512F.VL.IsSupported && childNode is { IsBranch: true, Keccak: null })
+                        if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
                         {
                             CappedArray<byte> rlp = childNode.PrepareRlp(tree, ref path, bufferPool, canBeParallel);
                             if (IsBatchableBranchRlp(rlp.Length))
@@ -704,7 +704,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            if (Avx512F.VL.IsSupported && childNode is { IsBranch: true, Keccak: null })
+                            if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
                             {
                                 CappedArray<byte> rlp = childNode.PrepareRlp(state.tree, ref path, state.bufferPool, state.canBeParallel);
                                 if (IsBatchableBranchRlp(rlp.Length))
@@ -772,7 +772,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            if (Avx512F.VL.IsSupported && childNode is { IsBranch: true, Keccak: null })
+                            if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
                             {
                                 CappedArray<byte> rlp = childNode.PrepareRlp(tree, ref path, bufferPool, canBeParallel);
                                 if (IsBatchableBranchRlp(rlp.Length))
