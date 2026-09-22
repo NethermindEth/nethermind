@@ -849,8 +849,6 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = new(memory);
         WarmReadStore persistence = new(store);
         TrieUpdaterMetrics metrics = new();
-        PbtStorageNodePath groupKey = new(Bytes.FromHexString("0a"), 8);
-        PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(persistence, 8, default, metrics);
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
@@ -861,7 +859,6 @@ public class PbtNodeGroupTests
                 Assert.That(reader.IsResolved, Is.True);
                 Assert.That(reader.DescendantBytes(5), Is.EqualTo(1234));
                 Assert.That(reader.DescendantBytes(4), Is.Zero);
-                Assert.That(reader.SubtreeBytes(groupPath), Is.EqualTo(1234));
                 Assert.That(persistence.Reads, Is.Empty);
                 Assert.That(metrics.PhysicalGroupFetches, Is.Zero);
             }

@@ -76,13 +76,13 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Maximum number of threads, including the calling one, folding the key zones and their wide buckets at once when computing the tree root. 0 uses the processor count; 1 folds serially.", DefaultValue = "0")]
     int FoldConcurrency { get; set; }
 
-    [ConfigItem(Description = "Minimum number of leaf operations per worker when a wide tree frame whose stored subtree is smaller than FoldLargeSubtreeBytes splits its buckets across workers: consecutive buckets are merged until they reach it, and a frame that cannot fill two workers folds serially. 0 gives every touched bucket its own worker.", DefaultValue = "128")]
+    [ConfigItem(Description = "Minimum number of leaf operations per worker when a wide tree frame splits its buckets across workers and the buckets a worker takes hold less than FoldLargeSubtreeBytes below them: consecutive buckets are merged until they reach it, and a frame that cannot fill two workers folds serially. 0 gives every touched bucket its own worker.", DefaultValue = "128")]
     int FoldMinOperationsPerWorker { get; set; }
 
-    [ConfigItem(Description = "Stored subtree size, in bytes, from which a tree frame counts as read-bound rather than CPU-bound and splits its buckets across workers at FoldLargeSubtreeMinOperationsPerWorker instead of FoldMinOperationsPerWorker.", DefaultValue = "32768")]
+    [ConfigItem(Description = "Stored size, in bytes, below the buckets a worker takes from which its share counts as read-bound rather than CPU-bound and is cut at FoldLargeSubtreeMinOperationsPerWorker instead of FoldMinOperationsPerWorker. Each worker's share is measured on its own, so buckets with little stored below them stay CPU-bound however large their siblings are.", DefaultValue = "32768")]
     long FoldLargeSubtreeBytes { get; set; }
 
-    [ConfigItem(Description = "Minimum number of leaf operations per worker when a tree frame whose stored subtree is at least FoldLargeSubtreeBytes splits its buckets across workers.", DefaultValue = "16")]
+    [ConfigItem(Description = "Minimum number of leaf operations per worker when the buckets a worker takes hold at least FoldLargeSubtreeBytes below them.", DefaultValue = "16")]
     int FoldLargeSubtreeMinOperationsPerWorker { get; set; }
 
     [ConfigItem(Description = "Number of parallel workers copying the source and scanning staged key ranges to derive leaves during the preimage-flat import. 0 uses the processor count. The tree fold runs in a separate single consumer whose zones and wide buckets fold with FoldConcurrency threads.", DefaultValue = "0")]

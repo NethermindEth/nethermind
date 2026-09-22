@@ -335,22 +335,36 @@ public class ParallelUpdateRootTests
     public void Bucket_runs_merge_consecutive_buckets_up_to_the_minimum(int[] counts, int minOperations, int[] expectedRunEnds)
     {
         int[] runEnds = new int[PbtFourLevelGroupGeometry.BoundarySlots];
-        int runCount = TrieUpdater.PlanBucketRuns(counts, minOperations, runEnds);
+        // The harness fan-out asks the same minimum whatever is stored, so these cases cover the merging alone.
+        int runCount = TrieUpdater.PlanBucketRuns(counts, new long[counts.Length], PbtTreeHarness.FanOut(minOperations), runEnds);
+        Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
+    }
+
+    // Every case uses the default fan-out: 128 operations per run, or 16 once the run holds 32 KiB of descendants.
+    [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 0, 0, 0, 0 }, new[] { 4 }, TestName = "Small buckets need the full minimum")]
+    [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 40000, 0, 0, 0 }, new[] { 1, 4 }, TestName = "A large bucket cuts its own run early and leaves the next one whole")]
+    [TestCase(new[] { 20, 20, 140 }, new long[] { 20000, 20000, 0 }, new[] { 2, 3 }, TestName = "Descendants accumulate across the buckets of a run")]
+    [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 20000, 20000, 20000, 0 }, new[] { 2, 4 }, TestName = "A cut forgets the descendants it already charged")]
+    public void Bucket_run_minimum_follows_its_own_descendants(int[] counts, long[] descendantBytes, int[] expectedRunEnds)
+    {
+        int[] runEnds = new int[PbtFourLevelGroupGeometry.BoundarySlots];
+        int runCount = TrieUpdater.PlanBucketRuns(counts, descendantBytes, FoldFanOut.Default, runEnds);
         Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
     }
 
     [TestCase(0, FoldFanOut.DefaultMinOperationsPerWorker)]
     [TestCase(FoldFanOut.DefaultLargeSubtreeBytes - 1, FoldFanOut.DefaultMinOperationsPerWorker)]
     [TestCase(FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker)]
-    public void Worker_minimum_drops_from_the_large_subtree_size(long subtreeBytes, int expectedMinimum) =>
-        Assert.That(FoldFanOut.Default.MinOperationsFor(subtreeBytes), Is.EqualTo(expectedMinimum));
+    public void Worker_minimum_drops_from_the_large_subtree_size(long descendantBytes, int expectedMinimum) =>
+        Assert.That(FoldFanOut.Default.MinOperationsFor(descendantBytes), Is.EqualTo(expectedMinimum));
 
-    // One populated zone keeps the zone fan-out out of the picture, so any second thread is a bucket worker. Below the
-    // large-subtree size a 40-operation frame folds on the calling thread alone; above it the same 40 operations form
-    // two runs of the large-subtree minimum, and the store's barrier at the bucket groups proves both workers fold at once.
+    // One populated zone keeps the zone fan-out out of the picture, so any second thread is a bucket worker. While the
+    // buckets hold less than the large-subtree size below them a 40-operation frame folds on the calling thread alone;
+    // once they hold more the same 40 operations form two runs of the large-subtree minimum, and the store's barrier at
+    // the bucket groups proves both workers fold at once.
     [TestCase(64, false)]
     [TestCase(20000, true)]
-    public void Bucket_fan_out_follows_the_stored_subtree_size(int keys, bool expectParallel)
+    public void Bucket_fan_out_follows_the_stored_descendants(int keys, bool expectParallel)
     {
         (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(keys), keys).Where(entry => entry.Key[0] == 0x01).ToArray();
         (byte[] Key, byte[]? Value)[] changes = initial.Take(40).Select((entry, index) => (entry.Key, (byte[]?)Value((byte)(index + 1)))).ToArray();
@@ -415,6 +429,7 @@ public class ParallelUpdateRootTests
 
     // 20000 keys per zone fan out at depth 8 and, with an 8-operation worker minimum, again at depth 12, so the join
     // and failure paths cover nested workers. A quota of three has the spare worker the zone fan-out is gated on.
+    // The injected failure sits at depth 12, the deepest the 64-key tree reaches.
     [Test]
     public void Zone_workers_write_disjoint_groups_and_join_before_returning([Values] bool failWorker, [Values(64, 20000)] int keysPerZone)
     {
@@ -667,7 +682,7 @@ public class ParallelUpdateRootTests
                     if (!_barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
                         throw new TimeoutException("The independent zone folds did not overlap.");
                 }
-                if (FailWorker && groupKey.BitDepth > 12 && groupKey.ToPath<PbtStorageNodePath>().GetByte(0) == 0x01 && groupKey.ToPath<PbtStorageNodePath>().GetByte(1) >= 0x10)
+                if (FailWorker && groupKey.BitDepth >= 12 && groupKey.ToPath<PbtStorageNodePath>().GetByte(0) == 0x01 && groupKey.ToPath<PbtStorageNodePath>().GetByte(1) >= 0x10)
                     throw new InvalidDataException("Injected worker failure after folding the first nibble.");
                 return Inner.GetNodeGroup(groupKey, hash);
             }

@@ -31,19 +31,29 @@ public static partial class TrieUpdater
         internal BucketPlan Plan { get; } = plan;
     }
 
-    /// <summary>Groups consecutive buckets into runs of at least <paramref name="minOperations"/> operations each.</summary>
-    /// <remarks>A trailing shortfall joins the preceding run, so a frame that cannot fill two runs yields one.</remarks>
+    /// <summary>Groups consecutive buckets into runs, each holding the operations <paramref name="fanOut"/> asks of the descendants it absorbs.</summary>
+    /// <remarks>
+    /// A run's minimum follows its own stored descendants rather than the frame's, so a run over buckets with
+    /// nothing stored below them stays CPU-bound however large its siblings are. A trailing shortfall joins the
+    /// preceding run, so a frame that cannot fill two runs yields one.
+    /// </remarks>
+    /// <param name="counts">Operation counts per touched bucket, in ascending slot order.</param>
+    /// <param name="descendantBytes">The stored size below each of those buckets, in the same order.</param>
     /// <returns>The number of runs; <paramref name="runEnds"/> holds each run's exclusive end bucket index.</returns>
-    internal static int PlanBucketRuns(ReadOnlySpan<int> counts, int minOperations, Span<int> runEnds)
+    internal static int PlanBucketRuns(ReadOnlySpan<int> counts, ReadOnlySpan<long> descendantBytes, in FoldFanOut fanOut, Span<int> runEnds)
     {
+        Debug.Assert(counts.Length == descendantBytes.Length, "Every touched bucket carries its stored size.");
         int runCount = 0;
         int sum = 0;
+        long bytes = 0;
         for (int bucket = 0; bucket < counts.Length; bucket++)
         {
             sum += counts[bucket];
-            if (sum < minOperations) continue;
+            bytes += descendantBytes[bucket];
+            if (sum < fanOut.MinOperationsFor(bytes)) continue;
             runEnds[runCount++] = bucket + 1;
             sum = 0;
+            bytes = 0;
         }
         if (runCount == 0) runCount = 1;
         runEnds[runCount - 1] = counts.Length;
@@ -343,11 +353,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
     }
 
-    /// <summary>Whether a group can be stored at <paramref name="bitDepth"/>: the root group, or one holding children of <paramref name="current"/>.</summary>
-    /// <remarks>Such a group is loaded by the fold anyway, so reading its size early costs nothing; any other group is absent and a read would only miss.</remarks>
-    private static bool HasNodesInGroup(scoped in TraversalSubtree current, int bitDepth) =>
-        bitDepth == 0 || (!current.IsEmpty && !current.IsLeaf && !IsAbsentGroupBelow(current, bitDepth));
-
     [SkipLocalsInit]
     private static OwnedSubtree FoldBoundaryFromPartition(
         FoldContext context,
@@ -360,15 +365,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped PartitionOutcome partition)
     {
         Debug.Assert(path.BitDepth == bitDepth);
-        long subtreeBytes = HasNodesInGroup(current, bitDepth) ? reader.SubtreeBytes(path) : 0;
         Frontier frontier = default;
         Decompose(ref reader, writer, path, ref current, bitDepth, ref frontier, partition.UsedMask);
         Span<byte> sourceBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
 
-        int minOperationsPerWorker = context.FanOut.MinOperationsFor(subtreeBytes);
-        bool foldedInParallel = context.FoldQuota is not null && operations.Length >= minOperationsPerWorker
+        bool foldedInParallel = context.FoldQuota is not null
             && (partition.UsedMask & (partition.UsedMask - 1)) != 0
-            && TryFoldBucketsInParallel(context, ref reader, writer, ref frontier, operations, path, bitDepth, partition, sourceBuffer, minOperationsPerWorker);
+            && TryFoldBucketsInParallel(context, ref reader, writer, ref frontier, operations, path, bitDepth, partition, sourceBuffer);
         if (!foldedInParallel)
             FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition, sourceBuffer);
 
@@ -407,11 +410,16 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <returns>Whether the buckets were folded; false leaves them untouched when they cannot fill two runs.</returns>
     [SkipLocalsInit]
     private static bool TryFoldBucketsInParallel(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
-        scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth, scoped PartitionOutcome partition, scoped Span<byte> sourceBuffer,
-        int minOperationsPerWorker)
+        scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth, scoped PartitionOutcome partition, scoped Span<byte> sourceBuffer)
     {
+        // Read before the boundaries are taken: the planner may refuse to split, which must leave the frontier alone.
+        Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
+        int touched = 0;
+        for (int mask = partition.UsedMask; mask != 0; mask &= mask - 1)
+            descendantBytes[touched++] = reader.DescendantBytes(BitOperations.TrailingZeroCount(mask));
+
         Span<int> runEnds = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        int runCount = PlanBucketRuns(partition.Counts, minOperationsPerWorker, runEnds);
+        int runCount = PlanBucketRuns(partition.Counts, descendantBytes[..touched], context.FanOut, runEnds);
         if (runCount < 2) return false;
 
         BucketFold[] buckets = ArrayPool<BucketFold>.Shared.Rent(partition.Counts.Length);
@@ -423,7 +431,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             int slot = BitOperations.TrailingZeroCount(mask);
             int count = partition.Counts[bucketCount];
             OwnedSubtree boundary = TakeBoundary(ref reader, writer, path, ref frontier, slot, sourceBuffer).Materialize();
-            buckets[bucketCount++] = new BucketFold(slot, offset, count, boundary, reader.DescendantBytes(slot), context.Metrics is null ? context : context.WithMetrics(new()));
+            buckets[bucketCount] = new BucketFold(slot, offset, count, boundary, descendantBytes[bucketCount], context.Metrics is null ? context : context.WithMetrics(new()));
+            bucketCount++;
             offset += count;
         }
 
@@ -489,7 +498,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <see cref="FoldQuota"/> and <see cref="Operations"/> are set only when wide frames may fold their buckets
     /// concurrently; the former is the budget every nested frame takes its extra workers from before fanning out, the latter
     /// is the backing array of every operation range, so a bucket can rebuild its span on another thread,
-    /// and <see cref="FanOut"/> gives how many operations each concurrent run of buckets holds at least.
+    /// and <see cref="FanOut"/> gives how many operations a concurrent run of buckets holds at least, by what it has stored below it.
     /// <see cref="Metrics"/> is not thread-safe, so each concurrent bucket folds under <see cref="WithMetrics"/> and is merged afterwards.
     /// </remarks>
     internal sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, TrieUpdaterMetrics? metrics, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut, PbtPrefixlessBranchOmission prefixlessBranchOmission)

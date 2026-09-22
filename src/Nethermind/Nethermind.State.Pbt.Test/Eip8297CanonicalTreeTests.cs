@@ -2146,7 +2146,7 @@ public class Eip8297CanonicalTreeTests
         PbtStorageNodePath untouchedGroup = new([0x80], 4);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(2), "root group and changed left boundary group");
+            Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1), "only the root group; the left boundary's group is never entered");
             Assert.That(metrics.GroupParses, Is.EqualTo(1), "the left boundary's leaves are inline, so its group is absent");
             Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(2), "one frame resolution per entered physical group");
             Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
