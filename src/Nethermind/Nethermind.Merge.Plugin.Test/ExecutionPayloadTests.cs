@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,131 @@ namespace Nethermind.Merge.Plugin.Test;
 public class ExecutionPayloadTests
 {
     private static TxType[] TxTypes() => [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
+
+    [Test, NonParallelizable]
+    public void Payload_decoding_bypasses_transaction_factory(
+        [Values(1, 64)] int count, [Values] bool malformed, [Values] bool borrowMemory)
+    {
+        byte[][] encoded = BuildDiverseBatch(count);
+        byte[] control = EncodeTx(TxType.Legacy);
+        if (malformed) encoded[^1] = [.. encoded[^1], 0xDC, 0xAF];
+        int factoryCalls = 0;
+        IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
+        FactoryTrackingDecoder decoder = new(() =>
+        {
+            Interlocked.Increment(ref factoryCalls);
+            return new Transaction();
+        }, [.. encoded, control], original);
+        Rlp.RegisterDecoder(typeof(Transaction), decoder);
+        try
+        {
+            string? error;
+            Transaction[]? transactions;
+            if (borrowMemory)
+            {
+                Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+                error = result.Error;
+                transactions = result.Data;
+            }
+            else
+            {
+                TransactionDecodingResult result = TxsDecoder.DecodeTxs(encoded, skipErrors: false);
+                error = result.Error;
+                transactions = result.Transactions;
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error is not null, Is.EqualTo(malformed));
+                Assert.That(decoder.TrackedDecodes, malformed ? Is.GreaterThanOrEqualTo(count) : Is.EqualTo(count),
+                    "Payload decoding must route through the tracked decoder.");
+                Assert.That(Volatile.Read(ref factoryCalls), Is.Zero, "Payload decoding must bypass the reusable transaction factory.");
+                if (!malformed)
+                {
+                    Assert.That(transactions!, Has.Length.EqualTo(count));
+                }
+            }
+            RlpReader reader = new(control);
+            decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+            Assert.That(Volatile.Read(ref factoryCalls), Is.EqualTo(1), "Ordinary decoding must exercise the tracked factory.");
+        }
+        finally
+        {
+            Rlp.RegisterDecoder(typeof(Transaction), original);
+        }
+    }
+
+    private sealed class FactoryTrackingDecoder(
+        Func<Transaction> factory, byte[][] inputs, IRlpDecoder<Transaction> fallback) : TxDecoder<Transaction>(factory)
+    {
+        private int _trackedDecodes;
+
+        public int TrackedDecodes => Volatile.Read(ref _trackedDecodes);
+
+        protected override Transaction? DecodeInternal(ref RlpReader reader, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            // Background work may still decode through the registry; only track this test's buffers.
+            foreach (byte[] input in inputs)
+            {
+                if (reader.Data.Overlaps(input))
+                {
+                    Interlocked.Increment(ref _trackedDecodes);
+                    return base.DecodeInternal(ref reader, behaviors);
+                }
+            }
+            return fallback.Decode(ref reader, behaviors);
+        }
+    }
+
+    [Test]
+    public void Factory_tracking_forwards_unrelated_buffers()
+    {
+        byte[] tracked = EncodeTx(TxType.Legacy);
+        byte[] unrelated = tracked.ToArray();
+        int factoryCalls = 0;
+        FactoryTrackingDecoder decoder = new(() =>
+        {
+            factoryCalls++;
+            return new Transaction();
+        }, [tracked], new PayloadTestDecoder());
+        RlpReader reader = new(unrelated);
+
+        Transaction transaction = decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.Nonce, Is.EqualTo(1000), "The fallback decoder must handle the unrelated buffer.");
+            Assert.That(decoder.TrackedDecodes, Is.Zero);
+            Assert.That(factoryCalls, Is.Zero);
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Payload_decoding_uses_registered_decoder([Values(1, 64)] int count)
+    {
+        byte[][] encoded = EncodeTxs(count);
+        IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
+        Rlp.RegisterDecoder(typeof(Transaction), new PayloadTestDecoder());
+        try
+        {
+            Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
+        }
+        finally
+        {
+            Rlp.RegisterDecoder(typeof(Transaction), original);
+        }
+    }
+
+    private sealed class PayloadTestDecoder : TxDecoder<Transaction>
+    {
+        protected override Transaction? DecodeInternal(ref RlpReader reader, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            Transaction? tx = base.DecodeInternal(ref reader, behaviors);
+            if (tx is not null) tx.Nonce += 1000;
+            return tx;
+        }
+    }
 
     [Test]
     public void Payload_decoding_borrows_data_and_preserves_hash_after_replacement(

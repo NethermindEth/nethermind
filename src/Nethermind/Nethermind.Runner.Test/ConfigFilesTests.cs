@@ -366,6 +366,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IInitConfig, INodeStorage.KeyScheme>(configWildcard, static c => c.StateDbKeyScheme, INodeStorage.KeyScheme.Hash);
     }
 
+    // NeedToWaitForHeader would hold state sync back until the reverse header sync reaches genesis. XdcStateSyncPivot
+    // already keeps the pivot pending until the pivot header and the gap blocks below it are in the block tree, so XDC
+    // needs only that bounded window rather than the whole chain.
+    [Test]
+    public void Xdc_configs_do_not_gate_state_sync_on_the_full_header_sync([Values("xdc.json", "xdc-testnet.json", "xdc_archive.json")] string configWildcard) =>
+        Test<ISyncConfig, bool>(configWildcard, static c => c.NeedToWaitForHeader, false);
+
     // XDC's base fee is a constant equal to the gas price floor its reference client demands, so a transaction paying
     // exactly that floor has no priority fee left. MinGasPriceTxFilter compares the priority fee, so any non-zero
     // Blocks.MinGasPrice makes the block producer skip transactions the reference client both accepts and mines.

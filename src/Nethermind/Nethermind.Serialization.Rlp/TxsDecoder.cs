@@ -7,6 +7,7 @@ using Nethermind.Core;
 namespace Nethermind.Serialization.Rlp;
 
 /// <summary>Decodes a list of EIP-2718 <c>TransactionType || TransactionPayload</c> entries.</summary>
+/// <remarks>Transaction objects are freshly allocated because payloads and inclusion lists retain them.</remarks>
 public static partial class TxsDecoder
 {
     private const int ParallelDecodeThreshold = 32;
@@ -39,7 +40,8 @@ public static partial class TxsDecoder
     private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp, bool borrowMemory)
     {
         RlpReader ctx = borrowMemory ? new(rlp.AsMemory()) : new(rlp);
-        return rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+        RlpBehaviors behaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.SkipPooledTransactions;
+        return rlpDecoder.DecodeCompleteNotNull(ref ctx, behaviors);
     }
 
     private static TransactionDecodingResult DecodeSequential(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, bool borrowMemory)
