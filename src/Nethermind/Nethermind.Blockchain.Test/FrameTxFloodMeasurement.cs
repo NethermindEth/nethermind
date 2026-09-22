@@ -6,10 +6,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
-using System.Numerics;
 using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -32,6 +30,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NUnit.Framework;
+
+using static Nethermind.Blockchain.Test.MeasurementEnvironment;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -166,62 +166,6 @@ public class FrameTxFloodMeasurement
 
     /// <summary>Tracks fresh calldata salts so rejected hashes never bypass simulation through the known cache.</summary>
     private int _saltCursor;
-
-    /// <summary>Returns the OS-observed CPU set because in-process affinity is unreliable on Linux.</summary>
-    private static string ObservedCpuSet()
-    {
-        try
-        {
-            if (OperatingSystem.IsLinux())
-            {
-                foreach (string line in File.ReadLines("/proc/self/status"))
-                {
-                    if (line.StartsWith("Cpus_allowed_list:", StringComparison.Ordinal))
-                    {
-                        return line["Cpus_allowed_list:".Length..].Trim();
-                    }
-                }
-            }
-
-            if (!OperatingSystem.IsWindows()) return "unknown";
-
-            using Process current = Process.GetCurrentProcess();
-            return $"mask:{(ulong)(nint)current.ProcessorAffinity:x}";
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException
-                                       or PlatformNotSupportedException or Win32Exception or InvalidOperationException)
-        {
-            TestContext.Out.WriteLine($"DEBUG CPU affinity could not be read: {e.GetType().Name}: {e.Message}");
-            return "unknown";
-        }
-    }
-
-    private static bool IsSingleCore()
-    {
-        string set = ObservedCpuSet();
-
-        if (set.StartsWith("mask:", StringComparison.Ordinal))
-        {
-            return ulong.TryParse(set["mask:".Length..], NumberStyles.HexNumber, CultureInfo.InvariantCulture,
-                       out ulong mask)
-                   && BitOperations.PopCount(mask) == 1;
-        }
-
-        return set.Length > 0
-               && set != "unknown"
-               && !set.Contains(',', StringComparison.Ordinal)
-               && !set.Contains('-', StringComparison.Ordinal);
-    }
-
-    private static void SkipUnlessSingleCore()
-    {
-        if (IsSingleCore() || Environment.GetEnvironmentVariable("FRAME_FLOOD_ALLOW_MULTICORE") == "1") return;
-
-        Assert.Ignore($"this process may run on CPUs [{ObservedCpuSet()}], so the single-core contention this "
-                      + "harness measures does not hold and a flood would appear nearly free. Re-run under "
-                      + "`taskset -c 0`, or set FRAME_FLOOD_ALLOW_MULTICORE=1 to measure the uncontended case "
-                      + "deliberately.");
-    }
 
     /// <summary>Environment variable naming the target core count for the analytic core-normalized
     /// projection. Unset (the default) means the projected field is omitted entirely, not zero.</summary>
