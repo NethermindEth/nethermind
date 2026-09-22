@@ -130,6 +130,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
+    /// <summary>Whether storage trie warming also resolves siblings needed by two-child branch collapse. Defaults to false.</summary>
+    [ConfigItem(Description = "Warm the sibling of storage paths in two-child branches to prepare for deletion", DefaultValue = "false")]
+    bool TrieWarmerWarmBranchSiblings { get; set; }
+
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 

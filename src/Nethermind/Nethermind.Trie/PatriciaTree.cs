@@ -382,9 +382,14 @@ namespace Nethermind.Trie
             }
         }
 
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey) => WarmUpPath(rawKey, warmBranchSiblings: false);
+
+        /// <summary>Resolves a key's path and optionally the siblings needed if its branches collapse after deletion.</summary>
+        /// <param name="rawKey">The trie key in bytes.</param>
+        /// <param name="warmBranchSiblings">Whether to resolve the other child of two-child branches on the path.</param>
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool warmBranchSiblings)
         {
             byte[]? array = null;
             try
@@ -400,7 +405,7 @@ namespace Nethermind.Trie
                 TreePath emptyPath = TreePath.Empty;
                 TrieNode? root = RootRef;
 
-                DoWarmUpPath(nibbles, ref emptyPath, root);
+                DoWarmUpPath(nibbles, ref emptyPath, root, warmBranchSiblings);
             }
             catch (TrieException e)
             {
@@ -980,7 +985,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node)
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool warmBranchSiblings)
         {
             int originalPathLength = path.Length;
 
@@ -1024,6 +1029,7 @@ namespace Nethermind.Trie
                     }
 
                     int nextNib = remainingKey[0];
+                    if (warmBranchSiblings) WarmBranchSibling(node, path, nextNib);
 
                     path.AppendMut(nextNib);
                     TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
@@ -1037,6 +1043,24 @@ namespace Nethermind.Trie
             {
                 path.TruncateMut(originalPathLength);
             }
+        }
+
+        private void WarmBranchSibling(TrieNode node, TreePath path, int nextNib)
+        {
+            if (node.IsChildNull(nextNib)) return;
+
+            int sibling = -1;
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                if (i == nextNib || node.IsChildNull(i)) continue;
+                if (sibling != -1) return;
+                sibling = i;
+            }
+
+            if (sibling == -1) return;
+            path.AppendMut(sibling);
+            TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, sibling, keepChildRef: true);
+            child?.TryResolveNode(TrieStore, ref path);
         }
 
         /// <summary>

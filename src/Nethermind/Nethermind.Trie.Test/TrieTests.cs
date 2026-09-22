@@ -1310,7 +1310,44 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
-        public void WarmUpPath_DoesNotThrow()
+        public void Warming_branch_sibling_avoids_read_during_collapse(
+            [Values] bool warmSiblings, [Values(0, 1, 2)] int sharedPrefixNibbles, [Values(2, 3)] int childCount)
+        {
+            using MemDb db = new();
+            byte[][] keys = new byte[childCount][];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                keys[i] = new byte[32];
+                keys[i][sharedPrefixNibbles / 2] = (byte)((i + 1) << (sharedPrefixNibbles % 2 == 0 ? 4 : 0));
+            }
+
+            Hash256 root;
+            using (IPruningTrieStore initialStore = CreateTrieStore(db))
+            {
+                PatriciaTree initial = new(initialStore, _logManager);
+                foreach (byte[] key in keys) initial.Set(key, _longLeaf1);
+                initialStore.CommitPatriciaTrie(0, initial);
+                initialStore.PersistCache(CancellationToken.None);
+                root = initial.RootHash;
+            }
+
+            using IPruningTrieStore store = CreateTrieStore(db);
+            PatriciaTree tree = new(store, _logManager) { RootHash = root };
+            tree.WarmUpPath(keys[0], warmSiblings);
+            long readsBeforeDeletion = db.ReadsCount;
+
+            tree.Set(keys[0], []);
+            tree.UpdateRootHash(canBeParallel: false);
+            Assert.That(db.ReadsCount - readsBeforeDeletion, Is.EqualTo(childCount == 2 && !warmSiblings ? 1 : 0));
+
+            PatriciaTree reference = new(NullTrieStore.Instance, _logManager);
+            for (int i = 1; i < keys.Length; i++) reference.Set(keys[i], _longLeaf1);
+            reference.UpdateRootHash(canBeParallel: false);
+            Assert.That(tree.RootHash, Is.EqualTo(reference.RootHash));
+        }
+
+        [Test]
+        public void WarmUpPath_DoesNotThrow([Values] bool warmSiblings)
         {
             // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD
             using IPruningTrieStore trieStore = CreateTrieStore();
@@ -1322,21 +1359,21 @@ namespace Nethermind.Trie.Test
             trieStore.CommitPatriciaTrie(0, patriciaTree);
 
             // Test warmup on various keys
-            Assert.That(() => patriciaTree.WarmUpPath(_keyA), Throws.Nothing);  // Existing key
-            Assert.That(() => patriciaTree.WarmUpPath(_keyB), Throws.Nothing);  // Existing key
-            Assert.That(() => patriciaTree.WarmUpPath(_keyC), Throws.Nothing);  // Existing key in different branch
-            Assert.That(() => patriciaTree.WarmUpPath(_keyD), Throws.Nothing);  // Existing key in different branch
-            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("00000000000cc")), Throws.Nothing);  // Non-existent key
-            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("fffffffffffff")), Throws.Nothing);  // Completely different path
+            Assert.That(() => patriciaTree.WarmUpPath(_keyA, warmSiblings), Throws.Nothing);  // Existing key
+            Assert.That(() => patriciaTree.WarmUpPath(_keyB, warmSiblings), Throws.Nothing);  // Existing key
+            Assert.That(() => patriciaTree.WarmUpPath(_keyC, warmSiblings), Throws.Nothing);  // Existing key in different branch
+            Assert.That(() => patriciaTree.WarmUpPath(_keyD, warmSiblings), Throws.Nothing);  // Existing key in different branch
+            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("00000000000cc"), warmSiblings), Throws.Nothing);  // Non-existent key
+            Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("fffffffffffff"), warmSiblings), Throws.Nothing);  // Completely different path
         }
 
         [Test]
-        public void WarmUpPath_DoesNotThrow_WhenPersistenceServesAnotherVersionOfTheNode()
+        public void WarmUpPath_DoesNotThrow_WhenPersistenceServesAnotherVersionOfTheNode([Values] bool warmSiblings)
         {
             StaleWarmerTrieStore trieStore = new();
             PatriciaTree patriciaTree = new(trieStore, _logManager) { RootHash = StaleWarmerTrieStore.RootHashToWarm };
 
-            Assert.That(() => patriciaTree.WarmUpPath(_keyA), Throws.Nothing);
+            Assert.That(() => patriciaTree.WarmUpPath(_keyA, warmSiblings), Throws.Nothing);
             Assert.That(patriciaTree.RootRef!.NodeType, Is.EqualTo(NodeType.Unknown));
         }
 

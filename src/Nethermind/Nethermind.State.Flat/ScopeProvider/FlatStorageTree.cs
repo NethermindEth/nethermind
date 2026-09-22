@@ -117,7 +117,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                _warmupStorageTree.WarmUpPath(key.BytesAsSpan, _config.TrieWarmerWarmBranchSiblings);
                 return true;
             }
             finally
