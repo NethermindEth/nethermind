@@ -111,13 +111,13 @@ public class FrameTxProducerRetryMeasurement
     /// <see cref="Eip8141Constants.MaxVerifyGas"/> on the simulation path regardless of configuration; this
     /// fixture drives block execution instead, which applies no such cap, so it can use the real declared
     /// number that clamp stands in for. <see cref="FrameTx"/> puts the whole declared value into one frame's
-    /// execution gas limit with no signatures, so at every ceiling this fixture sweeps (not only 322,800) the
+    /// execution gas limit with no signatures, so at every ceiling this fixture sweeps (not only 352,800) the
     /// EVM burn is a uniform tight-loop shape, distinct from the signature/Groth16 shapes the mempool/flood
     /// harnesses measure at the same nominal ceiling — rows here are not CPU-comparable to those, only the
     /// declared-gas axis is shared.</remarks>
-    [TestCase(true, 322_800ul, TestName = "control: a prefix that approves is included and paid for")]
+    [TestCase(true, 352_800ul, TestName = "control: a prefix that approves is included and paid for")]
     [TestCase(false, 300_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
-    [TestCase(false, 322_800ul, TestName = "never approves, at soispoke's declared privacy-pool budget")]
+    [TestCase(false, 352_800ul, TestName = "never approves, at soispoke's declared privacy-pool budget")]
     public async Task ProducerRetriesAFailingPrefix(bool approves, ulong verifyGas)
     {
         await BuildChain(approves ? Approves() : NeverApproves());
@@ -194,7 +194,7 @@ public class FrameTxProducerRetryMeasurement
 
     private static IEnumerable<TestCaseData> RetryCases()
     {
-        foreach (ulong verifyGas in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul })
+        foreach (ulong verifyGas in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 322_800ul, 352_800ul, 500_000ul })
         {
             foreach (int kRetry in new int[] { 1, 2, 4, 8 })
             {
