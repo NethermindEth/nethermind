@@ -55,6 +55,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             // Single instance: the engine handler starts a recovery that this step must see in flight.
             .AddSingleton<RecoverSignatures>()
             .AddFirst<IBlockPreprocessorStep>(static ctx => ctx.Resolve<RecoverSignatures>())
+            // The prewarmer waits on the recovery this instance has in flight rather than polling the transactions.
+            .Bind<ISenderRecoveryTracker, RecoverSignatures>()
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
