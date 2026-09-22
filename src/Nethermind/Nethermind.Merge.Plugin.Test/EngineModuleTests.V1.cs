@@ -1396,6 +1396,7 @@ public partial class EngineModuleTests
             TryCalculateHash(executionPayload, out Hash256 hash);
             executionPayload.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executionPayload);
+            await chain.WaitForCommitted(executionPayload.BlockHash);
 
             using (Assert.EnterMultipleScope())
             {

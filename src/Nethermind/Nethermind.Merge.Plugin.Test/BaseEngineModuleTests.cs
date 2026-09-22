@@ -181,6 +181,12 @@ public abstract partial class BaseEngineModuleTests
         /// Callers must create the wait before the <c>forkchoiceUpdated</c> that canonicalizes the block, and should
         /// assert that call succeeded — otherwise the event never fires and the wait times out without a cause.
         /// </remarks>
+        /// <summary>
+        /// newPayload answers on the block's verdict, before its state is committed and it is marked processed; a test
+        /// that reads the block's state, receipts or processed flag right after VALID waits here first.
+        /// </summary>
+        public Task WaitForCommitted(Hash256 blockHash) => BlockProcessingQueue.WaitUntilRemovedAsync(blockHash).AsTask();
+
         public Task WaitForTxPoolHead(Hash256 blockHash) =>
             Wait.ForEventCondition<Block>(CancellationToken,
                 h => TxPool.TxPoolHeadChanged += h,

@@ -539,6 +539,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!).AsTask();
                 if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
+                // The first copy's own verdict and removal land on whatever completion is registered for the hash,
+                // so if they consumed this one it must not stand in for the answer to this request.
+                if (blockProcessed.Task.IsCompleted)
+                {
+                    blockProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _blockValidationTasks[block.Hash!] = blockProcessed;
+                }
             }
 
             result = addResult switch
