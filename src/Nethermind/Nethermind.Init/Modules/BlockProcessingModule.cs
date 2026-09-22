@@ -24,17 +24,20 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Monitoring;
+using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Modules;
 
-public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksConfig) : Module
+public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksConfig, IMetricsConfig metricsConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -139,6 +142,18 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IGenesisBuilder, GenesisBuilder>()
             .AddScoped<IGenesisLoader, GenesisLoader>()
             ;
+
+        // Metering costs a virtual dispatch and an atomic per precompile call, so it is only installed
+        // when something is there to scrape it - the same condition MonitoringModule registers on.
+        if (metricsConfig.Enabled || metricsConfig.CountersEnabled)
+        {
+            builder.AddDecorator<IPrecompileProvider>(static (ctx, inner) =>
+            {
+                MeteredPrecompileProvider metered = new(inner);
+                ctx.Resolve<IMonitoringService>().AddMetricsUpdateAction(metered.PublishMetrics);
+                return metered;
+            });
+        }
 
         builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
 
