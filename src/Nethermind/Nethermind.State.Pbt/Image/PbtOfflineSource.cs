@@ -20,6 +20,9 @@ namespace Nethermind.State.Pbt.Image;
 /// <see cref="PbtImageVerifier"/> before publication: flat metadata alone does not prove the anchor root.</remarks>
 internal static class PbtOfflineSource
 {
+    /// <summary>Keccak address path, the account/slot tag, then the Keccak slot path.</summary>
+    private const int PreimageKeyLength = 65;
+
     public static void WriteArtifacts(FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore codeSource,
         PbtArtifactIdentity identity, PbtImageAnchor anchor, string scratchDirectory,
         Stream snapshot, Stream preimages, Stream manifest, int sortBufferBytes = 256 * 1024 * 1024,
@@ -40,8 +43,10 @@ internal static class PbtOfflineSource
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtOfflineSourceSort leaves = new(directory, 99, 66, sortBufferBytes / 2, cancellationToken);
-            using PbtOfflineSourceSort rawKeys = new(directory, 101, 65, sortBufferBytes / 2, cancellationToken);
+            using PbtSortedSpool leaves = new(directory, sortBufferBytes / 2, cancellationToken);
+            using PbtSortedSpool rawKeys = new(directory, sortBufferBytes / 2, cancellationToken);
+            Span<byte> preimageKey = stackalloc byte[PreimageKeyLength];
+            Span<byte> accountValue = stackalloc byte[Address.Size + sizeof(uint)];
             foreach ((ValueHash256 accountKey, byte[] accountRlp) in ReadAccounts())
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -70,20 +75,19 @@ internal static class PbtOfflineSource
                         EvmWord value = EvmWordSlot.FromStripped(slots.CurrentValue);
                         if (EvmWordSlot.IsZero(value)) throw new InvalidDataException("Source contains a zero storage slot.");
                         AddLeaf(PbtStateKey.Storage(address, new UInt256(slot.Bytes, isBigEndian: true)), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
-                        byte[] record = new byte[101];
-                        addressHash.Bytes.CopyTo(record);
-                        record[32] = 1;
-                        ValueKeccak.Compute(slot.Bytes).Bytes.CopyTo(record.AsSpan(33));
-                        slot.Bytes.CopyTo(record.AsSpan(65));
-                        rawKeys.Add(record);
+                        addressHash.Bytes.CopyTo(preimageKey);
+                        preimageKey[32] = 1;
+                        ValueKeccak.Compute(slot.Bytes).Bytes.CopyTo(preimageKey[33..]);
+                        rawKeys.Add(preimageKey, slot.Bytes);
                         count = checked(count + 1);
                     }
                 }
-                byte[] accountRecord = new byte[101];
-                addressHash.Bytes.CopyTo(accountRecord);
-                address.Bytes.CopyTo(accountRecord.AsSpan(65));
-                BinaryPrimitives.WriteUInt32BigEndian(accountRecord.AsSpan(85), count);
-                rawKeys.Add(accountRecord);
+                // The zero tag and slot-hash region keep an account ahead of its own slots.
+                preimageKey.Clear();
+                addressHash.Bytes.CopyTo(preimageKey);
+                address.Bytes.CopyTo(accountValue);
+                BinaryPrimitives.WriteUInt32BigEndian(accountValue[Address.Size..], count);
+                rawKeys.Add(preimageKey, accountValue);
             }
             IEnumerable<(ValueHash256 Key, byte[] Rlp)> ReadAccounts()
             {
@@ -109,48 +113,32 @@ internal static class PbtOfflineSource
                 }
             }
 
-            void AddLeaf(in PbtStorageTreeKey key, ValueHash256 value)
-            {
-                byte[] record = new byte[99];
-                key.Bytes.CopyTo(record);
-                record[66] = (byte)key.Length;
-                value.Bytes.CopyTo(record.AsSpan(67));
-                leaves.Add(record);
-            }
+            // Leaf keys are prefix-free (34 bytes in zone 0/1, 66 in zone 255), so their raw order is total.
+            void AddLeaf(in PbtStorageTreeKey key, ValueHash256 value) => leaves.Add(key.Bytes, value.Bytes);
 
             IEnumerable<RebuildEntry> Leaves()
             {
-                RebuildEntry? previous = null;
-                foreach (byte[] record in leaves.Read())
-                {
-                    RebuildEntry entry = new(new PbtStorageTreeKey(record.AsSpan(0, record[66])), new ValueHash256(record.AsSpan(67)));
-                    if (previous is { } prior && prior.Key == entry.Key)
-                    {
-                        if (prior.Leaf != entry.Leaf) throw new InvalidDataException("Conflicting source leaves.");
-                        continue;
-                    }
-                    previous = entry;
-                    yield return entry;
-                }
+                using PbtSortedSpool.Cursor cursor = leaves.Read();
+                while (cursor.MoveNext())
+                    yield return new RebuildEntry(new PbtStorageTreeKey(cursor.Key), new ValueHash256(cursor.Value));
             }
 
             IEnumerable<PbtAccountPreimages> Accounts()
             {
-                using IEnumerator<byte[]> records = rawKeys.Read().GetEnumerator();
-                while (records.MoveNext())
+                using PbtSortedSpool.Cursor cursor = rawKeys.Read();
+                while (cursor.MoveNext())
                 {
-                    byte[] accountRecord = records.Current;
-                    if (accountRecord[32] != 0) throw new InvalidDataException("Orphan source slot.");
-                    uint count = BinaryPrimitives.ReadUInt32BigEndian(accountRecord.AsSpan(85));
-                    yield return new(new Address(accountRecord.AsSpan(65, 20)), count, Slots());
+                    if (cursor.Key[32] != 0) throw new InvalidDataException("Orphan source slot.");
+                    ValueHash256 accountHash = new(cursor.Key[..32]);
+                    uint count = BinaryPrimitives.ReadUInt32BigEndian(cursor.Value[Address.Size..]);
+                    yield return new(new Address(cursor.Value[..Address.Size]), count, Slots());
                     IEnumerable<ValueHash256> Slots()
                     {
                         for (uint index = 0; index < count; index++)
                         {
-                            if (!records.MoveNext() || records.Current[32] != 1 ||
-                                !records.Current.AsSpan(0, 32).SequenceEqual(accountRecord.AsSpan(0, 32)))
+                            if (!cursor.MoveNext() || cursor.Key[32] != 1 || !cursor.Key[..32].SequenceEqual(accountHash.Bytes))
                                 throw new InvalidDataException("Source slot count mismatch.");
-                            yield return new ValueHash256(records.Current.AsSpan(65, 32));
+                            yield return new ValueHash256(cursor.Value);
                         }
                     }
                 }
