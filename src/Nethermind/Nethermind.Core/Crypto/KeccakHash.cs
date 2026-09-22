@@ -16,6 +16,13 @@ public sealed partial class KeccakHash
 {
     internal const int Hash532InputLength = 532;
     internal const int Hash532PaddedLength = (Hash532InputLength / HASH_DATA_AREA + 1) * HASH_DATA_AREA;
+
+    /// <summary>Keccak-256's rate in bytes: the block the batch kernels consume per lane.</summary>
+    internal const int RateBlockLength = HASH_DATA_AREA;
+
+    /// <summary>Longest message whose padding still fits a single <see cref="RateBlockLength" /> block.</summary>
+    /// <remarks>At exactly this length the 0x01 and 0x80 padding bytes land on the same byte and merge.</remarks>
+    internal const int SingleRateBlockMaxInputLength = RateBlockLength - 1;
     private const int HASH_SIZE = 32;
     private const int STATE_SIZE = 200;
     private const int STATE_LANES = STATE_SIZE / sizeof(ulong);

@@ -26,11 +26,20 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class TrieNodeTests
 {
+    /// <param name="dirtyChildWidth">
+    /// Children per dirty branch child, which sets the RLP length that decides how it is hashed:
+    /// 3 fits one Keccak rate block, 4 fits neither batch shape and must fall back, 16 is a
+    /// saturated branch at exactly 532 bytes.
+    /// </param>
     [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
-        [Values(0, 2, 4)] int dirtyBranchCount)
+        [Values(0, 2, 3, 8, 15)] int dirtyBranchCount,
+        [Values(3, 4, 16)] int dirtyChildWidth,
+        [Values(false, true)] bool canBeParallel)
     {
+        AssertDirtyChildLengthClass(dirtyChildWidth);
+
         TrieNode original = new(NodeType.Branch);
         TrieNode expected = new(NodeType.Branch);
         for (int i = 0; i < 16; i++)
@@ -58,20 +67,47 @@ public class TrieNodeTests
         for (int i = 1; i <= dirtyBranchCount; i++)
         {
             int index = (changedIndex + i) % TrieNode.BranchesCount;
-            TrieNode branch = new(NodeType.Branch);
-            for (int childIndex = 0; childIndex < TrieNode.BranchesCount; childIndex++)
-            {
-                branch.SetChild(childIndex, new TrieNode(NodeType.Unknown, Keccak.Compute([(byte)index, (byte)childIndex])));
-            }
+            TrieNode branch = BuildDirtyBranch(index, dirtyChildWidth);
             restored.SetChild(index, branch);
             expected.SetChild(index, branch);
         }
 
-        // Four materialized children select the parallel measuring path even without AVX-512VL;
-        // two dirty branches select batched measuring on hosts that support it.
-        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: dirtyBranchCount == 4);
+        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
         CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
         Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
+    }
+
+    private static TrieNode BuildDirtyBranch(int seed, int width)
+    {
+        TrieNode branch = new(NodeType.Branch);
+        for (int childIndex = 0; childIndex < width; childIndex++)
+        {
+            branch.SetChild(childIndex, new TrieNode(NodeType.Unknown, Keccak.Compute([(byte)seed, (byte)childIndex])));
+        }
+
+        return branch;
+    }
+
+    /// <remarks>
+    /// Guards the parameterisation itself: without this the widths could all encode into the same
+    /// length class and the test would silently stop covering the paths it names.
+    /// </remarks>
+    private static void AssertDirtyChildLengthClass(int width)
+    {
+        TreePath path = TreePath.Empty;
+        int length = BuildDirtyBranch(0, width).RlpEncode(NullTrieNodeResolver.Instance, ref path).Length;
+        switch (width)
+        {
+            case 3:
+                Assert.That(length, Is.LessThanOrEqualTo(135), "width 3 should fit one Keccak rate block");
+                break;
+            case 4:
+                Assert.That(length, Is.InRange(136, 531), "width 4 should fit neither batch shape");
+                break;
+            default:
+                Assert.That(length, Is.EqualTo(532), "width 16 should be a saturated branch");
+                break;
+        }
     }
 
     // private TrieNode _tiniestLeaf;
