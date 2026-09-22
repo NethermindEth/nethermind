@@ -64,10 +64,12 @@ public class TrieNodeTests
         expected.SetChild(changedIndex, replacement);
         if (replacementKind == 3) restored.UnresolveChild(changedIndex);
 
+        List<TrieNode> dirtyChildren = new(dirtyBranchCount);
         for (int i = 1; i <= dirtyBranchCount; i++)
         {
             int index = (changedIndex + i) % TrieNode.BranchesCount;
             TrieNode branch = BuildDirtyBranch(index, dirtyChildWidth);
+            dirtyChildren.Add(branch);
             restored.SetChild(index, branch);
             expected.SetChild(index, branch);
         }
@@ -75,6 +77,21 @@ public class TrieNodeTests
         CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
         CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
         Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
+        AssertChildHashesMatchScalarKeccak(dirtyChildren);
+    }
+
+    /// <remarks>
+    /// The two encodings above share their child nodes, so a wrong child hash reaches both and
+    /// cancels out. Only a comparison against a separately computed digest can see it, which is
+    /// what makes this the assertion that covers the batch kernels.
+    /// </remarks>
+    private static void AssertChildHashesMatchScalarKeccak(List<TrieNode> children)
+    {
+        foreach (TrieNode child in children)
+        {
+            Assert.That(child.FullRlp.Length, Is.GreaterThanOrEqualTo(Hash256.Size), "a child this short would be inlined, not hashed");
+            Assert.That(child.Keccak, Is.EqualTo(Keccak.Compute(child.FullRlp.AsSpan())));
+        }
     }
 
     private static TrieNode BuildDirtyBranch(int seed, int width)
