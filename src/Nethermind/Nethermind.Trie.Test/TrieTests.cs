@@ -88,6 +88,37 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void Partitioned_root_handles_extensions_below_root(
+            [Values(3, 32)] int keyLength, [Values(32, 1024)] int keyCount)
+        {
+            PatriciaTree tree = new(NullTrieStore.Instance, NullLogManager.Instance);
+            PatriciaTree reference = new(NullTrieStore.Instance, NullLogManager.Instance);
+            for (int i = 0; i < keyCount; i++)
+            {
+                byte[] key = new byte[keyLength];
+                key[0] = (byte)i;
+                key[1] = (byte)(i >> 8);
+                if ((key[0] & 0x10) == 0)
+                {
+                    key[2] = (byte)(key[1] << 4);
+                    key[1] = (byte)((key[0] << 4) | (key[1] >> 4));
+                    key[0] &= 0xf0;
+                }
+                byte[] value = [(byte)(i % 127 + 1)];
+                tree.Set(key, value);
+                reference.Set(key, value);
+            }
+
+            Assert.That(tree.RootRef!.IsBranch, Is.True);
+            bool partitioned = tree.RootRef.ResolveSubtrieKeys(NullTrieStore.Instance, null);
+            Assert.That(partitioned, Is.EqualTo(keyCount == 1024 && !Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor));
+
+            tree.UpdateRootHash(canBeParallel: false);
+            reference.UpdateRootHash(canBeParallel: false);
+            Assert.That(tree.RootHash, Is.EqualTo(reference.RootHash));
+        }
+
+        [Test]
         public void Oversized_storage_leaf_is_rejected()
         {
             StorageTree tree = new(NullTrieStore.Instance, LimboLogs.Instance);
