@@ -81,6 +81,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
     }
 
+    /// <summary>Asserts that the per-test <see cref="VirtualMachineTestsBase.Setup"/> resets the fork activation that a previous test leaked into it.</summary>
+    /// <remarks>The fixture lifecycle is driven by hand because NUnit gives no ordering contract between tests, so the leak can only be observed deterministically within a single test.</remarks>
     [Test]
     public void Setup_restores_default_activation_between_tests()
     {
@@ -90,7 +92,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         TearDown();
         Setup();
 
-        Assert.That(Activation, Is.EqualTo(new ForkActivation(MainnetSpecProvider.ByzantiumBlockNumber, 0)));
+        Assert.That(Activation, Is.EqualTo(new ForkActivation(DefaultBlockNumber, DefaultTimestamp)));
         AssertExpZeroTo160();
     }
 
