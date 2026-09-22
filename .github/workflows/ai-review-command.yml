@@ -16,7 +16,10 @@ permissions:
 
 jobs:
   authorize:
+    # AI_REVIEW_AUTO controls automatic reviews only. This trusted default-branch workflow does
+    # not execute PR code, so authorized commands remain useful for drafts, forks, and Dependabot.
     if: >-
+      vars.AI_REVIEW_COMMANDS != 'false' &&
       github.event.issue.pull_request &&
       github.event.issue.state == 'open' &&
       startsWith(github.event.comment.body, '/')
@@ -62,6 +65,11 @@ jobs:
         silent data loss, concurrency and cancellation errors, resource ownership and disposal,
         retry behavior, and compatibility of public or serialized formats. Verify that tests
         exercise production behavior and would fail for the regression they claim to cover.
+
+        Use `security_concerns` only for a hardcoded secret or token, unnecessary PII exposure,
+        a publicly callable endpoint without authorization or an allowlist, a secret exposed in
+        logs or errors, or an external send without a test mode or safety flag. Answer exactly
+        "No" when none of these applies.
 
         For Nethermind specifically, check consensus and hard-fork boundaries, gas accounting,
         state roots and persistence, RLP/SSZ/JSON serialization, Engine API and JSON-RPC behavior,
