@@ -1198,14 +1198,16 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// #12692 (item 1): a no-gas call must default to the block budget, not GasCap (100M) — which the EIP-8037
-    /// inclusion check rejects (ExecutionDimensionExceeded on a small block, StateDimensionExceeded below the cap).
+    /// Missing gas defaults to the available block and request budgets, bounded by EIP-8037's total transaction cap.
     /// </summary>
-    [TestCase(5_000_000ul, TestName = "no-gas call fits a small block's gas budget (execution dimension)")]
-    [TestCase(30_000_000ul, TestName = "no-gas call fits a realistic block's gas budget (state dimension)")]
-    public async Task eth_simulateV1_defaults_missing_gas_to_block_limit_on_bal_path(ulong blockGasLimit)
+    [Test]
+    public async Task eth_simulateV1_defaults_missing_gas_to_available_budget(
+        [Values(5_000_000UL, 30_000_000UL, 0x200000000UL)] ulong blockGasLimit,
+        [Values(0UL, 100_000_000UL, 1_000_000_000_000UL)] ulong gasCap,
+        [Values] bool validation)
     {
-        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        chain.RpcConfig.GasCap = gasCap;
 
         SimulatePayload<TransactionForRpc> payload = new()
         {
@@ -1224,7 +1226,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     ]
                 }
             ],
-            Validation = true
+            Validation = validation
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =

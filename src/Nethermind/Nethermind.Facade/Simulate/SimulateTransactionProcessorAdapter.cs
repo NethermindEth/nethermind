@@ -20,6 +20,7 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, SimulateRequestState simulateRequestState) : ITransactionProcessorAdapter
 {
     private int _currentTxIndex = 0;
+    private ulong _maxTotalGasLimit = ulong.MaxValue;
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
         // The non-BAL / validation:false paths never run the block executor's pre-check, so resolve the gas
@@ -41,6 +42,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _currentTxIndex = 0;
+        _maxTotalGasLimit = blockExecutionContext.Spec.IsEip8037Enabled ? Eip8037Constants.TxMaxTotalGasLimit : ulong.MaxValue;
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
     }
 
@@ -54,7 +56,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         {
             transaction.GasLimit = Math.Min(
                 Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable),
-                simulateRequestState.TotalGasLeft);
+                Math.Min(simulateRequestState.TotalGasLeft, _maxTotalGasLimit));
         }
 
         if (simulateRequestState.TotalGasLeft < transaction.GasLimit)

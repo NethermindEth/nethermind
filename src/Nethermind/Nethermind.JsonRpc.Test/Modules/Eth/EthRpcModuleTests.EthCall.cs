@@ -719,8 +719,8 @@ public partial class EthRpcModuleTests
     }
 
     /// <summary>
-    /// Runs an <c>eth_call</c> with no <c>gas</c> field against a contract returning the gas available at the
-    /// start of execution, and returns that value.
+    /// Sets <c>ctx.Test.RpcConfig.GasCap</c>, then runs an <c>eth_call</c> with no <c>gas</c> field
+    /// and returns the gas available at the start of contract execution.
     /// </summary>
     private static async Task<UInt256> GasAvailableForGaslessCall(Context ctx, ulong gasCap)
     {

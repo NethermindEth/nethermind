@@ -111,15 +111,10 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.Zero;
 
-        // null Gas → caller didn't specify, default to gasCap (uncapped if gasCap is unset), additionally
-        // clamped to the per-tx consensus cap: EIP-8037 rejects tx.gas above TX_MAX_TOTAL_GAS_LIMIT even
-        // when validation is skipped, so an unclamped default would break every gas-less call.
-        // explicit Gas (including 0) → use as-is, capped at gasCap. This matches Geth: gas: 0x0
-        // is a literal request that fails the intrinsic gas check, not a "missing" signal. An explicit
-        // over-cap Gas is deliberately left to fail the consensus cap rather than being silently lowered.
+        // EIP-8037's total cap also applies when validation is skipped; EIP-7825's execution cap does not.
+        // Clamp only omitted gas to the consensus cap so explicit over-cap requests still fail validation.
+        // Explicit zero is a literal request (as in Geth), not a missing-gas default.
         ulong effectiveCap = gasCap.EffectiveGasCap();
-        // Only EIP-8037's cap is enforced where validation is skipped, so clamping by EIP-7825's
-        // execution-gas cap would lower gas-less calls below the RPC gas cap without preventing anything.
         ulong consensusCap = spec?.IsEip8037Enabled is true ? Eip8037Constants.TxMaxTotalGasLimit : ulong.MaxValue;
         tx.GasLimit = Gas is null
             ? Math.Min(effectiveCap, consensusCap)
