@@ -3,7 +3,7 @@
 
 using System;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
@@ -72,7 +72,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             ArgumentNullException.ThrowIfNull(value);
             _encodedTransactions = value;
             _transactions = null;
-            _txRootTask = null;
+            _txRoot = null;
         }
     }
 
@@ -167,13 +167,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         byte[][] encodedTransactions = Transactions;
         // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
-        // and carries no task machinery for it.
-        Task<Hash256>? txRootTask = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
+        // and carries no work item for it.
+        TxRootComputation? txRoot = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
 
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
         {
-            txRootTask?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return transactions.Error;
         }
 
@@ -198,7 +197,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = txRoot is not null ? txRoot.GetResult() : TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
@@ -213,27 +212,35 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
-    private Task<Hash256>? _txRootTask;
+    private TxRootComputation? _txRoot;
 
     private const int MinTxsForParallelDecoding = 32;
 
     /// <summary>
     /// Starts computing the transactions-trie root in the background, letting callers overlap it
-    /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the started task).
+    /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the computation).
     /// </summary>
     /// <remarks>
+    /// The work item is queued rather than awaited: <see cref="TxRootComputation.GetResult"/> computes the root
+    /// itself when the pool has not started it, so a pool still busy with the previous block delays nothing.
     /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
-    /// race the memoized task. Callers must invoke both sequentially per payload instance.
+    /// race the memoized computation. Callers must invoke both sequentially per payload instance.
     /// </remarks>
     /// <returns>
-    /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
+    /// The started computation, or <c>null</c> when the transaction count makes inline computation cheaper.
     /// </returns>
-    internal Task<Hash256>? StartTxRootComputation()
+    internal TxRootComputation? StartTxRootComputation()
     {
+        if (_txRoot is not null) return _txRoot;
+
         byte[][] encodedTransactions = _encodedTransactions;
-        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && !RuntimeInformation.IsSingleProcessor
-            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
-            : null;
+        if (encodedTransactions.Length < MinTxsForParallelDecoding || RuntimeInformation.IsSingleProcessor) return null;
+
+        TxRootComputation computation = _txRoot = new(encodedTransactions);
+        // Queued to the global side of the pool, not this thread's local queue: a local item is only stolen once
+        // the workers run dry, which is the case this exists to cover.
+        ThreadPool.UnsafeQueueUserWorkItem(static state => state.Run(), computation, preferLocal: false);
+        return computation;
     }
 
     /// <summary>

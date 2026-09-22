@@ -262,25 +262,25 @@ public class ExecutionPayloadTests
         Assert.That(result.Error, Contains.Substring($"Transaction {invalidIndex}"));
     }
 
-    // The early-started root task must be the one TryGetBlock consumes, with an identical root
+    // The early-started computation must be the one TryGetBlock consumes, with an identical root
     [Test]
     public void TryGetBlock_uses_early_started_tx_root_computation()
     {
         byte[][] rlps = EncodeTxs(count: 64);
 
         ExecutionPayload payload = new() { Transactions = rlps };
-        Task<Hash256>? rootTask = payload.StartTxRootComputation();
+        TxRootComputation? rootComputation = payload.StartTxRootComputation();
         Result<Block> block = payload.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            // A single processor computes the root inline instead of starting the task.
-            Assert.That(rootTask, Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
+            // A single processor computes the root inline instead of starting the computation.
+            Assert.That(rootComputation, Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
         }
     }
 
-    // A root task started for one transaction set must never produce the root of a mutated payload
+    // A computation started for one transaction set must never produce the root of a mutated payload
     [Test]
     public void TryGetBlock_recomputes_tx_root_when_transactions_change_after_early_start()
     {
@@ -302,14 +302,39 @@ public class ExecutionPayloadTests
         byte[][] rlps = EncodeTxs(count: 1);
 
         ExecutionPayload payload = new() { Transactions = rlps };
-        Task<Hash256>? rootTask = payload.StartTxRootComputation();
+        TxRootComputation? rootComputation = payload.StartTxRootComputation();
         Result<Block> block = payload.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootTask, Is.Null);
+            Assert.That(rootComputation, Is.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
         }
+    }
+
+    // The consumer computes the root itself rather than wait for a work item the pool has not started
+    [Test]
+    public void TxRootComputation_computes_the_root_on_the_thread_that_asks_when_nothing_started_it()
+    {
+        byte[][] rlps = EncodeTxs(count: 64);
+
+        TxRootComputation computation = new(rlps);
+
+        Assert.That(computation.GetResult(), Is.EqualTo(TxTrie.CalculateRoot(rlps)));
+    }
+
+    // Whoever loses the claim gets the winner's root, not a second computation's
+    [Test]
+    public void TxRootComputation_gives_every_thread_the_same_root()
+    {
+        byte[][] rlps = EncodeTxs(count: 64);
+        Hash256 expected = TxTrie.CalculateRoot(rlps);
+
+        TxRootComputation computation = new(rlps);
+        Hash256[] roots = new Hash256[8];
+        Parallel.For(0, roots.Length, i => roots[i] = computation.GetResult());
+
+        Assert.That(roots, Is.All.EqualTo(expected));
     }
 
     private static byte[][] EncodeTxs(int count, ulong nonceOffset = 0)
