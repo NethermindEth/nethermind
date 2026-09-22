@@ -287,7 +287,7 @@ internal static class DirtyNodeHasher
         }
 
         // The narrowest kernel that covers the group, so a small one does not permute eight lanes.
-        int batchSize = group.Length > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
+        int batchSize = Avx512F.IsSupported && group.Length > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
         if (group.Length > batchSize) ThrowGroupWiderThanKernel();
 
         int paddedLength = paddedClass * KeccakHash.RateBlockLength;
