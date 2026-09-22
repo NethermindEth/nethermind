@@ -925,7 +925,7 @@ jobs:
             *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
           esac
           curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 60 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
-         chmod +x "${YQ}"
+          chmod +x "${YQ}"
           yq_version="$("${YQ}" --version)"
           [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
 
@@ -2450,7 +2450,7 @@ jobs:
             *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
           esac
           curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 60 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
-         chmod +x "${YQ}"
+          chmod +x "${YQ}"
           yq_version="$("${YQ}" --version)"
           [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
 
