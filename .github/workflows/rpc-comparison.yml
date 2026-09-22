@@ -701,6 +701,11 @@ jobs:
           set -e
           echo "rpc_int exit code: $rc"
 
+          # rpc_int clears its results directory at the start of each pass.
+          if [ -d "integration/$NETWORK/results" ]; then
+            cp -a "integration/$NETWORK/results" rpc-results/default-responses
+          fi
+
           # Latest-block pass (-L): head-dependent tests (eth_baseFee, eth_gasPrice,
           # eth_blockNumber, eth_maxPriorityFeePerGas, ...). rpc_int first waits until the node
           # under test and the reference agree on the latest block (GetConsistentLatestBlock),
