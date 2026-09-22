@@ -1270,6 +1270,31 @@ public class TraceRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Trace_call_reports_eip161_removal_of_empty_account_as_deletion([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"{{TestItem.AddressC}}","gas":"0x186a0"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{TestItem.AddressC}}}":{"balance":"0x0"}}""");
+
+        string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
+            "trace_call", transaction, new[] { "stateDiff" }, "latest", stateOverride);
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement change = document.RootElement.GetProperty("result").GetProperty("stateDiff")
+            .GetProperty(TestItem.AddressC.ToString().ToLowerInvariant());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(change.GetProperty("balance").GetRawText(), Is.EqualTo("""{"-":"0x0"}"""));
+            Assert.That(change.GetProperty("nonce").GetRawText(), Is.EqualTo("""{"-":"0x0"}"""));
+            Assert.That(change.GetProperty("code").GetRawText(), Is.EqualTo("""{"-":"0x"}"""));
+        }
+    }
+
     private static IEnumerable<TestCaseData> StreamingEquivalenceCases()
     {
         string callManyParams = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\",\"gas\":\"0xf4240\"}},[\"statediff\"]],[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\",\"gas\":\"0xf4240\"}},[\"statediff\"]]]";

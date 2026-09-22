@@ -142,13 +142,22 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         }
 
         writer.WritePropertyName("code"u8);
-        if (value.Code is null)
+        if (value.Code is not null)
         {
-            writer.WriteStringValue("="u8);
+            WriteChange(writer, value.Code, options);
+        }
+        else if (value.Balance is { Before: not null, After: null })
+        {
+            // A deleted account always reports balance X -> null, but StateProvider only reports code when either
+            // side is non-empty, so an unreported code change on a deleted account means its empty code was removed.
+            writer.WriteStartObject();
+            writer.WritePropertyName("-"u8);
+            writer.WriteStringValue("0x"u8);
+            writer.WriteEndObject();
         }
         else
         {
-            WriteChange(writer, value.Code, options);
+            writer.WriteStringValue("="u8);
         }
 
         writer.WritePropertyName("nonce"u8);
