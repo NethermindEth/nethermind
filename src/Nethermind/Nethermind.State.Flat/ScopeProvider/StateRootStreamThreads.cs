@@ -18,7 +18,10 @@ public sealed class StateRootStreamThreads : IDisposable
     private readonly Thread[] _threads;
     private readonly ConcurrentQueue<StateRootStreamer> _ready = new();
     private readonly SemaphoreSlim _readyCount = new(0);
-    private volatile bool _disposed;
+    // Scheduling and disposal exclude each other, so nothing is queued once the workers are told to stop, and the
+    // semaphore outlives every release.
+    private readonly Lock _lifecycleLock = new();
+    private bool _disposed;
 
     public StateRootStreamThreads(int threadCount)
     {
@@ -35,11 +38,14 @@ public sealed class StateRootStreamThreads : IDisposable
 
     internal bool TrySchedule(StateRootStreamer streamer)
     {
-        if (_disposed) return false;
+        lock (_lifecycleLock)
+        {
+            if (_disposed) return false;
 
-        _ready.Enqueue(streamer);
-        _readyCount.Release();
-        return true;
+            _ready.Enqueue(streamer);
+            _readyCount.Release();
+            return true;
+        }
     }
 
     private void WorkerLoop()
@@ -47,18 +53,26 @@ public sealed class StateRootStreamThreads : IDisposable
         while (true)
         {
             _readyCount.Wait();
-            if (_ready.TryDequeue(out StateRootStreamer? streamer)) streamer.Drain();
+            if (_ready.TryDequeue(out StateRootStreamer? streamer))
+            {
+                streamer.Drain();
+                continue;
+            }
 
-            // A queued streamer counts as running until drained, and its scope waits for that.
-            if (_disposed && _ready.IsEmpty) return;
+            // Every queued streamer holds a permit, so an empty queue on a permit is the stop signal.
+            return;
         }
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        _readyCount.Release(_threads.Length);
+        lock (_lifecycleLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _readyCount.Release(_threads.Length);
+        }
+
         foreach (Thread thread in _threads) thread.Join();
         _readyCount.Dispose();
     }

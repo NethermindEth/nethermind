@@ -131,10 +131,6 @@ namespace Nethermind.State
         {
         }
 
-        public void HintClear()
-        {
-        }
-
         [SkipLocalsInit]
         public void Set(in UInt256 index, ReadOnlySpan<byte> value) => Set(in index, value, value.IsZero());
 

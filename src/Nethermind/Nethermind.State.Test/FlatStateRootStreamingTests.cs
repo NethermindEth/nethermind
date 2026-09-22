@@ -24,7 +24,9 @@ namespace Nethermind.Store.Test;
 /// must not depend on how far that got when the block ended, so every block is checked against the trie backend,
 /// which applies the block's changes only at its end.
 /// </summary>
+/// <remarks>Alone in the run: it reads the streaming counters, which are process-wide.</remarks>
 [TestFixture]
+[NonParallelizable]
 public class FlatStateRootStreamingTests
 {
     private const int BlockCount = 8;
@@ -38,15 +40,8 @@ public class FlatStateRootStreamingTests
 
     private static readonly IReleaseSpec Spec = Cancun.Instance;
 
-    [TestCase(1, TestName = "StateRoot_StreamedBlocks_MatchesTrieBackend_Seed1")]
-    [TestCase(2, TestName = "StateRoot_StreamedBlocks_MatchesTrieBackend_Seed2")]
-    [TestCase(3, TestName = "StateRoot_StreamedBlocks_MatchesTrieBackend_Seed3")]
-    [TestCase(4, TestName = "StateRoot_StreamedBlocks_MatchesTrieBackend_Seed4")]
-    [TestCase(5, TestName = "StateRoot_StreamedBlocks_MatchesTrieBackend_Seed5")]
-    [TestCase(6, TestName = "StateRoot_StreamedBlocks_MatchesTrieBackend_Seed6")]
-    [TestCase(7, TestName = "StateRoot_StreamedBlocks_MatchesTrieBackend_Seed7")]
-    [TestCase(8, TestName = "StateRoot_StreamedBlocks_MatchesTrieBackend_Seed8")]
-    public void StateRoot_StreamedBlocks_MatchesTrieBackend(int seed)
+    [Test]
+    public void StateRoot_StreamedBlocks_MatchesTrieBackend([Range(1, 8)] int seed)
     {
         List<List<Transaction>> blocks = GenerateBlocks(new Random(seed));
 

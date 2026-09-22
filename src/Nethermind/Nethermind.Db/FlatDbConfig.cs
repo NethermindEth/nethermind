@@ -51,6 +51,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public bool EnableCarryForwardCache { get; set; } = true;
     public bool StreamStateRoot { get; set; } = true;
+    public int StateRootStreamThreadCount { get; set; } = 2;
     public int WarmReadConcurrency { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;
