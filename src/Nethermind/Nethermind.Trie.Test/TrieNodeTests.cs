@@ -27,16 +27,15 @@ namespace Nethermind.Trie.Test;
 public class TrieNodeTests
 {
     /// <param name="dirtyChildWidth">
-    /// Shape of each dirty child, which sets the RLP length that decides how it is hashed:
-    /// 0 is a leaf, which always fits one Keccak rate block; 3 is a branch that fits one block;
-    /// 4 is a branch that fits neither batch shape and must fall back; 16 is a saturated branch at
-    /// exactly 532 bytes.
+    /// Children per dirty child, which sets the RLP length and so the padded length its batch
+    /// groups by: 0 is a leaf, 3 a branch, both one rate block; 4, 12 and 15 are branches padding
+    /// to two, three and four blocks; 16 is a saturated branch at exactly 532 bytes.
     /// </param>
     [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
         [Values(0, 2, 3, 8, 15)] int dirtyBranchCount,
-        [Values(0, 3, 4, 16)] int dirtyChildWidth,
+        [Values(0, 3, 4, 12, 15, 16)] int dirtyChildWidth,
         [Values(false, true)] bool mixChildKinds,
         [Values(false, true)] bool canBeParallel)
     {
@@ -127,21 +126,10 @@ public class TrieNodeTests
     {
         TreePath path = TreePath.Empty;
         int length = BuildDirtyChild(0, width).RlpEncode(NullTrieNodeResolver.Instance, ref path).Length;
-        switch (width)
-        {
-            case 0:
-                Assert.That(length, Is.InRange(Hash256.Size, 135), "a leaf should be hashed, and fit one Keccak rate block");
-                break;
-            case 3:
-                Assert.That(length, Is.LessThanOrEqualTo(135), "width 3 should fit one Keccak rate block");
-                break;
-            case 4:
-                Assert.That(length, Is.InRange(136, 531), "width 4 should fit neither batch shape");
-                break;
-            default:
-                Assert.That(length, Is.EqualTo(532), "width 16 should be a saturated branch");
-                break;
-        }
+        Assert.That(length, Is.GreaterThanOrEqualTo(Hash256.Size), "a child this short would be inlined, not hashed");
+        int expectedBlocks = width switch { 0 or 3 => 1, 4 => 2, 12 => 3, _ => 4 };
+        Assert.That(length / 136 + 1, Is.EqualTo(expectedBlocks), $"width {width} should pad to {expectedBlocks} rate block(s)");
+        if (width == 16) Assert.That(length, Is.EqualTo(532), "a saturated branch has its own kernel");
     }
 
     // private TrieNode _tiniestLeaf;

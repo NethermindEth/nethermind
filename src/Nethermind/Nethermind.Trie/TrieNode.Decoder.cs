@@ -32,16 +32,17 @@ namespace Nethermind.Trie
         private const int StackallocByteThreshold = 384;
         private const int FullBranchRlpLength = KeccakHash.Hash532InputLength;
 
-        /// <summary>Longest child RLP that a single-rate-block batch kernel can take.</summary>
-        private const int SingleBlockBranchRlpLength = KeccakHash.SingleRateBlockMaxInputLength;
+        /// <summary>Longest child RLP the batch kernels are used for.</summary>
+        private const int MaxBatchableRlpLength = KeccakHash.MaxBatchablePaddedLength - 1;
 
         /// <summary>Whether a prepared child RLP can be hashed by one of the batch kernels.</summary>
         /// <remarks>
-        /// Two lengths have a kernel: a saturated branch, and anything short enough for one rate
-        /// block. Shorter than a hash means the child is embedded in its parent and never hashed.
+        /// Shorter than a hash means the child is embedded in its parent and never hashed. The upper
+        /// bound is what the fixed batch buffer holds; a saturated branch is the longest a branch
+        /// child reaches, and a longer leaf falls back to being hashed on its own.
         /// </remarks>
         private static bool IsBatchableBranchRlp(int length) =>
-            length == FullBranchRlpLength || length is >= Hash256.Size and <= SingleBlockBranchRlpLength;
+            length is >= Hash256.Size and <= MaxBatchableRlpLength;
 
         private class TrieNodeDecoder
         {
@@ -305,7 +306,7 @@ namespace Nethermind.Trie
             private static void HashPreparedBranches(TrieNode item, ushort candidateMask)
             {
                 ushort fullMask = 0;
-                ushort singleBlockMask = 0;
+                ushort paddedMask = 0;
                 ushort remaining = candidateMask;
                 while (remaining != 0)
                 {
@@ -317,29 +318,33 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        singleBlockMask |= (ushort)(1 << index);
+                        paddedMask |= (ushort)(1 << index);
                     }
                 }
 
                 if (fullMask != 0) HashPreparedFullBranches(item, fullMask);
-                if (singleBlockMask != 0) HashPreparedSingleBlockBranches(item, singleBlockMask);
+                if (paddedMask != 0) HashPreparedPaddedBranches(item, paddedMask);
             }
 
-            [InlineArray(HashBatchSize * (KeccakHash.RateBlockLength + Hash256.Size) / VectorByteLength)]
-            private struct SingleBlockHashBuffer
+            [InlineArray(HashBatchSize * (KeccakHash.MaxBatchablePaddedLength + Hash256.Size) / VectorByteLength)]
+            private struct PaddedHashBuffer
             {
                 private Vector256<byte> _element0;
             }
 
-            /// <summary>Hashes deferred children that each fit one Keccak rate block.</summary>
+            /// <summary>Padded length a message of this size occupies, always a whole number of rate blocks.</summary>
+            private static int PaddedLength(int length) => (length / KeccakHash.RateBlockLength + 1) * KeccakHash.RateBlockLength;
+
+            /// <summary>Hashes deferred children in groups that share a padded length.</summary>
             /// <remarks>
-            /// This is the population the saturated-branch rule used to exclude: a branch is exactly
-            /// 532 bytes only when all sixteen children are resolved hashes, which measurement put at
-            /// about one percent of branches, while most of the rest fit a single block.
+            /// This is the population the saturated-branch rule excluded: a branch is exactly 532 bytes
+            /// only when all sixteen children are resolved hashes, which measurement put at about one
+            /// percent of branches. A batch kernel takes one input length for every lane, so candidates
+            /// are grouped by the length they pad to and each group is dispatched on its own.
             /// </remarks>
             [SkipLocalsInit]
             [MethodImpl(MethodImplOptions.NoInlining)]
-            private static void HashPreparedSingleBlockBranches(TrieNode item, ushort candidateMask)
+            private static void HashPreparedPaddedBranches(TrieNode item, ushort candidateMask)
             {
                 if (!Avx2.IsSupported || BitOperations.PopCount((uint)candidateMask) < MinimumBatchCount)
                 {
@@ -347,53 +352,87 @@ namespace Nethermind.Trie
                     return;
                 }
 
-                Unsafe.SkipInit(out SingleBlockHashBuffer buffer);
+                Unsafe.SkipInit(out PaddedHashBuffer buffer);
                 Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
-                do
+                int widestBatch = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
+                while (BitOperations.PopCount((uint)candidateMask) >= MinimumBatchCount)
                 {
-                    int pending = BitOperations.PopCount((uint)candidateMask);
-                    // The narrowest kernel that covers what is left, so a small remainder does not
-                    // permute eight lanes to hash two nodes.
-                    int batchSize = Avx512F.IsSupported && pending > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
-                    Span<byte> inputs = storage[..(batchSize * KeccakHash.RateBlockLength)];
-                    Span<byte> hashes = storage.Slice(batchSize * KeccakHash.RateBlockLength, batchSize * Hash256.Size);
-                    int batchCount = Math.Min(batchSize, pending);
-                    inputs.Clear();
-                    ushort batchMask = candidateMask;
-                    for (int i = 0; i < batchCount; i++)
+                    int paddedLength = PaddedLength(ChildRlpLength(item, BitOperations.TrailingZeroCount(candidateMask)));
+                    ushort groupMask = 0;
+                    int groupCount = 0;
+                    for (ushort rest = candidateMask; rest != 0 && groupCount < widestBatch;)
                     {
-                        int index = BitOperations.TrailingZeroCount(candidateMask);
-                        candidateMask ^= (ushort)(1 << index);
+                        int index = BitOperations.TrailingZeroCount(rest);
+                        rest ^= (ushort)(1 << index);
+                        if (PaddedLength(ChildRlpLength(item, index)) != paddedLength) continue;
+                        groupMask |= (ushort)(1 << index);
+                        groupCount++;
+                    }
+
+                    candidateMask ^= groupMask;
+                    if (groupCount < MinimumBatchCount)
+                    {
+                        // A length class on its own is not worth a kernel call.
+                        ResolvePreparedKeys(item, groupMask);
+                        continue;
+                    }
+
+                    // The narrowest kernel that covers the group, so a small one does not permute
+                    // eight lanes to hash two nodes.
+                    int batchSize = Avx512F.IsSupported && groupCount > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
+                    Span<byte> inputs = storage[..(batchSize * paddedLength)];
+                    Span<byte> hashes = storage.Slice(batchSize * paddedLength, batchSize * Hash256.Size);
+                    inputs.Clear();
+                    ushort packMask = groupMask;
+                    for (int i = 0; i < groupCount; i++)
+                    {
+                        int index = BitOperations.TrailingZeroCount(packMask);
+                        packMask ^= (ushort)(1 << index);
                         CappedArray<byte> rlp = Unsafe.As<TrieNode>(item._nodeData![index])!.FullRlp;
-                        if (rlp.Length > SingleBlockBranchRlpLength || rlp.Length < Hash256.Size)
+                        if (PaddedLength(rlp.Length) != paddedLength || rlp.Length < Hash256.Size)
                         {
                             ThrowUnexpectedPreparedChildLength();
                         }
 
-                        Span<byte> input = inputs.Slice(i * KeccakHash.RateBlockLength, KeccakHash.RateBlockLength);
+                        Span<byte> input = inputs.Slice(i * paddedLength, paddedLength);
                         rlp.AsSpan().CopyTo(input);
                         // Both padding bytes land on the same byte at the maximum length, so they merge.
                         input[rlp.Length] |= 0x01;
                         input[^1] |= 0x80;
                     }
 
-                    // The kernel always runs at its native width; lanes past batchCount stay cleared
+                    // The kernel always runs at its native width; lanes past groupCount stay cleared
                     // and their digests are dropped.
-                    if (batchSize == HashBatchSize)
-                        KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref hashes[0]);
-                    else
-                        KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
-
-                    for (int i = 0; i < batchCount; i++)
+                    if (paddedLength == KeccakHash.RateBlockLength)
                     {
-                        int index = BitOperations.TrailingZeroCount(batchMask);
-                        batchMask ^= (ushort)(1 << index);
+                        if (batchSize == HashBatchSize)
+                            KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref hashes[0]);
+                        else
+                            KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
+                    }
+                    else if (batchSize == HashBatchSize)
+                    {
+                        KeccakHash.ComputePaddedMultiBlocks8Avx512(ref inputs[0], paddedLength, ref hashes[0]);
+                    }
+                    else
+                    {
+                        KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], paddedLength, ref hashes[0]);
+                    }
+
+                    ushort storeMask = groupMask;
+                    for (int i = 0; i < groupCount; i++)
+                    {
+                        int index = BitOperations.TrailingZeroCount(storeMask);
+                        storeMask ^= (ushort)(1 << index);
                         ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
                         Unsafe.As<TrieNode>(item._nodeData![index])!.SetPreparedKey(in hash);
                     }
-                } while (BitOperations.PopCount((uint)candidateMask) >= MinimumBatchCount);
+                }
 
                 ResolvePreparedKeys(item, candidateMask);
+
+                static int ChildRlpLength(TrieNode node, int index) =>
+                    Unsafe.As<TrieNode>(node._nodeData![index])!.FullRlp.Length;
 
                 [DoesNotReturn, StackTraceHidden]
                 static void ThrowUnexpectedPreparedChildLength() =>
