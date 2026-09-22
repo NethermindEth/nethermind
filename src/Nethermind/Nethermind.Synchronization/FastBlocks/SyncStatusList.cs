@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _watchedFrontierSince = Stopwatch.GetTimestamp();
             if (_statuses.TrySet(frontier, FastBlockStatus.Pending) && _logger.IsWarn)
             {
-                _logger.Warn($"Requeued block {frontier}, which held the fast blocks insert frontier for {heldFor.TotalSeconds:N0}s without a response.");
+                _logger.Warn($"Requeued block {frontier}, which has held the fast blocks insert frontier with no response for the last {heldFor.TotalSeconds:N0}s.");
             }
         }
 
