@@ -35,6 +35,7 @@ public static class BasePersistence
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
+    private static readonly byte[] WipedForSyncKey = Keccak.Compute("WipedForSync").BytesToArray();
 
     /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
     internal const byte SlotEncodingRaw = 0;
@@ -59,6 +60,8 @@ public static class BasePersistence
         BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
+        // A persisted state pointer means the sync that followed a wipe has completed.
+        kv.Remove(WipedForSyncKey);
     }
 
     internal static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
@@ -175,6 +178,8 @@ public static class BasePersistence
         if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
     }
 
+    internal static bool ReadWipedForSync(IReadOnlyKeyValueStore kv) => kv.Get(WipedForSyncKey) is { Length: > 0 };
+
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
         // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
@@ -208,7 +213,10 @@ public static class BasePersistence
             // The state pointer goes last: a wipe that dies midway must still read back as populated so the
             // next start redoes it instead of treating a half-wiped DB as empty. Only this key is reset;
             // wiping the format markers makes a re-synced RLP DB read back as raw. #11996
-            batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(CurrentStateKey);
+            // The wipe marker shares this batch so the reset pointer never reads back without it.
+            IWriteBatch metadataBatch = batch.GetColumnBatch(FlatDbColumns.Metadata);
+            metadataBatch.Remove(CurrentStateKey);
+            metadataBatch.PutSpan(WipedForSyncKey, [1]);
         }
         finally
         {

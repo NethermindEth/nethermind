@@ -32,6 +32,7 @@ public class ClearColumnsTests
 
         byte[] slotKey = Bytes.FromHexString("0x0102");
         db.GetColumnDb(FlatDbColumns.Storage)[slotKey] = Bytes.FromHexString("0xabcdef");
+        Assert.That(BasePersistence.ReadWipedForSync(metadata), Is.False);
 
         BasePersistence.ClearAllColumns(db);
 
@@ -41,6 +42,7 @@ public class ClearColumnsTests
             Assert.That(BasePersistence.ReadSlotEncoding(metadata), Is.EqualTo(BasePersistence.SlotEncodingRlp));
             Assert.That(BasePersistence.ReadCurrentState(metadata),
                 Is.EqualTo(new StateId(ulong.MaxValue, ValueKeccak.EmptyTreeHash)));
+            Assert.That(BasePersistence.ReadWipedForSync(metadata), Is.True);
             Assert.That(db.GetColumnDb(FlatDbColumns.Storage).Get(slotKey), Is.Null);
         }
     }
@@ -56,10 +58,48 @@ public class ClearColumnsTests
         Assert.That(db.AcknowledgeRepairCalls, Is.EqualTo(1));
     }
 
+    private static IEnumerable<TestCaseData> WipeMarkerLifecycleCases()
+    {
+        foreach ((string name, Func<IColumnsDb<FlatDbColumns>, IPersistence> create) in PersistenceFactories())
+        {
+            yield return new TestCaseData(create, true, true).SetName($"{name}: sync batch keeps the wipe marker");
+            yield return new TestCaseData(create, false, false).SetName($"{name}: persisted state clears the wipe marker");
+        }
+    }
+
+    private static IEnumerable<(string, Func<IColumnsDb<FlatDbColumns>, IPersistence>)> PersistenceFactories()
+    {
+        yield return (nameof(RocksDbPersistence), static db => new RocksDbPersistence(db, LimboLogs.Instance));
+        yield return (nameof(PreimageRocksdbPersistence), static db => new PreimageRocksdbPersistence(db, LimboLogs.Instance, FlatLayout.PreimageFlat));
+        yield return (nameof(FlatInTriePersistence), static db => new FlatInTriePersistence(db, LimboLogs.Instance));
+    }
+
+    // The sync that follows a wipe never advances the state pointer, so on a restart mid-sync only the wipe marker
+    // keeps FlatStateActivationPolicy on flat when a migrated node still holds leftover patricia state. Once a
+    // completed sync persists a state pointer, the DB is no longer awaiting its resync.
+    [TestCaseSource(nameof(WipeMarkerLifecycleCases))]
+    public void Wipe_marker_lasts_until_a_state_pointer_is_persisted(
+        Func<IColumnsDb<FlatDbColumns>, IPersistence> create, bool syncBatch, bool expectedWiped)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        IPersistence persistence = create(db);
+        persistence.Clear();
+
+        StateId to = syncBatch ? StateId.Sync : new StateId(1, ValueKeccak.EmptyTreeHash);
+        using (persistence.CreateWriteBatch(syncBatch ? StateId.Sync : StateId.PreGenesis, to)) { }
+
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistence.WasWipedForSync, Is.EqualTo(expectedWiped));
+            Assert.That(reader.CurrentState, Is.EqualTo(syncBatch ? StateId.PreGenesis : to));
+        }
+    }
+
     // FlatStateActivationPolicy reads the state pointer to tell "flat holds state" from "flat is empty", so a
     // wipe that crashes midway must not have reset it yet: it has to be the last write, after every data column.
     [Test]
-    public void ClearAllColumns_resets_current_state_after_every_data_column_in_the_last_batch()
+    public void ClearAllColumns_resets_current_state_and_marks_the_wipe_after_every_data_column_in_the_last_batch()
     {
         using MemColumnsDb<FlatDbColumns> inner = new();
         BasePersistence.SetCurrentState(inner.GetColumnDb(FlatDbColumns.Metadata),
@@ -81,9 +121,10 @@ public class ClearColumnsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Events.Count(static e => e == WriteOrderSpyColumnsDb.CommitEvent), Is.GreaterThan(1));
-            Assert.That(db.Events.Count(static e => e == nameof(FlatDbColumns.Metadata)), Is.EqualTo(1));
-            Assert.That(db.Events.TakeLast(2), Is.EqualTo(new[] { nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent }));
+            Assert.That(db.Events.Count(static e => e == nameof(FlatDbColumns.Metadata)), Is.EqualTo(2));
+            Assert.That(db.Events.TakeLast(3), Is.EqualTo(new[] { nameof(FlatDbColumns.Metadata), nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent }));
             Assert.That(BasePersistence.ReadCurrentState(inner.GetColumnDb(FlatDbColumns.Metadata)), Is.EqualTo(StateId.PreGenesis));
+            Assert.That(BasePersistence.ReadWipedForSync(inner.GetColumnDb(FlatDbColumns.Metadata)), Is.True);
         }
     }
 

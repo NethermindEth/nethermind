@@ -30,6 +30,8 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
 
     public void AcknowledgeRepair() => db.AcknowledgeRepair();
 
+    public bool WasWipedForSync => BasePersistence.ReadWipedForSync(db.GetColumnDb(FlatDbColumns.Metadata));
+
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();

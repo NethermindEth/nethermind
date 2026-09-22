@@ -26,16 +26,20 @@ public class FlatStateActivationPolicyTests
         Enabled = 1,
         FlatHasData = 2,
         ImportFromPruningTrieState = 4,
-        PatriciaHasData = 8
+        PatriciaHasData = 8,
+        WipedForSync = 16
     }
 
     // Branch 1: Enabled=false → false, regardless of db content
     // Branch 2: Enabled=true, flat persistence has committed state → true
-    // Branch 3: Enabled=true, no committed state, ImportFromPruningTrieState=true → true
-    // Branch 4: Enabled=true, no committed state, ImportFromPruningTrieState=false, patricia has data → false
-    // Branch 5: Enabled=true, no committed state, ImportFromPruningTrieState=false, no patricia data → true
+    // Branch 3: Enabled=true, no committed state, flat was wiped for a state sync → true
+    // Branch 4: Enabled=true, no committed state, ImportFromPruningTrieState=true → true
+    // Branch 5: Enabled=true, no committed state, ImportFromPruningTrieState=false, patricia has data → false
+    // Branch 6: Enabled=true, no committed state, ImportFromPruningTrieState=false, no patricia data → true
     [TestCase(Flags.None, false, Description = "Disabled → always false")]
     [TestCase(Flags.Enabled | Flags.FlatHasData, true, Description = "Flat has committed state → true")]
+    [TestCase(Flags.Enabled | Flags.WipedForSync | Flags.PatriciaHasData, true, Description = "Restart during the resync on a migrated node stays flat")]
+    [TestCase(Flags.Enabled | Flags.WipedForSync, true, Description = "Wiped for sync, no patricia state → true")]
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState=true → true")]
     [TestCase(Flags.Enabled | Flags.PatriciaHasData, false, Description = "Patricia has data → false")]
     [TestCase(Flags.Enabled, true, Description = "Fresh node, flat enabled → true")]
@@ -48,7 +52,8 @@ public class FlatStateActivationPolicyTests
             patriciaHasData: flags.HasFlag(Flags.PatriciaHasData),
             layout: FlatLayout.Flat,
             availableMemoryBytes: 32.GiB,
-            logManager: LimboLogs.Instance);
+            logManager: LimboLogs.Instance,
+            wipedForSync: flags.HasFlag(Flags.WipedForSync));
 
         Assert.That(policy.ShouldTurnOnFlatDb(), Is.EqualTo(expected));
     }
@@ -120,6 +125,31 @@ public class FlatStateActivationPolicyTests
             setup.Persistence.Received(1).AcknowledgeRepair();
             Assert.That(testLogger.LogList.Count(static l => l.Contains("holds no state; the patricia backend stays active")), Is.EqualTo(1));
             Assert.That(testLogger.LogList.Count(static l => l.Contains("may diverge")), Is.Zero);
+        }
+    }
+
+    // A crash after the wipe's last batch but before the repair marker is dropped leaves an empty, still-repaired
+    // flat DB; the marker written by the wipe must make the node redo the cheap wipe rather than fall back to patricia.
+    [Test]
+    public void Restart_between_wipe_and_acknowledge_redoes_the_wipe()
+    {
+        PolicySetup setup = CreateSetup(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: false,
+            patriciaHasData: true,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            wasRepairedOnOpen: true,
+            onRepair: FlatDbOnRepair.Resync,
+            wipedForSync: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
+            setup.Persistence.Received(1).Clear();
+            setup.Persistence.DidNotReceive().AcknowledgeRepair();
         }
     }
 
@@ -196,8 +226,8 @@ public class FlatStateActivationPolicyTests
 
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
-        FlatLayout layout, long availableMemoryBytes, ILogManager logManager)
-        => CreateSetup(enabled, importFromPruning, flatHasData, patriciaHasData, layout, availableMemoryBytes, logManager).Policy;
+        FlatLayout layout, long availableMemoryBytes, ILogManager logManager, bool wipedForSync = false)
+        => CreateSetup(enabled, importFromPruning, flatHasData, patriciaHasData, layout, availableMemoryBytes, logManager, wipedForSync: wipedForSync).Policy;
 
     private readonly record struct PolicySetup(
         FlatStateActivationPolicy Policy,
@@ -208,7 +238,7 @@ public class FlatStateActivationPolicyTests
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
         FlatLayout layout, long availableMemoryBytes, ILogManager logManager,
         bool wasRepairedOnOpen = false, FlatDbOnRepair onRepair = FlatDbOnRepair.Resync,
-        Action<IPersistence, IPersistence.IPersistenceReader> configurePersistence = null)
+        Action<IPersistence, IPersistence.IPersistenceReader> configurePersistence = null, bool wipedForSync = false)
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(enabled);
@@ -221,6 +251,7 @@ public class FlatStateActivationPolicyTests
         IPersistence flatPersistence = Substitute.For<IPersistence>();
         flatPersistence.CreateReader().Returns(reader);
         flatPersistence.WasRepairedOnOpen.Returns(wasRepairedOnOpen);
+        flatPersistence.WasWipedForSync.Returns(wipedForSync);
         configurePersistence?.Invoke(flatPersistence, reader);
 
         MemDb patriciaDb = new();

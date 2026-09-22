@@ -48,6 +48,8 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
 
     public void AcknowledgeRepair() => db.AcknowledgeRepair();
 
+    public bool WasWipedForSync => BasePersistence.ReadWipedForSync(db.GetColumnDb(FlatDbColumns.Metadata));
+
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();

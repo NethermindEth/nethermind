@@ -64,11 +64,14 @@ public sealed class FlatStateActivationPolicy(
             flatHasData = reader.CurrentState != StateId.PreGenesis;
         }
 
+        // A DB wiped for a resync holds no state pointer until the sync completes; it is still the active backend.
+        bool wipedForSync = persistence.WasWipedForSync;
+
         if (persistence.WasRepairedOnOpen)
         {
             // Only resync when flat was the active backend. An unused empty flat DB that RocksDB
             // repaired must not flip a healthy patricia node onto Flat.
-            bool flatWasActive = flatHasData || !patriciaStateDb.Value.GetAllKeys().Any();
+            bool flatWasActive = flatHasData || wipedForSync || !patriciaStateDb.Value.GetAllKeys().Any();
             if (flatDbConfig.OnRepair == FlatDbOnRepair.Resync && flatWasActive)
             {
                 if (logger.IsError)
@@ -92,6 +95,11 @@ public sealed class FlatStateActivationPolicy(
         if (flatHasData)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (existing flat DB detected).");
+            return true;
+        }
+        if (wipedForSync)
+        {
+            if (logger.IsInfo) logger.Info("State backend: flat (resuming the state sync after a flat DB wipe).");
             return true;
         }
         if (flatDbConfig.ImportFromPruningTrieState)

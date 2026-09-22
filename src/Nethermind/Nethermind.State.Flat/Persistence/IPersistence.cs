@@ -28,7 +28,15 @@ public interface IPersistence
     bool WasRepairedOnOpen => false;
 
     /// <summary>Drops the repair marker without wiping state, so a later open does not treat the DB as newly repaired.</summary>
-    void AcknowledgeRepair();
+    void AcknowledgeRepair() { }
+
+    /// <summary>True once <see cref="Clear"/> has wiped this DB to receive a state sync.</summary>
+    /// <remarks>
+    /// Cleared once a state pointer is persisted again, i.e. when the sync completes. While
+    /// <see cref="IPersistenceReader.CurrentState"/> is pre-genesis it tells a wiped DB awaiting its sync from one
+    /// that was never used, so the backend decision survives a restart during the resync.
+    /// </remarks>
+    bool WasWipedForSync => false;
 
     public interface IPersistenceReader : IDisposable
     {
