@@ -280,14 +280,32 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockParameter fromBlock = traceFilterForRpc.FromBlock ?? BlockParameter.Latest;
             BlockParameter toBlock = traceFilterForRpc.ToBlock ?? BlockParameter.Latest;
 
-            List<Block> blocks = [];
+            List<(Block Block, BlockHeader Parent)> blocks = [];
             foreach (SearchResult<Block> blockSearch in blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock))
             {
                 if (blockSearch.IsError)
                 {
                     return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
                 }
-                blocks.Add(blockSearch.Object!);
+                Block block = blockSearch.Object!;
+                if (!blockchainBridge.HasStateForBlock(block.Header))
+                {
+                    return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
+                }
+
+                SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
+                if (parentSearch.IsError)
+                {
+                    return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
+                }
+
+                BlockHeader parentHeader = parentSearch.Object!;
+                if (!blockchainBridge.HasStateForBlock(parentHeader))
+                {
+                    return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentHeader);
+                }
+
+                blocks.Add((block, parentHeader));
             }
 
             ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
@@ -299,52 +317,23 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         types, ParityTraceStreamMode.Store, includeTxHash: false,
                         writer, pipeWriter, ct, storeFilter: filter);
-                    foreach (Block block in blocks)
+                    foreach ((Block block, BlockHeader parentHeader) in blocks)
                     {
-                        if (!TryResolveParentForTracing(block, out BlockHeader? parentHeader)) break;
-                        if (!TryStreamBlockInParallel(parentHeader!, block, types, streamingTracer, ct))
-                            ExecuteBlockStreaming(parentHeader!, block, streamingTracer, ct);
+                        if (!TryStreamBlockInParallel(parentHeader, block, types, streamingTracer, ct))
+                            ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct);
                     }
                 },
                 runBuffered: () => RunBufferedTraceFilter(blocks, filter));
         }
 
-        private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(List<Block> blocks, TxTraceFilter filter)
+        private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(List<(Block Block, BlockHeader Parent)> blocks, TxTraceFilter filter)
         {
             List<ParityLikeTxTrace> txTraces = [];
-            foreach (Block block in blocks)
+            foreach ((Block block, BlockHeader parentHeader) in blocks)
             {
-                if (!TryResolveParentForTracing(block, out BlockHeader? parentHeader)) break;
-                txTraces.AddRange(ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
+                txTraces.AddRange(ExecuteBlockParallelOrReplay(parentHeader, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
             }
             return filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
-        }
-
-        private bool TryResolveParentForTracing(Block block, out BlockHeader? parentHeader)
-        {
-            parentHeader = null;
-
-            if (!blockchainBridge.HasStateForBlock(block.Header))
-            {
-                if (_logger.IsWarn) _logger.Warn($"trace_filter stream truncated: missing state for block {block.Header.Number}");
-                return false;
-            }
-
-            SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
-            if (parentSearch.IsError)
-            {
-                if (_logger.IsWarn) _logger.Warn($"trace_filter stream truncated: parent lookup error for block {block.Header.Number}");
-                return false;
-            }
-
-            parentHeader = parentSearch.Object!;
-            if (!blockchainBridge.HasStateForBlock(parentHeader))
-            {
-                if (_logger.IsWarn) _logger.Warn($"trace_filter stream truncated: missing state for parent of block {block.Header.Number}");
-                return false;
-            }
-
-            return true;
         }
 
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
