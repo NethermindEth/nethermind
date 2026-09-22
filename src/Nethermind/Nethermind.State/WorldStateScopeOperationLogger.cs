@@ -56,6 +56,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     {
         public void HintWarmAccount(Address address) => innerScope.HintWarmAccount(address);
 
+        public void HintSetAccount(Address address, Account? account) => innerScope.HintSetAccount(address, account);
+
         public void HintWarmSlot(Address address, in UInt256 index) => innerScope.HintWarmSlot(address, in index);
 
         public void Dispose()
@@ -123,6 +125,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         public void HintSet(in UInt256 index) => storageTree.HintSet(in index);
 
         public void HintSet(in UInt256 index, in UInt256 value) => storageTree.HintSet(in index, in value);
+
+        public void HintClear() => storageTree.HintClear();
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch

@@ -49,6 +49,8 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
+        public void HintSetAccount(Address address, Account? account) => inner.HintSetAccount(address, account);
+
         public Account? Get(Address address)
         {
             IStateReadOverlay? overlay = slot.Current;
@@ -137,5 +139,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public void HintSet(in UInt256 index) => inner.HintSet(in index);
 
         public void HintSet(in UInt256 index, in UInt256 value) => inner.HintSet(in index, in value);
+
+        public void HintClear() => inner.HintClear();
     }
 }

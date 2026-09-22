@@ -67,6 +67,16 @@ public interface IWorldStateScopeProvider
         void HintWarmSlot(Address address, in UInt256 index) { }
 
         /// <summary>
+        /// Hint that a committed round wrote <paramref name="account"/>, or removed the account when it is null.
+        /// </summary>
+        /// <remarks>
+        /// Called in commit order, like <see cref="IStorageTree.HintSet"/> and <see cref="IStorageTree.HintClear"/>, so a
+        /// backend may apply the block's changes to its tries while the block executes. Speculative executions must not
+        /// forward it.
+        /// </remarks>
+        void HintSetAccount(Address address, Account? account);
+
+        /// <summary>
         /// Get the account information for the following address.
         /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.
         /// </summary>
@@ -219,6 +229,12 @@ public interface IWorldStateScopeProvider
 
         /// <summary>Hint that a transaction committed <paramref name="value"/> to a slot.</summary>
         void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
+
+        /// <summary>
+        /// Hint that a committed round cleared the storage. It precedes the round's <see cref="HintSet(in UInt256, in UInt256)"/>
+        /// calls, which are the writes made after the clear.
+        /// </summary>
+        void HintClear();
     }
 
     /// <summary>

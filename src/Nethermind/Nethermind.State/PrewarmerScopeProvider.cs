@@ -297,6 +297,13 @@ public class PrewarmerScopeProvider(
             (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(address, in index);
         }
 
+        // Only the consumer's commits are the block's changes; a populator's are speculative.
+        public void HintSetAccount(Address address, Account? account)
+        {
+            if (isPrewarmer || storageReadCapture is not null) return;
+            baseScope.HintSetAccount(address, account);
+        }
+
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             CodePrefetcher? code = null;
@@ -421,6 +428,8 @@ public class PrewarmerScopeProvider(
             else baseStorageTree.HintSet(in index, in value);
         }
 
+        public void HintClear() => baseStorageTree.HintClear();
+
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
             // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per
@@ -455,6 +464,8 @@ public class PrewarmerScopeProvider(
         }
 
         public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
+
+        public void HintClear() => baseStorageTree.HintClear();
     }
 
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool isPrewarmer) : IWorldStateScopeProvider.IWorldStateWriteBatch

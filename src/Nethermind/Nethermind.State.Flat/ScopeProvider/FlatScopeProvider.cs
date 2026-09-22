@@ -31,6 +31,10 @@ public class FlatScopeProvider(
         return new WarmReadPool(concurrency);
     });
 
+    private readonly Lazy<StateRootStreamThreads>? _stateRootThreads = isReadOnly || !configuration.StreamStateRoot
+        ? null
+        : new Lazy<StateRootStreamThreads>(static () => new StateRootStreamThreads(2));
+
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock), usage);
 
     public bool HasStateForTargetBlock(BlockHeader targetBlock) => this.HasRootForTarget(_stateHeaderProvider, targetBlock);
@@ -61,12 +65,14 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             warmReadPool: _warmReadPool,
-            isReadOnly: isReadOnly);
+            isReadOnly: isReadOnly,
+            stateRootThreads: _stateRootThreads?.Value);
         return true;
     }
 
     public void Dispose()
     {
         if (_warmReadPool is { IsValueCreated: true }) _warmReadPool.Value.Dispose();
+        if (_stateRootThreads is { IsValueCreated: true }) _stateRootThreads.Value.Dispose();
     }
 }

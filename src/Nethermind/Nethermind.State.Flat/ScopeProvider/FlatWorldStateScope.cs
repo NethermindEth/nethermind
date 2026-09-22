@@ -63,6 +63,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private int _earlyRestoredSlots;
     private int _earlyAbandonedTrees;
 
+    private readonly StateRootStreamer? _streamer;
+
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
@@ -77,7 +79,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        StateRootStreamThreads? stateRootThreads = null)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
@@ -94,6 +97,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+
+        // A verifying scope reads the tries on the block thread while the block executes, which the streamer owns.
+        if (stateRootThreads is not null && configuration.StreamStateRoot && !isReadOnly && !_trieless && !configuration.VerifyWithTrie)
+        {
+            _streamer = new StateRootStreamer(StateTree, _initialStateRoot, stateRootThreads, logManager);
+        }
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
@@ -132,6 +141,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
+        _streamer?.Dispose();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -216,8 +226,26 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void UpdateRootHash()
     {
+        _streamer?.Finish();
         if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
     }
+
+    internal StateRootStreamer? Streamer => _streamer;
+
+    // The batch found every value it wrote already in place, so its trie hashes to the streamed root; the hashing is
+    // what UpdateRootHash would do next anyway.
+    private void CheckStreamedRoot(Hash256 streamedRoot)
+    {
+        StateTree.HashDirtyNodes();
+        Hash256 root = StateTree.RootRef?.Keccak ?? Keccak.EmptyTreeHash;
+        if (root == streamedRoot) return;
+
+        Metrics.RecordStateRootStreamMismatch();
+        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+        if (logger.IsWarn) logger.Warn($"Streamed state root {streamedRoot} differs from the written one {root} at block {_currentStateId.BlockNumber + 1}; the written one is used");
+    }
+
+    public void HintSetAccount(Address address, Account? account) => _streamer?.AddAccount(address, account);
 
     public Account? Get(Address address)
     {
@@ -517,12 +545,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
+        _streamer?.Finish();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        _streamer?.Finish();
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
@@ -555,6 +585,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
         _pausePrewarmer = false;
+        _streamer?.StartBlock(RootHash);
 
         if (_earlyApplier is not null) ReportEarlyApply(blockNumber);
     }
@@ -688,6 +719,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             stateSetter.Set(kv.Key, kv.Value);
                         }
                     }
+
+                    if (scope._streamer?.TakeStreamedRoot() is { } streamedRoot) scope.CheckStreamedRoot(streamedRoot);
                 }
             }
             finally

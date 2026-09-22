@@ -80,6 +80,8 @@ public sealed class FlatStorageTree(
 
     public Hash256 RootHash => Volatile.Read(ref _trees)?.Tree.RootHash ?? _storageRoot;
 
+    internal Address Address => _address;
+
     internal bool IsDisposed => _scope.IsDisposed;
 
     public void Get(in UInt256 index, out UInt256 value)
@@ -103,11 +105,13 @@ public sealed class FlatStorageTree(
     // Reads do not warm the trie: most reads come through the prewarmer, and read-only slots
     // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
-    // path instead.
+    // path instead, and a streamed write resolves the path by being applied.
     public void HintSet(in UInt256 index) => WarmUpSlot(index);
 
     public void HintSet(in UInt256 index, in UInt256 value)
     {
+        if (_scope.Streamer?.AddSlot(this, in index, in value) == true) return;
+
         WarmUpSlot(index);
         if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) == EarlyClaimed) return;
 
@@ -116,6 +120,8 @@ public sealed class FlatStorageTree(
         // A set flag means a pass that has yet to clear it will see this write.
         if (Volatile.Read(ref _earlyQueued) == 0 && Interlocked.Exchange(ref _earlyQueued, 1) == 0) _scope.EarlyApplier.Enqueue(this);
     }
+
+    public void HintClear() => _scope.Streamer?.AddClear(this);
 
     private ConcurrentQueue<(UInt256 Slot, UInt256 Value)> CreateEarlyWrites()
     {
@@ -260,6 +266,30 @@ public sealed class FlatStorageTree(
     }
 
     private void Set(in UInt256 slot, in UInt256 value) => _bundle.SetChangedSlot(_address, slot, value);
+
+    // The Stream* members are called only by the StateRootStreamer that owns the tries while the block executes.
+    [SkipLocalsInit]
+    internal void StreamSet(in UInt256 index, in UInt256 value)
+    {
+        Unsafe.SkipInit(out EvmWord word);
+        bool isZero = value.IsZero;
+        GetTrees().Tree.Set(in index, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero);
+    }
+
+    // What the end-of-block write batch does to the trie on a clear, its flat side left to that batch. Only the root
+    // node goes: RootHash is read on the block thread and must stay the committed root until the batch commits.
+    internal void StreamClear() => GetTrees().Tree.RootRef = null;
+
+    // Hashes without publishing the root, so RootHash stays the committed one until the write batch commits the trie.
+    internal Hash256 StreamHash()
+    {
+        StorageTree tree = GetTrees().Tree;
+        tree.HashDirtyNodes(canBeParallel: false);
+        return tree.RootRef?.Keccak ?? Keccak.EmptyTreeHash;
+    }
+
+    // The root the trie had when this tree was created, which a failed state root stream rolls it back to.
+    internal void StreamRollBack() => GetTrees().Tree.RootHash = _storageRoot;
 
     internal void ClearStorage()
     {
