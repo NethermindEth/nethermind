@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
 using FlatPersistence = Nethermind.State.Flat.Persistence.IPersistence;
@@ -23,10 +25,12 @@ internal static class PbtOfflineSource
     /// <summary>Keccak address path, the account/slot tag, then the Keccak slot path.</summary>
     private const int PreimageKeyLength = 65;
 
+    private const string ScanPhase = "PBT export scan";
+
     public static void WriteArtifacts(FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore codeSource,
         PbtArtifactIdentity identity, PbtImageAnchor anchor, string scratchDirectory,
-        Stream snapshot, Stream preimages, Stream manifest, int sortBufferBytes = 256 * 1024 * 1024,
-        CancellationToken cancellationToken = default)
+        Stream snapshot, Stream preimages, Stream manifest, ILogManager logManager,
+        int sortBufferBytes = 256 * 1024 * 1024, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(sortBufferBytes, 1024);
         ArgumentOutOfRangeException.ThrowIfNegative(anchor.MaxBufferedCodeBytes);
@@ -39,14 +43,18 @@ internal static class PbtOfflineSource
             !string.Equals(identity.GenesisHash, anchor.GenesisHash.ToString(), StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(identity.AnchorMptRoot, anchor.Header.StateRoot.ToString(), StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Offline source does not match the trusted pre-activation anchor.");
+        ILogger logger = logManager.GetClassLogger(typeof(PbtOfflineSource));
+        Stopwatch exporting = Stopwatch.StartNew();
         string directory = Path.Combine(scratchDirectory, $"pbt-export-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtSortedSpool leaves = new(directory, sortBufferBytes / 2, cancellationToken);
-            using PbtSortedSpool rawKeys = new(directory, sortBufferBytes / 2, cancellationToken);
+            using PbtSortedSpool leaves = new(directory, sortBufferBytes / 2, logManager, cancellationToken);
+            using PbtSortedSpool rawKeys = new(directory, sortBufferBytes / 2, logManager, cancellationToken);
             Span<byte> preimageKey = stackalloc byte[PreimageKeyLength];
             Span<byte> accountValue = stackalloc byte[Address.Size + sizeof(uint)];
+            ulong scannedAccounts = 0;
+            ulong scannedSlots = 0;
             foreach ((ValueHash256 accountKey, byte[] accountRlp) in ReadAccounts())
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -80,6 +88,7 @@ internal static class PbtOfflineSource
                         ValueKeccak.Compute(slot.Bytes).Bytes.CopyTo(preimageKey[33..]);
                         rawKeys.Add(preimageKey, slot.Bytes);
                         count = checked(count + 1);
+                        scannedSlots++;
                     }
                 }
                 // The zero tag and slot-hash region keep an account ahead of its own slots.
@@ -89,24 +98,37 @@ internal static class PbtOfflineSource
                 BinaryPrimitives.WriteUInt32BigEndian(accountValue[Address.Size..], count);
                 rawKeys.Add(preimageKey, accountValue);
             }
+            // The scan reporter lives as long as the walk it reports, so its final line closes the phase.
             IEnumerable<(ValueHash256 Key, byte[] Rlp)> ReadAccounts()
             {
+                using ProgressReporter progress = PbtImageProgress.Start(ScanPhase, "acc", 0, logManager);
+                progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(ScanPhase, "acc", p)} | {scannedSlots,15:N0} slot");
                 using FlatPersistence.IFlatIterator accounts = source.CreateAccountIterator(default, ValueKeccak.MaxValue);
-                while (accounts.MoveNext()) yield return (accounts.CurrentKey, accounts.CurrentValue.ToArray());
+                while (accounts.MoveNext())
+                {
+                    progress.Update(++scannedAccounts);
+                    yield return (accounts.CurrentKey, accounts.CurrentValue.ToArray());
+                }
                 // The flat iterator's upper bound is exclusive and truncates to twenty bytes.
                 ValueHash256 lastKey = default;
                 lastKey.BytesAsSpan[..20].Fill(0xff);
                 if (source.GetAccount(new Address(lastKey.Bytes[..20])) is { } lastAccount)
+                {
+                    progress.Update(++scannedAccounts);
                     yield return (lastKey, AccountDecoder.Slim.Encode(lastAccount).Bytes);
+                }
             }
 
             ulong leafCount = 0;
             ValueHash256 root = PbtImageRootCalculator.Calculate(CountLeaves(), cancellationToken);
-            PbtArtifactWriter.Write(snapshot, preimages, manifest, identity, root, leafCount, Leaves(), Accounts(), cancellationToken);
+            PbtArtifactWriter.Write(snapshot, preimages, manifest, identity, root, leafCount,
+                Leaves("PBT export snapshot", leafCount), Accounts(), cancellationToken);
+            if (logger.IsInfo)
+                logger.Info($"PBT export wrote {leafCount:N0} leaves for {scannedAccounts:N0} accounts and {scannedSlots:N0} slots in {exporting.Elapsed:hh\\:mm\\:ss}.");
 
             IEnumerable<RebuildEntry> CountLeaves()
             {
-                foreach (RebuildEntry entry in Leaves())
+                foreach (RebuildEntry entry in Leaves("PBT export hash", 0))
                 {
                     leafCount++;
                     yield return entry;
@@ -116,18 +138,27 @@ internal static class PbtOfflineSource
             // Leaf keys are prefix-free (34 bytes in zone 0/1, 66 in zone 255), so their raw order is total.
             void AddLeaf(in PbtStorageTreeKey key, ValueHash256 value) => leaves.Add(key.Bytes, value.Bytes);
 
-            IEnumerable<RebuildEntry> Leaves()
+            // The spool is drained once to hash and once to write, so each drain names its own phase.
+            IEnumerable<RebuildEntry> Leaves(string phase, ulong total)
             {
+                ulong drained = 0;
+                using ProgressReporter progress = PbtImageProgress.Start(phase, "leaf", total, logManager);
                 using PbtSortedSpool.Cursor cursor = leaves.Read();
                 while (cursor.MoveNext())
+                {
+                    progress.Update(++drained);
                     yield return new RebuildEntry(new PbtStorageTreeKey(cursor.Key), new ValueHash256(cursor.Value));
+                }
             }
 
             IEnumerable<PbtAccountPreimages> Accounts()
             {
+                ulong written = 0;
+                using ProgressReporter progress = PbtImageProgress.Start("PBT export preimages", "acc", scannedAccounts, logManager);
                 using PbtSortedSpool.Cursor cursor = rawKeys.Read();
                 while (cursor.MoveNext())
                 {
+                    progress.Update(++written);
                     if (cursor.Key[32] != 0) throw new InvalidDataException("Orphan source slot.");
                     ValueHash256 accountHash = new(cursor.Key[..32]);
                     uint count = BinaryPrimitives.ReadUInt32BigEndian(cursor.Value[Address.Size..]);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -31,6 +32,7 @@ internal sealed class PbtAnchorPublication(
 {
     private static readonly byte[] _provenanceKey = "migrationPreparedAnchor"u8.ToArray();
     private const int BatchSize = 4096;
+    private const string StagePhase = "PBT anchor staging";
 
     /// <summary>How many of one account's slot runs staging buffers before spilling them to the target.</summary>
     internal int MaxBufferedRuns { get; init; } = 4096;
@@ -40,6 +42,7 @@ internal sealed class PbtAnchorPublication(
         PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        Stopwatch importing = Stopwatch.StartNew();
         byte[] provenance = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(identity);
         IDb metadata = targetDb.GetColumnDb(PbtColumns.Metadata);
         StateId anchorState = new(anchor.Header);
@@ -60,7 +63,7 @@ internal sealed class PbtAnchorPublication(
             await using FileStream copiedSnapshot = new(copyPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             await snapshot.CopyToAsync(copiedSnapshot, cancellationToken);
             copiedSnapshot.Position = 0;
-            using PbtVerifiedImage image = PbtImageVerifier.Verify(copiedSnapshot, preimages, identity, anchor, scratchDirectory, cancellationToken);
+            using PbtVerifiedImage image = PbtImageVerifier.Verify(copiedSnapshot, preimages, identity, anchor, scratchDirectory, logManager, cancellationToken);
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
 
             if (manager.HasStateForBlock(anchorState))
@@ -79,6 +82,8 @@ internal sealed class PbtAnchorPublication(
                 if (reader.CurrentState != StateId.PreGenesis)
                     throw new InvalidOperationException("PBT anchor staging must start empty.");
 
+            ulong stagedAccounts = 0;
+            ulong stagedSlots = 0;
             using (LogicalBatch batch = new(target))
             {
                 // The image lists an account's slots in hash order, so a run completes only once the account ends. A
@@ -86,12 +91,16 @@ internal sealed class PbtAnchorPublication(
                 Dictionary<PbtStorageTreeKey, ISlotRun> runs = [];
                 Address? slotsAddress = null;
                 bool spilled = false;
+                using ProgressReporter progress = PbtImageProgress.Start(StagePhase, "acc", 0, logManager);
+                progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(StagePhase, "acc", p)} | {stagedSlots,15:N0} slot");
                 image.Replay((address, account, code) =>
                 {
+                    progress.Update(++stagedAccounts);
                     batch.Next().SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
                     if (code.Length != 0) batch.Next().SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
                 }, (address, slot, value) =>
                 {
+                    stagedSlots++;
                     if (address != slotsAddress)
                     {
                         FlushRuns();
@@ -177,7 +186,9 @@ internal sealed class PbtAnchorPublication(
             // The import bypassed the live persistence: drop what it cached before the write.
             coordinator.ResetPersistedStateId();
             persistence.ClearCaches();
-            if (_logger.IsInfo) _logger.Info($"Imported the PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} with root {root}.");
+            if (_logger.IsInfo)
+                _logger.Info($"Imported the PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} with root {root}: " +
+                    $"{stagedAccounts:N0} accounts and {stagedSlots:N0} slots in {importing.Elapsed:hh\\:mm\\:ss}.");
             return root;
         }
         finally { File.Delete(copyPath); }

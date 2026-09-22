@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -40,7 +41,7 @@ public class PbtImageVerifierTests
         PbtImageAnchor anchor = SyntheticAnchor(metadata);
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
         using FileStream preimages = OpenArtifact(name, "preimages.bin");
-        using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory);
+        using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance);
         using JsonDocument state = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Fixtures, "states", name + ".alloc.json")));
         Dictionary<Address, (Account Account, byte[] Code)> accounts = [];
         Dictionary<(Address Address, UInt256 Slot), ValueHash256> storage = [];
@@ -93,7 +94,7 @@ public class PbtImageVerifierTests
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
         using FileStream preimages = OpenArtifact(name, "preimages.bin");
 
-        Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory));
+        Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance));
         Assert.That(Directory.GetFileSystemEntries(_stagingDirectory), Is.Empty);
     }
 
@@ -159,7 +160,7 @@ public class PbtImageVerifierTests
         PbtPreimageCodec.Write(preimages, accounts);
         preimages.Position = 0;
 
-        InvalidDataException exception = Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory))!;
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance))!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception.Message, Does.Not.Contain("PBT snapshot root mismatch"));
@@ -213,7 +214,7 @@ public class PbtImageVerifierTests
         using MemoryStream snapshot = new(bytes);
         using FileStream preimages = OpenArtifact("anchor", "preimages.bin");
 
-        Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, identity, anchor, _stagingDirectory));
+        Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, identity, anchor, _stagingDirectory, LimboLogs.Instance));
         Assert.That(Directory.GetFileSystemEntries(_stagingDirectory), Is.Empty);
     }
 
@@ -225,11 +226,11 @@ public class PbtImageVerifierTests
         using FileStream preimages = OpenArtifact("anchor", "preimages.bin");
         if (cancelVerification)
         {
-            Assert.Throws<OperationCanceledException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, new CancellationToken(true)));
+            Assert.Throws<OperationCanceledException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance, new CancellationToken(true)));
         }
         else
         {
-            using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory);
+            using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance);
             Assert.That(Directory.GetDirectories(_stagingDirectory), Has.Length.EqualTo(1));
             Assert.Throws<OperationCanceledException>(() => image.Replay((_, _, _) => Assert.Fail("Cancelled replay"), (_, _, _) => Assert.Fail("Cancelled replay"), new CancellationToken(true)));
             image.Dispose();
@@ -251,11 +252,11 @@ public class PbtImageVerifierTests
         using FileStream preimages = OpenArtifact("a5", "preimages.bin");
 
         Assert.Throws<PbtImageResourceLimitException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor),
-            anchor with { MaxBufferedCodeBytes = 0 }, _stagingDirectory));
+            anchor with { MaxBufferedCodeBytes = 0 }, _stagingDirectory, LimboLogs.Instance));
         Assert.That(Directory.GetFileSystemEntries(_stagingDirectory), Is.Empty);
         snapshot.Position = 0;
         preimages.Position = 0;
-        using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory);
+        using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance);
     }
 
     private static FileStream OpenArtifact(string name, string file) => File.OpenRead(Path.Combine(Fixtures, "canonical", name, file));

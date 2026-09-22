@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
@@ -47,14 +49,18 @@ internal static class PbtImageVerifier
     private const byte DelegationKind = 2;
     private const byte SlotKind = 3;
 
+    private const string RebuildPhase = "PBT verify rebuild";
+
     private const int SequenceLength = sizeof(ulong);
     private const int SlotCountLength = sizeof(uint);
     private const int LeafLength = 32;
 
     public static PbtVerifiedImage Verify(Stream snapshot, Stream preimages, PbtArtifactIdentity identity,
-        PbtImageAnchor anchor, string stagingDirectory, CancellationToken cancellationToken = default)
+        PbtImageAnchor anchor, string stagingDirectory, ILogManager logManager, CancellationToken cancellationToken = default)
     {
         ValidateAnchor(identity, anchor);
+        ILogger logger = logManager.GetClassLogger(typeof(PbtImageVerifier));
+        Stopwatch verifying = Stopwatch.StartNew();
         string directory = Path.Combine(stagingDirectory, $"pbt-verify-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         try
@@ -62,21 +68,29 @@ internal static class PbtImageVerifier
             string leafPath = Path.Combine(directory, "leaves");
             (ValueHash256 claimedRoot, ulong count) = PbtSnapshotCodec.ReadHeader(snapshot);
             // Snapshot leaves already ascend, so they stream straight into a table with no sort.
-            BuildTable(leafPath, (ref SortedTableBuilder<ArenaBufferWriter> table) =>
+            using (ProgressReporter load = PbtImageProgress.Start("PBT verify load", "leaf", count, logManager))
             {
-                foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, count, cancellationToken))
-                    table.Add(entry.Key.Bytes, entry.Leaf.Bytes);
-            });
-            ValueHash256 root = PbtImageRootCalculator.Calculate(Leaves(leafPath, cancellationToken), cancellationToken);
+                ulong loaded = 0;
+                BuildTable(leafPath, (ref SortedTableBuilder<ArenaBufferWriter> table) =>
+                {
+                    foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, count, cancellationToken))
+                    {
+                        load.Update(++loaded);
+                        table.Add(entry.Key.Bytes, entry.Leaf.Bytes);
+                    }
+                });
+            }
+            ValueHash256 root = PbtImageRootCalculator.Calculate(
+                Leaves(leafPath, "PBT verify hash", count, logManager, cancellationToken), cancellationToken);
             if (root != claimedRoot) throw new InvalidDataException("PBT snapshot root mismatch.");
 
-            using PbtSortedSpool results = new(directory, SortBufferBytes, cancellationToken);
+            using PbtSortedSpool results = new(directory, SortBufferBytes, logManager, cancellationToken);
             string residualPath = Path.Combine(directory, "residual");
             long residualCount;
-            using (PbtSortedSpool requests = new(directory, SortBufferBytes, cancellationToken))
+            using (PbtSortedSpool requests = new(directory, SortBufferBytes, logManager, cancellationToken))
             {
-                EmitRequests(preimages, requests, cancellationToken);
-                residualCount = Join(leafPath, requests, results, residualPath, cancellationToken);
+                EmitRequests(preimages, requests, logManager, cancellationToken);
+                residualCount = Join(leafPath, requests, results, residualPath, logManager, cancellationToken);
             }
 
             string logicalPath = Path.Combine(directory, "logical");
@@ -85,12 +99,14 @@ internal static class PbtImageVerifier
             {
                 CodeTable code = new(residual);
                 ValueHash256 mptRoot = PbtImageMptRootCalculator.Calculate(
-                    Accounts(results, code, logical, anchor, cancellationToken), cancellationToken);
+                    Accounts(results, code, logical, anchor, logManager, cancellationToken), cancellationToken);
                 if (mptRoot != anchor.Header.StateRoot!.ValueHash256)
                     throw new InvalidDataException("Snapshot does not reproduce the anchor MPT root.");
                 if (code.Consumed != residualCount)
                     throw new InvalidDataException("Snapshot contains leaves not accounted for by its preimages and code.");
             }
+            if (logger.IsInfo)
+                logger.Info($"PBT verified {count:N0} leaves against root {root} in {verifying.Elapsed:hh\\:mm\\:ss}.");
             return new PbtVerifiedImage(directory, logicalPath, root);
         }
         catch
@@ -119,24 +135,33 @@ internal static class PbtImageVerifier
         finally { writer.Dispose(); }
     }
 
-    private static IEnumerable<RebuildEntry> Leaves(string path, CancellationToken cancellationToken)
+    private static IEnumerable<RebuildEntry> Leaves(string path, string phase, ulong total, ILogManager logManager,
+        CancellationToken cancellationToken)
     {
+        ulong read = 0;
+        using ProgressReporter progress = PbtImageProgress.Start(phase, "leaf", total, logManager);
         using PbtSortedSpool.Cursor cursor = new([path], cancellationToken);
         while (cursor.MoveNext())
+        {
+            progress.Update(++read);
             yield return new RebuildEntry(new PbtStorageTreeKey(cursor.Key), new ValueHash256(cursor.Value));
+        }
     }
 
     /// <summary>Emit one request per leaf the preimage walk will need, keyed by its PBT key.</summary>
     /// <remarks>The request carries the walk position so the join's results replay in preimage order,
     /// and the account request also carries the address and slot count the fold cannot otherwise recover.</remarks>
-    private static void EmitRequests(Stream preimages, PbtSortedSpool requests, CancellationToken cancellationToken)
+    private static void EmitRequests(Stream preimages, PbtSortedSpool requests, ILogManager logManager,
+        CancellationToken cancellationToken)
     {
         PbtPreimageReader reader = new(preimages);
         // Sized for the largest payload, a slot key; an account's address and slot count are shorter.
         Span<byte> value = stackalloc byte[SequenceLength + 1 + LeafLength];
         ulong sequence = 0;
+        using ProgressReporter progress = PbtImageProgress.Start("PBT verify requests", "req", 0, logManager);
         while (reader.ReadAccount(out Address? address, out uint slots, cancellationToken))
         {
+            progress.Update(sequence);
             Address account = address!;
             BinaryPrimitives.WriteUInt64BigEndian(value, sequence++);
             value[SequenceLength] = BasicKind;
@@ -154,6 +179,7 @@ internal static class PbtImageVerifier
 
             for (uint index = 0; index < slots; index++)
             {
+                progress.Update(sequence);
                 ValueHash256 slot = reader.ReadSlot(cancellationToken);
                 BinaryPrimitives.WriteUInt64BigEndian(value, sequence++);
                 value[SequenceLength] = SlotKind;
@@ -167,9 +193,11 @@ internal static class PbtImageVerifier
     /// <summary>Merge-join the requests against the snapshot, spilling unclaimed leaves to the residual.</summary>
     /// <returns>The residual leaf count, which the code reads must consume exactly.</returns>
     private static long Join(string leafPath, PbtSortedSpool requests, PbtSortedSpool results, string residualPath,
-        CancellationToken cancellationToken)
+        ILogManager logManager, CancellationToken cancellationToken)
     {
         long residualCount = 0;
+        ulong joined = 0;
+        using ProgressReporter progress = PbtImageProgress.Start("PBT verify join", "req", 0, logManager);
         using PbtSortedSpool.Cursor leaves = new([leafPath], cancellationToken);
         using PbtSortedSpool.Cursor pending = requests.Read();
         BuildTable(residualPath, (ref SortedTableBuilder<ArenaBufferWriter> residual) =>
@@ -180,6 +208,7 @@ internal static class PbtImageVerifier
             while (pending.MoveNext())
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                progress.Update(++joined);
                 // Leaves below the request belong to no request at all.
                 while (hasLeaf && leaves.Key.SequenceCompareTo(pending.Key) < 0)
                 {
@@ -216,11 +245,16 @@ internal static class PbtImageVerifier
 
     /// <summary>Replay the joined fields in preimage order, rebuilding the MPT the anchor commits to.</summary>
     private static IEnumerable<KeyValuePair<ValueHash256, byte[]>> Accounts(PbtSortedSpool results, CodeTable codes,
-        BinaryWriter logical, PbtImageAnchor anchor, CancellationToken cancellationToken)
+        BinaryWriter logical, PbtImageAnchor anchor, ILogManager logManager, CancellationToken cancellationToken)
     {
+        ulong rebuilt = 0;
+        ulong rebuiltSlots = 0;
+        using ProgressReporter progress = PbtImageProgress.Start(RebuildPhase, "acc", 0, logManager);
+        progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(RebuildPhase, "acc", p)} | {rebuiltSlots,15:N0} slot");
         using PbtSortedSpool.Cursor cursor = results.Read();
         while (cursor.MoveNext())
         {
+            progress.Update(++rebuilt);
             (ValueHash256 basic, Address accountAddress, uint slots) = ReadAccountField(cursor);
             if (basic.Bytes[..4].IndexOfAnyExcept((byte)0) >= 0)
                 throw new InvalidDataException("Nonzero basic-data version or reserved bytes.");
@@ -254,6 +288,7 @@ internal static class PbtImageVerifier
                 for (uint index = 0; index < slots; index++)
                 {
                     if (!cursor.MoveNext()) throw new InvalidDataException("Truncated join results.");
+                    rebuiltSlots++;
                     (ValueHash256 value, ValueHash256 slot) = ReadSlotField(cursor);
                     logical.Write((byte)2);
                     logical.Write(accountAddress.Bytes);

@@ -1,14 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using Nethermind.Core;
+using Nethermind.Logging;
+
 namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Produces a verified portable bundle without publishing native PBT or migration state.</summary>
 internal static class PbtOfflineExport
 {
-    public static void Export(PbtBootstrapLease lease, string outputPath, CancellationToken cancellationToken)
+    public static void Export(PbtBootstrapLease lease, string outputPath, ILogManager logManager, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ILogger logger = logManager.GetClassLogger(typeof(PbtOfflineExport));
+        Stopwatch exporting = Stopwatch.StartNew();
         if (lease.Snapshot is not null || lease.Preimages is not null || lease.OfflineSource is null || lease.OfflineCode is null)
             throw new InvalidOperationException("Offline export requires a genesis or immutable preimage-flat source.");
         string output = Path.GetFullPath(outputPath);
@@ -17,6 +23,7 @@ internal static class PbtOfflineExport
         Directory.CreateDirectory(parent);
         string temporary = Path.Combine(parent, $".pbt-export-{Guid.NewGuid():N}");
         Directory.CreateDirectory(temporary);
+        if (logger.IsInfo) logger.Info($"Exporting the PBT migration anchor {lease.Anchor.Header.ToString(BlockHeader.Format.Short)} to {output}.");
         try
         {
             using (FileStream snapshot = new(Path.Combine(temporary, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
@@ -25,10 +32,10 @@ internal static class PbtOfflineExport
             {
                 if (!lease.IsAnchorCurrent()) throw new InvalidOperationException("Export anchor is no longer current.");
                 PbtOfflineSource.WriteArtifacts(lease.OfflineSource, lease.OfflineCode, lease.Identity, lease.Anchor,
-                    temporary, snapshot, preimages, manifest, cancellationToken: cancellationToken);
+                    temporary, snapshot, preimages, manifest, logManager, cancellationToken: cancellationToken);
                 snapshot.Position = 0;
                 preimages.Position = 0;
-                using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, lease.Identity, lease.Anchor, temporary, cancellationToken);
+                using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, lease.Identity, lease.Anchor, temporary, logManager, cancellationToken);
                 snapshot.Flush(flushToDisk: true);
                 preimages.Flush(flushToDisk: true);
                 manifest.Flush(flushToDisk: true);
@@ -37,6 +44,7 @@ internal static class PbtOfflineExport
             }
             // Same-parent rename publishes all three files together and refuses an existing destination.
             Directory.Move(temporary, output);
+            if (logger.IsInfo) logger.Info($"Exported the verified PBT migration artifacts to {output} in {exporting.Elapsed:hh\\:mm\\:ss}.");
         }
         finally
         {

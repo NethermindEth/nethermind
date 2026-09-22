@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -17,7 +19,7 @@ namespace Nethermind.State.Pbt.Image;
 /// run tables first, so the record count bounds the fan-in rather than the open file count. The merged
 /// output is never materialized, and the runs outlive it, so <see cref="Read"/> may be called repeatedly.
 /// </remarks>
-internal sealed class PbtSortedSpool(string directory, int bufferBytes, CancellationToken cancellationToken) : IDisposable
+internal sealed class PbtSortedSpool(string directory, int bufferBytes, ILogManager logManager, CancellationToken cancellationToken) : IDisposable
 {
     /// <summary>The table format's key and value ceiling, and thus the merge's scratch size.</summary>
     private const int MaxRecordFieldLength = 255;
@@ -25,6 +27,7 @@ internal sealed class PbtSortedSpool(string directory, int bufferBytes, Cancella
     /// <summary>Runs merged at once. Bounds the simultaneously mapped runs, not the record count.</summary>
     internal int MaxFanIn { get; init; } = 128;
 
+    private readonly ILogger _logger = logManager.GetClassLogger<PbtSortedSpool>();
     private readonly List<string> _runs = [];
     // Every run file ever created, including those already folded away, so cleanup misses none.
     private readonly List<string> _scratch = [];
@@ -62,8 +65,11 @@ internal sealed class PbtSortedSpool(string directory, int bufferBytes, Cancella
         if (_completed) return;
         Flush();
         _completed = true;
+        // Folding is the one phase no reader loop observes, so each round reports itself.
         while (_runs.Count > MaxFanIn)
         {
+            Stopwatch folding = Stopwatch.StartNew();
+            if (_logger.IsInfo) _logger.Info($"PBT spool: folding {_runs.Count:N0} sorted runs.");
             List<string> folded = [];
             for (int start = 0; start < _runs.Count; start += MaxFanIn)
             {
@@ -75,6 +81,7 @@ internal sealed class PbtSortedSpool(string directory, int bufferBytes, Cancella
             }
             _runs.Clear();
             _runs.AddRange(folded);
+            if (_logger.IsInfo) _logger.Info($"PBT spool: folded into {_runs.Count:N0} runs in {folding.Elapsed:hh\\:mm\\:ss}.");
         }
     }
 

@@ -102,7 +102,7 @@ public class PbtAnchorPublicationTests
             using FileStream preimages = File.OpenRead(Path.Combine(config.MigrationExportPath!, "preimages.bin"));
             using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, identity,
                 new PbtImageAnchor(chain.ChainId.ToString(), genesis.Hash!, genesis.Header, true,
-                    chain.Parameters.Eip8347TransitionTimestamp!.Value, 256 * 1024 * 1024), scratch.Path);
+                    chain.Parameters.Eip8347TransitionTimestamp!.Value, 256 * 1024 * 1024), scratch.Path, LimboLogs.Instance);
             Assert.That(verified.PbtRoot, Is.EqualTo(expectedShadowRoot.ValueHash256));
         }
         else if (mode == "wrong-genesis")
@@ -227,15 +227,15 @@ public class PbtAnchorPublicationTests
         string output = Path.Combine(harness.Scratch.Path, "bundle");
         if (mode == "existing") Directory.CreateDirectory(output);
         if (mode == "corrupt") harness.Identity = harness.Identity with { AnchorMptRoot = Hash256.Zero.ToString() };
-        if (mode == "existing") Assert.Throws<IOException>(() => PbtOfflineExport.Export(lease, output, CancellationToken.None));
+        if (mode == "existing") Assert.Throws<IOException>(() => PbtOfflineExport.Export(lease, output, LimboLogs.Instance, CancellationToken.None));
         else if (mode == "corrupt")
         {
-            Assert.Throws<InvalidDataException>(() => PbtOfflineExport.Export(lease, output, CancellationToken.None));
+            Assert.Throws<InvalidDataException>(() => PbtOfflineExport.Export(lease, output, LimboLogs.Instance, CancellationToken.None));
             Assert.That(Directory.Exists(output), Is.False);
         }
         else
         {
-            PbtOfflineExport.Export(lease, output, CancellationToken.None);
+            PbtOfflineExport.Export(lease, output, LimboLogs.Instance, CancellationToken.None);
             using FileStream expected = OpenArtifact("a5", "snapshot.pbt");
             using MemoryStream expectedBytes = new();
             expected.CopyTo(expectedBytes);
@@ -258,7 +258,7 @@ public class PbtAnchorPublicationTests
         await using FileStream exportedSnapshot = new(Path.Combine(directory, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         await using FileStream exportedPreimages = new(Path.Combine(directory, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         await using FileStream manifest = new(Path.Combine(directory, "manifest.json"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-        PbtOfflineSource.WriteArtifacts(lease.OfflineSource!, lease.OfflineCode!, lease.Identity, lease.Anchor, directory, exportedSnapshot, exportedPreimages, manifest);
+        PbtOfflineSource.WriteArtifacts(lease.OfflineSource!, lease.OfflineCode!, lease.Identity, lease.Anchor, directory, exportedSnapshot, exportedPreimages, manifest, LimboLogs.Instance);
         exportedSnapshot.Position = 0;
         exportedPreimages.Position = 0;
 
@@ -465,7 +465,7 @@ public class PbtAnchorPublicationTests
                 PreimageRocksdbPersistence source = new(_sourceDatabase, LimboLogs.Instance, FlatLayout.PreimageFlat);
                 using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
                 using FileStream preimages = OpenArtifact(name, "preimages.bin");
-                using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity, Anchor, ScratchDirectory);
+                using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity, Anchor, ScratchDirectory, LimboLogs.Instance);
                 using (IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(Anchor.Header), WriteFlags.None))
                     image.Replay((address, account, code) =>
                     {

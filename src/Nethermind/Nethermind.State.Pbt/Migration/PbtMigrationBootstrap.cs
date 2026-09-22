@@ -58,7 +58,7 @@ internal sealed class PbtMigrationBootstrap(
         using RuntimeBootstrapLease lease = CreateLease(genesis);
         if (configuration.MigrationExportPath is { } outputPath)
         {
-            PbtOfflineExport.Export(lease, outputPath, cancellationToken);
+            PbtOfflineExport.Export(lease, outputPath, logManager, cancellationToken);
             return true;
         }
         await Import(lease, cancellationToken);
@@ -95,7 +95,7 @@ internal sealed class PbtMigrationBootstrap(
             await using FileStream exportedPreimages = new(Path.Combine(directory, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             await using FileStream manifest = new(Path.Combine(directory, "manifest.json"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             PbtOfflineSource.WriteArtifacts(lease.OfflineSource, lease.OfflineCode, lease.Identity, lease.Anchor,
-                directory, exportedSnapshot, exportedPreimages, manifest, cancellationToken: cancellationToken);
+                directory, exportedSnapshot, exportedPreimages, manifest, logManager, cancellationToken: cancellationToken);
             exportedSnapshot.Position = 0;
             exportedPreimages.Position = 0;
             await publication.Publish(exportedSnapshot, exportedPreimages, lease.Identity, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);

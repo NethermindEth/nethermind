@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -47,7 +48,7 @@ public class PbtOfflineSourceTests
             using SnapshotableMemColumnsDb<FlatDbColumns> database = new("offline");
             using MemDb codes = new();
             PreimageRocksdbPersistence persistence = new(database, LimboLogs.Instance, FlatLayout.PreimageFlat);
-            using (PbtVerifiedImage image = PbtImageVerifier.Verify(inputSnapshot, inputPreimages, identity, anchor, directory))
+            using (PbtVerifiedImage image = PbtImageVerifier.Verify(inputSnapshot, inputPreimages, identity, anchor, directory, LimboLogs.Instance))
             using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(header), WriteFlags.None))
                 image.Replay((address, account, code) =>
                 {
@@ -56,7 +57,7 @@ public class PbtOfflineSourceTests
                 }, (address, slot, value) => batch.SetStorage(address, slot, new UInt256(value.Bytes, true)));
             using IPersistence.IPersistenceReader reader = persistence.CreateReader();
             using MemoryStream snapshot = new(), preimages = new(), manifest = new();
-            PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, directory, snapshot, preimages, manifest, bufferBytes);
+            PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, directory, snapshot, preimages, manifest, LimboLogs.Instance, bufferBytes);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(snapshot.ToArray(), Is.EqualTo(expectedSnapshot));
@@ -65,7 +66,7 @@ public class PbtOfflineSourceTests
                 Assert.That(Directory.GetFileSystemEntries(directory), Is.Empty);
             }
             snapshot.Position = preimages.Position = 0;
-            using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, identity, anchor, directory);
+            using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, identity, anchor, directory, LimboLogs.Instance);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
@@ -88,7 +89,9 @@ public class PbtOfflineSourceTests
                 batch.SetAccount(address, new Account(1, 100));
             using IPersistence.IPersistenceReader reader = persistence.CreateReader();
             using MemoryStream snapshot = new(), preimages = new(), manifest = new();
-            PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, directory, snapshot, preimages, manifest, 1024);
+            TestLogger log = new();
+            PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, directory, snapshot, preimages, manifest,
+                new OneLoggerLogManager(new ILogger(log)), 1024);
             preimages.Position = 0;
             PbtPreimageReader output = new(preimages);
             Assert.That(output.ReadAccount(out Address? actual, out uint slots), Is.True);
@@ -97,6 +100,7 @@ public class PbtOfflineSourceTests
                 Assert.That(actual, Is.EqualTo(address));
                 Assert.That(slots, Is.Zero);
                 Assert.That(output.ReadAccount(out _, out _), Is.False);
+                Assert.That(log.LogList, Has.Some.Contains("for 1 accounts and 0 slots"));
             }
         }
         finally { Directory.Delete(directory, recursive: true); }
@@ -114,7 +118,7 @@ public class PbtOfflineSourceTests
         PbtArtifactIdentity identity = new("1", header.Hash!.ToString(), header.Hash.ToString(), header.Number,
             header.StateRoot!.ToString(), "eip-8347", "test", "preimage-flat");
         using MemoryStream snapshot = new(), preimages = new(), manifest = new();
-        Assert.That(() => PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, ".", snapshot, preimages, manifest,
+        Assert.That(() => PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, ".", snapshot, preimages, manifest, LimboLogs.Instance,
             cancellationToken: new CancellationToken(cancel)), cancel ? Throws.TypeOf<OperationCanceledException>() : Throws.TypeOf<InvalidDataException>());
         Assert.That(snapshot.Length + preimages.Length + manifest.Length, Is.Zero);
     }
@@ -127,7 +131,7 @@ public class PbtOfflineSourceTests
         try
         {
             // A buffer of a few records per run, so a few hundred records spill into many runs.
-            using PbtSortedSpool spool = new(directory, 512, CancellationToken.None) { MaxFanIn = maxFanIn };
+            using PbtSortedSpool spool = new(directory, 512, LimboLogs.Instance, CancellationToken.None) { MaxFanIn = maxFanIn };
             SortedDictionary<ValueHash256, byte[]> expected = [];
             for (int index = 0; index < 400; index++)
             {
@@ -165,7 +169,7 @@ public class PbtOfflineSourceTests
         try
         {
             // A 512-byte buffer holds both records; padding the first run apart puts them in separate runs.
-            using PbtSortedSpool spool = new(directory, 512, CancellationToken.None) { MaxFanIn = 2 };
+            using PbtSortedSpool spool = new(directory, 512, LimboLogs.Instance, CancellationToken.None) { MaxFanIn = 2 };
             byte[] key = ValueKeccak.Compute("key"u8).Bytes.ToArray();
             spool.Add(key, [1]);
             if (!sameRun) for (int index = 0; index < 16; index++) spool.Add(ValueKeccak.Compute(BitConverter.GetBytes(index)).Bytes, [2]);
