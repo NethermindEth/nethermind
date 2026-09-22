@@ -163,11 +163,6 @@ public class FrameTxFloodMeasurement
 
     private ulong _frameExecutionGasLimit;
 
-    private const ulong MinimalFrameGas = 400;
-
-    private static int StuffedSignatureCount(ulong ceiling) =>
-        (int)((ceiling - MinimalFrameGas) / Eip8141Constants.Secp256k1VerificationGasCost);
-
     private FloodTestBlockchain _chain = null!;
     private BlockHeader _parent = null!;
     private Block _workloadBlock = null!;
@@ -365,7 +360,7 @@ public class FrameTxFloodMeasurement
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, [FrameTx(0, ceiling)], BlockGasLimit);
         FloodOutcome outcome = offeredRate > 0
             ? MeasureProductionUnderFlood(rig, offeredRate)
             : NoFloodProductionOutcome(rig);
@@ -694,7 +689,7 @@ public class FrameTxFloodMeasurement
         if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling, shape: shape);
+        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, [FrameTx(0, ceiling, shape)], BlockGasLimit);
         rig.RunFor(WarmupWindow);
         List<double> baseline = rig.Measure(MeasureWindow);
 
@@ -1098,7 +1093,7 @@ public class FrameTxFloodMeasurement
         // re-runs the recoveries. Validation rejects before the frame loop, so the prefix never runs.
         TxFrameSignature[] signatures = stuffed
             ? FrameTxTestFrames.RecoveredSecp256k1Signatures(
-                new EthereumEcdsa(TestBlockchainIds.ChainId), StuffedSignatureCount(ceiling))
+                new EthereumEcdsa(TestBlockchainIds.ChainId), FrameTxPrefixShapes.StuffedSignatureCount(ceiling))
             : [];
 
         Transaction tx = new()
@@ -1107,7 +1102,7 @@ public class FrameTxFloodMeasurement
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = Attacker,
-            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: stuffed ? MinimalFrameGas : ceiling, UInt256.Zero, data)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: stuffed ? FrameTxPrefixShapes.MinimalFrameGas : ceiling, UInt256.Zero, data)],
             FrameSignatures = signatures,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
@@ -1116,25 +1111,6 @@ public class FrameTxFloodMeasurement
         tx.Hash = tx.CalculateHash();
         return tx;
     }
-
-    private static byte[] PrefixCode(string shape) => shape switch
-    {
-        "keccak-wide" => Prepare.EvmCode
-            .Op(Instruction.JUMPDEST)
-            .PushData(4096)
-            .PushData(0)
-            .Op(Instruction.KECCAK256)
-            .Op(Instruction.POP)
-            .PushData(0)
-            .Op(Instruction.JUMP)
-            .Done,
-        "banned-opcode" => Prepare.EvmCode
-            .Op(Instruction.TIMESTAMP)
-            .Op(Instruction.POP)
-            .Op(Instruction.STOP)
-            .Done,
-        _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "unknown prefix shape")
-    };
 
     /// <summary>Loads the selected synthetic, signature-stuffed, or Groth16 admission workload.</summary>
     private byte[] LoadAttackCode(string shape, ulong ceiling)
@@ -1152,15 +1128,15 @@ public class FrameTxFloodMeasurement
         {
             _frameCalldataPrefix = [];
             _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(
-                new EthereumEcdsa(TestBlockchainIds.ChainId), StuffedSignatureCount(ceiling));
-            _frameExecutionGasLimit = MinimalFrameGas;
-            return PrefixCode("banned-opcode");
+                new EthereumEcdsa(TestBlockchainIds.ChainId), FrameTxPrefixShapes.StuffedSignatureCount(ceiling));
+            _frameExecutionGasLimit = FrameTxPrefixShapes.MinimalFrameGas;
+            return FrameTxPrefixShapes.Code("banned-opcode");
         }
 
         _frameCalldataPrefix = [];
         _frameSignatures = [];
         _frameExecutionGasLimit = ceiling;
-        return PrefixCode(shape);
+        return FrameTxPrefixShapes.Code(shape);
     }
 
     private static byte[] Groth16Artifact(Groth16Sweep sweep, string fileName)
@@ -1223,147 +1199,6 @@ public class FrameTxFloodMeasurement
                 FrameTxSimulationBudgetPerHeadMs = _shedding ? new TxPoolConfig().FrameTxSimulationBudgetPerHeadMs : int.MaxValue,
             },
         ];
-    }
-
-    /// <summary>Runs a never-approving frame transaction through the production transaction executor.</summary>
-    private sealed class ProducerRig : IDisposable
-    {
-        private readonly IReadOnlyTxProcessingScope _processingScope;
-        private readonly IReadOnlyTxProcessorSource _processorSource;
-        private readonly IReleaseSpec _spec;
-        private BlockProcessor.BlockProductionTransactionsExecutor _executor = null!;
-        private readonly int _kRetry;
-        private readonly BlockReceiptsTracer _receiptsTracer = new();
-        private readonly Block _block;
-        private int _attemptsOnCurrent;
-        private CountingAdapter _adapter = null!;
-
-        public int Evictions { get; private set; }
-
-        private int _evictionsAtWindowStart;
-        private int _executionsAtWindowStart;
-
-        public int EvictionsInWindow => Evictions - _evictionsAtWindowStart;
-
-        public int ExecutionsInWindow => FailingExecutions - _executionsAtWindowStart;
-
-        public void MarkWindowStart()
-        {
-            _evictionsAtWindowStart = Evictions;
-            _executionsAtWindowStart = FailingExecutions;
-        }
-
-        public int FailingExecutions => _adapter.Attempts;
-
-        private ProducerRig(
-            IReadOnlyTxProcessingScope processingScope, IReadOnlyTxProcessorSource processorSource,
-            IReleaseSpec spec, ulong ceiling, int kRetry, string shape)
-        {
-            _processingScope = processingScope;
-            _processorSource = processorSource;
-            _spec = spec;
-            _kRetry = kRetry;
-            _receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
-
-            _block = Build.A.Block
-                .WithNumber(1)
-                .WithBaseFeePerGas(UInt256.Zero)
-                .WithBeneficiary(TestItem.AddressE)
-                .WithGasLimit(BlockGasLimit)
-                .WithTransactions(FrameTx(0, ceiling, shape))
-                .TestObject;
-        }
-
-        /// <summary>
-        /// Takes the processing stack from the chain's production wiring; only the executor under measurement,
-        /// its counting adapter, the eviction gate the rig drives and a disabled block access list manager are
-        /// built here.
-        /// </summary>
-        /// <remarks>The returned rig owns the processing scope and its source; nothing else does, so a throw
-        /// before the rig is returned has to close them.</remarks>
-        public static ProducerRig Create(FloodTestBlockchain chain, int kRetry, ulong ceiling, string shape = "keccak-wide")
-        {
-            ISpecProvider specProvider = chain.SpecProvider;
-            IReleaseSpec spec = specProvider.GenesisSpec;
-
-            IReadOnlyTxProcessorSource source = chain.ReadOnlyTxProcessingEnvFactory.Create();
-            IReadOnlyTxProcessingScope? scope = null;
-            try
-            {
-                scope = source.Build(chain.BlockTree.Head?.Header);
-                IWorldState state = scope.WorldState;
-
-                CountingAdapter adapter = new(
-                    new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), measureBurn: false);
-
-                ProducerRig rig = new(scope, source, spec, ceiling, kRetry, shape);
-
-                IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
-                balManager.Enabled.Returns(false);
-
-                ITxPool gate = Substitute.For<ITxPool>();
-                gate.EvictTransaction(Arg.Any<Transaction>()).Returns(_ => rig.OnEvictionRequested());
-
-                rig._adapter = adapter;
-                rig._executor = new BlockProcessor.BlockProductionTransactionsExecutor(
-                    adapter,
-                    state,
-                    new BlockProcessor.BlockProductionTransactionPicker(specProvider),
-                    LimboLogs.Instance,
-                    balManager,
-                    gate);
-
-                return rig;
-            }
-            catch
-            {
-                scope?.Dispose();
-                source.Dispose();
-                throw;
-            }
-        }
-
-        private bool OnEvictionRequested() => ++_attemptsOnCurrent >= _kRetry;
-
-        public void RunFor(TimeSpan window)
-        {
-            long end = Stopwatch.GetTimestamp() + (long)(window.TotalSeconds * Stopwatch.Frequency);
-            while (Stopwatch.GetTimestamp() < end) ProduceOnce();
-        }
-
-        public List<double> Measure(TimeSpan window)
-        {
-            List<double> micros = [];
-            long end = Stopwatch.GetTimestamp() + (long)(window.TotalSeconds * Stopwatch.Frequency);
-            while (Stopwatch.GetTimestamp() < end)
-            {
-                long start = Stopwatch.GetTimestamp();
-                ProduceOnce();
-                micros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
-            }
-            return micros;
-        }
-
-        // Resetting the series avoids charging replacement construction differently across K_retry values.
-        private void ProduceOnce()
-        {
-            _receiptsTracer.StartNewBlockTrace(_block);
-            _executor.SetBlockExecutionContext(new BlockExecutionContext(_block.Header, _spec));
-            _executor.ProcessTransactions(_block, ProcessingOptions.ProducingBlock, _receiptsTracer, CancellationToken.None);
-            _receiptsTracer.EndBlockTrace();
-
-            if (_attemptsOnCurrent >= _kRetry)
-            {
-                Evictions++;
-                _attemptsOnCurrent = 0;
-            }
-        }
-
-        public void Dispose()
-        {
-            _processingScope.Dispose();
-            _processorSource.Dispose();
-        }
     }
 
     private static void Emit(string line)
