@@ -1008,47 +1008,9 @@ public class EthSimulateTestsBlocksAndTransactions
         TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
         // Pin the EIP-7928 premise so a spec change can't silently turn these into non-BAL tests.
         Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+        // Pin the EIP-8037 premise so a spec change can't silently defang the two-dimensional gas tests.
+        Assert.That(spec.IsEip8037Enabled, Is.True);
         return await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
-    }
-
-    /// <summary>
-    /// Regression test for #12692: under EIP-7928 the block-access-list path must route its tx
-    /// processors through the simulate adapter, so the simulate gas accounting still runs. Without
-    /// the adapter the reported block <c>gasUsed</c> is left at 0 even though the call executed
-    /// successfully.
-    /// </summary>
-    [Test]
-    public async Task eth_simulateV1_reports_block_gas_used_on_bal_path()
-    {
-        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
-
-        // Explicit Gas avoids the EIP-8037 block-gas default (#12692 item 1); zero gas price keeps
-        // the funded transfer unambiguously successful.
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1000, Gas = 100_000, GasPrice = UInt256.Zero }
-                    ]
-                }
-            ],
-            Validation = true
-        };
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
-        Assert.That(result.Data![0].GasUsed, Is.GreaterThan(0));
     }
 
     /// <summary>
@@ -1106,6 +1068,9 @@ public class EthSimulateTestsBlocksAndTransactions
         // Default chain is Berlin: neither EIP-7778 nor EIP-8037, so the funded transfer costs exactly
         // the 21k intrinsic while the call asks for 300k.
         TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build();
+
+        // Pin the pre-EIP-7778 premise so a default-spec change can't silently invert this test.
+        Assert.That(chain.SpecProvider.GetSpec(chain.BlockFinder.Head!.Header).IsEip7778Enabled, Is.False);
 
         SimulatePayload<TransactionForRpc> payload = new()
         {

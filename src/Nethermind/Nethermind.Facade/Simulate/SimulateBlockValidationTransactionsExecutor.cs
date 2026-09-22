@@ -40,16 +40,9 @@ public class SimulateBlockValidationTransactionsExecutor(
 
         TxReceipt[] result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
 
-        // Many gas calculation not done with skip validation, but needed for response
-        ulong currentGasUsedTotal = 0;
-        foreach (TxReceipt txReceipt in result)
-        {
-            currentGasUsedTotal += txReceipt.GasUsed;
-            txReceipt.GasUsedTotal = currentGasUsedTotal;
-        }
-
-        // Header.GasUsed is left as BlockReceiptsTracer wrote it - the EIP-7778/EIP-8037 two-dimensional
-        // max(sum execution, sum state) - not the gas-limit budget this executor's adapter tracks.
+        // Header.GasUsed and the receipts' GasUsedTotal are left as BlockReceiptsTracer wrote them -
+        // the EIP-7778/EIP-8037 two-dimensional max(sum execution, sum state) and the post-refund
+        // cumulative - not the gas-limit budget this executor's adapter tracks.
 
         // SimulateTransactionProcessorAdapter change gas limit as block is processed. So need to recalculate.
         block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
