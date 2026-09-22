@@ -11,9 +11,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Core.Exceptions;
-using Nethermind.State;
 
 namespace Nethermind.JsonRpc;
 
@@ -56,7 +53,7 @@ public static class JsonRpcResponseWriter
     {
         if (response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
-            return WriteStreamableWithValidationAsync(writer, response, streamable, options, isBatch, cancellationToken);
+            return WriteStreamableWithErrorHandlingAsync(writer, response, streamable, options, isBatch, cancellationToken);
         }
 
         Write(writer, response, options);
@@ -88,7 +85,7 @@ public static class JsonRpcResponseWriter
     public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>
         response?.IsResourceUnavailableError == true;
 
-    private static async ValueTask WriteStreamableWithValidationAsync(
+    private static async ValueTask WriteStreamableWithErrorHandlingAsync(
         PipeWriter writer,
         JsonRpcResponse response,
         IStreamableResult streamable,
@@ -101,24 +98,10 @@ public static class JsonRpcResponseWriter
         {
             await WriteStreamableAsync(buffered, response, streamable, isBatch, cancellationToken);
         }
-        catch (InvalidBlockException ex) when (!buffered.IsCommitted)
+        catch (Exception ex) when (!buffered.IsCommitted && !cancellationToken.IsCancellationRequested && response.StreamExceptionHandler is not null)
         {
-            Write(writer, new JsonRpcErrorResponse(in response.IdRef)
-            {
-                Error = new Error
-                {
-                    Code = ErrorCodes.Default,
-                    Message = ex is InvalidTransactionException invalid ? invalid.Reason.ErrorDescription : ex.Message
-                }
-            }, options);
-            return;
-        }
-        catch (InsufficientBalanceException ex) when (!buffered.IsCommitted)
-        {
-            Write(writer, new JsonRpcErrorResponse(in response.IdRef)
-            {
-                Error = new Error { Code = ErrorCodes.InvalidInput, Message = ex.Message }
-            }, options);
+            using JsonRpcErrorResponse error = response.StreamExceptionHandler(ex);
+            Write(writer, error, options);
             return;
         }
         buffered.Commit();
@@ -312,8 +295,8 @@ internal interface IJsonRpcRawResponse
     void WriteRaw(IBufferWriter<byte> writer);
 }
 
-// Keep small responses replaceable until validation completes. A rejected transaction can finish
-// and flush its tracer before the block processor reports the error. Large responses still stream.
+// Keep small responses replaceable if deferred execution fails, even after a tracer flush.
+// Once bytes reach the transport, an error envelope can no longer replace the partial result.
 internal sealed class ValidationBufferingPipeWriter(PipeWriter writer) : PipeWriter
 {
     private const int BufferLimit = 16 * 1024;
@@ -324,9 +307,9 @@ internal sealed class ValidationBufferingPipeWriter(PipeWriter writer) : PipeWri
     internal void Commit()
     {
         if (IsCommitted) return;
+        IsCommitted = true;
         writer.Write(_buffer.WrittenSpan);
         _buffer.Clear();
-        IsCommitted = true;
     }
 
     public override Memory<byte> GetMemory(int sizeHint = 0)

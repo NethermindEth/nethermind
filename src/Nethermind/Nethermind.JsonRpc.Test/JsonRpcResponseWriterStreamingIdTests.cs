@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
@@ -65,7 +66,12 @@ public class JsonRpcResponseWriterStreamingIdTests
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
         using JsonRpcSuccessResponse response = new()
         {
-            Id = new JsonRpcId(42L), Result = new InvalidTransactionResult(commitMode)
+            Id = new JsonRpcId(42L), Result = new InvalidTransactionResult(commitMode),
+            StreamExceptionHandler = ex => new JsonRpcErrorResponse
+            {
+                Id = new JsonRpcId(42L),
+                Error = new Error { Code = ErrorCodes.InvalidInput, Message = ex.Message }
+            }
         };
 
         if (commitMode != 2)
@@ -99,13 +105,63 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
     }
 
-    private sealed class InvalidTransactionResult(int commitMode) : IStreamableResult
+    [Test]
+    public async Task Stream_failure_propagates_without_handler_or_after_transport_cancellation([Values] bool cancelTransport)
+    {
+        using CancellationTokenSource cancellation = new();
+        using JsonRpcSuccessResponse response = new()
+        {
+            Result = new InvalidTransactionResult(0, cancelTransport ? cancellation.Cancel : null),
+            StreamExceptionHandler = cancelTransport
+                ? _ => throw new AssertionException("A cancelled transport must not receive a replacement response")
+                : null
+        };
+        Pipe pipe = new();
+        try
+        {
+            Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, new JsonSerializerOptions(), cancellation.Token));
+            await pipe.Writer.CompleteAsync();
+            ReadResult read = await pipe.Reader.ReadAsync();
+            Assert.That(read.Buffer.IsEmpty, Is.True);
+        }
+        finally
+        {
+            await pipe.Writer.CompleteAsync();
+            await pipe.Reader.CompleteAsync();
+        }
+    }
+
+    [Test]
+    public void Transport_write_failure_is_not_mapped_to_an_rpc_error()
+    {
+        using JsonRpcSuccessResponse response = new()
+        {
+            Result = new InvalidTransactionResult(2),
+            StreamExceptionHandler = _ => throw new AssertionException("Transport failures must propagate")
+        };
+        Assert.ThrowsAsync<IOException>(async () =>
+            await JsonRpcResponseWriter.WriteAsync(new FailingPipeWriter(), response, new JsonSerializerOptions(), CancellationToken.None));
+    }
+
+    private sealed class FailingPipeWriter : PipeWriter
+    {
+        public override Memory<byte> GetMemory(int sizeHint = 0) => throw new IOException("Transport failed");
+        public override Span<byte> GetSpan(int sizeHint = 0) => throw new IOException("Transport failed");
+        public override void Advance(int bytes) => throw new NotSupportedException();
+        public override void CancelPendingFlush() => throw new NotSupportedException();
+        public override void Complete(Exception? exception = null) => throw new NotSupportedException();
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class InvalidTransactionResult(int commitMode, Action? beforeThrow = null) : IStreamableResult
     {
         public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         {
             writer.Write("{\"vmTrace\":"u8);
             if (commitMode == 1) await writer.FlushAsync(cancellationToken);
             if (commitMode == 2) writer.Write(new byte[20_000]);
+            beforeThrow?.Invoke();
             throw new InsufficientBalanceException(TestItem.AddressA);
         }
     }

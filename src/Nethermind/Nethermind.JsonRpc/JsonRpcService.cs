@@ -185,7 +185,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (resultWrapper is JsonRpcResponse response)
         {
-            return response.WithResponseContext(in request.IdRef, returnAction);
+            response = response.WithResponseContext(in request.IdRef, returnAction);
+            if (response.TryGetStreamableResult(out _))
+            {
+                // Deferred execution must use the same error mapping as invocation. The original response owns the rental.
+                response.StreamExceptionHandler = ex => HandleInvocationException(ex, methodName, request, returnAction: null);
+            }
+            return response;
         }
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);

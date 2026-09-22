@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -34,9 +36,11 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using Nethermind.Trie;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using NSubstitute.Extensions;
 using NUnit.Framework;
 using Testably.Abstractions;
 
@@ -478,6 +482,98 @@ public class JsonRpcServiceTests
         pool.Received(streamed ? 0 : 1).ReturnModule(rpcModule);
         response.Dispose();
         pool.Received(1).ReturnModule(rpcModule);
+    }
+
+    private static IEnumerable<(Exception Exception, int Code)> ReplayFailures()
+    {
+        yield return (new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA), ErrorCodes.ResourceNotFound);
+        yield return (new TargetInvocationException(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA)), ErrorCodes.ResourceNotFound);
+        yield return (new ResourceNotFoundException("History pruned"), ErrorCodes.PrunedHistoryUnavailable);
+        yield return (new InsufficientBalanceException(TestItem.AddressA), ErrorCodes.InvalidInput);
+        yield return (new InvalidOperationException("Replay failed"), ErrorCodes.InternalError);
+        yield return (new ArgumentException("Invalid replay argument"), ErrorCodes.InvalidParams);
+        yield return (new LimitExceededException("limit"), ErrorCodes.LimitExceeded);
+        yield return (new OperationCanceledException("Replay timeout"), ErrorCodes.Timeout);
+    }
+
+    [Test]
+    public async Task Streamed_replay_errors_use_invocation_mapping_before_commit(
+        [ValueSource(nameof(ReplayFailures))] (Exception Exception, int Code) failure,
+        [Values] bool blockReplay,
+        [Values(0, 1, 2)] int commitMode)
+    {
+        IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
+        ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        string method = blockReplay ? "trace_replayBlockTransactions" : "trace_replayTransaction";
+        object[] parameters = [blockReplay ? "latest" : TestItem.KeccakA.ToString(), new[] { "trace" }];
+        rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>()).Throws(failure.Exception);
+        rpcModule.trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>()).Throws(failure.Exception);
+        using JsonRpcErrorResponse expected = AssertJsonRpcError(TestRequestWithPool(pool, method, parameters), failure.Code);
+        string expectedEnvelope = RpcTest.SerializeResponse(expected);
+        pool.ClearReceivedCalls();
+
+        using CancellationTokenSource timeout = new();
+        if (blockReplay)
+        {
+            rpcModule.Configure().trace_replayBlockTransactions(Arg.Any<BlockParameter>(), Arg.Any<string[]>())
+                .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(
+                    new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(EmitThenThrow, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
+        }
+        else
+        {
+            rpcModule.Configure().trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
+                .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(
+                    new ParityTxTraceFromReplayStreamingResult(EmitThenThrow, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
+        }
+        using JsonRpcResponse response = TestRequestWithPool(pool, method, parameters);
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        try
+        {
+            if (commitMode == 2)
+            {
+                Exception? thrown = Assert.CatchAsync(async () =>
+                    await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
+                Assert.That(thrown, Is.SameAs(failure.Exception));
+            }
+            else
+            {
+                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+            }
+            await pipe.Writer.CompleteAsync();
+            ReadResult read = await pipe.Reader.ReadAsync();
+            string envelope = Encoding.UTF8.GetString(read.Buffer.ToArray());
+            if (commitMode == 2)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(envelope, Does.StartWith("{\"jsonrpc\":\"2.0\",\"result\":"));
+                    Assert.That(envelope, Does.Not.Contain("\"error\""));
+                }
+            }
+            else
+            {
+                Assert.That(envelope, Is.EqualTo(expectedEnvelope));
+            }
+            pool.DidNotReceive().ReturnModule(rpcModule);
+            response.Dispose();
+            pool.Received(1).ReturnModule(rpcModule);
+        }
+        finally
+        {
+            await pipe.Writer.CompleteAsync();
+            await pipe.Reader.CompleteAsync();
+        }
+
+        void EmitThenThrow(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken ct)
+        {
+            writer.WriteStartObject();
+            if (commitMode == 2) writer.WriteString("padding", new string('x', 20_000));
+            writer.WriteEndObject();
+            writer.Flush();
+            if (commitMode == 1) Assert.That(pipeWriter!.FlushAsync(ct).IsCompletedSuccessfully, Is.True);
+            throw failure.Exception;
+        }
     }
 
     [Test]
