@@ -564,7 +564,7 @@ jobs:
           RUNNER_FLAG: ${{ steps.fixtures.outputs.runner_flag }}
           EXTRA_FILTER: ${{ steps.fixtures.outputs.extra_filter }}
         run: |
-          # Empty for every test type that declares no known-failure exclusions.
+          # An explicit `filter` input wins; otherwise fall back to the known-failure exclusions.
           [ -z "$FILTER" ] && FILTER="$EXTRA_FILTER"
           FILTER_ARG=""
           if [ -n "$FILTER" ]; then
