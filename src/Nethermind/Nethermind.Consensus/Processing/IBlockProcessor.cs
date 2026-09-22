@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Processing
     {
         /// <summary>
         /// Raised after all transactions in a block have been executed,
-        /// before blooms, receipts root, and state root are computed.
+        /// before block finalization and state-root computation. Receipt work may already be in progress.
         /// Subscribers can use this to cancel background work (e.g. prewarmer)
         /// so the thread pool is free for the parallel post-tx computations.
         /// </summary>

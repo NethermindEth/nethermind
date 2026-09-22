@@ -60,11 +60,7 @@ internal static class IndexedTrieRoot
                     int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
                     for (int position = start; position < end; position++)
                     {
-                        Key key = calculator.GetKey(position);
-                        int depth = position == 0 ? 0 : CommonPrefix(key, calculator.GetKey(position - 1), 0);
-                        if (position + 1 < inputs.Count)
-                            depth = Math.Max(depth, CommonPrefix(key, calculator.GetKey(position + 1), 0));
-                        references[position] = calculator.Leaf(key, depth + 1, inputs[calculator.GetIndex(position)]);
+                        references[position] = calculator.CalculateLeaf(position);
                     }
                 });
             }
@@ -73,6 +69,15 @@ internal static class IndexedTrieRoot
                 ExceptionDispatchInfo.Throw(exception.InnerExceptions[0]);
             }
             return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
+        }
+
+        internal NodeReference CalculateLeaf(int position)
+        {
+            Key key = GetKey(position);
+            int depth = position == 0 ? 0 : CommonPrefix(key, GetKey(position - 1), 0);
+            if (position + 1 < _items.Length)
+                depth = Math.Max(depth, CommonPrefix(key, GetKey(position + 1), 0));
+            return Leaf(key, _items.Length == 1 ? 0 : depth + 1, _items[GetIndex(position)]);
         }
 
         private Hash256 CalculateSequential()

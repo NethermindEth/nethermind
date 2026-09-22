@@ -101,9 +101,17 @@ public class ReceiptTrieTests
         using TrackingCappedArrayPool pool = new();
         Hash256 expected = new ReceiptTrie(spec, receipts, decoder, pool, canBeParallel: false).RootHash;
         Hash256 actual = ReceiptTrie.CalculateRoot(spec, receipts, decoder);
+        Hash256? streamed = null;
+        if (decoder is ReceiptMessageDecoder messageDecoder)
+        {
+            ReceiptTrie.StreamingRoot streaming = new(receipts.Length, spec, messageDecoder);
+            foreach (TxReceipt receipt in receipts) streaming.Append(receipt);
+            streamed = streaming.GetRoot();
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected));
+            if (streamed is not null) Assert.That(streamed, Is.EqualTo(expected));
             if (receipts.Length > 0)
             {
                 byte[][] proof = ReceiptTrie.CalculateReceiptProofs(spec, receipts, receipts.Length / 2, decoder);

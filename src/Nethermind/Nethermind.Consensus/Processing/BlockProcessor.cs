@@ -66,6 +66,7 @@ public partial class BlockProcessor(
     /// to any block-specific tracers.
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
+    protected Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? StreamingReceiptsTask;
 
     internal sealed class BlockAccessListSequentialRetryException(
         BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
@@ -184,8 +185,8 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
-        if (ShouldCalculateReceiptsInBackground(receipts))
+        Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = StreamingReceiptsTask;
+        if (bloomsAndReceiptsRootTask is null && ShouldCalculateReceiptsInBackground(receipts))
         {
             bloomsAndReceiptsRootTask = Task.Run(() =>
             {
@@ -193,7 +194,7 @@ public partial class BlockProcessor(
                 return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
             });
         }
-        else
+        else if (bloomsAndReceiptsRootTask is null)
         {
             CalculateBlooms(receipts);
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);

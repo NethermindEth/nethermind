@@ -66,12 +66,104 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
 using System.Linq;
 using Nethermind.Trie;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
+    [Test]
+    public async Task Standard_processor_streams_large_pos_blocks_with_identical_execution_results([Values(31, 32)] int count)
+    {
+        bool streamed = false;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor>((_, inner) => new ReceiptTracerObserver(inner, active => streamed = active)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction[] transactions = Enumerable.Range(0, count).Select(i => Build.A.Transaction
+            .WithTo(TestItem.AddressC).WithNonce((ulong)i).WithValue(1).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray();
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(count));
+        block.Header.IsPostMerge = true;
+        streamed = false;
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        (Block actual, TxReceipt[] receipts) = chain.BlockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain,
+            NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamed, Is.EqualTo(count >= 32 && Environment.ProcessorCount > 1));
+            Assert.That(receipts.Length, Is.EqualTo(count));
+            Assert.That(actual.ReceiptsRoot, Is.EqualTo(block.ReceiptsRoot));
+            Assert.That(actual.Bloom, Is.EqualTo(block.Bloom));
+            Assert.That(actual.StateRoot, Is.EqualTo(block.StateRoot));
+        }
+    }
+
+    private sealed class ReceiptTracerObserver(IBlockProcessor.IBlockTransactionsExecutor inner, Action<bool> observed)
+        : IBlockProcessor.IBlockTransactionsExecutor
+    {
+        public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
+
+        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token)
+        {
+            observed(tracer is StreamingReceiptProcessor.Tracer);
+            return inner.ProcessTransactions(block, options, tracer, token);
+        }
+    }
+
+    [Test]
+    public async Task Receipt_stream_starts_before_the_last_transaction_and_matches_the_batch_root()
+    {
+        TxReceipt first = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal(21_000).TestObject;
+        TxReceipt second = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal(42_000).TestObject;
+        Bloom initialBloom = new();
+        first.Bloom = initialBloom;
+        using StreamingReceiptProcessor streaming = new(2, Osaka.Instance, new ReceiptMessageDecoder());
+
+        streaming.Add(first);
+        Assert.That(SpinWait.SpinUntil(() => !ReferenceEquals(first.Bloom, initialBloom), TimeSpan.FromSeconds(5)), Is.True);
+        streaming.Add(second);
+        (Bloom bloom, Hash256 root) = await streaming.Complete().WaitAsync(TimeSpan.FromSeconds(5));
+        Bloom expectedBloom = new();
+        expectedBloom.Accumulate(first.Bloom!);
+        expectedBloom.Accumulate(second.Bloom!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(ReceiptTrie.CalculateRoot(Osaka.Instance, [first, second], new ReceiptMessageDecoder())));
+            Assert.That(bloom, Is.EqualTo(expectedBloom));
+        }
+    }
+
+    [Test]
+    public void Aborted_receipt_stream_joins_its_worker()
+    {
+        using StreamingReceiptProcessor streaming = new(2, Osaka.Instance, new ReceiptMessageDecoder());
+        streaming.Add(Build.A.Receipt.WithAllFieldsFilled.TestObject);
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await streaming.Complete().WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Test]
+    public void Failed_receipt_worker_releases_a_backpressured_producer()
+    {
+        using StreamingReceiptProcessor streaming = new(128, Osaka.Instance, new ReceiptMessageDecoder());
+        TxReceipt invalid = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+        invalid.Logs = null;
+        Task producer = Task.Run(() =>
+        {
+            for (int i = 0; i < 128; i++) streaming.Add(invalid);
+        });
+
+        Assert.ThrowsAsync<System.Threading.Channels.ChannelClosedException>(async () => await producer.WaitAsync(TimeSpan.FromSeconds(5)));
+        Exception exception = Assert.CatchAsync(async () => await streaming.Complete().WaitAsync(TimeSpan.FromSeconds(5)))!;
+        Assert.That(exception, Is.Not.TypeOf<TimeoutException>());
+    }
+
     public static IEnumerable<TestCaseData> TransactionTraceBoundaryCases()
     {
         foreach (string tracerName in new[] { "callTracer", "prestateTracer" })
