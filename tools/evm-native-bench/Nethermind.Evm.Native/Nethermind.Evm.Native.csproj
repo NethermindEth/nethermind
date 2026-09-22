@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Shared</NativeLib>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <!-- ILC drives the platform C compiler; gcc avoids requiring clang on the box. -->
+    <CppCompilerAndLinker>gcc</CppCompilerAndLinker>
+    <!-- A benchmark wants to see the trim/AOT warnings rather than fail on them. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Rlp's cctor reflects over its own assembly to find IRlpDecoder<T> implementations and
+         Activator-constructs them. ILC cannot see those constructors and trims them, so the
+         cctor throws on first use. Rooting the assembly is what keeps them. -->
+    <TrimmerRootDescriptor Include="ILLink.Descriptors.xml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Evm.Precompiles\Nethermind.Evm.Precompiles.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.State\Nethermind.State.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <!-- EthereumPrecompileProvider and EthereumCodeInfoRepository live here, not in Nethermind.Evm.
+         This is also what drags Microsoft.ClearScript.V8 into the publish output. -->
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+  </ItemGroup>
+
+</Project>

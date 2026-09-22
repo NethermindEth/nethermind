@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <!-- The allocation profile is what this harness exists to show; keep the GC predictable. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Evm.Precompiles\Nethermind.Evm.Precompiles.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.State\Nethermind.State.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="..\..\..\src\Nethermind\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+  </ItemGroup>
+
+</Project>

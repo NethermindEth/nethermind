@@ -1,0 +1,12 @@
+[package]
+name = "revmbase"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# the exact pin rbuilder uses
+revm = { version = "=38.0.0", features = ["std"], default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

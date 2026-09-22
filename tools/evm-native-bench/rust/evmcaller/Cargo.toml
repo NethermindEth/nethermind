@@ -1,0 +1,11 @@
+[package]
+name = "evmcaller"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2"
+tiny-keccak = { version = "2", features = ["keccak"] }
+
+[profile.release]
+debug = true
