@@ -113,6 +113,7 @@ public sealed class KademliaAdapter(
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 PING {ping.RequestId} to {receiver:s}.");
         if (!await SendRequest(receiver, ping, responseHandler, _pingTimeout, token))
         {
+            token.ThrowIfCancellationRequested();
             if (Logger.IsTrace) Logger.Trace($"Discv5 PING {ping.RequestId} to {receiver:s} timed out.");
             return false;
         }
@@ -133,6 +134,7 @@ public sealed class KademliaAdapter(
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 FINDNODE {findNode.RequestId} to {receiver:s}, distances: {FormatDistances(distances)}.");
         if (!await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token))
         {
+            token.ThrowIfCancellationRequested();
             if (Logger.IsTrace) Logger.Trace($"Discv5 FINDNODE {findNode.RequestId} to {receiver:s} timed out.");
             return null;
         }
@@ -206,6 +208,7 @@ public sealed class KademliaAdapter(
         CancellationToken token)
         where TResponse : Discv5Message
     {
+        if (token.IsCancellationRequested) return false;
         ResponseKey responseKey = new(receiver.Id.Hash.ValueHash256, request.RequestId, responseHandler.MessageType);
         _responseHandlers.Set(responseKey, responseHandler);
 
@@ -216,12 +219,20 @@ public sealed class KademliaAdapter(
         try
         {
             pendingNonceKey = await SendMessage(receiver, request, timeoutCts.Token);
-            await responseHandler.Task.WaitAsync(timeoutCts.Token);
+            Task response = responseHandler.Task.WaitAsync(timeoutCts.Token);
+            await response.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (response.IsCanceled && timeoutCts.IsCancellationRequested)
+            {
+                if (!token.IsCancellationRequested && Logger.IsTrace) TraceRequestTimeout(receiver, request, timeout);
+                return false;
+            }
+
+            await response;
             return true;
         }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
-            if (Logger.IsTrace) Logger.Trace($"Discv5 request {request.MessageType} {request.RequestId} to {receiver:s} timed out after {timeout}.");
+            if (!token.IsCancellationRequested && Logger.IsTrace) TraceRequestTimeout(receiver, request, timeout);
             return false;
         }
         finally
@@ -233,6 +244,10 @@ public sealed class KademliaAdapter(
             }
         }
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceRequestTimeout(Node receiver, Discv5Message request, TimeSpan timeout)
+        => Logger.Trace($"Discv5 request {request.MessageType} {request.RequestId} to {receiver:s} timed out after {timeout}.");
 
     private async Task<PendingNonceKey?> SendMessage(Node receiver, Discv5Message message, CancellationToken token)
     {
@@ -435,7 +450,7 @@ public sealed class KademliaAdapter(
         Span<byte> readKey = stackalloc byte[Session.KeySize];
         if (TryGetSession(sessionKey, out session) &&
             session.TryCopyReadKey(readKey) &&
-            packetCodec.TryDecryptMessage(in packet, readKey, out Discv5Message decodedMessage))
+            PacketCodec.TryDecryptMessage(in packet, readKey, out Discv5Message decodedMessage))
         {
             message = decodedMessage;
             return true;
@@ -956,10 +971,17 @@ public sealed class KademliaAdapter(
             return false;
         }
 
-        return Node.TryFromDiscoveryEnr(record, discoveryEndpoint.Address.AddressFamily, out node);
+        PublicKey? key = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+        if (key is null)
+        {
+            return false;
+        }
+
+        node = Node.FromDiscoveryEnr(record, key, discoveryEndpoint);
+        return true;
     }
 
-    private static bool TryGetAcceptableDiscoveryEndpoint(
+    internal static bool TryGetAcceptableDiscoveryEndpoint(
         NodeRecord record,
         bool allowNonRoutable,
         IPAddress? listenerAddress,

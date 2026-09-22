@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 
@@ -297,10 +296,10 @@ public static partial class EvmInstructions
 
         if (outOfGas) goto OutOfGas;
 
-        // Create or update the inheritor account with the transferred balance.
+        // Transfer the self-destruct balance without creating an empty beneficiary.
         if (!inheritorAccountExists)
         {
-            state.CreateAccount(inheritor, result);
+            state.AddToBalanceAndCreateIfNotEmpty(inheritor, in result, spec);
         }
         else if (!inheritor.Equals(executingAccount))
         {
@@ -373,8 +372,7 @@ public static partial class EvmInstructions
     /// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint JumpDestination(int jumpDestination, ref EvmStack stack) =>
-        (uint)jumpDestination < (uint)stack.CodeLength
-            && JumpDestinationAnalyzer.IsJumpDestination(stack.JumpDestinations, jumpDestination)
+        stack.IsJumpDestination(jumpDestination)
             ? jumpDestination
             : -1;
 

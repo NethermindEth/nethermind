@@ -14,6 +14,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init;
 using Nethermind.Specs;
@@ -36,6 +38,97 @@ public partial class EthRpcModuleTests
         + GasCostOf.TxValueCostEip2780
         + (ulong)GasCostOf.NewAccountState;
     private const string FreshRecipientAddress = "0xc278000000000000000000000000000000000000";
+
+    [Test]
+    public async Task Rpc_discards_unobserved_logs(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [Range(0, 4)] int topicCount,
+        [Values(0, 128)] int logSize,
+        [Values] bool stateOverride)
+    {
+        Hash256[] topics = new Hash256[topicCount];
+        Array.Fill(topics, TestItem.KeccakA);
+        byte[] code = Prepare.EvmCode.PushData(7).Op(Instruction.SLOAD).Op(Instruction.POP)
+            .PushData(0x42).Log(logSize, 1024, topics)
+            .Op(Instruction.MSIZE).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).Op(Instruction.MSTORE)
+            .PushData(64).PushData(0).Op(Instruction.RETURN).Done;
+        await AssertRpcLogSuppression(method, code, stateOverride, expectLogs: true);
+    }
+
+    [Test]
+    public async Task Rpc_log_suppression_preserves_failures(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [ValueSource(nameof(FailingRpcLogCode))] byte[] code)
+        => await AssertRpcLogSuppression(method, code, stateOverride: true, expectLogs: false);
+
+    private static IEnumerable<byte[]> FailingRpcLogCode()
+    {
+        yield return Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.LOG4).Done;
+        yield return Prepare.EvmCode.PushData(1).PushData(UInt256.MaxValue).Op(Instruction.LOG0).Done;
+        yield return Prepare.EvmCode.Log(1_000_000, 0).Done;
+        yield return Prepare.EvmCode.Log(128, 1024).PushData(32).PushData(1024).Op(Instruction.REVERT).Done;
+    }
+
+    private static async Task AssertRpcLogSuppression(string method, byte[] code, bool stateOverride, bool expectLogs)
+    {
+        using RpcLogObserver observer = new();
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance), configurer: builder =>
+            builder.AddDecorator<ITransactionProcessor>((_, processor) => new LogObservingProcessor(processor, observer)));
+        Transaction tx = Build.A.Transaction.WithGasLimit(500_000).WithGasPrice(0)
+            .WithTo(stateOverride ? TestItem.AddressB : null)
+            .WithData(stateOverride ? [] : code).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(BlockchainIds.Mainnet));
+        object[] parameters = stateOverride
+            ? [transaction, "latest", new Dictionary<Address, AccountOverride> { [TestItem.AddressB] = new() { Code = code } }]
+            : [transaction, "latest"];
+
+        TestRpcBlockchain test = ctx.Test;
+        observer.LogCount = 0;
+        string baseline = await test.TestEthRpc(method, parameters);
+        int baselineLogs = observer.LogCount;
+        observer.SuppressLogs = true;
+        observer.LogCount = 0;
+        observer.ExecutionCount = 0;
+        string optimized = await test.TestEthRpc(method, parameters);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized, Is.EqualTo(baseline));
+            Assert.That(observer.ExecutionCount, Is.GreaterThan(0));
+            Assert.That(observer.LogCount, Is.Zero);
+            if (expectLogs)
+            {
+                Assert.That(baselineLogs, Is.GreaterThan(0));
+                if (method == "eth_createAccessList" && stateOverride)
+                    Assert.That(JToken.Parse(optimized)["result"]!["accessList"]!.HasValues, Is.True);
+            }
+        }
+    }
+
+    private sealed class RpcLogObserver : TxTracer
+    {
+        public override bool IsTracingReceipt => true;
+        public override bool IsCollectingLogs => !SuppressLogs;
+        public bool SuppressLogs { get; set; }
+        public int LogCount { get; set; }
+        public int ExecutionCount { get; set; }
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+            => LogCount += logs.Length;
+    }
+
+    private sealed class LogObservingProcessor(ITransactionProcessor inner, RpcLogObserver observer) : ITransactionProcessor
+    {
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+        {
+            observer.ExecutionCount++;
+            return inner.Process(transaction, new CompositeTxTracer(txTracer, observer), options);
+        }
+
+        public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+    }
 
     [Test]
     public async Task Eth_call_web3_sample()

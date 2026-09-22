@@ -233,7 +233,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             mergeConfig,
             receiptConfig,
             stateReader,
-            Substitute.For<IEthereumEcdsa>(),
+            new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
             Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
             LimboLogs.Instance);

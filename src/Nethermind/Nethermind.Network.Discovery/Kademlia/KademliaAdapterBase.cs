@@ -56,6 +56,12 @@ public abstract class KademliaAdapterBase(
         {
             while (true)
             {
+                if (token.IsCancellationRequested)
+                {
+                    node.TryClearEnrRequest(node.RequestingEnrSequence);
+                    return;
+                }
+
                 ulong requestedSequence = node.RequestingEnrSequence;
                 if (requestedSequence == 0)
                 {

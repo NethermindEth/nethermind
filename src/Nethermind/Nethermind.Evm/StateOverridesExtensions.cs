@@ -70,7 +70,7 @@ public static class StateOverridesExtensions
         {
             foreach ((UInt256 index, Hash256 value) in diff)
             {
-                stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
+                stateProvider.Set(new StorageCell(address, index), value.ToUInt256());
             }
         }
 

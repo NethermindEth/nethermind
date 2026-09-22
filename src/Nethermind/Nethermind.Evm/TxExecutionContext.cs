@@ -19,5 +19,6 @@ namespace Nethermind.Evm
         public readonly UInt256 GasPrice = gasPrice;
 
         internal bool SuppressLogs { get; init; }
+        internal bool MaterializeLogMemory { get; init; }
     }
 }

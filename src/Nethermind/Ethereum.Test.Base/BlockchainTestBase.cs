@@ -198,9 +198,10 @@ public abstract class BlockchainTestBase
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
+        IBlockProcessingQueue blockchainProcessingQueue = mainBlockProcessingContext.BlockProcessingQueue;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
-        blockchainProcessor.Start();
+        blockchainProcessingQueue.Start();
 
         try
         {
@@ -287,7 +288,7 @@ public abstract class BlockchainTestBase
 
             // NOTE: Tracer removal must happen AFTER StopAsync to ensure all blocks are traced
             // Blocks are queued asynchronously, so we need to wait for processing to complete
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             lastValidationError ??= asyncBlockError;
             stopwatch?.Stop();
 
@@ -342,7 +343,7 @@ public abstract class BlockchainTestBase
         }
         catch (Exception)
         {
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             throw;
         }
     }
@@ -798,7 +799,7 @@ public abstract class BlockchainTestBase
         {
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
             {
-                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), new UInt256(storageItem.Value, isBigEndian: true));
             }
 
             stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
@@ -876,19 +877,21 @@ public abstract class BlockchainTestBase
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key));
-                if (!value.IsZero())
+                UInt256 value = UInt256.Zero;
+                if (stateProvider.AccountExists(accountAddress)) stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key), out value);
+                if (!value.IsZero)
                 {
-                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToMinimalBigEndian().ToHexString(true)}");
                 }
             }
 
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key));
-                if (!Bytes.AreEqual(storageItem.Value, value))
+                UInt256 value = UInt256.Zero;
+                if (stateProvider.AccountExists(accountAddress)) stateProvider.Get(new StorageCell(accountAddress, storageItem.Key), out value);
+                if (new UInt256(storageItem.Value, isBigEndian: true) != value)
                 {
-                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToMinimalBigEndian().ToHexString(true)}");
                 }
             }
 

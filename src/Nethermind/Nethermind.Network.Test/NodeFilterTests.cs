@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
@@ -13,6 +14,37 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class NodeFilterTests
 {
+    [Test]
+    public void Touch_existing_address_does_not_allocate([Values] bool exactMatchOnly)
+    {
+        NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly);
+        IPAddress address = IPAddress.Parse("203.0.113.1");
+        for (int i = 0; i < 1000; i++) filter.Touch(address);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++) filter.Touch(address);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.Zero);
+            Assert.That(filter.TryAccept(address), Is.False);
+        }
+    }
+
+    [Test]
+    public void Touch_reinserts_evicted_address()
+    {
+        NodeFilter filter = CreateFilter(size: 1, exactMatchOnly: true);
+        IPAddress first = IPAddress.Parse("203.0.113.1");
+        IPAddress second = IPAddress.Parse("203.0.113.2");
+        filter.Touch(first);
+        filter.Touch(second);
+        filter.Touch(first);
+        Assert.That(filter.TryAccept(first), Is.False);
+        Assert.That(filter.TryAccept(second), Is.True);
+    }
+
     private static NodeFilter CreateFilter(int size = 100, bool exactMatchOnly = false,
         IPAddress? currentIp = null, long timeoutMs = 0) =>
         timeoutMs > 0
