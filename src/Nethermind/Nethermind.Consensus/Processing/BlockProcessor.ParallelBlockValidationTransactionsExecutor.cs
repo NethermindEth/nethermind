@@ -291,7 +291,7 @@ public partial class BlockProcessor
         {
             inner.PublishTransactionProcessedEvents();
 
-            if (transactionProcessedEventHandler is null || _pendingTransactionProcessedEvents is null)
+            if (_pendingTransactionProcessedEvents is null)
             {
                 return;
             }
