@@ -25,18 +25,22 @@ public sealed class BulkFillScopeProvider(
     public bool HasRoot(BlockHeader? baseBlock) => session.IsReady && baseBlock is not null
         && baseBlock.Hash == session.BlockHash && new StateId(baseBlock) == session.CurrentState;
 
-    // The session serves exactly one base block and resolves no headers, so a target can never be anchored here.
-    public bool HasStateForTargetBlock(BlockHeader targetBlock) => false;
+    /// <remarks>
+    /// The session stands on the parent of the block it is about to replay, so the target is anchored here exactly
+    /// when the session holds that parent - the same pairing <see cref="BulkFillSession.BeginBlock"/> requires.
+    /// </remarks>
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => session.IsReady
+        && targetBlock.ParentHash == session.BlockHash && targetBlock.Number == session.CurrentState.BlockNumber + 1;
 
-    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
-    {
-        scope = null;
-        return false;
-    }
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        TryOpen(HasStateForTargetBlock(targetBlock), out scope);
 
-    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        TryOpen(HasRoot(baseBlock), out scope);
+
+    private bool TryOpen(bool anchored, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        if (!HasRoot(baseBlock))
+        if (!anchored)
         {
             scope = null;
             return false;
