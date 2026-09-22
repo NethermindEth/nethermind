@@ -15,15 +15,46 @@ permissions:
   pull-requests: write
 
 jobs:
-  command:
+  authorize:
     if: >-
       github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/') &&
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      github.event.issue.state == 'open' &&
+      startsWith(github.event.comment.body, '/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      allowed: ${{ steps.permission.outputs.allowed }}
+    steps:
+      - name: Authorize review command
+        id: permission
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const body = (context.payload.comment?.body || '').trim();
+            const supported = /^\/(?:review|improve|describe)$/i.test(body) ||
+              /^\/ask\s+\S[\s\S]*$/i.test(body);
+            if (!supported || context.payload.comment?.user?.type !== 'User') return;
+
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              ...context.repo,
+              username: context.payload.comment.user.login,
+            });
+            if (!['write', 'maintain', 'admin'].includes(data.permission)) {
+              core.info('AI review command ignored: repository write access is required.');
+              return;
+            }
+            core.setOutput('allowed', 'true');
+
+  command:
+    needs: authorize
+    if: needs.authorize.outputs.allowed == 'true'
     uses: NethermindEth/github-workflows/.github/workflows/ai-review-command.yaml@v2.4.0
     with:
       secret_path: /apps/litellm/nethermind-ai-reviewer
       num_max_findings: 8
+      # Keep this block identical to ai-review.yml. The shared v2.4.0 workflow accepts
+      # instructions as a literal input and cannot read a caller-owned instructions file.
       extra_instructions: |
         Review the changed behavior in the context of its callers and consumers. Check for
         missing validation and authorization, incomplete state transitions or restoration,

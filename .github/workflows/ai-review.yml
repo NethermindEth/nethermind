@@ -25,6 +25,8 @@ jobs:
     with:
       secret_path: /apps/litellm/nethermind-ai-reviewer
       num_max_findings: 8
+      # Keep this block identical to ai-review-command.yml. The shared v2.4.0 workflow accepts
+      # instructions as a literal input and cannot read a caller-owned instructions file.
       extra_instructions: |
         Review the changed behavior in the context of its callers and consumers. Check for
         missing validation and authorization, incomplete state transitions or restoration,
