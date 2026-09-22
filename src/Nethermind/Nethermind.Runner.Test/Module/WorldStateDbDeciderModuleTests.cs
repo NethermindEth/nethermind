@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Linq;
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -60,26 +59,6 @@ public class WorldStateDbDeciderModuleTests
 
         if (flags.HasFlag(Flags.PatriciaHasData))
             container.ResolveKeyed<IDb>(DbNames.State).Set(Bytes.FromHexString("0000000000000001"), [1]);
-
-        IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
-
-        if (expectFlat)
-            Assert.That(worldStateManager, Is.TypeOf<FlatWorldStateManager>());
-        else
-            Assert.That(worldStateManager, Is.Not.TypeOf<FlatWorldStateManager>());
-    }
-
-    // Production refuses this combo on a fresh flat DB. The test harness stays on patricia
-    // instead of booting flat; SnapSync keeps the flat backend.
-    [TestCase(false, false)]
-    [TestCase(true, true)]
-    public void Fresh_fast_sync_without_snap_does_not_boot_flat(bool snapSync, bool expectFlat)
-    {
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(
-                new SyncConfig { FastSync = true, SnapSync = snapSync },
-                new FlatDbConfig { Enabled = true }))
-            .Build();
 
         IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
 

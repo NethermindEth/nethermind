@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
-using System.IO.Abstractions;
-using System.Linq;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -62,21 +58,11 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             // FlatDb uses SnapshotableMemColumnsDb for fast O(1) MVCC snapshots instead of slow O(n) full copies
             .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))
             .AddDecorator<IFlatDbManager, FlatDbManagerTestCompat>()
-            .Intercept<IFlatDbConfig>((flatDbConfig, ctx) =>
+            .Intercept<IFlatDbConfig>((flatDbConfig) =>
             {
                 // Dont want to make it very slow
                 flatDbConfig.TrieWarmerWorkerCount = 0;
                 flatDbConfig.WarmReadConcurrency = 2;
-                // Fresh flat + FastSync without SnapSync is refused in production. Tests that still
-                // set that combo are not syncing flat state, so they stay on patricia. An on-disk
-                // flat DB (an sst file) stays enabled and the policy warns instead.
-                if (flatDbConfig.Enabled
-                    && !flatDbConfig.ImportFromPruningTrieState
-                    && ctx.Resolve<ISyncConfig>() is { FastSync: true, SnapSync: false }
-                    && !FlatDirectoryHasSst(ctx))
-                {
-                    flatDbConfig.Enabled = false;
-                }
             })
 
             // Rpc
@@ -93,17 +79,5 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
             }
         });
-    }
-
-    private static bool FlatDirectoryHasSst(IComponentContext ctx)
-    {
-        IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-        if (string.IsNullOrEmpty(initConfig.BaseDbPath))
-            return false;
-
-        IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
-        string flatPath = Path.Combine(initConfig.BaseDbPath, DbNames.Flat);
-        return fileSystem.Directory.Exists(flatPath)
-            && fileSystem.Directory.EnumerateFiles(flatPath, "*.sst").Any();
     }
 }
