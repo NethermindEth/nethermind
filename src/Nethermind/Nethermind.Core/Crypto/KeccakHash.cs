@@ -21,7 +21,7 @@ public sealed partial class KeccakHash
     internal const int RateBlockLength = HASH_DATA_AREA;
 
     /// <summary>Largest padded length the batch kernels are used with, four rate blocks.</summary>
-    internal const int MaxBatchablePaddedLength = Hash532PaddedLength;
+    internal const int MaxBatchablePaddedLength = 4 * RateBlockLength;
 
     private const int HASH_SIZE = 32;
     private const int STATE_SIZE = 200;

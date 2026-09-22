@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -100,14 +101,22 @@ internal static class DirtyNodeHasher
     private static bool TryHashSubtreesInParallel(TrieNode root, ITrieNodeResolver resolver, ICappedArrayPool? pool, int maxCollectedNodes)
     {
         const int MinimumSubtrees = 2;
-        int[] childIndexes = new int[BranchChildCount];
-        int count = 0;
+        uint dirtyChildren = 0;
         for (int i = 0; i < BranchChildCount; i++)
         {
-            if (root.TryGetDirtyChild(i, out TrieNode? child) && child.Keccak is null) childIndexes[count++] = i;
+            if (root.TryGetDirtyChild(i, out TrieNode? child) && child.Keccak is null) dirtyChildren |= 1u << i;
         }
 
+        // Counted before anything is allocated, so declining costs nothing on the common storage commit.
+        int count = BitOperations.PopCount(dirtyChildren);
         if (count < MinimumSubtrees) return false;
+
+        int[] childIndexes = new int[count];
+        for (int i = 0; i < count; i++)
+        {
+            childIndexes[i] = BitOperations.TrailingZeroCount(dirtyChildren);
+            dirtyChildren &= dirtyChildren - 1;
+        }
 
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
             (childIndexes, root, resolver, pool, maxCollectedNodes),
