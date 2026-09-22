@@ -189,8 +189,6 @@ public static class BasePersistence
             {
                 if (column == FlatDbColumns.Metadata)
                 {
-                    // Preserve the format markers; wiping them makes a re-synced RLP DB read back as raw. #11996
-                    batch.GetColumnBatch(column).Remove(CurrentStateKey);
                     continue;
                 }
 
@@ -206,6 +204,11 @@ public static class BasePersistence
                     }
                 }
             }
+
+            // The state pointer goes last: a wipe that dies midway must still read back as populated so the
+            // next start redoes it instead of treating a half-wiped DB as empty. Only this key is reset;
+            // wiping the format markers makes a re-synced RLP DB read back as raw. #11996
+            batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(CurrentStateKey);
         }
         finally
         {
