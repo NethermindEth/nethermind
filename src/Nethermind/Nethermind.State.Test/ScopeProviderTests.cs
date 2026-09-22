@@ -129,9 +129,11 @@ public class ScopeProviderTests(bool useFlat)
             for (int i = 0; i < count; i++) write.Set(addresses[i], new Account(1, (UInt256)(i + 1)));
         }
 
+        // Every hash is checked before the first read. A read hashes other values into a cache that
+        // holds one entry per bucket, so reading first can evict what the write put there.
+        for (int i = 0; i < count; i++) AssertCachedHash(addresses[i].Bytes);
         for (int i = 0; i < count; i++)
         {
-            AssertCachedHash(addresses[i].Bytes);
             Assert.That(scope.Get(addresses[i]).Balance, Is.EqualTo((UInt256)(i + 1)));
         }
     }
@@ -211,14 +213,16 @@ public class ScopeProviderTests(bool useFlat)
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = write.CreateStorageWriteBatch(TestItem.AddressA, Math.Max(17, count));
                 for (int i = 0; i < count; i++) storage.Set(indices[i], round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1));
             }
+            for (int i = 0; i < count; i++)
+            {
+                if (includeLookupSlots && i % 3 == 0) continue;
+                indices[i].ToBigEndian(bytes);
+                AssertCachedHash(bytes);
+            }
+
             IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(TestItem.AddressA);
             for (int i = 0; i < count; i++)
             {
-                indices[i].ToBigEndian(bytes);
-                if (!(includeLookupSlots && i % 3 == 0))
-                {
-                    AssertCachedHash(bytes);
-                }
                 tree.Get(indices[i], out UInt256 value);
                 Assert.That(value, Is.EqualTo(round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1)), "slot value");
             }
