@@ -62,6 +62,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public static ParityTraceTypes GetParityTypes(string[] types)
         {
+            // A JSON null per-call selection in trace_callMany reaches here; ArgumentException maps to invalid params.
+            ArgumentNullException.ThrowIfNull(types);
             ParityTraceTypes result = ParityTraceTypes.None;
             foreach (string type in types)
             {
