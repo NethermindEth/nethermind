@@ -29,4 +29,4 @@ Conventions for GitHub Actions, CODEOWNERS, and repo automation under `.github/`
 ## Notes for agents
 
 - Do not change workflow logic (triggers, steps, matrices) without explicit user request.
-- When adding a new workflow, follow existing patterns (concurrency, env, job names) and reference AGENTS.md for benchmark/reproducible-workflow specifics.
+- When adding a new workflow, follow existing patterns (concurrency, env, job names) and reference the `expb-benchmark` and `rpc-benchmark` skills (`.agents/skills/`) for benchmark/reproducible-workflow specifics.

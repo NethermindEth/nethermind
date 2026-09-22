@@ -82,7 +82,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
-        IEthereumEcdsa ecdsa,
+        RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
         ILogManager logManager)
@@ -100,7 +100,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txValidator = txValidator;
-        _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
+        _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
@@ -125,9 +125,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        // Overlap ecrecover with root computation, hash validation and block tree insertion;
-        // the processing queue's RecoverSignatures then short-circuits on recovered senders.
-        Task senderRecoveryTask = StartSenderRecovery(request);
+        // Overlaps ecrecover with everything that follows, block processing included; the pipeline
+        // recovers inline whatever it reaches before the background recovery does.
+        StartSenderRecovery(request);
 
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
@@ -294,7 +294,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, senderRecoveryTask);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
         switch (result)
         {
@@ -462,36 +462,32 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private Task StartSenderRecovery(ExecutionPayload request)
+    private void StartSenderRecovery(ExecutionPayload request)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
-        // the senders; they recover in the processing queue as before. On rejected payloads the
-        // task is deliberately fire-and-forget — see the catch below.
+        // the senders; they recover in the processing queue as before.
         if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
-            return Task.CompletedTask;
+            return;
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
             // TryGetBlock reports the decoding error; nothing to recover otherwise.
-            return Task.CompletedTask;
+            return;
 
-        Transaction[] txs = transactions.Data;
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
-        return Task.Run(() =>
+        try
         {
-            try
-            {
-                _senderRecovery.RecoverData(txs, spec);
-            }
-            catch (Exception e)
-            {
-                // Best-effort: the processing-queue preprocessor recovers anything still missing.
-                if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
-            }
-        });
+            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+        }
+        catch (Exception e)
+        {
+            // Best-effort: the processing-queue preprocessor recovers anything still missing, so failing
+            // to queue the early recovery must not fail an otherwise valid payload.
+            if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed to start for block {request.BlockNumber}: {e}");
+        }
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
@@ -533,16 +529,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
-            // the tree insert reads only the raw payload bytes, never the recovered senders,
-            // so it can safely overlap the remainder of sender recovery
-            Task<AddBlockResult> suggestTask = senderRecoveryTask.IsCompleted
-                ? _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask()
-                : Task.Run(() => _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask());
-
-            // recovery must complete before Enqueue — the prewarmer needs all senders up front
-            await senderRecoveryTask;
-
-            AddBlockResult addResult = await suggestTask.TimeoutOn(timeoutTask);
+            AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask().TimeoutOn(timeoutTask);
 
             result = addResult switch
             {
