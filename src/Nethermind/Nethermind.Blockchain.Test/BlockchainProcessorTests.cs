@@ -648,6 +648,33 @@ public class BlockchainProcessorTests
         Assert.That(context.WaitUntilRemoved(_block1D2).IsCompleted, Is.True, "once removed, the block holds nobody either");
     }
 
+    /// <summary>
+    /// Several blocks are queued at once; a waiter for a later one is released by that block's own removal, not by
+    /// the removal of the block ahead of it.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_removed_is_released_by_the_blocks_own_removal_not_the_one_ahead()
+    {
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .Suggested(_block1D2)
+            .Suggested(_block2D4)
+            .Recovered(_block1D2)
+            .Recovered(_block2D4);
+
+        Task first = context.WaitUntilRemoved(_block1D2);
+        Task second = context.WaitUntilRemoved(_block2D4);
+        Assert.That(first.IsCompleted, Is.False, "the first block is queued, so its wait is pending");
+        Assert.That(second.IsCompleted, Is.False, "the second block is queued, so its wait is pending");
+
+        context.Processed(_block1D2).BecomesNewHead();
+        await first.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(second.IsCompleted, Is.False, "the block behind is still queued; its waiters stay");
+
+        context.Processed(_block2D4).BecomesNewHead();
+        await second.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_ignore_lower_difficulty() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
