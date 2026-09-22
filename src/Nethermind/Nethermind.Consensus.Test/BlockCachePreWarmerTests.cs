@@ -2466,21 +2466,14 @@ public class BlockCachePreWarmerTests
             }
         }
 
-        public void Publish(Transaction tx, Address sender)
-        {
-            tx.SenderAddress = sender;
-            Interlocked.Increment(ref _recovered);
-            lock (_gate)
-            {
-                Monitor.PulseAll(_gate);
-            }
-        }
+        public void Publish(Transaction tx, Address sender) => PublishWave((tx, sender));
 
         /// <summary>Publishes several senders as one wave.</summary>
         /// <remarks>
-        /// A waiter rescans only when the recovered count moves, so every sender is set before the count
-        /// does. Publishing them one at a time lets the waiter wake on the first, claim it alone and find
-        /// nothing else ready, which is a prefix of the wave rather than the wave.
+        /// A waiter rescans when the recovered count moves, and past its spin window on every wake as well,
+        /// so publishing one at a time pulses it awake straight into the gap between the writes: it claims
+        /// the first sender alone, finds nothing else ready and recruits no one. Every sender is therefore
+        /// set before the count moves and before the pulse.
         /// </remarks>
         public void PublishWave(params ReadOnlySpan<(Transaction Tx, Address Sender)> wave)
         {
