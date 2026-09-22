@@ -28,7 +28,10 @@ internal static class ShardBlobNetworkWrapperRlp
     private static readonly RlpLimit ProofsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCountLimit, $"{nameof(ShardBlobNetworkWrapper.Proofs)} {ProofVersion.V0}");
     private static readonly RlpLimit CellProofsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCellProofsCountLimit, $"{nameof(ShardBlobNetworkWrapper.Proofs)} {ProofVersion.V1}");
 
-    public static ShardBlobNetworkWrapper Decode(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <param name="wrapperEnd">End position of the enclosing transaction's wrapper sequence. The reader may span a
+    /// whole multi-transaction buffer, so the optional storage-only trailer is detected within this bound; counting to
+    /// the end of the buffer instead would read a following transaction as this one's cell mask.</param>
+    public static ShardBlobNetworkWrapper Decode(ref RlpReader decoderContext, int wrapperEnd, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ProofVersion version = ProofVersion.V0;
         if (!decoderContext.IsSequenceNext() && !decoderContext.IsNextItemEmptyByteArray())
@@ -63,7 +66,7 @@ internal static class ShardBlobNetworkWrapperRlp
             BlobCellMask cellMask = default;
             byte[][]? cells = null;
 
-            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(maxSearch: 2) > 0)
+            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(wrapperEnd, maxSearch: 2) == 2)
             {
                 cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
                 byte[][] decodedCells = decoderContext.DecodeByteArrays(CellProofsCountLimit);
