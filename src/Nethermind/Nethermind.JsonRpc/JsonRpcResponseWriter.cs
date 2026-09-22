@@ -11,6 +11,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Core.Exceptions;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc;
 
@@ -53,7 +56,7 @@ public static class JsonRpcResponseWriter
     {
         if (response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
-            return WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+            return WriteStreamableWithValidationAsync(writer, response, streamable, options, isBatch, cancellationToken);
         }
 
         Write(writer, response, options);
@@ -84,6 +87,42 @@ public static class JsonRpcResponseWriter
     /// <summary>Returns whether <paramref name="response"/> should map to HTTP 503 on HTTP transports.</summary>
     public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>
         response?.IsResourceUnavailableError == true;
+
+    private static async ValueTask WriteStreamableWithValidationAsync(
+        PipeWriter writer,
+        JsonRpcResponse response,
+        IStreamableResult streamable,
+        JsonSerializerOptions options,
+        bool isBatch,
+        CancellationToken cancellationToken)
+    {
+        ValidationBufferingPipeWriter buffered = new(writer);
+        try
+        {
+            await WriteStreamableAsync(buffered, response, streamable, isBatch, cancellationToken);
+        }
+        catch (InvalidBlockException ex) when (!buffered.IsCommitted)
+        {
+            Write(writer, new JsonRpcErrorResponse(in response.IdRef)
+            {
+                Error = new Error
+                {
+                    Code = ErrorCodes.Default,
+                    Message = ex is InvalidTransactionException invalid ? invalid.Reason.ErrorDescription : ex.Message
+                }
+            }, options);
+            return;
+        }
+        catch (InsufficientBalanceException ex) when (!buffered.IsCommitted)
+        {
+            Write(writer, new JsonRpcErrorResponse(in response.IdRef)
+            {
+                Error = new Error { Code = ErrorCodes.InvalidInput, Message = ex.Message }
+            }, options);
+            return;
+        }
+        buffered.Commit();
+    }
 
     private static async ValueTask WriteStreamableAsync(
         PipeWriter writer,
@@ -271,4 +310,56 @@ public static class JsonRpcResponseWriter
 internal interface IJsonRpcRawResponse
 {
     void WriteRaw(IBufferWriter<byte> writer);
+}
+
+// Keep small responses replaceable until validation completes. A rejected transaction can finish
+// and flush its tracer before the block processor reports the error. Large responses still stream.
+internal sealed class ValidationBufferingPipeWriter(PipeWriter writer) : PipeWriter
+{
+    private const int BufferLimit = 16 * 1024;
+    private readonly ArrayBufferWriter<byte> _buffer = new(256);
+
+    internal bool IsCommitted { get; private set; }
+
+    internal void Commit()
+    {
+        if (IsCommitted) return;
+        writer.Write(_buffer.WrittenSpan);
+        _buffer.Clear();
+        IsCommitted = true;
+    }
+
+    public override Memory<byte> GetMemory(int sizeHint = 0)
+    {
+        int remaining = BufferLimit - _buffer.WrittenCount;
+        if (!IsCommitted && Math.Max(sizeHint, 1) <= remaining)
+        {
+            Memory<byte> memory = _buffer.GetMemory(sizeHint);
+            return memory[..Math.Min(memory.Length, remaining)];
+        }
+        Commit();
+        return writer.GetMemory(sizeHint);
+    }
+
+    public override Span<byte> GetSpan(int sizeHint = 0) => GetMemory(sizeHint).Span;
+
+    public override void Advance(int bytes)
+    {
+        if (IsCommitted) writer.Advance(bytes);
+        else _buffer.Advance(bytes);
+    }
+
+    public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return IsCommitted ? writer.FlushAsync(cancellationToken) : new(new FlushResult(false, false));
+    }
+
+    public override void CancelPendingFlush() => writer.CancelPendingFlush();
+
+    public override void Complete(Exception? exception = null)
+    {
+        Commit();
+        writer.Complete(exception);
+    }
 }

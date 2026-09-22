@@ -9,6 +9,8 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Builders;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
@@ -55,6 +57,57 @@ public class JsonRpcResponseWriterStreamingIdTests
         await pipe.Reader.CompleteAsync();
 
         Assert.That(envelope, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"ok\",\"id\":{serializedId}}}"));
+    }
+
+    [Test]
+    public async Task Validation_failure_replaces_only_uncommitted_response([Values(0, 1, 2)] int commitMode)
+    {
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = new JsonRpcId(42L), Result = new InvalidTransactionResult(commitMode)
+        };
+
+        if (commitMode != 2)
+        {
+            await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, new JsonSerializerOptions(), CancellationToken.None);
+        }
+        else
+        {
+            Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, new JsonSerializerOptions(), CancellationToken.None));
+        }
+        await pipe.Writer.CompleteAsync();
+        ReadResult read = await pipe.Reader.ReadAsync();
+        string envelope = Encoding.UTF8.GetString(read.Buffer.ToArray());
+        await pipe.Reader.CompleteAsync();
+
+        if (commitMode != 2)
+        {
+            using JsonDocument document = JsonDocument.Parse(envelope);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(document.RootElement.GetProperty("id").GetInt32(), Is.EqualTo(42));
+                Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(document.RootElement.TryGetProperty("result", out _), Is.False);
+            }
+        }
+        else
+        {
+            Assert.That(envelope, Does.StartWith("{\"jsonrpc\":\"2.0\",\"result\":"));
+            Assert.That(envelope, Does.Not.Contain("\"error\""));
+        }
+    }
+
+    private sealed class InvalidTransactionResult(int commitMode) : IStreamableResult
+    {
+        public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            writer.Write("{\"vmTrace\":"u8);
+            if (commitMode == 1) await writer.FlushAsync(cancellationToken);
+            if (commitMode == 2) writer.Write(new byte[20_000]);
+            throw new InsufficientBalanceException(TestItem.AddressA);
+        }
     }
 
     [Test]
