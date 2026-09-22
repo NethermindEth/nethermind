@@ -22,8 +22,8 @@ namespace Nethermind.Consensus.Processing;
 /// <remarks>
 /// The exclusive lock serializes calls because the wrapped scope's world state and branch processor
 /// are single-use. Callers always pass <see cref="ProcessingOptions.ForceProcessing"/>, so no ancestor
-/// walk is done: the parent must already have state. The head is never updated: all consumers pass
-/// <see cref="ProcessingOptions.DoNotUpdateHead"/>, so the processed block is left for the caller to commit
+/// walk is done: the parent must already have state. This processor never updates the head, regardless of
+/// <see cref="ProcessingOptions.DoNotUpdateHead"/>; the processed block is left for the caller to commit
 /// (e.g. by suggesting the sealed block back into the main pipeline).
 /// </remarks>
 public sealed class OneTimeChainProcessor(

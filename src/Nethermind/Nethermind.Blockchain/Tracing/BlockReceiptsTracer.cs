@@ -255,6 +255,10 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) =>
         _currentTxTracer.ReportStorageChange(storageCell, before, after);
 
+    public void ReportStorageClear(Address address) => _currentTxTracer.ReportStorageClear(address);
+
+    public void ReportStorageRestore(in StorageCell storageCell, byte[] value) => _currentTxTracer.ReportStorageRestore(storageCell, value);
+
     public void ReportStorageRead(in StorageCell storageCell) =>
         _currentTxTracer.ReportStorageRead(storageCell);
 

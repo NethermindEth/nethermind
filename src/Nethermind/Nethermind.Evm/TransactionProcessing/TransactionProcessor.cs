@@ -245,13 +245,15 @@ namespace Nethermind.Evm.TransactionProcessing
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
         }
 
-        // EIP-2780 self-transfer pricing depends on the signer, so resolve it before computing intrinsic gas.
+        // A sender still missing here is one the background recovery has not reached yet (blocks are
+        // processed while it runs); EIP-2780 self-transfer pricing additionally needs the actual signer,
+        // so both resolve before intrinsic gas.
         private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec)
         {
-            if (spec.IsEip2780Enabled
-                && tx.IsMessageCall
-                && tx.Signature is not null
-                && (tx.SenderAddress is null || !WorldState.AccountExists(tx.SenderAddress)))
+            if (tx.Signature is null) return;
+
+            if (tx.SenderAddress is null
+                || (spec.IsEip2780Enabled && tx.IsMessageCall && !WorldState.AccountExists(tx.SenderAddress)))
             {
                 tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
             }
@@ -1075,7 +1077,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
-                // EIP-2780 message calls were already recovered before intrinsic gas.
+                // Message calls under EIP-2780 were re-recovered against this state before intrinsic gas;
+                // repeating it here would only redo that work.
                 if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall))
                     tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 

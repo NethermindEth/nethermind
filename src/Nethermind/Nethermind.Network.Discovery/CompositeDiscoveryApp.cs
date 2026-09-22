@@ -30,6 +30,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     private readonly IDiscoveryApp[] _discoveryApps;
     private readonly CompositeNodeSource _compositeNodeSource;
     private readonly ILogger _logger;
+    private readonly TimeSpan _eventLoopShutdownTimeout;
     private IEventLoopGroup? _eventLoopGroup;
 
     public CompositeDiscoveryApp(
@@ -63,6 +64,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), discoveryConfig, listenerState);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
+        _eventLoopShutdownTimeout = TimeSpan.FromMilliseconds(discoveryConfig.UdpChannelCloseTimeout);
         _discoveryApps = discoveryApps;
         _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
     }
@@ -216,9 +218,28 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         }
     }
 
-    // Channels and discovery tasks are stopped first, so their event loop needs no additional quiet period.
-    private Task ShutdownEventLoopGroup()
-        => Interlocked.Exchange(ref _eventLoopGroup, null)?.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.Zero) ?? Task.CompletedTask;
+    /// <summary>Shuts the discovery event loop down without letting a stuck loop block node shutdown.</summary>
+    /// <remarks>
+    /// Channels and discovery tasks are stopped first, so the event loop needs no additional quiet period.
+    /// DotNetty queues a wake-up task while confirming shutdown and its own next confirmation reads that back as
+    /// pending work, so a task landing in the queue at that moment leaves the loop spinning instead of terminating.
+    /// The loop is abandoned once <see cref="IDiscoveryConfig.UdpChannelCloseTimeout"/> is spent, which already bounds
+    /// closing the channels the loop serves.
+    /// </remarks>
+    private async Task ShutdownEventLoopGroup()
+    {
+        IEventLoopGroup? eventLoopGroup = Interlocked.Exchange(ref _eventLoopGroup, null);
+        if (eventLoopGroup is null) return;
+
+        try
+        {
+            await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.Zero).WaitAsync(_eventLoopShutdownTimeout);
+        }
+        catch (TimeoutException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not shut discovery event loop down in {_eventLoopShutdownTimeout.TotalMilliseconds} milliseconds.");
+        }
+    }
 
     string IStoppableService.Description => "discovery connection";
 
