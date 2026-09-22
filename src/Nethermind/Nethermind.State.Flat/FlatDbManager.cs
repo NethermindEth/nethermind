@@ -88,8 +88,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
 
-        // Keep worker cancellation under this manager's control so process-exit cancellation cannot
-        // preempt the ordered channel drain in DisposeAsync. Producer-side waits still observe process exit.
+        // Keep worker cancellation under this manager's control so process-exit cancellation cannot preempt the
+        // ordered channel drain in DisposeAsync. A job that fails is logged and the worker takes the next one; only
+        // a worker that stops, cancelled or failed outside its jobs, cancels the others, so no producer is left
+        // waiting for space on a channel nobody reads any more.
         _processExitToken = processExitSource.Token;
         _cancelTokenSource = new();
 
@@ -117,6 +119,16 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            _cancelTokenSource.Cancel();
+        }
+        catch
+        {
+            _cancelTokenSource.Cancel();
+            throw;
+        }
+        finally
+        {
+            _compactorJobs.Writer.TryComplete();
         }
     }
 
@@ -151,6 +163,17 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            _cancelTokenSource.Cancel();
+        }
+        catch
+        {
+            _cancelTokenSource.Cancel();
+            throw;
+        }
+        finally
+        {
+            // No producer may wait for space after the only consumer has stopped.
+            _persistenceJobs.Writer.TryComplete();
         }
     }
 
@@ -179,13 +202,29 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            _cancelTokenSource.Cancel();
+        }
+        catch
+        {
+            _cancelTokenSource.Cancel();
+            throw;
+        }
+        finally
+        {
+            _populateTrieNodeCacheJobs.Writer.TryComplete();
         }
     }
 
     private void PopulateTrieNodeCache(TransientResource transientResource)
     {
-        _trieNodeCache.Add(transientResource);
-        transientResource.ReleaseLease();
+        try
+        {
+            _trieNodeCache.Add(transientResource);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
     }
 
     private async Task NotifyWhenSlow(string name, Func<Task> closure)
@@ -474,12 +513,21 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         return false;
     }
 
+    public void DropStateNotReachableFrom(in StateId head)
+    {
+        _persistenceManager.DropStateNotReachableFrom(head);
+        // Cached bundles lease the snapshots they were assembled over; without this the pruned ones stay
+        // alive until the periodic clear.
+        ClearReadOnlyBundleCache();
+    }
+
     /// <inheritdoc/>
     /// <remarks>
     /// Drains the queues in feed order — the compactor writes into the persistence queue, so it has to
     /// drain first — before cancelling, so in-flight finality-driven persistence is not lost. It does not
     /// <see cref="FlushCache"/>: that would persist the unfinalized tail and break reorgs across the
     /// restart. The in-memory tier is re-executed from the persisted-snapshot tier on the next start.
+    /// If a worker stops before draining, sibling waits are cancelled instead; a failed job does not stop a worker.
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
