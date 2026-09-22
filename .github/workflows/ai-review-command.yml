@@ -18,7 +18,7 @@ jobs:
   command:
     uses: NethermindEth/github-workflows/.github/workflows/ai-review-command.yaml@v2.4.0
     with:
-      secret_path: /apps/litellm/code-reviewer-prod
+      secret_path: /apps/litellm/nethermind-ai-reviewer
       num_max_findings: 8
       extra_instructions: |
         Review the changed behavior in the context of its callers and consumers. Check for
