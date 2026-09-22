@@ -326,6 +326,10 @@ namespace Nethermind.Trie
 
         public void UpdateRootHash(bool canBeParallel = true)
         {
+            if (canBeParallel && RootRef?.ResolveSubtrieKeys(TrieStore, _bufferPool) == true)
+            {
+                canBeParallel = false;
+            }
             TreePath path = TreePath.Empty;
             RootRef?.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);

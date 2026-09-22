@@ -31,6 +31,63 @@ namespace Nethermind.Trie.Test
     public class TrieTests
     {
         [Test]
+        public void Partitioned_root_matches_serial_after_updates_and_reload(
+            [Values(3, 32)] int keyLength, [Values(0, 1, 2)] int sharedPrefixNibbles)
+        {
+            using MemDb db = new();
+            using IPruningTrieStore store = CreateTrieStore(db);
+            PatriciaTree tree = new(store, NullLogManager.Instance);
+            byte[][] keys = new byte[1024][];
+            byte[][] values = new byte[keys.Length][];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                byte[] key = new byte[keyLength];
+                key[0] = (byte)i;
+                key[1] = (byte)(i >> 8);
+                if (sharedPrefixNibbles == 1)
+                {
+                    key[2] = (byte)(key[1] << 4);
+                    key[1] = (byte)((key[0] << 4) | (key[1] >> 4));
+                    key[0] >>= 4;
+                }
+                else if (sharedPrefixNibbles == 2)
+                {
+                    key[2] = key[1];
+                    key[1] = key[0];
+                    key[0] = 0;
+                }
+                keys[i] = key;
+                values[i] = [(byte)(i % 127 + 1)];
+                tree.Set(key, values[i]);
+            }
+
+            for (int round = 0; round < 5; round++)
+            {
+                if (round != 0)
+                {
+                    for (int i = 0; i < keys.Length; i++)
+                    {
+                        if (i % 3 != round % 3) continue;
+                        values[i] = round == 1 ? [] : [(byte)round, (byte)i];
+                        tree.Set(keys[i], values[i]);
+                    }
+                }
+
+                PatriciaTree reference = new(NullTrieStore.Instance, NullLogManager.Instance);
+                for (int i = 0; i < keys.Length; i++) reference.Set(keys[i], values[i]);
+                reference.UpdateRootHash(canBeParallel: false);
+                tree.UpdateRootHash();
+                Assert.That(tree.RootHash, Is.EqualTo(reference.RootHash), $"round {round}");
+                tree.UpdateRootHash();
+                Assert.That(tree.RootHash, Is.EqualTo(reference.RootHash), "cached root");
+
+                store.CommitPatriciaTrie((ulong)round, tree);
+                store.PersistCache(CancellationToken.None);
+                tree = new PatriciaTree(store, NullLogManager.Instance) { RootHash = tree.RootHash };
+            }
+        }
+
+        [Test]
         public void Oversized_storage_leaf_is_rejected()
         {
             StorageTree tree = new(NullTrieStore.Instance, LimboLogs.Instance);
