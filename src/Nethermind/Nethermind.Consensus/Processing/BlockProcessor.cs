@@ -87,24 +87,20 @@ public partial class BlockProcessor(
         bool processed = false;
         try
         {
-            try
-            {
-                receipts = ProcessBlock(block, blockTracer, options, spec, token);
-                processed = true;
-            }
-            catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
-            {
-                throw new BlockAccessListSequentialRetryException(ex);
-            }
-            catch (BlockAccessListManager.ParallelExecutionException ex) when (
-                _balManager.ParallelExecutionEnabled &&
-                ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
-            {
-                throw new BlockAccessListSequentialRetryException(blockAccessListException);
-            }
-
+            receipts = ProcessBlock(block, blockTracer, options, spec, token);
+            processed = true;
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
+        }
+        catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
+        {
+            throw new BlockAccessListSequentialRetryException(ex);
+        }
+        catch (BlockAccessListManager.ParallelExecutionException ex) when (
+            _balManager.ParallelExecutionEnabled &&
+            ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
+        {
+            throw new BlockAccessListSequentialRetryException(blockAccessListException);
         }
         finally
         {
