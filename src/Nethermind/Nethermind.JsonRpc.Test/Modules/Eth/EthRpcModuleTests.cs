@@ -1258,6 +1258,31 @@ public partial class EthRpcModuleTests
         Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo("[]"));
     }
 
+    [Test]
+    public async Task Eth_get_logs_envelope_preserves_body_limit([Values] bool isBatch, [Values(1, 100)] int allowedLogs)
+    {
+        string logJson = JsonSerializer.Serialize(CreateTestFilterLog(), EthereumJsonSerializer.JsonOptions);
+        int logBytes = Encoding.UTF8.GetByteCount(logJson);
+        long priorBytes = isBatch ? 1000 : 0;
+        long limit = priorBytes + 26 + allowedLogs * (logBytes + 1) + LogsStreamEnvelopeEndReserveBytes;
+        using LogsStreamableResult result = CreateLogsStreamableResult(
+            Enumerable.Repeat(CreateTestFilterLog(), allowedLogs + 1),
+            maxLogsResponseBodySize: isBatch ? long.MaxValue : limit,
+            maxBatchResponseBodySize: isBatch ? limit : null);
+        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(67L), Result = result };
+        using MemoryStream stream = new();
+        CountingPipeWriter writer = new(PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true)), priorBytes);
+
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, isBatch, CancellationToken.None);
+        await writer.CompleteAsync();
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(allowedLogs));
+            Assert.That(document.RootElement.GetProperty("_streamStatus").GetString(), Is.EqualTo("truncated"));
+        }
+    }
+
     [TestCaseSource(nameof(LogsStreamStatusCases))]
     public async Task Eth_get_logs_stream_mode_writes_status(string statusCase, string expected)
     {

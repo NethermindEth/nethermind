@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Reflection;
@@ -494,6 +495,27 @@ public class JsonRpcServiceTests
         yield return (new ArgumentException("Invalid replay argument"), ErrorCodes.InvalidParams);
         yield return (new LimitExceededException("limit"), ErrorCodes.LimitExceeded);
         yield return (new OperationCanceledException("Replay timeout"), ErrorCodes.Timeout);
+    }
+
+    [Test]
+    public async Task Streamed_serialization_failure_is_an_internal_error([Values] bool wrapped)
+    {
+        IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
+        ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+        using CancellationTokenSource timeout = new();
+        Exception failure = new JsonException("Cannot serialize trace");
+        if (wrapped) failure = new TargetInvocationException(failure);
+        rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
+            .Returns(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplayStreamingResult(
+                (_, _, _) => throw failure, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
+        using JsonRpcResponse response = TestRequestWithPool(pool, "trace_replayTransaction", TestItem.KeccakA.ToString(), new[] { "trace" });
+        using MemoryStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream);
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        await writer.CompleteAsync();
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
     }
 
     [Test]

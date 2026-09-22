@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
@@ -297,18 +298,27 @@ internal interface IJsonRpcRawResponse
 
 // Keep small responses replaceable if deferred execution fails, even after a tracer flush.
 // Once bytes reach the transport, an error envelope can no longer replace the partial result.
-internal sealed class ValidationBufferingPipeWriter(PipeWriter writer) : PipeWriter
+internal sealed class ValidationBufferingPipeWriter : CountingWriter
 {
     private const int BufferLimit = 16 * 1024;
     private readonly ArrayBufferWriter<byte> _buffer = new(256);
+    private readonly PipeWriter _writer;
+
+    internal ValidationBufferingPipeWriter(PipeWriter writer)
+    {
+        _writer = writer;
+        WrittenCount = (writer as CountingWriter)?.WrittenCount ?? 0;
+    }
 
     internal bool IsCommitted { get; private set; }
+    public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
+    public override long UnflushedBytes => _writer.UnflushedBytes + _buffer.WrittenCount;
 
     internal void Commit()
     {
         if (IsCommitted) return;
         IsCommitted = true;
-        writer.Write(_buffer.WrittenSpan);
+        _writer.Write(_buffer.WrittenSpan);
         _buffer.Clear();
     }
 
@@ -321,28 +331,29 @@ internal sealed class ValidationBufferingPipeWriter(PipeWriter writer) : PipeWri
             return memory[..Math.Min(memory.Length, remaining)];
         }
         Commit();
-        return writer.GetMemory(sizeHint);
+        return _writer.GetMemory(sizeHint);
     }
 
     public override Span<byte> GetSpan(int sizeHint = 0) => GetMemory(sizeHint).Span;
 
     public override void Advance(int bytes)
     {
-        if (IsCommitted) writer.Advance(bytes);
+        if (IsCommitted) _writer.Advance(bytes);
         else _buffer.Advance(bytes);
+        WrittenCount += bytes;
     }
 
     public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return IsCommitted ? writer.FlushAsync(cancellationToken) : new(new FlushResult(false, false));
+        return IsCommitted ? _writer.FlushAsync(cancellationToken) : new(new FlushResult(false, false));
     }
 
-    public override void CancelPendingFlush() => writer.CancelPendingFlush();
+    public override void CancelPendingFlush() => _writer.CancelPendingFlush();
 
     public override void Complete(Exception? exception = null)
     {
         Commit();
-        writer.Complete(exception);
+        _writer.Complete(exception);
     }
 }

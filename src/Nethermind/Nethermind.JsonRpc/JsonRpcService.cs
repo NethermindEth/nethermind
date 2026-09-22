@@ -189,7 +189,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             if (response.TryGetStreamableResult(out _))
             {
                 // Deferred execution must use the same error mapping as invocation. The original response owns the rental.
-                response.StreamExceptionHandler = ex => HandleInvocationException(ex, methodName, request, returnAction: null);
+                response.StreamExceptionHandler = ex => HandleInvocationException(ex, methodName, request, returnAction: null, isStreaming: true);
             }
             return response;
         }
@@ -593,7 +593,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
     }
 
-    private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
+    private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction, bool isStreaming = false)
     {
         return ex switch
         {
@@ -607,7 +607,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetParameterCountException or ArgumentException =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
 
-            JsonException or TargetInvocationException and { InnerException: JsonException } =>
+            JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>

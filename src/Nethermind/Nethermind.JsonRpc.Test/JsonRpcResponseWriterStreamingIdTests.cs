@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Json;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -66,7 +67,8 @@ public class JsonRpcResponseWriterStreamingIdTests
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
         using JsonRpcSuccessResponse response = new()
         {
-            Id = new JsonRpcId(42L), Result = new InvalidTransactionResult(commitMode),
+            Id = new JsonRpcId(42L),
+            Result = new InvalidTransactionResult(commitMode),
             StreamExceptionHandler = ex => new JsonRpcErrorResponse
             {
                 Id = new JsonRpcId(42L),
@@ -152,6 +154,52 @@ public class JsonRpcResponseWriterStreamingIdTests
         public override void CancelPendingFlush() => throw new NotSupportedException();
         public override void Complete(Exception? exception = null) => throw new NotSupportedException();
         public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    [Test]
+    public async Task Streaming_envelope_preserves_flush_threshold()
+    {
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        FlushCountingPipeWriter transport = new(pipe.Writer);
+        using JsonRpcSuccessResponse response = new() { Result = new ChunkedResult() };
+        await JsonRpcResponseWriter.WriteAsync(new CountingPipeWriter(transport), response,
+            new JsonSerializerOptions(), CancellationToken.None);
+        await transport.CompleteAsync();
+        await pipe.Reader.CompleteAsync();
+
+        Assert.That(transport.FlushCount, Is.EqualTo(2));
+    }
+
+    private sealed class ChunkedResult : IStreamableResult
+    {
+        public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            byte[] chunk = Encoding.UTF8.GetBytes(new string('x', 1024));
+            writer.Write("\""u8);
+            for (int i = 0; i < 32; i++)
+            {
+                writer.Write(chunk);
+                await StreamableResultWriter.FlushIfNeededAsync(writer, cancellationToken);
+            }
+            writer.Write("\""u8);
+        }
+    }
+
+    private sealed class FlushCountingPipeWriter(PipeWriter inner) : PipeWriter
+    {
+        public int FlushCount { get; private set; }
+        public override bool CanGetUnflushedBytes => inner.CanGetUnflushedBytes;
+        public override long UnflushedBytes => inner.UnflushedBytes;
+        public override Memory<byte> GetMemory(int sizeHint = 0) => inner.GetMemory(sizeHint);
+        public override Span<byte> GetSpan(int sizeHint = 0) => inner.GetSpan(sizeHint);
+        public override void Advance(int bytes) => inner.Advance(bytes);
+        public override void CancelPendingFlush() => inner.CancelPendingFlush();
+        public override void Complete(Exception? exception = null) => inner.Complete(exception);
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        {
+            FlushCount++;
+            return inner.FlushAsync(cancellationToken);
+        }
     }
 
     private sealed class InvalidTransactionResult(int commitMode, Action? beforeThrow = null) : IStreamableResult
