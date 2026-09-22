@@ -77,50 +77,55 @@ internal struct KeyHashBatch
     internal void Flush(Span<PatriciaTree.BulkSetEntry> entries)
     {
         if (_count == 0) return;
-        // A batch kernel costs the same whether its lanes are full or empty, so any count meeting
-        // the entry threshold takes one and zero-fills the rest. The narrowest kernel that covers
-        // the count is preferred: a wider one would permute lanes holding nothing.
-        int batchSize = Avx512F.IsSupported && _count > MinimumBatchSize ? MaximumBatchSize
-            : Avx2.IsSupported && _count >= MinimumBatchCount ? MinimumBatchSize : 0;
-        if (batchSize != 0)
+        int hashed = 0;
+        if (Avx2.IsSupported)
         {
             Unsafe.SkipInit(out Scratch scratch);
             Span<byte> buffer = MemoryMarshal.AsBytes((Span<ulong>)scratch);
-            Span<byte> inputs = buffer[..(batchSize * Rate)];
-            Span<byte> hashes = buffer.Slice(batchSize * Rate, batchSize * Hash256.Size);
-            for (int i = 0; i < _count; i++)
+            // A batch kernel costs the same whether its lanes are full or empty, so any remainder
+            // meeting the entry threshold takes one and zero-fills the rest. The narrowest kernel
+            // that covers the remainder is preferred: a wider one would permute empty lanes.
+            while (_count - hashed >= MinimumBatchCount)
             {
-                Span<byte> input = inputs.Slice(i * Rate, Rate);
-                _keys[i].BytesAsSpan[.._length].CopyTo(input);
-                input[_length..].Clear();
-                input[_length] = 1;
-                input[^1] |= 128;
-            }
-            // Lanes beyond _count carry no real key; zero-fill them so the kernel runs, their
-            // digests are never read back below.
-            inputs[(_count * Rate)..].Clear();
+                int remaining = _count - hashed;
+                int batchSize = Avx512F.IsSupported && remaining > MinimumBatchSize ? MaximumBatchSize : MinimumBatchSize;
+                int batchCount = Math.Min(batchSize, remaining);
+                Span<byte> inputs = buffer[..(batchSize * Rate)];
+                Span<byte> hashes = buffer.Slice(batchSize * Rate, batchSize * Hash256.Size);
+                for (int i = 0; i < batchCount; i++)
+                {
+                    Span<byte> input = inputs.Slice(i * Rate, Rate);
+                    _keys[hashed + i].BytesAsSpan[.._length].CopyTo(input);
+                    input[_length..].Clear();
+                    input[_length] |= 1;
+                    input[^1] |= 128;
+                }
 
-            if (batchSize == MaximumBatchSize)
-                KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref hashes[0]);
-            else
-                KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
+                // Lanes past batchCount carry no key; zero-fill them so the kernel runs, and their
+                // digests are never read back.
+                inputs[(batchCount * Rate)..].Clear();
+                if (batchSize == MaximumBatchSize)
+                    KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref hashes[0]);
+                else
+                    KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
 
-            for (int i = 0; i < _count; i++)
-            {
-                ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
-                KeccakCache.Store(_keys[i].BytesAsSpan[.._length], in hash);
-                int index = _indices[i];
-                entries[index] = new(in hash, entries[index].Value);
+                for (int i = 0; i < batchCount; i++)
+                {
+                    ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
+                    KeccakCache.Store(_keys[hashed + i].BytesAsSpan[.._length], in hash);
+                    int index = _indices[hashed + i];
+                    entries[index] = new(in hash, entries[index].Value);
+                }
+
+                hashed += batchCount;
             }
         }
-        else
+
+        for (int i = hashed; i < _count; i++)
         {
-            for (int i = 0; i < _count; i++)
-            {
-                KeccakCache.ComputeTo(_keys[i].BytesAsSpan[.._length], out ValueHash256 hash);
-                int index = _indices[i];
-                entries[index] = new(in hash, entries[index].Value);
-            }
+            KeccakCache.ComputeTo(_keys[i].BytesAsSpan[.._length], out ValueHash256 hash);
+            int index = _indices[i];
+            entries[index] = new(in hash, entries[index].Value);
         }
         _count = 0;
     }
