@@ -56,7 +56,6 @@ public class ParityLikeTxTracer : TxTracer
         if ((_parityTraceTypes & ParityTraceTypes.Trace) != 0)
         {
             IsTracingActions = true;
-            IsTracingReceipt = true;
         }
 
         if ((_parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
@@ -64,12 +63,11 @@ public class ParityLikeTxTracer : TxTracer
             IsTracingActions = true;
             IsTracingInstructions = true;
             IsTracingCode = true;
-            IsTracingReceipt = true;
         }
     }
 
     public sealed override bool IsTracingActions { get; protected set; }
-    public sealed override bool IsTracingReceipt { get; protected set; }
+    public sealed override bool IsTracingReceipt { get; protected set; } = true;
     public override bool IsCollectingLogs => false;
     public sealed override bool IsTracingInstructions { get; protected set; }
     public sealed override bool IsTracingCode { get; protected set; }
