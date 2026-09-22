@@ -83,6 +83,39 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_get_preserves_missing_transaction_error()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+
+        string expected = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_transaction", TestItem.KeccakA);
+        string actual = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", TestItem.KeccakA, new long[] { 0 });
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Trace_get_ignores_out_of_range_positions([Values(long.MinValue, -2L, 2L, long.MaxValue)] long position)
+    {
+        ParityTxTraceFromStore[] traces = Enumerable.Range(0, 3)
+            .Select(_ => ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace { Action = new ParityTraceAction() }).Single()).ToArray();
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+
+        Assert.That(TraceRpcModule.ExtractPositionsFromTxTrace([position, 0, 1], result),
+            Is.EqualTo(new[] { traces[1], traces[2] }));
+    }
+
+    [Test]
+    public void Trace_get_preserves_existing_root_position()
+    {
+        ParityTxTraceFromStore root = ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace { Action = new ParityTraceAction() }).Single();
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([root]);
+
+        Assert.That(TraceRpcModule.ExtractPositionsFromTxTrace([-1], result), Is.EqualTo(new[] { root }));
+    }
+
+    [Test]
     public async Task Tx_positions_are_fine()
     {
         Context context = new();

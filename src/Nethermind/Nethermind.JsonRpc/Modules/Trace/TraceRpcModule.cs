@@ -402,6 +402,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)
         {
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
+            if (traceTransaction.Result.ResultType == Core.ResultType.Failure) return traceTransaction;
             List<ParityTxTraceFromStore> traces = ExtractPositionsFromTxTrace(positions, traceTransaction);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
         }
@@ -413,7 +414,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             for (int index = 0; index < positions.Length; index++)
             {
                 long position = positions[index];
-                if (transactionTraces.Length > position + 1)
+                if (position >= -1 && position < transactionTraces.Length - 1)
                 {
                     ParityTxTraceFromStore tr = transactionTraces[position + 1];
                     traces.Add(tr);

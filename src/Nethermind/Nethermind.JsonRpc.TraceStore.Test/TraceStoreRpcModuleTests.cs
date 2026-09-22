@@ -32,6 +32,17 @@ public class TraceStoreRpcModuleTests
     private static readonly EthereumJsonSerializer Serializer = new();
 
     [Test]
+    public void trace_get_preserves_inner_error([Values(ErrorCodes.ResourceNotFound, ErrorCodes.ResourceUnavailable)] int errorCode)
+    {
+        TestContext test = new();
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> error =
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("Trace unavailable", errorCode, isTemporary: true);
+        test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(error);
+
+        Assert.That(test.Module.trace_get(TestItem.KeccakA, [0]), Is.SameAs(error));
+    }
+
+    [Test]
     public void trace_call_returns_from_inner_module()
     {
         TestContext test = new();
