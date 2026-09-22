@@ -95,7 +95,7 @@ internal static class NodeViews
     [InlineArray(BranchHashBufferLength / VectorByteLength)]
     private struct BranchHashBuffer
     {
-        private Vector256<ulong> _element0;
+        private Vector256<byte> _element0;
     }
 
     [SkipLocalsInit]
@@ -105,7 +105,7 @@ internal static class NodeViews
         int batchSize = Avx512F.IsSupported ? Avx512HashBatchSize : Avx2HashBatchSize;
         int inputLength = Avx512F.IsSupported ? KeccakHash.Hash532InputLength : KeccakHash.Hash532PaddedLength;
         Unsafe.SkipInit(out BranchHashBuffer buffer);
-        Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<ulong>>)buffer);
+        Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
         Span<byte> inputs = storage[..(batchSize * inputLength)];
         Span<byte> hashes = storage[(batchSize * inputLength)..];
         do

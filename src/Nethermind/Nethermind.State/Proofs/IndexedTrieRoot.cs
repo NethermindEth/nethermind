@@ -58,21 +58,21 @@ internal static class IndexedTrieRoot
         void Encode<TWriter>(ref TWriter writer, T item) where TWriter : struct, IRlpWriteBackend, allows ref struct;
     }
 
-    /// <summary>Provides 1440 bytes for eight padded rate blocks, hashes, indices, lengths, and an encoded path.</summary>
+    /// <summary>Holds eight padded rate blocks, hashes, indices, lengths, and an encoded path.</summary>
     [InlineArray((LeafBatchBufferLength + VectorByteLength - 1) / VectorByteLength)]
     private struct LeafBatchBuffer
     {
         private Vector256<byte> _element0;
     }
 
-    /// <summary>Provides 608 bytes for sixteen leaf descriptors and eight output hashes, positions, and lengths.</summary>
+    /// <summary>Holds sixteen leaf descriptors and eight output hashes, positions, and lengths.</summary>
     [InlineArray((MultiBlockLeafBufferLength + VectorByteLength - 1) / VectorByteLength)]
     private struct MultiBlockLeafBuffer
     {
         private Vector256<byte> _element0;
     }
 
-    /// <summary>Provides 4544 bytes for eight full branch inputs, output hashes, and positions.</summary>
+    /// <summary>Holds eight full branch inputs, output hashes, and positions.</summary>
     [InlineArray((BranchBatchBufferLength + VectorByteLength - 1) / VectorByteLength)]
     private struct BranchBatchBuffer
     {
