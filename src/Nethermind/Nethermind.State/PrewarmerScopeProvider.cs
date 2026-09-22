@@ -334,9 +334,19 @@ public class PrewarmerScopeProvider(
             }
         }
 
-        public void HintSet(in UInt256 index, in UInt256 value) => baseStorageTree.HintSet(in index, in value);
+        public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
 
-        public void HintClear() => baseStorageTree.HintClear();
+        // A populator's commits are speculative: its writes stay warm-up hints and its clears go nowhere.
+        public void HintSet(in UInt256 index, in UInt256 value)
+        {
+            if (isPrewarmer) baseStorageTree.HintSet(in index);
+            else baseStorageTree.HintSet(in index, in value);
+        }
+
+        public void HintClear()
+        {
+            if (!isPrewarmer) baseStorageTree.HintClear();
+        }
 
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
@@ -370,9 +380,10 @@ public class PrewarmerScopeProvider(
             value = UInt256.One;
         }
 
-        public void HintSet(in UInt256 index, in UInt256 value) => baseStorageTree.HintSet(in index, in value);
+        public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
 
-        public void HintClear() => baseStorageTree.HintClear();
+        // A capturing scope executes on placeholder values, so its commits are never the block's.
+        public void HintSet(in UInt256 index, in UInt256 value) => baseStorageTree.HintSet(in index);
     }
 
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool isPrewarmer) : IWorldStateScopeProvider.IWorldStateWriteBatch

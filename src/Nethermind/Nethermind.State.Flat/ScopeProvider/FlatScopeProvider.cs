@@ -30,7 +30,7 @@ public class FlatScopeProvider(
 
     private readonly Lazy<StateRootStreamThreads>? _stateRootThreads = isReadOnly || !configuration.StreamStateRoot
         ? null
-        : new Lazy<StateRootStreamThreads>(static () => new StateRootStreamThreads(2));
+        : new Lazy<StateRootStreamThreads>(() => new StateRootStreamThreads(Math.Max(1, configuration.StateRootStreamThreadCount)));
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 

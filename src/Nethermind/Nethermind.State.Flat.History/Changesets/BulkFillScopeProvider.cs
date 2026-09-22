@@ -75,8 +75,6 @@ public sealed class BulkFillScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => session;
         public Account? Get(Address address) => inner.Get(address);
         public void HintGet(Address address, Account? account) => inner.HintGet(address, account);
-
-        public void HintSetAccount(Address address, Account? account) => inner.HintSetAccount(address, account);
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => inner.CreateStorageTree(address);
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => inner.StartWriteBatch(estimatedAccountNum);
         public void UpdateRootHash() => inner.UpdateRootHash();

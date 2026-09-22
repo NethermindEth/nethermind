@@ -49,7 +49,7 @@ public interface IWorldStateScopeProvider
         /// backend may apply the block's changes to its tries while the block executes. Speculative executions must not
         /// forward it.
         /// </remarks>
-        void HintSetAccount(Address address, Account? account);
+        void HintSetAccount(Address address, Account? account) { }
 
         /// <summary>
         /// Get the account information for the following address.
@@ -195,17 +195,26 @@ public interface IWorldStateScopeProvider
         void Get(in UInt256 index, out UInt256 value);
 
         /// <summary>
-        /// Hint that a committed round wrote <paramref name="value"/> to a slot. Backends may use this to warm up the
-        /// slot path or to apply the write to the trie ahead of the block's storage root computation.
+        /// Hint that a slot is being written. Backends may use this to start asynchronous
+        /// trie warm-up for the slot path.
         /// </summary>
-        /// <remarks>Called in commit order, so the last hint for a slot carries its current value.</remarks>
-        void HintSet(in UInt256 index, in UInt256 value);
+        void HintSet(in UInt256 index);
 
         /// <summary>
-        /// Hint that a committed round cleared the storage. It precedes the round's <see cref="HintSet"/> calls, which
-        /// are the writes made after the clear.
+        /// Hint that a committed round wrote <paramref name="value"/> to a slot. Backends may use this to apply the
+        /// write to the trie ahead of the block's storage root computation; by default it is a warm-up hint.
         /// </summary>
-        void HintClear();
+        /// <remarks>
+        /// Called in commit order, so the last hint for a slot carries its current value. Speculative executions must
+        /// not forward it.
+        /// </remarks>
+        void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
+
+        /// <summary>
+        /// Hint that a committed round cleared the storage. It precedes the round's
+        /// <see cref="HintSet(in UInt256, in UInt256)"/> calls, which are the writes made after the clear.
+        /// </summary>
+        void HintClear() { }
     }
 
     /// <summary>

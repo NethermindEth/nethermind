@@ -1212,6 +1212,35 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    // A populator's commits are speculative, so the block's tries must never see them: its writes may only pass as
+    // warm-up hints, and its clears and account writes not at all.
+    [TestCase(true, TestName = "CommittedHints_FromPopulator_PassOnlyAsWarmUpHints")]
+    [TestCase(false, TestName = "CommittedHints_FromConsumer_PassUnchanged")]
+    public void CommittedHints_ReachBaseScope_OnlyFromConsumer(bool isPrewarmer)
+    {
+        IWorldStateScopeProvider.IStorageTree baseTree = Substitute.For<IWorldStateScopeProvider.IStorageTree>();
+        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        baseScope.CreateStorageTree(TestItem.AddressA).Returns(baseTree);
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        PrewarmerScopeProvider provider = new(baseProvider, new PrewarmerState(NewCaches(), isPrewarmer), LimboLogs.Instance);
+        Account account = new(1, 100);
+
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null))
+        {
+            IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
+            storageTree.HintClear();
+            storageTree.HintSet((UInt256)1, (UInt256)7);
+            scope.HintSetAccount(TestItem.AddressA, account);
+        }
+
+        int committed = isPrewarmer ? 0 : 1;
+        baseTree.Received(committed).HintClear();
+        baseTree.Received(committed).HintSet((UInt256)1, (UInt256)7);
+        baseTree.Received(1 - committed).HintSet((UInt256)1);
+        baseScope.Received(committed).HintSetAccount(TestItem.AddressA, account);
+    }
+
     [Test]
     public void Test_ConsumerScope_OpeningFailure_LeavesNothingBehind()
     {
