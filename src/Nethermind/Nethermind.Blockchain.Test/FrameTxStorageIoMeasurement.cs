@@ -107,8 +107,12 @@ public class FrameTxStorageIoMeasurement
     /// </summary>
     private const ulong MinimalSharedBlockCacheSize = 4 * 1024 * 1024;
 
-    /// <summary>Trie-store caches held to their floor for the same reason.</summary>
-    private const long MinimalTrieCacheMb = 1;
+    /// <summary>
+    /// Trie-store cache size. Large enough that a slot range read once stays resident, which is what makes
+    /// the <c>all-warm</c> rung warm, and far too small to hold the whole seeded fixture, which is what
+    /// keeps the cold rungs cold.
+    /// </summary>
+    private const long TrieCacheMb = 64;
 
     /// <summary>
     /// Ceilings that fit the compiled <see cref="Eip8141Constants.MaxVerifyGas"/>. 322,800 is above it, so
@@ -139,6 +143,11 @@ public class FrameTxStorageIoMeasurement
 
     [DllImport("libc", SetLastError = true)]
     private static extern int posix_fadvise(int fd, long offset, long len, int advice);
+
+    /// <summary>Writes back every dirty page in the system. <c>posix_fadvise</c> cannot evict a dirty page,
+    /// and this is the only unprivileged way to make the database's pages clean.</summary>
+    [DllImport("libc", SetLastError = true)]
+    private static extern void sync();
 
     private StorageIoTestBlockchain _chain = null!;
     private TempPath _dbDirectory = null!;
@@ -214,13 +223,18 @@ public class FrameTxStorageIoMeasurement
         int salt = _nextSalt;
         for (int i = 0; i < Warmup; i++, salt++) SubmitFrame(coldSlots ? salt : 0, salt);
 
-        if (dropPageCache) FlushState();
+        if (dropPageCache)
+        {
+            FlushState();
+            sync();
+        }
 
         long readBytesBefore = ProcessReadBytes();
+        int fadvisedFiles = 0;
         List<double> submitMicros = new(Samples);
         for (int i = 0; i < Samples; i++, salt++)
         {
-            if (dropPageCache) DropPageCache();
+            if (dropPageCache) fadvisedFiles = DropPageCache();
 
             Transaction tx = FrameTx(coldSlots ? salt : 0, salt);
             long start = Stopwatch.GetTimestamp();
@@ -250,6 +264,7 @@ public class FrameTxStorageIoMeasurement
              + $"us_per_sload={p50 / sloadsPerTx:F3} "
              + $"us_per_Mgas_basis=offered "
              + $"read_bytes_total={readBytes} read_bytes_per_sample={readBytes / Samples} "
+             + $"db_bytes_on_disk={DatabaseBytesOnDisk()} fadvised_files={fadvisedFiles} "
              + $"reject_reason=\"FrameSimulationFailed\"");
     }
 
@@ -282,20 +297,42 @@ public class FrameTxStorageIoMeasurement
     /// available without root: <c>/proc/sys/vm/drop_caches</c> needs it and this harness must not.
     /// </summary>
     /// <remarks>Dirty pages survive, which is why <see cref="FlushState"/> runs first.</remarks>
-    private void DropPageCache()
+    private int DropPageCache()
     {
+        int evicted = 0;
         foreach (string file in Directory.EnumerateFiles(_dbDirectory.Path, "*", SearchOption.AllDirectories))
         {
             try
             {
                 using Microsoft.Win32.SafeHandles.SafeFileHandle handle = File.OpenHandle(file);
-                posix_fadvise((int)handle.DangerousGetHandle(), 0, 0, PosixFadvDontNeed);
+                if (posix_fadvise((int)handle.DangerousGetHandle(), 0, 0, PosixFadvDontNeed) == 0) evicted++;
             }
             catch (IOException)
             {
                 // A file RocksDB deleted between the enumeration and the open is not one whose pages matter.
             }
         }
+
+        return evicted;
+    }
+
+    /// <summary>Bytes the database occupies on disk, which bounds how much of it the page cache can hold.</summary>
+    private long DatabaseBytesOnDisk()
+    {
+        long total = 0;
+        foreach (string file in Directory.EnumerateFiles(_dbDirectory.Path, "*", SearchOption.AllDirectories))
+        {
+            try
+            {
+                total += new FileInfo(file).Length;
+            }
+            catch (IOException)
+            {
+                // Same race as above; a file that vanished contributes nothing.
+            }
+        }
+
+        return total;
     }
 
     private static void SkipUnlessLinux()
@@ -542,8 +579,8 @@ public class FrameTxStorageIoMeasurement
             {
                 Mode = PruningMode.None,
                 PersistenceInterval = 1,
-                CacheMb = MinimalTrieCacheMb,
-                DirtyCacheMb = MinimalTrieCacheMb,
+                CacheMb = TrieCacheMb,
+                DirtyCacheMb = TrieCacheMb,
             },
             new DbConfig { SharedBlockCacheSize = MinimalSharedBlockCacheSize },
         ];
