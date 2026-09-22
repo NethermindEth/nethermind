@@ -39,7 +39,7 @@ public class TraceStoreRpcModuleTests
 
     [Test]
     public async Task Stored_replay_preserves_output_without_trace(
-        [Values("stateDiff", "vmTrace")] string selection, [Values] bool blockReplay, [Values] bool streaming)
+        [Values("stateDiff", "vmTrace", "")] string selection, [Values] bool blockReplay, [Values] bool streaming)
     {
         TestContext test = new(streaming: streaming);
         test.DbTrace.Output = [42];
@@ -47,7 +47,7 @@ public class TraceStoreRpcModuleTests
         ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
         ParityLikeTxTrace reward = new() { BlockHash = test.DbTrace.BlockHash, Action = new ParityTraceAction { Type = "reward", Author = TestItem.AddressA, RewardType = "block" } };
         test.Store.Set(test.DbTrace.BlockHash!, serializer.Serialize(new[] { test.DbTrace, reward }));
-        string[] types = [selection];
+        string[] types = selection.Length == 0 ? [] : [selection];
         using JsonRpcResponse response = blockReplay
             ? test.Module.trace_replayBlockTransactions(BlockParameter.Latest, types)
             : test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, types);
