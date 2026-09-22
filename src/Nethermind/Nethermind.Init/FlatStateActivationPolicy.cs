@@ -68,7 +68,7 @@ public sealed class FlatStateActivationPolicy(
             if (HasSstFile(fileSystem, DbNames.Flat.GetApplicationResourcePath(initConfig.BaseDbPath)))
             {
                 throw new InvalidConfigurationException(
-                    $"Refusing --FlatDb.Enabled=false on an existing flat DB: that would discard the complete flat state and full-resync. Keep FlatDb.Enabled=true, or delete the '{DbNames.Flat}', '{DbNames.FlatHistory}' and '{DbNames.PersistedSnapshotCatalog}' directories under '{initConfig.BaseDbPath}' to start over on patricia.",
+                    $"Refusing --FlatDb.Enabled=false on an existing flat DB: that would discard the complete flat state and full-resync. Keep FlatDb.Enabled=true, or delete the '{DbNames.Flat}', '{DbNames.FlatHistory}' and 'persistedSnapshot' directories under '{initConfig.BaseDbPath}' to start over on patricia.",
                     -1);
             }
 
