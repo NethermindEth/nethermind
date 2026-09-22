@@ -151,6 +151,58 @@ public partial class DebugRpcModuleTests
         { TestName = "InsufficientFundsForGasPriceValue" };
     }
 
+    public static IEnumerable<TestCaseData> KeccakPreimageCases()
+    {
+        (string Name, string Code, string Expected)[] cases =
+        [
+            ("none", "00", """{}"""),
+            ("empty", "600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}"""),
+            ("padded", "600160002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}"""),
+            ("byte", "602a600053600160002000", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}"""),
+            ("overlap", "602a601f536002601f2000", """{"0x71378d9bd65a614e4926f9fa621eae99b3f2a1cf19e8c22e41594dc15c16dd33":"0x2a00"}"""),
+            ("offset", "600160202000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}"""),
+            ("duplicate", "6000600020600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}"""),
+            ("revert", "602a600053600160002060006000fd", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}"""),
+            ("empty_stack", "20", """{}"""),
+            ("short_stack", "600020", """{}"""),
+            ("padding_limit", "6001621000012000", """{}"""),
+            ("large_size", "63ffffffff60002000", """{}"""),
+            ("truncated_offset", "60007f01000000000000000000000000000000000000000000000000000000000000002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}"""),
+            ("distinct", "6000600020600160002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00","0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}"""),
+            ("out_of_gas", "6001620fffff2000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}"""),
+            ("nested_revert", "6000600060006000600073000000000000000000000000000000000000901261c350f150600160002000", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a","0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}"""),
+        ];
+        foreach ((string name, string code, string expected) in cases)
+        {
+            foreach (bool disableStack in new[] { false, true })
+            {
+                yield return new TestCaseData(code, expected, disableStack)
+                    .SetName($"Debug_traceCall_keccak_preimages_{name}_disableStack_{disableStack}");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(KeccakPreimageCases))]
+    public async Task Debug_traceCall_keccak_preimages(string code, string expected, bool disableStack)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x" + code },
+            ["0x0000000000000000000000000000000000009012"] = new { code = "0x602a600053600160002060006000fd" }
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
+            new { tracer = "keccak256PreimageTracer", disableStack, enableMemory = false, stateOverrides });
+
+        JToken result = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null, response);
+            Assert.That(JToken.DeepEquals(result["result"], JToken.Parse(expected)), Is.True, response);
+        }
+    }
+
     [TestCase(false, "60006000fd", 21006)]
     [TestCase(true, "60006000fd", 21006)]
     [TestCase(false, "fe", 100000)]
