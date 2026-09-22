@@ -26,7 +26,7 @@ public static class Metrics
     private static long _stateRootStreamMismatches;
 
     [CounterMetric]
-    [Description("Blocks whose streamed state root differed from the one the end-of-block write batch produced. Expected to stay zero; the batch's root is the one used.")]
+    [Description("Blocks whose streamed state root differed from the root after the end-of-block write batch. The batch corrects the values it writes, but the stream has diverged, so values the batch leaves untouched may be wrong. Must stay zero.")]
     public static long StateRootStreamMismatches
     {
         get => Volatile.Read(ref _stateRootStreamMismatches);

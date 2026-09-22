@@ -177,8 +177,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal StateRootStreamer? Streamer => _streamer;
 
-    // The batch found every value it wrote already in place, so its trie hashes to the streamed root; the hashing is
-    // what UpdateRootHash would do next anyway.
+    // A correct stream leaves every value the batch writes already in place, so the trie hashes to the streamed root;
+    // the hashing is what UpdateRootHash would do next anyway. A difference means the stream diverged: the batch has
+    // corrected what it wrote, but it writes only what changed since the start of the block, so a value the block
+    // wrote and then put back may still be wrong.
     private void CheckStreamedRoot(Hash256 streamedRoot)
     {
         _stateTree.HashDirtyNodes();
@@ -187,7 +189,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         Metrics.RecordStateRootStreamMismatch();
         ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-        if (logger.IsWarn) logger.Warn($"Streamed state root {streamedRoot} differs from the written one {root} at block {_currentStateId.BlockNumber + 1}; the written one is used");
+        if (logger.IsError) logger.Error($"State root stream diverged at block {_currentStateId.BlockNumber + 1}: streamed {streamedRoot}, after the write batch {root}. The state root may be wrong; disable Flat.StreamStateRoot and report this.");
     }
 
     public void HintSetAccount(Address address, Account? account) => _streamer?.AddAccount(address, account);

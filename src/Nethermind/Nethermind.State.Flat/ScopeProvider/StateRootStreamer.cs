@@ -37,6 +37,10 @@ public sealed class StateRootStreamer : IDisposable
     // A block's feed is held until its end; beyond this size the buffers are not kept for the next block.
     private const int MaxRetainedFeedCapacity = 1 << 14;
 
+    private const int DrainIdle = 0;
+    private const int DrainScheduled = 1;
+    private const int DrainRunning = 2;
+
     private readonly StateTree _stateTree;
     private readonly StateRootStreamThreads _threads;
     private readonly ILogger _logger;
@@ -45,7 +49,9 @@ public sealed class StateRootStreamer : IDisposable
     private ArrayPoolList<Change> _feed = new(64);
     private ArrayPoolList<Change>? _spareFeed = new(64);
     private readonly ManualResetEventSlim _drainStopped = new(initialState: true);
-    private volatile bool _draining;
+    // Changed under _feedLock only. A scheduled drain that no worker has started yet can be claimed by Finish, which
+    // then does its work inline instead of waiting behind other streamers for a thread.
+    private volatile int _drainState = DrainIdle;
     private volatile bool _closed;
     private volatile bool _faulted;
 
@@ -84,14 +90,17 @@ public sealed class StateRootStreamer : IDisposable
             if (_closed || _faulted) return false;
 
             _feed.Add(change);
-            schedule = !_draining;
-            if (schedule) SetDraining(true);
+            schedule = _drainState == DrainIdle;
+            if (schedule) SetDrainState(DrainScheduled);
         }
 
         // An unscheduled feed is applied by Finish instead.
         if (schedule && !_threads.TrySchedule(this))
         {
-            lock (_feedLock) SetDraining(false);
+            lock (_feedLock)
+            {
+                if (_drainState == DrainScheduled) SetDrainState(DrainIdle);
+            }
         }
 
         return true;
@@ -101,6 +110,13 @@ public sealed class StateRootStreamer : IDisposable
     // by rolling the tries back.
     internal void Drain()
     {
+        lock (_feedLock)
+        {
+            // Claimed by Finish, or a second queue entry of a drain already running.
+            if (_drainState != DrainScheduled) return;
+            SetDrainState(DrainRunning);
+        }
+
         ArrayPoolList<Change>? changes = null;
         try
         {
@@ -150,7 +166,7 @@ public sealed class StateRootStreamer : IDisposable
                     else changes.Dispose();
                 }
 
-                SetDraining(false);
+                SetDrainState(DrainIdle);
             }
         }
     }
@@ -165,6 +181,7 @@ public sealed class StateRootStreamer : IDisposable
         {
             if (_closed) return;
             _closed = true;
+            if (_drainState == DrainScheduled) SetDrainState(DrainIdle);
         }
 
         WaitForDrain();
@@ -213,7 +230,7 @@ public sealed class StateRootStreamer : IDisposable
     /// <remarks>Call after <see cref="Finish"/>, once the block is committed.</remarks>
     public void StartBlock(Hash256 blockStartRoot)
     {
-        Debug.Assert(_closed && !_draining, "a block starts only once the previous one is finished");
+        Debug.Assert(_closed && _drainState == DrainIdle, "a block starts only once the previous one is finished");
 
         ClearBlock();
         _blockStartRoot = blockStartRoot;
@@ -229,12 +246,22 @@ public sealed class StateRootStreamer : IDisposable
 
     public void Dispose()
     {
-        lock (_feedLock) _closed = true;
+        lock (_feedLock)
+        {
+            _closed = true;
+            if (_drainState == DrainScheduled) SetDrainState(DrainIdle);
+        }
+
         WaitForDrain();
-        _feed.Dispose();
-        _spareFeed?.Dispose();
-        _unapplied?.Dispose();
-        _drainStopped.Dispose();
+
+        // The drain changes its state and signals under the lock, so holding it means the signal is done.
+        lock (_feedLock)
+        {
+            _feed.Dispose();
+            _spareFeed?.Dispose();
+            _unapplied?.Dispose();
+            _drainStopped.Dispose();
+        }
     }
 
     private bool HasUnhashedChanges => _dirtyStorage.Count > 0 || _dirtyLeaves.Count > 0;
@@ -249,11 +276,11 @@ public sealed class StateRootStreamer : IDisposable
     }
 
     // Called under _feedLock.
-    private void SetDraining(bool draining)
+    private void SetDrainState(int state)
     {
-        _draining = draining;
-        if (draining) _drainStopped.Reset();
-        else _drainStopped.Set();
+        _drainState = state;
+        if (state == DrainIdle) _drainStopped.Set();
+        else _drainStopped.Reset();
     }
 
     private ArrayPoolList<Change>? TakeFeed()
@@ -285,7 +312,7 @@ public sealed class StateRootStreamer : IDisposable
         {
             if (!_closed && _feed.Count > 0) return false;
 
-            SetDraining(false);
+            SetDrainState(DrainIdle);
             return true;
         }
     }
@@ -294,10 +321,10 @@ public sealed class StateRootStreamer : IDisposable
     // cannot be cut short, since the drain owns the tries until it lets go of them.
     private void WaitForDrain()
     {
-        if (!_draining) return;
+        if (_drainState == DrainIdle) return;
 
         SpinWait spinWait = new();
-        while (_draining && !spinWait.NextSpinWillYield)
+        while (_drainState != DrainIdle && !spinWait.NextSpinWillYield)
         {
             spinWait.SpinOnce();
         }

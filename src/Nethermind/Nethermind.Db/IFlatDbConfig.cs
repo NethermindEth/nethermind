@@ -133,7 +133,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Apply each committed transaction's account and storage changes to the tries on dedicated threads while the block executes, and hash them as it goes, so the state root at the end of the block only covers what changed last.", DefaultValue = "true")]
     bool StreamStateRoot { get; set; }
 
-    [ConfigItem(Description = "Dedicated threads for state root streaming. Each writable scope drains on one thread at a time, so this bounds how many blocks can stream at once, e.g. while a block is built during another's validation.", DefaultValue = "2")]
+    [ConfigItem(Description = "Dedicated threads for state root streaming (0 to disable). Each writable scope drains on one thread at a time, so this bounds how many blocks can stream at once, e.g. while a block is built during another's validation.", DefaultValue = "2")]
     int StateRootStreamThreadCount { get; set; }
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]

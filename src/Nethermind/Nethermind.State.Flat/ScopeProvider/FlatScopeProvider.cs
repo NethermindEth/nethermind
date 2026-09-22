@@ -28,9 +28,9 @@ public class FlatScopeProvider(
         return new WarmReadPool(concurrency);
     });
 
-    private readonly Lazy<StateRootStreamThreads>? _stateRootThreads = isReadOnly || !configuration.StreamStateRoot
+    private readonly Lazy<StateRootStreamThreads>? _stateRootThreads = isReadOnly || !configuration.StreamStateRoot || configuration.StateRootStreamThreadCount <= 0
         ? null
-        : new Lazy<StateRootStreamThreads>(() => new StateRootStreamThreads(Math.Max(1, configuration.StateRootStreamThreadCount)));
+        : new Lazy<StateRootStreamThreads>(() => new StateRootStreamThreads(configuration.StateRootStreamThreadCount));
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 

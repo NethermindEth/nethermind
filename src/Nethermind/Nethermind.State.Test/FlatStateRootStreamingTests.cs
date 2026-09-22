@@ -13,7 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.State.Flat;
 using NUnit.Framework;
 
