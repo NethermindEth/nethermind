@@ -116,9 +116,9 @@ jobs:
         run: |
           set -euo pipefail
           # Map node_type to the rpc_int flag and decide whether to spawn a node.
-          #   archive -> --archive : include @archive historic-state tests
-          #   pruned  -> --pruned  : skip @pruned historic tests a pruned node can't serve
-          #   full    -> (none)    : skip @archive state tests, keep @pruned historic tests
+          #   archive -> --archive : all fixtures, including historical state
+          #   pruned  -> --pruned  : fixtures tagged with both @full and @pruned
+          #   full    -> (none)    : fixtures tagged @full
           case "$NODE_TYPE" in
             pruned)
               if [ -n "$NETHERMIND_IP" ]; then
@@ -715,6 +715,12 @@ jobs:
             rc_latest=${PIPESTATUS[0]}
             set -e
             echo "rpc_int (latest) exit code: $rc_latest"
+          fi
+
+          executed=$(awk '/^Number of executed tests:/ { total += $NF } END { print total + 0 }' rpc-results/output*.txt)
+          if [ "$executed" -eq 0 ]; then
+            echo "No tests executed; check the API filters and node-type fixture tags."
+            exit 1
           fi
 
           if [ "$rc" -ne 0 ] || [ "$rc_latest" -ne 0 ]; then
