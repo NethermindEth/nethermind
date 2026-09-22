@@ -244,7 +244,7 @@ public class FrameTxFloodMeasurement
     /// ever reach that cap — produce a row at that point; every keccak-wide arm is gated by it and
     /// Assert.Ignores instead. The cap bounds mempool validation only, so the signature-stuffed production
     /// arm runs its recoveries at that ceiling too.</remarks>
-    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
+    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 352_800ul, 500_000ul];
 
     private static readonly int[] AdmissionRates = [50, 100, 150, 200, 250, 300, 350, 400];
 
