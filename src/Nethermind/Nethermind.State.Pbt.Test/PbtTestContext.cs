@@ -33,7 +33,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public PbtConfig Config { get; }
     public TestFinalizedStateProvider FinalizedStateProvider { get; } = new();
     public TestStateHeaderProvider StateHeaderProvider { get; } = new();
-    public PbtSnapshotRepository Repository { get; } = new();
+    public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig());
     public IPbtResourcePool ResourcePool { get; }
     public IDb MetadataDb { get; } = new MemDb();
     public PbtCompactionSchedule Schedule { get; }

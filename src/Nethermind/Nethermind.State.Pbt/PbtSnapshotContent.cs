@@ -52,6 +52,13 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal void SetRun(in HashedKey<PbtStorageTreeKey> runKey, ISlotRun run)
     {
         Storages.TryGetValue(runKey, out ISlotRun? previous);
+        SetRun(runKey, run, previous);
+    }
+
+    /// <inheritdoc cref="SetRun(in HashedKey{PbtStorageTreeKey}, ISlotRun)"/>
+    /// <param name="previous">The run <paramref name="run"/> replaces, as the serialized caller already read it.</param>
+    internal void SetRun(in HashedKey<PbtStorageTreeKey> runKey, ISlotRun run, ISlotRun? previous)
+    {
         Storages[runKey] = run;
         if (previous is not null) SlotRun.Return(previous);
     }

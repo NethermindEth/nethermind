@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -16,7 +17,7 @@ public class PbtSnapshotRepositoryTests
     private PbtSnapshotRepository _repository = null!;
 
     [SetUp]
-    public void SetUp() => _repository = new();
+    public void SetUp() => _repository = new(new MetricsConfig());
 
     [TearDown]
     public void TearDown() => _repository.RemoveStatesUntil(ulong.MaxValue);

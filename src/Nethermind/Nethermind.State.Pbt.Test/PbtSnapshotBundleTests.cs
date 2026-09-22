@@ -366,7 +366,7 @@ public class PbtSnapshotBundleTests
                 Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(delete ? default : value));
                 Assert.That(changes.Account?.Count ?? 0, Is.EqualTo(slot < 64 ? 1 : 0));
                 Assert.That(changes.Storage?.Count ?? 0, Is.EqualTo(slot < 64 ? 0 : 1));
-                Assert.That(changes.Code, Is.Null);
+                Assert.That(changes.Code?.Count ?? 0, Is.Zero);
             }
             bundle.CompleteLeafChanges();
         }

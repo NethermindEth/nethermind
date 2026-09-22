@@ -52,15 +52,16 @@ internal sealed class PbtTrieWarmupSession(
         }
     }
 
-    public void HintWarmSlot(in ValueAddress address, in UInt256 index) => HintWarmSlot(in address, in index, singleProducer: false);
+    public void HintWarmSlot(in ValueAddress address, in UInt256 index) => HintWarmSlot(in address, warmerKey: null, in index, singleProducer: false);
 
-    internal void HintWarmSlot(in ValueAddress address, in UInt256 index, bool singleProducer)
+    /// <param name="warmerKey">The address as an object, when the caller already holds one, so keying the warmer allocates nothing.</param>
+    internal void HintWarmSlot(in ValueAddress address, Address? warmerKey, in UInt256 index, bool singleProducer)
     {
         if (!TryEnterOperation(sequenceId)) return;
         try
         {
             if (!ShouldPrewarm(in address, index)) return;
-            StorageWarmer storageWarmer = _storageWarmers.GetOrAdd(address.ToAddress(), static (key, session) => new StorageWarmer(session, key.Value), this);
+            StorageWarmer storageWarmer = _storageWarmers.GetOrAdd(warmerKey ?? address.ToAddress(), static (key, session) => new StorageWarmer(session, key.Value), this);
             if (!singleProducer || !trieWarmer.PushSlotJob(storageWarmer, in index, sequenceId))
                 trieWarmer.PushSlotJobMpmc(storageWarmer, in index, sequenceId);
         }

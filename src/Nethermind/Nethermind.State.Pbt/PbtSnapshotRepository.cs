@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
+using Nethermind.Monitoring.Config;
 
 namespace Nethermind.State.Pbt;
 
@@ -15,8 +16,11 @@ namespace Nethermind.State.Pbt;
 /// a compacted layer is a shortcut across the base ones, not a substitute — so a walk aiming past it
 /// can still step through the narrow layers underneath.
 /// </remarks>
-public class PbtSnapshotRepository
+public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
 {
+    // Sizing a layer walks its every run, code entry and node group on the committing thread, so the gauge is
+    // opt-in. Read once, so a layer is never counted in without being counted out.
+    private readonly bool _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
     private readonly Lock _lock = new();
     private readonly Dictionary<StateId, PbtSnapshot> _snapshots = [];
     private readonly Dictionary<StateId, PbtSnapshot> _compactedSnapshots = [];
@@ -46,13 +50,13 @@ public class PbtSnapshotRepository
     /// <summary>Adds a sealed base layer, taking ownership of one lease. Returns false (and releases) on duplicate.</summary>
     public bool TryAdd(PbtSnapshot snapshot)
     {
-        PbtSnapshotPayloadSize payloadSize = snapshot.PayloadSize;
+        PbtSnapshotPayloadSize payloadSize = _recordDetailedMetrics ? snapshot.PayloadSize : default;
         lock (_lock)
         {
             if (_snapshots.TryAdd(snapshot.To, snapshot))
             {
                 _lastCommittedStateId = snapshot.To;
-                Metrics.AddPbtBaseSnapshot(payloadSize, 1);
+                if (_recordDetailedMetrics) Metrics.AddPbtBaseSnapshot(payloadSize, 1);
                 return true;
             }
         }
@@ -139,7 +143,7 @@ public class PbtSnapshotRepository
 
                 if (_snapshots.Remove(state, out snapshot))
                 {
-                    Metrics.AddPbtBaseSnapshot(snapshot.PayloadSize, -1);
+                    if (_recordDetailedMetrics) Metrics.AddPbtBaseSnapshot(snapshot.PayloadSize, -1);
                     removed.Add(snapshot);
                 }
                 if (_compactedSnapshots.Remove(state, out compacted)) removed.Add(compacted);
@@ -213,7 +217,8 @@ public class PbtSnapshotRepository
         lock (_lock)
         {
             int firstCompacted = Collect(_snapshots, removed, static (id, floor) => id.BlockNumber <= floor, blockNumber);
-            for (int i = 0; i < firstCompacted; i++) Metrics.AddPbtBaseSnapshot(removed[i].PayloadSize, -1);
+            if (_recordDetailedMetrics)
+                for (int i = 0; i < firstCompacted; i++) Metrics.AddPbtBaseSnapshot(removed[i].PayloadSize, -1);
 
             Collect(_compactedSnapshots, removed, static (id, floor) => id.BlockNumber <= floor, blockNumber);
         }

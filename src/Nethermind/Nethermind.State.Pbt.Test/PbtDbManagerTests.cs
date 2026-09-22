@@ -256,7 +256,7 @@ public class PbtDbManagerTests
     {
         PbtConfig config = new() { CompactSize = 32, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 32, MirrorFlat = mode == 2 };
         PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
-        PbtSnapshotRepository repository = new();
+        PbtSnapshotRepository repository = new(new MetricsConfig());
         using MemDb metadata = new();
         PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
         PbtTestContext.TestFinalizedStateProvider finalized = new();
@@ -305,7 +305,7 @@ public class PbtDbManagerTests
     {
         PbtConfig config = new() { CompactSize = 2, CompactionOffset = 0, MirrorFlat = true };
         PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
-        PbtSnapshotRepository repository = new();
+        PbtSnapshotRepository repository = new(new MetricsConfig());
         using MemDb metadata = new();
         IPbtPersistence persistence = Substitute.For<IPbtPersistence>();
         IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
@@ -348,7 +348,7 @@ public class PbtDbManagerTests
     {
         PbtConfig config = new() { CompactSize = 1, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 1 };
         PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
-        PbtSnapshotRepository repository = new();
+        PbtSnapshotRepository repository = new(new MetricsConfig());
         using MemDb metadata = new();
         using CancellationTokenSource processExit = new();
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
@@ -457,7 +457,7 @@ public class PbtDbManagerTests
     {
         PbtConfig config = new() { CompactionOffset = 0 };
         PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
-        PbtSnapshotRepository repository = new();
+        PbtSnapshotRepository repository = new(new MetricsConfig());
         using MemDb metadata = new();
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
         exitSource.Token.Returns(CancellationToken.None);
@@ -522,7 +522,7 @@ public class PbtDbManagerTests
     {
         PbtConfig config = new() { CompactSize = 1, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 1 };
         PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
-        PbtSnapshotRepository repository = new();
+        PbtSnapshotRepository repository = new(new MetricsConfig());
         using MemDb metadata = new();
         ValueHash256 existing = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         ValueHash256 fresh = PbtKeyDerivation.AddressKeyHash(TestItem.AddressB);
