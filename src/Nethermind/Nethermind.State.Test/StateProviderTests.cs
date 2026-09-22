@@ -61,6 +61,88 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void ApplyAccountOverlay_AfterBlockStartCommit_PreservesUnchangedFields()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState state = ctx.WorldState;
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(_address1, 7, 3);
+        state.Commit(Frontier.Instance);
+
+        Assert.That(state.TryApplyAccountOverlay(new BalanceOverlay(_address1)), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.GetBalance(_address1), Is.EqualTo((UInt256)99), "the prefix replaces the cached balance");
+            Assert.That(state.GetNonce(_address1), Is.EqualTo(3), "the block-start nonce is not flushed to the scope and must survive");
+        }
+    }
+
+    [Test]
+    public void ApplyAccountOverlay_WhenMissingAccountWasCached_UsesCreatedAccount()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState state = ctx.WorldState;
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.WarmUp(_address1);
+        Assert.That(state.GetBalance(_address1), Is.EqualTo(UInt256.Zero));
+        state.Commit(Frontier.Instance);
+
+        Assert.That(state.TryApplyAccountOverlay(new BalanceOverlay(_address1)), Is.True);
+
+        Assert.That(state.GetBalance(_address1), Is.EqualTo((UInt256)99), "cached misses must not hide the prefix-created account");
+    }
+
+    [Test]
+    public void ApplyAccountOverlay_WhenBlockStartStorageOverlaps_RefusesWithoutChangingAccounts([Values] bool write)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState state = ctx.WorldState;
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(_address1, 7, 3);
+        StorageCell cell = new(_address1, UInt256.One);
+        state.Get(cell, out _);
+        if (write) state.Set(cell, (UInt256)42);
+        state.Commit(Frontier.Instance);
+
+        Assert.That(state.TryApplyAccountOverlay(new BalanceOverlay(_address1, hasStorage: true)), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.GetBalance(_address1), Is.EqualTo((UInt256)7));
+            state.Get(cell, out UInt256 value);
+            Assert.That(value, Is.EqualTo(write ? (UInt256)42 : UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void DeleteAccount_WhenTheBlockNeverReadTheAccount_RecordsTheRemovalWithItsStorage()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        WorldState state = (WorldState)ctx.WorldState;
+        BlockHeader baseBlock;
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            state.CreateAccount(_address1, 1);
+            state.Set(new StorageCell(_address1, 1), 5);
+            state.Commit(Frontier.Instance);
+            state.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(state.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = state.BeginScope(baseBlock);
+        state.DeleteAccount(_address1);
+        state.Commit(Frontier.Instance);
+
+        List<AddressAsKey> removed = state._stateProvider.DetachRemovedAccountsWithStorage();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.AccountExists(_address1), Is.False, "the delete must land without the block having read the account first");
+            Assert.That(removed, Is.EqualTo(new[] { (AddressAsKey)_address1 }), "a storage cache learns of the wipe only through the recorded removal");
+        }
+        state._stateProvider.ReturnRemovedAccounts(removed);
+    }
+
+    [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -684,6 +766,23 @@ public class StateProviderTests(bool useFlat)
             .GetField("_blockCodeInsertFilter", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(worldState._stateProvider)!;
         Assert.That(filter.Delete(codeHash), Is.True, "the code hash was not in the insert filter");
+    }
+
+    private sealed class BalanceOverlay(Address address, bool hasStorage = false) : IStateReadOverlay
+    {
+        public bool TryGetAccount(Address candidate, Account? underlying, out Account? overlaid)
+        {
+            overlaid = (underlying ?? Account.TotallyEmpty).WithChangedBalance(99);
+            return candidate == address;
+        }
+
+        public bool TryGetStorage(Address candidate, in UInt256 index, out UInt256 value)
+        {
+            value = default;
+            return false;
+        }
+
+        public bool HasStorage(Address candidate) => hasStorage && candidate == address;
     }
 }
 

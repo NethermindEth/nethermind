@@ -30,7 +30,6 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": false,
-    "NeedToWaitForHeader": true,
     "PivotNumber": 86980000,
     "PivotHash": "0xfdb1155cd9d2aad2bc38e8e865f5b854046cb5c82805ad2788ac363b7418e2ed",
     "PivotTotalDifficulty": "343317235",

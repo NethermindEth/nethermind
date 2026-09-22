@@ -145,6 +145,7 @@ public class PrewarmerScopeProvider(
         LocalMetrics metrics) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
+        public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, UInt256> storageCache = preBlockCaches.StorageCache;

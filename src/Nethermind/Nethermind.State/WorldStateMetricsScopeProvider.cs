@@ -59,6 +59,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         }
 
         public Hash256 RootHash => baseScope.RootHash;
+        public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
 
         public void UpdateRootHash() => baseScope.UpdateRootHash();
 

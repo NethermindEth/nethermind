@@ -426,6 +426,12 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext BeforePersistedPruneCheck(Action callback)
+            {
+                _pruningStrategy.BeforePersistedPruneCheck = callback;
+                return this;
+            }
+
             public Task StartSyncPruneInBackground() => Task.Run(() => _trieStore.SyncPruneQueue());
 
             public PruningContext DisposeAndRecreate()
@@ -1367,29 +1373,28 @@ namespace Nethermind.Trie.Test
 
             ctx.TurnOnPrune();
 
-            TimeSpan syncPruneCheckTime = TimeSpan.Zero;
-            Task pruneTime = Task.Run(() =>
+            ctx.ExitScope();
+            using ManualResetEventSlim pruningEntered = new(false);
+            using ManualResetEventSlim releasePruning = new(false);
+            ctx.BeforePersistedPruneCheck(() =>
             {
-                long sw = Stopwatch.GetTimestamp();
-                ctx.SyncPruneCheck();
-                ctx.TurnOffPrune();
-                ctx.AssertThatCachedPersistedNodeCountIs(21747L);
-                syncPruneCheckTime = Stopwatch.GetElapsedTime(sw);
+                pruningEntered.Set();
+                Assert.That(releasePruning.Wait(TimeSpan.FromSeconds(30)), Is.True, "the test must release the pruning worker");
             });
-
-            long sw = Stopwatch.GetTimestamp();
-            for (int i = 0; i < 1000; i++)
+            Task pruning = Task.Run(() => ctx.SyncPruneCheck().TurnOffPrune());
+            try
             {
-                ctx.ExitScope();
-                ctx.EnterScope();
+                Assert.That(pruningEntered.Wait(TimeSpan.FromSeconds(30)), Is.True, "pruning must hold its lock before scopes are opened");
+                for (int i = 0; i < 1000; i++)
+                    ctx.EnterScope().ExitScope();
+                Assert.That(pruning.IsCompleted, Is.False, "scopes must open while pruning is still active");
             }
-
-            TimeSpan exitEnterScopeTime = Stopwatch.GetElapsedTime(sw);
-
-            await pruneTime;
-
-            Assert.That(syncPruneCheckTime, Is.LessThan(TimeSpan.FromSeconds(5))); // Does not hang
-            Assert.That(exitEnterScopeTime, Is.LessThan(syncPruneCheckTime)); // Is not blocked by prune
+            finally
+            {
+                releasePruning.Set();
+                await pruning.WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            ctx.AssertThatCachedPersistedNodeCountIs(21747L);
         }
     }
 }
