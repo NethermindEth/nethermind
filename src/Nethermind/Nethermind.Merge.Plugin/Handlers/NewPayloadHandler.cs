@@ -703,24 +703,27 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
     {
         // Anything but a block that reached the chain. Which failure it is does not matter once execution has
-        // answered: a throw from the commit, from the prewarm join, from a BlockProcessed subscriber - the last two
-        // reach here as ProcessingError, with the block deleted from the tree - all leave a VALID that was already
-        // given standing for a block that is not there.
+        // answered: the commit, the prewarm join and the BlockProcessed subscribers all arrive here as an exception,
+        // including the one kind that would otherwise have been reported as the block being invalid. Any of them
+        // leaves a VALID that was already given standing for a block that is not there.
         bool failed = e.ProcessingResult is not (ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied);
-        if (!_blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed))
+        bool found = _blockValidationTasks.TryRemove(e.BlockHash, out ValidationCompletion? blockProcessed);
+
+        // The completion that received the verdict arbitrates with its own request over the cache entry, below.
+        // Every other shape has to be judged against the cache directly: the request may be done and gone, or a
+        // re-submission may have swapped in a completion of its own, which never saw the first copy's verdict and
+        // so would let its answer stand. The exception is a second copy skipped as no better than a head the first
+        // copy became - that block did commit, and its answer is worth keeping.
+        if (failed && (!found || !blockProcessed!.VerdictGiven)
+            && _latestBlocks is not null && _latestBlocks.TryGet(e.BlockHash, out _) && !HasCommitted(e.BlockHash))
         {
-            // The request is done and has taken its completion with it, so whatever answer it had is cached by now,
-            // and a request that got no answer cached nothing. The CL's retry must not be answered from the cache
-            // without the block ever being queued again, so the entry goes - unless this removal is a second copy's,
-            // skipped as no better than a head the first copy is: that block did commit and its answer stands.
-            if (failed && _latestBlocks is not null && _latestBlocks.TryGet(e.BlockHash, out _) && !HasCommitted(e.BlockHash))
-                _latestBlocks.Delete(e.BlockHash);
-            return;
+            _latestBlocks.Delete(e.BlockHash);
         }
 
-        // Still in flight, so the request is between its verdict and its cache write. Only a failure that came after
-        // the verdict has an answer to take back; without one, the result below is this removal's own and caching it
-        // is right. Whichever of the two marks the completion first, the other takes the entry out.
+        if (!found || blockProcessed is null) return;
+
+        // Still in flight, so this request is between its verdict and its cache write. Whichever of the two marks
+        // the completion first, the other takes the entry out.
         if (failed && blockProcessed.VerdictGiven && blockProcessed.MarkBlockUncommitted()) _latestBlocks?.Delete(e.BlockHash);
 
         if (e.ProcessingResult == ProcessingResult.Exception)

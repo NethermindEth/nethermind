@@ -50,7 +50,13 @@ public class ForkchoiceUpdatedHandler(
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
     /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING; the commit takes milliseconds.</summary>
-    private readonly TimeSpan _commitWait = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
+    /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING.</summary>
+    /// <remarks>
+    /// Short on purpose: this wait holds the engine API's lock, which every other call has eight seconds to acquire,
+    /// and the commit it waits for takes milliseconds. A commit slower than this falls through to the SYNCING it got
+    /// before the wait existed.
+    /// </remarks>
+    private static readonly TimeSpan CommitWait = TimeSpan.FromSeconds(1);
 
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
@@ -388,8 +394,8 @@ public class ForkchoiceUpdatedHandler(
     /// newPayload answers VALID once the block is executed, before it is committed and marked processed, and the CL's
     /// forkchoice follows at once: a head that has its verdict and is still committing gets its moment here rather than
     /// the SYNCING that would make the CL retry. Only for such a head, only when nothing is queued ahead of it, and
-    /// bounded by the budget newPayload itself has for the block, because the engine API's lock is held meanwhile: a
-    /// head that is merely queued, a backlog or a commit slower than that budget get the SYNCING they always got.
+    /// briefly, because the engine API's lock is held meanwhile: a head that is merely queued, a backlog or a commit
+    /// slower than <see cref="CommitWait"/> get the SYNCING they always got.
     /// </summary>
     private async Task WaitForHeadCommitAsync(BlockHeader newHeadHeader)
     {
@@ -401,7 +407,7 @@ public class ForkchoiceUpdatedHandler(
         if (removed.IsCompleted) return;
 
         using CancellationTokenSource bound = new();
-        if (await Task.WhenAny(removed, Task.Delay(_commitWait, bound.Token)) == removed) bound.Cancel();
+        if (await Task.WhenAny(removed, Task.Delay(CommitWait, bound.Token)) == removed) bound.Cancel();
     }
 
     private BlockHeader? GetBlockHeader(Hash256 headBlockHash)

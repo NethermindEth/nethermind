@@ -246,7 +246,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         public bool RemoveCopy()
         {
             int copies = Interlocked.Decrement(ref _copies);
-            if (copies > 0) return false;
+            if (copies > 0)
+            {
+                // Copies are processed in order, so none of the ones left has had its verdict. The next one sets
+                // this again when its own lands; until then an executed-only wait must not take the entry for a
+                // block that is committing.
+                _executed = false;
+                return false;
+            }
             // Taken below zero by a removal that overlapped the last one: that one owns the release either way.
             if (copies < 0) return false;
             // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
@@ -446,15 +453,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
-        bool notified = false;
         await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
         {
+            bool notified = false;
             try
             {
                 Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
                 Preprocess(blockRef.Block);
-                notified = false;
 
                 try
                 {

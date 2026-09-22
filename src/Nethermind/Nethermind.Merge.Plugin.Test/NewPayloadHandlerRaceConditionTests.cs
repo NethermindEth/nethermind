@@ -180,7 +180,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: 5_000);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
-        await enqueued.Task;
+        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // The verdict lands; BlockRemoved never does, as if the commit were still running.
         processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
         ResultWrapper<PayloadStatusV1> result = await request;
@@ -204,9 +204,14 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         // The first copy is between verdict and commit: the tree knows the block but has not marked it processed.
         bool committed = false;
+        TaskCompletionSource waitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(new ValueTask(firstCopyRemoved.Task));
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(_ =>
+        {
+            waitRequested.TrySetResult();
+            return new ValueTask(firstCopyRemoved.Task);
+        });
 
         using NewPayloadHandler handler = CreateHandler(
             block,
@@ -218,6 +223,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessedNow: () => committed);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        // Awaited first, so the assertion means the request is on the wait rather than parked at an earlier await.
+        await waitRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(request.IsCompleted, Is.False, "the request must wait for the first copy rather than answer");
 
         committed = true;
@@ -238,10 +245,15 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     {
         Block block = PostMergeBlock();
 
+        TaskCompletionSource waitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(new ValueTask(firstCopyRemoved.Task));
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(_ =>
+        {
+            waitRequested.TrySetResult();
+            return new ValueTask(firstCopyRemoved.Task);
+        });
         processingQueue
             .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
             .Returns(_ =>
@@ -259,13 +271,15 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: 5_000);
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        // Awaited first, so the assertion below means the request is on the wait, not at an earlier await.
+        await waitRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
         // The first copy's removal, published before the wait it releases completes.
         processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.Success));
         Assert.That(request.IsCompleted, Is.False, "the first copy's removal is not this request's answer");
         firstCopyRemoved.SetResult();
 
-        await enqueued.Task;
+        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(request.IsCompleted, Is.False, "the request must wait for its own attempt's verdict");
         processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
         ResultWrapper<PayloadStatusV1> result = await request;
@@ -284,10 +298,15 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     {
         Block block = PostMergeBlock();
 
+        TaskCompletionSource waitRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(new ValueTask(firstCopyRemoved.Task));
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(_ =>
+        {
+            waitRequested.TrySetResult();
+            return new ValueTask(firstCopyRemoved.Task);
+        });
         processingQueue
             .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
             .Returns(_ =>
@@ -307,6 +326,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
         payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
+        // Awaited first, so the assertion below means the request is on the wait, not at an earlier await.
+        await waitRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
         processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.Success));
         Assert.That(request.IsCompleted, Is.False, "the first copy's removal is not this request's answer");
