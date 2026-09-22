@@ -174,7 +174,9 @@ internal static class IndexedTrieRoot
                 HashTerminalBranches(blocks, hashes, positions[..pending], references, inputLength);
                 pending = 0;
             }
-            if (Avx512F.IsSupported && pending >= 2)
+            // HashTerminalBranches already dispatches per hardware, and a cleared lane costs the same
+            // as a full one, so an AVX2-only remainder of two or three is still worth one batched call.
+            if (pending >= 2)
             {
                 blocks[(pending * inputLength)..].Clear();
                 HashTerminalBranches(blocks, hashes, positions[..pending], references, inputLength);

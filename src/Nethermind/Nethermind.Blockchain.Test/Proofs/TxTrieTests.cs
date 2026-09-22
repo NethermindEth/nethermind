@@ -133,9 +133,9 @@ public class TxTrieTests(bool useEip2718)
         calculator.BatchTerminalBranches(references);
 
         int eligible = count / 16 - 1;
-        int expectedBatched = Avx512F.IsSupported
-            ? eligible - (eligible % 8 == 1 ? 1 : 0)
-            : eligible / 4 * 4;
+        // A cleared hash-kernel lane costs nothing extra, so only a lone leftover (remainder 1) stays unbatched.
+        int branchBatchSize = Avx512F.IsSupported ? 8 : 4;
+        int expectedBatched = eligible - (eligible % branchBatchSize == 1 ? 1 : 0);
         Assert.That(references.Count(reference => reference.Length == -Keccak.Size), Is.EqualTo(expectedBatched));
         byte[] branch = new byte[KeccakHash.Hash532InputLength];
         for (int i = 0; i < count; i++)
@@ -150,6 +150,53 @@ public class TxTrieTests(bool useEip2718)
             for (int j = 0; j < 16; j++) writer.Encode(original[i + j].Value);
             writer.Encode(ReadOnlySpan<byte>.Empty);
             Assert.That(references[i].Value, Is.EqualTo(ValueKeccak.Compute(branch)));
+        }
+    }
+
+    [Test]
+    public void Terminal_branch_batch_excludes_group_with_one_unhashed_child(
+        [Values(1, 4, 7)] int groupIndex, [Values(0, 7, 15)] int childOffset)
+    {
+        if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
+        // 128 / 16 - 1 = 7 groups, all below the position-127 remap kink, so every group start is 16 * k - 1.
+        const int count = 128;
+        byte[][] values = new byte[count][];
+        IndexedTrieRoot.NodeReference[] references = new IndexedTrieRoot.NodeReference[count];
+        for (int i = 0; i < count; i++)
+            references[i] = new(ValueKeccak.Compute(BitConverter.GetBytes(i)), Keccak.Size);
+        IndexedTrieRoot.NodeReference[] original = (IndexedTrieRoot.NodeReference[])references.Clone();
+
+        int excludedGroupStart = 16 * groupIndex - 1;
+        int shortPosition = excludedGroupStart + childOffset;
+        references[shortPosition] = new(references[shortPosition].Value, 5);
+
+        IndexedTrieRoot.Calculator<byte[], TestValueEncoder> calculator = new(values, default);
+        calculator.BatchTerminalBranches(references);
+
+        // One group is disqualified out of the 7 that would otherwise all batch, leaving 6 - divisible by both batch widths.
+        Assert.That(references.Count(reference => reference.Length == -Keccak.Size), Is.EqualTo(6));
+        byte[] branch = new byte[KeccakHash.Hash532InputLength];
+        for (int k = 1; k <= 7; k++)
+        {
+            int start = 16 * k - 1;
+            if (start == excludedGroupStart)
+            {
+                for (int j = 0; j < 16; j++)
+                {
+                    IndexedTrieRoot.NodeReference expectedChild = start + j == shortPosition
+                        ? new(original[shortPosition].Value, 5)
+                        : original[start + j];
+                    Assert.That(references[start + j], Is.EqualTo(expectedChild),
+                        "A group with one unhashed child must fall back to per-node hashing, unchanged.");
+                }
+                continue;
+            }
+            RlpWriter writer = new(branch);
+            writer.StartSequence(16 * Rlp.LengthOfKeccakRlp + 1);
+            for (int j = 0; j < 16; j++) writer.Encode(original[start + j].Value);
+            writer.Encode(ReadOnlySpan<byte>.Empty);
+            Assert.That(references[start].Length, Is.EqualTo(-Keccak.Size));
+            Assert.That(references[start].Value, Is.EqualTo(ValueKeccak.Compute(branch)));
         }
     }
 
