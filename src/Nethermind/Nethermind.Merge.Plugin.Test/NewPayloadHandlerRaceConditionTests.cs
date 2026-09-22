@@ -236,6 +236,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
             Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
+            new PayloadPreWarmer(),
             LimboLogs.Instance);
     }
 }

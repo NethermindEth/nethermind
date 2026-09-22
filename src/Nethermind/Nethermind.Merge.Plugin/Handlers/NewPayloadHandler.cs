@@ -57,6 +57,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
     private readonly RecoverSignatures _senderRecovery;
+    private readonly PayloadPreWarmer _payloadPreWarmer;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
@@ -85,6 +86,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
+        PayloadPreWarmer payloadPreWarmer,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -101,6 +103,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _specProvider = specProvider;
         _txValidator = txValidator;
         _senderRecovery = senderRecovery;
+        _payloadPreWarmer = payloadPreWarmer;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
@@ -291,6 +294,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
+
+        // Warm this block's transactions now, so the validation below overlaps warming rather than the main thread
+        // racing a cold prewarmer once processing begins. Cancelled the moment the block enters processing.
+        _payloadPreWarmer.StartForPayload(parentHeader, block, _specProvider.GetSpec(block.Header));
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block

@@ -56,6 +56,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<RecoverSignatures>()
             .AddFirst<IBlockPreprocessorStep>(static ctx => ctx.Resolve<RecoverSignatures>())
 
+            // Single instance the engine handler holds to start a payload's speculative warm at request time;
+            // the scoped main-processing prewarmer is bound into it on activation (PayloadPreWarmerBinder).
+            .AddSingleton<PayloadPreWarmer>()
+
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
             .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()

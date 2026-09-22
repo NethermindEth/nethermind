@@ -85,6 +85,16 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 });
             }
 
+            if (blocksConfig.PreWarming != PreWarmMode.None)
+            {
+                // Binds the singleton PayloadPreWarmer to this scope's prewarmer on activation, so the engine handler
+                // can start a payload's speculative warm at request time. Same activation trigger as the mempool one,
+                // so it is the main processing prewarmer that gets bound, not a read-only env's.
+                builder
+                    .AddScoped<PayloadPreWarmerBinder>()
+                    .ResolveOnServiceActivation<PayloadPreWarmerBinder, IBlockCachePreWarmer>();
+            }
+
             if (blocksConfig.PreWarming == PreWarmMode.BlockAndMempool)
             {
                 // Shares the scoped IBlockCachePreWarmer / PreBlockCaches with the main processor. Eagerly resolved
