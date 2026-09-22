@@ -524,7 +524,6 @@ public class PbtNodeGroupTests
             Assert.That(location.GroupKey, Is.EqualTo(groupKey));
             Assert.That(location.Position, Is.EqualTo(position));
             Assert.That(PbtFourLevelGroupGeometry.PositionOf(actual), Is.EqualTo(position));
-            Assert.That(PbtFourLevelGroupGeometry.Reconstruct(groupKey, position), Is.EqualTo(expected));
         }
 
         void Visit(string path)
@@ -2021,7 +2020,7 @@ public class PbtNodeGroupTests
 
         byte[] payload = EncodeGroup(groupKey, records);
         BufferWriter slotWriter = new(new byte[fullLength]);
-        PbtNodeGroupCodec.Encode(ref slotWriter, groupKey, encodings, present, default);
+        PbtNodeGroupEncoder.Encode(ref slotWriter, groupKey, encodings, present, default);
         using RefCountingMemory streamedPayload = streamingWriter.Detach(default)!;
         PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(groupKey, payload);
         PbtNodeGroupReader streamedReader = PbtStoreTestExtensions.ReadGroup(groupKey, streamedPayload.GetSpan());
@@ -2052,7 +2051,6 @@ public class PbtNodeGroupTests
                 Assert.That(found, Is.EqualTo(retained), $"position {position}");
                 Assert.That(reader.GetNode(position).ToArray(), Is.EqualTo(retained ? encodings[position].ToArray() : Array.Empty<byte>()));
                 if (found) Assert.That(encoding.ToArray(), Is.EqualTo(encodings[position].ToArray()));
-                else Assert.That(reader.Availability & (1u << position), Is.Zero);
             }
         }
     }
@@ -2090,7 +2088,6 @@ public class PbtNodeGroupTests
             reader.Taken = taken;
             int nextPosition = 0;
             int lastEmittedPosition = -1;
-            uint emitted = 0;
             foreach (int endPosition in new[] { 0, 3, 8, 19, 31 })
             {
                 while (nextPosition < endPosition)
@@ -2107,7 +2104,6 @@ public class PbtNodeGroupTests
                         if (!encoding.IsEmpty)
                         {
                             if (!copyRanges) writer.Write(groupPath, nextPosition, encoding.Span);
-                            emitted |= 1u << nextPosition;
                             lastEmittedPosition = nextPosition;
                         }
                         nextPosition++;
@@ -2118,7 +2114,6 @@ public class PbtNodeGroupTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(writer.LastPosition, Is.EqualTo(lastEmittedPosition));
-                    Assert.That(writer.Availability, Is.EqualTo(emitted));
                     Assert.That(reader.Taken, Is.EqualTo(taken));
                 }
             }
@@ -2188,7 +2183,7 @@ public class PbtNodeGroupTests
         byte[] expected = EncodeGroup(groupKey, records);
         byte[] slotPayload = new byte[expected.Length];
         BufferWriter slotWriter = new(slotPayload);
-        PbtNodeGroupCodec.Encode(ref slotWriter, groupKey, encodings, present, default);
+        PbtNodeGroupEncoder.Encode(ref slotWriter, groupKey, encodings, present, default);
 
         using (RefCountingMemory payload = writer.Detach(default)!)
         {
@@ -2202,7 +2197,6 @@ public class PbtNodeGroupTests
                 Assert.That(reader.Count, Is.EqualTo(count));
                 int nodeLength = PbtNodeCodec.BranchLength(4, 0, 0);
                 Assert.That(expected.Length, Is.EqualTo(count * nodeLength + 7 + 2 * count));
-                Assert.That(reader.SubtreeBytes, Is.EqualTo(expected.Length));
                 uint availability = 0;
                 for (int index = 0; index < count; index++)
                 {
@@ -2361,7 +2355,6 @@ public class PbtNodeGroupTests
             Assert.That(PbtNodeGroupCodec.ReadDescendantMask(payload), Is.EqualTo(descendantBytes == 0 ? 0 : 1 << slot));
             Assert.That(stored, Is.EqualTo(slots));
             Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload).DescendantBytes(slot), Is.EqualTo(descendantBytes));
-            Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload).SubtreeBytes, Is.EqualTo(payload.Length + descendantBytes));
             Assert.That(streamed.GetSpan().ToArray(), Is.EqualTo(payload));
         }
         slots[slot] = -1;
@@ -2528,7 +2521,7 @@ public class PbtNodeGroupTests
         foreach (PbtNodeRecord record in records) capacity += record.Encoding.Length;
         byte[] payload = new byte[capacity];
         BufferWriter writer = new(payload);
-        PbtNodeGroupCodec.Encode(ref writer, groupKey, records, descendantBytes);
+        PbtNodeGroupEncoder.Encode(ref writer, groupKey, records, descendantBytes);
         return writer.WrittenSpan.ToArray();
     }
 

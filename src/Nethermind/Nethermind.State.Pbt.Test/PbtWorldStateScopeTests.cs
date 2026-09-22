@@ -360,11 +360,7 @@ public class PbtWorldStateScopeTests
         scope.Get(TestItem.AddressB);
         Assert.That(scope.Bundle.PendingMutationCount, Is.EqualTo(1));
         scope.UpdateRootHash();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(scope.LastFoldMutationCount, Is.EqualTo(1));
-            Assert.That(scope.Bundle.PendingMutationCount, Is.Zero);
-        }
+        Assert.That(scope.Bundle.PendingMutationCount, Is.Zero);
         scope.Commit(0);
 
         using PbtReadOnlySnapshotBundle reopened = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(new StateId(0, scope.RootHash));

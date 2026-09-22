@@ -39,7 +39,7 @@ public class PbtNodePathBenchmark
     public PbtStorageNodePath LocateAndReconstruct()
     {
         PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(_path);
-        return PbtFourLevelGroupGeometry.Reconstruct(location.GroupKey, location.Position);
+        return PbtFourLevelGroupGeometry.PathOf(location.GroupKey, location.Position);
     }
 }
 
@@ -60,10 +60,10 @@ public class PbtNodePathAppendBenchmark
         PbtStorageTreeKey key = new(keyBytes);
         int pathDepth = Math.Min(7, ResultBitDepth - 1);
         _path = PbtStorageNodePath.FromKey(key, pathDepth);
-        PbtBitPrefix prefix = PbtBitPrefix.FromKey(key, pathDepth, ResultBitDepth - pathDepth - 1);
-        _prefix = new byte[2 + prefix.Bytes.Length];
-        BinaryPrimitives.WriteUInt16BigEndian(_prefix, (ushort)prefix.BitCount);
-        prefix.Bytes.CopyTo(_prefix.AsSpan(2));
+        int prefixBits = ResultBitDepth - pathDepth - 1;
+        _prefix = new byte[2 + PbtBitPrefix.ByteCount(prefixBits)];
+        BinaryPrimitives.WriteUInt16BigEndian(_prefix, (ushort)prefixBits);
+        PbtBitPrefix.CopyBits(key.Bytes, pathDepth, prefixBits, _prefix.AsSpan(2), 0);
     }
 
     [Benchmark]

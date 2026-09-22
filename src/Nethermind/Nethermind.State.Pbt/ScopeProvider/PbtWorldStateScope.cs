@@ -85,10 +85,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _logger.Debug($"PBT scope {_scopeId} {stage}: state={_currentStateId}, usage={_usage}, readOnly={_isReadOnly}, pendingMutations={Bundle.PendingMutationCount}, managedBytes={GC.GetTotalMemory(false)}");
 
     internal PbtSnapshotBundle Bundle { get; }
-    internal int LastFoldMutationCount { get; private set; }
     public Hash256 RootHash => _rootHash;
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
-    internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     internal void UseAuthoritativeRoot(Hash256 root)
     {
@@ -159,10 +157,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         if (_logger.IsDebug) LogLifecycle("root calculation begin");
         long start = Stopwatch.GetTimestamp();
         PbtPartitionBatches changes = Bundle.PrepareLeafChanges();
+        int mutationCount = Bundle.PendingMutationCount;
         try
         {
             Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
-            LastFoldMutationCount = Bundle.PendingMutationCount;
             long updaterStart = Stopwatch.GetTimestamp();
             _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes, _foldQuota, _foldFanOut, _prefixlessBranchOmission, Metrics.PbtPartitionFoldTime, memoryProvider: _nodeGroupMemory);
             Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
@@ -176,7 +174,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
         _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
         _rootDirty = false;
-        if (_logger.IsDebug) LogLifecycle($"root calculated treeRoot={_treeRoot}, mutations={LastFoldMutationCount}, elapsed={Stopwatch.GetElapsedTime(start)}");
+        if (_logger.IsDebug) LogLifecycle($"root calculated treeRoot={_treeRoot}, mutations={mutationCount}, elapsed={Stopwatch.GetElapsedTime(start)}");
     }
 
     public void Commit(ulong blockNumber)

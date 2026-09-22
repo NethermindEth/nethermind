@@ -40,7 +40,6 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     internal int WrittenCount => _written;
-    internal uint Availability => _availability;
     internal int LastPosition => _lastPosition;
 
     /// <summary>The size change folded below boundary slot <paramref name="slot"/> since this frame was opened.</summary>

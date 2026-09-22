@@ -304,7 +304,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Path_append_and_prefix_composition_match_bit_reference(
+    public void Path_append_matches_bit_reference(
         [Range(0, 7)] int pathOffset,
         [Values(0, 1, 7, 8, 9, 63, 64, 65, 511)] int prefixLength,
         [Values(0, 1)] int direction)
@@ -314,9 +314,9 @@ public class Eip8297CanonicalTreeTests
         PbtStorageTreeKey key = new(keyBytes);
         int pathDepth = 8 + pathOffset;
         PbtStorageNodePath path = PbtStorageNodePath.FromKey(key, pathDepth);
-        PbtBitPrefix prefix = PbtBitPrefix.FromKey(key, pathOffset, prefixLength);
         byte[] expectedPrefix = new byte[(prefixLength + 7) >> 3];
         CopyBitsReference(keyBytes, pathOffset, prefixLength, expectedPrefix, 0);
+        PbtBitPrefix prefix = new(expectedPrefix, prefixLength);
         int resultDepth = pathDepth + prefixLength + 1;
         byte[] expectedPath = new byte[(resultDepth + 7) >> 3];
         CopyBitsReference(keyBytes, 0, pathDepth, expectedPath, 0);
@@ -324,19 +324,7 @@ public class Eip8297CanonicalTreeTests
         expectedPath[(resultDepth - 1) >> 3] |= (byte)(direction << (7 - ((resultDepth - 1) & 7)));
 
         PbtStorageNodePath appended = path.Append(new CompressedPrefix(EncodePrefix(prefix.Bytes, prefix.BitCount)), direction);
-        byte[] pathBytes = path.ToPathArray();
-        PbtBitPrefix concatenated = PbtBitPrefix.Concat(new PbtBitPrefix(pathBytes, pathDepth), direction, prefix);
-        byte[] expectedConcat = new byte[expectedPath.Length];
-        CopyBitsReference(keyBytes, 0, pathDepth, expectedConcat, 0);
-        expectedConcat[pathDepth >> 3] |= (byte)(direction << (7 - (pathDepth & 7)));
-        CopyBitsReference(expectedPrefix, 0, prefixLength, expectedConcat, pathDepth + 1);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(prefix.Bytes.ToArray(), Is.EqualTo(expectedPrefix));
-            Assert.That(appended, Is.EqualTo(new PbtStorageNodePath(expectedPath, resultDepth)));
-            Assert.That(concatenated, Is.EqualTo(new PbtBitPrefix(expectedConcat, resultDepth)));
-        }
+        Assert.That(appended, Is.EqualTo(new PbtStorageNodePath(expectedPath, resultDepth)));
     }
 
     private static void CopyBitsReference(ReadOnlySpan<byte> source, int sourceOffset, int bitCount, Span<byte> destination, int destinationOffset)
@@ -2484,7 +2472,7 @@ public class Eip8297CanonicalTreeTests
             records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
         byte[] expectedPayload = new byte[payloads[0].Payload.Length];
         BufferWriter writer = new(expectedPayload);
-        PbtNodeGroupCodec.Encode(ref writer, groupKey, records, default);
+        PbtNodeGroupEncoder.Encode(ref writer, groupKey, records, default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
@@ -2529,7 +2517,7 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-            Assert.That(updatedReader.Availability, Is.EqualTo(1u << 30));
+            Assert.That(updatedReader.Count, Is.EqualTo(1));
             Assert.That(promoted.Prefix.BitCount, Is.EqualTo(prefixBits));
             Assert.That(promoted.Prefix.Bytes.ToArray(), Is.EqualTo(Bytes.FromHexString(prefixHex)));
         }
@@ -2703,7 +2691,7 @@ public class Eip8297CanonicalTreeTests
                 BufferWriter writer = new(MemoryProvider);
                 try
                 {
-                    PbtNodeGroupCodec.Encode(ref writer, storageGroupKey, records, default);
+                    PbtNodeGroupEncoder.Encode(ref writer, storageGroupKey, records, default);
                     RefCountingMemory payload = writer.Detach()!;
                     return payload;
                 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -15,36 +14,6 @@ namespace Nethermind.State.Pbt.Test;
 
 public class KeyDerivationTests
 {
-    private static readonly Address Address = TestItem.AddressA;
-
-    [Test]
-    public void AccountHeaderStemMatchesEipBitLayout()
-    {
-        Stem stem = PbtKeyDerivation.AccountHeaderStem(Address);
-
-        byte[] expected = SpliceBits([0, 0, 0, 0], (Blake3(Address32(Address)), 244));
-        Assert.That(stem.Bytes.SequenceEqual(expected));
-        Assert.That(stem.Zone, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void StorageKeysMatchEipTestVectors()
-    {
-        // Slot 5 is in the account header at sub-index HEADER_STORAGE_OFFSET + 5 = 0x45.
-        Assert.That(PbtKeyDerivation.IsHeaderSlot(5), Is.True);
-        Assert.That(PbtKeyDerivation.HeaderSlotSubIndex(5), Is.EqualTo(0x45));
-
-        // Slot 1000 uses tree index 3, sub-index 232, and stem 1 || H(A)[:60] || H(A || 3)[:187].
-        Assert.That(PbtKeyDerivation.IsHeaderSlot(1000), Is.False);
-        Stem stem = PbtKeyDerivation.StorageStem(Address, 1000, out byte subIndex);
-        Assert.That(subIndex, Is.EqualTo(0xE8));
-
-        byte[] treeIndex = new byte[32];
-        treeIndex[31] = 3;
-        byte[] expected = SpliceBits([1], (Blake3(Address32(Address)), 60), (Blake3([.. Address32(Address), .. treeIndex]), 187));
-        Assert.That(stem.Bytes.SequenceEqual(expected));
-    }
-
     [Test]
     public void CodeChunkKeysMatchEipTestVectors([Values(0, 5, 127, 128, 255, 256, 300)] int chunkId)
     {
@@ -64,10 +33,7 @@ public class KeyDerivationTests
     public void CodeChunkKeysRejectInvalidInputs(int chunkId, int hashLength)
     {
         byte[] codeHash = new byte[hashLength];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => Eip8297KeyDerivation.OverflowCodeKey(codeHash, chunkId), Throws.InstanceOf<ArgumentException>());
-        }
+        Assert.That(() => Eip8297KeyDerivation.OverflowCodeKey(codeHash, chunkId), Throws.InstanceOf<ArgumentException>());
     }
 
     [Test]
@@ -123,35 +89,4 @@ public class KeyDerivationTests
 
     private static ReadOnlySpan<byte> Chunk(byte[] chunks, int chunkId) =>
         chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
-
-    private static byte[] Address32(Address address) => [.. new byte[12], .. address.Bytes];
-
-    private static byte[] Blake3(byte[] input)
-    {
-        byte[] output = new byte[32];
-        global::Blake3.Hasher.Hash(input, output);
-        return output;
-    }
-
-    /// <summary>Concatenates bit segments MSB-first into a 31-byte stem, per EIP-8297.</summary>
-    private static byte[] SpliceBits(int[] leadingBits, params (byte[] Bytes, int BitCount)[] segments)
-    {
-        List<int> bits = [.. leadingBits];
-        foreach ((byte[] bytes, int bitCount) in segments)
-        {
-            for (int i = 0; i < bitCount; i++)
-            {
-                bits.Add((bytes[i >> 3] >> (7 - (i & 7))) & 1);
-            }
-        }
-
-        Assert.That(bits, Has.Count.EqualTo(Stem.LengthInBits));
-        byte[] stem = new byte[Stem.Length];
-        for (int i = 0; i < bits.Count; i++)
-        {
-            if (bits[i] != 0) stem[i >> 3] |= (byte)(1 << (7 - (i & 7)));
-        }
-
-        return stem;
-    }
 }

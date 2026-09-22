@@ -99,136 +99,6 @@ public static class PbtNodeGroupCodec
 
     private static int DescendantsLength(ushort descendantMask) => BitOperations.PopCount(descendantMask) * DescendantBytesLength + DescendantMaskLength;
 
-    /// <summary>
-    /// Validates and writes a canonical group payload directly through <paramref name="writer"/>.
-    /// </summary>
-    /// <remarks>
-    /// Validation completes before the first write. Node encodings are then copied once in position
-    /// order, followed by the offset table, availability bitmap and subtree size. If writing fails, the writer's
-    /// <see cref="BufferWriter.WrittenCount"/> is restored to its value on entry; bytes in a caller
-    /// supplied destination beyond that count are not part of the output.
-    /// </remarks>
-    /// <param name="writer">The destination writer, passed by reference because it is mutable.</param>
-    /// <param name="groupKey">The four-level key identifying the group.</param>
-    /// <param name="nodes">Nodes belonging to this group, each with its complete canonical path and encoding.</param>
-    /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot, or empty for none.</param>
-    public static void Encode<TPath>(ref BufferWriter writer, TPath groupKey, IReadOnlyList<PbtNodeRecord> nodes, ReadOnlySpan<long> descendantBytes)
-        where TPath : struct, IPbtNodePath<TPath>
-    {
-        ArgumentNullException.ThrowIfNull(nodes);
-        ushort descendantMask = DescendantMask(descendantBytes);
-        ValidateGroupKey(groupKey);
-        if (nodes.Count == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
-        if (nodes.Count > PositionCount) throw new InvalidDataException("A PBT node group has too many nodes.");
-
-        Span<int> recordIndices = stackalloc int[PositionCount];
-        recordIndices.Fill(-1);
-        uint availability = 0;
-        uint seenPositions = 0;
-        int entriesLength = 0;
-        for (int index = 0; index < nodes.Count; index++)
-        {
-            PbtNodeRecord record = nodes[index] ?? throw new InvalidDataException("A PBT node group contains a null record.");
-            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(record.Path);
-            if (!location.GroupKey.Equals(groupKey)) throw new InvalidDataException("Node does not belong to the group key.");
-            if ((uint)location.Position >= PositionCount
-                || (location.Position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0))
-                throw new InvalidDataException("The group contains a reserved node position.");
-
-            uint bit = 1u << location.Position;
-            if ((seenPositions & bit) != 0) throw new InvalidDataException("Duplicate node position in group.");
-            seenPositions |= bit;
-            ReadOnlySpan<byte> encoding = record.Encoding.Span;
-            PbtNodeReader node = new(encoding);
-            ValidateNodePath(node, record.Path);
-            if (ShouldOmit(PbtPrefixlessBranchOmission.Interior, location.Position, encoding)) continue;
-            entriesLength = checked(entriesLength + encoding.Length);
-            if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
-            recordIndices[location.Position] = index;
-            availability |= bit;
-        }
-
-        if (availability == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
-        int initialWrittenCount = writer.WrittenCount;
-        try
-        {
-            writer.Write(Header);
-            Span<ushort> offsets = stackalloc ushort[PositionCount];
-            int offset = 0;
-            for (int position = 0; position < PositionCount; position++)
-            {
-                int recordIndex = recordIndices[position];
-                if (recordIndex < 0) continue;
-                if ((uint)offset > MaxOffset) throw new InvalidDataException("PBT node group start offset exceeds the uint16 limit.");
-                offsets[position] = (ushort)offset;
-                ReadOnlySpan<byte> encoding = nodes[recordIndex].Encoding.Span;
-                writer.Write(encoding);
-                offset = checked(offset + encoding.Length);
-            }
-
-            int trailerLength = GetTrailerLength(availability, descendantMask);
-            WriteFooter(writer.GetSpan(trailerLength), offsets, availability, descendantBytes);
-            writer.Advance(trailerLength);
-        }
-        catch
-        {
-            writer.Reset(initialWrittenCount);
-            throw;
-        }
-    }
-
-    internal static void Encode<TPath>(ref BufferWriter writer, TPath groupKey, scoped ReadOnlySpan<ReadOnlyMemory<byte>> encodings, scoped ReadOnlySpan<bool> present, ReadOnlySpan<long> descendantBytes)
-        where TPath : struct, IPbtNodePath<TPath>
-    {
-        ushort descendantMask = DescendantMask(descendantBytes);
-        ValidateGroupKey(groupKey);
-        if (encodings.Length != PositionCount || present.Length != PositionCount)
-            throw new ArgumentException("A PBT node group must have one slot per position.");
-
-        uint availability = 0;
-        int entriesLength = 0;
-        for (int position = 0; position < PositionCount; position++)
-        {
-            if (!present[position]) continue;
-            ReadOnlySpan<byte> encoding = encodings[position].Span;
-            if (encoding.IsEmpty) continue;
-            if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0)
-                throw new InvalidDataException("The group contains a reserved node position.");
-            PbtNodeReader node = new(encoding);
-            ValidateNodePath(node, PbtFourLevelGroupGeometry.PathOf(groupKey, position));
-            if (ShouldOmit(PbtPrefixlessBranchOmission.Interior, position, encoding)) continue;
-            entriesLength = checked(entriesLength + encoding.Length);
-            if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
-            availability |= 1u << position;
-        }
-
-        if (availability == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
-        int initialWrittenCount = writer.WrittenCount;
-        try
-        {
-            writer.Write(Header);
-            Span<ushort> offsets = stackalloc ushort[PositionCount];
-            int offset = 0;
-            for (int position = 0; position < PositionCount; position++)
-            {
-                if ((availability & (1u << position)) == 0) continue;
-                offsets[position] = (ushort)offset;
-                ReadOnlySpan<byte> encoding = encodings[position].Span;
-                writer.Write(encoding);
-                offset = checked(offset + encoding.Length);
-            }
-
-            int trailerLength = GetTrailerLength(availability, descendantMask);
-            WriteFooter(writer.GetSpan(trailerLength), offsets, availability, descendantBytes);
-            writer.Advance(trailerLength);
-        }
-        catch
-        {
-            writer.Reset(initialWrittenCount);
-            throw;
-        }
-    }
-
     internal static int GetTrailerLength(uint availability, ushort descendantMask) =>
         BitOperations.PopCount(availability) * sizeof(ushort) + sizeof(uint) + DescendantsLength(descendantMask);
 
@@ -284,30 +154,6 @@ public static class PbtNodeGroupCodec
         }
         && encoding.Length == PrefixlessBranchLength && encoding[0] == 1 && encoding[1] == 0 && encoding[2] == 0
         && encoding[PrefixlessBranchLength - 2] == 0 && encoding[PrefixlessBranchLength - 1] == 0;
-
-    private static void ValidateNodePath<TPath>(PbtNodeReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>
-    {
-        if (node.IsLeaf)
-        {
-            if (path.BitDepth != 0) throw new InvalidDataException("A PBT leaf entry is only valid as the tree root.");
-            return;
-        }
-        if (!MatchesInlineLeaves(node, path)) throw new InvalidDataException("PBT leaf does not match its group position.");
-    }
-
-    private static bool MatchesInlineLeaves<TPath>(PbtNodeReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>
-    {
-        ReadOnlySpan<byte> leftKey = node.LeftKey;
-        ReadOnlySpan<byte> rightKey = node.RightKey;
-        return (leftKey.IsEmpty || path.MatchesPrefix(leftKey, path.BitDepth))
-            && (rightKey.IsEmpty || path.MatchesPrefix(rightKey, path.BitDepth));
-    }
-
-    private static void ValidateGroupKey<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
-    {
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-    }
 }
 
 /// <summary>Provides a validated, allocation-free view over a borrowed node-group payload.</summary>
@@ -387,25 +233,12 @@ public readonly ref struct PbtNodeGroupReader
         _initialized = true;
     }
 
-    /// <summary>Gets the availability bits.</summary>
-    public uint Availability { get { EnsureInitialized(); return _availability; } }
     /// <summary>Gets the summed payload lengths of the groups physically stored below boundary slot <paramref name="slot"/>.</summary>
     public long DescendantBytes(int slot)
     {
         EnsureInitialized();
         if ((uint)slot >= PbtNodeGroupCodec.DescendantSlots) throw new ArgumentOutOfRangeException(nameof(slot));
         return _descendantBytes[slot];
-    }
-    /// <summary>Gets the payload length plus the descendant sizes of every boundary slot.</summary>
-    public long SubtreeBytes
-    {
-        get
-        {
-            EnsureInitialized();
-            long subtreeBytes = _payloadLength;
-            foreach (long slotBytes in _descendantBytes) subtreeBytes += slotBytes;
-            return subtreeBytes;
-        }
     }
     /// <summary>Gets the number of nodes in this group.</summary>
     public int Count { get { EnsureInitialized(); return BitOperations.PopCount(_availability); } }

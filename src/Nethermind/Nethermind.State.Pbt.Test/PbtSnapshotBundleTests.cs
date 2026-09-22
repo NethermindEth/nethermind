@@ -1510,7 +1510,7 @@ public class PbtSnapshotBundleTests
         foreach (PbtNodeRecord record in records) length += record.Encoding.Length;
         byte[] payload = new byte[length];
         BufferWriter writer = new(payload);
-        PbtNodeGroupCodec.Encode(ref writer, groupKey, records, default);
+        PbtNodeGroupEncoder.Encode(ref writer, groupKey, records, default);
         return writer.WrittenSpan.ToArray();
     }
 

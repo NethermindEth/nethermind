@@ -39,32 +39,6 @@ public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
         return (_bytes[index >> 3] >> (7 - (index & 7))) & 1;
     }
 
-    public static PbtBitPrefix FromKey<TKey>(TKey key, int startBit, int bitCount) where TKey : struct, IPbtKey<TKey>
-    {
-        if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));
-        ArgumentOutOfRangeException.ThrowIfNegative(startBit);
-        ArgumentOutOfRangeException.ThrowIfNegative(bitCount);
-        if (startBit > key.BitLength - bitCount) throw new ArgumentOutOfRangeException(nameof(bitCount));
-        byte[] bytes = new byte[ByteCount(bitCount)];
-        CopyBits(key.Bytes, startBit, bitCount, bytes, 0);
-
-        return TakeOwnership(bytes, bitCount);
-    }
-
-    internal static PbtBitPrefix TakeOwnership(byte[] bytes, int bitCount) => new(bytes, bitCount);
-
-    internal static PbtBitPrefix Concat(PbtBitPrefix first, int direction, PbtBitPrefix second)
-    {
-        if ((uint)direction > 1) throw new ArgumentOutOfRangeException(nameof(direction));
-        int bitCount = checked(first.BitCount + 1 + second.BitCount);
-        if (bitCount > MaxBitCount) throw new InvalidDataException("Merged branch prefix exceeds 65535 bits.");
-        byte[] bytes = new byte[ByteCount(bitCount)];
-        CopyBits(first.Bytes, 0, first.BitCount, bytes, 0);
-        if (direction != 0) bytes[first.BitCount >> 3] |= (byte)(1 << (7 - (first.BitCount & 7)));
-        CopyBits(second.Bytes, 0, second.BitCount, bytes, first.BitCount + 1);
-        return TakeOwnership(bytes, bitCount);
-    }
-
     public bool Equals(PbtBitPrefix? other) =>
         other is not null && BitCount == other.BitCount && Bytes.SequenceEqual(other.Bytes);
 

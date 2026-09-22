@@ -293,7 +293,7 @@ internal static class PbtStoreTestExtensions
         BufferWriter writer = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
         try
         {
-            PbtNodeGroupCodec.Encode(ref writer, location.GroupKey, records, default);
+            PbtNodeGroupEncoder.Encode(ref writer, location.GroupKey, records, default);
             using RefCountingMemory payload = writer.Detach()!;
             store.SetNodeGroup(location.GroupKey, encoding is null || encoding[0] == 0 ? default : PbtNodeCodec.Hash(new PbtNodeReader(encoding)), payload);
         }

@@ -57,7 +57,7 @@ public class PbtCompactionScheduleTests
         PbtCompactionSchedule first = new(metadataDb, config, LimboLogs.Instance);
         PbtCompactionSchedule reopened = new(metadataDb, config, LimboLogs.Instance);
 
-        Assert.That(reopened.Offset, Is.EqualTo(first.Offset));
+        Assert.That(reopened.NextFullCompactionAfter(new StateId(0, default)), Is.EqualTo(first.NextFullCompactionAfter(new StateId(0, default))));
     }
 
     /// <summary>Compaction sizes must be powers of two for the lowest-set-bit schedule to nest.</summary>

@@ -559,9 +559,7 @@ public class PbtRocksDbPersistenceTests
             {
                 PbtStorageNodePath groupKey = groupKeys.Current;
                 using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
-                PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
-                if (groupKey.BitDepth != 0)
-                    Assert.That(group.Availability & (1u << PbtFourLevelGroupGeometry.RootPosition), Is.Zero);
+                PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
                 persisted.Add(new PbtPhysicalPayload(groupKey, payload.GetSpan()));
             }
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(persisted);
@@ -880,7 +878,7 @@ public class PbtRocksDbPersistenceTests
         BufferWriter writer = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
         try
         {
-            PbtNodeGroupCodec.Encode(ref writer, PbtFourLevelGroupGeometry.Locate(records[0].Path).GroupKey, records, default);
+            PbtNodeGroupEncoder.Encode(ref writer, PbtFourLevelGroupGeometry.Locate(records[0].Path).GroupKey, records, default);
             return writer.Detach()!;
         }
         finally

@@ -38,8 +38,6 @@ public sealed class PbtCompactionSchedule
         _offset = ResolveOffset(metadataDb, config, logManager.GetClassLogger<PbtCompactionSchedule>());
     }
 
-    internal ulong Offset => _offset;
-
     /// <summary>How many layers the compaction at <paramref name="blockNumber"/> merges; 1 when none should run.</summary>
     public ulong GetCompactSize(ulong blockNumber)
     {

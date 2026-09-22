@@ -78,9 +78,6 @@ public static class PbtFourLevelGroupGeometry
         return new(PositionNibbles[position] << (4 - length), length);
     }
 
-    /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
-    public static TPath Reconstruct<TPath>(TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath> => PathOf(groupKey, position);
-
     internal static int WidthOf(int position) => position switch
     {
         2 or 5 or 9 or 12 or 17 or 20 or 24 or 27 => 2,
