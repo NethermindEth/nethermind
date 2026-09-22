@@ -9,4 +9,4 @@ namespace Nethermind.State;
 /// resource-unavailable (-32002); every other <see cref="StateUnavailableException"/> keeps the resource-not-found
 /// path and its WARN.
 /// </summary>
-public class StateNotRetainedException(string message) : StateUnavailableException(message);
+public sealed class StateNotRetainedException(string message) : StateUnavailableException(message);

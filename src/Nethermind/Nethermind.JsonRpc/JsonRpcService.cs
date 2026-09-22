@@ -1065,8 +1065,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // rejections reach this point along two distinct paths (module rental before invocation,
         // and the override-environment cap during invocation), and their warnings are suppressed
         // by design — without a counter operators cannot see that callers are being shed.
-        // suppressWarning scopes the count to exactly those shedding sites: the batch-size cap
-        // keeps its own Warn; the response-body cap now demotes with the other -32005s.
+        // suppressWarning scopes the count to exactly those shedding sites. The batch-size cap keeps its own Warn,
+        // and the response-body cap's entries never reached CreateSingleRequestEntry's WARN at all (the HTTP sink
+        // warns when it trips); the one -32005 that WARN now demotes is eth_getLogs' "Too many logs requested".
         if (suppressWarning && errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
         {
             Metrics.IncrementJsonRpcOverloadRejections();
