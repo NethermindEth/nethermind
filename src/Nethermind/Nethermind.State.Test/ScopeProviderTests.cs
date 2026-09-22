@@ -224,6 +224,8 @@ public class ScopeProviderTests(bool useFlat)
                 for (int i = 0; i < count; i++)
                 {
                     UInt256 value = round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1);
+                    // Batched first: the scalar Set caches the hash, and a cached key skips the batch.
+                    // Round 0 warms every key, so only round 0 reaches the batch kernel.
                     batched.Set(indices[i], value);
                     scalar.Set(indices[i], value);
                 }
