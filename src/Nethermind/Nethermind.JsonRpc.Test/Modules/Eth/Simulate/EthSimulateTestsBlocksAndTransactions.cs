@@ -1309,4 +1309,73 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
     }
 
+    /// <summary>
+    /// Regression test for #13683: under EIP-7843 <c>SLOTNUM</c> must return a value instead of faulting
+    /// with an invalid instruction, and the value must advance block by block across a multi-block
+    /// simulation. Covers both an already-post-fork chain and a pre-fork head whose block override
+    /// activates the fork.
+    /// </summary>
+    [TestCase(false, TestName = "slotnum_on_post_activation_chain")]
+    [TestCase(true, TestName = "slotnum_with_time_override_activating_the_fork")]
+    public async Task eth_simulateV1_slotnum_returns_a_slot_advancing_per_block(bool crossFork)
+    {
+        const ulong amsterdamTimestamp = 2_000_000_000;
+        const int blockCount = 3;
+
+        TestRpcBlockchain chain;
+        ulong? firstBlockTime = null;
+        if (crossFork)
+        {
+            CustomSpecProvider specProvider = new(
+                ((ForkActivation)0, Prague.Instance),
+                (ForkActivation.TimestampOnly(amsterdamTimestamp), Amsterdam.Instance));
+            specProvider.UpdateMergeTransitionInfo(0, 0);
+            chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(specProvider);
+            Assert.That(chain.BlockFinder.Head!.Header.Timestamp, Is.LessThan(amsterdamTimestamp));
+            firstBlockTime = amsterdamTimestamp;
+        }
+        else
+        {
+            chain = await BuildAmsterdamBalChain();
+        }
+
+        // The residual case #13683 is about: there is no slot on the head for the simulation to inherit.
+        Assert.That(chain.BlockFinder.Head!.Header.SlotNumber, Is.Null);
+
+        Address contract = new("0xc200000000000000000000000000000000000000");
+        // SLOTNUM PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN — returns the slot number as a 32-byte word.
+        byte[] probeBytecode = Bytes.FromHexString("0x4b5f5260205ff3");
+
+        List<BlockStateCall<TransactionForRpc>> blockStateCalls = new(blockCount);
+        for (int i = 0; i < blockCount; i++)
+        {
+            blockStateCalls.Add(new BlockStateCall<TransactionForRpc>
+            {
+                BlockOverrides = i == 0 && firstBlockTime is not null ? new BlockOverride { Time = firstBlockTime } : null,
+                StateOverrides = new Dictionary<Address, AccountOverride>
+                {
+                    { contract, new AccountOverride { Code = probeBytecode } },
+                    { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                },
+                Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = contract, Gas = 200_000, GasPrice = UInt256.Zero }]
+            });
+        }
+
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = blockStateCalls };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.ToString());
+        Assert.That(result.Data, Has.Count.EqualTo(blockCount));
+
+        for (int i = 0; i < blockCount; i++)
+        {
+            SimulateCallResult call = result.Data[i].Calls.First();
+            Assert.That(call.Status, Is.EqualTo((ulong)ResultType.Success), call.Error?.Message);
+            Assert.That(call.ReturnData, Is.Not.Null);
+            UInt256 returnedSlot = new(call.ReturnData!, isBigEndian: true);
+            Assert.That((ulong)returnedSlot, Is.EqualTo((ulong)i), $"SLOTNUM in simulated block {i}");
+        }
+    }
 }
