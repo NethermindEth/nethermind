@@ -97,7 +97,7 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Number of parallel workers scanning ranges within each PBT column. 0 uses the processor count.", DefaultValue = "0")]
     int ScanTreeConcurrency { get; set; }
 
-    [ConfigItem(Description = "The persisted node-group key layout: Padded (the group path zero-padded to the column key length, then its nibble count) or Variable (the group path bytes, then 0 for a byte-aligned path or 1 for a nibble-aligned one). Fixed when the pbt database is created; a populated database created with the other layout is rejected.", DefaultValue = "Padded", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The persisted node-group key layout: Padded (the group path zero-padded to the column key length, then its nibble count) or Variable (the group path bytes, then 0 for a byte-aligned path or 1 for a nibble-aligned one). Fixed when the pbt database is created; a populated database created with the other layout is rejected.", DefaultValue = "Variable", HiddenFromDocs = true)]
     PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; }
 
     [ConfigItem(Description = "Which prefixless branches without inline leaves are left out of stored node groups and recomputed from their children on read: Interior (relative depths 1-3), OddLevels (relative depths 1 and 3, keeping depth 2) or None (store every node). All layouts are readable, so the setting can change on an existing database; groups convert as they are rewritten.", DefaultValue = "OddLevels", HiddenFromDocs = true)]
