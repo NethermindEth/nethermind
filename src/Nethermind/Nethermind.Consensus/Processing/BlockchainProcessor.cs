@@ -31,13 +31,23 @@ using static Nethermind.Core.Threading.ProcessingThread;
 
 namespace Nethermind.Consensus.Processing;
 
+/// <summary>
+/// The main block processing pipeline: queues suggested blocks, recovers their data and processes them on the
+/// main world state.
+/// </summary>
+/// <remarks>
+/// This is for main block processing only and is registered solely in the main processing context. It carries
+/// a lot of main-specific logic (processing queue and thread, head updates, invalid block handling, stats,
+/// diagnostic dumps), so other environments should use another implementation such as
+/// <see cref="OneTimeChainProcessor"/> or <see cref="MainStateBlockBuildingChainProcessor"/>, or call
+/// <see cref="IBranchProcessor"/> directly.
+/// </remarks>
 public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue, IBlockProcessingPauseControl
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
 
     public static bool IsMainProcessingThread => IsBlockProcessingThread;
-    public bool IsMainProcessor { get; init; }
 
     private readonly IBranchProcessor _branchProcessor;
     private readonly ISpecProvider _specProvider;
@@ -116,7 +126,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
     }
 
-    private void Preprocess(Block block) => _branchBuilder.Preprocess(block);
+    private void Preprocess(Block block) => _branchBuilder.PreprocessQueued(block);
 
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
         => NewProcessingStatistics?.Invoke(sender, stats);
@@ -351,7 +361,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
             bool previousMainThread = IsBlockProcessingThread;
-            IsBlockProcessingThread = IsMainProcessor;
+            IsBlockProcessingThread = true;
             try
             {
                 ProcessBlocks();
@@ -493,8 +503,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             return null;
         }
 
-        bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-        if (!readonlyChain) _stats.CaptureStartStats();
+        _stats.CaptureStartStats();
 
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
@@ -519,15 +528,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
         }
 
-        if (!readonlyChain)
-        {
-            long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
-            Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
-            int blockQueueCount = _blockQueue.Reader.Count;
-            Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
-            Metrics.ProcessingQueueSize = blockQueueCount;
-            _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
-        }
+        long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
+        Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
+        int blockQueueCount = _blockQueue.Reader.Count;
+        Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
+        Metrics.ProcessingQueueSize = blockQueueCount;
+        _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
         if (updateHead)
@@ -545,10 +551,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
         }
 
-        if (!readonlyChain)
-        {
-            Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
-        }
+        Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
 
         return lastProcessed;
     }
@@ -649,7 +652,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         finally
         {
-            if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
+            if (invalidBlockHash is not null)
             {
                 DeleteInvalidBlocks(in processingBranch, invalidBlockHash);
             }
@@ -682,7 +685,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public class Options
     {
-        public static Options NoReceipts = new() { StoreReceiptsByDefault = true };
         public static Options Default = new();
 
         public bool StoreReceiptsByDefault { get; set; } = true;

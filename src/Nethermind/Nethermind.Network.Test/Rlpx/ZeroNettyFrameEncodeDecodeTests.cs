@@ -4,8 +4,10 @@
 using System;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using DotNetty.Common;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -18,6 +20,164 @@ namespace Nethermind.Network.Test.Rlpx;
 public class ZeroNettyFrameEncodeDecodeTests
 {
     private const int TestLength = 10000;
+
+    [Test]
+    public void Enabling_snappy_during_encoding_preserves_current_frames()
+    {
+        (EncryptionSecrets expectedSecrets, _) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets actualSecrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor expectedMac = new(TestItem.IgnoredPublicKey, expectedSecrets);
+        using FrameMacProcessor actualMac = new(TestItem.IgnoredPublicKey, actualSecrets);
+        FrameCipher actualCipher = new(actualSecrets.AesSecret);
+        IFrameCipher switchingCipher = Substitute.For<IFrameCipher>();
+        ZeroPacketSplitter splitter = new(switchingCipher, actualMac);
+        switchingCipher.When(x => x.Encrypt(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<byte[]>(), Arg.Any<int>()))
+            .Do(call =>
+            {
+                actualCipher.Encrypt(call.ArgAt<byte[]>(0), call.ArgAt<int>(1), call.ArgAt<int>(2), call.ArgAt<byte[]>(3), call.ArgAt<int>(4));
+                splitter.EnableSnappy(LimboLogs.Instance);
+            });
+        EmbeddedChannel expectedChannel = new(new ZeroPacketSplitter(new FrameCipher(expectedSecrets.AesSecret), expectedMac));
+        EmbeddedChannel actualChannel = new(splitter);
+        try
+        {
+            int length = Frame.DefaultMaxFrameSize * 2 + 1;
+            expectedChannel.WriteOutbound(Unpooled.Buffer(length).WriteZero(length));
+            actualChannel.WriteOutbound(Unpooled.Buffer(length).WriteZero(length));
+            using DisposableByteBuffer expected = expectedChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+            using DisposableByteBuffer actual = actualChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+            Assert.That(actual.AsSpan().ToArray(), Is.EqualTo(expected.AsSpan().ToArray()));
+        }
+        finally
+        {
+            expectedChannel.FinishAndReleaseAll();
+            actualChannel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
+    public void Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IFrameCipher cipher = Substitute.For<IFrameCipher>();
+        int calls = 0;
+        cipher.When(x => x.Encrypt(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<byte[]>(), Arg.Any<int>()))
+            .Do(_ =>
+            {
+                if (++calls == failingCall) throw new InvalidOperationException("Encryption failed");
+            });
+        ZeroPacketSplitter splitter = new(cipher, Substitute.For<IFrameMacProcessor>());
+        if (snappy) splitter.EnableSnappy(LimboLogs.Instance);
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        IByteBuffer input = detector.Allocator.Buffer(17).WriteZero(17);
+
+        Assert.ThrowsAsync<EncoderException>(async () => await splitter.WriteAsync(context, input));
+        Assert.That(input.ReferenceCount, Is.Zero);
+        context.DidNotReceive().WriteAsync(Arg.Any<object>());
+    }
+
+    [Test]
+    public void Combined_encoder_matches_separate_stages(
+        [Values(1, 15, 16, 17, 1023, 1024, 1025, 2048, 4097, 65535, 65536, 65537, 1048575, 1048576, 1048577)] int length,
+        [Values] bool disableFraming)
+    {
+        (EncryptionSecrets oldSecrets, _) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets newSecrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor oldMac = new(TestItem.IgnoredPublicKey, oldSecrets);
+        using FrameMacProcessor newMac = new(TestItem.IgnoredPublicKey, newSecrets);
+        ZeroPacketSplitter oldSplitter = new();
+        ZeroPacketSplitter newSplitter = new(new FrameCipher(newSecrets.AesSecret), newMac);
+        if (disableFraming)
+        {
+            oldSplitter.DisableFraming();
+            newSplitter.DisableFraming();
+        }
+
+        EmbeddedChannel oldChannel = new(new ZeroFrameEncoder(new FrameCipher(oldSecrets.AesSecret), oldMac), oldSplitter);
+        EmbeddedChannel newChannel = new(newSplitter);
+        if (disableFraming)
+        {
+            oldChannel.Pipeline.AddLast(new ZeroSnappyEncoder(LimboLogs.Instance));
+            newSplitter.EnableSnappy(LimboLogs.Instance);
+        }
+        byte[] payload = new byte[length];
+        new Random(42).NextBytes(payload);
+        payload[0] = 2;
+        try
+        {
+            // Cross the RLP context-id encoding boundary and exercise continuous cipher/MAC state.
+            for (int i = 0; i < (length <= 65536 ? 130 : 2); i++)
+            {
+                IByteBuffer oldInput = Unpooled.Buffer(length + 7).WriteZero(7).WriteBytes(payload).SkipBytes(7);
+                IByteBuffer newInput = Unpooled.Buffer(length + 7).WriteZero(7).WriteBytes(payload).SkipBytes(7);
+                oldChannel.WriteOutbound(oldInput);
+                newChannel.WriteOutbound(newInput);
+                using DisposableByteBuffer expected = oldChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+                using DisposableByteBuffer actual = newChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual.AsSpan().ToArray(), Is.EqualTo(expected.AsSpan().ToArray()), $"message {i}");
+                    Assert.That(oldInput.ReferenceCount, Is.Zero);
+                    Assert.That(newInput.ReferenceCount, Is.Zero);
+                }
+            }
+        }
+        finally
+        {
+            oldChannel.FinishAndReleaseAll();
+            newChannel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
+    public void Combined_encoder_initializes_wire_bytes_and_preserves_sentinels(
+        [Values(15, 16, 17, 1025, 65537)] int length, [Values] bool snappy)
+    {
+        (EncryptionSecrets a, _) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets b, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor referenceMac = new(TestItem.IgnoredPublicKey, a);
+        using FrameMacProcessor combinedMac = new(TestItem.IgnoredPublicKey, b);
+        ZeroPacketSplitter referenceSplitter = new();
+        CombinedEncoder combined = new(new FrameCipher(b.AesSecret), combinedMac);
+        EmbeddedChannel reference = new(new ZeroFrameEncoder(new FrameCipher(a.AesSecret), referenceMac), referenceSplitter);
+        if (snappy)
+        {
+            referenceSplitter.DisableFraming();
+            reference.Pipeline.AddLast(new ZeroSnappyEncoder(LimboLogs.Instance));
+            combined.EnableSnappy(LimboLogs.Instance);
+        }
+        byte[] payload = new byte[length];
+        new Random(13592).NextBytes(payload);
+        payload[0] = 2;
+        try
+        {
+            reference.WriteOutbound(Unpooled.WrappedBuffer(payload));
+            using DisposableByteBuffer expected = reference.ReadOutbound<IByteBuffer>().AsDisposable();
+            byte[] dirty = new byte[expected.ReadableBytes * 2 + 512];
+            dirty.AsSpan().Fill(0xa5);
+            using DisposableByteBuffer backing = Unpooled.WrappedBuffer(dirty).AsDisposable();
+            IByteBuffer output = backing.Slice(13, dirty.Length - 32).SetIndex(7, 7);
+            using DisposableByteBuffer input = Unpooled.WrappedBuffer(payload).AsDisposable();
+            combined.Encode(input, output);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(output.AsSpan().ToArray(), Is.EqualTo(expected.AsSpan().ToArray()));
+                Assert.That(dirty.AsSpan(0, 20).ToArray(), Is.All.EqualTo(0xa5));
+                Assert.That(dirty.AsSpan(dirty.Length - 19).ToArray(), Is.All.EqualTo(0xa5));
+            }
+        }
+        finally
+        {
+            reference.FinishAndReleaseAll();
+        }
+    }
+
+    private sealed class CombinedEncoder(IFrameCipher cipher, IFrameMacProcessor mac)
+        : ZeroPacketSplitter(cipher, mac)
+    {
+        public void Encode(IByteBuffer input, IByteBuffer output) => base.Encode(null, input, output);
+    }
 
     [Test]
     public async Task TwoWayConcurrentEncodeDecodeTests()
