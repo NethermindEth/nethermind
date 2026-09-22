@@ -42,7 +42,24 @@ public class DirtyNodeHasherTests
         PatriciaTree tree = BuildDirtyTree(entries, valueLength, ScatteredKey);
         tree.UpdateRootHash(canBeParallel);
 
-        AssertEveryNodeHashMatchesScalarKeccak(tree, entries);
+        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(entries));
+    }
+
+    [Test]
+    public void Short_keys_leave_nodes_embedded_in_their_parent([Values] bool canBeParallel)
+    {
+        // A one-byte value under a two-byte key encodes below thirty-two bytes, so the parent
+        // carries the node itself rather than a hash and the level order must not hash it. A trie
+        // keyed by a 32-byte hash never reaches that, because the path alone is longer than that.
+        PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), NullLogManager.Instance);
+        for (int i = 0; i < 40; i++)
+        {
+            tree.Set([(byte)i, (byte)(i * 7)], [(byte)(i + 1)]);
+        }
+
+        tree.UpdateRootHash(canBeParallel);
+
+        AssertEveryNodeHashMatchesScalarKeccak(tree, minimumHashed: 1, minimumEmbedded: 1);
     }
 
     [Test]
@@ -55,7 +72,7 @@ public class DirtyNodeHasherTests
         PatriciaTree tree = BuildDirtyTree(entries, valueLength: 40, SharedPrefixKey);
         tree.UpdateRootHash(canBeParallel);
 
-        AssertEveryNodeHashMatchesScalarKeccak(tree, entries);
+        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(entries));
     }
 
     [Test]
@@ -67,7 +84,7 @@ public class DirtyNodeHasherTests
             valueLengthFor: i => ValueLengths[i % ValueLengths.Length]);
         tree.UpdateRootHash(canBeParallel);
 
-        AssertEveryNodeHashMatchesScalarKeccak(tree, 120);
+        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(120));
     }
 
     [Test]
@@ -80,7 +97,7 @@ public class DirtyNodeHasherTests
         tree.UpdateRootHash(canBeParallel);
 
         Assert.That(tree.RootHash, Is.EqualTo(first));
-        AssertEveryNodeHashMatchesScalarKeccak(tree, 40);
+        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(40));
     }
 
     [Test]
@@ -96,7 +113,7 @@ public class DirtyNodeHasherTests
 
         // Declining is only safe if the ordinary walk still produces the same trie.
         tree.UpdateRootHash();
-        AssertEveryNodeHashMatchesScalarKeccak(tree, 200);
+        AssertEveryNodeHashMatchesScalarKeccak(tree, MinimumHashed(200));
     }
 
     [Test]
@@ -109,18 +126,24 @@ public class DirtyNodeHasherTests
             Is.False, "a root that already carries a hash has nothing below it left to do");
     }
 
-    private static void AssertEveryNodeHashMatchesScalarKeccak(PatriciaTree tree, int entries)
-    {
-        int hashed = AssertSubtree(tree.RootRef!, isRoot: true);
+    /// <summary>The root is always hashed, and anything past one entry brings at least one more.</summary>
+    private static int MinimumHashed(int entries) => Math.Min(entries, 2);
 
-        // Without this the assertions above would also pass on a trie where nothing was hashed.
-        Assert.That(hashed, Is.GreaterThanOrEqualTo(Math.Min(entries, 2)),
+    private static void AssertEveryNodeHashMatchesScalarKeccak(PatriciaTree tree, int minimumHashed, int minimumEmbedded = 0)
+    {
+        (int hashed, int embedded) = AssertSubtree(tree.RootRef!, isRoot: true);
+
+        // Without these the assertions above would also pass on a trie the walk never visited.
+        Assert.That(hashed, Is.GreaterThanOrEqualTo(minimumHashed),
             "the walk found too few hashed nodes to have proved anything");
+        Assert.That(embedded, Is.GreaterThanOrEqualTo(minimumEmbedded),
+            "the walk found no embedded node, so it did not cover that case");
     }
 
-    private static int AssertSubtree(TrieNode node, bool isRoot)
+    private static (int Hashed, int Embedded) AssertSubtree(TrieNode node, bool isRoot)
     {
         int hashed = 0;
+        int embedded = 0;
         CappedArray<byte> rlp = node.FullRlp;
         if (rlp.IsNotNull)
         {
@@ -133,16 +156,22 @@ public class DirtyNodeHasherTests
             else
             {
                 Assert.That(node.Keccak, Is.Null, "a node shorter than a hash is embedded in its parent");
+                embedded++;
             }
         }
 
         int childCount = node.IsBranch ? 16 : node.IsExtension ? 1 : 0;
         for (int i = 0; i < childCount; i++)
         {
-            if (node.TryGetDirtyChild(i, out TrieNode? child)) hashed += AssertSubtree(child, isRoot: false);
+            if (node.TryGetDirtyChild(i, out TrieNode? child))
+            {
+                (int childHashed, int childEmbedded) = AssertSubtree(child, isRoot: false);
+                hashed += childHashed;
+                embedded += childEmbedded;
+            }
         }
 
-        return hashed;
+        return (hashed, embedded);
     }
 
     private static PatriciaTree BuildDirtyTree(int entries, int valueLength, Func<int, byte[]> key,
