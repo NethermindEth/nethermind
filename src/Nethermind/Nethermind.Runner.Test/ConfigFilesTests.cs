@@ -18,7 +18,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.EthStats;
-using Nethermind.State.Flat;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;

@@ -61,9 +61,12 @@ public sealed class FlatStateActivationPolicy(
     {
         if (!flatDbConfig.Enabled)
         {
-            // Probe the directory instead of opening the flat RocksDB: resolving IPersistence
-            // creates column families on patricia-only nodes and can throw on a stale layout.
-            if (fileSystem.Directory.Exists(Path.Combine(initConfig.BaseDbPath, DbNames.Flat)))
+            // Do not open the flat RocksDB here: resolving IPersistence creates column families
+            // on patricia-only nodes and can throw on a stale layout. RocksDB writes CURRENT
+            // as soon as the DB is opened, including an empty one, so the signal for state
+            // worth keeping is an SST file.
+            string flatPath = Path.Combine(initConfig.BaseDbPath, DbNames.Flat);
+            if (fileSystem.Directory.Exists(flatPath) && fileSystem.Directory.EnumerateFiles(flatPath, "*.sst").Any())
             {
                 throw new InvalidConfigurationException(
                     "Refusing --FlatDb.Enabled=false on an existing flat DB: that would discard the complete flat state and full-resync. Keep FlatDb.Enabled=true, or start from a fresh datadir.",

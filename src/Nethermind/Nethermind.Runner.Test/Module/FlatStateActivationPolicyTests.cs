@@ -189,8 +189,11 @@ public class FlatStateActivationPolicyTests
 
         IInitConfig initConfig = Substitute.For<IInitConfig>();
         initConfig.BaseDbPath.Returns("/data");
+        IDirectory directory = Substitute.For<IDirectory>();
+        directory.Exists(Arg.Any<string>()).Returns(flatDirectoryExists);
+        directory.EnumerateFiles(Arg.Any<string>(), "*.sst").Returns(flatDirectoryExists ? ["state.sst"] : []);
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        fileSystem.Directory.Exists(Arg.Any<string>()).Returns(flatDirectoryExists);
+        fileSystem.Directory.Returns(directory);
 
         return new FlatStateActivationPolicy(
             flatDbConfig,
