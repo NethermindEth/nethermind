@@ -77,8 +77,15 @@ public sealed class FlatStateActivationPolicy(
                 return true;
             }
 
-            if (logger.IsError)
-                logger.Error("Flat DB was auto-repaired by RocksDB; keeping repaired data (FlatDb.OnRepair=Ignore). This node may diverge.");
+            if (flatWasActive)
+            {
+                if (logger.IsError)
+                    logger.Error("Flat DB was auto-repaired by RocksDB; keeping repaired data (FlatDb.OnRepair=Ignore). This node may diverge.");
+            }
+            else if (logger.IsWarn)
+            {
+                logger.Warn("Flat DB was auto-repaired by RocksDB but holds no state; the patricia backend stays active and the repair is acknowledged.");
+            }
             persistence.AcknowledgeRepair();
         }
 

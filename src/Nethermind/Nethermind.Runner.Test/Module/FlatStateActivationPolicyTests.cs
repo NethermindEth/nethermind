@@ -118,7 +118,8 @@ public class FlatStateActivationPolicyTests
             Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.False);
             setup.Persistence.DidNotReceive().Clear();
             setup.Persistence.Received(1).AcknowledgeRepair();
-            Assert.That(testLogger.LogList.Count(static l => l.Contains("may diverge")), Is.EqualTo(1));
+            Assert.That(testLogger.LogList.Count(static l => l.Contains("holds no state; the patricia backend stays active")), Is.EqualTo(1));
+            Assert.That(testLogger.LogList.Count(static l => l.Contains("may diverge")), Is.Zero);
         }
     }
 
