@@ -182,7 +182,7 @@ jobs:
           prerelease_flag=()
           latest_flag=()
           if [[ "$PRERELEASE" == "true" ]]; then
-            prerelease_flag=(-p)
+            prerelease_flag=(--prerelease)
           elif [[ "$PUBLISH_LATEST" == "true" ]]; then
             latest_flag=(--latest)
           fi
