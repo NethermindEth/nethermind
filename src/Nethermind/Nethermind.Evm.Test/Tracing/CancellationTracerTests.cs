@@ -52,6 +52,30 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
+        public void Defers_cancellation_for_operation_error_only_until_a_gas_checkpoint([Values] bool reportGasUpdate)
+        {
+            using CancellationTokenSource cancellationTokenSource = new();
+            CancellationTxTracer tracer = CancellableInstructionTracer(cancellationTokenSource.Token);
+
+            tracer.StartOperation(0, Instruction.STOP, 1, default);
+            tracer.ReportOperationRemainingGas(1);
+            if (reportGasUpdate)
+                tracer.ReportGasUpdateForVmTrace(0, 1);
+            cancellationTokenSource.Cancel();
+
+            if (reportGasUpdate)
+            {
+                Assert.Throws<OperationCanceledException>(() => tracer.ReportOperationError(EvmExceptionType.OutOfGas));
+                tracer.InnerTracer.DidNotReceive().ReportOperationError(Arg.Any<EvmExceptionType>());
+            }
+            else
+            {
+                Assert.DoesNotThrow(() => tracer.ReportOperationError(EvmExceptionType.OutOfGas));
+                tracer.InnerTracer.Received(1).ReportOperationError(EvmExceptionType.OutOfGas);
+            }
+        }
+
+        [Test]
         public void Throws_operation_canceled_when_an_instruction_never_completes()
         {
             using CancellationTokenSource cancellationTokenSource = new();

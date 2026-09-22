@@ -466,6 +466,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
+        _canReportOperationError = false;
         ThrowIfCancellationRequestedOutsideOperation();
         if (innerTracer.IsTracingInstructions)
         {
