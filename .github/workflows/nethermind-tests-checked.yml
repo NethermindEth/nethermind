@@ -183,7 +183,8 @@ jobs:
               filter="FullyQualifiedName~${names//|/|FullyQualifiedName~}"
               dotnet restore "../$project/$project.csproj"
               dotnet test --project "../$project/$project.csproj" -c release --no-build --no-restore \
-                --hangdump --hangdump-timeout 8m --hangdump-type Mini -- --filter "$filter"
+                --hangdump --hangdump-timeout 8m --hangdump-type Mini \
+                --crashdump --crashdump-type Mini --crash-report-if-supported -- --filter "$filter"
             done
             echo "${{ matrix.variant.label }}: all selected test projects passed with runtime ISA assertions enabled." >> "$GITHUB_STEP_SUMMARY"
             exit 0
