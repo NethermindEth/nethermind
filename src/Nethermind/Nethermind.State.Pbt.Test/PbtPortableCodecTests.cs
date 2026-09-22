@@ -114,7 +114,7 @@ public class PbtPortableCodecTests
         PbtPreimageReader reader = new(source);
         Assert.That(reader.ReadAccount(out _, out uint count), Is.True);
         Assert.That(count, Is.EqualTo(uint.MaxValue));
-        Assert.Throws<EndOfStreamException>(() => reader.ReadSlot());
+        Assert.Throws<InvalidDataException>(() => reader.ReadSlot());
         using MemoryStream empty = new();
         Assert.That(() => PbtSnapshotCodec.ReadLeaves(empty, ulong.MaxValue).ToArray(), Throws.InstanceOf<InvalidDataException>());
     }
@@ -153,12 +153,11 @@ public class PbtPortableCodecTests
         };
         if (corruption == "duplicate") count = 2;
         using MemoryStream source = new(bytes);
-        Assert.That(() => PbtSnapshotCodec.ReadLeaves(source, count).ToArray(),
-            corruption == "truncated" ? Throws.InstanceOf<EndOfStreamException>() : Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => PbtSnapshotCodec.ReadLeaves(source, count).ToArray(), Throws.InstanceOf<InvalidDataException>());
     }
 
     [Test]
-    public void Preimages_reject_bad_order_counts_and_trailing_bytes([Values("duplicate-account", "duplicate-slot", "truncated", "trailing")] string corruption)
+    public void Preimages_reject_bad_order_counts_and_trailing_bytes([Values("duplicate-account", "duplicate-slot", "truncated", "truncated-slot", "trailing")] string corruption)
     {
         byte[] account = new byte[24];
         byte[] bytes = corruption switch
@@ -166,12 +165,20 @@ public class PbtPortableCodecTests
             "duplicate-account" => [.. account, .. account],
             "duplicate-slot" => [.. account.AsSpan(0, 23).ToArray(), 2, .. new byte[64]],
             "truncated" => [.. account.AsSpan(0, 23).ToArray(), 1],
+            "truncated-slot" => [.. account.AsSpan(0, 23).ToArray(), 1, .. new byte[31]],
             "trailing" => [.. account, 1],
             _ => throw new ArgumentOutOfRangeException(nameof(corruption))
         };
         using MemoryStream source = new(bytes);
         Assert.That(() => { foreach (PbtAccountPreimages entry in ReadAccounts(source)) foreach (ValueHash256 slot in entry.Slots) { } },
-            corruption is "truncated" or "trailing" ? Throws.InstanceOf<EndOfStreamException>() : Throws.InstanceOf<InvalidDataException>());
+            Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Snapshot_rejects_truncated_header()
+    {
+        using MemoryStream source = new(new byte[39]);
+        Assert.That(() => PbtSnapshotCodec.ReadHeader(source), Throws.InstanceOf<InvalidDataException>());
     }
 
     [Test]

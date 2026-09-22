@@ -29,7 +29,7 @@ internal sealed class PbtPreimageReader(Stream source)
         if (first == -1) return false;
         Span<byte> record = stackalloc byte[24];
         record[0] = (byte)first;
-        source.ReadExactly(record[1..]);
+        PbtSnapshotCodec.ReadRecord(source, record[1..]);
         ValueHash256 hash = ValueKeccak.Compute(record[..20]);
         CheckOrder(hash, _previousAccountHash);
         _previousAccountHash = hash;
@@ -44,7 +44,7 @@ internal sealed class PbtPreimageReader(Stream source)
         cancellationToken.ThrowIfCancellationRequested();
         if (_remainingSlots == 0) throw new InvalidOperationException("No remaining account slots.");
         Span<byte> slot = stackalloc byte[32];
-        source.ReadExactly(slot);
+        PbtSnapshotCodec.ReadRecord(source, slot);
         ValueHash256 hash = ValueKeccak.Compute(slot);
         CheckOrder(hash, _previousSlotHash);
         _previousSlotHash = hash;

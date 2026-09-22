@@ -15,7 +15,7 @@ internal static class PbtSnapshotCodec
     public static (ValueHash256 Root, ulong Count) ReadHeader(Stream source)
     {
         Span<byte> header = stackalloc byte[40];
-        source.ReadExactly(header);
+        ReadRecord(source, header);
         return (new ValueHash256(header[..32]), BinaryPrimitives.ReadUInt64BigEndian(header[32..]));
     }
 
@@ -35,7 +35,7 @@ internal static class PbtSnapshotCodec
             };
             if (length < 0 || length > buffer.Length || (prefix == 0xF8 && length < 56))
                 throw new InvalidDataException("Invalid snapshot leaf list length.");
-            source.ReadExactly(buffer.AsSpan(0, length));
+            ReadRecord(source, buffer.AsSpan(0, length));
             RebuildEntry entry = Decode(buffer.AsSpan(0, length));
             Validate(entry, previous);
             previous = entry.Key;
@@ -81,6 +81,13 @@ internal static class PbtSnapshotCodec
         }
         if (written != count) throw new InvalidDataException("Snapshot leaf count mismatch.");
         cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    /// <summary>Fills <paramref name="buffer"/> from the artifact, reporting a stream that ends mid-record as malformed input.</summary>
+    internal static void ReadRecord(Stream source, Span<byte> buffer)
+    {
+        if (source.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false) != buffer.Length)
+            throw new InvalidDataException("Truncated artifact record.");
     }
 
     private static RebuildEntry Decode(ReadOnlySpan<byte> payload)
