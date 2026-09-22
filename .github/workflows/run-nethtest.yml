@@ -514,8 +514,16 @@ jobs:
 
           # Fixtures whose expectations are knowingly not met, excluded by exact test id so the lane
           # still gates on the rest. An explicit `filter` input overrides this.
+          KNOWN_FAILURES=(
+            # These ported_static fixtures give the block a synthetic gas limit above 2^32 and a
+            # transaction that spends all of it, so EIP-8037 rule 1 (tx.gas <= TX_MAX_TOTAL_GAS_LIMIT)
+            # rejects a transaction they expect to be accepted. The rule is not in the execution-specs
+            # reference yet, so no release carries fixtures for it; drop when it lands.
+            'test_callcode_lose_gas_oog\[fork_(Amsterdam|Bogota)-[^]]*--g2\]'
+            'test_ecrecover_short_buff\[fork_(Amsterdam|Bogota)-'
+          )
           if [ "$TEST_TYPE" = "focilTest" ]; then
-            KNOWN_FAILURES=(
+            KNOWN_FAILURES+=(
               # The inclusion-list variant keeps rlp_modifier while clearing header_verify, so header
               # blob-gas fields are never recomputed. Fix pending as ethereum/execution-specs#3406.
               'test_insufficient_balance_blob_tx_combinations.*inclusion_list'
@@ -537,9 +545,9 @@ jobs:
               # FOCIL v0.2.0 still embeds an EIP-7610 collision scenario removed from Glamsterdam v8.1.2.
               'test_block_with_failing_included_il_tx_is_valid.*scenario_creation_address_collision'
             )
-            EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
-            echo "extra_filter=(?!(?:$EXCLUSIONS)).*" >> "$GITHUB_OUTPUT"
           fi
+          EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
+          echo "extra_filter=(?!(?:$EXCLUSIONS)).*" >> "$GITHUB_OUTPUT"
 
           echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
           echo "runner_flag=$RUNNER_FLAG" >> "$GITHUB_OUTPUT"

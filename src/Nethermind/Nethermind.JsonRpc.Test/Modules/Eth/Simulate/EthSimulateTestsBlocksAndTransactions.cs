@@ -1224,9 +1224,8 @@ public class EthSimulateTestsBlocksAndTransactions
     /// RPC <c>GasCap</c>, and never resolves above EIP-8037's <c>TX_MAX_TOTAL_GAS_LIMIT</c>.
     /// </summary>
     /// <remarks>
-    /// The cases pin the distinct limits the clamp can resolve to; further <c>GasCap</c> values are not
-    /// separate cases, because with a block budget below the EIP-8037 cap the request cap never binds
-    /// and they resolve to the block budget like the cases already listed.
+    /// The cases pin the distinct limits the clamp can resolve to. The <c>GasCap</c> values dropped here sat
+    /// above their case's block budget, so they resolved to that budget like the cases already listed.
     /// </remarks>
     [TestCaseSource(nameof(MissingGasBudgetCases))]
     public async Task eth_simulateV1_defaults_missing_gas_to_available_budget(ulong blockGasLimit, ulong gasCap, bool validation)
