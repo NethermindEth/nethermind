@@ -248,7 +248,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// queue attempt and answers on that attempt's verdict.
     /// </summary>
     [Test, MaxTime(10_000)]
-    public async Task ValidateBlockAndProcess_does_not_take_the_first_copys_removal_for_a_resubmissions_answer()
+    public async Task ValidateBlockAndProcess_does_not_take_the_first_copy_removal_for_a_resubmission_answer()
     {
         Block block = Build.A.Block
             .WithParentHash(TestItem.KeccakC)
