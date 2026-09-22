@@ -17,7 +17,7 @@ public class ReceiptRootBenchmark
     private readonly ReceiptMessageDecoder _decoder = new();
     private TxReceipt[] _receipts = null!;
 
-    [Params(1, 128, 1024, 4096)]
+    [Params(1, 16, 32, 64, 128, 200, 1024, 4096)]
     public int Count { get; set; }
 
     [Params(0, 1024)]
