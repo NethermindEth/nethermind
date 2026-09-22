@@ -85,6 +85,7 @@ internal static class IndexedTrieRoot
         private const int BranchPrefixLength = 3;
         private static int BranchBatchSize => Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
         private const int BranchChildCount = 16;
+        private const int MinimumBranchBatch = 2;
         private const int FullBranchLength = KeccakHash.Hash532InputLength;
         private const int MaxBranchContentLength = 16 * Rlp.LengthOfKeccakRlp + 1;
         // A 136-byte Keccak rate block leaves 11 bytes for the longest RLP/path prefix and one for padding.
@@ -176,7 +177,7 @@ internal static class IndexedTrieRoot
             }
             // HashTerminalBranches already dispatches per hardware, and a cleared lane costs the same
             // as a full one, so an AVX2-only remainder of two or three is still worth one batched call.
-            if (pending >= 2)
+            if (pending >= MinimumBranchBatch)
             {
                 blocks[(pending * inputLength)..].Clear();
                 HashTerminalBranches(blocks, hashes, positions[..pending], references, inputLength);
@@ -262,8 +263,9 @@ internal static class IndexedTrieRoot
             {
                 ExceptionDispatchInfo.Throw(exception.InnerExceptions[0]);
             }
+            // Indices 0-15 never form a batchable branch, so this is the smallest root holding a batch.
             // Avoid scanning tiny-value tries when the first full branch is already ineligible.
-            bool batchBranches = Avx2.IsSupported && _items.Length >= (BranchBatchSize + 1) * BranchChildCount
+            bool batchBranches = Avx2.IsSupported && _items.Length >= (MinimumBranchBatch + 1) * BranchChildCount
                 && references[BranchChildCount - 1].Length == Keccak.Size;
             if (batchBranches) BatchTerminalBranches(references.AsSpan());
             return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential(batchBranches);
