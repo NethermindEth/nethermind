@@ -1,0 +1,41 @@
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ai-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  ai-review:
+    uses: NethermindEth/github-workflows/.github/workflows/ai-review.yaml@v2.4.0
+    with:
+      secret_path: /apps/litellm/code-reviewer-prod
+      num_max_findings: 8
+      extra_instructions: |
+        Review the changed behavior in the context of its callers and consumers. Check for
+        missing validation and authorization, incomplete state transitions or restoration,
+        silent data loss, concurrency and cancellation errors, resource ownership and disposal,
+        retry behavior, and compatibility of public or serialized formats. Verify that tests
+        exercise production behavior and would fail for the regression they claim to cover.
+
+        For Nethermind specifically, check consensus and hard-fork boundaries, gas accounting,
+        state roots and persistence, RLP/SSZ/JSON serialization, Engine API and JSON-RPC behavior,
+        devp2p message and buffer ownership, async/sync lifetimes, and chain-specific behavior.
+        Report performance issues only when the changed code is on a concrete hot path.
+
+        Before reporting a finding, try to disprove it using existing guards, supported modes,
+        callers, and tests. Report only actionable findings caused by the PR. Include the trigger,
+        consequence, affected path, and a concrete regression scenario. Do not report style,
+        speculative concerns, duplicates, or pre-existing issues.
+    secrets:
+      infisical_identity_id: ${{ secrets.INFISICAL_IDENTITY_ID }}
+      infisical_project_id: ${{ secrets.INFISICAL_PROJECT_ID }}
