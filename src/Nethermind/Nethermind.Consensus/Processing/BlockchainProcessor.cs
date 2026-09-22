@@ -136,7 +136,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Block block = e.Block;
         Hash256 hash = block.Hash!;
         if (_inFlight.TryGetValue(hash, out InFlightBlock? inFlight)) inFlight.MarkExecuted();
-        BlockExecuted?.Invoke(this, new BlockHashEventArgs(hash, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied));
+
+        try
+        {
+            BlockExecuted?.Invoke(this, new BlockHashEventArgs(hash, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied));
+        }
+        catch (Exception exception)
+        {
+            // The block is judged and the commit is next; a subscriber must not be able to turn that into a failure
+            // after the verdict has gone out, which is what an exception here would unwind into.
+            if (_logger.IsError) _logger.Error($"Block executed handler failed for {hash}.", exception);
+        }
     }
 
     public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false)
@@ -288,7 +298,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     if (_queueCount > 1)
                     {
                         Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
-                        _recoveryQueue.Writer.TryWrite(blockRef);
+                        if (!_recoveryQueue.Writer.TryWrite(blockRef))
+                        {
+                            // Refused only once the queue is completed, at shutdown. Dropped silently it would leave
+                            // the in-flight entry a copy nothing takes off, and every later wait on that hash hanging.
+                            Interlocked.Add(ref _currentRecoveryQueueSize, -block.Transactions.Length);
+                            DecrementQueue(blockRef.BlockHash, ProcessingResult.QueueException);
+                            return;
+                        }
                     }
                     else
                     {
@@ -422,6 +439,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Reader.Count} blocks waiting in the queue.");
         _lastProcessedBlock = DateTime.UtcNow;
+        bool notified = false;
         await foreach (BlockRef blockRef in _recoveryQueue.Reader.ReadAllAsync(CancellationToken))
         {
             try
@@ -429,6 +447,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
                 Preprocess(blockRef.Block);
+                notified = false;
 
                 try
                 {
@@ -437,6 +456,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
                     DecrementQueue(blockRef.BlockHash, ProcessingResult.QueueException, e);
+                    notified = true;
 
                     if (e is InvalidOperationException)
                     {
@@ -449,7 +469,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             catch (Exception e)
             {
-                DecrementQueue(blockRef.BlockHash, ProcessingResult.Exception, e);
+                // Once per queued copy. A second removal for the same block takes a copy off whatever entry the
+                // hash names by then, which after a re-enqueue is a live one, and releases its waiters early.
+                if (!notified) DecrementQueue(blockRef.BlockHash, ProcessingResult.Exception, e);
                 throw;
             }
         }
@@ -580,12 +602,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied));
         }
 
+        // Reported by the catch below, which every other failure here goes through too: reporting twice would take a
+        // second copy off whatever entry the hash names by then, and after a re-enqueue that is a live one.
         [DoesNotReturn]
-        void ThrowIncorrectBlockReference(BlockRef blockRef)
-        {
-            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
+        static void ThrowIncorrectBlockReference(BlockRef blockRef) =>
             throw new InvalidOperationException("Block processing expects only resolved blocks");
-        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceProcessing(Block block) => _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");

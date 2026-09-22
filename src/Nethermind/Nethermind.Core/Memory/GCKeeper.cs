@@ -118,6 +118,7 @@ public class GCKeeper : IDisposable
         private readonly Lock _stateLock = new();
         private bool _released;
         private bool _starting;
+        private const int MaxLeases = 2;
         private bool _active;
         private int _leases = 1;
         private bool _ownerReleased;
@@ -134,7 +135,9 @@ public class GCKeeper : IDisposable
         {
             lock (_stateLock)
             {
-                if (_released || _ownerReleased) return false;
+                // Counted, not just gated on the owner: the owner's release is deferred past the answer, so it can
+                // still be outstanding when a third payload arrives, and the budget is entered once for one payload.
+                if (_released || _ownerReleased || _leases >= MaxLeases) return false;
                 _leases++;
                 return true;
             }
