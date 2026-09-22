@@ -1,0 +1,177 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers.Binary;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
+using NUnit.Framework;
+
+namespace Nethermind.Trie.Test;
+
+/// <summary>
+/// Covers <see cref="DirtyNodeHasher" />, which hashes a commit's dirty nodes in batches rather
+/// than one at a time.
+/// </summary>
+/// <remarks>
+/// Every case checks each node's digest against <see cref="Keccak.Compute(ReadOnlySpan{byte})" />
+/// rather than against a second run of the same code. Comparing two runs would only prove the
+/// batching is deterministic; a wrong lane, a wrong padded length or a kernel narrower than the
+/// group would be identical on both sides and pass.
+/// </remarks>
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class DirtyNodeHasherTests
+{
+    /// <summary>Value lengths chosen so the leaves they produce land in each class the code treats
+    /// differently: embedded, the four padded lengths the kernels take, and one past them.</summary>
+    private static readonly int[] ValueLengths = [1, 40, 150, 300, 450, 600];
+
+    /// <summary>Entry counts that put group sizes below, at and above both kernel widths.</summary>
+    private static readonly int[] EntryCounts = [1, 2, 5, 9, 40, 200];
+
+    [Test]
+    public void Every_node_hash_matches_a_scalar_keccak(
+        [ValueSource(nameof(EntryCounts))] int entries,
+        [ValueSource(nameof(ValueLengths))] int valueLength,
+        [Values] bool canBeParallel)
+    {
+        PatriciaTree tree = BuildDirtyTree(entries, valueLength, ScatteredKey);
+        tree.UpdateRootHash(canBeParallel);
+
+        AssertEveryNodeHashMatchesScalarKeccak(tree, entries);
+    }
+
+    [Test]
+    public void Shared_prefixes_put_extension_nodes_on_the_path(
+        [Values(2, 5, 9, 40)] int entries,
+        [Values] bool canBeParallel)
+    {
+        // Keys that agree for their first thirty nibbles force an extension above the branch that
+        // separates them, so the level order has to account for a child deeper than one nibble.
+        PatriciaTree tree = BuildDirtyTree(entries, valueLength: 40, SharedPrefixKey);
+        tree.UpdateRootHash(canBeParallel);
+
+        AssertEveryNodeHashMatchesScalarKeccak(tree, entries);
+    }
+
+    [Test]
+    public void Mixed_value_lengths_split_one_level_across_padded_classes([Values] bool canBeParallel)
+    {
+        // One length class per leaf in rotation, so a level ends holding partly filled groups of
+        // several classes at once and each has to be flushed before the parents are encoded.
+        PatriciaTree tree = BuildDirtyTree(120, valueLength: 0, ScatteredKey,
+            valueLengthFor: i => ValueLengths[i % ValueLengths.Length]);
+        tree.UpdateRootHash(canBeParallel);
+
+        AssertEveryNodeHashMatchesScalarKeccak(tree, 120);
+    }
+
+    [Test]
+    public void Second_call_rehashes_nothing_and_leaves_the_root_alone([Values] bool canBeParallel)
+    {
+        PatriciaTree tree = BuildDirtyTree(40, valueLength: 40, ScatteredKey);
+        tree.UpdateRootHash(canBeParallel);
+        Hash256 first = tree.RootHash;
+
+        tree.UpdateRootHash(canBeParallel);
+
+        Assert.That(tree.RootHash, Is.EqualTo(first));
+        AssertEveryNodeHashMatchesScalarKeccak(tree, 40);
+    }
+
+    [Test]
+    public void A_budget_too_small_for_the_subtree_declines_and_hashes_nothing([Values(1, 4, 7)] int budget)
+    {
+        PatriciaTree tree = BuildDirtyTree(200, valueLength: 40, ScatteredKey);
+
+        bool handled = DirtyNodeHasher.HashBelowRoot(tree.RootRef!, tree.TrieStore, null,
+            canBeParallel: false, maxCollectedNodes: budget);
+
+        Assert.That(handled, Is.False, "a budget this small cannot cover a two-hundred entry trie");
+        Assert.That(tree.RootRef!.Keccak, Is.Null, "declining must leave the caller's walk everything to do");
+
+        // Declining is only safe if the ordinary walk still produces the same trie.
+        tree.UpdateRootHash();
+        AssertEveryNodeHashMatchesScalarKeccak(tree, 200);
+    }
+
+    [Test]
+    public void A_clean_root_is_left_alone()
+    {
+        PatriciaTree tree = BuildDirtyTree(40, valueLength: 40, ScatteredKey);
+        tree.UpdateRootHash();
+
+        Assert.That(DirtyNodeHasher.HashBelowRoot(tree.RootRef!, tree.TrieStore, null, canBeParallel: true),
+            Is.False, "a root that already carries a hash has nothing below it left to do");
+    }
+
+    private static void AssertEveryNodeHashMatchesScalarKeccak(PatriciaTree tree, int entries)
+    {
+        int hashed = AssertSubtree(tree.RootRef!, isRoot: true);
+
+        // Without this the assertions above would also pass on a trie where nothing was hashed.
+        Assert.That(hashed, Is.GreaterThanOrEqualTo(Math.Min(entries, 2)),
+            "the walk found too few hashed nodes to have proved anything");
+    }
+
+    private static int AssertSubtree(TrieNode node, bool isRoot)
+    {
+        int hashed = 0;
+        CappedArray<byte> rlp = node.FullRlp;
+        if (rlp.IsNotNull)
+        {
+            if (rlp.Length >= Hash256.Size || isRoot)
+            {
+                Assert.That(node.Keccak, Is.EqualTo(Keccak.Compute(rlp.AsSpan())),
+                    $"a {node.NodeType} of {rlp.Length} bytes got the wrong digest");
+                hashed++;
+            }
+            else
+            {
+                Assert.That(node.Keccak, Is.Null, "a node shorter than a hash is embedded in its parent");
+            }
+        }
+
+        int childCount = node.IsBranch ? 16 : node.IsExtension ? 1 : 0;
+        for (int i = 0; i < childCount; i++)
+        {
+            if (node.TryGetDirtyChild(i, out TrieNode? child)) hashed += AssertSubtree(child, isRoot: false);
+        }
+
+        return hashed;
+    }
+
+    private static PatriciaTree BuildDirtyTree(int entries, int valueLength, Func<int, byte[]> key,
+        Func<int, int>? valueLengthFor = null)
+    {
+        PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), NullLogManager.Instance);
+        for (int i = 0; i < entries; i++)
+        {
+            tree.Set(key(i), Value(i, valueLengthFor?.Invoke(i) ?? valueLength));
+        }
+
+        return tree;
+    }
+
+    /// <summary>A key whose nibbles differ from the first, so the entries spread across the trie.</summary>
+    private static byte[] ScatteredKey(int i) => Keccak.Compute(BitConverter.GetBytes(i)).BytesToArray();
+
+    /// <summary>A key sharing fifteen leading bytes with every other, which forces an extension.</summary>
+    private static byte[] SharedPrefixKey(int i)
+    {
+        byte[] bytes = new byte[32];
+        BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(15), i * 7 + 1);
+        return bytes;
+    }
+
+    private static byte[] Value(int i, int length)
+    {
+        byte[] value = new byte[length];
+        value.AsSpan().Fill((byte)(i + 1));
+        return value;
+    }
+}
