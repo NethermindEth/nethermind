@@ -4,28 +4,24 @@
 #nullable enable
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -203,6 +199,8 @@ internal static class StorageResidency
     /// directory is <c>tmpfs</c> has no block device under it at all, and no rung it reports can reach one
     /// however the caches are arranged. Set <c>TMPDIR</c> to a disk-backed directory to change that.
     /// </summary>
+    /// <remarks>The deepest mount point <paramref name="path"/> sits under wins, so a bind mount inside the
+    /// temp directory is reported rather than the file system it was carved out of.</remarks>
     public static string FileSystemOf(string path)
     {
         string best = string.Empty;
@@ -219,11 +217,11 @@ internal static class StorageResidency
                 string[] tail = line[(separator + 3)..].Split(' ');
                 if (head.Length < 5 || tail.Length < 1) continue;
 
-                string mountPoint = head[4];
-                if (!path.StartsWith(mountPoint, StringComparison.Ordinal) || mountPoint.Length < best.Length) continue;
+                string mountPoint = Unescape(head[4]);
+                if (!IsUnder(path, mountPoint) || mountPoint.Length < best.Length) continue;
 
                 best = mountPoint;
-                type = tail[0];
+                type = Unescape(tail[0]);
             }
         }
         catch (IOException)
@@ -232,6 +230,42 @@ internal static class StorageResidency
         }
 
         return type;
+    }
+
+    /// <summary>Whether <paramref name="path"/> lies in <paramref name="mountPoint"/>'s subtree, comparing
+    /// whole path components so that <c>/mnt/sda</c> does not claim a path under <c>/mnt/sda2</c>.</summary>
+    private static bool IsUnder(string path, string mountPoint) =>
+        path.StartsWith(mountPoint, StringComparison.Ordinal)
+        && (mountPoint.Length == path.Length || mountPoint[^1] == '/' || path[mountPoint.Length] == '/');
+
+    /// <summary>
+    /// Decodes the octal escapes the kernel writes into <c>mountinfo</c>'s space-separated fields.
+    /// </summary>
+    /// <remarks>Only space, tab, newline and backslash are escaped (<c>fs/proc_namespace.c</c>), but any
+    /// three-octal-digit sequence decodes the same way, so the general form costs nothing extra. Leaving
+    /// them encoded makes a mount point containing one of the four fail to match any real path.</remarks>
+    private static string Unescape(string field)
+    {
+        if (!field.Contains('\\')) return field;
+
+        StringBuilder decoded = new(field.Length);
+        for (int i = 0; i < field.Length; i++)
+        {
+            if (field[i] == '\\' && i + 3 < field.Length
+                && char.IsBetween(field[i + 1], '0', '3')
+                && char.IsBetween(field[i + 2], '0', '7')
+                && char.IsBetween(field[i + 3], '0', '7'))
+            {
+                decoded.Append((char)(((field[i + 1] - '0') << 6) + ((field[i + 2] - '0') << 3) + (field[i + 3] - '0')));
+                i += 3;
+            }
+            else
+            {
+                decoded.Append(field[i]);
+            }
+        }
+
+        return decoded.ToString();
     }
 
     /// <summary>Bytes the database occupies on disk, which bounds how much of it the page cache can hold.</summary>
@@ -286,12 +320,22 @@ internal sealed class ColdSloadTestBlockchain : BasicTestBlockchain
     /// </summary>
     private const long TrieCacheMb = 64;
 
+    /// <summary>Dirty share of <see cref="TrieCacheMb"/>. It has to stay strictly below the total, or
+    /// <c>PruningTrieStateFactory.AdviseConfig</c> rejects the pair.</summary>
+    private const long DirtyTrieCacheMb = 32;
+
     private string _dbPath = null!;
+    private ulong _verifyGasCeiling;
 
     public static async Task<ColdSloadTestBlockchain> CreateColdSload(
-        string dbPath, Action<ContainerBuilder>? configurer = null)
+        string dbPath, ulong verifyGasCeiling, Action<ContainerBuilder>? configurer = null)
     {
-        ColdSloadTestBlockchain chain = new() { _dbPath = dbPath, UseFlatDb = false };
+        ColdSloadTestBlockchain chain = new()
+        {
+            _dbPath = dbPath,
+            _verifyGasCeiling = verifyGasCeiling,
+            UseFlatDb = false,
+        };
         await chain.Build(configurer);
         return chain;
     }
@@ -306,23 +350,52 @@ internal sealed class ColdSloadTestBlockchain : BasicTestBlockchain
             // harnesses time work against a fixed head, so leaving it on would measure the shed path
             // rather than the prefix.
             FrameTxSimulationBudgetPerHeadMs = int.MaxValue,
+            // Without this the declared-budget filter rejects a prefix above its 300,000 default before the
+            // simulator ever runs, and the swept ceiling would never be measured.
+            FrameTxMaxVerifyGas = _verifyGasCeiling,
         },
         // Archive mode persists every block, so the seeded state is in the database rather than pending
-        // in the trie store's dirty set when the first sample reads it.
+        // in the trie store's dirty set when the first sample reads it. The trie cache sizes cannot be set
+        // here; see ConfigureContainer.
         new PruningConfig
         {
             Mode = PruningMode.None,
             PersistenceInterval = 1,
-            CacheMb = TrieCacheMb,
-            DirtyCacheMb = TrieCacheMb,
         },
         new DbConfig { SharedBlockCacheSize = MinimalSharedBlockCacheSize },
     ];
 
+    /// <summary>
+    /// The trie-store cache sizes the container resolved, as result-row fields.
+    /// </summary>
+    /// <remarks>
+    /// What <see cref="CreateConfigs"/> asks for is not what a chain runs on, and neither is what
+    /// <see cref="ConfigureContainer"/> asks for: <c>PruningTrieStateFactory.AdviseConfig</c> may raise
+    /// <c>CacheMb</c> again on a host with spare memory. A whole campaign of rows once claimed 64 MB while
+    /// running on 8, so rows report what was resolved rather than what was requested.
+    /// </remarks>
+    public string TrieCacheFields
+    {
+        get
+        {
+            IPruningConfig pruningConfig = Container.Resolve<IPruningConfig>();
+            return $"trie_cache_mb={pruningConfig.CacheMb} trie_dirty_cache_mb={pruningConfig.DirtyCacheMb}";
+        }
+    }
+
     protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
         base.ConfigureContainer(builder, configProvider)
             .AddSingleton<IDbFactory, RocksDbFactory>()
-            .Intercept<IInitConfig>(initConfig => initConfig.BaseDbPath = _dbPath);
+            .Intercept<IInitConfig>(initConfig => initConfig.BaseDbPath = _dbPath)
+            // TestEnvironmentModule holds every test chain's trie cache at 8 MB, far below the seeded state
+            // the all-warm rung is meant to keep resident, and the base call above is what registers it.
+            // Autofac applies decorators in registration order, so re-applying the sizes here is what makes
+            // them the resolved ones; rows carry the resolved pair so a run cannot claim one and use another.
+            .Intercept<IPruningConfig>(pruningConfig =>
+            {
+                pruningConfig.CacheMb = TrieCacheMb;
+                pruningConfig.DirtyCacheMb = DirtyTrieCacheMb;
+            });
 }
 
 /// <summary>Seeds and validates the RocksDB-backed chain both cold-<c>SLOAD</c> harnesses measure against.</summary>
@@ -340,12 +413,12 @@ internal static class ColdSloadStorageFixture
     /// <summary>Builds a chain whose attacker account carries the prefix code and <paramref name="slotsToSeed"/>
     /// scattered non-zero slots.</summary>
     public static async Task<ColdSloadTestBlockchain> BuildChain(
-        string dbPath, Address attacker, UInt256 attackerBalance, int slotsToSeed,
+        string dbPath, ulong verifyGasCeiling, Address attacker, UInt256 attackerBalance, int slotsToSeed,
         IReadOnlyList<(Address Address, string Shape)>? otherShapes = null)
     {
         byte[] attackCode = ColdSloadPrefix.Code();
 
-        ColdSloadTestBlockchain chain = await ColdSloadTestBlockchain.CreateColdSload(dbPath, builder =>
+        ColdSloadTestBlockchain chain = await ColdSloadTestBlockchain.CreateColdSload(dbPath, verifyGasCeiling, builder =>
         {
             builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>

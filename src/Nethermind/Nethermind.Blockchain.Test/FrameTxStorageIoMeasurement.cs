@@ -4,24 +4,16 @@
 #nullable enable
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.IO;
-using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -43,8 +35,10 @@ namespace Nethermind.Blockchain.Test;
 /// storage layer during its timed window (<c>read_bytes</c> from <c>/proc/self/io</c>), so a row that
 /// silently measured a warm cache is visible as such rather than being mistaken for a device read.
 ///
-/// <c>db_fs</c> names the file system the database sits on: a run whose temp directory is <c>tmpfs</c>
-/// has no block device under it, so no rung can reach one whatever the caches do.
+/// Every row also names the environment it ran in rather than the one it asked for: <c>db_fs</c> is the
+/// file system the database sits on, and <c>trie_cache_mb</c> the trie-store cache the container resolved.
+/// A run whose temp directory is <c>tmpfs</c> has no block device under it, so no rung can reach one
+/// whatever the caches do; a run whose trie cache is smaller than the seeded state has no warm rung.
 ///
 /// Results are appended as <c>RESULT key=value</c> lines to <c>FRAME_STORAGE_IO_OUT</c>, or
 /// <c>frame-tx-storage-io.txt</c> in the temp directory. The <c>case=frame_reject</c> rows carry the same
@@ -71,11 +65,11 @@ public class FrameTxStorageIoMeasurement
     private static readonly UInt256 AttackerBalance = 1_000.Ether;
 
     /// <summary>
-    /// Ceilings that fit the compiled <see cref="Eip8141Constants.MaxVerifyGas"/>. 322,800 is above it, so
-    /// an EVM-executing shape cannot reach it without a source edit; the ranked CPU shapes have the same
-    /// limit and the campaign extrapolates there the same way.
+    /// The swept ceilings, matching the CPU shapes' grid. 322,800 and 352,800 are above the compiled
+    /// <see cref="Eip8141Constants.MaxVerifyGas"/>, so they self-ignore on a stock build and need a run that
+    /// raises the constant.
     /// </summary>
-    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul];
+    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 352_800ul];
 
     /// <summary>
     /// The cache-residency ladder, coldest last. Each rung names what is cold at the moment a slot is read
@@ -91,7 +85,10 @@ public class FrameTxStorageIoMeasurement
     /// system still has them. This is the page-cache-hit rung.
     ///
     /// <c>cold-page-cache</c> is the same, with <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> applied over the
-    /// database directory before each timed sample, so the read reaches the device. Linux only.
+    /// database directory before each timed sample, so the read cannot be served by the page cache either.
+    /// Whether it then reaches a device is a property of the run, not of this rung: it does if the database
+    /// sits on a block-backed file system, and it does not on <c>tmpfs</c>, where there is nothing below the
+    /// page cache. The row's <c>db_fs</c> and <c>read_bytes</c> say which happened. Linux only.
     /// </remarks>
     private static readonly string[] Rungs = ["all-warm", "cold-node-cache", "cold-page-cache"];
 
@@ -211,7 +208,7 @@ public class FrameTxStorageIoMeasurement
              + $"us_per_Mgas_basis=offered "
              + $"read_bytes_total={readBytes} read_bytes_per_sample={readBytes / Samples} "
              + $"db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} fadvised_files={fadvisedFiles} "
-             + $"db_fs={StorageResidency.FileSystemOf(_dbDirectory.Path)} "
+             + $"db_fs={StorageResidency.FileSystemOf(_dbDirectory.Path)} {_chain.TrieCacheFields} "
              + $"reject_reason=\"FrameSimulationFailed\"");
     }
 
@@ -264,7 +261,7 @@ public class FrameTxStorageIoMeasurement
         Directory.CreateDirectory(_dbDirectory.Path);
 
         _chain = await ColdSloadStorageFixture.BuildChain(
-            _dbDirectory.Path, Attacker, AttackerBalance, slotsToSeed);
+            _dbDirectory.Path, _ceiling, Attacker, AttackerBalance, slotsToSeed);
 
         FlushState();
         ColdSloadStorageFixture.AssertSeededSlotIsVisible(_chain, Attacker, slotsToSeed);
