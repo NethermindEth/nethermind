@@ -30,7 +30,7 @@ internal static class PbtNodeTraverser
             using RefCountingMemory? payload = store.GetNodeGroup(groupPath, groupHash);
             if (payload is null) return default;
 
-            PbtNodeGroupReader group = new(groupPath, payload.GetSpan());
+            PbtNodeGroupReader group = PbtNodeGroupReader.FromValidated(groupPath, payload.GetSpan());
             do
             {
                 PbtStorageNodePath childPath;
@@ -42,7 +42,7 @@ internal static class PbtNodeTraverser
                 }
                 else
                 {
-                    PbtNodeReader node = new(encoding);
+                    PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
                     if (node.IsLeaf) return node.Key.SequenceEqual(key.Bytes) ? groupHash : default;
 
                     int branchDepth = path.BitDepth + node.Prefix.BitCount;

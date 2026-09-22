@@ -1122,7 +1122,7 @@ public class PbtNodeGroupTests
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(persistence, 0, new ValueHash256(Value(1)), null);
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
-            if (access) Assert.Throws<InvalidDataException>(() => reader.GetEncoding(new PbtTraversalPath(Span<byte>.Empty), PbtFourLevelGroupGeometry.RootPosition));
+            if (access) Assert.Catch(() => reader.GetEncoding(new PbtTraversalPath(Span<byte>.Empty), PbtFourLevelGroupGeometry.RootPosition));
         }
 
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(1), "the caller still owns its payload lease");
@@ -2490,7 +2490,7 @@ public class PbtNodeGroupTests
         RefCountingMemory payload = memory.Rent(bytes.Length);
         bytes.CopyTo(payload.GetSpan());
         reader.Payload = payload;
-        if (invalidPayload) Assert.Throws<InvalidDataException>(() => PbtTrieWarmer.WarmUpPath(reader, default, key));
+        if (invalidPayload) Assert.Catch(() => PbtTrieWarmer.WarmUpPath(reader, default, key));
         else PbtTrieWarmer.WarmUpPath(reader, default, key);
         ((IDisposable)payload).Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);

@@ -46,7 +46,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         try
         {
             _metrics?.IncrementGroupParses();
-            PbtNodeGroupReader reader = new(path, _lease.GetSpan());
+            PbtNodeGroupReader reader = PbtNodeGroupReader.FromValidated(path, _lease.GetSpan());
             for (int slot = 0; slot < PbtNodeGroupCodec.DescendantSlots; slot++) _descendantBytes[slot] = reader.DescendantBytes(slot);
             for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
             {

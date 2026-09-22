@@ -297,7 +297,9 @@ public class PbtRocksDbPersistence(
             MemoryManager<byte>? owned = GetNodeGroupColumn(column).GetOwnedMemory(NodeGroupStorageKey(layout, column, groupKey, key));
             // The trie node cache leases this memory as-is, so a cached group keeps its RocksDB block-cache block pinned
             // until eviction. That is acceptable: the block cache is budgeted for it and it saves a copy per cached read.
-            return owned is null ? null : RefCountingMemory.OwningRocksDb(owned);
+            if (owned is null) return null;
+            PbtNodeGroupCodec.DebugValidateNodes(groupKey, owned.Memory.Span);
+            return RefCountingMemory.OwningRocksDb(owned);
         }
 
         public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() =>
@@ -405,6 +407,7 @@ public class PbtRocksDbPersistence(
 
         public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
+            if (payload is not null) PbtNodeGroupCodec.DebugValidateNodes(groupKey, payload.GetSpan());
             PbtColumns column = NodeGroupColumn(groupKey);
             IWriteBatch groups = _batch.GetColumnBatch(column);
             Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];

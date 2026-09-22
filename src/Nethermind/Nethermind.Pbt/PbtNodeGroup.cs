@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -70,15 +71,69 @@ public static class PbtNodeGroupCodec
             if ((descendantMask & (1 << slot)) != 0 && ReadDescendantBytes(payload, descendantMask, slot) == 0)
                 throw new InvalidDataException("PBT node group descendant mask marks an empty slot.");
         payload = payload[HeaderLength..];
-        uint availability = BinaryPrimitives.ReadUInt32LittleEndian(payload[^(sizeof(uint) + descendantsLength)..]);
+        uint availability = ReadAvailability(payload);
         if (availability == 0 || (availability & ~AllowedPositionBits) != 0 || (groupDepth != 0 && (availability & ReservedRootBit) != 0))
             throw new InvalidDataException("Invalid PBT node group availability bits.");
         if (payload.Length < GetTrailerLength(availability, descendantMask)) throw new InvalidDataException("Truncated PBT node group offset table.");
         return availability;
     }
 
+    /// <summary>Checks every node of a payload on top of <see cref="ValidateFraming"/>: the offset table delimits positive-length nodes and each node is structurally exact.</summary>
+    internal static void ValidateNodes(scoped in PbtTraversalPath path, ReadOnlySpan<byte> payload)
+    {
+        uint availability = ValidateFraming(path.BitDepth, payload);
+        payload = payload[HeaderLength..];
+        int entriesLength = payload.Length - GetTrailerLength(availability, ReadDescendantMask(payload));
+        if (entriesLength > ushort.MaxValue) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
+        ReadOnlySpan<byte> footer = payload[entriesLength..];
+
+        Span<int> offsets = stackalloc int[PositionCount];
+        int previousOffset = -1;
+        bool foundPresent = false;
+        int offsetIndex = 0;
+        for (int position = 0; position < PositionCount; position++)
+        {
+            if ((availability & (1u << position)) == 0) continue;
+            ushort encodedOffset = BinaryPrimitives.ReadUInt16LittleEndian(footer[offsetIndex..]);
+            offsetIndex += sizeof(ushort);
+            if (!foundPresent && encodedOffset != 0) throw new InvalidDataException("The first PBT node offset must be zero.");
+            if (foundPresent && encodedOffset <= previousOffset) throw new InvalidDataException("PBT node offsets must strictly increase.");
+            if (encodedOffset >= entriesLength) throw new InvalidDataException("PBT node offset is outside the entries section.");
+            offsets[position] = encodedOffset;
+            previousOffset = encodedOffset;
+            foundPresent = true;
+        }
+
+        int nextOffset = entriesLength;
+        for (int position = PositionCount - 1; position >= 0; position--)
+        {
+            if ((availability & (1u << position)) == 0) continue;
+            int start = offsets[position];
+            if (nextOffset <= start) throw new InvalidDataException("PBT node offsets do not delimit a positive-length node.");
+            ReadOnlySpan<byte> encoding = payload[start..nextOffset];
+            try
+            {
+                PbtNodeCodec.ValidateExact(encoding);
+                if (encoding[0] == 0 && position != PbtFourLevelGroupGeometry.RootPosition)
+                    throw new InvalidDataException("A PBT leaf entry is only valid as the tree root.");
+                PbtNodeGroupReader.ValidateLeafPath(path, position, encoding);
+            }
+            catch (InvalidDataException exception) { throw new InvalidDataException("Invalid PBT node in group.", exception); }
+            nextOffset = start;
+        }
+    }
+
+    /// <summary>Debug-build guard for a payload entering or leaving a store; readers on the update path trust stored payloads.</summary>
+    [Conditional("DEBUG")]
+    internal static void DebugValidateNodes<TPath>(TPath groupKey, ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> =>
+        ValidateNodes(PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey), payload);
+
     /// <summary>Reads the descendant mask that ends a payload, without validating anything else.</summary>
     public static ushort ReadDescendantMask(ReadOnlySpan<byte> payload) => BinaryPrimitives.ReadUInt16LittleEndian(payload[^DescendantMaskLength..]);
+
+    /// <summary>Reads the availability bitmap of a payload whose header has been stripped, without validating anything else.</summary>
+    internal static uint ReadAvailability(ReadOnlySpan<byte> payload) =>
+        BinaryPrimitives.ReadUInt32LittleEndian(payload[^(sizeof(uint) + DescendantsLength(ReadDescendantMask(payload)))..]);
 
     /// <summary>Reads the descendant size of each boundary slot into <paramref name="descendantBytes"/>, without validating anything else.</summary>
     /// <param name="descendantBytes">Receives one size per boundary slot; slots without descendants read as zero.</param>
@@ -171,56 +226,39 @@ public readonly ref struct PbtNodeGroupReader
     /// <summary>Validates and borrows a complete node-group payload.</summary>
     /// <remarks>The path is used only for validation; advancing the cursor cannot change this reader or its enumerators.
     /// The payload must remain valid and immutable for the lifetime of the reader and its enumerators.</remarks>
+    public PbtNodeGroupReader(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload) : this(path, payload, validated: false) { }
+
+    /// <summary>Borrows a payload a store has already validated, parsing only its offset table.</summary>
+    internal static PbtNodeGroupReader FromValidated(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload) => new(path, payload, validated: true);
+
     [SkipLocalsInit]
-    public PbtNodeGroupReader(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload)
+    private PbtNodeGroupReader(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload, bool validated)
     {
         int groupDepth = path.BitDepth;
-        uint availability = PbtNodeGroupCodec.ValidateFraming(groupDepth, payload);
+        if (!validated) PbtNodeGroupCodec.ValidateNodes(path, payload);
+        Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(groupDepth));
         DescendantBuffer descendantBytes = default;
         PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantBytes);
         int payloadLength = payload.Length;
         payload = payload[PbtNodeGroupCodec.HeaderLength..];
-        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability, PbtNodeGroupCodec.ReadDescendantMask(payload));
-        int entriesLength = payload.Length - trailerLength;
-        if (entriesLength > ushort.MaxValue) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
+        uint availability = PbtNodeGroupCodec.ReadAvailability(payload);
+        int entriesLength = payload.Length - PbtNodeGroupCodec.GetTrailerLength(availability, PbtNodeGroupCodec.ReadDescendantMask(payload));
         ReadOnlySpan<byte> footer = payload[entriesLength..];
 
         OffsetBuffer offsets = default;
         LengthBuffer lengths = default;
-        int previousOffset = -1;
-        bool foundPresent = false;
+        int previousPosition = -1;
         int offsetIndex = 0;
         for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
         {
             if ((availability & (1u << position)) == 0) continue;
-            ushort encodedOffset = BinaryPrimitives.ReadUInt16LittleEndian(footer[offsetIndex..]);
+            ushort offset = BinaryPrimitives.ReadUInt16LittleEndian(footer[offsetIndex..]);
             offsetIndex += sizeof(ushort);
-            if (!foundPresent && encodedOffset != 0) throw new InvalidDataException("The first PBT node offset must be zero.");
-            if (foundPresent && encodedOffset <= previousOffset) throw new InvalidDataException("PBT node offsets must strictly increase.");
-            if (encodedOffset >= entriesLength) throw new InvalidDataException("PBT node offset is outside the entries section.");
-            offsets[position] = encodedOffset;
-            previousOffset = encodedOffset;
-            foundPresent = true;
+            offsets[position] = offset;
+            if (previousPosition >= 0) lengths[previousPosition] = offset - offsets[previousPosition];
+            previousPosition = position;
         }
-
-        int nextOffset = entriesLength;
-        for (int position = PbtNodeGroupCodec.PositionCount - 1; position >= 0; position--)
-        {
-            if ((availability & (1u << position)) == 0) continue;
-            int start = offsets[position];
-            if (nextOffset <= start) throw new InvalidDataException("PBT node offsets do not delimit a positive-length node.");
-            ReadOnlySpan<byte> encoding = payload[start..nextOffset];
-            try
-            {
-                PbtNodeCodec.ValidateExact(encoding);
-                if (encoding[0] == 0 && position != PbtFourLevelGroupGeometry.RootPosition)
-                    throw new InvalidDataException("A PBT leaf entry is only valid as the tree root.");
-                ValidateLeafPath(path, position, encoding);
-            }
-            catch (InvalidDataException exception) { throw new InvalidDataException("Invalid PBT node in group.", exception); }
-            lengths[position] = nextOffset - start;
-            nextOffset = start;
-        }
+        if (previousPosition >= 0) lengths[previousPosition] = entriesLength - offsets[previousPosition];
 
         _groupDepth = groupDepth;
         _payload = payload;

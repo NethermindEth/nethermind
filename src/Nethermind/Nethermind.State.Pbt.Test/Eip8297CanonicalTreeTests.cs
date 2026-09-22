@@ -2214,7 +2214,7 @@ public class Eip8297CanonicalTreeTests
         TrackingMemoryProvider memoryProvider = new();
         Action update = () => TrieUpdater.UpdateRoot(store, root, Batch(([0x12], Value(2))), null, memoryProvider);
         if (applyFailure) Assert.Throws<InvalidOperationException>(update);
-        else Assert.Throws<InvalidDataException>(update);
+        else Assert.Catch(update);
 
         using (Assert.EnterMultipleScope())
         {
