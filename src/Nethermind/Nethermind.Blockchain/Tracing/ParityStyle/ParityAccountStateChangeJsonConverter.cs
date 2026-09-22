@@ -36,6 +36,13 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 JsonSerializer.Serialize(writer, change.After, options);
                 writer.WriteEndObject();
             }
+            else if (change.After is null)
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("-"u8);
+                JsonSerializer.Serialize(writer, change.Before, options);
+                writer.WriteEndObject();
+            }
             else
             {
                 writer.WriteStartObject();
@@ -64,6 +71,13 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 writer.WriteStartObject();
                 writer.WritePropertyName("+"u8);
                 JsonSerializer.Serialize(writer, change.After, options);
+                writer.WriteEndObject();
+            }
+            else if (change.After is null)
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("-"u8);
+                JsonSerializer.Serialize(writer, change.Before, options);
                 writer.WriteEndObject();
             }
             else

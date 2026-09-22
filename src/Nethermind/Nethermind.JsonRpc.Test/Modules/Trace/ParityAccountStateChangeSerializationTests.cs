@@ -42,7 +42,23 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ParityAccountStateChange result = new();
             result.Balance = new ParityStateChange<UInt256?>(1, null);
 
-            TestToJson(result, "{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":null}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
+            TestToJson(result, "{\"balance\":{\"-\":\"0x1\"},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
+        }
+
+        [Test]
+        public void Can_serialize_deleted_account([Values(0, 1)] int value)
+        {
+            ParityAccountStateChange result = new()
+            {
+                Balance = new ParityStateChange<UInt256?>((UInt256)value, null),
+                Nonce = new ParityStateChange<UInt256?>((UInt256)value, null),
+                Code = new ParityStateChange<byte[]>(value == 0 ? [] : [0x60, 0x00], null)
+            };
+
+            string quantity = value == 0 ? "0x0" : "0x1";
+            string code = value == 0 ? "0x" : "0x6000";
+            TestToJson(result,
+                $$$"""{"balance":{"-":"{{{quantity}}}"},"code":{"-":"{{{code}}}"},"nonce":{"-":"{{{quantity}}}"},"storage":{}}""");
         }
 
         [Test]

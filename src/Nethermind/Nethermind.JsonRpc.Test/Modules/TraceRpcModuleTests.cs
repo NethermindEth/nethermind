@@ -1234,6 +1234,42 @@ public class TraceRpcModuleTests
         Assert.That(result.Result.Error, Does.Not.Contain("not canonical"), "traceNonCanonical=true must bypass the canonical block check");
     }
 
+    [Test]
+    public async Task Trace_call_reports_selfdestruct_deletion_only_before_cancun(
+        [Values] bool streaming, [Values] bool cancun)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(cancun ? Cancun.Instance : Shanghai.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"{{TestItem.AddressC}}","gas":"0x186a0"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{TestItem.AddressC}}}":{"code":"0x6000ff","balance":"0x64","nonce":"0x1"}}""");
+
+        string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
+            "trace_call", transaction, new[] { "stateDiff" }, "latest", stateOverride);
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement change = document.RootElement.GetProperty("result").GetProperty("stateDiff")
+            .GetProperty(TestItem.AddressC.ToString().ToLowerInvariant());
+        using (Assert.EnterMultipleScope())
+        {
+            if (cancun)
+            {
+                Assert.That(change.GetProperty("code").GetString(), Is.EqualTo("="));
+                Assert.That(change.GetProperty("nonce").GetString(), Is.EqualTo("="));
+                Assert.That(change.GetProperty("balance").GetProperty("*").GetProperty("to").GetString(),
+                    Is.EqualTo("0x0"));
+            }
+            else
+            {
+                Assert.That(change.GetProperty("code").GetProperty("-").GetString(), Is.EqualTo("0x6000ff"));
+                Assert.That(change.GetProperty("nonce").GetProperty("-").GetString(), Is.EqualTo("0x1"));
+                Assert.That(change.GetProperty("balance").GetProperty("-").GetString(), Is.EqualTo("0x64"));
+            }
+        }
+    }
+
     private static IEnumerable<TestCaseData> StreamingEquivalenceCases()
     {
         string callManyParams = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\",\"gas\":\"0xf4240\"}},[\"statediff\"]],[{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"1\",\"gas\":\"0xf4240\"}},[\"statediff\"]]]";
