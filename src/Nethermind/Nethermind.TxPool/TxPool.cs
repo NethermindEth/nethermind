@@ -1128,8 +1128,19 @@ namespace Nethermind.TxPool
 
         private void UpdateBucketsWithoutRevalidation()
         {
-            _transactions.UpdatePool(_accounts, _updateBucket);
-            _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            try
+            {
+                _transactions.UpdatePool(_accounts, _updateBucket);
+                _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            }
+            catch (MissingTrieNodeException)
+            {
+                // Head can exist (headers kept) while its state is unavailable — e.g. after
+                // FlatDb.OnRepair=Resync wiped flat state, or mid state-sync. Unknown state is not
+                // an empty account: leave the buckets (and persisted blobs) as they are and retry
+                // on the next head.
+                if (_logger.IsWarn) _logger.Warn("Head state is unavailable; leaving tx pool buckets untouched until the next head.");
+            }
         }
 
         private void InitializeValidatedSpec()
@@ -1880,21 +1891,9 @@ namespace Nethermind.TxPool
                 ClockCache<AddressAsKey, AccountStruct> cache = _caches[GetCacheIndex(address)];
                 if (!cache.TryGet(new AddressAsKey(address), out account))
                 {
-                    try
+                    if (!_provider.TryGetAccount(address, out account))
                     {
-                        if (!_provider.TryGetAccount(address, out account))
-                        {
-                            cache.Set(address, AccountStruct.TotallyEmpty);
-                            return false;
-                        }
-                    }
-                    catch (MissingTrieNodeException)
-                    {
-                        // Head can exist (headers kept) while state is unavailable — e.g. after
-                        // FlatDb.OnRepair=Resync wipes flat state, or mid state-sync. Unknown state
-                        // is not an empty account, so it must not be cached: report absent for this
-                        // call and let the next one retry once state is back.
-                        account = AccountStruct.TotallyEmpty;
+                        cache.Set(address, AccountStruct.TotallyEmpty);
                         return false;
                     }
                     cache.Set(address, account);
