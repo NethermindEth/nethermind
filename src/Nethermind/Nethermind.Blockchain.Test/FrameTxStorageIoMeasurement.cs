@@ -16,6 +16,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using static Nethermind.Blockchain.Test.MeasurementEnvironment;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -35,9 +36,15 @@ namespace Nethermind.Blockchain.Test;
 /// storage layer during its timed window (<c>read_bytes</c> from <c>/proc/self/io</c>), so a row that
 /// silently measured a warm cache is visible as such rather than being mistaken for a device read.
 ///
-/// Every row also names the environment it ran in rather than the one it asked for: <c>db_fs</c> is the
-/// file system the database sits on, and <c>trie_cache_mb</c> the trie-store cache the container resolved.
-/// A run whose temp directory is <c>tmpfs</c> has no block device under it, so no rung can reach one
+/// Every ceiling is swept on every <see cref="StorageArm"/>, because the ladder is a property of the caches
+/// above the database rather than of the prefix: a rung is only cold while nothing between the prefix and the
+/// device is large enough to hold the slot. An arm on which the coldest rung stops reaching the device says
+/// so on its rows (<c>cold_rung=COLLAPSED</c>), which is the answer to that question rather than a failure.
+///
+/// Every row also names the environment it ran in rather than the one it asked for: the resolved backend,
+/// cache sizes, pruning mode, file system and database size
+/// (<see cref="ColdSloadTestBlockchain.ResolvedConfigFields"/>), and the CPU set the process was allowed to run
+/// on. Each repeat seeds a fresh database of one pass's size, so repetition never changes what a rung reads. A run whose temp directory is <c>tmpfs</c> has no block device under it, so no rung can reach one
 /// whatever the caches do; a run whose trie cache is smaller than the seeded state has no warm rung.
 ///
 /// Results are appended as <c>RESULT key=value</c> lines to <c>FRAME_STORAGE_IO_OUT</c>, or
@@ -45,7 +52,7 @@ namespace Nethermind.Blockchain.Test;
 /// keys as <c>FrameTxMempoolDosMeasurement</c>'s, so existing parsing keeps working; the ladder-specific
 /// fields are additions.
 ///
-/// Run under <c>taskset -c 0</c>, like the rest of the campaign.
+/// Run under <c>taskset -c 0</c>, like the rest of the campaign; the harness refuses to run without it.
 /// </remarks>
 [TestFixture]
 [Explicit("measurement harness")]
@@ -94,6 +101,7 @@ public class FrameTxStorageIoMeasurement
 
     private ColdSloadTestBlockchain _chain = null!;
     private TempPath _dbDirectory = null!;
+    private StorageArm _arm = null!;
     private ulong _ceiling;
     private int _slotsPerTx;
 
@@ -113,50 +121,114 @@ public class FrameTxStorageIoMeasurement
     }
 
     [TearDown]
-    public void TearDown()
+    public void TearDown() => DisposeChain();
+
+    private void DisposeChain()
     {
         _chain?.Dispose();
         _dbDirectory?.Dispose();
+        _chain = null!;
+        _dbDirectory = null!;
     }
 
-    private static IEnumerable<TestCaseData> CeilingCases()
+    private static IEnumerable<TestCaseData> ArmCeilingCases()
     {
-        foreach (ulong ceiling in SweptCeilings) yield return new TestCaseData(ceiling);
+        foreach (StorageArm arm in StorageArm.Swept())
+        {
+            foreach (ulong ceiling in SweptCeilings)
+            {
+                yield return new TestCaseData(arm, ceiling).SetArgDisplayNames(arm.Name, ceiling.ToString());
+            }
+        }
     }
 
     /// <summary>
     /// Measures rejection of a validation prefix that spends its budget on scattered cold storage reads,
     /// once per rung of the cache-residency ladder.
     /// </summary>
-    [TestCaseSource(nameof(CeilingCases))]
-    public async Task Reject_cost_of_a_cold_sload_prefix(ulong ceiling)
+    [TestCaseSource(nameof(ArmCeilingCases))]
+    public async Task Reject_cost_of_a_cold_sload_prefix(StorageArm arm, ulong ceiling)
     {
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         ColdSloadStorageFixture.SkipUnlessLinux();
+        SkipUnlessSingleCore();
 
+        _arm = arm;
         _ceiling = ceiling;
         _slotsPerTx = ColdSloadPrefix.SlotsPerPrefix(ceiling);
         _saltStride = _slotsPerTx + 1;
-        _nextSalt = 1;
 
-        // Every cold sample needs a slot range no earlier sample touched, so the fixture seeds one range per
-        // submission of the coldest rungs plus the probe and the warm-up.
-        int coldRungs = Rungs.Length - 1;
-        int coldSamples = (Warmup + Samples) * coldRungs + Warmup + Samples + 1;
-        await BuildChain((coldSamples + 1) * _saltStride);
+        int repeats = StorageRepetition.Repeats;
+        Dictionary<string, List<double>> byRung = [];
+        foreach (string rung in Rungs) byRung[rung] = new List<double>(repeats);
+        long coldestReadBytesMin = long.MaxValue;
+        string fileSystem = string.Empty;
+        int observedSloads = 0;
 
-        int observedSloads = ProbeColdSloadCount();
-        Assert.That(observedSloads, Is.EqualTo(_slotsPerTx).Within(1),
-            $"the prefix completed {observedSloads} storage reads against the {_slotsPerTx} its gas budget was "
-            + "sized for, so the code the EVM ran is not the loop this fixture seeded slots for and the "
-            + "per-slot figures would be labelled with the wrong count");
+        // Each repeat seeds its own database of the size a single pass needs, so repetition does not grow the
+        // database a rung reads from and the adversarial arm stays the fixture earlier runs measured.
+        for (int repeat = 1; repeat <= repeats; repeat++)
+        {
+            _nextSalt = 1;
 
-        AssertProbeIsRejectedBySimulation();
+            // Every cold sample needs a slot range no earlier sample touched, so the fixture seeds one range
+            // per submission of the coldest rungs plus the probe and the warm-up.
+            int coldRungs = Rungs.Length - 1;
+            int coldSamples = (Warmup + Samples) * coldRungs + Warmup + Samples + 1;
+            await BuildChain((coldSamples + 1) * _saltStride);
 
-        foreach (string rung in Rungs) MeasureRung(rung, observedSloads);
+            observedSloads = ProbeColdSloadCount();
+            Assert.That(observedSloads, Is.EqualTo(_slotsPerTx).Within(1),
+                $"the prefix completed {observedSloads} storage reads against the {_slotsPerTx} its gas budget was "
+                + "sized for, so the code the EVM ran is not the loop this fixture seeded slots for and the "
+                + "per-slot figures would be labelled with the wrong count");
+
+            AssertProbeIsRejectedBySimulation();
+
+            double pageCacheWarm = double.NaN;
+            foreach (string rung in Rungs)
+            {
+                RungSample sample = MeasureRung(rung, observedSloads, repeat, pageCacheWarm);
+                byRung[rung].Add(sample.UsPerKgas);
+
+                // The page-cache-hit rung is what the coldest rung has to beat to be a rung at all.
+                if (rung == "cold-node-cache") pageCacheWarm = sample.UsPerKgas;
+                if (rung == Rungs[^1])
+                {
+                    coldestReadBytesMin = Math.Min(coldestReadBytesMin, sample.ReadBytesPerSample);
+                    fileSystem = sample.FileSystem;
+                }
+            }
+
+            if (repeat < repeats) DisposeChain();
+        }
+
+        double nodeCold = StorageRepetition.Median(byRung["cold-node-cache"]);
+        double pageCold = StorageRepetition.Median(byRung[Rungs[^1]]);
+
+        Emit($"case=storage_arm_verdict shape=sload-cold storage_backend={_chain.StorageBackend} "
+             + $"verify_gas={_ceiling} cold_sloads={observedSloads} repeats={repeats} samples={Samples} "
+             + $"all_warm_us_per_kgas={StorageRepetition.Median(byRung["all-warm"]):F3} "
+             + $"cold_node_cache_us_per_kgas={nodeCold:F3} cold_page_cache_us_per_kgas={pageCold:F3} "
+             + $"cold_read_bytes_per_sample_min={coldestReadBytesMin} "
+             + $"{ColdRung.Fields(coldestReadBytesMin, fileSystem, pageCold / nodeCold)} "
+             + $"{StorageRepetition.SpreadFields("all_warm_us_per_kgas", byRung["all-warm"])} "
+             + $"{StorageRepetition.SpreadFields("cold_node_cache_us_per_kgas", byRung["cold-node-cache"])} "
+             + $"{StorageRepetition.SpreadFields("cold_page_cache_us_per_kgas", byRung[Rungs[^1]])} "
+             + $"{_chain.DbFileFields} {_chain.TrieCacheFields} {RowEnvironment}");
     }
 
-    private void MeasureRung(string rung, int sloadsPerTx)
+    /// <summary>What one repeat of one rung cost, and what it read while doing so.</summary>
+    private readonly record struct RungSample(double UsPerKgas, long ReadBytesPerSample, string FileSystem);
+
+    /// <summary>The resolved settings and CPU affinity every row of this fixture carries after the fields
+    /// older rows already had.</summary>
+    private string RowEnvironment => $"{_chain.ResolvedConfigFields} {CpuFields}";
+
+    /// <param name="pageCacheWarmUsPerKgas">The page-cache-hit rung's cost in this repeat, against which a
+    /// rung that claims to be colder is judged. <see cref="double.NaN"/> for rungs that make no such
+    /// claim.</param>
+    private RungSample MeasureRung(string rung, int sloadsPerTx, int repeat, double pageCacheWarmUsPerKgas)
     {
         bool coldSlots = rung != "all-warm";
         bool dropPageCache = rung == "cold-page-cache";
@@ -168,16 +240,21 @@ public class FrameTxStorageIoMeasurement
 
         if (dropPageCache)
         {
-            FlushState();
+            _chain.PersistState();
             StorageResidency.SyncAll();
         }
 
         long readBytesBefore = StorageResidency.ProcessReadBytes();
         int fadvisedFiles = 0;
+        int fadvisedFilesTotal = 0;
         List<double> submitMicros = new(Samples);
         for (int i = 0; i < Samples; i++, salt++)
         {
-            if (dropPageCache) fadvisedFiles = StorageResidency.DropPageCache(_dbDirectory.Path);
+            if (dropPageCache)
+            {
+                fadvisedFiles = StorageResidency.DropPageCache(_dbDirectory.Path);
+                fadvisedFilesTotal += fadvisedFiles;
+            }
 
             Transaction tx = FrameTx(coldSlots ? salt : 0, salt);
             long start = Stopwatch.GetTimestamp();
@@ -194,8 +271,15 @@ public class FrameTxStorageIoMeasurement
         long readBytes = StorageResidency.ProcessReadBytes() - readBytesBefore;
         submitMicros.Sort();
         double p50 = Percentile(submitMicros, 0.50);
+        double usPerKgas = p50 * 1_000 / _ceiling;
+        long readBytesPerSample = readBytes / Samples;
+        string fileSystem = StorageResidency.FileSystemOf(_dbDirectory.Path);
 
-        Emit($"case=frame_reject shape=sload-cold storage_backend=rocksdb_trie rung={rung} "
+        string coldFields = double.IsNaN(pageCacheWarmUsPerKgas)
+            ? string.Empty
+            : $" {ColdRung.Fields(readBytesPerSample, fileSystem, usPerKgas / pageCacheWarmUsPerKgas)}";
+
+        Emit($"case=frame_reject shape=sload-cold storage_backend={_chain.StorageBackend} rung={rung} "
              + $"verify_gas={_ceiling} frame_gas_available={_ceiling} frame_gas_burned={_ceiling} "
              + $"cold_sloads={sloadsPerTx} samples={Samples} "
              + $"submit_p50_us={p50:F1} "
@@ -203,20 +287,20 @@ public class FrameTxStorageIoMeasurement
              + $"submit_p99_us={Percentile(submitMicros, 0.99):F1} "
              + $"submit_max_us={submitMicros[^1]:F1} "
              + $"submit_us_per_Mgas={p50 * 1_000_000 / _ceiling:F1} "
-             + $"us_per_kgas={p50 * 1_000 / _ceiling:F3} "
+             + $"us_per_kgas={usPerKgas:F3} "
              + $"us_per_sload={p50 / sloadsPerTx:F3} "
              + $"us_per_Mgas_basis=offered "
-             + $"read_bytes_total={readBytes} read_bytes_per_sample={readBytes / Samples} "
+             + $"read_bytes_total={readBytes} read_bytes_per_sample={readBytesPerSample} "
              + $"db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} fadvised_files={fadvisedFiles} "
-             + $"db_fs={StorageResidency.FileSystemOf(_dbDirectory.Path)} {_chain.TrieCacheFields} "
-             + $"reject_reason=\"FrameSimulationFailed\"");
-    }
+             + $"db_fs={fileSystem} {_chain.TrieCacheFields} "
+             + $"reject_reason=\"FrameSimulationFailed\" "
+             + $"repeat={repeat} fadvised_files_total={fadvisedFilesTotal}{coldFields} {RowEnvironment}");
 
-    /// <summary>Pushes the state database's memtables into files so the page cache is what holds them.</summary>
-    private void FlushState()
-    {
-        _chain.DbProvider.StateDb.Flush();
-        _chain.DbProvider.CodeDb.Flush();
+        // Emitted first: an arm that claims a device and did not reach one is a failure worth stopping for,
+        // but the row that proves it has to survive the stop.
+        if (dropPageCache) ColdRung.AssertReachedDevice(_arm, rung, readBytesPerSample, fileSystem);
+
+        return new RungSample(usPerKgas, readBytesPerSample, fileSystem);
     }
 
     private void AssertProbeIsRejectedBySimulation()
@@ -261,9 +345,9 @@ public class FrameTxStorageIoMeasurement
         Directory.CreateDirectory(_dbDirectory.Path);
 
         _chain = await ColdSloadStorageFixture.BuildChain(
-            _dbDirectory.Path, _ceiling, Attacker, AttackerBalance, slotsToSeed);
+            _dbDirectory.Path, _ceiling, _arm, Attacker, AttackerBalance, slotsToSeed);
 
-        FlushState();
+        _chain.PersistState();
         ColdSloadStorageFixture.AssertSeededSlotIsVisible(_chain, Attacker, slotsToSeed);
     }
 

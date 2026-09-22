@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -22,9 +23,11 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Flat;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -289,52 +292,112 @@ internal static class StorageResidency
 }
 
 /// <summary>
-/// A test chain on the patricia-trie state backend over a real RocksDB, with the caches that would
-/// otherwise hold the whole seeded fixture held at their floor.
+/// One state-backend and cache configuration the storage harnesses sweep, so that a single run compares the
+/// adversarial configuration against production defaults instead of comparing two runs taken on two days.
+/// </summary>
+/// <param name="Name">The label every row of this arm carries.</param>
+/// <param name="UseFlatDb">Whether the flat backend, which is the production default, resolves a slot in one
+/// keyed read instead of walking the trie.</param>
+/// <param name="TrieCacheMb">Total trie-store cache; the persisted-node read cache is this minus
+/// <paramref name="DirtyTrieCacheMb"/> (<c>PruningTrieStateFactory</c>), which is the number that decides
+/// whether a seeded slot stays resident.</param>
+/// <param name="DirtyTrieCacheMb">Dirty share of <paramref name="TrieCacheMb"/>. It has to stay strictly
+/// below the total, or <c>PruningTrieStateFactory.AdviseConfig</c> throws.</param>
+/// <param name="SharedBlockCacheBytes">RocksDB's shared block cache. A block-cache hit is served inside the
+/// process, above the page cache, so <c>posix_fadvise</c> cannot reach it; this is the setting that decides
+/// whether a cold rung can exist at all.</param>
+/// <param name="ExpectsDeviceCold">Whether a rung this arm labels cold is claimed to reach the device. An arm
+/// that claims it is asserted against <c>read_bytes</c>; an arm that does not is exactly what the sweep is
+/// testing, so its rows report the collapse rather than failing on it.</param>
+public sealed record StorageArm(
+    string Name,
+    bool UseFlatDb,
+    long TrieCacheMb,
+    long DirtyTrieCacheMb,
+    ulong SharedBlockCacheBytes,
+    bool ExpectsDeviceCold)
+{
+    /// <summary>
+    /// The arm every storage figure of this campaign was measured on: the non-default patricia backend with
+    /// both caches at their floor.
+    /// </summary>
+    /// <remarks>Held byte-for-byte at the values CI run <c>35740377693</c> used, so a sweep that includes it
+    /// reproduces the published numbers and shows the harness did not drift underneath them.</remarks>
+    public static readonly StorageArm Adversarial = new("adversarial", false, 64, 32, 4 * 1024 * 1024, true);
+
+    /// <summary>The same backend with the caches a default node runs.</summary>
+    public static readonly StorageArm ProductionCaches =
+        new("production-caches", false, 1792, 1536, 256 * 1024 * 1024, false);
+
+    /// <summary>The configuration a default node runs: flat backend, production caches.</summary>
+    public static readonly StorageArm Production = new("production", true, 1792, 1536, 256 * 1024 * 1024, false);
+
+    private static readonly StorageArm[] Known = [Adversarial, ProductionCaches, Production];
+
+    /// <summary>Environment variable selecting a comma-separated subset of arms, so one dispatch can carry a
+    /// single arm when the whole sweep does not fit the job budget. Unset means every arm.</summary>
+    public const string ArmsVariable = "FRAME_STORAGE_ARMS";
+
+    /// <summary>The arms this run sweeps.</summary>
+    public static IEnumerable<StorageArm> Swept()
+    {
+        string? selection = Environment.GetEnvironmentVariable(ArmsVariable);
+        foreach (StorageArm arm in Known)
+        {
+            if (string.IsNullOrWhiteSpace(selection) || Selects(selection, arm.Name)) yield return arm;
+        }
+    }
+
+    private static bool Selects(string selection, string name)
+    {
+        foreach (string entry in selection.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (string.Equals(entry, name, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+
+        return false;
+    }
+
+    public override string ToString() => Name;
+}
+
+/// <summary>
+/// A test chain on a real RocksDB whose state backend and cache sizes come from a swept
+/// <see cref="StorageArm"/> rather than from constants.
 /// </summary>
 /// <remarks>
 /// Every other shape in this campaign runs on <c>MemDbFactory</c> (<c>TestEnvironmentModule</c>), where a
 /// cold <c>SLOAD</c> is a dictionary lookup. This swaps <see cref="IDbFactory"/> for
 /// <see cref="RocksDbFactory"/> over a temp directory, the same override
-/// <c>FullPruning.FullPruningDiskTest</c> uses, so a slot read is a patricia-trie walk ending in RocksDB
-/// reads.
+/// <c>FullPruning.FullPruningDiskTest</c> uses, so a slot read ends in RocksDB reads. On the flat arm the
+/// flat column database is re-registered over that same factory, because the test modules otherwise hold it
+/// in memory and no arrangement of caches could then reach a device.
 ///
-/// The flat-state backend resolves a slot in one keyed read rather than a trie walk, so it is the cheaper
-/// of the two and the trie backend is the adversarial one. Rows say which was measured.
+/// Two deviations from a production node survive every arm and are reported rather than hidden.
+/// <c>Pruning.Mode</c> is <c>None</c> (archive), because the seeded state has to be in the database rather
+/// than pending in the trie store's dirty set when the first sample reads it; a production node runs Hybrid.
+/// <c>IHardwareInfo</c> stays at the test default, so <c>AdviseConfig</c> does not raise
+/// <c>CacheMb</c> the way it would on a host with spare memory. Archive mode is what selects RocksDB's
+/// State-Db options here, so available memory does not reach them (<c>RocksDbConfigFactory</c>). Rows carry
+/// <c>pruning_mode</c> and <c>available_memory_gb</c> so neither has to be taken on trust.
 /// </remarks>
 internal sealed class ColdSloadTestBlockchain : BasicTestBlockchain
 {
     public const long BlockGasLimit = 30_000_000;
 
-    /// <summary>
-    /// Shared RocksDB block cache, sized so that the seeded state cannot sit in it. The ladder varies
-    /// residency deliberately; leaving the production-sized cache in place would pin the whole fixture in
-    /// process memory and every rung would read the same number.
-    /// </summary>
-    private const ulong MinimalSharedBlockCacheSize = 4 * 1024 * 1024;
-
-    /// <summary>
-    /// Trie-store cache size. Large enough that a slot range read once stays resident, which is what makes
-    /// the <c>all-warm</c> rung warm, and far too small to hold the whole seeded fixture, which is what
-    /// keeps the cold rungs cold.
-    /// </summary>
-    private const long TrieCacheMb = 64;
-
-    /// <summary>Dirty share of <see cref="TrieCacheMb"/>. It has to stay strictly below the total, or
-    /// <c>PruningTrieStateFactory.AdviseConfig</c> rejects the pair.</summary>
-    private const long DirtyTrieCacheMb = 32;
-
     private string _dbPath = null!;
     private ulong _verifyGasCeiling;
+    private StorageArm _arm = null!;
 
     public static async Task<ColdSloadTestBlockchain> CreateColdSload(
-        string dbPath, ulong verifyGasCeiling, Action<ContainerBuilder>? configurer = null)
+        string dbPath, ulong verifyGasCeiling, StorageArm arm, Action<ContainerBuilder>? configurer = null)
     {
         ColdSloadTestBlockchain chain = new()
         {
             _dbPath = dbPath,
             _verifyGasCeiling = verifyGasCeiling,
-            UseFlatDb = false,
+            _arm = arm,
+            UseFlatDb = arm.UseFlatDb,
         };
         await chain.Build(configurer);
         return chain;
@@ -362,8 +425,11 @@ internal sealed class ColdSloadTestBlockchain : BasicTestBlockchain
             Mode = PruningMode.None,
             PersistenceInterval = 1,
         },
-        new DbConfig { SharedBlockCacheSize = MinimalSharedBlockCacheSize },
+        new DbConfig { SharedBlockCacheSize = _arm.SharedBlockCacheBytes },
     ];
+
+    /// <summary>The state backend the container resolved, as the <c>storage_backend</c> row value.</summary>
+    public string StorageBackend => Container.Resolve<IFlatDbConfig>().Enabled ? "flat" : "rocksdb_trie";
 
     /// <summary>
     /// The trie-store cache sizes the container resolved, as result-row fields.
@@ -383,8 +449,66 @@ internal sealed class ColdSloadTestBlockchain : BasicTestBlockchain
         }
     }
 
-    protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
-        base.ConfigureContainer(builder, configProvider)
+    /// <summary>
+    /// The arm label and every other resolved setting that decides residency, as result-row fields that
+    /// follow the fields older rows already carried.
+    /// </summary>
+    /// <remarks>The RocksDB block cache is the setting that decides whether a cold rung can exist at all, and
+    /// no row reported it before the arms were swept.</remarks>
+    public string ResolvedConfigFields
+    {
+        get
+        {
+            IPruningConfig pruningConfig = Container.Resolve<IPruningConfig>();
+            IDbConfig dbConfig = Container.Resolve<IDbConfig>();
+            IFlatDbConfig flatDbConfig = Container.Resolve<IFlatDbConfig>();
+            IHardwareInfo hardwareInfo = Container.Resolve<IHardwareInfo>();
+
+            string flatFields = flatDbConfig.Enabled
+                ? $"flat_block_cache_mb={flatDbConfig.BlockCacheSizeBudget / MegaByte} "
+                  + $"flat_trie_cache_mb={flatDbConfig.TrieCacheMemoryBudget / MegaByte} "
+                  + $"flat_trie_warmer_workers={flatDbConfig.TrieWarmerWorkerCount} "
+                : string.Empty;
+
+            return $"arm={_arm.Name} db_shared_block_cache_mb={dbConfig.SharedBlockCacheSize / MegaByte} "
+                   + flatFields
+                   + $"pruning_mode={pruningConfig.Mode} "
+                   + $"available_memory_gb={hardwareInfo.AvailableMemoryBytes / (1024 * 1024 * 1024d):F1}";
+        }
+    }
+
+    /// <summary>The database's size on disk and the file system under it, as result-row fields.</summary>
+    public string DbFileFields =>
+        $"db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbPath)} db_fs={StorageResidency.FileSystemOf(_dbPath)}";
+
+    private const ulong MegaByte = 1024 * 1024;
+
+    /// <summary>
+    /// Pushes seeded state out of memory and into the database files, whichever backend holds it, so that the
+    /// page cache rather than the process is what a warm rung is served from.
+    /// </summary>
+    /// <remarks>The flat backend keeps recent blocks in memory snapshots and persists them on its own
+    /// schedule, so flushing its column database alone would leave the seeded state unreachable by any rung.
+    /// The trie backend in archive mode has already written every node, and flushing only its memtables keeps
+    /// the <see cref="StorageArm.Adversarial"/> arm identical to the runs it reproduces.</remarks>
+    public void PersistState()
+    {
+        if (_arm.UseFlatDb)
+        {
+            WorldStateManager.FlushCache(CancellationToken.None);
+            Container.Resolve<IColumnsDb<FlatDbColumns>>().Flush();
+        }
+        else
+        {
+            DbProvider.StateDb.Flush();
+        }
+
+        DbProvider.CodeDb.Flush();
+    }
+
+    protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider)
+    {
+        builder = base.ConfigureContainer(builder, configProvider)
             .AddSingleton<IDbFactory, RocksDbFactory>()
             .Intercept<IInitConfig>(initConfig => initConfig.BaseDbPath = _dbPath)
             // TestEnvironmentModule holds every test chain's trie cache at 8 MB, far below the seeded state
@@ -393,9 +517,111 @@ internal sealed class ColdSloadTestBlockchain : BasicTestBlockchain
             // them the resolved ones; rows carry the resolved pair so a run cannot claim one and use another.
             .Intercept<IPruningConfig>(pruningConfig =>
             {
-                pruningConfig.CacheMb = TrieCacheMb;
-                pruningConfig.DirtyCacheMb = DirtyTrieCacheMb;
+                pruningConfig.CacheMb = _arm.TrieCacheMb;
+                pruningConfig.DirtyCacheMb = _arm.DirtyTrieCacheMb;
             });
+
+        // PseudoNethermindModule swaps the flat column database for an in-memory one, which would make every
+        // flat rung memory-resident whatever the caches say. This is the production registration.
+        return _arm.UseFlatDb ? builder.AddColumnDatabase<FlatDbColumns>(DbNames.Flat) : builder;
+    }
+}
+
+/// <summary>
+/// Repetition and across-repeat spread, shared by the storage harnesses.
+/// </summary>
+/// <remarks>Every storage figure this campaign has published came from a single run of a single cell, so a
+/// reader had no way to tell a real difference between two rungs from the noise of one machine.</remarks>
+internal static class StorageRepetition
+{
+    /// <summary>Environment variable overriding the repeat count, so a local check can be cheap while CI
+    /// keeps the full count.</summary>
+    public const string RepeatsVariable = "FRAME_STORAGE_REPEATS";
+
+    /// <summary>Repeats per cell when the variable is unset.</summary>
+    private const int DefaultRepeats = 5;
+
+    public static int Repeats =>
+        int.TryParse(Environment.GetEnvironmentVariable(RepeatsVariable), out int repeats) && repeats > 0
+            ? repeats
+            : DefaultRepeats;
+
+    /// <summary>Median, extremes and coefficient of variation across repeats, as row fields.</summary>
+    public static string SpreadFields(string prefix, IReadOnlyList<double> values)
+    {
+        double median = Median(values);
+        double min = double.MaxValue;
+        double max = double.MinValue;
+        double sum = 0;
+        foreach (double value in values)
+        {
+            if (value < min) min = value;
+            if (value > max) max = value;
+            sum += value;
+        }
+
+        double mean = sum / values.Count;
+        double variance = 0;
+        foreach (double value in values) variance += (value - mean) * (value - mean);
+        double deviation = values.Count > 1 ? Math.Sqrt(variance / (values.Count - 1)) : 0;
+
+        return $"{prefix}_n={values.Count} {prefix}_median={median:F3} {prefix}_min={min:F3} "
+               + $"{prefix}_max={max:F3} {prefix}_cv_pct={(mean > 0 ? deviation * 100 / mean : 0):F2}";
+    }
+
+    /// <summary>Nearest-rank median, so the reported value is one that was observed.</summary>
+    public static double Median(IReadOnlyList<double> values)
+    {
+        if (values.Count == 0) return double.NaN;
+        List<double> sorted = [.. values];
+        sorted.Sort();
+        return sorted[(int)Math.Ceiling(0.5 * sorted.Count) - 1];
+    }
+}
+
+/// <summary>
+/// Whether a rung a harness labels cold actually reached the device, and whether the ladder it belongs to
+/// still exists.
+/// </summary>
+/// <remarks>
+/// The campaign measured its storage ladder with a 4 MiB RocksDB block cache against a 164 MB database. A
+/// production node's 256 MiB block cache sits above the page cache and inside this process, so
+/// <c>posix_fadvise</c> cannot evict it and a rung that claims to be cold may read nothing at all. That
+/// outcome is a result, not a failure, so it is reported on the row rather than thrown.
+/// </remarks>
+internal static class ColdRung
+{
+    /// <summary>A cold rung this much slower than the warm one is still a ladder; anything below it has
+    /// collapsed into the warm rung and the ladder no longer separates anything.</summary>
+    private const double AliveFactor = 1.5;
+
+    /// <summary>Whether the timed window pulled bytes from the storage layer at all.</summary>
+    public static bool ReachedDevice(long readBytesPerSample, string fileSystem) =>
+        readBytesPerSample > 0 && fileSystem != "tmpfs";
+
+    /// <summary>The verdict fields a cold-labelled row carries, so a collapse is visible without arithmetic
+    /// on the reader's side.</summary>
+    public static string Fields(long readBytesPerSample, string fileSystem, double coldOverWarm)
+    {
+        bool reachedDevice = ReachedDevice(readBytesPerSample, fileSystem);
+        bool alive = reachedDevice && coldOverWarm >= AliveFactor;
+        return $"device_cold={(reachedDevice ? "yes" : "no")} cold_over_warm={coldOverWarm:F3} "
+               + $"cold_rung={(alive ? "alive" : "COLLAPSED")}";
+    }
+
+    /// <summary>
+    /// Fails an arm that claims its cold rung reaches the device when the rung read nothing, which is the
+    /// check that would have caught a whole campaign measured on <c>tmpfs</c>.
+    /// </summary>
+    public static void AssertReachedDevice(StorageArm arm, string rung, long readBytesPerSample, string fileSystem)
+    {
+        if (!arm.ExpectsDeviceCold) return;
+
+        Assert.That(ReachedDevice(readBytesPerSample, fileSystem), Is.True,
+            $"the {rung} rung of the {arm.Name} arm pulled {readBytesPerSample} bytes per sample from a "
+            + $"{fileSystem} file system, so it did not reach a device and its cost is a memory-resident "
+            + "lower bound wearing a cold label");
+    }
 }
 
 /// <summary>Seeds and validates the RocksDB-backed chain both cold-<c>SLOAD</c> harnesses measure against.</summary>
@@ -413,12 +639,12 @@ internal static class ColdSloadStorageFixture
     /// <summary>Builds a chain whose attacker account carries the prefix code and <paramref name="slotsToSeed"/>
     /// scattered non-zero slots.</summary>
     public static async Task<ColdSloadTestBlockchain> BuildChain(
-        string dbPath, ulong verifyGasCeiling, Address attacker, UInt256 attackerBalance, int slotsToSeed,
-        IReadOnlyList<(Address Address, string Shape)>? otherShapes = null)
+        string dbPath, ulong verifyGasCeiling, StorageArm arm, Address attacker, UInt256 attackerBalance,
+        int slotsToSeed, IReadOnlyList<(Address Address, string Shape)>? otherShapes = null)
     {
         byte[] attackCode = ColdSloadPrefix.Code();
 
-        ColdSloadTestBlockchain chain = await ColdSloadTestBlockchain.CreateColdSload(dbPath, verifyGasCeiling, builder =>
+        ColdSloadTestBlockchain chain = await ColdSloadTestBlockchain.CreateColdSload(dbPath, verifyGasCeiling, arm, builder =>
         {
             builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>

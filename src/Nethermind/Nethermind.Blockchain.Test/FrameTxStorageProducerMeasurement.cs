@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using NUnit.Framework;
+using static Nethermind.Blockchain.Test.MeasurementEnvironment;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -34,14 +35,21 @@ namespace Nethermind.Blockchain.Test;
 /// <see cref="Production_cost_by_shape"/> then prices a build for every ranked shape on one rig, so the
 /// three are comparable without carrying CI absolutes onto other hardware.
 ///
-/// Every row names the environment it ran in rather than the one it asked for: <c>read_bytes</c>,
-/// <c>db_fs</c> for the file system the database sits on, and <c>trie_cache_mb</c> for the trie-store cache
-/// the container resolved. A run whose temp directory is <c>tmpfs</c> has no block device under it, so no
-/// arrangement of caches can make a rung reach one and every figure is a memory-resident lower bound; point
-/// <c>TMPDIR</c> at a disk-backed directory to measure the other regime.
+/// Every ceiling is swept on every <see cref="StorageArm"/>, so one run answers whether the cold cost the
+/// campaign published survives the backend and the cache sizes a default node runs, rather than leaving that
+/// comparison to two runs on two machines. An arm whose cold rung stops reaching the device says so on its
+/// rows (<c>cold_rung=COLLAPSED</c>); that is the experiment's outcome, not its failure.
+///
+/// Every row names the environment it ran in rather than the one it asked for: the resolved backend, cache
+/// sizes, pruning mode, file system and database size (<see cref="ColdSloadTestBlockchain.ResolvedConfigFields"/>),
+/// the bytes the timed window pulled from the storage layer, and the CPU set the process was allowed to run
+/// on. A run whose temp directory is <c>tmpfs</c> has no block device under it, so no arrangement of caches
+/// can make a rung reach one and every figure is a memory-resident lower bound; point <c>TMPDIR</c> at a
+/// disk-backed directory to measure the other regime.
 ///
 /// Rows are appended as <c>RESULT key=value</c> lines to <c>FRAME_FLOOD_OUT</c>, or
-/// <c>frame-tx-storage-producer.txt</c> in the temp directory. Run under <c>taskset -c 0</c>.
+/// <c>frame-tx-storage-producer.txt</c> in the temp directory. Run under <c>taskset -c 0</c>, which the
+/// harness refuses to run without.
 /// </remarks>
 [TestFixture]
 [Explicit("measurement harness")]
@@ -81,6 +89,7 @@ public class FrameTxStorageProducerMeasurement
 
     private ColdSloadTestBlockchain _chain = null!;
     private TempPath _dbDirectory = null!;
+    private StorageArm _arm = null!;
     private ulong _ceiling;
     private int _slotsPerTx;
 
@@ -100,15 +109,25 @@ public class FrameTxStorageProducerMeasurement
     }
 
     [TearDown]
-    public void TearDown()
+    public void TearDown() => DisposeChain();
+
+    private void DisposeChain()
     {
         _chain?.Dispose();
         _dbDirectory?.Dispose();
+        _chain = null!;
+        _dbDirectory = null!;
     }
 
-    private static IEnumerable<TestCaseData> CeilingCases()
+    private static IEnumerable<TestCaseData> ArmCeilingCases()
     {
-        foreach (ulong ceiling in SweptCeilings) yield return new TestCaseData(ceiling);
+        foreach (StorageArm arm in StorageArm.Swept())
+        {
+            foreach (ulong ceiling in SweptCeilings)
+            {
+                yield return new TestCaseData(arm, ceiling).SetArgDisplayNames(arm.Name, ceiling.ToString());
+            }
+        }
     }
 
     /// <summary>
@@ -126,13 +145,14 @@ public class FrameTxStorageProducerMeasurement
     /// which touches no storage at all. Only a fall that appears in <c>fresh</c> and in neither control is
     /// the storage read.
     /// </remarks>
-    [TestCaseSource(nameof(CeilingCases))]
-    public async Task Storage_reads_repeat_per_production_attempt(ulong ceiling)
+    [TestCaseSource(nameof(ArmCeilingCases))]
+    public async Task Storage_reads_repeat_per_production_attempt(StorageArm arm, ulong ceiling)
     {
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         ColdSloadStorageFixture.SkipUnlessLinux();
+        SkipUnlessSingleCore();
 
-        Prepare(ceiling);
+        Prepare(arm, ceiling);
         await BuildChain(Warmup + 3 * LadderRepeats + 2);
 
         // The ladder's first attempt is the one under test, so the JIT must already be warm when it runs.
@@ -177,22 +197,22 @@ public class FrameTxStorageProducerMeasurement
         for (int attempt = 0; attempt < LadderAttempts; attempt++)
         {
             double p50 = Percentile(byAttempt[attempt], 0.50);
-            Emit($"case=producer_attempt_ladder shape={shape} range={range} storage_backend=rocksdb_trie "
-                 + $"ceiling={_ceiling} cold_sloads={ColdSloadsFor(shape)} attempt={attempt + 1} "
+            Emit($"case=producer_attempt_ladder shape={shape} range={range} "
+                 + $"storage_backend={_chain.StorageBackend} ceiling={_ceiling} cold_sloads={ColdSloadsFor(shape)} attempt={attempt + 1} "
                  + $"repeats={LadderRepeats} "
                  + $"build_p50_us={p50:F1} build_p90_us={Percentile(byAttempt[attempt], 0.90):F1} "
                  + $"build_min_us={Min(byAttempt[attempt]):F1} "
                  + $"ratio_to_first_attempt={p50 / firstAttempt:F3} "
-                 + $"read_bytes_total={readBytesByAttempt[attempt]} {_chain.TrieCacheFields}");
+                 + $"read_bytes_total={readBytesByAttempt[attempt]} {_chain.TrieCacheFields} "
+                 + $"{_chain.DbFileFields} {RowEnvironment}");
         }
 
-        Emit($"case=producer_attempt_summary shape={shape} range={range} storage_backend=rocksdb_trie "
-             + $"ceiling={_ceiling} cold_sloads={ColdSloadsFor(shape)} first_attempt_p50_us={firstAttempt:F1} "
+        Emit($"case=producer_attempt_summary shape={shape} range={range} "
+             + $"storage_backend={_chain.StorageBackend} ceiling={_ceiling} cold_sloads={ColdSloadsFor(shape)} first_attempt_p50_us={firstAttempt:F1} "
              + $"later_attempt_p50_us={secondAttempt:F1} "
              + $"later_over_first={secondAttempt / firstAttempt:F3} "
              + $"work_repeats_per_attempt={(secondAttempt >= firstAttempt * ReadsRepeatFloor ? "yes" : "no")} "
-             + $"db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} "
-             + $"db_fs={StorageResidency.FileSystemOf(_dbDirectory.Path)} {_chain.TrieCacheFields}");
+             + $"{_chain.DbFileFields} {_chain.TrieCacheFields} {RowEnvironment}");
     }
 
     private int ColdSloadsFor(string shape) => shape == "sload-cold" ? _slotsPerTx : 0;
@@ -200,6 +220,10 @@ public class FrameTxStorageProducerMeasurement
     /// <summary>A later attempt within this fraction of the first is charged the same work, so the reads
     /// were re-done rather than served from a cache the first attempt filled.</summary>
     private const double ReadsRepeatFloor = 0.90;
+
+    /// <summary>The resolved settings and CPU affinity every row of this fixture carries after the fields
+    /// older rows already had.</summary>
+    private string RowEnvironment => $"{_chain.ResolvedConfigFields} {CpuFields}";
 
     /// <summary>
     /// Prices one production attempt for every ranked shape on one rig, so the storage shape can be placed
@@ -209,25 +233,76 @@ public class FrameTxStorageProducerMeasurement
     /// The <c>sload-cold</c> shape appears three times. <c>fixed</c> re-executes one transaction, which is
     /// what a producer retrying a single pending transaction does. <c>distinct</c> gives every attempt its
     /// own never-read range, which is what a producer walking a pool full of attacker transactions does.
-    /// <c>distinct-fadvise</c> is the same with the database's clean pages dropped before each attempt.
+    /// <c>distinct-fadvise</c> is the same with the database's clean pages dropped before each attempt, and
+    /// is the rung the campaign's headline ratio rests on. Whether it is colder than <c>distinct</c> at all
+    /// is what the arms decide, so its rows carry that verdict instead of assuming it.
     /// </remarks>
-    [TestCaseSource(nameof(CeilingCases))]
-    public async Task Production_cost_by_shape(ulong ceiling)
+    [TestCaseSource(nameof(ArmCeilingCases))]
+    public async Task Production_cost_by_shape(StorageArm arm, ulong ceiling)
     {
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         ColdSloadStorageFixture.SkipUnlessLinux();
+        SkipUnlessSingleCore();
 
-        Prepare(ceiling);
-        await BuildChain(2 * (Warmup + Samples) + Warmup + 2, PaddingSlots);
+        int repeats = StorageRepetition.Repeats;
+        List<double> keccak = new(repeats);
+        List<double> signature = new(repeats);
+        List<double> storageFixed = new(repeats);
+        List<double> storageWarm = new(repeats);
+        List<double> storageCold = new(repeats);
+        long coldReadBytesMin = long.MaxValue;
+        string fileSystem = string.Empty;
 
-        MeasureShape("keccak-wide", "fixed", dropPageCache: false);
-        MeasureShape("signature-stuffed", "fixed", dropPageCache: false);
-        MeasureShape("sload-cold", "fixed", dropPageCache: false);
-        MeasureShape("sload-cold", "distinct", dropPageCache: false);
-        MeasureShape("sload-cold", "distinct-fadvise", dropPageCache: true);
+        // Each repeat seeds its own database, because a repeat that followed another would find the page cache
+        // the previous cold rung emptied and its warm rungs would no longer be warm.
+        for (int repeat = 1; repeat <= repeats; repeat++)
+        {
+            Prepare(arm, ceiling);
+            await BuildChain(2 * (Warmup + Samples) + Warmup + 2, PaddingSlots);
+
+            keccak.Add(MeasureShape("keccak-wide", "fixed", dropPageCache: false, repeat).UsPerKgas);
+            signature.Add(MeasureShape("signature-stuffed", "fixed", dropPageCache: false, repeat).UsPerKgas);
+            storageFixed.Add(MeasureShape("sload-cold", "fixed", dropPageCache: false, repeat).UsPerKgas);
+
+            ShapeSample warm = MeasureShape("sload-cold", "distinct", dropPageCache: false, repeat);
+            storageWarm.Add(warm.UsPerKgas);
+
+            ShapeSample cold = MeasureShape("sload-cold", "distinct-fadvise", dropPageCache: true, repeat, warm.UsPerKgas);
+            storageCold.Add(cold.UsPerKgas);
+            coldReadBytesMin = Math.Min(coldReadBytesMin, cold.ReadBytesPerSample);
+            fileSystem = cold.FileSystem;
+
+            if (repeat < repeats) DisposeChain();
+        }
+
+        double signatureMedian = StorageRepetition.Median(signature);
+        double warmMedian = StorageRepetition.Median(storageWarm);
+        double coldMedian = StorageRepetition.Median(storageCold);
+
+        Emit($"case=storage_arm_verdict storage_backend={_chain.StorageBackend} ceiling={_ceiling} "
+             + $"cold_sloads={_slotsPerTx} repeats={repeats} samples={Samples} "
+             + $"keccak_us_per_kgas={StorageRepetition.Median(keccak):F3} "
+             + $"signature_us_per_kgas={signatureMedian:F3} "
+             + $"storage_fixed_us_per_kgas={StorageRepetition.Median(storageFixed):F3} "
+             + $"storage_warm_us_per_kgas={warmMedian:F3} storage_cold_us_per_kgas={coldMedian:F3} "
+             + $"cold_over_signature={coldMedian / signatureMedian:F3} "
+             + $"warm_over_signature={warmMedian / signatureMedian:F3} "
+             + $"cold_read_bytes_per_sample_min={coldReadBytesMin} "
+             + $"{ColdRung.Fields(coldReadBytesMin, fileSystem, coldMedian / warmMedian)} "
+             + $"{StorageRepetition.SpreadFields("keccak_us_per_kgas", keccak)} "
+             + $"{StorageRepetition.SpreadFields("signature_us_per_kgas", signature)} "
+             + $"{StorageRepetition.SpreadFields("warm_us_per_kgas", storageWarm)} "
+             + $"{StorageRepetition.SpreadFields("cold_us_per_kgas", storageCold)} "
+             + $"{_chain.DbFileFields} {_chain.TrieCacheFields} {RowEnvironment}");
     }
 
-    private void MeasureShape(string shape, string rotation, bool dropPageCache)
+    /// <summary>What one repeat of one shape cost, and what it read while doing so.</summary>
+    private readonly record struct ShapeSample(double UsPerKgas, long ReadBytesPerSample, string FileSystem);
+
+    /// <param name="warmUsPerKgas">The same shape's page-cache-warm cost in this repeat, against which a rung
+    /// that claims to be colder is judged. <see cref="double.NaN"/> for rungs that make no such claim.</param>
+    private ShapeSample MeasureShape(
+        string shape, string rotation, bool dropPageCache, int repeat, double warmUsPerKgas = double.NaN)
     {
         bool distinct = rotation != "fixed";
         int warmupRanges = distinct ? Warmup : 1;
@@ -240,17 +315,22 @@ public class FrameTxStorageProducerMeasurement
 
         if (dropPageCache)
         {
-            _chain.DbProvider.StateDb.Flush();
-            _chain.DbProvider.CodeDb.Flush();
+            _chain.PersistState();
             StorageResidency.SyncAll();
         }
 
         long readBefore = StorageResidency.ProcessReadBytes();
         int fadvisedFiles = 0;
+        int fadvisedFilesTotal = 0;
         List<double> micros = new(Samples);
         for (int i = 0; i < Samples; i++)
         {
-            if (dropPageCache) fadvisedFiles = StorageResidency.DropPageCache(_dbDirectory.Path);
+            if (dropPageCache)
+            {
+                fadvisedFiles = StorageResidency.DropPageCache(_dbDirectory.Path);
+                fadvisedFilesTotal += fadvisedFiles;
+            }
+
             micros.Add(rig.ProduceOnce());
         }
 
@@ -262,19 +342,34 @@ public class FrameTxStorageProducerMeasurement
             + "describe an ordinary block");
 
         double p50 = Percentile(micros, 0.50);
+        double usPerKgas = p50 * 1_000 / _ceiling;
+        long readBytesPerSample = readBytes / Samples;
+        string fileSystem = StorageResidency.FileSystemOf(_dbDirectory.Path);
 
-        Emit($"case=production_cost shape={shape} rotation={rotation} storage_backend=rocksdb_trie "
+        string coldFields = double.IsNaN(warmUsPerKgas)
+            ? string.Empty
+            : $" {ColdRung.Fields(readBytesPerSample, fileSystem, usPerKgas / warmUsPerKgas)}";
+
+        Emit($"case=production_cost shape={shape} rotation={rotation} storage_backend={_chain.StorageBackend} "
              + $"ceiling={_ceiling} cold_sloads={(shape == "sload-cold" ? _slotsPerTx : 0)} samples={Samples} "
              + $"build_p50_us={p50:F1} build_p90_us={Percentile(micros, 0.90):F1} "
              + $"build_p99_us={Percentile(micros, 0.99):F1} build_min_us={Min(micros):F1} "
-             + $"us_per_kgas={p50 * 1_000 / _ceiling:F3} us_per_Mgas_basis=declared "
-             + $"read_bytes_total={readBytes} read_bytes_per_sample={readBytes / Samples} "
+             + $"us_per_kgas={usPerKgas:F3} us_per_Mgas_basis=declared "
+             + $"read_bytes_total={readBytes} read_bytes_per_sample={readBytesPerSample} "
              + $"fadvised_files={fadvisedFiles} db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} "
-             + $"db_fs={StorageResidency.FileSystemOf(_dbDirectory.Path)} {_chain.TrieCacheFields}");
+             + $"db_fs={fileSystem} {_chain.TrieCacheFields} "
+             + $"repeat={repeat} fadvised_files_total={fadvisedFilesTotal}{coldFields} {RowEnvironment}");
+
+        // Emitted first: an arm that claims a device and did not reach one is a failure worth stopping for,
+        // but the row that proves it has to survive the stop.
+        if (dropPageCache) ColdRung.AssertReachedDevice(_arm, rotation, readBytesPerSample, fileSystem);
+
+        return new ShapeSample(usPerKgas, readBytesPerSample, fileSystem);
     }
 
-    private void Prepare(ulong ceiling)
+    private void Prepare(StorageArm arm, ulong ceiling)
     {
+        _arm = arm;
         _ceiling = ceiling;
         _slotsPerTx = ColdSloadPrefix.SlotsPerPrefix(ceiling);
         _saltStride = _slotsPerTx + 1;
@@ -295,11 +390,10 @@ public class FrameTxStorageProducerMeasurement
 
         int slotsToSeed = Math.Max((rangesNeeded + 1) * _saltStride, paddingSlots);
         _chain = await ColdSloadStorageFixture.BuildChain(
-            _dbDirectory.Path, _ceiling, SloadAttacker, AttackerBalance, slotsToSeed,
+            _dbDirectory.Path, _ceiling, _arm, SloadAttacker, AttackerBalance, slotsToSeed,
             [(KeccakAttacker, "keccak-wide"), (SignatureAttacker, "banned-opcode")]);
 
-        _chain.DbProvider.StateDb.Flush();
-        _chain.DbProvider.CodeDb.Flush();
+        _chain.PersistState();
         ColdSloadStorageFixture.AssertSeededSlotIsVisible(_chain, SloadAttacker, slotsToSeed);
     }
 

@@ -6,7 +6,11 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Numerics;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -27,6 +31,78 @@ using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
+
+/// <summary>
+/// The CPU affinity every harness in this campaign asserts in prose, read back from the operating system so
+/// that a row states the environment it ran in rather than the one the runbook asked for.
+/// </summary>
+/// <remarks>
+/// A frame-tx measurement taken on a contended core is not comparable with one taken on an idle core: the
+/// storage ladder has been observed to swing by 80% between repeats when other work shared core 0. Rows
+/// therefore carry <c>cpus=</c> and <c>single_core=</c>, and harnesses whose quantity only means anything
+/// under contention refuse to run without a single-core affinity.
+/// </remarks>
+internal static class MeasurementEnvironment
+{
+    /// <summary>The OS-observed CPU set, because in-process affinity is unreliable on Linux.</summary>
+    public static string ObservedCpuSet()
+    {
+        try
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                foreach (string line in File.ReadLines("/proc/self/status"))
+                {
+                    if (line.StartsWith("Cpus_allowed_list:", StringComparison.Ordinal))
+                    {
+                        return line["Cpus_allowed_list:".Length..].Trim();
+                    }
+                }
+            }
+
+            if (!OperatingSystem.IsWindows()) return "unknown";
+
+            using Process current = Process.GetCurrentProcess();
+            return $"mask:{(ulong)(nint)current.ProcessorAffinity:x}";
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                       or PlatformNotSupportedException or Win32Exception or InvalidOperationException)
+        {
+            TestContext.Out.WriteLine($"DEBUG CPU affinity could not be read: {e.GetType().Name}: {e.Message}");
+            return "unknown";
+        }
+    }
+
+    public static bool IsSingleCore()
+    {
+        string set = ObservedCpuSet();
+
+        if (set.StartsWith("mask:", StringComparison.Ordinal))
+        {
+            return ulong.TryParse(set["mask:".Length..], NumberStyles.HexNumber, CultureInfo.InvariantCulture,
+                       out ulong mask)
+                   && BitOperations.PopCount(mask) == 1;
+        }
+
+        return set.Length > 0
+               && set != "unknown"
+               && !set.Contains(',', StringComparison.Ordinal)
+               && !set.Contains('-', StringComparison.Ordinal);
+    }
+
+    /// <summary>The affinity fields every measurement row carries.</summary>
+    public static string CpuFields => $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")}";
+
+    public static void SkipUnlessSingleCore()
+    {
+        if (IsSingleCore() || Environment.GetEnvironmentVariable("FRAME_FLOOD_ALLOW_MULTICORE") == "1") return;
+
+        Assert.Ignore($"this process may run on CPUs [{ObservedCpuSet()}], so the single-core contention this "
+                      + "harness measures does not hold and a flood would appear nearly free. Re-run under "
+                      + "`taskset -c 0`, or set FRAME_FLOOD_ALLOW_MULTICORE=1 to measure the uncontended case "
+                      + "deliberately.");
+    }
+}
 
 /// <summary>Skips runs whose requested ceiling would be clamped by the compiled EIP-8141 limit.</summary>
 internal static class Eip8141MeasurementGuards
