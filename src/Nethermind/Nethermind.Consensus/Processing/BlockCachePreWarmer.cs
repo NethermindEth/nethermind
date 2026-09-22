@@ -930,70 +930,81 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <summary>Groups into <paramref name="scratch"/>, whose lists and dictionary are reused block after block.</summary>
     private static void GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed, int[]? claimed, GroupingScratch scratch)
     {
-        Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> groups = scratch.Groups;
-        groups.Clear();
+        Transaction[] transactions = block.Transactions;
+        int count = transactions.Length;
 
-        for (int i = 0; i < block.Transactions.Length; i++)
+        // Merge two kinds of edge: consecutive transactions within a window of WarmWindowSize, and any two
+        // transactions of the same sender. Each connected component becomes one job warmed sequentially in one
+        // scope, so a transaction is warmed after its neighbours and its sender's earlier transactions and sees
+        // their speculative writes. This replaces the per-sender-only grouping; the claim table and the
+        // late-claim path are unchanged.
+        int[] parent = ArrayPool<int>.Shared.Rent(count);
+        for (int i = 0; i < count; i++) parent[i] = i;
+
+        ArrayPoolList<int> warmable = scratch.Warmable;
+        warmable.Clear();
+        Dictionary<AddressAsKey, int> lastOfSender = scratch.LastOfSender;
+        lastOfSender.Clear();
+
+        int previousInWindow = -1;
+        for (int i = 0; i < count; i++)
         {
+            if (i % WarmWindowSize == 0) previousInWindow = -1;
+
             if (claimed is not null && claimed[i] != 0) continue;
 
-            Transaction tx = block.Transactions[i];
+            Transaction tx = transactions[i];
             if (tx.SenderAddress is not Address sender)
             {
                 // Not recovered yet (a worker claims it once its sender lands) or an invalid signature (the block will be rejected).
                 continue;
             }
 
+            // Claim every recovered-sender transaction so the late-claim scan never revisits it, exactly as the
+            // per-sender grouping did; only those not already warmed speculatively join a window and get a job.
             if (claimed is not null) claimed[i] = 1;
-            ref ArrayPoolList<(int Index, Transaction Tx)>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(groups, sender, out _);
-            (list ??= scratch.RentList()).Add((i, tx));
+            if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
+
+            if (previousInWindow >= 0) Union(parent, previousInWindow, i);
+            previousInWindow = i;
+            ref int last = ref CollectionsMarshal.GetValueRefOrAddDefault(lastOfSender, sender, out bool seen);
+            if (seen) Union(parent, last, i);
+            last = i;
+
+            warmable.Add(i);
         }
 
-        ArrayPoolList<WarmupJob> result = scratch.Jobs;
-        foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.Values)
+        Dictionary<int, ArrayPoolList<(int Index, Transaction Tx)>> components = scratch.Components;
+        components.Clear();
+        foreach (int i in warmable.AsSpan())
         {
-            // The sender counters stay per original sender group; splitting below must not inflate them.
-            if (speculativelyWarmed is not null)
-            {
-                // Whole group already warmed speculatively — emit no jobs; leave the rest to the reactive pass.
-                if (AllSpeculativelyWarmed(group, speculativelyWarmed))
-                {
-                    scratch.ReturnList(group);
-                    continue;
-                }
-            }
+            ref ArrayPoolList<(int Index, Transaction Tx)>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(components, Find(parent, i), out _);
+            (list ??= scratch.RentList()).Add((i, transactions[i]));
+        }
 
-            ulong groupGas = TotalGasLimit(group);
+        ArrayPool<int>.Shared.Return(parent);
 
-            // Splitting pays only when idle workers exist to absorb the singleton jobs; with one
-            // worker it just discards same-sender state propagation for nothing. Negative follows
-            // ParallelOptions.MaxDegreeOfParallelism semantics: unlimited.
-            if (maxWorkers is < 0 or >= 2 && group.Count >= 2 && groupGas > SplitSenderGroupGasThreshold)
+        ArrayPoolList<WarmupJob> result = scratch.Jobs;
+        foreach (ArrayPoolList<(int Index, Transaction Tx)> component in components.Values)
+        {
+            ulong componentGas = TotalGasLimit(component);
+
+            // Splitting pays only when idle workers exist to absorb the windows; with one worker it just discards
+            // in-scope state propagation for nothing. A component confined to one window has no parallelism to gain.
+            if (maxWorkers is < 0 or >= 2 && componentGas > SplitSenderGroupGasThreshold && SpansMoreThanOneWindow(component))
             {
-                // A heavy chain warms slower than the main loop executes it; warm each tx in parallel from parent state instead.
-                foreach ((int Index, Transaction Tx) item in group.AsSpan())
-                {
-                    if (item.Tx.Hash is Hash256 hash && speculativelyWarmed?.Contains(hash) == true)
-                    {
-                        // Already warmed speculatively — a singleton job for it would do no work.
-                        continue;
-                    }
-                    ArrayPoolList<(int Index, Transaction Tx)> single = scratch.RentList();
-                    single.Add(item);
-                    result.Add(new WarmupJob(single, item.Tx.GasLimit));
-                }
-                scratch.ReturnList(group);
+                SplitIntoWindows(component, result, scratch);
+                scratch.ReturnList(component);
             }
             else
             {
-                result.Add(new WarmupJob(group, groupGas));
+                result.Add(new WarmupJob(component, componentGas));
             }
         }
 
-        // Hoist heavy jobs to the front (heaviest first): they take the longest to warm and gain
-        // the most from lead time. The rest keep block order, which streams just ahead of the main
-        // thread on transaction-dense blocks. First-index tie-breaks keep equal-estimate ordering
-        // deterministic under the unstable span sort.
+        // Head jobs first, then heavy jobs (heaviest first): they take the longest to warm and gain the most from
+        // lead time. The rest keep block order, which streams just ahead of the main thread on transaction-dense
+        // blocks. First-index tie-breaks keep equal-estimate ordering deterministic under the unstable span sort.
         result.AsSpan().Sort(static (a, b) =>
         {
             if (a.IsHoisted != b.IsHoisted) return a.IsHoisted ? -1 : 1;
@@ -1004,7 +1015,47 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
             return a.FirstIndex.CompareTo(b.FirstIndex);
         });
+
+        static int Find(int[] parent, int i)
+        {
+            while (parent[i] != i) i = parent[i] = parent[parent[i]];
+            return i;
+        }
+
+        static void Union(int[] parent, int a, int b)
+        {
+            a = Find(parent, a);
+            b = Find(parent, b);
+            if (a != b) parent[Math.Max(a, b)] = Math.Min(a, b);
+        }
     }
+
+    /// <summary>A component confined to one window has no parallelism to gain from a split.</summary>
+    private static bool SpansMoreThanOneWindow(ArrayPoolList<(int Index, Transaction Tx)> component) =>
+        component[0].Index / WarmWindowSize != component[^1].Index / WarmWindowSize;
+
+    /// <summary>Breaks a heavy multi-window component back into its plain windows, each an independent job.</summary>
+    private static void SplitIntoWindows(ArrayPoolList<(int Index, Transaction Tx)> component, ArrayPoolList<WarmupJob> result, GroupingScratch scratch)
+    {
+        ArrayPoolList<(int Index, Transaction Tx)>? window = null;
+        int windowStart = -1;
+        foreach ((int Index, Transaction Tx) item in component.AsSpan())
+        {
+            if (item.Index / WarmWindowSize != windowStart)
+            {
+                if (window is not null) result.Add(new WarmupJob(window, TotalGasLimit(window)));
+                window = scratch.RentList();
+                windowStart = item.Index / WarmWindowSize;
+            }
+
+            window!.Add(item);
+        }
+
+        if (window is not null) result.Add(new WarmupJob(window, TotalGasLimit(window)));
+    }
+
+    /// <summary>Consecutive transactions warmed together in one scope; windows that share a sender are merged.</summary>
+    private const int WarmWindowSize = 3;
 
     /// <summary>
     /// What grouping a block works in: the sender dictionary, the jobs, and the transaction lists behind them, all
@@ -1016,8 +1067,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // that keeping their arrays rented between blocks would cost more than allocating them then.
         private const int MaxRetainedLists = 1024;
 
-        public readonly Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> Groups = [];
         public readonly ArrayPoolList<WarmupJob> Jobs = new(64);
+        // Union-find working sets, kept from block to block so grouping allocates nothing once warm.
+        public readonly ArrayPoolList<int> Warmable = new(256);
+        public readonly Dictionary<AddressAsKey, int> LastOfSender = [];
+        public readonly Dictionary<int, ArrayPoolList<(int Index, Transaction Tx)>> Components = [];
         private readonly Stack<ArrayPoolList<(int Index, Transaction Tx)>> _lists = new();
 
         public ArrayPoolList<(int Index, Transaction Tx)> RentList() => _lists.TryPop(out ArrayPoolList<(int Index, Transaction Tx)>? list) ? list : new(4);
@@ -1049,6 +1103,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             ReturnJobs();
             Jobs.Dispose();
+            Warmable.Dispose();
             while (_lists.TryPop(out ArrayPoolList<(int Index, Transaction Tx)>? list))
             {
                 list.Dispose();
@@ -1092,16 +1147,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         public int LastIndex => Transactions[^1].Index;
         public bool IsHoisted => GasEstimate > SplitSenderGroupGasThreshold;
-    }
-
-    private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, ISet<Hash256> warmed)
-    {
-        foreach ((int _, Transaction tx) in group.AsSpan())
-        {
-            if (tx.Hash is not Hash256 hash || !warmed.Contains(hash)) return false;
-        }
-
-        return true;
     }
 
     private static void WarmupSingleTransaction(
