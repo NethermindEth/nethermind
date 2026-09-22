@@ -220,7 +220,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         bool committed = false;
         TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.Hash!).Returns(new ValueTask(firstCopyRemoved.Task));
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(new ValueTask(firstCopyRemoved.Task));
 
         using NewPayloadHandler handler = CreateHandler(
             block,
@@ -261,7 +261,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.Hash!).Returns(new ValueTask(firstCopyRemoved.Task));
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(new ValueTask(firstCopyRemoved.Task));
         processingQueue
             .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
             .Returns(_ =>
@@ -314,7 +314,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         TaskCompletionSource parentRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.ParentHash!).Returns(_ =>
+        processingQueue.WaitUntilRemovedAsync(block.ParentHash!, true).Returns(_ =>
         {
             parentWaitRequested.TrySetResult();
             return new ValueTask(parentRemoved.Task);
@@ -363,7 +363,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         block.Header.IsPostMerge = true;
 
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.Hash!).Returns(new ValueTask(new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task));
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(new ValueTask(new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task));
 
         using NewPayloadHandler handler = CreateHandler(
             block,

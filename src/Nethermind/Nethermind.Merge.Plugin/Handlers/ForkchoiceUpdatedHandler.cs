@@ -60,6 +60,9 @@ public class ForkchoiceUpdatedHandler(
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         BlockHeader? newHeadHeader = GetBlockHeader(forkchoiceState.HeadBlockHash);
+        // Before ApplyForkchoiceUpdate boosts this thread: an await inside that scope would resume elsewhere and the
+        // boost would never be restored.
+        if (newHeadHeader is not null) await WaitForHeadCommitAsync(newHeadHeader);
         return await ApplyForkchoiceUpdate(newHeadHeader, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
@@ -178,24 +181,6 @@ public class ForkchoiceUpdatedHandler(
         {
             if (_logger.IsWarn) _logger.Warn($"Block info for: {requestStr} wasn't found.");
             return ForkchoiceUpdatedV1Result.Syncing;
-        }
-
-        if (!blockInfo.WasProcessed && processingQueue.Count <= 1)
-        {
-            // newPayload answers VALID once the block is executed, before it is committed and marked processed, and the
-            // CL's forkchoice follows at once: give that commit its moment rather than answer SYNCING and make the CL
-            // retry. Only when nothing is queued ahead of the block, and bounded, because this wait holds the engine
-            // API's lock: a backlog or a slow commit gets the SYNCING it always got.
-            Task removed = processingQueue.WaitUntilRemovedAsync(newHeadHeader.GetOrCalculateHash()).AsTask();
-            if (!removed.IsCompleted)
-            {
-                using CancellationTokenSource bound = new();
-                if (await Task.WhenAny(removed, Task.Delay(CommitWait, bound.Token)) == removed)
-                {
-                    bound.Cancel();
-                    blockInfo = _blockTree.GetInfo(newHeadHeader.Number, newHeadHeader.GetOrCalculateHash()).Info ?? blockInfo;
-                }
-            }
         }
 
         if (!blockInfo.WasProcessed)
@@ -397,6 +382,26 @@ public class ForkchoiceUpdatedHandler(
             cursor = parent;
         }
         return cursor.GetOrCalculateHash() != candidateHeader.GetOrCalculateHash();
+    }
+
+    /// <summary>
+    /// newPayload answers VALID once the block is executed, before it is committed and marked processed, and the CL's
+    /// forkchoice follows at once: a head that has its verdict and is still committing gets its moment here rather than
+    /// the SYNCING that would make the CL retry. Only for such a head, only when nothing is queued ahead of it, and
+    /// bounded, because the engine API's lock is held meanwhile: a head that is merely queued, a backlog or a slow
+    /// commit get the SYNCING they always got.
+    /// </summary>
+    private async Task WaitForHeadCommitAsync(BlockHeader newHeadHeader)
+    {
+        if (processingQueue.Count > 1) return;
+        Hash256 hash = newHeadHeader.GetOrCalculateHash();
+        if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { WasProcessed: false }) return;
+
+        Task removed = processingQueue.WaitUntilRemovedAsync(hash, executedOnly: true).AsTask();
+        if (removed.IsCompleted) return;
+
+        using CancellationTokenSource bound = new();
+        if (await Task.WhenAny(removed, Task.Delay(CommitWait, bound.Token)) == removed) bound.Cancel();
     }
 
     private BlockHeader? GetBlockHeader(Hash256 headBlockHash)

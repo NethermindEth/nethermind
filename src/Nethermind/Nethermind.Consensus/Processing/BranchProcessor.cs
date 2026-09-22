@@ -32,7 +32,7 @@ public class BranchProcessor(
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
-    public event EventHandler<BlockProcessedEventArgs>? BlockExecuted;
+    public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -173,7 +173,7 @@ public class BranchProcessor(
                 // is the last one the queue answers for. The suggested block is what the queue knows the branch by.
                 if (notReadOnly && i == blocksCount - 1)
                 {
-                    BlockExecuted?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, receipts));
+                    BlockExecuted?.Invoke(this, new BlockExecutedEventArgs(suggestedBlock));
                 }
 
                 QueueClearCaches(preWarmTask);

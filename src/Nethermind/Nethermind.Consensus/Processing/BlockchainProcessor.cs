@@ -131,16 +131,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
     }
 
-    private void OnBlockExecuted(object? sender, BlockProcessedEventArgs e)
+    private void OnBlockExecuted(object? sender, BlockExecutedEventArgs e)
     {
-        EventHandler<BlockHashEventArgs>? handler = BlockExecuted;
-        if (handler is null) return;
         Block block = e.Block;
-        handler(this, new BlockHashEventArgs(block.Hash!, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied));
+        Hash256 hash = block.Hash!;
+        if (_inFlight.TryGetValue(hash, out InFlightBlock? inFlight)) inFlight.MarkExecuted();
+        BlockExecuted?.Invoke(this, new BlockHashEventArgs(hash, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied));
     }
 
-    public ValueTask WaitUntilRemovedAsync(Hash256 blockHash)
-        => _inFlight.TryGetValue(blockHash, out InFlightBlock? inFlight) ? new ValueTask(inFlight.Removed) : ValueTask.CompletedTask;
+    public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false)
+        => _inFlight.TryGetValue(blockHash, out InFlightBlock? inFlight) && (!executedOnly || inFlight.Executed)
+            ? new ValueTask(inFlight.Removed)
+            : ValueTask.CompletedTask;
 
     private void TrackInFlight(Hash256 blockHash)
     {
@@ -180,8 +182,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         private static readonly TaskCompletionSource Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _copies;
         private TaskCompletionSource? _removed;
+        private volatile bool _executed;
 
         static InFlightBlock() => Done.SetResult();
+
+        /// <summary>Whether a copy has had its verdict: from here to removal the block is committing.</summary>
+        public bool Executed => _executed;
+
+        public void MarkExecuted() => _executed = true;
 
         public Task Removed
         {

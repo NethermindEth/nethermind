@@ -92,7 +92,7 @@ public class BalRecordingBranchProcessorTests
             return [.. suggestedBlocks];
         }
 
-        public event EventHandler<BlockProcessedEventArgs>? BlockExecuted { add { } remove { } }
+        public event EventHandler<BlockExecutedEventArgs>? BlockExecuted { add { } remove { } }
 
         public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;

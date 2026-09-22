@@ -131,7 +131,7 @@ public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
         if (_logger.IsInfo) _logger.Info($"dotTrace: saved snapshot for block {e.Block.Number}");
     }
 
-    public event EventHandler<BlockProcessedEventArgs>? BlockExecuted
+    public event EventHandler<BlockExecutedEventArgs>? BlockExecuted
     {
         add => _inner.BlockExecuted += value;
         remove => _inner.BlockExecuted -= value;

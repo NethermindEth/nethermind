@@ -169,7 +169,7 @@ public class BlockchainProcessorTests
 
             public event EventHandler<BlockEventArgs>? BlockProcessing;
 
-            public event EventHandler<BlockProcessedEventArgs>? BlockExecuted { add { } remove { } }
+            public event EventHandler<BlockExecutedEventArgs>? BlockExecuted { add { } remove { } }
 
             public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         }

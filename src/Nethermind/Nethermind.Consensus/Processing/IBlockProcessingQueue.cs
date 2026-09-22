@@ -58,8 +58,10 @@ namespace Nethermind.Consensus.Processing
         /// that learnt the verdict from <see cref="BlockExecuted"/> can wait for the block to become readable
         /// through the chain. It completes only after the last copy's <see cref="BlockRemoved"/> has been raised,
         /// so a caller that resumes can register for the block afresh without an event of the old copy reaching it.
+        /// With <paramref name="executedOnly"/> it also completes at once for a block that has not had its verdict
+        /// yet: such a block is queued, not committing, and its wait would be as long as its processing.
         /// </summary>
-        ValueTask WaitUntilRemovedAsync(Hash256 blockHash);
+        ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false);
 
         /// <summary>
         /// Fired when processing of a block failed and the block was marked invalid.

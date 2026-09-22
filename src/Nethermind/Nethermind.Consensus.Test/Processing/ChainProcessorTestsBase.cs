@@ -63,7 +63,7 @@ public abstract class ChainProcessorTestsBase
         public void AllowToFail(Block block) => _allowedToFail[block.Hash!] = true;
 
 #pragma warning disable CS0067
-        public event EventHandler<BlockProcessedEventArgs>? BlockExecuted;
+        public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
         public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;

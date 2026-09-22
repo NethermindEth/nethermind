@@ -50,7 +50,7 @@ public class ForkchoiceUpdatedHandlerTests
         TaskCompletionSource removed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
         processingQueue.Count.Returns(1);
-        processingQueue.WaitUntilRemovedAsync(newHeadHash).Returns(_ =>
+        processingQueue.WaitUntilRemovedAsync(newHeadHash, true).Returns(_ =>
         {
             waitRequested.TrySetResult();
             return new ValueTask(removed.Task);
@@ -118,6 +118,6 @@ public class ForkchoiceUpdatedHandlerTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(new ForkchoiceStateV1(newHeadHash, parent.Hash!, parent.Hash!), null, 1);
 
         Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
-        await processingQueue.DidNotReceive().WaitUntilRemovedAsync(Arg.Any<Hash256>());
+        await processingQueue.DidNotReceive().WaitUntilRemovedAsync(Arg.Any<Hash256>(), Arg.Any<bool>());
     }
 }

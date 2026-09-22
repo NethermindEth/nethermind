@@ -65,7 +65,7 @@ public class BalRecordingBranchProcessor(
         return false;
     }
 
-    public event EventHandler<BlockProcessedEventArgs>? BlockExecuted
+    public event EventHandler<BlockExecutedEventArgs>? BlockExecuted
     {
         add => inner.BlockExecuted += value;
         remove => inner.BlockExecuted -= value;

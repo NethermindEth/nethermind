@@ -298,8 +298,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
-        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-        // Try to execute block
+        // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
+        // thread only waits for the verdict - and a boost held across that await would resume on another thread and
+        // never be restored.
         (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
         switch (result)
@@ -502,7 +503,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Hash256 parentHash = parent.GetOrCalculateHash();
         if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
 
-        Task removed = _processingQueue.WaitUntilRemovedAsync(parentHash).AsTask();
+        Task removed = _processingQueue.WaitUntilRemovedAsync(parentHash, executedOnly: true).AsTask();
         if (removed.IsCompleted) return true;
 
         using CancellationTokenSource bound = new();
@@ -561,10 +562,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // first copy finish first.
             if (addResult == AddBlockResult.AlreadyKnown && !_blockTree.WasProcessed(block.Number, block.Hash!))
             {
-                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!).AsTask();
+                // Only a copy that has its verdict and is committing is worth waiting for; one that is merely queued
+                // is left to answer this request through the shared completion, as before.
+                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: true).AsTask();
                 if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
                 // The first copy's own verdict and removal land on whatever completion is registered for the hash,
-                // so if they consumed this one it must not stand in for the answer to this request.
+                // so if they consumed this one it must not stand in for the answer to this request. A fault is that
+                // copy's failure, and stands: the CL's next retry re-processes.
+                if (blockProcessed.Task.IsFaulted) await blockProcessed.Task;
                 if (blockProcessed.Task.IsCompleted)
                 {
                     blockProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
