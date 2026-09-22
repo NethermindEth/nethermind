@@ -745,10 +745,13 @@ public abstract class BlockchainTestBase
         string? status = response switch
         {
             ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper => resultWrapper.Data?.PayloadStatus.Status,
+            // engine_forkchoiceUpdatedV5 returns ForkchoiceUpdatedV2Result, which does not derive from V1.
+            ResultWrapper<ForkchoiceUpdatedV2Result> v2Wrapper => v2Wrapper.Data?.PayloadStatus.Status,
             JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV1Result result } => result.PayloadStatus.Status,
+            JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV2Result v2Result } => v2Result.PayloadStatus.Status,
             _ => null
         };
-        Assert.That(status, Is.EqualTo(PayloadStatus.Valid), $"engine_forkchoiceUpdatedV{fcuVersion} to {blockHash}");
+        Assert.That(status, Is.EqualTo(PayloadStatus.Valid), $"engine_forkchoiceUpdatedV{fcuVersion} to {blockHash} answered {response.GetType().Name}");
     }
 
     private static void AssertRpcSuccess(JsonRpcResponse response)
