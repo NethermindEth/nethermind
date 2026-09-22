@@ -160,5 +160,5 @@ public class PbtSnapshotCompactorTests
         using (compacted) Assert.That(compacted.Content.SelfDestructedStorageAddresses[addressHash], Is.False);
     }
 
-    private PbtSnapshotCompactor NewCompactor() => new(_pool, new PbtCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(), Config);
+    private PbtSnapshotCompactor NewCompactor() => new(_pool, new PbtCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(new Nethermind.Monitoring.Config.MetricsConfig()), Config);
 }

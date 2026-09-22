@@ -114,7 +114,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     internal void HintSet(Address address, in UInt256 index)
     {
         using IWorldStateScopeProvider.ITrieWarmupSession session = CreateTrieWarmupSession();
-        if (session is PbtTrieWarmupSession pbtSession) pbtSession.HintWarmSlot(new ValueAddress(address.Bytes), in index, singleProducer: true);
+        if (session is PbtTrieWarmupSession pbtSession) pbtSession.HintWarmSlot(new ValueAddress(address.Bytes), address, in index, singleProducer: true);
     }
 
     /// <inheritdoc/>
@@ -157,7 +157,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         if (_logger.IsDebug) LogLifecycle("root calculation begin");
         long start = Stopwatch.GetTimestamp();
         PbtPartitionBatches changes = Bundle.PrepareLeafChanges();
-        int mutationCount = Bundle.PendingMutationCount;
+        // Counting walks every shard of every partition, and the fold below drains them, so read it only when logged.
+        int mutationCount = _logger.IsDebug ? Bundle.PendingMutationCount : 0;
         try
         {
             Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
@@ -273,15 +274,18 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        // One batch serves one contract on one thread, so the address hash is derived once for the whole run of slots.
+        private readonly ValueHash256 _addressHash = PbtKeyDerivation.AddressKeyHash(address);
+
         public void Set(in UInt256 index, in UInt256 value)
         {
-            scope.Bundle.SetSlot(address, index, EvmWordSlot.FromUInt256(in value));
+            scope.Bundle.SetSlot(address, _addressHash, index, EvmWordSlot.FromUInt256(in value));
             scope._rootDirty = true;
         }
 
         public void Clear()
         {
-            scope.Bundle.SelfDestruct(address);
+            scope.Bundle.SelfDestruct(_addressHash);
             scope._rootDirty = true;
         }
 

@@ -19,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NSubstitute;
@@ -478,7 +479,7 @@ public class PbtRocksDbPersistenceTests
         DbConfig dbConfig = new();
         PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, config, Substitute.For<IDisposableStack>(), LimboLogs.Instance);
         PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
-        PbtSnapshotRepository repository = new();
+        PbtSnapshotRepository repository = new(new MetricsConfig());
         PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(pool, schedule, repository, config);
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);

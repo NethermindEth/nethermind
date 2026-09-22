@@ -93,9 +93,9 @@ public sealed class PbtSnapshotBundle(
         PbtPartitionBatches changes = new();
         try
         {
-            if (_accountBatch.Count != 0) changes.Account = _accountBatch.Build();
-            if (_codeBatch.Count != 0) changes.Code = _codeBatch.Build();
-            if (_storageBatch.Count != 0) changes.Storage = _storageBatch.Build();
+            changes.Account = _accountBatch.Build();
+            changes.Code = _codeBatch.Build();
+            changes.Storage = _storageBatch.Build();
             return changes;
         }
         catch
@@ -155,15 +155,23 @@ public sealed class PbtSnapshotBundle(
     /// <summary>The run as the write buffer holds it, borrowed; the first touch of a run buffers it as currently visible.</summary>
     private ISlotRun BufferRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
     {
-        if (WriteBuffer.TryGetSlotRun(runKey, out ISlotRun? run)) return run;
-        lock (_runLocks[(uint)runKey.GetHashCode() % RunLockStripes])
-        {
-            if (WriteBuffer.TryGetSlotRun(runKey, out run)) return run;
-            run = FindLocalRun(runKey, addressHash)?.Clone() ?? readOnlyBundle.RentRun(runKey, addressHash);
-            WriteBuffer.SetRun(runKey, run);
-            return run;
-        }
+        PbtSnapshotContent writeBuffer = WriteBuffer;
+        if (writeBuffer.TryGetSlotRun(runKey, out ISlotRun? run)) return run;
+        lock (_runLocks[StripeOf(runKey)]) return BufferRunLocked(writeBuffer, runKey, addressHash);
     }
+
+    /// <inheritdoc cref="BufferRun"/>
+    /// <remarks>The caller must already hold the run's stripe lock.</remarks>
+    private ISlotRun BufferRunLocked(PbtSnapshotContent writeBuffer, in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    {
+        if (writeBuffer.TryGetSlotRun(runKey, out ISlotRun? run)) return run;
+        run = FindLocalRun(runKey, addressHash)?.Clone() ?? readOnlyBundle.RentRun(runKey, addressHash);
+        // The probe above ran under the stripe, so no run can be displaced here.
+        writeBuffer.SetRun(runKey, run, previous: null);
+        return run;
+    }
+
+    private static int StripeOf(in HashedKey<PbtStorageTreeKey> runKey) => runKey.GetHashCode() & (RunLockStripes - 1);
 
     public void SetAccount(Address address, Account? account)
     {
@@ -187,7 +195,7 @@ public sealed class PbtSnapshotBundle(
             WriteBuffer.Accounts[addressHash] = account;
             if (account is null)
             {
-                SelfDestruct(address);
+                SelfDestruct(addressHash);
             }
             else if (account.HasCode && code is null)
             {
@@ -226,15 +234,22 @@ public sealed class PbtSnapshotBundle(
         SetPbtLeaf(PbtStateKey.Account(addressHash, isDelegation ? (byte)PbtKeyDerivation.CodeHashLeafKey : (byte)PbtKeyDerivation.DelegationLeafKey), null);
     }
 
-    public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
+    public void SetSlot(Address address, in UInt256 slot, in EvmWord value) =>
+        SetSlot(address, PbtKeyDerivation.AddressKeyHash(address), slot, in value);
+
+    /// <inheritdoc cref="SetSlot(Address, in UInt256, in EvmWord)"/>
+    /// <remarks>Reuses a precomputed <see cref="PbtKeyDerivation.AddressKeyHash"/>, so a run of slots for one address pays only the per-tree-index suffix hash.</remarks>
+    public void SetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot, in EvmWord value)
     {
-        PbtStorageTreeKey key = PbtStateKey.Storage(address, slot);
+        PbtStorageTreeKey key = PbtStateKey.Storage(address, addressHash, slot);
         SetPbtLeaf(key, EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
         HashedKey<PbtStorageTreeKey> runKey = SlotRun.RunKey(key);
-        ValueHash256 addressHash = PbtFlatState.StorageAddress(key);
-        lock (_runLocks[(uint)runKey.GetHashCode() % RunLockStripes])
+        int index = SlotRun.IndexOf(key);
+        PbtSnapshotContent writeBuffer = WriteBuffer;
+        lock (_runLocks[StripeOf(runKey)])
         {
-            WriteBuffer.SetRun(runKey, BufferRun(runKey, addressHash).With(SlotRun.IndexOf(key), value));
+            ISlotRun current = BufferRunLocked(writeBuffer, runKey, addressHash);
+            writeBuffer.SetRun(runKey, current.With(index, value), current);
         }
     }
 
@@ -253,7 +268,10 @@ public sealed class PbtSnapshotBundle(
 
     // Clearing existing storage (isNewStorage: false) is not supported in PBT: under EIP-6780 a contract only loses
     // its storage when destroyed in its creating transaction, so no persisted run or trie leaf ever needs deleting.
-    public void SelfDestruct(Address address) => WriteBuffer.ClearStorage(PbtKeyDerivation.AddressKeyHash(address), isNewStorage: true);
+    public void SelfDestruct(Address address) => SelfDestruct(PbtKeyDerivation.AddressKeyHash(address));
+
+    /// <inheritdoc cref="SelfDestruct(Address)"/>
+    public void SelfDestruct(in ValueHash256 addressHash) => WriteBuffer.ClearStorage(addressHash, isNewStorage: true);
 
     /// <summary>Stores bytecode written in this block; its chunk leaves are staged by the account writes that reference it.</summary>
     internal void SetCode(in ValueHash256 codeHash, CodeInfo code)

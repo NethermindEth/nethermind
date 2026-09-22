@@ -115,7 +115,7 @@ public class PbtScopeProviderBenchmark
     {
         _pbtDb = new SnapshotableMemColumnsDb<PbtColumns>("pbt");
         PbtConfig config = new();
-        PbtSnapshotRepository repository = new();
+        PbtSnapshotRepository repository = new(new MetricsConfig());
         PbtRocksDbPersistence persistence = new(_pbtDb, config);
         PbtResourcePool resourcePool = new(config, PooledRefCountingMemoryProvider.Instance);
         PbtCompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
