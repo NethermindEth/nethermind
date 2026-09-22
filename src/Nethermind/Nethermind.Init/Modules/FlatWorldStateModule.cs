@@ -13,6 +13,8 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.State.Flat.History.Changesets;
+using Nethermind.Core.Container;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -144,6 +146,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddStep(typeof(ImportFlatDb));
         }
 
+        builder.RegisterInstance(NullHistoricalTrieVisitor.Instance)
+            .As<IHistoricalTrieVisitor>()
+            .ExternallyOwned()
+            .PreserveExistingDefaults();
+
         if (flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling && flatDbConfig.HistoryRetentionBlocks == 0)
         {
             throw new InvalidConfigurationException(
@@ -179,15 +186,27 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());
+            if (flatDbConfig.HistoryTransactionIndexEnabled)
+            {
+                builder
+                    .AddSingleton<IInlineCapturePolicy, InlineCapturePolicy>()
+                    .AddSingleton<InlineChangesetCapture>()
+                    .AddSingleton<IMainProcessingModule, InlineChangesetCaptureModule>();
+            }
         }
         else if (flatDbConfig.IsHistoryWindowed()
             || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
-            || flatDbConfig.HistoryVerifyEveryBlock)
+            || flatDbConfig.HistoryVerifyEveryBlock
+            || flatDbConfig.ArchiveProofBuildEnabled
+            || flatDbConfig.ArchiveProofServeEnabled
+            || flatDbConfig.HistoryTransactionIndexEnabled
+            || flatDbConfig.HistoryTransactionIndexRetrofitFromBlock != 0)
         {
             throw new InvalidConfigurationException(
-                "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses and FlatDb.HistoryVerifyEveryBlock all " +
-                "require FlatDb.HistoryEnabled: with it off no history is captured, so these settings would be " +
-                "silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
+                "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses, FlatDb.HistoryVerifyEveryBlock, " +
+                "FlatDb.ArchiveProofBuildEnabled, FlatDb.ArchiveProofServeEnabled, FlatDb.HistoryTransactionIndexEnabled and " +
+                "FlatDb.HistoryTransactionIndexRetrofitFromBlock all require FlatDb.HistoryEnabled: " +
+                "with it off no history is captured, so these settings would be silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
     }
 

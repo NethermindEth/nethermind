@@ -8,7 +8,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
@@ -29,6 +28,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 
 namespace Ethereum.Test.Base
 {
@@ -77,8 +77,6 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
-            // Patricia by default (the production default); opt into the flat state layout with
-            // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
             IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
             flatDbConfig.Enabled = TestStateBackend.UseFlatDb;
             // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the
@@ -156,7 +154,14 @@ namespace Ethereum.Test.Base
 
             if (blockValidator.ValidateOrphanedBlock(block, out string blockValidationError))
             {
-                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
+                try
+                {
+                    txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
+                }
+                catch (InvalidDataException e)
+                {
+                    blockValidationError = e.Message;
+                }
             }
             else
             {
@@ -222,7 +227,7 @@ namespace Ethereum.Test.Base
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
+                        new UInt256(storageItem.Value, isBigEndian: true));
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);

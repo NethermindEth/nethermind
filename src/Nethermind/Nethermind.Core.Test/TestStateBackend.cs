@@ -8,30 +8,31 @@ using Nethermind.Db;
 namespace Nethermind.Core.Test;
 
 /// <summary>
-/// The suite-wide state backend selection for fixtures that do not pin a backend.
+/// The single place the suite-wide state backend selection is read.
 /// </summary>
 /// <remarks>
-/// Tests default to patricia; set <c>TEST_USE_FLAT=1</c> to opt into flat state.
-/// Explicit backend configurations take precedence over this selection.
+/// Flat is the production default, so it is also the test default; set <c>TEST_USE_TRIE=1</c> to run the
+/// suite under patricia instead. Every harness (<c>TestBlockchain</c>, the EF fixture bases,
+/// <c>TestNethermindModule</c>) reads the selection from here rather than the environment, so a run cannot
+/// end up with some fixtures on flat and others on patricia. Fixtures that need a specific backend pin it
+/// explicitly instead of consulting the variable.
 /// </remarks>
 public static class TestStateBackend
 {
-    /// <summary>
-    /// The environment variable that enables flat state when set to <c>1</c>.
-    /// </summary>
-    public const string UseFlatEnvironmentVariable = "TEST_USE_FLAT";
+    public const string UseTrieEnvironmentVariable = "TEST_USE_TRIE";
 
     /// <summary>
     /// Whether fixtures that do not pin a backend run under flat.
     /// </summary>
     /// <remarks>
-    /// Read on each access because Nethermind.Test.Runner sets the variable from its
-    /// <c>--flatdb</c> option before collecting fixtures.
+    /// Read on each access rather than cached: Nethermind.Test.Runner sets the variable from its
+    /// <c>--triedb</c> option before it collects fixtures.
     /// </remarks>
-    public static bool UseFlatDb => Environment.GetEnvironmentVariable(UseFlatEnvironmentVariable) == "1";
+    public static bool UseFlatDb => Environment.GetEnvironmentVariable(UseTrieEnvironmentVariable) != "1";
 
     /// <summary>
-    /// Whether <paramref name="configs"/> already pins the state backend.
+    /// Whether <paramref name="configs"/> already pins the state backend, in which case the suite-wide
+    /// selection must not be stamped over it.
     /// </summary>
     public static bool PinsBackend(IConfig[] configs)
     {
@@ -44,8 +45,8 @@ public static class TestStateBackend
     }
 
     /// <summary>
-    /// Applies <see cref="UseFlatDb"/> to a provider owned by the test infrastructure,
-    /// unless <paramref name="explicitConfigs"/> pins the backend.
+    /// Applies <see cref="UseFlatDb"/> to a config provider owned by the test infrastructure, unless
+    /// <paramref name="explicitConfigs"/> pins the backend.
     /// </summary>
     /// <returns>The same provider, for chaining.</returns>
     public static T ApplyDefaultBackend<T>(T configProvider, params IConfig[] explicitConfigs)

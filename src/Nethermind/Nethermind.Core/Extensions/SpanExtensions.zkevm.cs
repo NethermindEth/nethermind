@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -39,6 +40,8 @@ namespace Nethermind.Core.Extensions
         internal static Int256.UInt256 InstanceRandom;
         // Independent of the lane keys: NH's bound assumes the finalizer key is not one of them.
         private static ulong HashFinalizerKey;
+        // ILC turns a constant uint mask into two shifts per lane; a seeded field keeps one mask in a register.
+        private static ulong HashLaneMask;
         private static ulong[]? AddressSeeds;
         private static ulong[]? ShortHashSeeds;
 
@@ -47,6 +50,7 @@ namespace Nethermind.Core.Extensions
         {
             InstanceRandom = seed;
             // Installed before anything mixes, which CreateShortHashSeeds below does.
+            HashLaneMask = uint.MaxValue;
             HashFinalizerKey = MultiplyFold(seed.u0 ^ FinalizerDomain, seed.u3 ^ ~FinalizerDomain) | 1UL;
             ShortHashSeeds = CreateShortHashSeeds(in InstanceRandom);
             AddressSeeds = [DeriveAddressSeed(seed.u0), DeriveAddressSeed(seed.u1),
@@ -75,10 +79,12 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static partial ulong MixWords(ulong u0, ulong u1, ulong u2, ulong u3, ref ulong seeds)
         {
-            ulong sum = MixLanes(u0, seeds)
-                + MixLanes(u1, Unsafe.Add(ref seeds, 1))
-                + MixLanes(u2, Unsafe.Add(ref seeds, 2))
-                + MixLanes(u3, Unsafe.Add(ref seeds, 3));
+            Debug.Assert(HashLaneMask != 0, $"{nameof(SeedHashes)} must run before hashing.");
+            ulong mask = HashLaneMask;
+            ulong sum = MixLanes(u0, seeds, mask)
+                + MixLanes(u1, Unsafe.Add(ref seeds, 1), mask)
+                + MixLanes(u2, Unsafe.Add(ref seeds, 2), mask)
+                + MixLanes(u3, Unsafe.Add(ref seeds, 3), mask);
             // NH carries its entropy high and a dictionary buckets on the low bits, so the sum needs a
             // finalizer. Each step is a bijection, so it moves bits without adding collisions of its own.
             ulong hash = sum ^ (sum >> 31);
@@ -92,8 +98,8 @@ namespace Nethermind.Core.Extensions
         /// sum invariant under permuting them.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MixLanes(ulong word, ulong key)
-            => (ulong)(uint)((uint)word + (uint)key) * (uint)((uint)(word >> 32) + (uint)(key >> 32));
+        private static ulong MixLanes(ulong word, ulong key, ulong mask)
+            => ((word + key) & mask) * (((word >> 32) + (key >> 32)) & mask);
 
         /// <inheritdoc />
         /// <remarks>Hand-rolled from 32-bit products: ILC has no <c>mulhu</c> intrinsic on this target.</remarks>
