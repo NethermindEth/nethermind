@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -26,6 +28,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
     private int _selfDestructKnownStateIdx;
+
+    // The root the trie had when this tree was created, which a failed state root stream rolls it back to.
+    private readonly Hash256 _startRoot;
 
     public FlatStorageTree(
         FlatWorldStateScope scope,
@@ -55,9 +60,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _warmupStorageTree.RootRef = _tree.RootRef;
 
         _config = config;
+        _startRoot = storageRoot;
     }
 
     public Hash256 RootHash => _tree.RootHash;
+
+    internal Address Address => _address;
 
     internal bool IsDisposed => _scope.IsDisposed;
 
@@ -81,8 +89,13 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // Reads do not warm the trie: most reads come through the prewarmer, and read-only slots
     // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
-    // path instead.
-    public void HintSet(in UInt256 index) => WarmUpSlot(index);
+    // path instead, and a streamed write resolves the path by being applied.
+    public void HintSet(in UInt256 index, in UInt256 value)
+    {
+        if (_scope.Streamer?.AddSlot(this, in index, in value) != true) WarmUpSlot(index);
+    }
+
+    public void HintClear() => _scope.Streamer?.AddClear(this);
 
     private void WarmUpSlot(UInt256 index)
     {
@@ -132,6 +145,28 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     }
 
     private void Set(in UInt256 slot, in UInt256 value) => _bundle.SetChangedSlot(_address, slot, value);
+
+    // The Stream* members are called only by the StateRootStreamer that owns the tries while the block executes.
+    [SkipLocalsInit]
+    internal void StreamSet(in UInt256 index, in UInt256 value)
+    {
+        Unsafe.SkipInit(out EvmWord word);
+        bool isZero = value.IsZero;
+        _tree.Set(in index, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero);
+    }
+
+    // What the end-of-block write batch does to the trie on a clear, its flat side left to that batch. Only the root
+    // node goes: RootHash is read on the block thread and must stay the committed root until the batch commits.
+    internal void StreamClear() => _tree.RootRef = null;
+
+    // Hashes without publishing the root, so RootHash stays the committed one until the write batch commits the trie.
+    internal Hash256 StreamHash()
+    {
+        _tree.HashDirtyNodes(canBeParallel: false);
+        return _tree.RootRef?.Keccak ?? Keccak.EmptyTreeHash;
+    }
+
+    internal void StreamRollBack() => _tree.RootHash = _startRoot;
 
     internal void ClearStorage()
     {

@@ -127,7 +127,11 @@ namespace Nethermind.State
             value = new UInt256(decoded, isBigEndian: true);
         }
 
-        public void HintSet(in UInt256 index)
+        public void HintSet(in UInt256 index, in UInt256 value)
+        {
+        }
+
+        public void HintClear()
         {
         }
 

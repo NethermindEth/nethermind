@@ -49,6 +49,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
 
+    private readonly StateRootStreamer? _streamer;
+
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
@@ -63,7 +65,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        StateRootStreamThreads? stateRootThreads = null)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
@@ -95,12 +98,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+
+        // A verifying scope reads the tries on the block thread while the block executes, which the streamer owns.
+        if (stateRootThreads is not null && configuration.StreamStateRoot && !isReadOnly && !_trieless && !configuration.VerifyWithTrie)
+        {
+            _streamer = new StateRootStreamer(_stateTree, _stateTree.RootHash, stateRootThreads, logManager);
+        }
     }
 
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
+        _streamer?.Dispose();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -161,8 +171,26 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void UpdateRootHash()
     {
+        _streamer?.Finish();
         if (!_trieless) _stateTree.UpdateRootHash();
     }
+
+    internal StateRootStreamer? Streamer => _streamer;
+
+    // The batch found every value it wrote already in place, so its trie hashes to the streamed root; the hashing is
+    // what UpdateRootHash would do next anyway.
+    private void CheckStreamedRoot(Hash256 streamedRoot)
+    {
+        _stateTree.HashDirtyNodes();
+        Hash256 root = _stateTree.RootRef?.Keccak ?? Keccak.EmptyTreeHash;
+        if (root == streamedRoot) return;
+
+        Metrics.RecordStateRootStreamMismatch();
+        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+        if (logger.IsWarn) logger.Warn($"Streamed state root {streamedRoot} differs from the written one {root} at block {_currentStateId.BlockNumber + 1}; the written one is used");
+    }
+
+    public void HintSetAccount(Address address, Account? account) => _streamer?.AddAccount(address, account);
 
     public Account? Get(Address address)
     {
@@ -453,12 +481,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
+        _streamer?.Finish();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        _streamer?.Finish();
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
@@ -486,6 +516,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
         _pausePrewarmer = false;
+        _streamer?.StartBlock(RootHash);
     }
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
@@ -575,6 +606,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             stateSetter.Set(kv.Key, kv.Value);
                         }
                     }
+
+                    if (scope._streamer?.TakeStreamedRoot() is { } streamedRoot) scope.CheckStreamedRoot(streamedRoot);
                 }
             }
             finally

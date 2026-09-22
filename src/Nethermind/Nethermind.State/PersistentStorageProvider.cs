@@ -233,6 +233,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
 
+        // The clears that survived the round become final now, ahead of the writes made after them.
+        foreach (StorageClearChange clear in _storageClearJournal)
+        {
+            GetOrCreateStorage(clear.Address).HintClear();
+        }
+
         ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         Dictionary<StorageCell, StorageChangeTrace>? trace;
         if (tracer.IsTracingStorage)
@@ -693,6 +699,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots.TryAdd(address, true);
         PerContractState state = GetOrCreateStorage(address);
         state.Clear();
+        // Final at once: a destruction is marked only when its transaction commits.
+        state.HintClear();
         if (state.TakeAccountWarmHint()) currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
     }
 
@@ -1105,7 +1113,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             EnsureStorageTree();
-            _backend.HintSet(storageCell.Index);
+            _backend.HintSet(storageCell.Index, in value);
+        }
+
+        public void HintClear()
+        {
+            EnsureStorageTree();
+            _backend.HintClear();
         }
 
         /// <remarks>

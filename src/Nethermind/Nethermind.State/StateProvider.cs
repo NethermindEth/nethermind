@@ -953,6 +953,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         accountChanges.After = account;
         _needsStateRootUpdate = true;
+        _tree?.HintSetAccount(address, account);
     }
 
     private Account? GetAndAddToCache(Address address)

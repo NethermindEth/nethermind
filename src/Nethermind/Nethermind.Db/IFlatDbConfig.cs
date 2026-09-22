@@ -130,6 +130,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
+    [ConfigItem(Description = "Apply each committed transaction's account and storage changes to the tries on dedicated threads while the block executes, and hash them as it goes, so the state root at the end of the block only covers what changed last.", DefaultValue = "true")]
+    bool StreamStateRoot { get; set; }
+
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 

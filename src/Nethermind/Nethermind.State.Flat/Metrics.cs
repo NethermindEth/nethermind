@@ -23,6 +23,30 @@ public static class Metrics
 
     public static void RecordUnreadableTransactionChangesetRow() => Interlocked.Increment(ref _unreadableTransactionChangesetRows);
 
+    private static long _stateRootStreamMismatches;
+
+    [CounterMetric]
+    [Description("Blocks whose streamed state root differed from the one the end-of-block write batch produced. Expected to stay zero; the batch's root is the one used.")]
+    public static long StateRootStreamMismatches
+    {
+        get => Volatile.Read(ref _stateRootStreamMismatches);
+        set => Interlocked.Exchange(ref _stateRootStreamMismatches, value);
+    }
+
+    public static void RecordStateRootStreamMismatch() => Interlocked.Increment(ref _stateRootStreamMismatches);
+
+    private static long _stateRootStreamFallbacks;
+
+    [CounterMetric]
+    [Description("Blocks whose state root streaming failed and whose roots were computed in full at the end of the block.")]
+    public static long StateRootStreamFallbacks
+    {
+        get => Volatile.Read(ref _stateRootStreamFallbacks);
+        set => Interlocked.Exchange(ref _stateRootStreamFallbacks, value);
+    }
+
+    public static void RecordStateRootStreamFallback() => Interlocked.Increment(ref _stateRootStreamFallbacks);
+
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }

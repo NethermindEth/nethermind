@@ -25,6 +25,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     {
         public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
 
+        public void HintSetAccount(Address address, Account? account) => baseScope.HintSetAccount(address, account);
+
         public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);
 
         public void Dispose()
