@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain;
 
 /// <summary>
 /// Executes block-data persistence work (receipt writes, canonical tx-index writes, block-body
-/// writes, and block-access-list writes) on a single background consumer so the engine API paths
+/// writes, suggested header writes, and block-access-list writes) on a single background consumer so the engine API paths
 /// do not wait on RocksDB.
 /// </summary>
 /// <remarks>
@@ -77,7 +77,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
     /// <param name="enabled">When false the writer is a no-op passthrough that runs work inline.</param>
     /// <param name="capacity">Maximum queued work items before producers backpressure. Note this
-    /// counts individual writes, not blocks: a BAL-enabled block can enqueue up to five items, although
+    /// counts individual writes, not blocks: a BAL-enabled block can enqueue up to six items, although
     /// superseded pending writes are coalesced.</param>
     /// <param name="logManager">Log manager.</param>
     /// <param name="persistenceBarrier">Barrier to register this writer's <see cref="Drain"/> with, so a

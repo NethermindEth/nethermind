@@ -7,9 +7,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
@@ -21,6 +23,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -38,6 +41,46 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockTreeTests
 {
+    [Test]
+    public async Task Suggested_pos_headers_remain_discoverable_before_persistence()
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IDeferredBlockDataWriter>(writer)
+            .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        IDb headers = container.ResolveKeyed<IDb>(DbNames.Headers);
+        IDb numbers = container.ResolveKeyed<IDb>(DbNames.BlockNumbers);
+        HeaderStore disk = new(headers, numbers);
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        AddToMain((BlockTree)tree, genesis);
+        writer.Pump();
+        Block parent = Build.A.Block.WithParent(genesis).WithNumber(1).TestObject;
+        parent.Header.IsPostMerge = true;
+        Block child = Build.A.Block.WithParent(parent).WithNumber(2).TestObject;
+        child.Header.IsPostMerge = true;
+
+        Assert.That(tree.SuggestBlock(parent, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disk.Get(parent.Hash!), Is.Null);
+            Assert.That(tree.FindHeader(parent.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(parent.Hash));
+            Assert.That(tree.FindBlock(parent.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(parent.Hash));
+            Assert.That(tree.IsKnownBlock(parent.Number, parent.Hash!), Is.True);
+        }
+
+        Assert.That(tree.SuggestBlock(child, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(tree.SuggestBlock(parent, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.AlreadyKnown));
+        writer.Pump();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disk.Get(parent.Hash!)?.Hash, Is.EqualTo(parent.Hash));
+            Assert.That(disk.Get(child.Hash!)?.Hash, Is.EqualTo(child.Hash));
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Lowest_served_block_follows_the_latest_push_but_never_drops_below_the_published_boundary()
     {

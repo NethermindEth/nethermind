@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -17,6 +19,145 @@ namespace Nethermind.Blockchain.Test.Blocks;
 [Parallelizable(ParallelScope.All)]
 public class HeaderStoreTests
 {
+    [Test]
+    public async Task Failed_deferred_header_write_remains_readable_and_can_be_retried([Values] bool failNumberWrite)
+    {
+        using TestMemDb headers = new();
+        using TestMemDb numbers = new();
+        StatePersistenceBarrier barrier = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
+        HeaderStore store = new(headers, numbers, deferredWriter: writer, persistenceBarrier: barrier);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        TestMemDb failingDb = failNumberWrite ? numbers : headers;
+        failingDb.WriteFunc = (_, _) => throw new InvalidOperationException("write failed");
+        store.InsertDeferred(header);
+        writer.Pump();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(header.Hash!)?.Hash, Is.EqualTo(header.Hash));
+            Assert.That(store.GetBlockNumber(header.Hash!), Is.EqualTo(header.Number));
+            Assert.Throws<InvalidOperationException>(() => barrier.FlushDeferred());
+        }
+
+        failingDb.WriteFunc = null;
+        barrier.FlushDeferred();
+
+        Assert.That(new HeaderStore(headers, numbers).Get(header.Hash!)?.Hash, Is.EqualTo(header.Hash));
+    }
+
+    [Test]
+    public async Task Reversed_headers_walk_across_pending_and_persisted_headers()
+    {
+        using TestMemDb headers = new();
+        using MemDb numbers = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        HeaderStore store = new(headers, numbers, deferredWriter: writer);
+        BlockHeader first = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader second = Build.A.BlockHeader.WithParent(first).TestObject;
+        BlockHeader third = Build.A.BlockHeader.WithParent(second).TestObject;
+        store.Insert(first);
+        store.InsertDeferred(second);
+        store.InsertDeferred(third);
+
+        using IOwnedReadOnlyList<BlockHeader> result = store.FindReversedHeaders(third.Number, third.Hash!, 3);
+
+        Assert.That(result, Has.Count.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result[0].Hash, Is.EqualTo(first.Hash));
+            Assert.That(result[1].Hash, Is.EqualTo(second.Hash));
+            Assert.That(result[2].Hash, Is.EqualTo(third.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Deferred_header_is_visible_and_durable_before_state_persistence()
+    {
+        using TestMemDb headers = new();
+        using TestMemDb numbers = new();
+        StatePersistenceBarrier barrier = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
+        HeaderStore store = new(headers, numbers, deferredWriter: writer, persistenceBarrier: barrier);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+
+        store.InsertDeferred(header);
+        ((IClearableCache)store).ClearCache();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new HeaderStore(headers, numbers).Get(header.Hash!), Is.Null);
+            Assert.That(store.Get(header.Hash!)?.Hash, Is.EqualTo(header.Hash));
+            Assert.That(store.Get(header.Hash!, blockNumber: header.Number)?.Hash, Is.EqualTo(header.Hash));
+            Assert.That(store.GetBlockNumber(header.Hash!), Is.EqualTo(header.Number));
+        }
+
+        barrier.FlushDeferred();
+
+        HeaderStore reopened = new(headers, numbers);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reopened.Get(header.Hash!)?.Hash, Is.EqualTo(header.Hash));
+            Assert.That(reopened.GetBlockNumber(header.Hash!), Is.EqualTo(header.Number));
+            Assert.That(headers.FlushCount, Is.GreaterThan(0));
+            Assert.That(numbers.FlushCount, Is.GreaterThan(0));
+        }
+    }
+
+    [Test]
+    public async Task Deleted_deferred_header_is_not_resurrected([Values] bool persistBeforeDelete)
+    {
+        using MemDb headers = new();
+        using MemDb numbers = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        HeaderStore store = new(headers, numbers, deferredWriter: writer);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        store.InsertDeferred(header);
+        store.Cache(header);
+        if (persistBeforeDelete) writer.Pump();
+
+        store.Delete(header.Hash!);
+        writer.Pump();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(header.Hash!), Is.Null);
+            Assert.That(store.GetBlockNumber(header.Hash!), Is.Null);
+            Assert.That(new HeaderStore(headers, numbers).Get(header.Hash!), Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Deferred_header_captures_consensus_fields_before_caller_mutation()
+    {
+        using MemDb headers = new();
+        using MemDb numbers = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        HeaderStore store = new(headers, numbers, deferredWriter: writer);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        byte[] expected = new HeaderDecoder().Encode(header).Bytes;
+
+        store.InsertDeferred(header);
+        header.GasUsed++;
+        writer.Pump();
+
+        Assert.That(new HeaderDecoder().Encode(store.Get(header.Hash!)!).Bytes, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Deferred_header_falls_back_to_synchronous_writes_when_disabled()
+    {
+        using MemDb headers = new();
+        using MemDb numbers = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.DisabledWriter();
+        HeaderStore store = new(headers, numbers, deferredWriter: writer);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+
+        store.InsertDeferred(header);
+
+        Assert.That(new HeaderStore(headers, numbers).Get(header.Hash!)?.Hash, Is.EqualTo(header.Hash));
+    }
+
     [Test]
     public void TestCanStoreAndGetHeader()
     {

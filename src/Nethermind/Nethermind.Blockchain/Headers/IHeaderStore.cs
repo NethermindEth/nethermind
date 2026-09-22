@@ -11,6 +11,10 @@ namespace Nethermind.Blockchain.Headers;
 public interface IHeaderStore : IHeaderFinder
 {
     void Insert(BlockHeader header);
+
+    /// <summary>Publishes a header and its number immediately, deferring persistence when supported.</summary>
+    void InsertDeferred(BlockHeader header) => Insert(header);
+
     void BulkInsert(IReadOnlyList<BlockHeader> headers);
     BlockHeader? Get(Hash256 blockHash, bool shouldCache, ulong? blockNumber = null);
     void Cache(BlockHeader header);

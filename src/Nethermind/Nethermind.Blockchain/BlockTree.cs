@@ -476,7 +476,10 @@ namespace Nethermind.Blockchain
 
             if (!isKnown)
             {
-                _headerStore.Insert(header);
+                if (block is not null && header.IsPostMerge && !header.IsGenesis)
+                    _headerStore.InsertDeferred(header);
+                else
+                    _headerStore.Insert(header);
             }
 
             if (!isKnown || fillBeaconBlock)
