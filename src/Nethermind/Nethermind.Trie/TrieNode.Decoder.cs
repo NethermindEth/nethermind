@@ -47,6 +47,10 @@ namespace Nethermind.Trie
         {
             private const int HashPairSize = 2;
             private const int MinHashBatchSize = 3;
+
+            /// <summary>Fewest deferred children worth a batch kernel call at a single rate block.</summary>
+            /// <remarks>One four-lane call at this length beats two separate hashes, measured.</remarks>
+            private const int MinimumBatchCount = 2;
             private const int HashBatchSize = 8;
             private const int Avx2HashBatchSize = 4;
             private const int VectorByteLength = 32;
@@ -337,9 +341,7 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             private static void HashPreparedSingleBlockBranches(TrieNode item, ushort candidateMask)
             {
-                int batchSize = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
-                int minimumBatch = Avx512F.IsSupported ? MinHashBatchSize : Avx2HashBatchSize;
-                if (!Avx2.IsSupported || BitOperations.PopCount((uint)candidateMask) < minimumBatch)
+                if (!Avx2.IsSupported || BitOperations.PopCount((uint)candidateMask) < MinimumBatchCount)
                 {
                     ResolvePreparedKeys(item, candidateMask);
                     return;
@@ -347,11 +349,15 @@ namespace Nethermind.Trie
 
                 Unsafe.SkipInit(out SingleBlockHashBuffer buffer);
                 Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
-                Span<byte> inputs = storage[..(batchSize * KeccakHash.RateBlockLength)];
-                Span<byte> hashes = storage.Slice(batchSize * KeccakHash.RateBlockLength, batchSize * Hash256.Size);
                 do
                 {
-                    int batchCount = Math.Min(batchSize, BitOperations.PopCount((uint)candidateMask));
+                    int pending = BitOperations.PopCount((uint)candidateMask);
+                    // The narrowest kernel that covers what is left, so a small remainder does not
+                    // permute eight lanes to hash two nodes.
+                    int batchSize = Avx512F.IsSupported && pending > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
+                    Span<byte> inputs = storage[..(batchSize * KeccakHash.RateBlockLength)];
+                    Span<byte> hashes = storage.Slice(batchSize * KeccakHash.RateBlockLength, batchSize * Hash256.Size);
+                    int batchCount = Math.Min(batchSize, pending);
                     inputs.Clear();
                     ushort batchMask = candidateMask;
                     for (int i = 0; i < batchCount; i++)
@@ -373,7 +379,7 @@ namespace Nethermind.Trie
 
                     // The kernel always runs at its native width; lanes past batchCount stay cleared
                     // and their digests are dropped.
-                    if (Avx512F.IsSupported)
+                    if (batchSize == HashBatchSize)
                         KeccakHash.ComputePaddedBlocks8Avx512(ref inputs[0], ref hashes[0]);
                     else
                         KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
@@ -385,7 +391,7 @@ namespace Nethermind.Trie
                         ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
                         Unsafe.As<TrieNode>(item._nodeData![index])!.SetPreparedKey(in hash);
                     }
-                } while (BitOperations.PopCount((uint)candidateMask) >= minimumBatch);
+                } while (BitOperations.PopCount((uint)candidateMask) >= MinimumBatchCount);
 
                 ResolvePreparedKeys(item, candidateMask);
 
