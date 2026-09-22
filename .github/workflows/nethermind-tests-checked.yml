@@ -111,14 +111,18 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         include:
+          # The Keccak batch kernels are four lanes wide without AVX-512 and eight with it, and the
+          # code that feeds them differs too, so the default runners cover only one of the two.
           - project: Nethermind.Core.Test
-            variant:
+            variant: &avx2
               label: avx2
               dotnet-args: ''
               hw-intrinsic: ''
               artifact: release
               avx512: 0
               require-avx2: 1
+          - { project: Nethermind.Trie.Test, variant: *avx2 }
+          - { project: Nethermind.State.Test, variant: *avx2 }
           - project: Nethermind.Core.Test
             variant:
               label: avx512
