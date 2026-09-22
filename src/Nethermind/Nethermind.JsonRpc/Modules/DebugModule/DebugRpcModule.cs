@@ -680,7 +680,7 @@ public class DebugRpcModule(
     {
         if (CanStreamStructLogs(options))
         {
-            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(BuildStreamingBundleResult(bundles, blockParameter, options));
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(BuildStreamingBundleResult(bundles, blockParameter, options, header));
         }
 
         CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -707,7 +707,8 @@ public class DebugRpcModule(
     private GethLikeTxTraceStreamingBundleResult BuildStreamingBundleResult(
         TransactionBundle[] bundles,
         BlockParameter blockParameter,
-        GethTraceOptions? options)
+        GethTraceOptions? options,
+        BlockHeader header)
     {
         CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
         try
@@ -720,7 +721,10 @@ public class DebugRpcModule(
                 jsonRpcConfig.GasCap,
                 effective,
                 timeoutCts,
-                _logger);
+                _logger)
+            {
+                Spec = specProvider.GetSpec(header)
+            };
         }
         catch
         {

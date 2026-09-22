@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Logging;
 
@@ -37,6 +38,8 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
     private readonly BlockParameter _blockParameter;
     private readonly ulong? _gasCap;
     private readonly GethTraceOptions _options;
+
+    internal IReleaseSpec? Spec { private get; init; }
 
     public GethLikeTxTraceStreamingBundleResult(
         IDebugBridge bridge,
@@ -100,7 +103,7 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
 
     private void EmitTraceForTx(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, TransactionForRpc txForRpc)
     {
-        Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: _gasCap);
+        Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: _gasCap, spec: Spec);
         if (!txResult.Success(out Transaction? tx, out string? validationError))
         {
             StructLogEnvelopeWriter.EmitFailedTrace(writer, txForRpc.Gas ?? 0UL, validationError);

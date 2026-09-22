@@ -18,6 +18,8 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test.Modules.Eth;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -309,6 +311,29 @@ public partial class DebugRpcModuleTests
         ulong gasAvailable = (ulong)returnValue.ToUInt256();
         Assert.That(gasAvailable, Is.LessThan(gasCap));
         Assert.That(gasAvailable, Is.GreaterThan(0UL));
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_enforces_eip8037_total_cap(
+        [Values] bool stream,
+        [Values(0UL, 1_000_000_000_000UL)] ulong gasCap,
+        [Values(null, Eip8037Constants.TxMaxTotalGasLimit + 1)] ulong? requestGas)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Amsterdam.Instance) { AllowTestChainOverride = false });
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.EnableTracingStreamMode = stream;
+        config.GasCap = gasCap;
+        TransactionBundle bundle = CreateBundle(new LegacyTransactionForRpc
+        {
+            From = TestItem.AddressA,
+            To = TestItem.AddressB,
+            Gas = requestGas,
+            GasPrice = UInt256.Zero
+        });
+
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
+
+        Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(requestGas is not null));
     }
 
     [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]

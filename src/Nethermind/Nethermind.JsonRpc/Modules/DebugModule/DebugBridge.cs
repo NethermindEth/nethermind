@@ -255,10 +255,12 @@ public class DebugBridge : IDebugBridge
 
     private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
     {
+        BlockHeader? header = _blockTree.FindHeader(blockParameter);
+        IReleaseSpec? spec = header is null ? null : _specProvider.GetSpec(header);
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
-            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: gasCap);
+            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: gasCap, spec: spec);
             if (txResult.IsError)
             {
                 trace = CreateFailTrace(txForRpc.Gas);
