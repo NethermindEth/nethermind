@@ -141,7 +141,7 @@ jobs:
           config_json=$(jq -cn --arg net "$NETWORK" --arg cl "$CL_CLIENT" --arg mt "$MACHINE_TYPE" --arg cp "$CHECKPOINT_URL" --arg image "$GETH_IMAGE" '{
             node_name_prefix: "RpcCmp-geth",
             el: [{client: "geth", image: $image, alias: "", convert_to_paprika: "false"}],
-            el_extra_flags: {geth: ["syncmode=snap", "gcmode=full", "history.transactions=128", "history.state=128" , "history.chain=postprague"]},
+            el_extra_flags: {geth: ["http.api=eth,net,web3,debug", "syncmode=snap", "gcmode=full", "history.transactions=128", "history.state=128" , "history.chain=postprague"]},
             metrics_collection: false,
             cl: [{client: $cl, image: ""}],
             cl_extra_flags: {($cl): (if $cp != "" then ["checkpoint-sync-url=" + $cp] else [] end)},
