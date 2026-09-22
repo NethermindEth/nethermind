@@ -3,12 +3,13 @@
 
 using System.Collections.Generic;
 using Autofac;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
@@ -18,16 +19,21 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 public class TraceModuleFactory(
     IOverridableEnvFactory overridableEnvFactory,
     ILifetimeScope rootLifetimeScope,
-    IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules
+    IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules,
+    IPrefixStateSeedSource prefixSeeds,
+    ParallelTraceBudget parallelBudget,
+    ILogManager logManager
 ) : ModuleFactoryBase<ITraceRpcModule>
 {
-    private ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory) =>
+    private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, parallelBudget, logManager,
+        builder => ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules));
+
+    private static ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory, IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules) =>
         builder
             .AddModule(validationBlockProcessingModules)
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
-            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
             .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>(); // TODO: Check, what if this is pre merge?
@@ -39,10 +45,10 @@ public class TraceModuleFactory(
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, static p => new TraceTransactionProcessorAdapter(p))
+            ConfigureCommonBlockProcessing(builder, static p => new TraceTransactionProcessorAdapter(p), validationBlockProcessingModules)
                 .AddModule(env));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p))
+            ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules)
                 .AddModule(env));
 
         ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
@@ -55,8 +61,12 @@ public class TraceModuleFactory(
         // Split out only the env to prevent accidental leak
         IOverridableEnv<ITracer> tracerEnv = tracerLifetimeScope.Resolve<IOverridableEnv<ITracer>>();
 
-        ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddScoped(tracerEnv));
+        IParallelBlockTracer? parallelTracer = _parallelTracer.Get();
+        ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
+        {
+            builder.AddScoped(tracerEnv);
+            if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
+        });
 
         tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(rpcProcessingScope);
         tracerLifetimeScope.Disposer.AddInstanceForAsyncDisposal(validationProcessingScope);

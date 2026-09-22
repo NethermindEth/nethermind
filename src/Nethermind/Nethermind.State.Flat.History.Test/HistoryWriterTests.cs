@@ -564,6 +564,8 @@ public class HistoryWriterTests
     [Test]
     public void Reorged_capture_at_the_connect_point_refuses_to_advance_the_watermark()
     {
+        int disabled = 0;
+        _writer.CaptureDisabled += () => disabled++;
         SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 11))]);
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -585,6 +587,47 @@ public class HistoryWriterTests
             Assert.That(_writer.LastCapturedBlock, Is.EqualTo(1UL), "the watermark must not advance over a reorged capture");
             Assert.That(_reader.HasHistoryForBlock(2), Is.False);
             Assert.That(_writer.CaptureHealthy, Is.False, "capture must self-disable so dependants stop relying on it");
+            Assert.That(disabled, Is.EqualTo(1), "a reorg refusal must not report an unconnected walk a second time");
+        }
+    }
+
+    [Test]
+    public void CaptureUpTo_WhenSnapshotIsMissing_ReportsObservedGap()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryWriter>().Returns(wrappedLogger);
+        FlatDbConfig config = new() { HistoryEnabled = true };
+        HistoryWriter writer = new(_db, _historyColumns, config, _availability, _rowFormat, logManager, commitments: null);
+        SeedGenesisFloor();
+
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        logger.Received(1).Error(Arg.Is<string>(message =>
+            message.Contains("a required per-block snapshot was unavailable")
+            && !message.Contains("pruned before history was enabled")), Arg.Any<Exception?>());
+        Assert.That(writer.CaptureHealthy, Is.False);
+    }
+
+    [Test]
+    public void CaptureUpTo_WhenTierDiagnosticsThrow_DisablesCaptureOnce()
+    {
+        SeedGenesisFloor();
+        ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+        repository.GetStatesAtBlockNumber(Arg.Any<ulong>()).Throws(new ObjectDisposedException("repository"));
+        int disabled = 0;
+        _writer.CaptureDisabled += () => disabled++;
+
+        _writer.CaptureUpTo(StateAt(2), repository, CancellationToken.None);
+        _writer.CaptureUpTo(StateAt(2), repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disabled, Is.EqualTo(1), "diagnostic failures must not prevent one-shot degradation");
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL), "the incomplete walk must not advance history");
+            Assert.That(_writer.CaptureHealthy, Is.False, "a missing ancestry must disable capture");
         }
     }
 

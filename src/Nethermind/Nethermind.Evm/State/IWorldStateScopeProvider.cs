@@ -30,6 +30,8 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
+        bool StorageRootsAreAuthoritative => true;
+
         void UpdateRootHash();
 
         /// <summary>
