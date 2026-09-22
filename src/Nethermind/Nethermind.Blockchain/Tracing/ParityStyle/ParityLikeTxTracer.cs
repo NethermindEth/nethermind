@@ -236,6 +236,12 @@ public class ParityLikeTxTracer : TxTracer
             throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
         }
 
+        if (!IsTracingActions)
+        {
+            _trace.Output = output;
+            return;
+        }
+
         _trace.Action ??= CreateRootActionFromTx();
 
         if (_trace.Action.TraceAddress.Length == 0)
@@ -255,6 +261,8 @@ public class ParityLikeTxTracer : TxTracer
         }
 
         _trace.Output = output;
+
+        if (!IsTracingActions) return;
 
         if (_trace.Action is null)
         {

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -30,6 +32,38 @@ namespace Nethermind.JsonRpc.TraceStore.Test;
 public class TraceStoreRpcModuleTests
 {
     private static readonly EthereumJsonSerializer Serializer = new();
+
+    [Test]
+    public async Task Stored_replay_preserves_output_without_trace(
+        [Values("stateDiff", "vmTrace")] string selection, [Values] bool blockReplay, [Values] bool streaming)
+    {
+        TestContext test = new(streaming: streaming);
+        test.DbTrace.Output = [42];
+        test.DbTrace.Action = new ParityTraceAction { Type = "call", CallType = "call", From = TestItem.AddressA, To = TestItem.AddressB };
+        ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
+        ParityLikeTxTrace reward = new() { BlockHash = test.DbTrace.BlockHash, Action = new ParityTraceAction { Type = "reward", Author = TestItem.AddressA, RewardType = "block" } };
+        test.Store.Set(test.DbTrace.BlockHash!, serializer.Serialize(new[] { test.DbTrace, reward }));
+        string[] types = [selection];
+        using JsonRpcResponse response = blockReplay
+            ? test.Module.trace_replayBlockTransactions(BlockParameter.Latest, types)
+            : test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, types);
+        using MemoryStream buffer = new();
+        PipeWriter writer = PipeWriter.Create(buffer);
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        await writer.CompleteAsync();
+        using JsonDocument document = JsonDocument.Parse(buffer.ToArray());
+        JsonElement result = document.RootElement.GetProperty("result");
+        if (blockReplay)
+        {
+            Assert.That(result.GetArrayLength(), Is.EqualTo(1));
+            result = result[0];
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("output").GetString(), Is.EqualTo("0x2a"));
+            Assert.That(result.GetProperty("trace").GetArrayLength(), Is.Zero);
+        }
+    }
 
     [Test]
     public void trace_call_returns_from_inner_module()
@@ -146,14 +180,14 @@ public class TraceStoreRpcModuleTests
         public IReceiptFinder ReceiptFinder { get; }
         public TraceStoreRpcModule Module { get; }
 
-        public TestContext(int parallelization = 0)
+        public TestContext(int parallelization = 0, bool streaming = true)
         {
             InnerModule = Substitute.For<ITraceRpcModule>();
             Store = new MemDb();
             BlockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
             ReceiptFinder = Substitute.For<IReceiptFinder>();
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
-            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, new JsonRpcConfig(), LimboLogs.Instance, parallelization);
+            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, new JsonRpcConfig { EnableTracingStreamMode = streaming }, LimboLogs.Instance, parallelization);
             Hash256 dbTransaction = Build.A.Transaction.TestObject.Hash!;
             Hash256 dbBlock = BlockFinder.Head!.Hash!;
             DbTrace = new() { BlockHash = dbBlock, TransactionHash = dbTransaction };

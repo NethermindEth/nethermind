@@ -365,15 +365,15 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     private static void FilterTraces(List<ParityLikeTxTrace> traces, ParityTraceTypes traceTypes)
     {
+        if ((traceTypes & ParityTraceTypes.Rewards) == 0)
+        {
+            FilterRewards(traces);
+        }
+
         for (int i = 0; i < traces.Count; i++)
         {
             ParityLikeTxTrace parityLikeTxTrace = traces[i];
             FilterTrace(parityLikeTxTrace, traceTypes);
-        }
-
-        if ((traceTypes & ParityTraceTypes.Rewards) == 0)
-        {
-            FilterRewards(traces);
         }
     }
 
@@ -405,8 +405,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         }
     }
 
-    // Trace uses flags IsTracingActions, IsTracingReceipt
-    private static void FilterTrace(ParityLikeTxTrace trace) => trace.Output = null;// trace action?
+    private static void FilterTrace(ParityLikeTxTrace trace) => trace.Action = null;
 
     private static void FilterRewards(List<ParityLikeTxTrace> traces)
     {
