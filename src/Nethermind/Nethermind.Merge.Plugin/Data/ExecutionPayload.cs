@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Cpu;
@@ -222,7 +223,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     /// <remarks>
     /// The work item is queued rather than awaited: <see cref="TxRootComputation.GetResult"/> computes the root
-    /// itself when the pool has not started it, so a pool still busy with the previous block delays nothing.
+    /// itself when the pool has not started it, so a pool still busy with the previous block delays nothing, and
+    /// the queued item never blocks behind it.
     /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
     /// race the memoized computation. Callers must invoke both sequentially per payload instance.
     /// </remarks>
@@ -239,7 +241,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         TxRootComputation computation = _txRoot = new(encodedTransactions);
         // Queued to the global side of the pool, not this thread's local queue: a local item is only stolen once
         // the workers run dry, which is the case this exists to cover.
-        ThreadPool.UnsafeQueueUserWorkItem(static state => state.Run(), computation, preferLocal: false);
+        ThreadPool.UnsafeQueueUserWorkItem(static state => state.RunIfUncontended(), computation, preferLocal: false);
         return computation;
     }
 
@@ -257,24 +259,55 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         private readonly Lock _lock = new();
         private Hash256? _root;
+        private ExceptionDispatchInfo? _failure;
 
-        /// <summary>Computes the root, or returns at once when another thread has already computed it.</summary>
-        /// <remarks>A thread that arrives while another is computing blocks until that one is done.</remarks>
-        internal void Run()
+        /// <summary>Computes the root unless another thread holds the claim, in which case it leaves it to them.</summary>
+        /// <remarks>
+        /// Never blocks. This runs on a pool thread, and parking one behind the consumer would cost the pool
+        /// exactly what the wait this exists to remove costs it. The consumer computes whatever this skipped.
+        /// </remarks>
+        internal void RunIfUncontended()
         {
-            if (Volatile.Read(ref _root) is not null) return;
+            if (Volatile.Read(ref _root) is not null || !_lock.TryEnter()) return;
 
-            lock (_lock)
+            try
             {
-                _root ??= TxTrie.CalculateRoot(encodedTransactions);
+                Compute();
+            }
+            finally
+            {
+                _lock.Exit();
             }
         }
 
-        /// <summary>The root, computed here when no thread has started it.</summary>
+        /// <summary>The root, computed here when no thread has started it, waited for when one is computing it.</summary>
+        /// <exception cref="Exception">Whatever computing the root threw, on whichever thread reached it first.</exception>
         internal Hash256 GetResult()
         {
-            Run();
-            return _root!;
+            if (Volatile.Read(ref _root) is Hash256 root) return root;
+
+            lock (_lock)
+            {
+                Compute();
+                // A failure is replayed here rather than left to escape a pool thread, where it would take the
+                // process down instead of the request.
+                _failure?.Throw();
+                return _root!;
+            }
+        }
+
+        private void Compute()
+        {
+            if (_root is not null || _failure is not null) return;
+
+            try
+            {
+                _root = TxTrie.CalculateRoot(encodedTransactions);
+            }
+            catch (Exception exception)
+            {
+                _failure = ExceptionDispatchInfo.Capture(exception);
+            }
         }
     }
 

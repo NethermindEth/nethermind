@@ -334,7 +334,12 @@ public class ExecutionPayloadTests
         Hash256[] roots = new Hash256[8];
         Parallel.For(0, roots.Length, i => roots[i] = computation.GetResult());
 
-        Assert.That(roots, Is.All.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roots, Is.All.EqualTo(expected));
+            // Value equality alone would also hold for a computation that recomputed for every caller.
+            Assert.That(roots, Is.All.SameAs(roots[0]));
+        }
     }
 
     private static byte[][] EncodeTxs(int count, ulong nonceOffset = 0)
