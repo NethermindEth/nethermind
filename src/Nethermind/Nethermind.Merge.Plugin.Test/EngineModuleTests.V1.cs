@@ -998,7 +998,9 @@ public partial class EngineModuleTests
             ResultWrapper<PayloadStatusV1> newPayload = await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
 
             Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the verdict is answered before the commit");
-            Assert.That(verdictGiven.IsSet, Is.True);
+            // Waited for rather than sampled: the processor raises the event to its own subscriber, which answers the
+            // request, before it reaches this one, so the answer can arrive first.
+            Assert.That(verdictGiven.Wait(TimeSpan.FromSeconds(5)), Is.True);
             Assert.That(chain.BlockTree.WasProcessed(block.Number, block.Hash!), Is.False, "precondition: the block is answered but not committed yet");
 
             // Sent while the commit is still parked; that it waits rather than answers SYNCING is pinned without a clock
