@@ -569,7 +569,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                await _processingQueue.Enqueue(block, processingOptions);
+                // Off this thread: with the queue empty the processor runs the block synchronously inside Enqueue, on
+                // the caller's thread, and would not hand it back until the block was committed - after the verdict
+                // this request only needs to see. The processing loop raises its own thread's priority, so nothing is
+                // lost by not inheriting this one's. A queue failure still reaches the request through BlockRemoved.
+                _ = Task.Run(() => EnqueueAsync(block, processingOptions));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -607,6 +611,20 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             ? ValidationResult.InclusionListUnsatisfied
             : ValidationResult.Valid;
         blockProcessed.TrySetResult((result, null));
+    }
+
+    private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions)
+    {
+        try
+        {
+            await _processingQueue.Enqueue(block, processingOptions);
+        }
+        catch (Exception e)
+        {
+            // The queue reports the failure to the request as BlockRemoved(QueueException); this only keeps the
+            // exception observed.
+            if (_logger.IsDebug) _logger.Debug($"Enqueueing {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
+        }
     }
 
     private void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)

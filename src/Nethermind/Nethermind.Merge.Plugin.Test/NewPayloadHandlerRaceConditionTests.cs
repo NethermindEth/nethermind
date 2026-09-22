@@ -172,13 +172,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .TestObject;
         block.Header.IsPostMerge = true;
 
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
         processingQueue
             .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
             .Returns(_ =>
             {
-                // The verdict lands; BlockRemoved never does, as if the commit were still running.
-                processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+                enqueued.TrySetResult();
                 return ValueTask.CompletedTask;
             });
 
@@ -190,7 +190,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             processingQueue: processingQueue,
             timeoutMs: 5_000);
 
-        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await enqueued.Task;
+        // The verdict lands; BlockRemoved never does, as if the commit were still running.
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        ResultWrapper<PayloadStatusV1> result = await request;
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0), "an answered request must not leave its completion behind");
