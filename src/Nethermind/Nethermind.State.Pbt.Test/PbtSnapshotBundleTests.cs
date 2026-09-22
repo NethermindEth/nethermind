@@ -452,7 +452,7 @@ public class PbtSnapshotBundleTests
         PbtReadOnlySnapshotBundle readOnly = new(new(0), reader);
         using PbtSnapshotBundle bundle = new(Snapshots(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         Assert.That(bundle.TreeRoot, Is.Not.EqualTo(readOnly.TreeRoot));
-        using (PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1))
+        using (PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1, 0))
             for (int read = 0; read < 2; read++)
             {
                 using RefCountingMemory? payload = ((IPbtStore)session).GetNodeGroup(path, reader.CurrentRoot);
@@ -485,7 +485,7 @@ public class PbtSnapshotBundleTests
         using (RefCountingMemory? payload = bundle.GetNodeGroup(path, reader.CurrentRoot))
             Assert.That(payload!.Memory.ToArray(), Is.EqualTo(encoding));
         int readsBeforeWarming = reader.GroupReadCount;
-        using PbtTrieWarmupSession laterSession = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 2);
+        using PbtTrieWarmupSession laterSession = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 2, 0);
         using RefCountingMemory? warmed = ((IPbtStore)laterSession).GetNodeGroup(path, reader.CurrentRoot);
         using (Assert.EnterMultipleScope())
         {
@@ -516,7 +516,7 @@ public class PbtSnapshotBundleTests
 
         Reader forkReader = new(default, null) { GroupKey = path, GroupPayload = original, CurrentRoot = TestItem.KeccakB.ValueHash256 };
         using PbtSnapshotBundle fork = new(new(0), new PbtReadOnlySnapshotBundle(new(0), forkReader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
-        using PbtTrieWarmupSession forkSession = fork.CreateTrieWarmupSession(new NoopTrieWarmer(), 2);
+        using PbtTrieWarmupSession forkSession = fork.CreateTrieWarmupSession(new NoopTrieWarmer(), 2, 0);
         using (RefCountingMemory? payload = forkWarms
             ? ((IPbtStore)forkSession).GetNodeGroup(path, originalHash)
             : fork.GetNodeGroup(path, originalHash))
@@ -535,7 +535,7 @@ public class PbtSnapshotBundleTests
     /// <summary>Warms one group, checks the fold reads the staged copy, then commits the block so the group reaches the shared cache.</summary>
     private static void WarmAndCommit(PbtSnapshotBundle bundle, PbtTrieNodeCache cache, PbtNodePath path, in ValueHash256 groupHash, byte[] expected)
     {
-        using (PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1))
+        using (PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1, 0))
         using (RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(path, groupHash))
             Assert.That(warmed!.Memory.ToArray(), Is.EqualTo(expected));
         using (RefCountingMemory? payload = bundle.GetNodeGroup(path, groupHash))
@@ -568,7 +568,7 @@ public class PbtSnapshotBundleTests
 
         using (RefCountingMemory payload = Memory(first, foldMemory)) bundle.SetNodeGroup(foldedPath, firstHash, payload);
         using (RefCountingMemory payload = Memory(second, foldMemory)) bundle.SetNodeGroup(foldedPath, secondHash, payload);
-        using (PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1))
+        using (PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1, 0))
         using (RefCountingMemory? read = ((IPbtStore)session).GetNodeGroup(warmedPath, warmedHash))
             Assert.That(read!.Memory.ToArray(), Is.EqualTo(warmed));
         using (RefCountingMemory? read = bundle.GetNodeGroup(warmedPath, warmedHash))
@@ -1002,7 +1002,7 @@ public class PbtSnapshotBundleTests
             Assert.That(actual?.Memory.ToArray(), Is.EqualTo(expected));
             Assert.That(reader.GroupReadCount, Is.EqualTo(newestTier == 0 ? 1 : 0));
         }
-        using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1);
+        using PbtTrieWarmupSession session = bundle.CreateTrieWarmupSession(new NoopTrieWarmer(), 1, 0);
         using RefCountingMemory? warmed = ((IPbtStore)session).GetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256);
         using RefCountingMemory? rewarmed = ((IPbtStore)session).GetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256);
         using (Assert.EnterMultipleScope())

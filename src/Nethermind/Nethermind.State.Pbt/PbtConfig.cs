@@ -31,6 +31,7 @@ public class PbtConfig : IPbtConfig
     public int FoldMinOperationsPerWorker { get; set; } = FoldFanOut.DefaultMinOperationsPerWorker;
     public long FoldLargeSubtreeBytes { get; set; } = FoldFanOut.DefaultLargeSubtreeBytes;
     public int FoldLargeSubtreeMinOperationsPerWorker { get; set; } = FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker;
+    public long WarmupMinSubtreeBytes { get; set; } = PbtTrieWarmer.DefaultMinSubtreeBytes;
     public int ImportStorageReadConcurrency { get; set; }
     public int ImportWindowSize { get; set; }
     public bool ScanTree { get; set; }

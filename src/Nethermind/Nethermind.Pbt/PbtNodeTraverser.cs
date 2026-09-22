@@ -14,11 +14,18 @@ internal static class PbtNodeTraverser
     /// stored (<see cref="PbtNodeGroupCodec.ShouldOmit"/>); its position is descended as an implicit branch whose
     /// children lie in the same group.
     /// </remarks>
-    internal static ValueHash256 GetLeafHash<TKey>(IPbtStore store, in ValueHash256 root, in TKey key) where TKey : struct, IPbtKey<TKey>
+    /// <param name="minSubtreeBytes">
+    /// The stored size below the next node group under which the traversal stops instead of fetching it; zero or less
+    /// follows the key to its leaf. Only a caller that discards the hash may pass a positive value: a traversal that
+    /// stops short returns default, as an absent key does.
+    /// </param>
+    /// <param name="stoppedAtSmallSubtree">Whether the traversal stopped short of the leaf because of <paramref name="minSubtreeBytes"/>.</param>
+    internal static ValueHash256 GetLeafHash<TKey>(IPbtStore store, in ValueHash256 root, in TKey key, long minSubtreeBytes, out bool stoppedAtSmallSubtree) where TKey : struct, IPbtKey<TKey>
     {
         ArgumentNullException.ThrowIfNull(store);
         if (key.Length == 0) throw new ArgumentException("A complete key is required.", nameof(key));
 
+        stoppedAtSmallSubtree = false;
         PbtStorageNodePath path = new([], 0);
         ValueHash256 groupHash = root;
         Span<byte> groupPathBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
@@ -55,6 +62,12 @@ internal static class PbtNodeTraverser
                     location = PbtFourLevelGroupGeometry.Locate(childPath);
                     if (!location.GroupKey.Equals(groupKey))
                     {
+                        if (minSubtreeBytes > 0
+                            && group.DescendantBytes(TrieUpdater.BoundarySlot(key.Bytes, groupKey.BitDepth)) < minSubtreeBytes)
+                        {
+                            stoppedAtSmallSubtree = true;
+                            return default;
+                        }
                         groupHash = HashAtBoundary(node, location.GroupKey.BitDepth - path.BitDepth);
                     }
                 }
