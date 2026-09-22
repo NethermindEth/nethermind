@@ -1104,6 +1104,27 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_ConsumerCacheHit_SeedsScopeOnlyWhenHintGetOnCacheHitEnabled([Values] bool hintGetOnCacheHit)
+    {
+        PreBlockCaches caches = new(TestPreBlockCachesConfig.Small with { HintGetOnCacheHit = hintGetOnCacheHit });
+        AddressAsKey key = TestItem.AddressA;
+        Account cached = new(1, 100);
+        caches.PrepareFor(TestItem.KeccakA);
+        caches.StateCache.Set(in key, cached);
+        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+
+        using (IWorldStateScopeProvider.IScope scope = consumer.BeginScope(HeaderAt(TestItem.KeccakA, 1)))
+        {
+            Assert.That(scope.Get(TestItem.AddressA), Is.SameAs(cached));
+        }
+
+        baseScope.Received(hintGetOnCacheHit ? 1 : 0).HintGet(TestItem.AddressA, cached);
+    }
+
+    [Test]
     public void Test_ConsumerScope_OpeningFailure_LeavesNothingBehind()
     {
         PreBlockCaches caches = NewCaches();

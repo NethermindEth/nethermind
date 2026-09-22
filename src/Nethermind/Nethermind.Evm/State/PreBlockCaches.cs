@@ -51,10 +51,14 @@ public class PreBlockCaches
             () => { _precompileCaches.ClearBlockCache(); return CacheType.None; }
         ];
         _writeBack = new WriteBackBatch(this);
+        HintGetOnCacheHit = config.HintGetOnCacheHit;
     }
 
     public SeqlockCache<StorageCell, UInt256> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
+
+    /// <inheritdoc cref="PreBlockCachesConfig.HintGetOnCacheHit"/>
+    public bool HintGetOnCacheHit { get; }
 
     /// <summary>
     /// The main processing scope, registered as a factory for reference-counted trie warm-up session borrows.
@@ -525,6 +529,12 @@ public sealed record PreBlockCachesConfig
     public int StorageCacheSetsBits { get; init; } = 18;
 
     public int SurvivingPrecompileCacheMaxEntries { get; init; } = 16384;
+
+    /// <summary>
+    /// Whether a consumer read served from the account cache seeds the scope-local cache through
+    /// <see cref="IWorldStateScopeProvider.IScope.HintGet"/>.
+    /// </summary>
+    public bool HintGetOnCacheHit { get; init; } = true;
 }
 
 [Flags]

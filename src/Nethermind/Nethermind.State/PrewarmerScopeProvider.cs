@@ -129,6 +129,7 @@ public class PrewarmerScopeProvider(
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, UInt256> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
+        private readonly bool hintGetOnCacheHit = preBlockCaches.HintGetOnCacheHit;
         private readonly IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession = trieWarmupSession;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
@@ -259,7 +260,7 @@ public class PrewarmerScopeProvider(
                 // so counting their probes would drag the exported coverage ratio below the true value.
                 if (!isPrewarmer)
                 {
-                    baseScope.HintGet(address, account);
+                    if (hintGetOnCacheHit) baseScope.HintGet(address, account);
                     _metrics.IncrementPreBlockAccountHits();
                 }
 
