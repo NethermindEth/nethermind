@@ -265,8 +265,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
 
-            Func<Task> act = () => stepsManager.InitializeAll(cancellationToken);
-            Assert.That(async () => await act(), Throws.TypeOf<StepDependencyException>());
+            Assert.That(() => stepsManager.InitializeAll(cancellationToken), Throws.TypeOf<StepDependencyException>());
         }
 
         private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos)

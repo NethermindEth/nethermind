@@ -148,7 +148,7 @@ public class PruningTrieStoreModule : Module
             return false;
         }
 
-        if (logger.IsWarn) logger.Warn("Dropping the patricia trie state DB: the flat DB owns the state. This is irreversible - a switch back to the patricia backend will require a resync.");
+        if (logger.IsWarn) logger.Warn($"Dropping the patricia trie state DB: the flat DB owns the state at {reader.CurrentState}. This is irreversible - a switch back to the patricia backend will require a resync.");
         return true;
     }
 

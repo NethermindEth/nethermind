@@ -122,6 +122,34 @@ public class PruningTrieStoreModuleTests
         Assert.That(() => container.ResolveKeyed<IDb>(DbNames.State), Throws.Nothing);
     }
 
+    [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData, true)]
+    [TestCase(Flags.Drop | Flags.FlatHasData, false)]
+    [TestCase(Flags.Enabled | Flags.FlatHasData, false)]
+    [TestCase(Flags.Drop | Flags.Enabled, false)]
+    public void State_db_is_opened_with_DeleteOnStart_only_when_dropping(Flags flags, bool expected)
+    {
+        // MemDbFactory ignores DeleteOnStart, so the settings handed to the factory are the only evidence.
+        DbSettings stateDbSettings = null;
+        IDbFactory dbFactory = Substitute.For<IDbFactory>();
+        dbFactory.CreateDb(Arg.Do<DbSettings>(settings => stateDbSettings = settings)).Returns(new MemDb());
+        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(ci => ci.Arg<DbSettings>().DbPath);
+
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .Intercept<IFlatDbConfig>((cfg) =>
+            {
+                cfg.Enabled = flags.HasFlag(Flags.Enabled);
+                cfg.DropPruningTrieState = flags.HasFlag(Flags.Drop);
+            })
+            .AddSingleton<IPersistence>(Persistence(flags.HasFlag(Flags.FlatHasData)))
+            .AddSingleton<IDbFactory>(dbFactory)
+            .Build();
+
+        container.ResolveKeyed<IDb>(DbNames.State);
+
+        Assert.That(stateDbSettings?.DeleteOnStart, Is.EqualTo(expected));
+    }
+
     private static IFlatDbConfig Config(Flags flags)
     {
         IFlatDbConfig config = Substitute.For<IFlatDbConfig>();
