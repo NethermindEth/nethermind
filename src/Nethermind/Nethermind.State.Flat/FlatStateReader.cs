@@ -77,8 +77,8 @@ public class FlatStateReader(
 
     /// <summary>
     /// Translates "state unavailable" into <see cref="MissingTrieNodeException"/> — the hash-based reader's
-    /// contract — with the <see cref="StateUnavailableException"/> as inner, so JSON-RPC answers
-    /// resource-unavailable (-32002) rather than resource-not-found.
+    /// contract — keeping the cause as inner, so JSON-RPC answers resource-unavailable (-32002) for a
+    /// <see cref="StateNotRetainedException"/> and resource-not-found otherwise.
     /// </summary>
     private ReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)
     {

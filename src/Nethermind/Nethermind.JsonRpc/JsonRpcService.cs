@@ -624,11 +624,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, in request.IdRef, returnAction),
 
-            MissingTrieNodeException { InnerException: StateUnavailableException inner } =>
-                HandleStateUnavailable(inner, methodName, request, returnAction),
+            // Only state this node legitimately does not hold is -32002. A corrupt or untrusted history row is wrapped
+            // the same way but must fall through to HandleMissingTrieNode, whose WARN is its only sign at default log level.
+            MissingTrieNodeException { InnerException: StateNotRetainedException inner } =>
+                HandleStateNotRetained(inner, methodName, request, returnAction),
 
-            TargetInvocationException { InnerException: MissingTrieNodeException { InnerException: StateUnavailableException inner } } =>
-                HandleStateUnavailable(inner, methodName, request, returnAction),
+            TargetInvocationException { InnerException: MissingTrieNodeException { InnerException: StateNotRetainedException inner } } =>
+                HandleStateNotRetained(inner, methodName, request, returnAction),
 
             MissingTrieNodeException e =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
@@ -636,11 +638,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetInvocationException { InnerException: MissingTrieNodeException e } =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
 
-            StateUnavailableException e =>
-                HandleStateUnavailable(e, methodName, request, returnAction),
+            StateNotRetainedException e =>
+                HandleStateNotRetained(e, methodName, request, returnAction),
 
-            TargetInvocationException { InnerException: StateUnavailableException e } =>
-                HandleStateUnavailable(e, methodName, request, returnAction),
+            TargetInvocationException { InnerException: StateNotRetainedException e } =>
+                HandleStateNotRetained(e, methodName, request, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };
@@ -674,7 +676,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             return KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
         }
 
-        JsonRpcErrorResponse HandleStateUnavailable(StateUnavailableException ex, string methodName, JsonRpcRequest request, Action? returnAction) =>
+        JsonRpcErrorResponse HandleStateNotRetained(StateNotRetainedException ex, string methodName, JsonRpcRequest request, Action? returnAction) =>
             KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
     }
 

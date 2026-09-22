@@ -429,7 +429,7 @@ public class FlatDbManagerTests
         HistoricalFlatDbManager manager = WrapHistory(inner);
 
         Assert.That(() => manager.GatherReadOnlySnapshotBundle(CreateStateId(5, rootByte: 5)),
-            Throws.TypeOf<StateUnavailableException>());
+            Throws.TypeOf<StateNotRetainedException>());
     }
 
     [Test]
