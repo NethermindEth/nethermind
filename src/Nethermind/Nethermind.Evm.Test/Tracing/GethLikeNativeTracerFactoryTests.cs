@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Preimage;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using NSubstitute;
 using NUnit.Framework;
@@ -22,6 +23,7 @@ public class GethLikeNativeTracerFactoryTests
 
     [TestCase(Native4ByteTracer.FourByteTracer, typeof(Native4ByteTracer))]
     [TestCase(NativeNoopTracer.NoopTracer, typeof(NativeNoopTracer))]
+    [TestCase(NativeKeccakPreimageTracer.KeccakPreimageTracer, typeof(NativeKeccakPreimageTracer))]
     [TestCase(NativeStateGasTracer.StateGasTracer, typeof(NativeStateGasTracer))]
     public void CreateTracer_NativeTracerExists(string tracerName, Type expectedTracer)
     {
