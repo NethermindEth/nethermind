@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -21,6 +22,33 @@ namespace Nethermind.Merge.Plugin.Test;
 [Parallelizable(ParallelScope.All)]
 public class ExecutionPayloadTests
 {
+    [Test]
+    public async Task Prepared_payload_matches_inline_decoding([Values(32, 129)] int count, [Values] bool malformed)
+    {
+        byte[][] encoded = BuildDiverseBatch(count);
+        if (malformed) encoded[^1] = [.. encoded[^1], 0xDC, 0xAF];
+        ExecutionPayload payload = new() { Transactions = encoded };
+        Result<Block> expected = new ExecutionPayload { Transactions = encoded }.TryGetBlock();
+
+        Task<(Result<Block> Block, Hash256? Hash)>? preparation = payload.StartBlockPreparation(null);
+        Result<Transaction[]> transactions = payload.TryGetTransactions();
+        (Result<Block> actual, Hash256? hash) = preparation is null ? (payload.TryGetBlock(), null) : await preparation;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.IsError, Is.EqualTo(expected.IsError));
+            Assert.That(actual.Error, Is.EqualTo(expected.Error));
+            Assert.That(transactions.IsError, Is.EqualTo(malformed));
+            if (!malformed)
+            {
+                Assert.That(actual.Data!.Header.CalculateHash(), Is.EqualTo(expected.Data!.Header.CalculateHash()));
+                for (int i = 0; i < count; i++)
+                    Assert.That(actual.Data.Transactions[i], Is.SameAs(transactions.Data![i]));
+                if (preparation is not null) Assert.That(hash, Is.EqualTo(expected.Data.Header.CalculateHash()));
+            }
+        }
+    }
+
     private static TxType[] TxTypes() => [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
 
     [Test, NonParallelizable]
@@ -282,17 +310,28 @@ public class ExecutionPayloadTests
 
     // A root task started for one transaction set must never produce the root of a mutated payload
     [Test]
-    public void TryGetBlock_recomputes_tx_root_when_transactions_change_after_early_start()
+    public async Task TryGetBlock_recomputes_tx_root_when_transactions_change_after_early_start([Values] bool prepareBlock)
     {
         byte[][] originalRlps = EncodeTxs(count: 64);
         byte[][] replacementRlps = EncodeTxs(count: 64, nonceOffset: 1000);
 
         ExecutionPayload payload = new() { Transactions = originalRlps };
-        payload.StartTxRootComputation();
+        if (prepareBlock)
+        {
+            if (payload.StartBlockPreparation(null) is { } preparation) await preparation;
+        }
+        else
+        {
+            _ = payload.StartTxRootComputation();
+        }
         payload.Transactions = replacementRlps;
         Result<Block> block = payload.TryGetBlock();
 
-        Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(replacementRlps)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(replacementRlps)));
+            Assert.That(block.Data.Transactions[0].Nonce, Is.EqualTo(1000));
+        }
     }
 
     // Below the background threshold the root is still computed, just inline

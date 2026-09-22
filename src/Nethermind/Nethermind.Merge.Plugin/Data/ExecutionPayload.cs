@@ -9,6 +9,7 @@ using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -73,6 +74,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             _encodedTransactions = value;
             _transactions = null;
             _txRootTask = null;
+            _transactionDecodingTask = null;
         }
     }
 
@@ -214,8 +216,27 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     protected Transaction[]? _transactions = null;
 
     private Task<Hash256>? _txRootTask;
+    private Task<Result<Transaction[]>>? _transactionDecodingTask;
 
     private const int MinTxsForParallelDecoding = 32;
+
+    /// <summary>Prepares a block and its header hash while the caller performs parent lookup and starts recovery.</summary>
+    /// <remarks>Join the returned task before changing any payload fields. Start once per request.</remarks>
+    internal Task<(Result<Block> Block, Hash256? Hash)>? StartBlockPreparation(UInt256? totalDifficulty)
+    {
+        if (_encodedTransactions.Length < MinTxsForParallelDecoding || RuntimeInformation.IsSingleProcessor) return null;
+
+        _ = StartTxRootComputation();
+        if (_transactions is null) _transactionDecodingTask ??= Task.Run(DecodeTransactions);
+        Task<(Result<Block>, Hash256?)> preparation = Task.Run(() =>
+        {
+            Result<Block> block = TryGetBlock(totalDifficulty);
+            return (block, block.IsError ? null : block.Data.Header.CalculateHash());
+        });
+        // Recovery or parent lookup can fail before the handler reaches the preparation await.
+        _ = preparation.ContinueWith(static task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+        return preparation;
+    }
 
     /// <summary>
     /// Starts computing the transactions-trie root in the background, letting callers overlap it
@@ -241,6 +262,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Result<Transaction[]> TryGetTransactions()
+        => !RuntimeInformation.IsSingleProcessor && _transactionDecodingTask is { } decoding
+            ? decoding.GetAwaiter().GetResult() : DecodeTransactions();
+
+    private Result<Transaction[]> DecodeTransactions()
     {
         if (_transactions is not null) return _transactions;
 

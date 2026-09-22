@@ -125,11 +125,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
+        Task<(Result<Block> Block, Hash256? Hash)>? preparation = request.BlockNumber <= (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance
+            ? request.StartBlockPreparation(_poSSwitcher.FinalTotalDifficulty)
+            : null;
+        BlockHeader? preparedParent = preparation is null ? null
+            : _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+
         // Overlaps ecrecover with everything that follows, block processing included; the pipeline
         // recovers inline whatever it reaches before the background recovery does.
         StartSenderRecovery(request);
 
-        Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+        (Result<Block> decodingResult, Hash256? preparedHash) = preparation is null
+            ? (request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty), null)
+            : await preparation;
         if (decodingResult.IsError)
         {
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
@@ -149,7 +157,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // below come from TryGetBlock, which derives them from the payload's own body, so a matching header hash
         // binds the body to the header and the validator need not recompute any of them. See the caveat on
         // IBlockValidator.ValidateSuggestedBlock for payload types that take those roots off the wire instead.
-        if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
+        Hash256 actualHash = preparedHash ?? block!.Header.CalculateHash();
+        if (block!.Hash != actualHash)
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
             Nethermind.Blockchain.Metrics.BadBlocks++;
@@ -180,7 +189,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
 
-        BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        BlockHeader? parentHeader = preparedParent ?? _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
             // Keep full orphan validation because ValidateOrphanedBlock is also used without this handler's hash gate.
