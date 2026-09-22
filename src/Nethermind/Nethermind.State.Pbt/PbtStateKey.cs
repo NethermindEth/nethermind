@@ -49,15 +49,6 @@ internal static class PbtStateKey
     public static PbtPath Code(Address address, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
-    public static PbtStorageTreeKey StoragePrefix(Address address)
-    {
-        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-        Span<byte> prefix = stackalloc byte[33];
-        prefix[0] = Eip8297KeyDerivation.StorageZone;
-        addressHash.Bytes.CopyTo(prefix[1..]);
-        return new PbtStorageTreeKey(prefix);
-    }
-
     private static void Address32(Address address, Span<byte> address32)
     {
         address32[..12].Clear();

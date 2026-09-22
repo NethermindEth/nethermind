@@ -50,7 +50,7 @@ public class PbtSnapshotCompactorTests
                 using (replacement)
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(older.NodeGroupCount, Is.EqualTo(1));
+                    Assert.That(older.NodeGroupCount(), Is.EqualTo(1));
                     Assert.That(original, Is.SameAs(olderPayload));
                     Assert.That(replacement, Is.SameAs(newerPayload));
                 }
@@ -75,7 +75,7 @@ public class PbtSnapshotCompactorTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes)));
-                Assert.That(compacted.Content.NodeGroupCount, Is.EqualTo(1));
+                Assert.That(compacted.Content.NodeGroupCount(), Is.EqualTo(1));
                 Assert.That(found, Is.True);
                 Assert.That(alternateFound, Is.True);
                 Assert.That(alternatePayload, Is.SameAs(payload));

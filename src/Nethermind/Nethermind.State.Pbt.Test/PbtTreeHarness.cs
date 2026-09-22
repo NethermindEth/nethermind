@@ -75,6 +75,9 @@ internal sealed class PbtTreeHarness : IDisposable
 
 internal static class PbtStoreTestExtensions
 {
+    internal static int NodeGroupCount(this PbtSnapshotContent content) =>
+        content.AccountNodeGroups.Count + content.CodeNodeGroups.Count + content.StorageNodeGroups.Count;
+
     internal static RefCountingMemory? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash)
         where TPath : struct, IPbtNodePath<TPath>
     {

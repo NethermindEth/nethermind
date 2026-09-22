@@ -80,8 +80,8 @@ public class PbtFormatInteropTests
         [
             Eip8297KeyDerivation.AccountKey(address, 0).Bytes.ToArray(),
             Eip8297KeyDerivation.StorageKey(address, new UInt256(63)).Bytes.ToArray(),
-            Eip8297KeyDerivation.CodeKey(address, codeHash, 127).Bytes.ToArray(),
-            Eip8297KeyDerivation.CodeKey(address, codeHash, 128).Bytes.ToArray(),
+            Eip8297KeyDerivation.OverflowCodeKey(codeHash, 127).Bytes.ToArray(),
+            Eip8297KeyDerivation.OverflowCodeKey(codeHash, 128).Bytes.ToArray(),
             Eip8297KeyDerivation.StorageKey(address, new UInt256(64)).Bytes.ToArray(),
         ];
         byte[] value = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000007");

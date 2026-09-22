@@ -523,7 +523,6 @@ public class PbtNodeGroupTests
             Assert.That(actual, Is.EqualTo(expected));
             Assert.That(location.GroupKey, Is.EqualTo(groupKey));
             Assert.That(location.Position, Is.EqualTo(position));
-            Assert.That(PbtFourLevelGroupGeometry.GroupKeyOf(actual), Is.EqualTo(groupKey));
             Assert.That(PbtFourLevelGroupGeometry.PositionOf(actual), Is.EqualTo(position));
             Assert.That(PbtFourLevelGroupGeometry.Reconstruct(groupKey, position), Is.EqualTo(expected));
         }
@@ -864,7 +863,6 @@ public class PbtNodeGroupTests
                 Assert.That(reader.DescendantBytes(5), Is.EqualTo(1234));
                 Assert.That(reader.DescendantBytes(4), Is.Zero);
                 Assert.That(reader.SubtreeBytes(groupPath), Is.EqualTo(1234));
-                Assert.That(reader.HasPayload, Is.False);
                 Assert.That(persistence.Reads, Is.Empty);
                 Assert.That(metrics.PhysicalGroupFetches, Is.Zero);
             }
@@ -2364,7 +2362,6 @@ public class PbtNodeGroupTests
             Assert.That(stored, Is.EqualTo(slots));
             Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload).DescendantBytes(slot), Is.EqualTo(descendantBytes));
             Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload).SubtreeBytes, Is.EqualTo(payload.Length + descendantBytes));
-            Assert.That(PbtNodeGroupCodec.ReadSubtreeBytes(payload), Is.EqualTo(payload.Length + descendantBytes));
             Assert.That(streamed.GetSpan().ToArray(), Is.EqualTo(payload));
         }
         slots[slot] = -1;

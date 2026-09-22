@@ -356,7 +356,7 @@ public class PbtRocksDbPersistenceTests
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, firstState, default, WriteFlags.None))
         {
             using RefCountingMemory group = EncodeGroup(null, new(firstPath.ToPath<PbtStorageNodePath>(), firstNode), new(secondPath.ToPath<PbtStorageNodePath>(), secondNode));
-            batch.SetNodeGroup(PbtFourLevelGroupGeometry.GroupKeyOf(firstPath), group);
+            batch.SetNodeGroup(PbtFourLevelGroupGeometry.Locate(firstPath).GroupKey, group);
             batch.Commit();
         }
 
@@ -375,14 +375,14 @@ public class PbtRocksDbPersistenceTests
             {
                 Assert.That(ReadNode(reader, firstPath), Is.Null);
                 Assert.That(ReadNode(reader, secondPath), Is.EqualTo(secondNode));
-                Assert.That(groupKeys, Is.EqualTo(new[] { PbtFourLevelGroupGeometry.GroupKeyOf(secondPath).ToPath<PbtStorageNodePath>() }));
+                Assert.That(groupKeys, Is.EqualTo(new[] { PbtFourLevelGroupGeometry.Locate(secondPath).GroupKey.ToPath<PbtStorageNodePath>() }));
                 Assert.That(physicalGroups.Get("rootNodeGroup"u8), Is.Not.Null);
             }
         }
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(secondState, new StateId(3, default), default, WriteFlags.None))
         {
-            batch.SetNodeGroup(PbtFourLevelGroupGeometry.GroupKeyOf(secondPath), null);
+            batch.SetNodeGroup(PbtFourLevelGroupGeometry.Locate(secondPath).GroupKey, null);
             batch.Commit();
         }
         Assert.That(physicalGroups.Get("rootNodeGroup"u8), Is.Null);
@@ -596,7 +596,7 @@ public class PbtRocksDbPersistenceTests
             adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         PbtNodePath path = new(Bytes.FromHexString(prefix), depth);
-        PbtNodePath groupKey = PbtFourLevelGroupGeometry.GroupKeyOf(path);
+        PbtNodePath groupKey = PbtFourLevelGroupGeometry.Locate(path).GroupKey;
         byte[] originalNode = BranchNode(1);
         byte[] replacementNode = BranchNode(2);
         RefCountingMemory payload;
@@ -812,7 +812,7 @@ public class PbtRocksDbPersistenceTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-        TPath groupKey = PbtFourLevelGroupGeometry.GroupKeyOf(path);
+        TPath groupKey = PbtFourLevelGroupGeometry.Locate(path).GroupKey;
         byte[] physicalKey = groupKey.ToStorageKey(column, PbtNodeGroupKeyLayout.Padded);
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
@@ -880,7 +880,7 @@ public class PbtRocksDbPersistenceTests
         BufferWriter writer = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
         try
         {
-            PbtNodeGroupCodec.Encode(ref writer, PbtFourLevelGroupGeometry.GroupKeyOf(records[0].Path), records, default);
+            PbtNodeGroupCodec.Encode(ref writer, PbtFourLevelGroupGeometry.Locate(records[0].Path).GroupKey, records, default);
             return writer.Detach()!;
         }
         finally
@@ -893,7 +893,7 @@ public class PbtRocksDbPersistenceTests
         where TPath : struct, IPbtNodePath<TPath>
     {
         using RefCountingMemory payload = EncodeGroup(memoryProvider, new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), node));
-        batch.SetNodeGroup(PbtFourLevelGroupGeometry.GroupKeyOf(path), payload);
+        batch.SetNodeGroup(PbtFourLevelGroupGeometry.Locate(path).GroupKey, payload);
     }
 
     private static byte[]? ReadNode<TPath>(IPbtPersistence.IReader reader, TPath path)

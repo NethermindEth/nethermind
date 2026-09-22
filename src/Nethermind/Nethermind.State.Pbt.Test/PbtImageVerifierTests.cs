@@ -50,7 +50,6 @@ public class PbtImageVerifierTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(image.PbtRoot, Is.EqualTo(new Hash256(metadata.GetProperty("pbtRoot").GetString()!).ValueHash256));
-            Assert.That(image.MptRoot, Is.EqualTo(anchor.Header.StateRoot!.ValueHash256));
             Assert.That(snapshot.CanRead && preimages.CanRead, Is.True, "Input streams remain caller-owned");
         }
         int expectedAccounts = 0;
@@ -253,7 +252,6 @@ public class PbtImageVerifierTests
         snapshot.Position = 0;
         preimages.Position = 0;
         using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory);
-        Assert.That(image.MptRoot, Is.EqualTo(anchor.Header.StateRoot!.ValueHash256));
     }
 
     private static FileStream OpenArtifact(string name, string file) => File.OpenRead(Path.Combine(Fixtures, "canonical", name, file));

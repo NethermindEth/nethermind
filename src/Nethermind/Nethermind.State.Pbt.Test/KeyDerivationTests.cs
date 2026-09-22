@@ -25,7 +25,6 @@ public class KeyDerivationTests
         byte[] expected = SpliceBits([0, 0, 0, 0], (Blake3(Address32(Address)), 244));
         Assert.That(stem.Bytes.SequenceEqual(expected));
         Assert.That(stem.Zone, Is.EqualTo(0));
-        Assert.That(stem.IsStorageZone, Is.False);
     }
 
     [Test]
@@ -44,7 +43,6 @@ public class KeyDerivationTests
         treeIndex[31] = 3;
         byte[] expected = SpliceBits([1], (Blake3(Address32(Address)), 60), (Blake3([.. Address32(Address), .. treeIndex]), 187));
         Assert.That(stem.Bytes.SequenceEqual(expected));
-        Assert.That(stem.IsStorageZone, Is.True);
     }
 
     [Test]
@@ -54,8 +52,6 @@ public class KeyDerivationTests
         PbtPath expected = PbtReferenceModel.CodeKey(codeHash, chunkId);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Eip8297KeyDerivation.CodeKey(Address32(TestItem.AddressA), codeHash.Bytes, chunkId), Is.EqualTo(expected));
-            Assert.That(Eip8297KeyDerivation.CodeKey(Address32(TestItem.AddressB), codeHash.Bytes, chunkId), Is.EqualTo(expected));
             Assert.That(Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId), Is.EqualTo(expected));
             Assert.That(PbtStateKey.Code(TestItem.AddressA, codeHash, chunkId), Is.EqualTo(expected));
             Assert.That(PbtStateKey.Code(PbtKeyDerivation.AddressKeyHash(TestItem.AddressB), codeHash, chunkId), Is.EqualTo(expected));
@@ -70,7 +66,6 @@ public class KeyDerivationTests
         byte[] codeHash = new byte[hashLength];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => Eip8297KeyDerivation.CodeKey(Address32(Address), codeHash, chunkId), Throws.InstanceOf<ArgumentException>());
             Assert.That(() => Eip8297KeyDerivation.OverflowCodeKey(codeHash, chunkId), Throws.InstanceOf<ArgumentException>());
         }
     }
@@ -124,19 +119,6 @@ public class KeyDerivationTests
         PbtKeyDerivation.PackBasicData(packed, 0xAABBCCDD, new UInt256(0x0102030405060708), balance);
 
         Assert.That(packed.ToHexString(), Is.EqualTo("00000000aabbccdd010203040506070899887766554433221100ffeeddccbbaa"));
-    }
-
-    [TestCase(0, 0x12)]
-    [TestCase(1, 0x25)]
-    [TestCase(4, 0x2A)]
-    [TestCase(8, 0xAB)]
-    [TestCase(Stem.LengthInBits - 8, 0xCD)]
-    public void StemReadsAnyEightBitWindow(int fromBit, int expected)
-    {
-        byte[] bytes = Bytes.FromHexString("0x12AB000000000000000000000000000000000000000000000000000000000000");
-        bytes[Stem.Length - 1] = 0xCD;
-
-        Assert.That(new Stem(bytes.AsSpan(0, Stem.Length)).GetByteAt(fromBit), Is.EqualTo(expected));
     }
 
     private static ReadOnlySpan<byte> Chunk(byte[] chunks, int chunkId) =>

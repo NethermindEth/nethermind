@@ -158,7 +158,6 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
 
     internal void CompleteDrain() => Reset();
 
-    internal int ShardCapacity(int shardIndex) => _shards[shardIndex]?.Entries.Capacity ?? 0;
 
     /// <summary>Discards pending mutations and returns shards to the pool.</summary>
     public void Reset()

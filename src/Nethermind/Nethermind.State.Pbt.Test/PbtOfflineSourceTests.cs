@@ -65,7 +65,6 @@ public class PbtOfflineSourceTests
             }
             snapshot.Position = preimages.Position = 0;
             using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, identity, anchor, directory);
-            Assert.That(verified.MptRoot, Is.EqualTo(header.StateRoot.ValueHash256));
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

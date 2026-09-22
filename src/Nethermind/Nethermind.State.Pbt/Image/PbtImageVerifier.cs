@@ -86,7 +86,7 @@ internal static class PbtImageVerifier
                     }
                 }
             }
-            return new PbtVerifiedImage(directory, logicalPath, root, anchor.Header.StateRoot!.ValueHash256);
+            return new PbtVerifiedImage(directory, logicalPath, root);
         }
         catch
         {
@@ -214,11 +214,10 @@ internal static class PbtImageVerifier
 }
 
 /// <summary>Private verified logical-state spool; callers may stage its contents, then publish separately.</summary>
-internal sealed class PbtVerifiedImage(string directory, string logicalPath, ValueHash256 pbtRoot, ValueHash256 mptRoot) : IDisposable
+internal sealed class PbtVerifiedImage(string directory, string logicalPath, ValueHash256 pbtRoot) : IDisposable
 {
     private bool _disposed;
     public ValueHash256 PbtRoot { get; } = pbtRoot;
-    public ValueHash256 MptRoot { get; } = mptRoot;
 
     /// <summary>Streams verified logical records into caller-owned staging; storage precedes its account record.</summary>
     /// <remarks>Callbacks must not publish live state. Whole-code buffering follows the verified local budget;

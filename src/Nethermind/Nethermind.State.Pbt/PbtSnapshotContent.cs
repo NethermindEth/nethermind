@@ -32,7 +32,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal readonly ConcurrentDictionary<PbtNodePath, RefCountingMemory?> CodeNodeGroups = new();
     internal readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> StorageNodeGroups = new();
 
-    internal int NodeGroupCount => AccountNodeGroups.Count + CodeNodeGroups.Count + StorageNodeGroups.Count;
 
     /// <summary>Drops this layer's runs of <paramref name="addressHash"/> and marks its storage cleared.</summary>
     /// <param name="addressHash">The address whose storage is cleared.</param>

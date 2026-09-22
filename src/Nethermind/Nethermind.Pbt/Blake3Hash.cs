@@ -23,39 +23,6 @@ public static class Blake3Hash
         Blake3Managed.HashTwo(inputA, hashA.BytesAsSpan, inputB, hashB.BytesAsSpan);
     }
 
-    /// <summary>
-    /// The EIP-8297 node hash: 32 zero bytes when both children are zero (an empty subtree),
-    /// otherwise BLAKE3 of <paramref name="left"/> concatenated with <paramref name="right"/>.
-    /// </summary>
-    public static ValueHash256 HashPairOrZero(in ValueHash256 left, in ValueHash256 right)
-    {
-        if (left == default && right == default) return default;
-
-        ValueHash256 result = default;
-        Blake3Managed.HashPair(left.Bytes, right.Bytes, result.BytesAsSpan);
-        return result;
-    }
-
-    /// <summary>Hashes a pair with an empty right child.</summary>
-    public static ValueHash256 HashWithEmptyRight(in ValueHash256 left)
-    {
-        if (left == default) return default;
-
-        ValueHash256 result = default;
-        Blake3Managed.HashPairHighZero(left.Bytes, result.BytesAsSpan);
-        return result;
-    }
-
-    /// <summary>Hashes a pair with an empty left child.</summary>
-    public static ValueHash256 HashWithEmptyLeft(in ValueHash256 right)
-    {
-        if (right == default) return default;
-
-        ValueHash256 result = default;
-        Blake3Managed.HashPairLowZero(right.Bytes, result.BytesAsSpan);
-        return result;
-    }
-
     internal static ValueHash256 FoldFour(ReadOnlySpan<byte> compactSources, byte presenceMask)
     {
         if (presenceMask == 0) return default;

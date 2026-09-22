@@ -65,14 +65,6 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
 
     internal int BitDepth { get; }
 
-    /// <summary>Whether a stored payload was loaded for this frame.</summary>
-    /// <remarks>
-    /// A frame that never loaded has no stored group: every node of the group is a descendant of the frame's
-    /// input subtree, and an input whose children lie inside the group is decomposed or bulk-copied through this
-    /// reader before the frame is published. The size accessors below then report an absent group.
-    /// </remarks>
-    internal readonly bool HasPayload => _lease is not null;
-
     /// <summary>Whether the frame has been loaded or declared absent, so its descendant sizes are final.</summary>
     internal readonly bool IsResolved => _loaded;
 

@@ -32,6 +32,9 @@ internal static class PbtTestLeaves
     public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>
         into.Add(new RebuildEntry(PbtStateKey.Storage(address, slot), new ValueHash256(value.ToBigEndian())));
 
+    public static PbtStorageTreeKey StoragePrefix(Address address) =>
+        new([Eip8297KeyDerivation.StorageZone, .. PbtKeyDerivation.AddressKeyHash(address).Bytes]);
+
     public static IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(this PbtReadOnlySnapshotBundle bundle, PbtStorageTreeKey prefix) =>
         bundle.EnumerateLeaves().Where(leaf => prefix.IsPrefixOf(leaf.Key));
 

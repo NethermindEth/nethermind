@@ -160,23 +160,14 @@ public class PbtResourcePoolTests
     }
 
     [Test]
-    public void Shard_capacity_follows_unique_keys_and_survives_reset([Values(1, 600, 5000)] int entriesPerShard)
+    public void Duplicate_keys_are_deduplicated([Values(1, 600, 5000)] int entriesPerShard)
     {
         using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(0);
         for (int repeat = 0; repeat < 2; repeat++)
             for (int index = 0; index < entriesPerShard; index++)
                 builder.Set(new PbtStorageTreeKey([0x10, (byte)(index >> 8), (byte)index]), TestItem.KeccakA.ValueHash256);
-        int uniqueCount = builder.Count;
-        int grownCapacity = builder.ShardCapacity(1);
-        builder.Reset();
-        builder.Set(new PbtStorageTreeKey([0x10]), TestItem.KeccakB.ValueHash256);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(uniqueCount, Is.EqualTo(entriesPerShard), "duplicate keys are deduplicated");
-            Assert.That(grownCapacity, Is.GreaterThanOrEqualTo(entriesPerShard));
-            Assert.That(builder.ShardCapacity(1), Is.GreaterThanOrEqualTo(grownCapacity), "a returned shard keeps its tables");
-        }
+        Assert.That(builder.Count, Is.EqualTo(entriesPerShard));
     }
 
     [TestCase(false)]

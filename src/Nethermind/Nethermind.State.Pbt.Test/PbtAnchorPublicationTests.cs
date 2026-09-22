@@ -103,11 +103,7 @@ public class PbtAnchorPublicationTests
             using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, identity,
                 new PbtImageAnchor(chain.ChainId.ToString(), genesis.Hash!, genesis.Header, true,
                     chain.Parameters.Eip8347TransitionTimestamp!.Value, 256 * 1024 * 1024), scratch.Path);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(verified.MptRoot, Is.EqualTo(genesis.StateRoot!.ValueHash256));
-                Assert.That(verified.PbtRoot, Is.EqualTo(expectedShadowRoot.ValueHash256));
-            }
+            Assert.That(verified.PbtRoot, Is.EqualTo(expectedShadowRoot.ValueHash256));
         }
         else if (mode == "wrong-genesis")
         {

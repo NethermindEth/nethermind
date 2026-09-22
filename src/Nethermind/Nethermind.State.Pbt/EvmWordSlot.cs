@@ -38,7 +38,4 @@ public static class EvmWordSlot
     /// <summary>A 32-byte view over the word. Only valid over an lvalue (local/field), never a temporary.</summary>
     public static ReadOnlySpan<byte> AsReadOnlySpan(in EvmWord word) =>
         MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in word), 1));
-
-    /// <summary>The stripped (leading-zeros-removed) representation the EVM world state expects; empty for zero.</summary>
-    public static byte[] ToStrippedBytes(in EvmWord word) => AsReadOnlySpan(in word).WithoutLeadingZeros().ToArray();
 }

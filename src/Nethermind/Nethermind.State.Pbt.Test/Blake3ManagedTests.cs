@@ -112,7 +112,7 @@ public class Blake3ManagedTests
             {
                 for (int pair = 0; pair < levelWidth / 2; pair++)
                 {
-                    level[pair] = Blake3Hash.HashPairOrZero(level[2 * pair], level[2 * pair + 1]);
+                    level[pair] = HashPairOrZero(level[2 * pair], level[2 * pair + 1]);
                 }
             }
 
@@ -140,5 +140,14 @@ public class Blake3ManagedTests
         byte[] actual = new byte[32];
         Blake3Managed.Hash([], actual);
         Assert.That(actual.ToHexString(true), Is.EqualTo("0xaf1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"));
+    }
+
+    private static ValueHash256 HashPairOrZero(in ValueHash256 left, in ValueHash256 right)
+    {
+        if (left == default && right == default) return default;
+
+        ValueHash256 result = default;
+        Blake3Managed.HashPair(left.Bytes, right.Bytes, result.BytesAsSpan);
+        return result;
     }
 }

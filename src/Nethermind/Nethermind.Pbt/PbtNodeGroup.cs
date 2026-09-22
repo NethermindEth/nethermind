@@ -90,16 +90,6 @@ public static class PbtNodeGroupCodec
             descendantBytes[slot] = (descendantMask & (1 << slot)) == 0 ? 0 : ReadDescendantBytes(payload, descendantMask, slot);
     }
 
-    /// <summary>Reads the payload length plus the descendant sizes of every boundary slot.</summary>
-    public static long ReadSubtreeBytes(ReadOnlySpan<byte> payload)
-    {
-        Span<long> descendantBytes = stackalloc long[DescendantSlots];
-        ReadDescendantBytes(payload, descendantBytes);
-        long subtreeBytes = payload.Length;
-        foreach (long slotBytes in descendantBytes) subtreeBytes += slotBytes;
-        return subtreeBytes;
-    }
-
     private static long ReadDescendantBytes(ReadOnlySpan<byte> payload, ushort descendantMask, int slot)
     {
         int fieldsAfter = BitOperations.PopCount((uint)(descendantMask >> (slot + 1)));
@@ -294,12 +284,6 @@ public static class PbtNodeGroupCodec
         }
         && encoding.Length == PrefixlessBranchLength && encoding[0] == 1 && encoding[1] == 0 && encoding[2] == 0
         && encoding[PrefixlessBranchLength - 2] == 0 && encoding[PrefixlessBranchLength - 1] == 0;
-
-    internal static void ValidateNodeEncoding<TPath>(TPath path, ReadOnlySpan<byte> encoding) where TPath : struct, IPbtNodePath<TPath>
-    {
-        if (encoding.IsEmpty) throw new InvalidDataException("A PBT snapshot node encoding cannot be empty.");
-        ValidateNodePath(new PbtNodeReader(encoding), path);
-    }
 
     private static void ValidateNodePath<TPath>(PbtNodeReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {

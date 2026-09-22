@@ -1187,8 +1187,8 @@ public class Eip8297CanonicalTreeTests
         PbtPath account = Eip8297KeyDerivation.AccountKey(address32, 0);
         PbtStorageTreeKey headerStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(63));
         PbtStorageTreeKey overflowStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(64));
-        PbtPath firstGroupCode = Eip8297KeyDerivation.CodeKey(address32, Value(9), 5);
-        PbtPath code = Eip8297KeyDerivation.CodeKey(address32, Value(9), 300);
+        PbtPath firstGroupCode = Eip8297KeyDerivation.OverflowCodeKey(Value(9), 5);
+        PbtPath code = Eip8297KeyDerivation.OverflowCodeKey(Value(9), 300);
         byte[] expectedAddressHash = Hash(address32);
         using (Assert.EnterMultipleScope())
         {

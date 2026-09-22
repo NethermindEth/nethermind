@@ -100,32 +100,41 @@ namespace Nethermind.Benchmarks.Core
 
         private ValueHash256 FoldEightScalar()
         {
-            ValueHash256 a0 = Blake3Hash.HashPairOrZero(_sources[0], _sources[1]);
-            ValueHash256 a1 = Blake3Hash.HashPairOrZero(_sources[2], _sources[3]);
-            ValueHash256 a2 = Blake3Hash.HashPairOrZero(_sources[4], _sources[5]);
-            ValueHash256 a3 = Blake3Hash.HashPairOrZero(_sources[6], _sources[7]);
-            ValueHash256 b0 = Blake3Hash.HashPairOrZero(a0, a1);
-            ValueHash256 b1 = Blake3Hash.HashPairOrZero(a2, a3);
-            return Blake3Hash.HashPairOrZero(b0, b1);
+            ValueHash256 a0 = HashPairOrZero(_sources[0], _sources[1]);
+            ValueHash256 a1 = HashPairOrZero(_sources[2], _sources[3]);
+            ValueHash256 a2 = HashPairOrZero(_sources[4], _sources[5]);
+            ValueHash256 a3 = HashPairOrZero(_sources[6], _sources[7]);
+            ValueHash256 b0 = HashPairOrZero(a0, a1);
+            ValueHash256 b1 = HashPairOrZero(a2, a3);
+            return HashPairOrZero(b0, b1);
         }
 
         private ValueHash256 FoldSixteenScalar()
         {
-            ValueHash256 a0 = Blake3Hash.HashPairOrZero(_sources[0], _sources[1]);
-            ValueHash256 a1 = Blake3Hash.HashPairOrZero(_sources[2], _sources[3]);
-            ValueHash256 a2 = Blake3Hash.HashPairOrZero(_sources[4], _sources[5]);
-            ValueHash256 a3 = Blake3Hash.HashPairOrZero(_sources[6], _sources[7]);
-            ValueHash256 a4 = Blake3Hash.HashPairOrZero(_sources[8], _sources[9]);
-            ValueHash256 a5 = Blake3Hash.HashPairOrZero(_sources[10], _sources[11]);
-            ValueHash256 a6 = Blake3Hash.HashPairOrZero(_sources[12], _sources[13]);
-            ValueHash256 a7 = Blake3Hash.HashPairOrZero(_sources[14], _sources[15]);
-            ValueHash256 b0 = Blake3Hash.HashPairOrZero(a0, a1);
-            ValueHash256 b1 = Blake3Hash.HashPairOrZero(a2, a3);
-            ValueHash256 b2 = Blake3Hash.HashPairOrZero(a4, a5);
-            ValueHash256 b3 = Blake3Hash.HashPairOrZero(a6, a7);
-            ValueHash256 c0 = Blake3Hash.HashPairOrZero(b0, b1);
-            ValueHash256 c1 = Blake3Hash.HashPairOrZero(b2, b3);
-            return Blake3Hash.HashPairOrZero(c0, c1);
+            ValueHash256 a0 = HashPairOrZero(_sources[0], _sources[1]);
+            ValueHash256 a1 = HashPairOrZero(_sources[2], _sources[3]);
+            ValueHash256 a2 = HashPairOrZero(_sources[4], _sources[5]);
+            ValueHash256 a3 = HashPairOrZero(_sources[6], _sources[7]);
+            ValueHash256 a4 = HashPairOrZero(_sources[8], _sources[9]);
+            ValueHash256 a5 = HashPairOrZero(_sources[10], _sources[11]);
+            ValueHash256 a6 = HashPairOrZero(_sources[12], _sources[13]);
+            ValueHash256 a7 = HashPairOrZero(_sources[14], _sources[15]);
+            ValueHash256 b0 = HashPairOrZero(a0, a1);
+            ValueHash256 b1 = HashPairOrZero(a2, a3);
+            ValueHash256 b2 = HashPairOrZero(a4, a5);
+            ValueHash256 b3 = HashPairOrZero(a6, a7);
+            ValueHash256 c0 = HashPairOrZero(b0, b1);
+            ValueHash256 c1 = HashPairOrZero(b2, b3);
+            return HashPairOrZero(c0, c1);
+        }
+
+        private static ValueHash256 HashPairOrZero(in ValueHash256 left, in ValueHash256 right)
+        {
+            if (left == default && right == default) return default;
+
+            ValueHash256 result = default;
+            Blake3Managed.HashPair(left.Bytes, right.Bytes, result.BytesAsSpan);
+            return result;
         }
     }
 }

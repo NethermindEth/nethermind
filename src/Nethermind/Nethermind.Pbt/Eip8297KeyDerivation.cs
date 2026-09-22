@@ -80,9 +80,6 @@ public static class Eip8297KeyDerivation
         return new PbtStorageTreeKey(key);
     }
 
-    public static PbtPath CodeKey(ReadOnlySpan<byte> address32, ReadOnlySpan<byte> codeHash32, int chunkId) =>
-        OverflowCodeKey(codeHash32, chunkId);
-
     public static PbtPath OverflowCodeKey(ReadOnlySpan<byte> codeHash32, int chunkId)
     {
         Validate32(codeHash32, nameof(codeHash32));
