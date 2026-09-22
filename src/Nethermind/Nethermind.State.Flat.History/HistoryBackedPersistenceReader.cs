@@ -97,7 +97,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
             $"Historical state for block {_block.BlockNumber} is unavailable for {address} - it is below the general retention floor and not covered by any retained slice."));
     }
 
-    /// <summary>The hash-based reader's contract: JSON-RPC maps this to resource-not-found.</summary>
+    /// <summary>The hash-based reader's contract; the wrapped <see cref="StateUnavailableException"/> makes JSON-RPC answer resource-unavailable (-32002) rather than resource-not-found.</summary>
     private MissingTrieNodeException StateUnavailable(StateUnavailableException inner) =>
         new($"Historical state for block {_block.BlockNumber} is unavailable", null, TreePath.Empty, _block.StateRoot.ToCommitment(), inner);
 
