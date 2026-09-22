@@ -37,7 +37,7 @@ public class PbtConfig : IPbtConfig
     public int ScanTreeConcurrency { get; set; }
 
     public PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; } = PbtNodeGroupKeyLayout.Padded;
-    public PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; set; } = PbtPrefixlessBranchOmission.Interior;
+    public PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; set; } = PbtPrefixlessBranchOmission.OddLevels;
     public bool CarryForwardCache { get; set; } = true;
     public bool NativeNodeGroupMemory { get; set; } = true;
 
