@@ -863,7 +863,9 @@ namespace Nethermind.Trie
                         if (!TBatch.IsActive && Avx2.IsSupported && !Avx512F.VL.IsSupported && childNode.IsBranch)
                             return WriteChildrenRlpBranchNonRlp<OnFlag>(tree, ref path, item, destination, bufferPool, canBeParallel, i, position);
                         path.AppendMut(i);
-                        if (TBatch.IsActive && childNode.IsBranch)
+                        // Once the walk is batching, defer any dirty child: the length decides which
+                        // kernel serves it, and a leaf fits the same single block a small branch does.
+                        if (TBatch.IsActive)
                         {
                             CappedArray<byte> rlp = childNode.PrepareRlp(tree, ref path, bufferPool, canBeParallel);
                             if (IsBatchableBranchRlp(rlp.Length))
