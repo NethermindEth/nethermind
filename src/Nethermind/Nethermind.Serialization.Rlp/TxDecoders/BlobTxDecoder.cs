@@ -151,8 +151,6 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             BlobCellMask cellMask = default;
             byte[][]? cells = null;
 
-            // Pre-#11094 entries have no cellMask/cells. Bound the peek to this wrapper so the next
-            // transaction in a per-block array is not mistaken for those two fields.
             if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(networkWrapperCheck, maxSearch: 2) == 2)
             {
                 cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());

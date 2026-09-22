@@ -40,26 +40,29 @@ public class BlobTxStorageTests
         AssertNetworkWrappersEqual(transactions, decoded!);
     }
 
+    // Between #11094 and #13592 the column held one whole-block array written with RlpBehaviors.Storage.
+    [Test]
+    public void TryGetBlobTransactionsFromBlock_should_decode_v1_storage_block_arrays([Range(1, 3)] int txCount)
+    {
+        const ulong blockNumber = 42;
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction[] transactions = CreateV1BlobTransactions(txCount);
+
+        byte[] storageEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage).Bytes;
+        columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs)
+            .Set(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), storageEntry);
+
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] decoded), Is.True);
+        AssertNetworkWrappersEqual(transactions, decoded!);
+    }
+
     [Test]
     public void TryGetBlobTransactionsFromBlock_should_roundtrip_current_v1_entries([Range(1, 2)] int txCount)
     {
         const ulong blockNumber = 42;
         BlobTxStorage blobTxStorage = new();
-        Transaction[] transactions = CreateBlobTransactions(txCount);
-        BlobCellMask cellMask = BlobCellMask.FromIndices([1, 3]);
-
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transactions[i].NetworkWrapper!;
-            transactions[i].NetworkWrapper = wrapper with
-            {
-                Blobs = [],
-                Version = ProofVersion.V1,
-                CellMask = cellMask,
-                Cells = [[(byte)(i + 1)], [(byte)(i + 2)]]
-            };
-            transactions[i].ClearLengthCache();
-        }
+        Transaction[] transactions = CreateV1BlobTransactions(txCount);
 
         using (ArrayPoolListRef<Transaction> pooledTransactions = new(transactions.AsSpan()))
         {
@@ -698,6 +701,26 @@ public class BlobTxStorageTests
         for (int i = 0; i < count; i++)
         {
             transactions[i] = CreateBlobTransaction(TestItem.PrivateKeys[i], i);
+        }
+
+        return transactions;
+    }
+
+    private static Transaction[] CreateV1BlobTransactions(int count)
+    {
+        Transaction[] transactions = CreateBlobTransactions(count);
+        BlobCellMask cellMask = BlobCellMask.FromIndices([1, 3]);
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transactions[i].NetworkWrapper!;
+            transactions[i].NetworkWrapper = wrapper with
+            {
+                Blobs = [],
+                Version = ProofVersion.V1,
+                CellMask = cellMask,
+                Cells = [[(byte)(i + 1)], [(byte)(i + 2)]]
+            };
+            transactions[i].ClearLengthCache();
         }
 
         return transactions;
