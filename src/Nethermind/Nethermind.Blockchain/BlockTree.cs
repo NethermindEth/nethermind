@@ -105,6 +105,7 @@ namespace Nethermind.Blockchain
         private TaskCompletionSource? _taskCompletionSource;
 
         private readonly ulong _genesisBlockNumber;
+        private readonly IDeferredBlockDataWriter? _deferredWriter;
 
         public BlockTree(
             IBlockStore? blockStore,
@@ -118,8 +119,10 @@ namespace Nethermind.Blockchain
             ISyncConfig? syncConfig,
             IStateBoundary? stateBoundary,
             ILogManager? logManager,
-            ulong genesisBlockNumber = 0)
+            ulong genesisBlockNumber = 0,
+            IDeferredBlockDataWriter? deferredWriter = null)
         {
+            _deferredWriter = deferredWriter;
             Logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _headerStore = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
@@ -485,7 +488,7 @@ namespace Nethermind.Blockchain
             if (!isKnown || fillBeaconBlock)
             {
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-                UpdateOrCreateLevel(header.Number, blockInfo, setAsMain);
+                UpdateOrCreateLevel(header.Number, blockInfo, setAsMain, defer: block is not null && header.IsPostMerge && !header.IsGenesis);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block!));
             }
 
@@ -1500,9 +1503,10 @@ namespace Nethermind.Blockchain
             return new BlockEventArgs(block);
         }
 
-        private ChainLevelInfo UpdateOrCreateLevel(ulong number, BlockInfo blockInfo, bool setAsMain = false, bool keepExistingMetadata = false)
+        private ChainLevelInfo UpdateOrCreateLevel(ulong number, BlockInfo blockInfo, bool setAsMain = false, bool keepExistingMetadata = false, bool defer = false)
         {
-            using BatchWrite? batch = _chainLevelInfoRepository.StartBatch();
+            defer &= _deferredWriter is { Enabled: true };
+            using BatchWrite batch = defer ? _chainLevelInfoRepository.StartDeferredBatch() : _chainLevelInfoRepository.StartBatch();
 
             if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
             {
@@ -1525,7 +1529,10 @@ namespace Nethermind.Blockchain
                 level.HasBlockOnMainChain = true;
             }
 
-            _chainLevelInfoRepository.PersistLevel(number, level, batch);
+            if (defer)
+                _chainLevelInfoRepository.PersistLevelDeferred(number, level, _deferredWriter!.Enqueue, batch);
+            else
+                _chainLevelInfoRepository.PersistLevel(number, level, batch);
 
             return level;
         }

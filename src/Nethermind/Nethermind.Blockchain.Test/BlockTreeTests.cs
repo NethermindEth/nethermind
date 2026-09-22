@@ -52,6 +52,7 @@ public class BlockTreeTests
         IBlockTree tree = container.Resolve<IBlockTree>();
         IDb headers = container.ResolveKeyed<IDb>(DbNames.Headers);
         IDb numbers = container.ResolveKeyed<IDb>(DbNames.BlockNumbers);
+        ChainLevelInfoRepository diskLevels = new(container.ResolveKeyed<IDb>(DbNames.BlockInfos));
         HeaderStore disk = new(headers, numbers);
         Block genesis = Build.A.Block.Genesis.TestObject;
         AddToMain((BlockTree)tree, genesis);
@@ -65,6 +66,7 @@ public class BlockTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(disk.Get(parent.Hash!), Is.Null);
+            Assert.That(diskLevels.LoadLevel(parent.Number), Is.Null);
             Assert.That(tree.FindHeader(parent.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(parent.Hash));
             Assert.That(tree.FindBlock(parent.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(parent.Hash));
             Assert.That(tree.IsKnownBlock(parent.Number, parent.Hash!), Is.True);
@@ -78,6 +80,8 @@ public class BlockTreeTests
         {
             Assert.That(disk.Get(parent.Hash!)?.Hash, Is.EqualTo(parent.Hash));
             Assert.That(disk.Get(child.Hash!)?.Hash, Is.EqualTo(child.Hash));
+            Assert.That(diskLevels.LoadLevel(parent.Number)?.BlockInfos[0].BlockHash, Is.EqualTo(parent.Hash));
+            Assert.That(diskLevels.LoadLevel(child.Number)?.BlockInfos[0].BlockHash, Is.EqualTo(child.Hash));
         }
     }
 

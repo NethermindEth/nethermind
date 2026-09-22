@@ -100,6 +100,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         {
             ctx.ResolveKeyed<IDb>(DbNames.Headers);
             ctx.ResolveKeyed<IDb>(DbNames.BlockNumbers);
+            IDb blockInfos = ctx.ResolveKeyed<IDb>(DbNames.BlockInfos);
+            ctx.Resolve<IStatePersistenceBarrier>().RegisterFlush(() => blockInfos.Flush(onlyWal: true));
             ctx.ResolveKeyed<IDb>(DbNames.Blocks);
             ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
             ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
