@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Api;
@@ -129,8 +130,10 @@ public class FlatStateActivationPolicyTests
         Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
     }
 
-    [Test]
-    public void Disabling_flat_on_an_existing_flat_db_is_refused()
+    // The DB layer roots a relative BaseDbPath at the executing directory; the probe must resolve it the same way.
+    [TestCase("/data")]
+    [TestCase("nethermind_db/mainnet")]
+    public void Disabling_flat_on_an_existing_flat_db_is_refused(string baseDbPath)
     {
         InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreatePolicy(
             enabled: false,
@@ -140,7 +143,8 @@ public class FlatStateActivationPolicyTests
             layout: FlatLayout.Flat,
             availableMemoryBytes: 32.GiB,
             logManager: LimboLogs.Instance,
-            flatDirectoryExists: true))!;
+            flatDirectoryExists: true,
+            baseDbPath: baseDbPath))!;
 
         Assert.That(ex.Message, Does.Contain("FlatDb.Enabled").And.Contain("existing"));
     }
@@ -167,7 +171,7 @@ public class FlatStateActivationPolicyTests
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
         FlatLayout layout, long availableMemoryBytes, ILogManager logManager,
-        bool fastSync = false, bool snapSync = false, bool flatDirectoryExists = false)
+        bool fastSync = false, bool snapSync = false, bool flatDirectoryExists = false, string baseDbPath = "/data")
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(enabled);
@@ -188,10 +192,13 @@ public class FlatStateActivationPolicyTests
         syncConfig.SnapSync.Returns(snapSync);
 
         IInitConfig initConfig = Substitute.For<IInitConfig>();
-        initConfig.BaseDbPath.Returns("/data");
+        initConfig.BaseDbPath.Returns(baseDbPath);
         IDirectory directory = Substitute.For<IDirectory>();
-        directory.Exists(Arg.Any<string>()).Returns(flatDirectoryExists);
-        directory.EnumerateFiles(Arg.Any<string>(), "*.sst").Returns(flatDirectoryExists ? ["state.sst"] : []);
+        string flatPath = DbNames.Flat.GetApplicationResourcePath(baseDbPath);
+        directory.EnumerateFiles(Arg.Any<string>(), "*.sst").Returns(call =>
+            flatDirectoryExists && call.ArgAt<string>(0) == flatPath
+                ? ["state.sst"]
+                : throw new DirectoryNotFoundException(call.ArgAt<string>(0)));
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         fileSystem.Directory.Returns(directory);
 

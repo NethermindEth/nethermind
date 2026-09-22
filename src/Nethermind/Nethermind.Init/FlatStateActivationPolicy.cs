@@ -65,11 +65,10 @@ public sealed class FlatStateActivationPolicy(
             // on patricia-only nodes and can throw on a stale layout. RocksDB writes CURRENT
             // as soon as the DB is opened, including an empty one, so the signal for state
             // worth keeping is an SST file.
-            string flatPath = Path.Combine(initConfig.BaseDbPath, DbNames.Flat);
-            if (fileSystem.Directory.Exists(flatPath) && fileSystem.Directory.EnumerateFiles(flatPath, "*.sst").Any())
+            if (HasSstFile(fileSystem, DbNames.Flat.GetApplicationResourcePath(initConfig.BaseDbPath)))
             {
                 throw new InvalidConfigurationException(
-                    "Refusing --FlatDb.Enabled=false on an existing flat DB: that would discard the complete flat state and full-resync. Keep FlatDb.Enabled=true, or start from a fresh datadir.",
+                    $"Refusing --FlatDb.Enabled=false on an existing flat DB: that would discard the complete flat state and full-resync. Keep FlatDb.Enabled=true, or delete the '{DbNames.Flat}', '{DbNames.FlatHistory}' and '{DbNames.PersistedSnapshotCatalog}' directories under '{initConfig.BaseDbPath}' to start over on patricia.",
                     -1);
             }
 
@@ -122,5 +121,17 @@ public sealed class FlatStateActivationPolicy(
         }
 
         return activateFlat;
+    }
+
+    private static bool HasSstFile(IFileSystem fileSystem, string directory)
+    {
+        try
+        {
+            return fileSystem.Directory.EnumerateFiles(directory, "*.sst").Any();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return false;
+        }
     }
 }
