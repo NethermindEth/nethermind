@@ -205,9 +205,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.project }}-${{ matrix.variant.label }}-dumps
+          # The ISA lanes run several projects, each writing into its own TestResults.
           path: |
-            src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
-            src/Nethermind/${{ matrix.project }}/TestResults/*_crash.*
+            src/Nethermind/*/TestResults/*_hang.*
+            src/Nethermind/*/TestResults/*_crash.*
           if-no-files-found: ignore
           retention-days: 3
 
