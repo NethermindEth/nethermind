@@ -83,6 +83,29 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    [NonParallelizable]
+    public async Task Trace_get_disposes_materialized_stream()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        IJsonRpcConfig config = blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.EnableTracingStreamMode = true;
+        // Drain the timeout pool so this request receives the source whose lifetime we inspect.
+        List<CancellationTokenSource> rented = [];
+        for (int i = 0; i < 64; i++) rented.Add(config.BuildTimeoutCancellationToken());
+        foreach (CancellationTokenSource source in rented) source.Dispose();
+        using CancellationTokenSource timeout = new();
+        JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_get(
+            blockchain.BlockTree.Head!.Transactions[0].Hash!, [-1]);
+
+        Assert.That(result.Data.Count(), Is.EqualTo(1));
+        Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+    }
+
+    [Test]
     public async Task Trace_get_preserves_missing_transaction_error()
     {
         Context context = new();
