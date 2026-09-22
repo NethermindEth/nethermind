@@ -126,7 +126,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
     }
 
-    private void Preprocess(Block block) => _branchBuilder.Preprocess(block);
+    private void Preprocess(Block block) => _branchBuilder.PreprocessQueued(block);
 
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
         => NewProcessingStatistics?.Invoke(sender, stats);

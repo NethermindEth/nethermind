@@ -924,8 +924,10 @@ jobs:
             aarch64|arm64) yq_arch="arm64" ;;
             *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
           esac
-          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
-          chmod +x "${YQ}"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 60 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+         chmod +x "${YQ}"
+          yq_version="$("${YQ}" --version)"
+          [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
@@ -1389,40 +1391,68 @@ jobs:
           compute_percentiles "${processing_ms}" "" > "${metrics_file}"
           if [[ -s "${client_ms}" ]]; then echo "SOURCE=sse"; else echo "SOURCE=k6"; fi >> "${metrics_file}"
 
-          # Also compute K6 request-time metrics when client metrics were primary. The same table carries
-          # the gas used, which gives MGas/s over the client's processing time.
-          if [[ -s "${client_ms}" ]]; then
-            ttfb_table="${RUNNER_TEMP}/expb-ttfb-table.txt"
-            ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms.txt"
-            ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas.txt"
-            awk -F'|' '
-              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
-                gas = $3
-                value = $4
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", gas)
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                  print gas, value
-                }
+          # The k6 table carries the gas used per payload and is parsed whichever series is primary, so
+          # the request and the processing series each get an MGas/s of their own.
+          ttfb_table="${RUNNER_TEMP}/expb-ttfb-table.txt"
+          ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms.txt"
+          ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas.txt"
+          awk -F'|' '
+            /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+              gas = $3
+              value = $4
+              gsub(/^[[:space:]]+|[[:space:]]+$/, "", gas)
+              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+              if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                print gas, value
               }
-            ' "${clean_log}" > "${ttfb_table}"
-            awk '{ print $2 }' "${ttfb_table}" > "${ttfb_ms}"
-            awk '{ print $1 }' "${ttfb_table}" > "${ttfb_gas}"
-            if [[ -s "${ttfb_ms}" ]]; then
-              compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_file}"
-              # Row i of the k6 table is block i of the feed. The feed reports a block when the next
-              # payload is requested, so it can lack the last one; the sums stop at the shorter list.
-              mgas_s=$(awk 'NR == FNR { gas[NR] = $1; paired = NR; next } FNR <= paired { total_gas += gas[FNR]; total_ms += $1 } END { if (total_ms > 0) printf "%.2f", (total_gas / 1000000) / (total_ms / 1000) }' "${ttfb_gas}" "${client_ms}")
-              if [[ -n "${mgas_s}" ]]; then
-                echo "MGAS_S=${mgas_s}" >> "${metrics_file}"
-              fi
-              # Time outside processing per payload, from the same pairing.
-              outside_ms="${RUNNER_TEMP}/expb-outside-ms.txt"
-              awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
-              if [[ -s "${outside_ms}" ]]; then
-                compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_file}"
-              fi
+            }
+          ' "${clean_log}" > "${ttfb_table}"
+          awk '{ print $2 }' "${ttfb_table}" > "${ttfb_ms}"
+          awk '{ print $1 }' "${ttfb_table}" > "${ttfb_gas}"
+
+          # Throughput over one per-payload time series: the shared gas total over that series' total.
+          # Row i of the k6 table is block i of the feed, and the feed reports a block when the next
+          # payload is requested, so it can lack the last one; the limit holds both series to the same
+          # payloads, so the two figures divide one shared gas total and are directly comparable.
+          mgas_s_over() {
+            awk -v limit="${2:-0}" '
+              NR == FNR { gas[NR] = $1; paired = NR; next }
+              FNR <= paired && (limit == 0 || FNR <= limit) { total_gas += gas[FNR]; total_ms += $1 }
+              END { if (total_ms > 0) printf "%.2f", (total_gas / 1000000) / (total_ms / 1000) }
+            ' "${ttfb_gas}" "${1}"
+          }
+
+          emit_mgas_s() {
+            local value
+            value="$(mgas_s_over "${2}" "${3:-0}")"
+            if [[ -n "${value}" ]]; then
+              echo "${1}MGAS_S=${value}" >> "${metrics_file}"
             fi
+          }
+
+          # n/a rather than an empty line when the series this divides by was not collected.
+          read_mgas_s() {
+            local value
+            value="$(grep -E "^${1}MGAS_S=" "${metrics_file}" | head -n 1 | cut -d'=' -f2- || true)"
+            printf '%s' "${value:-n/a}"
+          }
+
+          if [[ -s "${client_ms}" && -s "${ttfb_ms}" ]]; then
+            compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_file}"
+            paired_count=$(wc -l < "${client_ms}")
+            paired_count="${paired_count//[[:space:]]/}"
+            emit_mgas_s "" "${client_ms}" "${paired_count}"
+            emit_mgas_s "TTFB_" "${ttfb_ms}" "${paired_count}"
+            # Time outside processing per payload, from the same pairing.
+            outside_ms="${RUNNER_TEMP}/expb-outside-ms.txt"
+            awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
+            if [[ -s "${outside_ms}" ]]; then
+              compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_file}"
+            fi
+          elif [[ -s "${ttfb_ms}" ]]; then
+            # Without the client feed the unprefixed keys hold the k6 request table, and so does their
+            # throughput; there is no processing or outside series to divide by.
+            emit_mgas_s "" "${processing_ms}"
           fi
 
           # Print human-readable summary
@@ -1437,14 +1467,15 @@ jobs:
           grep -v "^SOURCE=\|^TTFB_\|^MGAS_S=\|^OUTSIDE_" "${metrics_file}" | while IFS='=' read -r key val; do
             printf "  %-10s %s ms\n" "${key}" "${val}"
           done
+          printf "  %-10s %s MGas/s\n" "MGAS_S" "$(read_mgas_s "")"
           if [[ -s "${client_ms}" ]] && grep -q "^TTFB_AVG=" "${metrics_file}" 2>/dev/null; then
-            printf "  %-10s %s MGas/s\n" "MGAS_S" "${mgas_s:-n/a}"
             echo "-----------------------------------------"
             echo "  newPayload request time (k6)"
             echo "-----------------------------------------"
-            grep "^TTFB_" "${metrics_file}" | while IFS='=' read -r key val; do
+            grep "^TTFB_" "${metrics_file}" | grep -v "^TTFB_MGAS_S=" | while IFS='=' read -r key val; do
               printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
             done
+            printf "  %-10s %s MGas/s\n" "MGAS_S" "$(read_mgas_s "TTFB_")"
             echo "-----------------------------------------"
             echo "  Request minus processing"
             echo "-----------------------------------------"
@@ -1825,12 +1856,20 @@ jobs:
               row="${row}$(group_cells "${current_metrics}" "${processing_master}" "OUTSIDE_" "OUTSIDE_" "${metrics[$i]}")"
               append_line "${row}"
             done
-            local cm="" mm=""
-            cm="$(load_metric "${current_metrics}" "MGAS_S")"
-            if [[ -n "${processing_master}" ]]; then
-              mm="$(load_metric "${processing_master}" "MGAS_S")"
+            # The same gas over each window's own time. The third group is a residue rather than a
+            # window gas is delivered in, so a throughput over it would not describe anything.
+            row="| MGas/s |"
+            row="${row}$(group_cells "${current_metrics}" "${request_master}" "${request_prefix}" "${master_request_prefix}" "MGAS_S")"
+            row="${row}$(group_cells "${current_metrics}" "${processing_master}" "${processing_prefix}" "" "MGAS_S")"
+            row="${row} | | |"
+            append_line "${row}"
+
+            # Both figures are a property of the columns, not of the comparison, so the note is
+            # printed whenever the run has them; the delta direction below needs a baseline.
+            if [[ -n "$(load_metric "${current_metrics}" "MGAS_S")" && -n "$(load_metric "${current_metrics}" "TTFB_MGAS_S")" ]]; then
+              append_blank
+              append_line "_Both MGas/s figures divide the same gas total by their own group's time over the same payloads: the request figure is the throughput a consensus client sees, the processing figure the client's own._"
             fi
-            append_line "| MGas/s | | | |$(cell "$(format_ms "${mm}")")$(cell "$(format_ms "${cm}")")$(cell "$(percentage_delta "${cm}" "${mm}")") | | |"
 
             if [[ "${master_source}" == "sse" ]]; then
               append_blank
@@ -2410,8 +2449,10 @@ jobs:
             aarch64|arm64) yq_arch="arm64" ;;
             *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
           esac
-          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
-          chmod +x "${YQ}"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 60 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+         chmod +x "${YQ}"
+          yq_version="$("${YQ}" --version)"
+          [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
@@ -2949,40 +2990,68 @@ jobs:
           compute_percentiles "${processing_ms}" "" >> "${metrics_dir}/metrics.env"
           if [[ -s "${client_ms}" ]]; then echo "SOURCE=sse"; else echo "SOURCE=k6"; fi >> "${metrics_dir}/metrics.env"
 
-          # Also compute K6 request-time metrics when client metrics were primary. The same table carries
-          # the gas used, which gives MGas/s over the client's processing time.
-          if [[ -s "${client_ms}" ]]; then
-            ttfb_table="${RUNNER_TEMP}/expb-ttfb-table-${key}.txt"
-            ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms-${key}.txt"
-            ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas-${key}.txt"
-            awk -F'|' '
-              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
-                gas = $3
-                value = $4
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", gas)
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                  print gas, value
-                }
+          # The k6 table carries the gas used per payload and is parsed whichever series is primary, so
+          # the request and the processing series each get an MGas/s of their own.
+          ttfb_table="${RUNNER_TEMP}/expb-ttfb-table-${key}.txt"
+          ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms-${key}.txt"
+          ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas-${key}.txt"
+          awk -F'|' '
+            /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+              gas = $3
+              value = $4
+              gsub(/^[[:space:]]+|[[:space:]]+$/, "", gas)
+              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+              if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
+                print gas, value
               }
-            ' "${clean_log}" > "${ttfb_table}"
-            awk '{ print $2 }' "${ttfb_table}" > "${ttfb_ms}"
-            awk '{ print $1 }' "${ttfb_table}" > "${ttfb_gas}"
-            if [[ -s "${ttfb_ms}" ]]; then
-              compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_dir}/metrics.env"
-              # Row i of the k6 table is block i of the feed. The feed reports a block when the next
-              # payload is requested, so it can lack the last one; the sums stop at the shorter list.
-              mgas_s=$(awk 'NR == FNR { gas[NR] = $1; paired = NR; next } FNR <= paired { total_gas += gas[FNR]; total_ms += $1 } END { if (total_ms > 0) printf "%.2f", (total_gas / 1000000) / (total_ms / 1000) }' "${ttfb_gas}" "${client_ms}")
-              if [[ -n "${mgas_s}" ]]; then
-                echo "MGAS_S=${mgas_s}" >> "${metrics_dir}/metrics.env"
-              fi
-              # Time outside processing per payload, from the same pairing.
-              outside_ms="${RUNNER_TEMP}/expb-outside-ms-${key}.txt"
-              awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
-              if [[ -s "${outside_ms}" ]]; then
-                compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_dir}/metrics.env"
-              fi
+            }
+          ' "${clean_log}" > "${ttfb_table}"
+          awk '{ print $2 }' "${ttfb_table}" > "${ttfb_ms}"
+          awk '{ print $1 }' "${ttfb_table}" > "${ttfb_gas}"
+
+          # Throughput over one per-payload time series: the shared gas total over that series' total.
+          # Row i of the k6 table is block i of the feed, and the feed reports a block when the next
+          # payload is requested, so it can lack the last one; the limit holds both series to the same
+          # payloads, so the two figures divide one shared gas total and are directly comparable.
+          mgas_s_over() {
+            awk -v limit="${2:-0}" '
+              NR == FNR { gas[NR] = $1; paired = NR; next }
+              FNR <= paired && (limit == 0 || FNR <= limit) { total_gas += gas[FNR]; total_ms += $1 }
+              END { if (total_ms > 0) printf "%.2f", (total_gas / 1000000) / (total_ms / 1000) }
+            ' "${ttfb_gas}" "${1}"
+          }
+
+          emit_mgas_s() {
+            local value
+            value="$(mgas_s_over "${2}" "${3:-0}")"
+            if [[ -n "${value}" ]]; then
+              echo "${1}MGAS_S=${value}" >> "${metrics_dir}/metrics.env"
             fi
+          }
+
+          # n/a rather than an empty line when the series this divides by was not collected.
+          read_mgas_s() {
+            local value
+            value="$(grep -E "^${1}MGAS_S=" "${metrics_dir}/metrics.env" | head -n 1 | cut -d'=' -f2- || true)"
+            printf '%s' "${value:-n/a}"
+          }
+
+          if [[ -s "${client_ms}" && -s "${ttfb_ms}" ]]; then
+            compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_dir}/metrics.env"
+            paired_count=$(wc -l < "${client_ms}")
+            paired_count="${paired_count//[[:space:]]/}"
+            emit_mgas_s "" "${client_ms}" "${paired_count}"
+            emit_mgas_s "TTFB_" "${ttfb_ms}" "${paired_count}"
+            # Time outside processing per payload, from the same pairing.
+            outside_ms="${RUNNER_TEMP}/expb-outside-ms-${key}.txt"
+            awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
+            if [[ -s "${outside_ms}" ]]; then
+              compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_dir}/metrics.env"
+            fi
+          elif [[ -s "${ttfb_ms}" ]]; then
+            # Without the client feed the unprefixed keys hold the k6 request table, and so does their
+            # throughput; there is no processing or outside series to divide by.
+            emit_mgas_s "" "${processing_ms}"
           fi
 
           echo ""
@@ -2997,14 +3066,15 @@ jobs:
           grep -v "^TAG=\|^RUN=\|^EXCEPTION_\|^INVALID_\|^SOURCE=\|^TTFB_\|^MGAS_S=\|^OUTSIDE_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
             printf "  %-10s %s ms\n" "${key}" "${val}"
           done
+          printf "  %-10s %s MGas/s\n" "MGAS_S" "$(read_mgas_s "")"
           if grep -q "^TTFB_AVG=" "${metrics_dir}/metrics.env" 2>/dev/null; then
-            printf "  %-10s %s MGas/s\n" "MGAS_S" "${mgas_s:-n/a}"
             echo "-----------------------------------------"
             echo "  newPayload request time (k6)"
             echo "-----------------------------------------"
-            grep "^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
+            grep "^TTFB_" "${metrics_dir}/metrics.env" | grep -v "^TTFB_MGAS_S=" | while IFS='=' read -r key val; do
               printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
             done
+            printf "  %-10s %s MGas/s\n" "MGAS_S" "$(read_mgas_s "TTFB_")"
             echo "-----------------------------------------"
             echo "  Request minus processing"
             echo "-----------------------------------------"
