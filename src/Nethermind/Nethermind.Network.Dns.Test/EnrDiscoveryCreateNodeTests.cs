@@ -31,10 +31,10 @@ public class EnrDiscoveryCreateNodeTests
 
         bool result = EnrDiscovery.TryCreateNode(nodeRecord, out Node? node);
 
+        Assert.That(node is not null, Is.EqualTo(expectedResult));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(expectedResult));
-            Assert.That(node is not null, Is.EqualTo(expectedResult));
             if (expectedResult)
             {
                 Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
@@ -57,9 +57,9 @@ public class EnrDiscoveryCreateNodeTests
         NodeRecord parsed = parser.ParseRecord(record.ToString());
         Node? node = EnrDiscovery.CreateVerifiedNode(parsed);
 
+        Assert.That(node, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(node, Is.Not.Null);
             Assert.That(node!.IsVerifiedEnr(parsed), Is.True);
             Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(parsed.EnrSequence));
         }

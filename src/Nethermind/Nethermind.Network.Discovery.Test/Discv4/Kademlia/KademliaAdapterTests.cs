@@ -7,10 +7,12 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
@@ -427,7 +429,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         public async Task Ping_uses_the_current_resolved_source_after_address_rotation(CancellationToken token)
         {
             await _adapter.DisposeAsync();
-            NetworkListenerState listenerState = new(new NetworkConfig(), _ipResolver, LimboLogs.Instance);
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton(_ipResolver)
+                .Build();
+            NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
             listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
             listenerState.SetRlpxAddress(IPAddress.IPv6Any);
             IPAddress firstAddress = IPAddress.Parse("2001:db8::10");

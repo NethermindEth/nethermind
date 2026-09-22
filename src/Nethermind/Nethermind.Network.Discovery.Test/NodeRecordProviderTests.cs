@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -112,11 +113,6 @@ public class NodeRecordProviderTests
     [Test]
     public async Task Resolver_address_change_refreshes_the_signed_record()
     {
-        Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(head);
-        IForkInfo forkInfo = Substitute.For<IForkInfo>();
-        forkInfo.GetForkId(1, 10).Returns(new NetworkForkId(0x01020304, 20));
         IIPResolver.NethermindIp initialIp = new(
             IPAddress.IPv6Any,
             IPAddress.Parse("192.0.2.1"),
@@ -128,20 +124,20 @@ public class NodeRecordProviderTests
             IPAddress.Parse("192.0.2.2"),
             IPAddress.Parse("2001:db8::2"));
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
-        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(
-            new ValueTask<IIPResolver.NethermindIp>(initialIp),
-            new ValueTask<IIPResolver.NethermindIp>(changedIp));
-        NetworkListenerState listenerState = CreateListenerState(initialIp);
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(initialIp));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new NetworkConfig { LocalIp = "::" }))
+            .AddSingleton(ipResolver)
+            .Build();
+        container.Resolve<IBlockTree>().SuggestBlock(Build.A.Block.Genesis.TestObject);
+        NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
         listenerState.SetRlpxAddress(IPAddress.IPv6Any);
         listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
-        NodeRecordProvider provider = CreateProvider(
-            blockTree,
-            forkInfo,
-            ipResolver,
-            timestampMilliseconds: 1_000,
-            listenerState);
+        INodeRecordProvider provider = container.Resolve<INodeRecordProvider>();
 
         NodeRecord initialRecord = await provider.GetCurrentAsync();
+        AssertEndpointEntries(initialRecord, "192.0.2.1", "2001:db8::1");
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(changedIp));
         ipResolver.Changed += Raise.Event();
         NodeRecord changedRecord = await provider.GetCurrentAsync();
 

@@ -4,13 +4,16 @@
 using System;
 using System.Linq;
 using System.Net;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Stats;
@@ -153,8 +156,10 @@ public class NetworkStorageTests
     [Test]
     public void Replacing_cached_enode_with_enr_updates_current_and_reloaded_snapshots()
     {
-        MemDb db = new();
-        NetworkStorage storage = new(db, LimboLogs.Instance);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .Build();
+        INetworkStorage storage = container.ResolveKeyed<INetworkStorage>(DbNames.PeersDb);
         NetworkNode enode = new(TestItem.PublicKeyA, "192.168.1.1", 30303, 1L);
         storage.UpdateNode(enode);
         Assert.That(storage.GetPersistedNodes().Single(), Is.SameAs(enode), "prime the cached snapshot");
@@ -170,7 +175,15 @@ public class NetworkStorageTests
         storage.UpdateNode(enr);
 
         NetworkNode current = storage.GetPersistedNodes().Single();
-        NetworkNode reloaded = new NetworkStorage(db, LimboLogs.Instance).GetPersistedNodes().Single();
+        using ILifetimeScope reloadScope = container.BeginLifetimeScope(builder =>
+        {
+            builder.AddNetworkStorage(DbNames.PeersDb, DbNames.PeersDb);
+            builder.RegisterInstance(container.ResolveKeyed<IFullDb>(DbNames.PeersDb))
+                .Keyed<IFullDb>(DbNames.PeersDb)
+                .ExternallyOwned();
+        });
+        NetworkNode reloaded = reloadScope.ResolveKeyed<INetworkStorage>(DbNames.PeersDb).GetPersistedNodes().Single();
+        Assert.That(reloaded.Enr, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(current, Is.SameAs(enr));

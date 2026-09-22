@@ -12,7 +12,11 @@ namespace Nethermind.Network
     public interface IIPResolver
     {
         /// <summary>Raised after a cached resolution refresh changes an address.</summary>
-        event EventHandler? Changed;
+        event EventHandler? Changed
+        {
+            add { }
+            remove { }
+        }
 
         /// <summary>
         /// Resolves the node's local and external IP addresses.
@@ -20,15 +24,16 @@ namespace Nethermind.Network
         /// <remarks>
         /// Results containing automatically detected addresses are refreshed in the background once they are
         /// five minutes old, while callers keep receiving the cached result; a fully unresolved initial attempt
-        /// is retried after ten seconds, and fully configured results do not expire. Concurrent callers await the
+        /// is retried after ten seconds for up to five attempts, and fully configured results do not expire.
+        /// Refresh is scheduled independently of subsequent calls. Concurrent callers await the
         /// same initial in-flight resolution. Explicit local, primary, IPv4, and IPv6 overrides are honored when
         /// set. Otherwise, enabled automatic resolution independently detects missing address families supported
         /// by an active local interface. Periodic refresh lets ENR publication replace an
         /// automatically detected address when the host's public address changes.
         /// </remarks>
         /// <param name="cancellationToken">
-        /// Cancels only the caller's wait for the result, not the shared cached resolution (which always
-        /// runs to completion so it can still serve other callers).
+        /// Cancels only the caller's wait for the result, not the shared cached resolution.
+        /// Disposing the resolver cancels its outstanding lookups.
         /// </param>
         ValueTask<NethermindIp> Resolve(CancellationToken cancellationToken = default);
 

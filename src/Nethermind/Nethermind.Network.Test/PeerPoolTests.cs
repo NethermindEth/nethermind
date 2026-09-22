@@ -379,10 +379,10 @@ public class PeerPoolTests
 
         Peer restored = pool.GetOrAdd(new NetworkNode(persistedRecord.ToString()));
 
+        Assert.That(existing.Node.Enr, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(restored, Is.SameAs(existing));
-            Assert.That(existing.Node.Enr, Is.Not.Null);
             Assert.That(existing.Node.Enr!.EnrSequence, Is.EqualTo(4));
             Assert.That(existing.Node.IsVerifiedEnr(existing.Node.Enr), Is.True);
         }
@@ -405,9 +405,9 @@ public class PeerPoolTests
         await Task.WhenAll(Array.ConvertAll(aliases, node => Task.Run(() => pool.GetOrAdd(node))));
         Node pooled = pool.Peers[TestItem.PublicKeyA].Node;
 
+        Assert.That(pooled.Enr, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(pooled.Enr, Is.Not.Null);
             Assert.That(pooled.Enr!.EnrSequence, Is.EqualTo(15));
             Assert.That(pooled.HighestObservedEnrSequence, Is.EqualTo(15));
             Assert.That(pooled.IsVerifiedEnr(pooled.Enr), Is.True);
