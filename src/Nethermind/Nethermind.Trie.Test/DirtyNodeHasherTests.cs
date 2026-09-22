@@ -117,6 +117,20 @@ public class DirtyNodeHasherTests
     }
 
     [Test]
+    public void The_order_never_puts_a_node_before_one_of_its_descendants([Values(5, 40, 200)] int entries)
+    {
+        // Reversing this order still produces the right root, because encoding a parent falls back
+        // to hashing its children itself, so only reading the order can hold it. Getting it wrong
+        // costs the batching the whole type exists for.
+        PatriciaTree tree = BuildDirtyTree(entries, valueLength: 40, ScatteredKey);
+
+        int[] pathLengths = DirtyNodeHasher.DeepestFirstPathLengths(tree.RootRef!);
+
+        Assert.That(pathLengths, Is.Ordered.Descending, "a node must come before every ancestor of it");
+        Assert.That(pathLengths, Has.Length.GreaterThan(entries), "the collection walk missed nodes");
+    }
+
+    [Test]
     public void A_clean_root_is_left_alone()
     {
         PatriciaTree tree = BuildDirtyTree(40, valueLength: 40, ScatteredKey);

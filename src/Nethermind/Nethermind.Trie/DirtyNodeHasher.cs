@@ -131,29 +131,9 @@ internal static class DirtyNodeHasher
         if (!Collect(subtreeRoot, ref path, pending, maxCollectedNodes) || pending.Count < MinimumDirtyNodes) return;
 
         Span<PendingNode> nodes = pending.AsSpan();
-        Span<int> levelCounts = stackalloc int[MaxPathLength + 1];
-        levelCounts.Clear();
-        foreach (ref readonly PendingNode node in nodes)
-        {
-            levelCounts[node.Path.Length]++;
-        }
-
-        Span<int> levelStart = stackalloc int[MaxPathLength + 1];
-        int running = 0;
-        for (int level = MaxPathLength; level >= 0; level--)
-        {
-            levelStart[level] = running;
-            running += levelCounts[level];
-        }
-
         using ArrayPoolList<int> order = new(nodes.Length, nodes.Length);
         Span<int> orderSpan = order.AsSpan();
-        Span<int> cursor = stackalloc int[MaxPathLength + 1];
-        levelStart.CopyTo(cursor);
-        for (int i = 0; i < nodes.Length; i++)
-        {
-            orderSpan[cursor[nodes[i].Path.Length]++] = i;
-        }
+        BuildDeepestFirstOrder(nodes, orderSpan);
 
         // The kernel width is fixed by the hardware, so a group must never grow past it.
         int widestBatch = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
@@ -161,43 +141,107 @@ internal static class DirtyNodeHasher
         Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
         TrieNode[] byClass = new TrieNode[MaxPaddedClass * HashBatchSize];
         Span<int> classCount = stackalloc int[MaxPaddedClass + 1];
+        classCount.Clear();
 
         // Path length 0 is the trie's own root, which the caller hashes.
         int shallowest = Math.Max(subtreeRootPath.Length, 1);
-        for (int level = MaxPathLength; level >= shallowest; level--)
+        int currentPathLength = -1;
+        foreach (int index in orderSpan)
         {
-            if (levelCounts[level] == 0) continue;
-            classCount.Clear();
-            foreach (int index in orderSpan.Slice(levelStart[level], levelCounts[level]))
+            ref readonly PendingNode pendingNode = ref nodes[index];
+            int pathLength = pendingNode.Path.Length;
+            if (pathLength < shallowest) break;
+            if (pathLength != currentPathLength)
             {
-                ref readonly PendingNode pendingNode = ref nodes[index];
-                TrieNode node = pendingNode.Node;
-                TreePath nodePath = pendingNode.Path;
-                CappedArray<byte> rlp = node.PrepareRlp(resolver, ref nodePath, pool, canBeParallel: false);
-                if (rlp.Length < Hash256.Size || rlp.Length >= KeccakHash.MaxBatchablePaddedLength)
-                {
-                    // Below a hash the node is embedded in its parent; past the buffer it is hashed alone.
-                    node.ResolvePreparedKey();
-                    continue;
-                }
-
-                int paddedClass = PaddedClass(rlp.Length);
-                int start = (paddedClass - 1) * HashBatchSize;
-                byClass[start + classCount[paddedClass]] = node;
-                if (++classCount[paddedClass] == widestBatch)
-                {
-                    HashGroup(byClass.AsSpan(start, widestBatch), paddedClass, storage);
-                    classCount[paddedClass] = 0;
-                }
+                // A level's leftovers cannot wait for the next one, whose nodes are their parents.
+                HashRemainingGroups(byClass, classCount, storage);
+                currentPathLength = pathLength;
             }
 
-            // A level's leftovers cannot wait for the next one, whose nodes are their parents.
-            for (int paddedClass = 1; paddedClass <= MaxPaddedClass; paddedClass++)
+            TrieNode node = pendingNode.Node;
+            TreePath nodePath = pendingNode.Path;
+            CappedArray<byte> rlp = node.PrepareRlp(resolver, ref nodePath, pool, canBeParallel: false);
+            if (rlp.Length < Hash256.Size || rlp.Length >= KeccakHash.MaxBatchablePaddedLength)
             {
-                int count = classCount[paddedClass];
-                if (count != 0) HashGroup(byClass.AsSpan((paddedClass - 1) * HashBatchSize, count), paddedClass, storage);
+                // Below a hash the node is embedded in its parent; past the buffer it is hashed alone.
+                node.ResolvePreparedKey();
+                continue;
+            }
+
+            int paddedClass = PaddedClass(rlp.Length);
+            int start = (paddedClass - 1) * HashBatchSize;
+            byClass[start + classCount[paddedClass]] = node;
+            if (++classCount[paddedClass] == widestBatch)
+            {
+                HashGroup(byClass.AsSpan(start, widestBatch), paddedClass, storage);
+                classCount[paddedClass] = 0;
             }
         }
+
+        HashRemainingGroups(byClass, classCount, storage);
+    }
+
+    private static void HashRemainingGroups(TrieNode[] byClass, Span<int> classCount, Span<byte> storage)
+    {
+        for (int paddedClass = 1; paddedClass <= MaxPaddedClass; paddedClass++)
+        {
+            int count = classCount[paddedClass];
+            if (count == 0) continue;
+            HashGroup(byClass.AsSpan((paddedClass - 1) * HashBatchSize, count), paddedClass, storage);
+            classCount[paddedClass] = 0;
+        }
+    }
+
+    /// <summary>Orders the collected nodes by path length, deepest first.</summary>
+    /// <remarks>Two nodes at one path length are never each other's ancestor, so a whole level can be
+    /// encoded and then hashed together, and deepest first is what leaves a node's children already
+    /// hashed by the time it is encoded. Getting this backwards does not produce a wrong digest,
+    /// because encoding a parent falls back to hashing its children itself; it only gives up the
+    /// batching. No digest check can hold it, which is what <see cref="DeepestFirstPathLengths" />
+    /// is for.</remarks>
+    private static void BuildDeepestFirstOrder(ReadOnlySpan<PendingNode> nodes, Span<int> order)
+    {
+        Span<int> levelStart = stackalloc int[MaxPathLength + 1];
+        levelStart.Clear();
+        foreach (ref readonly PendingNode node in nodes)
+        {
+            levelStart[node.Path.Length]++;
+        }
+
+        int running = 0;
+        for (int pathLength = MaxPathLength; pathLength >= 0; pathLength--)
+        {
+            int count = levelStart[pathLength];
+            levelStart[pathLength] = running;
+            running += count;
+        }
+
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            order[levelStart[nodes[i].Path.Length]++] = i;
+        }
+    }
+
+    /// <summary>The path lengths the level order visits, in the order it visits them.</summary>
+    /// <remarks>Exists so a test can hold the ordering, which no digest check can - see
+    /// <see cref="BuildDeepestFirstOrder" />.</remarks>
+    internal static int[] DeepestFirstPathLengths(TrieNode subtreeRoot)
+    {
+        using ArrayPoolList<PendingNode> pending = new(64);
+        TreePath path = TreePath.Empty;
+        Collect(subtreeRoot, ref path, pending, MaxCollectedNodes);
+
+        Span<PendingNode> nodes = pending.AsSpan();
+        int[] order = new int[nodes.Length];
+        BuildDeepestFirstOrder(nodes, order);
+
+        int[] pathLengths = new int[order.Length];
+        for (int i = 0; i < order.Length; i++)
+        {
+            pathLengths[i] = nodes[order[i]].Path.Length;
+        }
+
+        return pathLengths;
     }
 
     /// <summary>Rate blocks the Keccak padding rounds a message of this length up to.</summary>
@@ -243,7 +287,7 @@ internal static class DirtyNodeHasher
         }
 
         // The narrowest kernel that covers the group, so a small one does not permute eight lanes.
-        int batchSize = Avx512F.IsSupported && group.Length > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
+        int batchSize = group.Length > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
         if (group.Length > batchSize) ThrowGroupWiderThanKernel();
 
         int paddedLength = paddedClass * KeccakHash.RateBlockLength;
