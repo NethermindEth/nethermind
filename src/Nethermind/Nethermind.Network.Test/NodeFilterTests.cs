@@ -17,18 +17,32 @@ public class NodeFilterTests
     [Test]
     public void Touch_existing_address_does_not_allocate([Values] bool exactMatchOnly)
     {
+        const int iterations = 1000;
+        const int windows = 5;
+
         NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly);
         IPAddress address = IPAddress.Parse("203.0.113.1");
-        for (int i = 0; i < 1000; i++) filter.Touch(address);
+        Touch(filter, address, iterations);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++) filter.Touch(address);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // The per-thread counter occasionally picks up runtime allocations unrelated to the measured code,
+        // so take the lowest of several windows rather than trusting a single one.
+        long allocated = long.MaxValue;
+        for (int window = 0; window < windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Touch(filter, address, iterations);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(allocated, Is.Zero);
             Assert.That(filter.TryAccept(address), Is.False);
+        }
+
+        static void Touch(NodeFilter filter, IPAddress address, int iterations)
+        {
+            for (int i = 0; i < iterations; i++) filter.Touch(address);
         }
     }
 

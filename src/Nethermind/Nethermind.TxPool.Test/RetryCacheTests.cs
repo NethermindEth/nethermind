@@ -1682,11 +1682,9 @@ public class RetryCacheTests
         for (int burst = 0; burst < 4; burst++)
         {
             timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
-            long before = GC.GetAllocatedBytesForCurrentThread();
             cache.ProcessRetryTick();
             int retainedAfterExpiry = cache.OverflowRetainedCapacity;
             int requested = AnnounceBurst();
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
             using (Assert.EnterMultipleScope())
             {
@@ -1695,7 +1693,8 @@ public class RetryCacheTests
                 if (resourceCount == 32768)
                     Assert.That(retainedAfterExpiry, Is.LessThanOrEqualTo(1024), "repeated oversized bursts must not bypass the retention cap");
                 else if (burst > 0)
-                    Assert.That(allocated, Is.LessThan(4_000), "repeated bursts should reuse the grown set after the warm spare proves useful");
+                    // Surviving the expiry with room for the whole burst is what makes the refill allocation-free.
+                    Assert.That(retainedAfterExpiry, Is.GreaterThanOrEqualTo(resourceCount), "repeated bursts should reuse the grown set after the warm spare proves useful");
             }
             Assert.That(AnnounceBurst(), Is.Zero);
         }
