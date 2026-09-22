@@ -63,6 +63,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private int _earlyRestoredSlots;
     private int _earlyAbandonedTrees;
 
+    // Storage writes are applied to the storage tries by trie warmer jobs while the block executes, and never while
+    // a write batch or a commit runs: closing waits for the jobs in flight, and bumping the sequence id drops the
+    // queued ones.
+    private readonly bool _streamStorageWrites;
+    private volatile bool _storageWritesClosed;
+    private int _storageWriteSequenceId;
+    private int _storageWriteJobsInFlight;
+
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
@@ -94,6 +102,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+        _streamStorageWrites = configuration.StreamStorageWrites && !isReadOnly && !_trieless && !configuration.VerifyWithTrie;
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
@@ -132,6 +141,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
+        CloseStorageWrites();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -439,6 +449,47 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
+    internal bool StreamsStorageWrites => _streamStorageWrites;
+
+    internal bool TryScheduleStorageWrites(FlatStorageTree storageTree) =>
+        !_storageWritesClosed && _warmer.PushStorageWriteJob(storageTree, Volatile.Read(ref _storageWriteSequenceId));
+
+    // The increment and the reads that follow pair with the write and the increment in CloseStorageWrites: either
+    // the job sees the scope closed, or the closer sees the job in flight and waits for it.
+    internal bool TryEnterStorageWrites(int sequenceId)
+    {
+        Interlocked.Increment(ref _storageWriteJobsInFlight);
+        if (AreStorageWritesOpen(sequenceId)) return true;
+
+        ExitStorageWrites();
+        return false;
+    }
+
+    internal bool AreStorageWritesOpen(int sequenceId) =>
+        !_storageWritesClosed && Volatile.Read(ref _storageWriteSequenceId) == sequenceId;
+
+    internal void ExitStorageWrites() => Interlocked.Decrement(ref _storageWriteJobsInFlight);
+
+    private void CloseStorageWrites()
+    {
+        if (!_streamStorageWrites) return;
+
+        _storageWritesClosed = true;
+        Interlocked.Increment(ref _storageWriteSequenceId);
+
+        // A job in flight holds a storage trie that the caller is about to write; its work is bounded by one trie.
+        SpinWait spinWait = new();
+        while (Volatile.Read(ref _storageWriteJobsInFlight) != 0)
+        {
+            spinWait.SpinOnce(sleep1Threshold: -1);
+        }
+    }
+
+    private void OpenStorageWrites()
+    {
+        if (_streamStorageWrites && !IsDisposed) _storageWritesClosed = false;
+    }
+
     internal void IncrementOutstandingWarmups() => Interlocked.Increment(ref _outstandingWarmups);
 
     internal int OutstandingWarmups => Volatile.Read(ref _outstandingWarmups);
@@ -517,12 +568,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
+        CloseStorageWrites();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        CloseStorageWrites();
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
@@ -531,6 +584,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             CommitStorageTrees();
             Volatile.Read(ref _stateTree)?.Commit();
+        }
+
+        foreach (FlatStorageTree storage in _storages.Values)
+        {
+            storage.ReleaseStorageWrites();
         }
 
         _storages.Clear();
@@ -555,6 +613,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
         _pausePrewarmer = false;
+        OpenStorageWrites();
 
         if (_earlyApplier is not null) ReportEarlyApply(blockNumber);
     }
@@ -695,6 +754,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 _dirtyAccounts.Clear();
 
                 Interlocked.Increment(ref scope._hintSequenceId);
+                scope.OpenStorageWrites();
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]

@@ -309,6 +309,17 @@ namespace Nethermind.Trie
 
         public void UpdateRootHash(bool canBeParallel = true)
         {
+            HashDirtyNodes(canBeParallel);
+            SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
+        }
+
+        /// <summary>Hashes every dirty node, leaving <see cref="RootHash"/> as it was.</summary>
+        /// <remarks>
+        /// A later <see cref="UpdateRootHash"/> or <see cref="Commit(bool, WriteFlags)"/> reuses these hashes, so only
+        /// the nodes changed in between are hashed again.
+        /// </remarks>
+        public void HashDirtyNodes(bool canBeParallel = true)
+        {
             TreePath path = TreePath.Empty;
             if (RootRef is not null && DirtyNodeHasher.HashBelowRoot(RootRef, TrieStore, _bufferPool, canBeParallel))
             {
@@ -318,7 +329,6 @@ namespace Nethermind.Trie
             }
 
             RootRef?.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel);
-            SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
         public void SetRootHash(Hash256? value, bool resetObjects)

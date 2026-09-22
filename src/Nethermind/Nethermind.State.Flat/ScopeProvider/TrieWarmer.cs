@@ -20,6 +20,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 {
     private const int BufferSize = 1024 * 16;
     private const int SlotBufferSize = 1024 * 8;
+    private const int StorageWriteBufferSize = 1024 * 4;
     private const int DisposeTimeoutMilliseconds = 1000;
 
     private readonly ILogger _logger;
@@ -31,6 +32,10 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     // Multi-producer jobs: BAL reads and prewarmer-driven warm hints.
     private readonly MpmcRingBuffer<Job> _jobBufferMultiThreaded = new(BufferSize);
+
+    // Served ahead of the warm-up jobs: each one does work the storage root computation would otherwise do at the
+    // end of the block.
+    private readonly MpmcRingBuffer<StorageWriteJob> _storageWriteJobBuffer = new(StorageWriteBufferSize);
 
     // A job needs to be small, within one cache line (64B) ideally.
     private readonly record struct Job(
@@ -44,6 +49,10 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private readonly record struct SlotJob(
         ITrieWarmer.IStorageWarmer storageTree,
         UInt256 index,
+        int sequenceId);
+
+    private readonly record struct StorageWriteJob(
+        ITrieWarmer.IStorageWriteApplier storageTree,
         int sequenceId);
 
     private readonly Processor[] _processors;
@@ -87,9 +96,11 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         void IThreadPoolWorkItem.Execute() => _owner.Execute(this);
     }
 
-    private bool HasReadyWork() => _slotJobBuffer.HasReadyItem || _jobBufferMultiThreaded.HasReadyItem;
+    private bool HasReadyWork() =>
+        _storageWriteJobBuffer.HasReadyItem || _slotJobBuffer.HasReadyItem || _jobBufferMultiThreaded.HasReadyItem;
 
-    private long PendingHint() => _slotJobBuffer.EstimatedJobCount + _jobBufferMultiThreaded.EstimatedJobCount;
+    private long PendingHint() =>
+        _storageWriteJobBuffer.EstimatedJobCount + _slotJobBuffer.EstimatedJobCount + _jobBufferMultiThreaded.EstimatedJobCount;
 
     private void KickProcessors()
     {
@@ -116,9 +127,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             while (true)
             {
-                while (TryDequeue(out Job job))
+                while (TryHandleNextJob())
                 {
-                    HandleJob(in job);
                 }
 
                 processor.ClearScheduled();
@@ -138,6 +148,20 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             OnProcessorStopped();
         }
+    }
+
+    private bool TryHandleNextJob()
+    {
+        if (_storageWriteJobBuffer.TryDequeue(out StorageWriteJob storageWriteJob))
+        {
+            storageWriteJob.storageTree.ApplyStorageWrites(storageWriteJob.sequenceId);
+            return true;
+        }
+
+        if (!TryDequeue(out Job job)) return false;
+
+        HandleJob(in job);
+        return true;
     }
 
     private bool TryDequeue(out Job job)
@@ -214,6 +238,16 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         if (Volatile.Read(ref _isDisposed)) return false;
 
         bool enqueued = _jobBufferMultiThreaded.TryEnqueue(new Job(storageTree, null, index, sequenceId));
+        if (enqueued) KickProcessors();
+        return enqueued;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool PushStorageWriteJob(ITrieWarmer.IStorageWriteApplier storageTree, int sequenceId)
+    {
+        if (Volatile.Read(ref _isDisposed)) return false;
+
+        bool enqueued = _storageWriteJobBuffer.TryEnqueue(new StorageWriteJob(storageTree, sequenceId));
         if (enqueued) KickProcessors();
         return enqueued;
     }

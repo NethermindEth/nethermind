@@ -136,6 +136,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Cache flat account and slot reads across heads in the persistence layer, so a new head does not re-read the working set from the database. `false` reads every persistence miss from the database.", DefaultValue = "true")]
     bool EnableCarryForwardCache { get; set; }
 
+    [ConfigItem(Description = "Apply committed storage writes to the storage tries on the trie warmer while the block executes, so the storage roots at the end of the block only hash what changed since. Needs the trie warmer.", DefaultValue = "true")]
+    bool StreamStorageWrites { get; set; }
+
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
