@@ -66,7 +66,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     protected override GethLikeTxTrace CreateTrace() => new(_disposables);
 
     public override bool IsTracingInstructions => false;
-    public override bool IsCollectingLogs => IsTracingLogs;
 
     public override GethLikeTxTrace BuildResult()
     {

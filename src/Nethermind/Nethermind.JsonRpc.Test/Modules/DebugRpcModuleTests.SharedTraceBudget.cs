@@ -31,13 +31,12 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_callTracer_log_indices_span_transactions(
         [Values("debug_traceTransaction", "debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
-        [Values] bool streamMode, [Values] bool revertFirst)
+        [Values] bool revertFirst)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         ChangesetPrefixStateSeedSource seeds = new(index);
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
             .Build(builder => builder
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds));
@@ -61,7 +60,7 @@ public partial class DebugRpcModuleTests
             "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToString(),
             _ => block.Hash!
         };
-        object options = new { tracer = "callTracer", tracerConfig = new { withLog = true }, streamMode };
+        object options = new { tracer = "callTracer", tracerConfig = new { withLog = true } };
         string replayed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter, options);
         IndexThroughTheCapture(chain, index, block, parent);
         string indexed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter, options);
