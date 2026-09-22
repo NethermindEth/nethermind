@@ -111,7 +111,7 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null);
         Address[] addresses = new Address[count];
-        HashSet<uint> buckets = [];
+        StateTree expected = new();
         Random random = new(9213);
         for (int i = 0; i < count; i++)
         {
@@ -119,9 +119,10 @@ public class ScopeProviderTests(bool useFlat)
             do
             {
                 random.NextBytes(bytes);
-            } while (KeccakCache.TryGet(bytes, out _) || !buckets.Add(KeccakCache.GetBucket(bytes)));
+            } while (KeccakCache.TryGet(bytes, out _));
             addresses[i] = new Address(bytes);
             if (warm) KeccakCache.ComputeTo(bytes, out _);
+            expected.Set(ValueKeccak.Compute(bytes), new Account(1, (UInt256)(i + 1)));
         }
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(count))
@@ -129,13 +130,16 @@ public class ScopeProviderTests(bool useFlat)
             for (int i = 0; i < count; i++) write.Set(addresses[i], new Account(1, (UInt256)(i + 1)));
         }
 
-        // Every hash is checked before the first read. A read hashes other values into a cache that
-        // holds one entry per bucket, so reading first can evict what the write put there.
-        for (int i = 0; i < count; i++) AssertCachedHash(addresses[i].Bytes);
         for (int i = 0; i < count; i++)
         {
             Assert.That(scope.Get(addresses[i]).Balance, Is.EqualTo((UInt256)(i + 1)));
         }
+
+        // The root is the oracle for the batched key hashes: a wrong hash files an account under a
+        // different path. Cache residency is not, because a write only stores on an uncontended slot.
+        expected.UpdateRootHash();
+        scope.Commit(1);
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
     }
 
     [Test]
@@ -195,30 +199,41 @@ public class ScopeProviderTests(bool useFlat)
         using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
         UInt256[] indices = new UInt256[count];
         Random random = new(6513 + count);
-        HashSet<uint> buckets = [KeccakCache.GetBucket(TestItem.AddressA.Bytes)];
         byte[] bytes = new byte[Hash256.Size];
         for (int i = 0; i < count; i++)
         {
             do
             {
                 random.NextBytes(bytes);
-            } while (KeccakCache.TryGet(bytes, out _) || !buckets.Add(KeccakCache.GetBucket(bytes)));
+            } while (KeccakCache.TryGet(bytes, out _));
             indices[i] = includeLookupSlots && i % 3 == 0 ? (UInt256)i : new UInt256(bytes, isBigEndian: true);
         }
         for (int round = 0; round < 2; round++)
         {
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(1))
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(2))
             {
-                if (round == 0) write.Set(TestItem.AddressA, new Account(100, 100));
-                using IWorldStateScopeProvider.IStorageWriteBatch storage = write.CreateStorageWriteBatch(TestItem.AddressA, Math.Max(17, count));
-                for (int i = 0; i < count; i++) storage.Set(indices[i], round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1));
+                if (round == 0)
+                {
+                    write.Set(TestItem.AddressA, new Account(100, 100));
+                    write.Set(TestItem.AddressB, new Account(100, 100));
+                }
+
+                // The same slots down both paths: over MIN_ENTRIES_TO_BATCH the write batch hashes the
+                // keys in a batch, at one entry it hashes each on its own.
+                using IWorldStateScopeProvider.IStorageWriteBatch batched = write.CreateStorageWriteBatch(TestItem.AddressA, Math.Max(17, count));
+                using IWorldStateScopeProvider.IStorageWriteBatch scalar = write.CreateStorageWriteBatch(TestItem.AddressB, 1);
+                for (int i = 0; i < count; i++)
+                {
+                    UInt256 value = round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1);
+                    batched.Set(indices[i], value);
+                    scalar.Set(indices[i], value);
+                }
             }
-            for (int i = 0; i < count; i++)
-            {
-                if (includeLookupSlots && i % 3 == 0) continue;
-                indices[i].ToBigEndian(bytes);
-                AssertCachedHash(bytes);
-            }
+
+            // A storage trie is keyed by slot hash alone, so the two addresses hold the same root only
+            // if every batched key hash matches the scalar one.
+            Assert.That(scope.CreateStorageTree(TestItem.AddressA).RootHash,
+                Is.EqualTo(scope.CreateStorageTree(TestItem.AddressB).RootHash), "storage root");
 
             IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(TestItem.AddressA);
             for (int i = 0; i < count; i++)
@@ -227,12 +242,6 @@ public class ScopeProviderTests(bool useFlat)
                 Assert.That(value, Is.EqualTo(round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1)), "slot value");
             }
         }
-    }
-
-    private static void AssertCachedHash(ReadOnlySpan<byte> preimage)
-    {
-        Assert.That(KeccakCache.TryGet(preimage, out ValueHash256 cached), Is.True, "write populated the hash before reading");
-        Assert.That(cached, Is.EqualTo(ValueKeccak.Compute(preimage)), "cached hash");
     }
 
     [Test]
