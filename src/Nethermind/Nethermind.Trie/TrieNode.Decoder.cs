@@ -436,11 +436,17 @@ namespace Nethermind.Trie
                     ? GetChildrenRlpLengthForBranchRlpParallel(tree, path, item, bufferPool, canBeParallel)
                     : GetChildrenRlpLengthForBranchNonRlpParallel(tree, path, item, bufferPool, canBeParallel);
 
+            /// <remarks>
+            /// Collects the same batch candidates as the sequential walk. Spreading the children over cores
+            /// and batching their hashes are independent wins, and taking only the first one made the batch
+            /// kernels unreachable for every branch wide enough to be worth parallelising.
+            /// </remarks>
             private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int totalLength = 0;
+                int candidateMask = 0;
                 ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
-                    (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
+                    (local: 0, localMask: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
                         object? data = state.item._nodeData![i];
@@ -457,8 +463,25 @@ namespace Nethermind.Trie
                             TreePath path = state.rootPath;
                             path.AppendMut(i);
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
-                            state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            if (Avx512F.VL.IsSupported && childNode is { IsBranch: true, Keccak: null })
+                            {
+                                CappedArray<byte> rlp = childNode.PrepareRlp(state.tree, ref path, state.bufferPool, state.canBeParallel);
+                                if (rlp.Length == FullBranchRlpLength)
+                                {
+                                    state.localMask |= 1 << i;
+                                    state.local += Rlp.LengthOfKeccakRlp;
+                                }
+                                else
+                                {
+                                    childNode.ResolvePreparedKey(in rlp);
+                                    state.local += childNode.Keccak is null ? rlp.Length : Rlp.LengthOfKeccakRlp;
+                                }
+                            }
+                            else
+                            {
+                                childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
+                                state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            }
                         }
 
                         return state;
@@ -466,7 +489,13 @@ namespace Nethermind.Trie
                     state =>
                     {
                         Interlocked.Add(ref totalLength, state.local);
+                        if (state.localMask != 0) Interlocked.Or(ref candidateMask, state.localMask);
                     });
+
+                if (candidateMask != 0)
+                {
+                    HashPreparedBranches(item, (ushort)candidateMask);
+                }
 
                 return totalLength;
             }
@@ -522,11 +551,13 @@ namespace Nethermind.Trie
                 return totalLength;
             }
 
+            /// <inheritdoc cref="GetChildrenRlpLengthForBranchNonRlpParallel" />
             private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
                 int totalLength = 0;
+                int candidateMask = 0;
                 ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
-                    (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
+                    (local: 0, localMask: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
                         object? data = BranchChildren(state.item)[i];
@@ -550,8 +581,25 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
-                            state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            if (Avx512F.VL.IsSupported && childNode is { IsBranch: true, Keccak: null })
+                            {
+                                CappedArray<byte> rlp = childNode.PrepareRlp(state.tree, ref path, state.bufferPool, state.canBeParallel);
+                                if (rlp.Length == FullBranchRlpLength)
+                                {
+                                    state.localMask |= 1 << i;
+                                    state.local += Rlp.LengthOfKeccakRlp;
+                                }
+                                else
+                                {
+                                    childNode.ResolvePreparedKey(in rlp);
+                                    state.local += childNode.Keccak is null ? rlp.Length : Rlp.LengthOfKeccakRlp;
+                                }
+                            }
+                            else
+                            {
+                                childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
+                                state.local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            }
                         }
 
                         return state;
@@ -559,7 +607,13 @@ namespace Nethermind.Trie
                     state =>
                     {
                         Interlocked.Add(ref totalLength, state.local);
+                        if (state.localMask != 0) Interlocked.Or(ref candidateMask, state.localMask);
                     });
+
+                if (candidateMask != 0)
+                {
+                    HashPreparedBranches(item, (ushort)candidateMask);
+                }
 
                 return totalLength;
             }
