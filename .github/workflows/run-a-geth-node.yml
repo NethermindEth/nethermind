@@ -18,6 +18,11 @@ on:
         default: "lighthouse"
         required: false
         type: string
+      geth_image:
+        description: "Geth container image, optionally pinned by digest."
+        default: "ethereum/client-go:stable"
+        required: false
+        type: string
       additional_options:
         type: string
         description: "A Json property which allows to customize node even more"
@@ -100,6 +105,7 @@ jobs:
         run: |
           echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
           echo "timeout=$(echo '${{ inputs.additional_options }}' | jq -r .timeout)" >> $GITHUB_OUTPUT
+          echo "ssh_keys=$(echo '${{ inputs.additional_options }}' | jq -r '.ssh_keys // ""')" >> $GITHUB_OUTPUT
           echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
           echo "custom_machine_type=$(echo '${{ inputs.additional_options }}' | jq -r .custom_machine_type)" >> $GITHUB_OUTPUT
 
@@ -107,6 +113,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
           NETWORK: ${{ inputs.network }}
+          GETH_IMAGE: ${{ inputs.geth_image }}
+          SSH_KEYS: ${{ steps.extract_variables.outputs.ssh_keys }}
           CL_CLIENT: ${{ inputs.cl_client }}
           ALLOWED_IPS: ${{ steps.extract_variables.outputs.allowed_ips }}
           MACHINE_TYPE: ${{ steps.extract_variables.outputs.custom_machine_type }}
@@ -125,9 +133,9 @@ jobs:
             *)       CHECKPOINT_URL="" ;;
           esac
 
-          config_json=$(jq -cn --arg net "$NETWORK" --arg cl "$CL_CLIENT" --arg mt "$MACHINE_TYPE" --arg cp "$CHECKPOINT_URL" '{
+          config_json=$(jq -cn --arg net "$NETWORK" --arg cl "$CL_CLIENT" --arg mt "$MACHINE_TYPE" --arg cp "$CHECKPOINT_URL" --arg image "$GETH_IMAGE" '{
             node_name_prefix: "RpcCmp-geth",
-            el: [{client: "geth", image: "ethereum/client-go:stable", alias: "", convert_to_paprika: "false"}],
+            el: [{client: "geth", image: $image, alias: "", convert_to_paprika: "false"}],
             el_extra_flags: {geth: ["syncmode=snap", "gcmode=full", "history.transactions=128", "history.state=128" , "history.chain=postprague"]},
             metrics_collection: false,
             cl: [{client: $cl, image: ""}],
@@ -144,6 +152,7 @@ jobs:
             -f github_username="${{ github.actor }}" \
             -f base_tag="${{ env.BASE_TAG }}" \
             -f tags="rpc-comparison" \
+            -f ssh_keys="$SSH_KEYS" \
             -f firewall_ips="$ALLOWED_IPS" \
             -f config_json="$config_json" \
             -f tests_active="0" \
