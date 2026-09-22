@@ -75,17 +75,27 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     /// <remarks>Read only once the frame is resolved, or for a frame whose input is empty or a leaf, which has no descendants.</remarks>
     internal readonly long DescendantBytes(int slot) => _descendantBytes[slot];
 
-    /// <summary>Declares the group absent and records the descendants its spanning branch keeps below <paramref name="slot"/>.</summary>
+    /// <summary>Declares that no group is stored below this frame's boundary node, so a later load is a no-op instead of a store miss.</summary>
+    /// <remarks>
+    /// A group holds the nodes strictly below its boundary node, so a boundary node with nothing stored below it
+    /// owns an empty group, which <see cref="PbtNodeGroupWriter{TPath}.Detach"/> turned into a deletion. Such a
+    /// group has no descendant groups either, so every slot keeps its zero size.
+    /// </remarks>
+    internal void DeclareAbsent()
+    {
+        Debug.Assert(!_loaded, "A frame is declared absent before it is loaded.");
+        _loaded = true;
+    }
+
+    /// <summary><see cref="DeclareAbsent"/>, recording the descendants the group's spanning branch keeps below <paramref name="slot"/>.</summary>
     /// <remarks>
     /// A branch whose prefix spans past this group is the only node under its parent's boundary slot, so the
-    /// parent's size for that slot is exactly this group's size below the branch. Declaring the group absent
-    /// makes any later load a no-op instead of a store miss.
+    /// parent's size for that slot is exactly this group's size below the branch.
     /// </remarks>
     internal void InheritDescendants(int slot, long descendantBytes)
     {
-        Debug.Assert(!_loaded, "Descendants are inherited before the frame is loaded.");
+        DeclareAbsent();
         _descendantBytes[slot] = descendantBytes;
-        _loaded = true;
     }
 
     internal ReadOnlyMemory<byte> GetEncoding(scoped in PbtTraversalPath path, int position)

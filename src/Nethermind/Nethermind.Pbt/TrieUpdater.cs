@@ -296,7 +296,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
             using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
-            InheritDescendants(ref reader, in ownerReader, path, current);
+            ResolveAbsentGroup(ref reader, in ownerReader, path, current);
             OwnedSubtree result = FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, partition);
             TraversalSubtree resolved = result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]);
             ValueHash256 hash = resolved.Hash(bitDepth, metrics);
@@ -322,19 +322,41 @@ internal static partial class TrieUpdater<TKey, TPath>
         return (payload?.GetSpan().Length ?? 0) - reader.PayloadLength + writer.DescendantDelta();
     }
 
-    /// <summary>Seeds a new frame's descendant size from its owner when the group it opens does not exist yet.</summary>
+    /// <summary>Resolves a frame whose group is provably absent, so the fold never probes the store for it.</summary>
     /// <remarks>
-    /// A group opened under a branch whose children lie beyond it has no stored size, and its untouched descendants fold
-    /// nothing, so the size arrives from the owner frame: the branch is the only node under the owner's boundary slot on
-    /// the way here, so that slot's size is this group's size below the branch. Owner frames are resolved before a child
-    /// frame opens, so no store read is needed.
+    /// A group holds the nodes strictly below its boundary node. Nothing is stored below an empty subtree or a leaf,
+    /// and a branch over two inlined leaves is its own whole subtree, so none of the three owns a group. A branch whose
+    /// children lie beyond this group owns no group either, but it still carries the descendant groups the owner counted
+    /// under the boundary slot on the way here, so <paramref name="spanningDescendantBytes"/> moves that size here with it.
+    /// Any other branch has a child inside the group, which the fold loads on its first access.
     /// </remarks>
-    internal static void InheritDescendants(ref GroupFrameReader<TKey, TPath> reader, in GroupFrameReader<TKey, TPath> owner, scoped in PbtTraversalPath path, scoped in TraversalSubtree current)
+    internal static void ResolveAbsentGroup(ref GroupFrameReader<TKey, TPath> reader, scoped in TraversalSubtree current, long spanningDescendantBytes)
     {
-        if (!IsAbsentGroupBelow(current, reader.BitDepth)) return;
-        Debug.Assert(owner.IsResolved, "An owner frame is resolved before its child frames open.");
+        // A spanning branch may inline two leaves as well; taking its slot size keeps the owner's accounting.
+        if (IsAbsentGroupBelow(current, reader.BitDepth))
+            reader.InheritDescendants(BranchSlot(current, reader.BitDepth), spanningDescendantBytes);
+        else if (OwnsNoGroup(current))
+            reader.DeclareAbsent();
+    }
+
+    /// <inheritdoc cref="ResolveAbsentGroup(ref GroupFrameReader{TKey, TPath}, in TraversalSubtree, long)"/>
+    /// <remarks>The still-open <paramref name="owner"/> holds the size of everything below the boundary slot on the way here.</remarks>
+    internal static void ResolveAbsentGroup(ref GroupFrameReader<TKey, TPath> reader, in GroupFrameReader<TKey, TPath> owner, scoped in PbtTraversalPath path, scoped in TraversalSubtree current)
+    {
+        if (!IsAbsentGroupBelow(current, reader.BitDepth))
+        {
+            if (OwnsNoGroup(current)) reader.DeclareAbsent();
+            return;
+        }
+        // Only a spanning branch takes a size from its owner, and the fold has read that owner to reach one.
+        Debug.Assert(owner.IsResolved, "An owner frame is resolved before the child frame its branch spans into opens.");
         reader.InheritDescendants(BranchSlot(current, reader.BitDepth), owner.DescendantBytes(BoundarySlot(path.Bytes, owner.BitDepth)));
     }
+
+    /// <summary>Whether <paramref name="current"/>'s whole subtree is the node itself, which its owner group stores.</summary>
+    /// <remarks>LeafChildrenMask decodes the branch encoding, so the empty and leaf kinds are ruled out first.</remarks>
+    private static bool OwnsNoGroup(scoped in TraversalSubtree current) =>
+        current.IsEmpty || current.IsLeaf || current.Node.LeafChildrenMask == (Subtree.LeftLeaf | Subtree.RightLeaf);
 
     /// <summary>The boundary slot of the group at <paramref name="bitDepth"/> that <paramref name="current"/>'s prefix passes through.</summary>
     internal static int BranchSlot(scoped in TraversalSubtree current, int bitDepth)

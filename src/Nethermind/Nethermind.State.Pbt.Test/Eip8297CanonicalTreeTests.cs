@@ -2143,6 +2143,7 @@ public class Eip8297CanonicalTreeTests
 
         TrieUpdater.UpdateRoot(store, root, Batch(([0x00], Value(5))), metrics);
 
+        PbtStorageNodePath absentGroup = new([0x00], 4);
         PbtStorageNodePath untouchedGroup = new([0x80], 4);
         using (Assert.EnterMultipleScope())
         {
@@ -2150,7 +2151,42 @@ public class Eip8297CanonicalTreeTests
             Assert.That(metrics.GroupParses, Is.EqualTo(1), "the left boundary's leaves are inline, so its group is absent");
             Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(2), "one frame resolution per entered physical group");
             Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
+            Assert.That(store.GroupReads.ContainsKey(absentGroup), Is.False, "the changed left boundary inlines its leaves, so its group is absent and never fetched");
             Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False, "the untouched right group is not fetched");
+        }
+    }
+
+    // Each case leaves the group at [0x00] with a boundary node that owns nothing below it, so the fold that
+    // enters it must publish it without ever reading it.
+    [TestCase(new byte[] { 0x80 }, new byte[] { 0x00, 0x08 }, TestName = "Absent_group_is_never_fetched_over_an_empty_boundary")]
+    [TestCase(new byte[] { 0x80, 0x00 }, new byte[] { 0x04 }, TestName = "Absent_group_is_never_fetched_over_a_leaf_boundary")]
+    [TestCase(new byte[] { 0x80, 0x00, 0x08 }, new byte[] { 0x00 }, TestName = "Absent_group_is_never_fetched_over_two_inlined_leaves")]
+    public void Absent_group_is_never_fetched(byte[] initialKeys, byte[] changedKeys)
+    {
+        CountingPbtStore store = new();
+        using PbtTreeHarness expected = new();
+        (byte[] Key, byte[]? Value)[] initial = ToChanges(initialKeys, marker: 0);
+        (byte[] Key, byte[]? Value)[] changes = ToChanges(changedKeys, marker: 1);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, Batch(initial));
+        expected.ApplyBatch(initial);
+        store.ResetReads();
+
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, Batch(changes));
+
+        PbtStorageNodePath absentGroup = new([0x00], 4);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expected.ApplyBatch(changes)));
+            Assert.That(store.GroupReads.ContainsKey(absentGroup), Is.False, "a group that stores nothing is never fetched");
+            Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(expected)));
+            PbtStoreTestExtensions.AssertSubtreeBytes(store.Inner.ExportPhysicalPayloads());
+        }
+
+        static (byte[] Key, byte[]? Value)[] ToChanges(byte[] keys, byte marker)
+        {
+            (byte[] Key, byte[]? Value)[] changes = new (byte[], byte[]?)[keys.Length];
+            for (int index = 0; index < keys.Length; index++) changes[index] = ([keys[index]], Value((byte)(keys[index] + marker)));
+            return changes;
         }
     }
 

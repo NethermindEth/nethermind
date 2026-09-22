@@ -843,7 +843,7 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Inherited_descendants_resolve_the_frame_without_a_fetch()
+    public void Absent_groups_resolve_the_frame_without_a_fetch([Values] bool inherited)
     {
         TrackingMemoryProvider memory = new();
         using PbtNodeGroupStore store = new(memory);
@@ -853,11 +853,14 @@ public class PbtNodeGroupTests
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             Assert.That(reader.IsResolved, Is.False);
-            reader.InheritDescendants(5, 1234);
+            // A group with nothing below it keeps every slot at zero; only a spanning branch carries a size here.
+            long spanningBytes = inherited ? 1234 : 0;
+            if (inherited) reader.InheritDescendants(5, spanningBytes);
+            else reader.DeclareAbsent();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reader.IsResolved, Is.True);
-                Assert.That(reader.DescendantBytes(5), Is.EqualTo(1234));
+                Assert.That(reader.DescendantBytes(5), Is.EqualTo(spanningBytes));
                 Assert.That(reader.DescendantBytes(4), Is.Zero);
                 Assert.That(persistence.Reads, Is.Empty);
                 Assert.That(metrics.PhysicalGroupFetches, Is.Zero);

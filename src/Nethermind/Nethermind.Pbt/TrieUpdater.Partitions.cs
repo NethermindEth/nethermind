@@ -117,7 +117,7 @@ public static partial class TrieUpdater
                             sharedReader = new(store, 4, boundary.Hash(4, metrics), metrics);
                             sharedWriter = new(4, memoryProvider, prefixlessBranchOmission);
                             sharedWriters[slot] = sharedWriter;
-                            InheritDescendants(ref sharedReader, in rootReader, sharedPath, boundary);
+                            ResolveAbsentGroup(ref sharedReader, in rootReader, sharedPath, boundary);
                             Decompose(ref sharedReader, sharedWriter, sharedPath, ref boundary, 4, ref zoneFrontiers.AsSpan()[slot], touchedZoneMasks[slot]);
                         }
                         TraversalSubtree workerBoundary = TakeBoundary(ref sharedReader, sharedWriter, sharedPath, ref zoneFrontiers.AsSpan()[slot], worker.Zone & 15, sourceBuffer);
@@ -245,8 +245,7 @@ public static partial class TrieUpdater
                 TrieUpdater<TKey, TPath>.OwnedSubtree result = default;
                 TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, Metrics,
                     foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
-                if (TrieUpdater<TKey, TPath>.IsAbsentGroupBelow(current, 8))
-                    reader.InheritDescendants(TrieUpdater<TKey, TPath>.BranchSlot(current, 8), InheritedDescendantBytes);
+                TrieUpdater<TKey, TPath>.ResolveAbsentGroup(ref reader, current, InheritedDescendantBytes);
                 // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                 result = TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, writer, current,
                     operations.AsSpan(), ref path, 8, new(table.AsSpan(), 8, false));
