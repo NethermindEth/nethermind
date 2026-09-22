@@ -153,37 +153,38 @@ public partial class DebugRpcModuleTests
 
     public static IEnumerable<TestCaseData> KeccakPreimageCases()
     {
-        (string Name, string Code, string Expected)[] cases =
+        (string Name, string Code, string Expected, long Gas)[] cases =
         [
-            ("none", "00", """{}"""),
-            ("empty", "600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}"""),
-            ("padded", "600160002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}"""),
-            ("byte", "602a600053600160002000", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}"""),
-            ("overlap", "602a601f536002601f2000", """{"0x71378d9bd65a614e4926f9fa621eae99b3f2a1cf19e8c22e41594dc15c16dd33":"0x2a00"}"""),
-            ("offset", "600160202000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}"""),
-            ("duplicate", "6000600020600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}"""),
-            ("revert", "602a600053600160002060006000fd", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}"""),
-            ("empty_stack", "20", """{}"""),
-            ("short_stack", "600020", """{}"""),
-            ("padding_limit", "6001621000012000", """{}"""),
-            ("large_size", "63ffffffff60002000", """{}"""),
-            ("truncated_offset", "60007f01000000000000000000000000000000000000000000000000000000000000002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}"""),
-            ("distinct", "6000600020600160002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00","0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}"""),
-            ("out_of_gas", "6001620fffff2000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}"""),
-            ("nested_revert", "6000600060006000600073000000000000000000000000000000000000901261c350f150600160002000", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a","0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}"""),
+            ("none", "00", """{}""", 100_000),
+            ("empty", "600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("padded", "600160002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
+            ("byte", "602a600053600160002000", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
+            ("overlap", "602a601f536002601f2000", """{"0x71378d9bd65a614e4926f9fa621eae99b3f2a1cf19e8c22e41594dc15c16dd33":"0x2a00"}""", 100_000),
+            ("offset", "600160202000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
+            ("duplicate", "6000600020600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("revert", "602a600053600160002060006000fd", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
+            ("empty_stack", "20", """{}""", 100_000),
+            ("short_stack", "600020", """{}""", 100_000),
+            ("padding_limit", "6001621000012000", """{}""", 100_000),
+            ("large_size", "63ffffffff60002000", """{}""", 100_000),
+            ("truncated_offset", "60007f01000000000000000000000000000000000000000000000000000000000000002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("distinct", "6000600020600160002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00","0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("out_of_gas", "6001620fffff2000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
+            ("nested_revert", "6000600060006000600073000000000000000000000000000000000000901261c350f150600160002000", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a","0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
+            ("unwritten_memory", "60016210080060006000600073000000000000000000000000000000000000901361c350f1506001621008002000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 3_000_000),
         ];
-        foreach ((string name, string code, string expected) in cases)
+        foreach ((string name, string code, string expected, long gas) in cases)
         {
             foreach (bool disableStack in new[] { false, true })
             {
-                yield return new TestCaseData(code, expected, disableStack)
+                yield return new TestCaseData(code, expected, disableStack, gas)
                     .SetName($"Debug_traceCall_keccak_preimages_{name}_disableStack_{disableStack}");
             }
         }
     }
 
     [TestCaseSource(nameof(KeccakPreimageCases))]
-    public async Task Debug_traceCall_keccak_preimages(string code, string expected, bool disableStack)
+    public async Task Debug_traceCall_keccak_preimages(string code, string expected, bool disableStack, long gas)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
         Dictionary<string, object> stateOverrides = new()
@@ -192,7 +193,7 @@ public partial class DebugRpcModuleTests
             ["0x0000000000000000000000000000000000009012"] = new { code = "0x602a600053600160002060006000fd" }
         };
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
+            new { to = TestItem.AddressC.ToString(), gas = $"0x{gas:x}" }, "latest",
             new { tracer = "keccak256PreimageTracer", disableStack, enableMemory = false, stateOverrides });
 
         JToken result = JToken.Parse(response);

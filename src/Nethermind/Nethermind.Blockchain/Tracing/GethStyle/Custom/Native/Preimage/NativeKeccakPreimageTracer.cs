@@ -51,10 +51,10 @@ public sealed class NativeKeccakPreimageTracer : GethLikeNativeTxTracer, IInstru
         if (offset > int.MaxValue || length > int.MaxValue) return;
 
         ulong end = offset + length;
-        // Geth captures before execution, but caps zero padding for invalid or out-of-gas memory ranges.
+        // Geth bounds padding against logical EVM memory, not the lazily allocated backing storage.
         if (end > int.MaxValue || (end > _memory.Size && end - _memory.Size > MemorySizes.MiB)) return;
 
-        byte[] preimage = _memory.Slice((int)offset, (int)length).ToArray();
+        byte[] preimage = _memory.Slice((int)offset, (int)length, limit: false).ToArray();
         _preimages[Keccak.Compute(preimage)] = preimage;
     }
 
