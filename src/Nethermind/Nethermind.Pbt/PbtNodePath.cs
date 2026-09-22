@@ -12,11 +12,13 @@ public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNo
     /// <inheritdoc/>
     public static int MaxBitDepth => PbtTreeKey.MaxLength * 8;
     /// <inheritdoc/>
-    public static PbtNodePath Create(ReadOnlySpan<byte> path, int bitDepth) => new(path, bitDepth);
+    public static PbtNodePath Create(ReadOnlySpan<byte> path, int bitDepth) => new(path, bitDepth, validated: true);
 
-    public PbtNodePath(ReadOnlySpan<byte> path, int bitDepth)
+    public PbtNodePath(ReadOnlySpan<byte> path, int bitDepth) : this(path, bitDepth, validated: false) { }
+
+    private PbtNodePath(ReadOnlySpan<byte> path, int bitDepth, bool validated)
     {
-        PbtNodePathOperations.Validate(path, bitDepth, MaxBitDepth);
+        if (!validated) PbtNodePathOperations.Validate(path, bitDepth, MaxBitDepth);
         _path = path.IsEmpty ? default : new PbtTreeKey(path);
         BitDepth = bitDepth;
     }

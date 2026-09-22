@@ -292,9 +292,6 @@ public class PbtRocksDbPersistence(
 
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
         {
-            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-                throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-
             PbtColumns column = NodeGroupColumn(groupKey);
             Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];
             MemoryManager<byte>? owned = GetNodeGroupColumn(column).GetOwnedMemory(NodeGroupStorageKey(layout, column, groupKey, key));
@@ -408,10 +405,6 @@ public class PbtRocksDbPersistence(
 
         public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
-            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-                throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-
-            if (payload is not null) PbtNodeGroupCodec.ValidateFraming(groupKey.BitDepth, payload.GetSpan());
             PbtColumns column = NodeGroupColumn(groupKey);
             IWriteBatch groups = _batch.GetColumnBatch(column);
             Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];

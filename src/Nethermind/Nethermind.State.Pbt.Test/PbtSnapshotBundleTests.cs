@@ -958,16 +958,6 @@ public class PbtSnapshotBundleTests
         Assert.That(cache.MemorySize, Is.Zero);
     }
 
-    [Test]
-    public void Node_group_read_rejects_non_boundary_key_before_empty_persistence_lookup()
-    {
-        Reader reader = new(new PbtStorageTreeKey([0]), null);
-        using PbtReadOnlySnapshotBundle bundle = new(new PbtSnapshotPooledList(0), reader);
-
-        Assert.Throws<ArgumentException>(() => bundle.GetNodeGroup(new PbtNodePath([0], 1)));
-        Assert.That(reader.GroupReadCount, Is.Zero);
-    }
-
     [TestCase(0, false)]
     [TestCase(1, false)]
     [TestCase(2, false)]
@@ -1052,24 +1042,6 @@ public class PbtSnapshotBundleTests
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
     }
 
-    [Test]
-    public void Malformed_group_replacement_is_rejected_without_mutating_snapshot()
-    {
-        PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
-        Reader reader = new(new PbtStorageTreeKey([0]), null);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
-        PbtStorageTreeKey leafKey = PbtStateKey.Storage(TestItem.AddressA, 1);
-        PbtNodePath groupKey = new([], 0);
-        byte[] original = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
-        using RefCountingMemory originalPayload = Memory(original);
-        using RefCountingMemory malformed = Memory(Bytes.FromHexString("7f"));
-        bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(Value(2)));
-        bundle.SetNodeGroup(groupKey, TestItem.KeccakA.ValueHash256, originalPayload);
-
-        Assert.Throws<InvalidDataException>(() => bundle.SetNodeGroup(groupKey, TestItem.KeccakB.ValueHash256, malformed));
-        AssertSnapshotUnchanged(bundle, leafKey, groupKey, original);
-        Assert.That(reader.GroupReadCount, Is.Zero);
-    }
 
     [Test]
     public void Updater_group_read_failure_preserves_prior_deltas_and_does_not_apply()

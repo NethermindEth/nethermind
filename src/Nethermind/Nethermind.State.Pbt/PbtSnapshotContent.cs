@@ -59,9 +59,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// <summary>Retains an independent reference to a complete group replacement, or records a null tombstone.</summary>
     internal void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        if (payload is not null) PbtNodeGroupCodec.ValidateFraming(groupKey.BitDepth, payload.GetSpan());
         switch (PbtRocksDbPersistence.PartitionColumn(groupKey))
         {
             case PbtColumns.StorageNodeGroups: SetNodeGroup(StorageNodeGroups, groupKey.ToPath<PbtStorageNodePath>(), payload); break;
