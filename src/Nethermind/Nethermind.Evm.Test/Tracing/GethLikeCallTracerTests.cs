@@ -71,6 +71,30 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Call_trace_log_indices_include_hidden_children_and_discard_reverts([Values] bool onlyTopCall, [Values] bool childReverts)
+    {
+        byte[] childCode = childReverts
+            ? Prepare.EvmCode.Log(0, 0).Log(0, 0).Revert(0, 0).Done
+            : Prepare.EvmCode.Log(0, 0).Log(0, 0).STOP().Done;
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        byte[] code = Prepare.EvmCode.Log(0, 0).Call(TestItem.AddressC, 30000).Log(0, 0).STOP().Done;
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code, onlyTopCall ? WithLogAndOnlyTopCall : WithLog));
+        JsonElement root = trace.RootElement;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.GetProperty("logs")[0].GetProperty("index").GetString(), Is.EqualTo("0x0"));
+            Assert.That(root.GetProperty("logs")[1].GetProperty("index").GetString(), Is.EqualTo(childReverts ? "0x1" : "0x3"));
+            if (!onlyTopCall && !childReverts)
+            {
+                Assert.That(root.GetProperty("calls")[0].GetProperty("logs")[0].GetProperty("index").GetString(), Is.EqualTo("0x1"));
+                Assert.That(root.GetProperty("calls")[0].GetProperty("logs")[1].GetProperty("index").GetString(), Is.EqualTo("0x2"));
+            }
+        }
+    }
+
     public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
 
     [Test]
@@ -243,6 +267,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x2",
       "position": "0x2"
     }
   ],
@@ -261,6 +286,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
           "data": "0x",
           "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
+          "index": "0x0",
           "position": "0x1"
         }
       ],
@@ -291,6 +317,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
           "data": "0x",
           "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
+          "index": "0x1",
           "position": "0x1"
         }
       ],
@@ -351,6 +378,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x2",
       "position": "0x0"
     }
   ]
@@ -442,6 +470,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x0",
       "position": "0x2"
     }
   ],
@@ -530,6 +559,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             NativeCallTracerLogEntry catcherLog = catchFrame.Logs.AssertSingle();
             Assert.That(catcherLog.Address, Is.EqualTo(catchAddress));
             Assert.That(catcherLog.Position, Is.EqualTo(1UL));
+            Assert.That(catcherLog.Index, Is.Zero);
 
             Assert.That(revertFrame.To, Is.EqualTo(revertAddress));
             Assert.That(revertFrame.Error, Is.EqualTo("execution reverted"));

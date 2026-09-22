@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
 using Nethermind.Core;
@@ -34,6 +35,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly CompositeDisposable _disposables = [];
 
+    private Dictionary<LogEntry, NativeCallTracerLogEntry>? _logs;
+    internal ulong LogIndexOffset { get; set; }
+
     private EvmExceptionType? _error;
     private ulong _remainingGas;
     private bool _resultBuilt = false;
@@ -62,6 +66,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     protected override GethLikeTxTrace CreateTrace() => new(_disposables);
 
     public override bool IsTracingInstructions => false;
+    public override bool IsCollectingLogs => IsTracingLogs;
 
     public override GethLikeTxTrace BuildResult()
     {
@@ -133,6 +138,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
         callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(8);
         callFrame.Logs.Add(callLog);
+        (_logs ??= new(ReferenceEqualityComparer.Instance)).Add(log, callLog);
     }
 
     public override void ReportActionRemainingGas(ulong gas) => _remainingGas = gas;
@@ -192,6 +198,15 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         if (_config.WithLog)
         {
             ClearFailedLogs(firstCallFrame, parentFailed: false);
+            if (_logs is not null)
+            {
+                for (int i = 0; i < logs.Length; i++)
+                {
+                    if (_logs.TryGetValue(logs[i], out NativeCallTracerLogEntry? log))
+                        log.Index = LogIndexOffset + (ulong)i;
+                }
+                _logs.Clear();
+            }
         }
     }
 
@@ -219,6 +234,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         if (_config.WithLog)
         {
             ClearFailedLogs(firstCallFrame, parentFailed: true);
+            _logs?.Clear();
         }
     }
 

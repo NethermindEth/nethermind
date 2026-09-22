@@ -24,8 +24,10 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -209,7 +211,8 @@ public class GethStyleTracer(
 
         try
         {
-            bool unaltered = allowIndexed && options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee;
+            // Prefix seeds do not contain the preceding receipts needed for block-wide log indices.
+            bool unaltered = allowIndexed && options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee && !RequiresLogIndices(options);
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
                 tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, executionTracer, cancellationToken);
@@ -225,6 +228,7 @@ public class GethStyleTracer(
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
         options switch
         {
+            _ when RequiresLogIndices(options) => new GethLikeBlockCallTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
@@ -245,7 +249,7 @@ public class GethStyleTracer(
         }
 
         BlockHeader parent = FindParent(block);
-        if (allowIndexed && writer is null && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
+        if (allowIndexed && writer is null && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options) && !RequiresLogIndices(options)
             && parallelTracer.TryTrace(block, parent,
                 (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider),
                 afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
@@ -275,6 +279,10 @@ public class GethStyleTracer(
             throw;
         }
     }
+
+    private static bool RequiresLogIndices(GethTraceOptions options) =>
+        options.Tracer == NativeCallTracer.CallTracer &&
+        options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions)?.WithLog is true;
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
     private static bool IsJavaScriptTracer(GethTraceOptions options) =>

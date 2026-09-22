@@ -29,6 +29,60 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
+    public async Task Debug_callTracer_log_indices_span_transactions(
+        [Values("debug_traceTransaction", "debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
+        [Values] bool streamMode, [Values] bool revertFirst)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            byte[] code = revertFirst && i == 0
+                ? Prepare.EvmCode.Log(0, 0).Revert(0, 0).Done
+                : Prepare.EvmCode.Log(0, 0).STOP().Done;
+            transactions[i] = Build.A.Transaction.WithCode(code).WithNonce(nonce + (ulong)i)
+                .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(3));
+        object blockParameter = method switch
+        {
+            "debug_traceTransaction" => block.Transactions[2].Hash!,
+            "debug_traceBlockByNumber" => "latest",
+            "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToString(),
+            _ => block.Hash!
+        };
+        object options = new { tracer = "callTracer", tracerConfig = new { withLog = true }, streamMode };
+        string replayed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter, options);
+        IndexThroughTheCapture(chain, index, block, parent);
+        string indexed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter, options);
+
+        foreach (string response in new[] { replayed, indexed })
+        {
+            JToken json = JToken.Parse(response);
+            Assert.That(json["error"], Is.Null, response);
+            if (method == "debug_traceTransaction")
+                Assert.That((string?)json["result"]?["logs"]?[0]?["index"], Is.EqualTo(revertFirst ? "0x1" : "0x2"), response);
+            else
+            {
+                JArray traces = (JArray)json["result"]!;
+                Assert.That(traces, Has.Count.EqualTo(3));
+                for (int i = revertFirst ? 1 : 0; i < traces.Count; i++)
+                    Assert.That((string?)traces[i]["result"]?["logs"]?[0]?["index"], Is.EqualTo($"0x{i - (revertFirst ? 1 : 0):x}"), response);
+            }
+        }
+    }
+
+    [Test]
     public async Task DebugAndTraceFactories_UseTheSameExecutionBudget()
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
