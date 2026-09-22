@@ -599,7 +599,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         }
                         foreach (Transaction tx in delta.Transactions)
                         {
-                            if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
+                            // Only a recovered sender was warmed this pass (GroupTransactionsBySender skips null-sender
+                            // txs). Recording the rest would tell the reactive pass to skip transactions this session
+                            // left cold — a payload whose senders are still being recovered would lose them.
+                            if (tx.SenderAddress is not null && tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
                         }
                         // A fork activating inside the gap moves the predicted spec; the marker must name the one warmed.
                         if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
