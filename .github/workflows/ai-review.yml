@@ -16,6 +16,11 @@ permissions:
 
 jobs:
   ai-review:
+    if: >-
+      vars.AI_REVIEW_AUTO != 'false' &&
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
     uses: NethermindEth/github-workflows/.github/workflows/ai-review.yaml@v2.4.0
     with:
       secret_path: /apps/litellm/nethermind-ai-reviewer

@@ -16,6 +16,10 @@ permissions:
 
 jobs:
   command:
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     uses: NethermindEth/github-workflows/.github/workflows/ai-review-command.yaml@v2.4.0
     with:
       secret_path: /apps/litellm/nethermind-ai-reviewer
