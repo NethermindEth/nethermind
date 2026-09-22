@@ -1,0 +1,76 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>nethermind_evm</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Ffi</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Shared</NativeLib>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <!-- ILC drives the platform C compiler; gcc avoids requiring clang on the box. -->
+    <CppCompilerAndLinker>gcc</CppCompilerAndLinker>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <!-- The package ships one .so; strip the separate symbol file from the output. -->
+    <StripSymbols>true</StripSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <NmEvmVersion Condition="'$(NmEvmVersion)' == ''">0.1.0</NmEvmVersion>
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../..'))</RepoRoot>
+    <BuildInfoFile>$(IntermediateOutputPath)BuildInfo.g.cs</BuildInfoFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Rlp's cctor reflects over its own assembly for IRlpDecoder<T> implementations and
+         Activator-constructs them. ILC trims those constructors and the cctor throws on the
+         first state commit, so the assembly has to be rooted. -->
+    <TrimmerRootDescriptor Include="ILLink.Descriptors.xml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The node's own sources. Not a package and not a copy: the EVM in the bundle is compiled
+         from the same files the node compiles, under the same Directory.Build.props, with
+         EnableZkEvm unset so the .std.cs variants are the ones that build. -->
+    <ProjectReference Include="../../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
+    <ProjectReference Include="../../../src/Nethermind/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
+    <ProjectReference Include="../../../src/Nethermind/Nethermind.State/Nethermind.State.csproj" />
+    <ProjectReference Include="../../../src/Nethermind/Nethermind.Specs/Nethermind.Specs.csproj" />
+    <!-- EthereumPrecompileProvider and EthereumCodeInfoRepository live here, not in Nethermind.Evm. -->
+    <ProjectReference Include="../../../src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
+  </ItemGroup>
+
+  <!-- Stamps the revision the EVM was compiled from into the library itself, so a host can prove
+       at run time which Nethermind source it is executing, rather than trust a text file sitting
+       next to the binary. An unknown or dirty tree is recorded as such, never hidden. -->
+  <Target Name="StampBuildInfo" BeforeTargets="BeforeCompile">
+    <Exec Command="git -C &quot;$(RepoRoot)&quot; rev-parse HEAD" ConsoleToMSBuild="true"
+          IgnoreExitCode="true" StandardOutputImportance="low" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitExit" />
+    </Exec>
+    <Exec Command="git -C &quot;$(RepoRoot)&quot; status --porcelain --untracked-files=no"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitStatus" />
+    </Exec>
+    <PropertyGroup>
+      <!-- CI often builds from an exported tree with no .git; let it pass the revision in. -->
+      <_Commit Condition="'$(NmEvmCommit)' != ''">$(NmEvmCommit)</_Commit>
+      <_Commit Condition="'$(_Commit)' == '' and '$(_GitExit)' == '0'">$(_GitCommit.Trim())</_Commit>
+      <_Commit Condition="'$(_Commit)' == ''">unknown</_Commit>
+      <!-- Only a successful git call can say anything about cleanliness. Without this guard an
+           unavailable git lands its error text in _GitStatus and reports a clean tree as dirty. -->
+      <_Dirty Condition="'$(NmEvmDirty)' != ''">$(NmEvmDirty)</_Dirty>
+      <_Dirty Condition="'$(_Dirty)' == '' and '$(_GitExit)' == '0' and '$(_GitStatus.Trim())' != ''">true</_Dirty>
+      <_Dirty Condition="'$(_Dirty)' == ''">false</_Dirty>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(BuildInfoFile)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="namespace Nethermind.Evm.Ffi%3B;internal static class BuildInfo;{;    public const string Commit = &quot;$(_Commit)&quot;%3B;    public const bool Dirty = $(_Dirty)%3B;    public const string Version = &quot;$(NmEvmVersion)&quot;%3B;}" />
+    <ItemGroup>
+      <Compile Include="$(BuildInfoFile)" />
+      <FileWrites Include="$(BuildInfoFile)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

@@ -1,0 +1,10 @@
+[package]
+name = "nethermind-evm-smoke"
+version = "0.1.0"
+edition = "2021"
+publish = false
+build = "build.rs"
+
+[dependencies]
+nethermind-evm-sys = { path = "../nethermind-evm-sys" }
+tiny-keccak = { version = "2", features = ["keccak"] }

@@ -1,0 +1,10 @@
+[package]
+name = "nethermind-evm-sys"
+version = "0.1.0"
+edition = "2021"
+description = "Raw FFI bindings to Nethermind's EVM, published as a native shared library"
+license = "LGPL-3.0-only"
+links = "nethermind_evm"
+build = "build.rs"
+
+[dependencies]

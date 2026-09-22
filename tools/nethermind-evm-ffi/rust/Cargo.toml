@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = ["nethermind-evm-sys", "smoke"]
+
+[profile.release]
+opt-level = 3

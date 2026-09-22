@@ -1,0 +1,8 @@
+<!--
+  Rlp's static constructor calls RegisterDecoders(typeof(Rlp).Assembly), which reflects over the
+  assembly's exported types and Activator-constructs every IRlpDecoder<T>. ILC cannot see those
+  constructors, trims them, and the cctor throws at first use. Root the assembly so they survive.
+-->
+<linker>
+  <assembly fullname="Nethermind.Serialization.Rlp" preserve="all" />
+</linker>
