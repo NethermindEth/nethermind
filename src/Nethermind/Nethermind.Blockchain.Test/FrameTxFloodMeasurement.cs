@@ -244,8 +244,14 @@ public class FrameTxFloodMeasurement
     /// it and Assert.Ignores instead.</remarks>
     private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
 
-    /// <summary>Maximum drift between the idle baselines bracketing a flood run.</summary>
+    /// <summary>Maximum drift between the idle baselines bracketing a flood run, for the stable median.</summary>
     private const double MaxBaselineDriftPercent = 5.0;
+
+    /// <summary>Maximum drift for the noisy p99 tail, looser than <see cref="MaxBaselineDriftPercent"/> by
+    /// the same 4x margin the hard-fail bounds below use (100% vs 25%): p99 over a few hundred samples
+    /// wobbles more than the median before a run is actually unusable, so a tail-only wobble must not flip
+    /// valid= on its own.</summary>
+    private const double MaxBaselineTailDriftPercent = 20.0;
 
     private const double BrokenBaselineDriftPercent = 25.0;
 
@@ -538,7 +544,10 @@ public class FrameTxFloodMeasurement
         double w0p99After = Percentile(baselineAfter, 0.99);
         double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
         double baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(w0p99After - w0p99) / w0p99 * 100;
-        double worstDriftPct = Math.Max(baselineDriftPct, baselineTailDriftPct);
+        // Median and tail get their own soft thresholds (below) rather than one applied via Math.Max to
+        // both: the hard-fail bounds already treat them asymmetrically (25% vs 100%), and a noisy p99 must
+        // not be able to flip valid=no on its own while the stable median is well inside its bound.
+        bool driftValid = baselineDriftPct < MaxBaselineDriftPercent && baselineTailDriftPct < MaxBaselineTailDriftPercent;
 
         // A generator that fell behind repays the deficit inside the sampled window, which can push the
         // achieved rate above the offered one. The rate floor alone cannot see that; the lag can.
@@ -556,7 +565,7 @@ public class FrameTxFloodMeasurement
         // run whose baseline was valid and that actually held its offered rate — a noisy or starved run's
         // achieved_rate isn't a throughput this shape could sustain.
         string coreNormalizedField = "";
-        if (shape == "signature-stuffed" && IsSingleCore() && worstDriftPct < MaxBaselineDriftPercent && !saturated
+        if (shape == "signature-stuffed" && IsSingleCore() && driftValid && !saturated
             && int.TryParse(Environment.GetEnvironmentVariable(ProjectCoresVariable), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out int targetCores)
             && targetCores > 0)
@@ -571,7 +580,7 @@ public class FrameTxFloodMeasurement
              + coreNormalizedField
              + $"W0_after_p50_us={w0After:F1} W0_after_p99_us={w0p99After:F1} "
              + $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
-             + $"valid={(worstDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
+             + $"valid={(driftValid ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
              + $"submitted={flooded.Submitted} rejected={flooded.Rejected} shed={flooded.Shed} shed_pct={shedPct:F1} "
              + $"max_lag_us={flooded.MaxLagUs:F0} lag_budget_us={lagBudgetUs:F0} "
@@ -636,10 +645,10 @@ public class FrameTxFloodMeasurement
 
         RunFor(WarmupWindow);
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
-        double w0 = Percentile(baseline, 0.50);
 
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
-        RunRateRamp(ceiling, shape, "rate_ramp", "capacity", extraFields: "", w0,
+        RunRateRamp(ceiling, shape, "rate_ramp", "capacity", extraFields: "", baseline,
+            () => MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero),
             rate => MeasureUnderFlood(rate, rejectionCounter));
     }
 
@@ -657,14 +666,16 @@ public class FrameTxFloodMeasurement
 
         using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling);
         rig.RunFor(WarmupWindow);
-        double w0 = Percentile(rig.Measure(MeasureWindow), 0.50);
+        List<double> baseline = rig.Measure(MeasureWindow);
 
-        RunRateRamp(ceiling, "keccak-wide", "production_rate_ramp", "production_capacity", extraFields: "", w0,
+        RunRateRamp(ceiling, "keccak-wide", "production_rate_ramp", "production_capacity", extraFields: "", baseline,
+            () => rig.Measure(MeasureWindow),
             rate => MeasureProductionUnderFlood(rig, rate));
     }
 
     private void RunRateRamp(
-        ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields, double w0,
+        ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields,
+        List<double> baseline, Func<List<double>> measureBaselineAfter,
         Func<int, FloodOutcome> measureAtRate)
     {
         int[] rates = [50, 100, 150, 200, 250, 300, 350, 400];
@@ -673,49 +684,80 @@ public class FrameTxFloodMeasurement
         // generator's cold start and can miss the lag budget at a rate the node otherwise sustains.
         measureAtRate(rates[0]);
 
+        double w0 = Percentile(baseline, 0.50);
+        double w0p99 = Percentile(baseline, 0.99);
+
         double lastSustained = 0;
         bool sustainedEveryRate = true;
         double firstFailedRate = 0;
+        // Rows are held back rather than emitted inline: the drift guard below brackets the whole ramp
+        // with a single before/after baseline pair, the same way flood_delay brackets a single flood, so
+        // every row in the ramp needs the after-baseline that only exists once the ramp is over. The
+        // `finally` still flushes whatever rows were collected if an assertion below throws mid-ramp, so a
+        // failure doesn't also erase the rows already measured for earlier, passing rates.
+        List<string> rowLines = [];
 
-        foreach (int rate in rates)
+        try
         {
-            FloodOutcome outcome = measureAtRate(rate);
-
-            double periodUs = 1_000_000.0 / rate;
-            bool rateHeld = outcome.AchievedRate >= rate * RateHeldFloor;
-            bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
-
-            bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
-            bool sustained = rateHeld && lagBounded;
-            double w = Percentile(outcome.ProcessMicros, 0.50);
-
-            Emit($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
-                 + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
-                 + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
-                 + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
-                 + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
-                 + $"pending_pool_stable={(pendingPoolStable ? "yes" : "no")} "
-                 + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
-                 + $"shed_pct={ShedPct(outcome):F1} "
-                 + $"pending_pool_growth={outcome.PendingPoolGrowth} "
-                 + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
-
-            Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
-                $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
-                + $"{outcome.Shed} were shed; the rest went missing, so this point measures an idle node for a "
-                + "reason this harness cannot name. A high shed_pct is the node's own admission bound, not a "
-                + "defect: read the capacity it produces as a bound on shedding, not on prefix work.");
-
-            if (sustained)
+            foreach (int rate in rates)
             {
-                lastSustained = outcome.AchievedRate;
+                FloodOutcome outcome = measureAtRate(rate);
+
+                double periodUs = 1_000_000.0 / rate;
+                bool rateHeld = outcome.AchievedRate >= rate * RateHeldFloor;
+                bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
+
+                bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
+                bool sustained = rateHeld && lagBounded;
+                // The plan's no-backlog condition, kept separate from `sustained` above: five CI runs and
+                // every published figure already rest on `sustained`'s current meaning, so it must not change.
+                bool sustainedNoBacklog = sustained && pendingPoolStable;
+                double w = Percentile(outcome.ProcessMicros, 0.50);
+
+                rowLines.Add($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
+                     + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
+                     + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
+                     + $"sustained_no_backlog={(sustainedNoBacklog ? "yes" : "no")} "
+                     + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
+                     + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
+                     + $"pending_pool_stable={(pendingPoolStable ? "yes" : "no")} "
+                     + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
+                     + $"shed_pct={ShedPct(outcome):F1} "
+                     + $"pending_pool_growth={outcome.PendingPoolGrowth} "
+                     + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
+
+                Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
+                    $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
+                    + $"{outcome.Shed} were shed; the rest went missing, so this point measures an idle node for a "
+                    + "reason this harness cannot name. A high shed_pct is the node's own admission bound, not a "
+                    + "defect: read the capacity it produces as a bound on shedding, not on prefix work.");
+
+                if (sustained)
+                {
+                    lastSustained = outcome.AchievedRate;
+                }
+                else
+                {
+                    sustainedEveryRate = false;
+                    firstFailedRate = rate;
+                    break;
+                }
             }
-            else
-            {
-                sustainedEveryRate = false;
-                firstFailedRate = rate;
-                break;
-            }
+        }
+        finally
+        {
+            // Bracketing baseline drift guard, mirroring flood_delay's: these rows decide R_max and
+            // previously carried no drift check at all.
+            List<double> baselineAfter = measureBaselineAfter();
+            double w0After = Percentile(baselineAfter, 0.50);
+            double w0p99After = Percentile(baselineAfter, 0.99);
+            double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
+            double baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(w0p99After - w0p99) / w0p99 * 100;
+            bool driftValid = baselineDriftPct < MaxBaselineDriftPercent && baselineTailDriftPct < MaxBaselineTailDriftPercent;
+            string driftFields = $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
+                                  + $"valid={(driftValid ? "yes" : "no")}";
+
+            foreach (string rowLine in rowLines) Emit($"{rowLine} {driftFields}");
         }
 
         bool censored = sustainedEveryRate;
@@ -1221,7 +1263,9 @@ public class FrameTxFloodMeasurement
     {
         string path = Environment.GetEnvironmentVariable("FRAME_FLOOD_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "frame-tx-flood.txt");
-        string record = $"RESULT {line}";
+        // Recorded on every row so a reader of -results.txt alone, without PROVENANCE.txt, can tell whether
+        // the build ran against the stock MAX_VERIFY_GAS or one patched by raise_verify_gas_const.
+        string record = $"RESULT {line} max_verify_gas_const={Eip8141Constants.MaxVerifyGas}";
         TestContext.Out.WriteLine(record);
         File.AppendAllText(path, record + Environment.NewLine);
     }
