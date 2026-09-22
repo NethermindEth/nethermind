@@ -65,11 +65,11 @@ public class FrameTxStorageIoMeasurement
     private static readonly UInt256 AttackerBalance = 1_000.Ether;
 
     /// <summary>
-    /// The swept ceilings, matching the CPU shapes' grid. 322,800 and 352,800 are above the compiled
-    /// <see cref="Eip8141Constants.MaxVerifyGas"/>, so they self-ignore on a stock build and need a run that
+    /// The swept ceilings, matching the CPU shapes' grid. 352,800 is above the compiled
+    /// <see cref="Eip8141Constants.MaxVerifyGas"/>, so it self-ignores on a stock build and needs a run that
     /// raises the constant.
     /// </summary>
-    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 352_800ul];
+    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 352_800ul];
 
     /// <summary>
     /// The cache-residency ladder, coldest last. Each rung names what is cold at the moment a slot is read
