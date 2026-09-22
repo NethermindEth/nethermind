@@ -47,8 +47,9 @@ internal static class DirtyNodeHasher
     private const int MinimumDirtyNodes = 4;
 
     /// <summary>Most nodes one subtree's level order holds, which bounds what it costs in memory.</summary>
-    /// <remarks>A commit past this is a bulk heal rather than a block. It falls back to the ordinary
-    /// walk rather than holding a path per node for all of it.</remarks>
+    /// <remarks>Each of the root's dirty subtrees holds its own, a few MB of pooled arrays at the cap,
+    /// and up to sixteen of them can be held at once. A commit past this is a bulk heal rather than a
+    /// block: the level order hashes as much as the budget holds and leaves the rest to the ordinary walk.</remarks>
     internal const int MaxCollectedNodes = 1 << 16;
 
     [InlineArray(HashBatchSize * (KeccakHash.MaxBatchablePaddedLength + Hash256.Size) / VectorByteLength)]
@@ -137,7 +138,9 @@ internal static class DirtyNodeHasher
     {
         using ArrayPoolList<PendingNode> pending = new(64);
         TreePath path = subtreeRootPath;
-        if (!Collect(subtreeRoot, ref path, pending, maxCollectedNodes) || pending.Count < MinimumDirtyNodes) return;
+        // A collection the budget cut short is still hashable: Collect adds a node only after all its dirty children.
+        Collect(subtreeRoot, ref path, pending, maxCollectedNodes);
+        if (pending.Count < MinimumDirtyNodes) return;
 
         Span<PendingNode> nodes = pending.AsSpan();
         using ArrayPoolList<int> order = new(nodes.Length, nodes.Length);

@@ -105,7 +105,7 @@ public class DirtyNodeHasherTests
     }
 
     [Test]
-    public void A_budget_too_small_for_the_subtree_declines_and_hashes_nothing([Values(1, 4, 7)] int budget)
+    public void A_budget_too_small_for_the_subtree_hashes_what_it_collected([Values(1, 7, 60)] int budget)
     {
         PatriciaTree tree = BuildDirtyTree(200, valueLength: 40, ScatteredKey);
 
@@ -113,10 +113,14 @@ public class DirtyNodeHasherTests
             canBeParallel: false, maxCollectedNodes: budget);
 
         Assert.That(handled, Is.False, "a budget this small cannot cover a two-hundred entry trie");
-        Assert.That(tree.RootRef!.Keccak, Is.Null, "declining must leave the caller's walk everything to do");
-        AssertNothingHashedBelow(tree.RootRef!);
+        Assert.That(tree.RootRef!.Keccak, Is.Null, "the root is the caller's to hash");
+        // Below the minimum a level order is not worth it; above it, discarding the collection would
+        // leave a bulk commit paying for the walk and getting no batching.
+        int hashed = CountHashedBelow(tree.RootRef!);
+        if (budget < 4) Assert.That(hashed, Is.Zero, "a collection below the minimum must be left alone");
+        else Assert.That(hashed, Is.GreaterThanOrEqualTo(budget), "the collected nodes must be hashed, not thrown away");
 
-        // Declining is only safe if the ordinary walk still produces the same trie.
+        // Stopping part way is only safe if the ordinary walk still produces the same trie.
         tree.UpdateRootHash();
         AssertEveryNodeHashMatchesScalarKeccak(tree, 200);
     }
@@ -145,16 +149,18 @@ public class DirtyNodeHasherTests
             Is.False, "a root that already carries a hash has nothing below it left to do");
     }
 
-    /// <summary>Asserts the budget check ran before any hashing, not after some of it.</summary>
-    private static void AssertNothingHashedBelow(TrieNode node)
+    private static int CountHashedBelow(TrieNode node)
     {
+        int hashed = 0;
         int childCount = ChildCount(node);
         for (int i = 0; i < childCount; i++)
         {
             if (!node.TryGetDirtyChild(i, out TrieNode? child)) continue;
-            Assert.That(child.Keccak, Is.Null, $"a {child.NodeType} was hashed by a call that declined");
-            AssertNothingHashedBelow(child);
+            if (child.Keccak is not null) hashed++;
+            hashed += CountHashedBelow(child);
         }
+
+        return hashed;
     }
 
     /// <param name="minimumHashed">Every entry of a trie keyed by a 32-byte hash is a leaf whose path
