@@ -32,6 +32,13 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly GCKeeper _gcKeeper = gcKeeper;
     private readonly IBlockProcessingQueue _processingQueue = processingQueue;
     // How long the no-GC region outlives a VALID answer to cover the commit still running; the commit takes milliseconds.
+    /// <summary>How long the no-GC region is kept for a commit after the answer has gone out.</summary>
+    /// <remarks>
+    /// Shorter than the budget the request waits on for the same commit, and for a different reason: nothing is
+    /// blocked on this, and the one requirement is that a region can never be left standing. A commit slower than
+    /// this loses protection for its tail, which is the end to fail on - the alternative keeps collections off for
+    /// the whole request budget behind a commit that is stuck.
+    /// </remarks>
     private static readonly TimeSpan NoGCRegionCommitBound = TimeSpan.FromSeconds(1);
 
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
