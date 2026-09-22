@@ -365,6 +365,55 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     }
 
     /// <summary>
+    /// A second copy of a block that did commit is skipped as no better than the head the first copy became, and its
+    /// removal reports a failure. That must not take the first copy's answer out of the cache: the block is in the
+    /// chain, and the next payload for it is entitled to be answered from what the first copy established.
+    /// </summary>
+    [Test, MaxTime(10_000)]
+    public async Task ValidateBlockAndProcess_keeps_the_answer_of_a_committed_block_when_another_copy_of_it_fails()
+    {
+        Block block = PostMergeBlock();
+
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        bool committed = false;
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 5_000,
+            wasProcessedNow: () => committed);
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        await request.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // The block is in the chain now, and a copy of it that was queued earlier is skipped as no better than head.
+        committed = true;
+        processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.ProcessingError, "skipped"));
+
+        ResultWrapper<PayloadStatusV1> again = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(again.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0));
+        }
+        await processingQueue.Received(1).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    /// <summary>
     /// A payload whose parent was answered VALID a moment ago finds the parent not yet marked processed. It must wait
     /// for the parent to leave the queue rather than be inserted for beacon sync and answered SYNCING.
     /// </summary>
@@ -496,6 +545,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         blockTree.Head.Returns(head);
         blockTree.SyncPivot.Returns((0UL, Keccak.Zero));
         blockTree.FindHeader(block.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+        // The tree has the block itself once it is suggested, which is how a removal tells a committed block from one that is not.
+        blockTree.FindHeader(block.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(block.Header);
         blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(false);
         blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Returns(_ => (new BlockInfo(parent.Hash!, UInt256.Zero) { WasProcessed = parentProcessedNow?.Invoke() ?? true, BlockNumber = parent.Number }, null));
         blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())

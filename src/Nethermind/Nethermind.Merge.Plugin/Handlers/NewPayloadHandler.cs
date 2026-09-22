@@ -677,6 +677,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         blockProcessed.TrySetResult((result, null));
     }
 
+    /// <summary>Whether the tree has the block as processed, so a removal that failed was some other copy's.</summary>
+    /// <remarks>
+    /// Read only when there is an entry to delete, which is a handful of recently answered blocks, so the header
+    /// lookup is not on the path of every skipped block.
+    /// </remarks>
+    private bool HasCommitted(Hash256 blockHash) =>
+        _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { Number: ulong number }
+        && _blockTree.WasProcessed(number, blockHash);
+
     private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions)
     {
         try
@@ -702,8 +711,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             // The request is done and has taken its completion with it, so whatever answer it had is cached by now,
             // and a request that got no answer cached nothing. The CL's retry must not be answered from the cache
-            // without the block ever being queued again, so the entry goes.
-            if (failed) _latestBlocks?.Delete(e.BlockHash);
+            // without the block ever being queued again, so the entry goes - unless this removal is a second copy's,
+            // skipped as no better than a head the first copy is: that block did commit and its answer stands.
+            if (failed && _latestBlocks is not null && _latestBlocks.TryGet(e.BlockHash, out _) && !HasCommitted(e.BlockHash))
+                _latestBlocks.Delete(e.BlockHash);
             return;
         }
 
