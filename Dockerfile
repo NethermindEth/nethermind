@@ -28,6 +28,24 @@ RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-resolute@sha256:6f6efd85b682062fc2108fe91632da49978fa77827cc3c3040f433bb38eee16a
 
+ARG COMMIT_HASH=unknown
+ARG VERSION=unknown
+ARG BUILD_TIMESTAMP=1970-01-01T00:00:00Z
+
+# An ARG is out of scope after a FROM, so the three above must be redeclared in this stage.
+# Without that, the values below silently resolve to an empty string. The defaults keep a plain
+# `docker build` with no build args self-describing rather than blank.
+LABEL org.opencontainers.image.title="Nethermind" \
+  org.opencontainers.image.description="A robust execution client for Ethereum node operators." \
+  org.opencontainers.image.vendor="Demerzel Solutions Limited" \
+  org.opencontainers.image.licenses="LGPL-3.0-only" \
+  org.opencontainers.image.url="https://nethermind.io/nethermind-client" \
+  org.opencontainers.image.documentation="https://docs.nethermind.io" \
+  org.opencontainers.image.source="https://github.com/NethermindEth/nethermind" \
+  org.opencontainers.image.version="$VERSION" \
+  org.opencontainers.image.revision="$COMMIT_HASH" \
+  org.opencontainers.image.created="$BUILD_TIMESTAMP"
+
 WORKDIR /nethermind
 
 VOLUME /nethermind/keystore
