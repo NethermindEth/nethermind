@@ -90,8 +90,8 @@ public sealed class FlatStateActivationPolicy(
         {
             if (logger.IsWarn)
                 logger.Warn(db.WasRepairedOnOpen
-                    ? "An interrupted flat DB wipe was detected after a RocksDB auto-repair; redoing it before the state sync."
-                    : "An interrupted flat DB wipe was detected; redoing it before the state sync.");
+                    ? "An interrupted flat DB wipe was detected after a RocksDB auto-repair; it will be redone before the state sync."
+                    : "An interrupted flat DB wipe was detected; it will be redone before the state sync.");
             wipe = true;
         }
         else if (db.WasRepairedOnOpen)
@@ -104,7 +104,7 @@ public sealed class FlatStateActivationPolicy(
             if (flatDbConfig.OnRepair == FlatDbOnRepair.Resync && flatWasActive)
             {
                 if (logger.IsError)
-                    logger.Error("Flat DB was auto-repaired by RocksDB; wiping flat state and re-entering state sync (FlatDb.OnRepair=Resync).");
+                    logger.Error("Flat DB was auto-repaired by RocksDB; the flat state will be wiped and state-synced again (FlatDb.OnRepair=Resync).");
                 wipe = true;
             }
             else
@@ -167,8 +167,14 @@ public sealed class FlatStateActivationPolicy(
             }
             else
             {
+                // Only a fresh datadir can fall back to patricia: the SST probe above refuses Enabled=false on any other.
+                string remedy = wipe && flatHasData && !wipedForSync
+                    ? "The flat DB needs a resync after a RocksDB auto-repair. Set Sync.SnapSync=true, or FlatDb.OnRepair=Ignore to keep the repaired data."
+                    : wipe || wipedForSync
+                        ? "The flat DB holds no state to keep and needs a state sync. Set Sync.SnapSync=true."
+                        : "Set Sync.SnapSync=true, or FlatDb.Enabled=false to stay on patricia (fresh datadir only).";
                 throw new InvalidConfigurationException(
-                    "FlatDb with FastSync requires SnapSync. Legacy TreeSync on Flat leaves permanent holes (HeaderGasUsedMismatch). Set Sync.SnapSync=true, or FlatDb.Enabled=false to stay on patricia (fresh datadir only).",
+                    $"FlatDb with FastSync requires SnapSync. Legacy TreeSync on Flat leaves permanent holes (HeaderGasUsedMismatch). {remedy}",
                     -1);
             }
         }
@@ -191,8 +197,8 @@ public sealed class FlatStateActivationPolicy(
     }
 
     /// <remarks>
-    /// The wipe runs here rather than being left to snap sync, because a tree-only state sync
-    /// (<c>Sync.SnapSync=false</c>) never wipes and would skip every subtree whose surviving root node still hashes.
+    /// The wipe runs here rather than being left to the snap sync's own clear: an interrupted wipe must be redone
+    /// before anything reads the DB, and the patricia import writes over the surviving repaired keys without clearing them.
     /// The repair is acknowledged only after the wipe is flushed, so a crash in between redoes the wipe.
     /// </remarks>
     private static void WipeForResync(IColumnsDb<FlatDbColumns> db, IFlatDbConfig flatDbConfig, ILogger logger)

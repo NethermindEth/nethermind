@@ -184,16 +184,20 @@ public class FlatStateActivationPolicyTests
     }
 
     // A wipe leaves nothing to keep serving, so the refusal must come first or the node loses its state and still cannot sync.
-    [TestCase(Flags.Repaired | Flags.FlatHasData, Description = "Repaired flat")]
-    [TestCase(Flags.FlatHasData | Flags.WipedForSync, Description = "Interrupted wipe")]
-    [TestCase(Flags.WipedForSync, Description = "Resync in progress")]
-    public void Resync_with_fast_sync_and_no_snap_is_refused_before_the_wipe(Flags flags)
+    // The remedy must be one that boots the node: Enabled=false is refused on an existing flat DB, and only a repair
+    // that kept the state pointer can be booted with OnRepair=Ignore.
+    [TestCase(Flags.Repaired | Flags.FlatHasData, "FlatDb.OnRepair=Ignore", Description = "Repaired flat")]
+    [TestCase(Flags.Repaired, "holds no state", Description = "Repaired flat, state pointer dropped")]
+    [TestCase(Flags.FlatHasData | Flags.WipedForSync, "holds no state", Description = "Interrupted wipe")]
+    [TestCase(Flags.WipedForSync, "holds no state", Description = "Resync in progress")]
+    public void Resync_with_fast_sync_and_no_snap_is_refused_before_the_wipe(Flags flags, string remedy)
     {
         SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<InvalidConfigurationException>(() => CreateSetup(flags | Flags.Enabled | Flags.FastSync, FlatLayout.Flat, 32.GiB, LimboLogs.Instance, flatDb: flatDb));
+            InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreateSetup(flags | Flags.Enabled | Flags.FastSync, FlatLayout.Flat, 32.GiB, LimboLogs.Instance, flatDb: flatDb))!;
+            Assert.That(ex.Message, Does.Contain(remedy).And.Not.Contain("FlatDb.Enabled"));
             Assert.That(flatDb.Events, Is.Empty);
         }
     }
