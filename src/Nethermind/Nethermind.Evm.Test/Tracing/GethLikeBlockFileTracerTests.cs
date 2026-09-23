@@ -310,6 +310,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, callee, Spec);
         TestState.CreateAccount(TestItem.AddressE, 1.Ether);
+        TestState.InsertCode(TestItem.AddressE, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
         TestState.Commit(Spec);
         return Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.RETURNDATASIZE)
             .Op(Instruction.POP).Call(TestItem.AddressE, 50_000).Op(Instruction.STOP).Done;
