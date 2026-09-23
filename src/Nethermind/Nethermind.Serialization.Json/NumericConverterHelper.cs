@@ -68,6 +68,23 @@ public static class NumericConverterHelper
         }
 
         bool isPrimitiveInteger = typeof(T) == typeof(long) || typeof(T) == typeof(ulong) || typeof(T) == typeof(int) || typeof(T) == typeof(uint);
+        if (isPrimitiveInteger && (uint)(digits.Length - 1) < 8)
+        {
+            // Short quantities (gas, nonces, indexes) cost less as one shift per char than a decoder call.
+            ref byte table = ref MemoryMarshal.GetReference(HexConverter.CharToHexLookup);
+            ulong result = 0;
+            int nibbles = 0;
+            foreach (byte c in digits)
+            {
+                int nibble = Unsafe.Add(ref table, c);
+                nibbles |= nibble;
+                result = (result << 4) | (uint)nibble;
+            }
+            // Non-hex chars look up as 0xFF.
+            value = T.CreateTruncating(result);
+            return (nibbles & 0xF0) == 0;
+        }
+
         if (isPrimitiveInteger && (uint)(digits.Length - 1) < (uint)(Unsafe.SizeOf<T>() * 2))
         {
             ulong bigEndian = 0;
