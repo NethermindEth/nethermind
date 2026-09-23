@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -17,11 +18,19 @@ public class MemoryPositionTests(bool tracing) : VirtualMachineTestsBase
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
-    protected override TestAllTracerWithOutput CreateTracer() => tracing ? new TestAllTracerWithOutput() : new NoInstructionTracer();
+    protected override TestAllTracerWithOutput CreateTracer() => new MemoryChangeTracer(tracing);
 
-    private sealed class NoInstructionTracer : TestAllTracerWithOutput
+    private sealed class MemoryChangeTracer(bool traceInstructions) : TestAllTracerWithOutput
     {
-        public override bool IsTracingInstructions => false;
+        public override bool IsTracingInstructions => traceInstructions;
+        public long? ChangedOffset { get; private set; }
+        public byte[]? ChangedBytes { get; private set; }
+
+        public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+        {
+            ChangedOffset = offset;
+            ChangedBytes = data.ToArray();
+        }
     }
 
     // A position is popped as its low 64 bits plus a marker for the other three limbs. Each case
@@ -108,6 +117,28 @@ public class MemoryPositionTests(bool tracing) : VirtualMachineTestsBase
         {
             Assert.That(tracer.Error, Is.Null);
             Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Word_store_preserves_big_endian_bytes_and_zero_gap(
+        [Values(0, 1, 31, 32, 33, 1023, 1024, 4097)] int position)
+    {
+        byte[] word = Bytes.FromHexString("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+        byte[] expected = new byte[position + word.Length];
+        word.CopyTo(expected, position);
+        byte[] code = Prepare.EvmCode
+            .PushData(word).PushData(position).Op(Instruction.MSTORE)
+            .PushData(expected.Length).PushData(0).Op(Instruction.RETURN).Done;
+
+        MemoryChangeTracer tracer = (MemoryChangeTracer)Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null);
+            Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
+            Assert.That(tracer.ChangedOffset, Is.EqualTo(tracing ? (long?)position : null));
+            Assert.That(tracer.ChangedBytes, Is.EqualTo(tracing ? word : null));
         }
     }
 

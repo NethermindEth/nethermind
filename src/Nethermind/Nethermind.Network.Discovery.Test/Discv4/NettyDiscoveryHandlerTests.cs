@@ -78,6 +78,35 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public async Task Send_serializes_on_channel_event_loop([Values] bool sendFromEventLoop)
+        {
+            IMessageSerializationService real = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
+            IMessageSerializationService service = Substitute.For<IMessageSerializationService>();
+            bool serializedOnEventLoop = false;
+            IByteBuffer? serialized = null;
+            service.ZeroSerialize(Arg.Any<PingMsg>(), Arg.Any<IByteBufferAllocator>()).Returns(ci =>
+            {
+                serializedOnEventLoop = _channels[^1].EventLoop.InEventLoop;
+                return serialized = real.ZeroSerialize(ci.Arg<PingMsg>(), UnpooledByteBufferAllocator.Default);
+            });
+            await StartUdpChannel("127.0.0.1", 10003, _kademliaAdaptersMocks[0], service);
+            PingMsg message = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address, _address2, new byte[32])
+            {
+                FarAddress = _address2
+            };
+
+            if (sendFromEventLoop)
+                await _channels[^1].EventLoop.SubmitAsync(() => _discoveryHandlers[^1].SendMsg(message)).Unwrap();
+            else
+                await Task.Run(() => _discoveryHandlers[^1].SendMsg(message));
+
+            Assert.That(serializedOnEventLoop, Is.True);
+            await SleepWhileWaiting();
+            await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Any<PingMsg>());
+            Assert.That(serialized?.ReferenceCount, Is.Zero);
+        }
+
+        [Test]
         public async Task PingSentReceivedTest()
         {
             PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address, _address2, new byte[32])
@@ -341,24 +370,28 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await adapter.Received(8).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
         }
 
-        [Test]
-        public async Task DualStackMappedSender_IsAcceptedAndNormalizedToIPv4()
+        [TestCase("::ffff:127.0.0.2", "127.0.0.2")]
+        [TestCase("2001:db8::2", "2001:db8::2")]
+        public async Task DualStackSender_IsAcceptedInCanonicalForm(string senderAddress, string expectedAddress)
         {
             (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
 
-            DiscoveryMsg? received = null;
-            _ = adapter.OnIncomingMsg(Arg.Do<DiscoveryMsg>(x => received = x));
+            TaskCompletionSource<DiscoveryMsg> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(callInfo =>
+            {
+                received.TrySetResult(callInfo.Arg<DiscoveryMsg>());
+                return Task.CompletedTask;
+            });
 
-            IPEndPoint mappedSender = new(IPAddress.Parse("::ffff:127.0.0.2"), _address2.Port);
+            IPEndPoint sender = new(IPAddress.Parse(senderAddress), _address2.Port);
             byte[] data = SerializePing(service);
 
-            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), mappedSender, _address));
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), sender, _address));
 
-            await SleepWhileWaiting();
-
+            DiscoveryMsg message = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
             ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
-            Assert.That(received?.FarAddress?.Address, Is.EqualTo(IPAddress.Parse("127.0.0.2")));
+            Assert.That(message.FarAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse(expectedAddress), sender.Port)));
         }
 
         [Test]
@@ -493,7 +526,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             }
 
             public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
-                => innerService.Deserialize<T>(buffer);
+            {
+                if (typeof(T) == typeof(PingMsg) && Interlocked.Increment(ref _deserializeCalls) == 1)
+                {
+                    deserializeEntered.Set();
+                    unblockDeserialize.Wait(TimeSpan.FromSeconds(10));
+                }
+
+                return innerService.Deserialize<T>(buffer);
+            }
         }
     }
 }

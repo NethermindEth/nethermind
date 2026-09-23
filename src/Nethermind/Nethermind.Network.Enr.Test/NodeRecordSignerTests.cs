@@ -94,6 +94,32 @@ public class NodeRecordSignerTests
         Assert.That(signer.Verify(nodeRecord), Is.True);
     }
 
+    [Test]
+    public void Verification_accepts_both_recovery_parities_and_rejects_changed_content([Values(0, 1)] int recoveryId)
+    {
+        using PrivateKey privateKey = new(TestPrivateKey);
+        NodeRecordSigner signer = new(new Ecdsa(), privateKey);
+        NodeRecord record = new();
+        record.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        for (ulong sequence = 0; ; sequence++)
+        {
+            Assert.That(sequence, Is.LessThan(100UL), "Could not find a signature with the requested recovery parity");
+            record.EnrSequence = sequence;
+            signer.Sign(record);
+            if (record.Signature!.RecoveryId == recoveryId) break;
+        }
+
+        byte[] encoded = record.ToRlpBytes();
+        RlpReader reader = new(encoded);
+        NodeRecord decoded = signer.Deserialize(ref reader);
+        Assert.That(signer.Verify(decoded), Is.True);
+
+        Signature signature = decoded.Signature!;
+        decoded.SetEntry(new UdpEntry(30303));
+        decoded.Signature = signature;
+        Assert.That(signer.Verify(decoded), Is.False);
+    }
+
     [TestCaseSource(nameof(InvalidRecordRlpCases))]
     public void Throws_when_record_is_invalid(Func<byte[]> createRecord, Type exceptionType)
     {

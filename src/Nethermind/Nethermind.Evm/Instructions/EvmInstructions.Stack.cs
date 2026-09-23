@@ -1150,6 +1150,16 @@ public static partial class EvmInstructions
         ulong dataSize = (ulong)length;
         if (!TGasPolicy.TryConsumeLogEmission(ref gas, topicsCount, dataSize)) goto OutOfGas;
 
+        if (vm.TxExecutionContext.SuppressLogs)
+        {
+            // Instruction tracers can inspect the expanded memory even when they do not collect logs.
+            if (DispatchFlags.ConstTracing && vm.TxExecutionContext.MaterializeLogMemory
+                && !vmState.Memory.TryLoad(in position, length, out _)) goto OutOfGas;
+            for (int i = 0; i < TOpCount.Count; i++)
+                if (!stack.PopLimbo()) goto StackUnderflow;
+            return EvmExceptionType.None;
+        }
+
         // Load the log data from memory.
         if (!vmState.Memory.TryLoad(in position, length, out ReadOnlyMemory<byte> data))
             goto OutOfGas;
