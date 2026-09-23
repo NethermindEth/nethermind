@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
@@ -410,6 +411,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
+        ReadOnlySpan<int> processingCpus = PerformanceCores.Cpus(_options.ProcessingCores);
+        if (processingCpus.Length > 0)
+        {
+            if (_logger.IsInfo) _logger.Info($"Block processing runs on {_options.ProcessingCores} cores only: CPUs {string.Join(',', processingCpus.ToArray())}");
+        }
+        else if (_options.ProcessingCores != ProcessingCores.All && _logger.IsDebug)
+        {
+            // The default on every host, and most have one kind of core, so this is no warning.
+            _logger.Debug($"Blocks.ProcessingCores is {_options.ProcessingCores}, but this host gives it nothing to narrow, so block processing runs on every core.");
+        }
+
         _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
@@ -578,6 +590,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
+            // Released within the iteration, before the loop awaits and the thread can go back to the pool.
+            using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores, _logger);
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
@@ -911,5 +925,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         public bool StoreReceiptsByDefault { get; set; } = true;
 
         public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
+
+        /// <summary>The logical processors block processing runs on, on an Intel hybrid CPU; see <see cref="PerformanceCores"/>.</summary>
+        public ProcessingCores ProcessingCores { get; set; }
     }
 }
