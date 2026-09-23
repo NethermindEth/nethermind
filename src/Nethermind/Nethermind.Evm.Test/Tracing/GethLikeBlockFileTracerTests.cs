@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -159,6 +160,112 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         Assert.That(TraceFile(code, boundary + offset, enableReturnData: true), Is.EqualTo(expected));
     }
 
+    [TestCase("return", "0x12", null)]
+    [TestCase("revert", "0x12", "execution reverted")]
+    [TestCase("badJump", "0xc350", "invalid jump destination")]
+    [TestCase("empty", "0x0", null)]
+    [TestCase("identity", "0xf", null)]
+    [TestCase("identity", "0xe", "out of gas", 14)]
+    [TestCase("return", "0x11", "out of gas", 17)]
+    public void Nested_exit_precedes_parent_resume(string scenario, string gasUsed, string? error, long gasLimit = 50_000)
+    {
+        byte[] code = PrepareNestedCall(scenario, gasLimit);
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int childExit = Array.FindIndex(records, record => record.StartsWith("{\"output\""));
+        Assert.That(childExit, Is.InRange(1, records.Length - 2));
+        string output = (scenario is "return" or "revert") && error != "out of gas" ? new string('0', 62) + "2a" : "";
+        string errorField = error is null ? "" : $",\"error\":\"{error}\"";
+        using JsonDocument resumed = JsonDocument.Parse(records[childExit + 1]);
+        using JsonDocument trace = JsonDocument.Parse("[" + string.Join(',', records) + "]");
+        string?[] opcodes = trace.RootElement.EnumerateArray().Where(record => record.TryGetProperty("opName", out _))
+            .Select(record => record.GetProperty("opName").GetString()).ToArray();
+        string[] childOpcodes = scenario switch
+        {
+            "return" when gasLimit == 17 => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1"],
+            "return" or "revert" => ["PUSH1", "PUSH1", "MSTORE", "PUSH1", "PUSH1", scenario.ToUpperInvariant()],
+            "badJump" => ["PUSH1", "JUMP"],
+            _ => []
+        };
+        string[] expectedOpcodes = ["PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH1", "PUSH20", gasLimit > 255 ? "PUSH2" : "PUSH1", "CALL", .. childOpcodes, "POP", "STOP"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(opcodes, Is.EqualTo(expectedOpcodes), "each deferred opcode must be emitted exactly once");
+            Assert.That(records[childExit], Is.EqualTo($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"{errorField}}}"));
+            Assert.That(resumed.RootElement.GetProperty("opName").GetString(), Is.EqualTo("POP"));
+            Assert.That(resumed.RootElement.GetProperty("depth").GetInt32(), Is.EqualTo(1));
+            Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(2));
+            Assert.That(records[^1], Does.StartWith("{\"output\":\"\",\"gasUsed\":"));
+        }
+    }
+
+    [Test]
+    public void Nested_exit_handles_call_variants([Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction call)
+    {
+        PrepareNestedCall("return");
+        Prepare code = call switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(TestItem.AddressC, 50_000),
+            Instruction.CALLCODE => Prepare.EvmCode.CallCode(TestItem.AddressC, 50_000),
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(TestItem.AddressC, 50_000),
+            _ => Prepare.EvmCode.StaticCall(TestItem.AddressC, 50_000)
+        };
+        string file = TraceFile(code.Op(Instruction.POP).Op(Instruction.STOP).Done);
+        Assert.That(file, Does.Contain($"{{\"output\":\"{new string('0', 62)}2a\",\"gasUsed\":\"0x12\"}}\n"));
+    }
+
+    [Test]
+    public void Nested_exits_preserve_sibling_and_parent_gas()
+    {
+        PrepareNestedCall("return");
+        byte[] leaf = TestState.GetCode(TestItem.AddressC)!;
+        TestState.CreateAccount(TestItem.AddressE, 1.Ether);
+        TestState.InsertCode(TestItem.AddressE, leaf, Spec);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Call(TestItem.AddressE, 10_000)
+            .Op(Instruction.POP).Op(Instruction.STOP).Done, Spec);
+        TestState.Commit(Spec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.POP)
+            .Call(TestItem.AddressE, 10_000).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        string[] summaries = TraceFile(code).Split('\n').Where(record => record.StartsWith("{\"output\"")).ToArray();
+        string leafSummary = $"{{\"output\":\"{new string('0', 62)}2a\",\"gasUsed\":\"0x12\"}}";
+        Assert.That(summaries, Is.EqualTo(new[]
+        {
+            leafSummary,
+            "{\"output\":\"\",\"gasUsed\":\"0x2e5\"}",
+            leafSummary,
+            "{\"output\":\"\",\"gasUsed\":\"0x89d\"}"
+        }));
+    }
+
+    [Test]
+    public void Nested_exit_handles_call_stipend()
+    {
+        PrepareNestedCall("return");
+        byte[] code = Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, UInt256.One)
+            .Op(Instruction.POP).Op(Instruction.STOP).Done;
+        Assert.That(TraceFile(code), Does.Contain($"{{\"output\":\"{new string('0', 62)}2a\",\"gasUsed\":\"0x12\"}}\n"));
+    }
+
+    [Test]
+    public void Nested_exit_includes_creation_code_deposit()
+    {
+        byte[] init = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(1, 31).Done;
+        string file = TraceFile(Prepare.EvmCode.Create(init, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        Assert.That(file, Does.Contain("{\"output\":\"2a\",\"gasUsed\":\"0xda\"}\n"));
+    }
+
+    [Test]
+    public void Nested_exit_limits_include_summary_bytes([Values(-1, 0)] int offset, [Values] bool afterSummary)
+    {
+        byte[] code = PrepareNestedCall("return");
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int childExit = Array.FindIndex(records, record => record.StartsWith("{\"output\""));
+        Assert.That(childExit, Is.InRange(1, records.Length - 2));
+        int boundaryRecords = childExit + (afterSummary ? 1 : 0);
+        long boundary = Encoding.UTF8.GetByteCount(string.Join('\n', records[..boundaryRecords])) + 1;
+        int expectedRecords = boundaryRecords + (offset == 0 ? 1 : 0);
+        Assert.That(TraceFile(code, boundary + offset), Is.EqualTo(string.Join('\n', records[..expectedRecords]) + "\n"));
+    }
+
     [Test]
     public void Requires_active_specification()
     {
@@ -301,6 +408,22 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         Assert.That(() => blockTracer.StartNewTxTrace(transaction), Throws.Nothing);
 
         blockTracer.EndTxTrace();
+    }
+
+    private byte[] PrepareNestedCall(string scenario, long gasLimit = 50_000)
+    {
+        Address address = scenario == "identity" ? IdentityPrecompile.Address : TestItem.AddressC;
+        byte[] callee = scenario switch
+        {
+            "return" or "revert" => Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE)
+                .PushData(32).PushData(0).Op(scenario == "return" ? Instruction.RETURN : Instruction.REVERT).Done,
+            "badJump" => Prepare.EvmCode.PushData(255).Op(Instruction.JUMP).Done,
+            _ => []
+        };
+        TestState.CreateAccount(address, 1.Ether);
+        TestState.InsertCode(address, callee, Spec);
+        TestState.Commit(Spec);
+        return Prepare.EvmCode.Call(address, gasLimit).Op(Instruction.POP).Op(Instruction.STOP).Done;
     }
 
     private byte[] PrepareReturningCalls(Instruction exit)

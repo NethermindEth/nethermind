@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
 using System.IO.Abstractions;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -68,17 +69,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 
-        if (!LimitReached)
-        {
-            JsonSerializer.Serialize(_jsonWriter,
-                new
-                {
-                    output = trace.ReturnValue.ToHexString(false),
-                    gasUsed = $"0x{trace.Gas:x}"
-                },
-                _serializerOptions);
-            GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
-        }
+        DumpActionEnd(trace.ReturnValue, trace.Gas, null);
 
         DisposeFileStreamIfAny();
 
@@ -96,7 +87,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter = new(_file);
 
         ulong? standardIntrinsicGas = TopLevelGasTracker.GetStandardIntrinsicGas(tx, _spec, _block.Header.GasLimit);
-        return new(DumpTraceEntry, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
+        return new(DumpTraceEntry, DumpActionEnd, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
     }
 
     private void DisposeFileStreamIfAny()
@@ -114,6 +105,22 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         if (!LimitReached)
             JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+    }
+
+    private void DumpActionEnd(ReadOnlyMemory<byte> output, ulong gasUsed, string? error)
+    {
+        if (LimitReached)
+            return;
+
+        _jsonWriter!.WriteStartObject();
+        _jsonWriter.WritePropertyName("output");
+        _jsonWriter.WriteStringValue(output.Span.ToHexString(false));
+        _jsonWriter.WritePropertyName("gasUsed");
+        HexWriter.WriteUlongHexStringValue(_jsonWriter, gasUsed);
+        if (error is not null)
+            _jsonWriter.WriteString("error", error);
+        _jsonWriter.WriteEndObject();
+        GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
     }
 
     private string GetFileName(Hash256 txHash)
