@@ -39,7 +39,7 @@ using Nethermind.Network.Rlpx;
 namespace Nethermind.JsonRpc.Test.Modules
 {
     [Parallelizable(ParallelScope.None)]
-    public partial class SubscribeModuleTests
+    public class SubscribeModuleTests
     {
         private ISubscribeRpcModule _subscribeRpcModule = null!;
         private ILogManager _logManager = null!;
@@ -128,24 +128,32 @@ namespace Nethermind.JsonRpc.Test.Modules
         private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, BlockReplacementEventArgs blockEventArgs, out string subscriptionId, int expectedResults = 1)
         {
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
+            subscriptionId = logsSubscription.Id;
 
+            return CollectResults(logsSubscription, expectedResults, () =>
+            {
+                _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+                _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
+            });
+        }
+
+        private static List<JsonRpcResult> CollectResults(LogsSubscription logsSubscription, int expectedResults, Action raiseEvents)
+        {
             List<JsonRpcResult> jsonRpcResults = [];
-            SemaphoreSlim received = new(0);
+            using SemaphoreSlim received = new(0);
             logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
                 jsonRpcResults.Add(j);
                 received.Release();
             }));
 
-            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
+            raiseEvents();
 
             for (int i = 0; i < expectedResults; i++)
             {
                 received.Wait(TimeSpan.FromSeconds(30));
             }
 
-            subscriptionId = logsSubscription.Id;
             return jsonRpcResults;
         }
 
@@ -529,9 +537,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             // The head is already past this block when its event is handled (multi-block branch, or a head advancing
             // before the asynchronous dispatch); "latest" must not be resolved against it.
             SetHead(100);
-            Filter filter = Substitute.For<Filter>();
 
-            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 1,
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(null, expectedResults: 1,
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
 
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
@@ -542,9 +549,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_with_null_arguments_publishes_removed_logs_of_a_reorged_block_below_the_head()
         {
             SetHead(100);
-            Filter filter = Substitute.For<Filter>();
 
-            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 2,
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(null, expectedResults: 2,
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).WithExtraData([1]).TestObject, removed: true),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
 
@@ -618,30 +624,18 @@ namespace Nethermind.JsonRpc.Test.Modules
         /// FIFO) delivers the published ones in the same order: a block that must be skipped is raised before one that
         /// must be published, and the assertion on the first result is what proves it was skipped.
         /// </summary>
-        private List<JsonRpcResult> PublishThroughLogsSubscription(Filter filter, int expectedResults, params ReceiptsEventArgs[] events)
+        private List<JsonRpcResult> PublishThroughLogsSubscription(Filter? filter, int expectedResults, params ReceiptsEventArgs[] events)
         {
             IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, filter);
 
-            List<JsonRpcResult> jsonRpcResults = [];
-            SemaphoreSlim received = new(0);
-            logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            return CollectResults(logsSubscription, expectedResults, () =>
             {
-                jsonRpcResults.Add(j);
-                received.Release();
-            }));
-
-            foreach (ReceiptsEventArgs receiptsEvent in events)
-            {
-                receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
-            }
-
-            for (int i = 0; i < expectedResults; i++)
-            {
-                received.Wait(TimeSpan.FromSeconds(30));
-            }
-
-            return jsonRpcResults;
+                foreach (ReceiptsEventArgs receiptsEvent in events)
+                {
+                    receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+                }
+            });
         }
 
         [Test]

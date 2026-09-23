@@ -82,13 +82,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// Whether <paramref name="header"/> lies on the right side of <paramref name="bound"/>.
         /// </summary>
         /// <remarks>
-        /// "latest"/"pending" (the defaults) mean an open-ended subscription, not the head at publish time: the head is
-        /// moved before BlockAddedToMain fires for each block of a branch and the receipts event is dispatched
-        /// asynchronously, so resolving them here would drop every block that is not the head, including the removed
-        /// side of a reorg. "earliest" is the default lower bound of a supplied filter, so it must not cost a lookup either.
-        /// A hash identifies one block only in the {"blockHash": ..} form (both bounds equal); as a one-sided bound it is a
-        /// position on the chain, like a number. Any other bound is resolved through the block tree, which throws for a
-        /// type it does not know.
+        /// "latest"/"pending" mean an open-ended subscription, not the head at publish time: the head moves before each
+        /// block's event is handled, so resolving them would drop every block below it, including a reorg's removed side.
+        /// A hash is exact only in the {"blockHash": ..} form (both bounds equal); one-sided it is a position on the chain.
         /// </remarks>
         private bool IsWithinBound(BlockParameter bound, BlockHeader header, bool lowerBound) => bound.Type switch
         {

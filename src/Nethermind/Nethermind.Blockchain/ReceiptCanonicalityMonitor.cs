@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -18,6 +19,8 @@ namespace Nethermind.Blockchain
     {
         private readonly IReceiptStorage _receiptStorage;
         private readonly ILogger _logger;
+        private readonly Lock _dispatchLock = new();
+        private Task _dispatch = Task.CompletedTask;
 
         public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 
@@ -28,9 +31,15 @@ namespace Nethermind.Blockchain
             _receiptStorage.NewCanonicalReceipts += OnBlockAddedToMain;
         }
 
-        private void OnBlockAddedToMain(object sender, BlockReplacementEventArgs e) =>
-            // we don't want this to be on main processing thread
-            Task.Run(() => TriggerReceiptInsertedEvent(e.Block, e.PreviousBlock));
+        private void OnBlockAddedToMain(object sender, BlockReplacementEventArgs e)
+        {
+            // Off the main processing thread, but chained so subscribers see blocks (and a reorg's removed receipts)
+            // in canonicalisation order.
+            lock (_dispatchLock)
+            {
+                _dispatch = _dispatch.ContinueWith(_ => TriggerReceiptInsertedEvent(e.Block, e.PreviousBlock), TaskScheduler.Default);
+            }
+        }
 
         private void TriggerReceiptInsertedEvent(Block newBlock, Block? previousBlock)
         {
