@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -42,7 +43,37 @@ namespace Nethermind.Consensus.Processing
         event EventHandler ProcessingQueueEmpty;
 
         event EventHandler<BlockEventArgs> BlockAdded;
+        /// <summary>
+        /// Raised when a queued block has been executed and validated, before it is committed and before
+        /// <see cref="BlockRemoved"/>. The result is <see cref="ProcessingResult.Success"/> or
+        /// <see cref="ProcessingResult.InclusionListUnsatisfied"/>; every other outcome arrives through
+        /// <see cref="BlockRemoved"/> alone.
+        /// </summary>
+        /// <remarks>
+        /// Defaulted so an implementation outside this repository keeps compiling. One that does not raise it leaves
+        /// its callers waiting for <see cref="BlockRemoved"/>, which is where the answer came from before.
+        /// </remarks>
+        event EventHandler<BlockHashEventArgs> BlockExecuted
+        {
+            add { }
+            remove { }
+        }
+
         event EventHandler<BlockRemovedEventArgs> BlockRemoved;
+
+        /// <summary>
+        /// Completes once no copy of the block is queued or being processed - at once if none is - so a caller
+        /// that learnt the verdict from <see cref="BlockExecuted"/> can wait for the block to become readable
+        /// through the chain. It completes only after the last copy's <see cref="BlockRemoved"/> has been raised,
+        /// so a caller that resumes can register for the block afresh without an event of the old copy reaching it.
+        /// With <paramref name="executedOnly"/> it also completes at once for a block that has not had its verdict
+        /// yet: such a block is queued, not committing, and its wait would be as long as its processing.
+        /// </summary>
+        /// <remarks>
+        /// Defaulted to "nothing is queued" so an implementation outside this repository keeps compiling; a caller
+        /// then proceeds as it did before this existed, without waiting.
+        /// </remarks>
+        ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false) => ValueTask.CompletedTask;
 
         /// <summary>
         /// Fired when processing of a block failed and the block was marked invalid.
