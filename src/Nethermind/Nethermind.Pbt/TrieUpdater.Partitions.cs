@@ -163,12 +163,8 @@ public static partial class TrieUpdater
 
                     foreach (PartitionFold worker in workers)
                     {
-                        PbtTraversalPath sharedPath = new(sharedPathBuffer);
-                        sharedPath.AppendMut(worker.Zone >> 4);
-                        TraversalSubtree workerResult = worker.Result.Borrow(sharedPath);
-                        SetBoundary(ref zoneFrontiers.AsSpan()[worker.Zone >> 4], worker.Zone & 15, ref workerResult);
                         sharedWriters[worker.Zone >> 4]!.AddDescendantDelta(worker.Zone & 15, worker.Result.SizeDelta);
-                        worker.Result = default;
+                        SetBoundary(ref zoneFrontiers.AsSpan()[worker.Zone >> 4], worker.Zone & 15, ref worker.Result);
                         if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
                     }
                     for (int slot = 0; slot < sharedReaders.Count; slot++)
@@ -181,8 +177,7 @@ public static partial class TrieUpdater
                         ValueHash256 groupHash = composed.Hash(4, metrics);
                         long zoneDelta = PublishGroup(store, ref sharedReader, sharedWriter, sharedPath, groupHash);
                         FoldResult zoneRoot = composed.Materialize(0);
-                        TraversalSubtree atRoot = zoneRoot.Borrow(rootPath);
-                        SetBoundary(ref rootFrontier, slot, ref atRoot);
+                        SetBoundary(ref rootFrontier, slot, ref zoneRoot);
                         rootWriter.AddDescendantDelta(slot, zoneDelta);
                     }
                     TraversalSubtree result = Compose(ref rootReader, rootWriter, rootPath, metrics, ref rootFrontier);

@@ -476,9 +476,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             FoldResult result = FoldMutations(context, ref reader, writer, boundary,
                 bucket, ref path, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, bitDepth, partition.Plan.ForChild());
             path.Truncate(bitDepth);
-            TraversalSubtree resolved = result.Borrow(path);
-            SetBoundary(ref frontier, slot, ref resolved);
             writer.AddDescendantDelta(slot, result.SizeDelta);
+            SetBoundary(ref frontier, slot, ref result);
         }
     }
 
@@ -558,9 +557,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         foreach (ref BucketFold bucket in buckets.AsSpan(0, bucketCount))
         {
             if (bucket.Context.Metrics is { } bucketMetrics) context.Metrics!.Add(bucketMetrics);
-            TraversalSubtree resolved = bucket.Result.Borrow(path);
-            SetBoundary(ref frontier, bucket.Slot, ref resolved);
             writer.AddDescendantDelta(bucket.Slot, bucket.Result.SizeDelta);
+            SetBoundary(ref frontier, bucket.Slot, ref bucket.Result);
         }
         // The folds hold node encodings; clear so the pool does not keep them alive.
         ArrayPool<BucketFold>.Shared.Return(buckets, clearArray: true);
@@ -693,10 +691,19 @@ internal static partial class TrieUpdater<TKey, TPath>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static TraversalSubtree TakeFrontierSubtree(scoped ref GroupFrameReader<TKey, TPath> reader, PbtTraversalPath path, scoped ref Frontier frontier, int position)
     {
-        TraversalSubtree taken = frontier.Take(ref reader, path, PbtFourLevelGroupGeometry.LocalPathOf(position).Slot, out BoundaryNode boundary);
         frontier.Mask &= ~(1u << position);
-        if (!boundary.IsEmpty) return BoundarySubtree(path, boundary);
-        return taken.IsEmpty ? ImplicitBranch(ref reader, path, position) : taken;
+        int slot = PbtFourLevelGroupGeometry.LocalPathOf(position).Slot;
+        ref readonly DecompositionEntry entry = ref frontier.Entries[slot];
+        switch (entry.Source)
+        {
+            case EntrySource.Node:
+                return new TraversalSubtree(path, frontier.TakeResult(slot));
+            case EntrySource.AtPosition when entry.SourcePosition != RootSource:
+                DirectCopySubtree copy = reader.TakeDirectCopy(path, entry.SourcePosition);
+                return copy.IsEmpty ? ImplicitBranch(ref reader, path, position) : new TraversalSubtree(path, copy);
+            default:
+                return BoundarySubtree(path, frontier.TakeBoundaryNode(ref reader, path, slot));
+        }
     }
 
     /// <summary>A boundary node placed against the cursor, out of line for the same reason as <see cref="TakeFrontierSubtree"/>.</summary>
@@ -722,7 +729,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         throw new InvalidDataException("A referenced PBT node is missing.");
     }
 
-    internal static void SetBoundary(ref Frontier frontier, int slot, ref TraversalSubtree result)
+    internal static void SetBoundary(ref Frontier frontier, int slot, ref FoldResult result)
     {
         uint bit = 1u << BoundaryPosition(slot);
         frontier.Mask = result.IsEmpty ? frontier.Mask & ~bit : frontier.Mask | bit;
@@ -808,6 +815,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             else
                 frames[frameCount++] = new(frame.Path.Left);
         }
+        frontier.ReturnResults();
         return result;
     }
 

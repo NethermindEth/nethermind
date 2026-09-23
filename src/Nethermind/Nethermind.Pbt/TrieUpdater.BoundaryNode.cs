@@ -209,13 +209,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             int slot = 0;
             for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | PrefixBit(cursor, bit);
             PbtNodeReader reader = Reader;
-            Subtree branch = new(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
+            return new FoldResult(new Subtree(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
                 reader.LeftHash, reader.RightHash,
                 reader.LeftKey.IsEmpty ? default : TKey.Create(reader.LeftKey),
                 reader.RightKey.IsEmpty ? default : TKey.Create(reader.RightKey),
                 LeafChildrenMask,
-                OwnedPrefix(cursor, anchorDepth + localLength, splitDepth));
-            return new FoldResult(branch.WithKnownHash(_hash, splitDepth - _anchorDepth));
+                OwnedPrefix(cursor, anchorDepth + localLength, splitDepth), _hash, splitDepth - _anchorDepth));
         }
 
         /// <summary>The bits from <paramref name="from"/> to <paramref name="splitDepth"/> as a standalone compressed prefix.</summary>

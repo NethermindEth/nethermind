@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
@@ -26,6 +27,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal uint Copies;
         /// <summary>The input node, for the slots that resolve to the group's own root instead of a node inside it.</summary>
         internal BoundaryNode Root;
+        /// <summary>The folds' results by slot, rented on the first one so a frame does not carry a node per slot.</summary>
+        private Subtree[]? _results;
 
         /// <summary>Records that <paramref name="slot"/> is read from <paramref name="source"/>, occupying <paramref name="position"/>.</summary>
         internal void Place(int slot, int position, EntrySource source, int sourcePosition)
@@ -52,33 +55,21 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
         }
 
-        /// <summary>Takes the entry at <paramref name="slot"/> for composition, as one of the three things a frontier holds.</summary>
-        /// <returns>
-        /// A fold's composed result or the direct copy of the stored node the entry names, or default with
-        /// <paramref name="boundary"/> set when the entry is a boundary node: the input node, or a leaf that it or a
-        /// stored branch inlines. What each becomes at the cursor is composition's to derive.
-        /// </returns>
-        internal TraversalSubtree Take(scoped ref GroupFrameReader<TKey, TPath> reader, PbtTraversalPath path, int slot, out BoundaryNode boundary)
+        /// <summary>Takes the fold's result at <paramref name="slot"/>.</summary>
+        internal Subtree TakeResult(int slot) => Subtree.Move(ref _results![slot]);
+
+        internal void Set(int slot, ref FoldResult result)
         {
-            ref readonly DecompositionEntry entry = ref Entries[slot];
-            switch (entry.Source)
-            {
-                case EntrySource.Node:
-                    boundary = default;
-                    return new TraversalSubtree(path, entry.Node);
-                case EntrySource.AtPosition when entry.SourcePosition != RootSource:
-                    boundary = default;
-                    return new TraversalSubtree(path, reader.TakeDirectCopy(path, entry.SourcePosition));
-                default:
-                    boundary = TakeBoundaryNode(ref reader, path, slot);
-                    return default;
-            }
+            Entries[slot] = default;
+            (_results ??= ArrayPool<Subtree>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots))[slot] = Subtree.Move(ref result.Node);
         }
 
-        internal void Set(int slot, ref TraversalSubtree result)
+        /// <summary>Returns the results' array once composition has taken every live one, which leaves it clear.</summary>
+        internal void ReturnResults()
         {
-            Debug.Assert(result.Copy.IsEmpty, "A fold result is composed, never a node still borrowed from a frame.");
-            Entries[slot] = new DecompositionEntry(ref result.Node);
+            if (_results is null) return;
+            ArrayPool<Subtree>.Shared.Return(_results);
+            _results = null;
         }
     }
 

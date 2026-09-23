@@ -73,6 +73,15 @@ internal static partial class TrieUpdater<TKey, TPath>
             LeafChildren = leafChildren;
         }
 
+        /// <param name="knownHash">The hash of this branch's encoding with a <paramref name="knownHashBitCount"/>-bit prefix.</param>
+        internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
+            ReadOnlyMemory<byte> prefix, in ValueHash256 knownHash, int knownHashBitCount)
+            : this(path, left, right, leftLeafKey, rightLeafKey, leafChildren, prefix)
+        {
+            KnownHash = knownHash;
+            KnownHashBitCount = (ushort)knownHashBitCount;
+        }
+
         internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, in ValueHash256 knownHash)
             : this(path, left, right, default, default, 0) => KnownHash = knownHash;
 
@@ -127,14 +136,24 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// the cursor that addresses that one at its own anchor keeps it a copy, so every other placement rebuilds it as a
     /// composed branch through <see cref="DirectCopySubtree.ToBranch"/>.
     /// </remarks>
-    internal ref struct TraversalSubtree(PbtTraversalPath groupPath, Subtree node)
+    internal ref struct TraversalSubtree
     {
-        internal Subtree Node = node;
+        internal Subtree Node;
         /// <summary>The untouched stored node this view carries instead of <see cref="Node"/>, if any.</summary>
         internal DirectCopySubtree Copy;
-        internal readonly PbtTraversalPath GroupPath = groupPath;
+        internal readonly PbtTraversalPath GroupPath;
 
-        internal TraversalSubtree(PbtTraversalPath groupPath, DirectCopySubtree copy) : this(groupPath, default(Subtree)) => Copy = copy;
+        internal TraversalSubtree(PbtTraversalPath groupPath, Subtree node)
+        {
+            GroupPath = groupPath;
+            Node = node;
+        }
+
+        internal TraversalSubtree(PbtTraversalPath groupPath, DirectCopySubtree copy)
+        {
+            GroupPath = groupPath;
+            Copy = copy;
+        }
 
         internal readonly bool IsEmpty => Node.IsEmpty && Copy.IsEmpty;
         internal readonly bool IsLeaf => Node.IsLeaf;
@@ -288,12 +307,14 @@ internal static partial class TrieUpdater<TKey, TPath>
             for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | PrefixBit(bit);
             NodeGroupPath path = new(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength);
             ReadOnlyMemory<byte> prefix = OwnedPrefix(anchorDepth + localLength, splitDepth);
-            return new(Copy.IsEmpty ? Node.CopyBranch(path, prefix) : ReanchoredCopy(path, prefix));
+            if (!Copy.IsEmpty) return ReanchoredCopy(path, prefix);
+            return new(new Subtree(path, Node.LeftHash, Node.RightHash, Node.HasLeftLeaf ? Node.LeftLeafKey : default,
+                Node.HasRightLeaf ? Node.RightLeafKey : default, Node.LeafChildrenMask, prefix));
         }
 
         /// <summary>The untouched stored branch as a composed branch at <paramref name="path"/>, out of line for the same reason as <see cref="EncodeReanchoredCopy"/>.</summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private readonly Subtree ReanchoredCopy(NodeGroupPath path, ReadOnlyMemory<byte> prefix) => Copy.ToBranch().CopyBranch(path, prefix);
+        private readonly FoldResult ReanchoredCopy(NodeGroupPath path, ReadOnlyMemory<byte> prefix) => new(Copy.ToBranch().CopyBranch(path, prefix));
 
         /// <summary>The bits from <paramref name="anchorDepth"/> to <paramref name="splitDepth"/> as a standalone compressed prefix.</summary>
         private readonly ReadOnlyMemory<byte> OwnedPrefix(int anchorDepth, int splitDepth)
@@ -345,25 +366,23 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    /// <summary>A composed node held for composition, or the place the frame reads a decomposed one from.</summary>
+    /// <summary>Where the frame reads a slot's node from, or that the slot holds a fold's result.</summary>
     /// <remarks>
     /// Decomposition never carries a node here: it records where the node is, so an untouched subtree is left in its
     /// frame until composition claims it, and a boundary node is sliced out only by the fold that consumes it.
     /// </remarks>
-    internal struct DecompositionEntry
+    internal readonly struct DecompositionEntry
     {
-        internal Subtree Node;
         private readonly byte _source;
 
-        internal DecompositionEntry(ref Subtree subtree) => Node = Subtree.Move(ref subtree);
         internal DecompositionEntry(EntrySource source, int sourcePosition)
         {
             Debug.Assert(source != EntrySource.Node, "A decomposed entry names where its node is read from.");
             _source = (byte)((sourcePosition << 2) | (int)source);
         }
 
-        internal readonly EntrySource Source => (EntrySource)(_source & 3);
-        internal readonly int SourcePosition => _source >> 2;
-        internal readonly bool IsEmpty => _source == 0 && Node.IsEmpty;
+        internal EntrySource Source => (EntrySource)(_source & 3);
+        internal int SourcePosition => _source >> 2;
+        internal bool IsEmpty => _source == 0;
     }
 }
