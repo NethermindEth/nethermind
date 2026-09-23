@@ -46,6 +46,19 @@ public static class FuluDriverSupport
             ? driver
             : throw new NotImplementedInDriverException($"fork '{fork}' has no ForkDriver; its vectors cannot be carried through this pipeline.");
 
+    /// <summary>Reports a minimal-preset vector as not-implemented, since no BeaconState container here can decode its state.</summary>
+    /// <exception cref="NotImplementedInDriverException"><paramref name="preset"/> is the minimal preset.</exception>
+    public static void RequireMainnetPreset(string preset)
+    {
+        if (preset == nameof(ConsensusPreset.Minimal))
+        {
+            throw new NotImplementedInDriverException(
+                "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds, so they cannot decode a " +
+                "minimal-preset pre.ssz_snappy at all; this suite only runs for real against the mainnet preset " +
+                "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
+        }
+    }
+
     /// <summary>
     /// Fails the vector unless the working state's root, taken in the fork's own shape, equals the
     /// expected post-state's; on mismatch names the diverging fields so the failure is debuggable.

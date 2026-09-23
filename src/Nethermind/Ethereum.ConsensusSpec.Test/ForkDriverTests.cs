@@ -23,6 +23,12 @@ public class ForkDriverTests
             "a fork extracted without a driver enumerates vectors nothing can run; a driver for an unextracted fork runs nothing");
 
     [Test]
+    public void Every_extracted_fork_upgrade_fork_has_an_upgrade_and_vice_versa() =>
+        Assert.That(ForkTests.UpgradesByFork.Keys.OrderBy(k => k, System.StringComparer.Ordinal),
+            Is.EqualTo(ConsensusSpecArchive.ForkUpgradeForks.OrderBy(k => k, System.StringComparer.Ordinal)),
+            "a fork extracted without an upgrade enumerates vectors nothing can run; an upgrade for an unextracted fork runs nothing");
+
+    [Test]
     public void The_Electra_root_of_a_Fulu_working_state_ignores_the_lookahead_and_equals_a_plain_Electra_state()
     {
         BeaconStateElectra electra = MerkleizableElectra();
