@@ -515,17 +515,22 @@ jobs:
           # rest. Patterns match the test id with everything up to `.py::` stripped, so they scope by
           # fork and parameterisation but cannot tell apart two fixture files that define the same
           # test. An explicit `filter` input overrides this.
-          if [ "$TEST_TYPE" = "focilTest" ]; then
-            KNOWN_FAILURES=(
+          KNOWN_FAILURES=()
+          if [ "$TEST_TYPE" = "zkevmTest" ] || [ "$TEST_TYPE" = "focilTest" ]; then
+            KNOWN_FAILURES+=(
               # These ported_static fixtures give the block a synthetic gas limit above 2^32 and a
               # transaction that spends all of it, so EIP-8037 rule 1 (tx.gas <= TX_MAX_TOTAL_GAS_LIMIT)
               # rejects a transaction they expect to be accepted. Fixed upstream as
-              # ethereum/execution-specs#3582, which FOCIL v0.2.0 predates.
+              # ethereum/execution-specs#3582, which the zkEVM v0.8.4 and FOCIL v0.2.0 releases predate.
               # Only --g2 diverges, but stCallCreateCallCodeTest and stDelegatecallTestHomestead share the
               # test name, so its passing sibling goes with it. ecrecover_short_buff has one
               # parameterisation per fork and format, so the fork prefix already pins it exactly.
-              'test_callcode_lose_gas_oog\[fork_Bogota-[^]]*--g2\]'
-              'test_ecrecover_short_buff\[fork_Bogota-'
+              'test_callcode_lose_gas_oog\[fork_(Amsterdam|Bogota)-[^]]*--g2\]'
+              'test_ecrecover_short_buff\[fork_(Amsterdam|Bogota)-'
+            )
+          fi
+          if [ "$TEST_TYPE" = "focilTest" ]; then
+            KNOWN_FAILURES+=(
               # The inclusion-list variant keeps rlp_modifier while clearing header_verify, so header
               # blob-gas fields are never recomputed. Fix pending as ethereum/execution-specs#3406.
               'test_insufficient_balance_blob_tx_combinations.*inclusion_list'
@@ -547,6 +552,8 @@ jobs:
               # FOCIL v0.2.0 still embeds an EIP-7610 collision scenario removed from Glamsterdam v8.1.2.
               'test_block_with_failing_included_il_tx_is_valid.*scenario_creation_address_collision'
             )
+          fi
+          if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then
             EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
             echo "extra_filter=(?!(?:$EXCLUSIONS)).*" >> "$GITHUB_OUTPUT"
           fi
