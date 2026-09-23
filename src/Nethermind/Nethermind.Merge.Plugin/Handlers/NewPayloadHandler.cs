@@ -368,9 +368,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     /// <summary>Whether a VALID verdict for <paramref name="block"/> still describes something this node can act on.</summary>
     /// <remarks>
-    /// A VALID answer invites the consensus client to make the block head and build on it. Either the state the
-    /// block committed is still readable, so the node can build the next payload on it, or the block sits below
-    /// the latest known finalized block, where the MAY-skip clause of
+    /// A VALID answer invites the CL to make the block head and build on it. Either the state the block committed
+    /// is still readable, so the node can build the next payload on it, or the block sits below the latest known
+    /// finalized block, where the MAY-skip clause of
     /// <see href="https://github.com/ethereum/execution-apis/pull/786">execution-apis#786</see> lets
     /// <c>engine_forkchoiceUpdated</c> answer without moving the head - so it can never become the base for the
     /// next payload and the missing state cannot strand block production.
