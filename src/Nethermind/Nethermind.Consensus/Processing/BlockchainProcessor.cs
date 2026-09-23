@@ -205,6 +205,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// and for the copy that had its verdict to go. A waiter's source is created only when someone waits; once the
     /// last copy is removed both slots hold a completed sentinel, so a waiter arriving later finds it done.
     /// </summary>
+    /// <remarks>
+    /// The executed flag is read and written without a lock because every write happens on the processing loop's
+    /// thread: <see cref="MarkExecuted"/> from <see cref="IBranchProcessor.BlockExecuted"/>, which the branch
+    /// processor raises synchronously on that thread, and the clear in <see cref="RemoveCopy"/> from the loop's own
+    /// removals. Moving either write off that thread would need the check-and-clear in RemoveCopy to become atomic,
+    /// or a store landing in the middle would leave the flag false while a copy commits and release every
+    /// executed-copy wait early.
+    /// </remarks>
     private sealed class InFlightBlock
     {
         private static readonly TaskCompletionSource Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
