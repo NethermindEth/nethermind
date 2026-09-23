@@ -23,7 +23,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot((flags & ReaderFlags.FullScan) != 0);
+        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot(flags);
         try
         {
             BaseTriePersistence.Reader trieReader = new(

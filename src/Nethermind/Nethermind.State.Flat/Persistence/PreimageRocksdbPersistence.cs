@@ -41,7 +41,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot((flags & ReaderFlags.FullScan) != 0);
+        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot(flags);
         BaseTriePersistence.Reader trieReader = new(
             snapshot.GetColumn(FlatDbColumns.StateTopNodes),
             snapshot.GetColumn(FlatDbColumns.StateNodes),
