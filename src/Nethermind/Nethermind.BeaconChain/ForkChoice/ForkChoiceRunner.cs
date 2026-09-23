@@ -348,6 +348,10 @@ public sealed class ForkChoiceRunner
         ExecutionStatus executionStatus,
         Hash256? executionBlockHash)
     {
+        // Checked before the first store update: the proto-array would refuse it only after the boost and checkpoints moved.
+        if ((executionStatus == ExecutionStatus.Irrelevant) != (executionBlockHash is null))
+            throw new ForkChoiceException($"Block {blockRoot} must carry an execution block hash if and only if execution is enabled");
+
         // Proposer boost for the first block of the slot arriving in the attesting interval.
         ulong timeIntoSlot = (Time - GenesisTime) % _spec.SecondsPerSlot;
         bool isBeforeAttestingInterval = timeIntoSlot < _spec.SecondsPerSlot / Presets.IntervalsPerSlot;
