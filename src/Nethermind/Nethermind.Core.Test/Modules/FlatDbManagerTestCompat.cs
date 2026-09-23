@@ -37,5 +37,7 @@ internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbMa
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 
+    public void DropStateNotReachableFrom(in StateId head) => flatDbManager.DropStateNotReachableFrom(head);
+
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) => flatDbManager.AddSnapshot(snapshot, transientResource);
 }

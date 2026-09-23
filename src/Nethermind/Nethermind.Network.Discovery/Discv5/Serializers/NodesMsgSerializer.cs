@@ -14,7 +14,7 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
 {
     private const int MaxNodeRecordsPerMessage = 16;
 
-    private readonly IEcdsa _ecdsa = new Ecdsa();
+    private readonly NodeRecordSigner _signer = new(new Ecdsa());
 
     protected override int GetContentLengthCore(NodesMsg msg)
         => Rlp.LengthOf(msg.Total) + GetNodeRecordsLength(msg.Records);
@@ -90,9 +90,20 @@ internal sealed class NodesMsgSerializer() : MsgSerializerBase<NodesMsg>(Message
 
     private bool TryDecodeNodeRecord(ReadOnlySpan<byte> record, [NotNullWhen(true)] out NodeRecord? nodeRecord)
     {
+        if (record.IsEmpty || record[0] < 0xc0 || record.Length > 300)
+        {
+            nodeRecord = null;
+            return false;
+        }
+
         try
         {
-            nodeRecord = NodeRecord.FromBytes(record, _ecdsa);
+            RlpReader reader = new(record);
+            if (!_signer.TryDeserialize(ref reader, out nodeRecord) || reader.Position != record.Length || !_signer.Verify(nodeRecord))
+            {
+                nodeRecord = null;
+                return false;
+            }
             return true;
         }
         catch (Exception e) when (IsMalformedNodeRecordException(e))

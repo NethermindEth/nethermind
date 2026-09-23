@@ -15,6 +15,10 @@ public interface IFlatDbManager : IFlatCommitTarget
     ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags) => GatherReadOnlySnapshotBundle(baseBlock);
     void FlushCache(CancellationToken cancellationToken);
     bool HasStateForBlock(in StateId stateId);
+
+    /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/> and releases the
+    /// bundles cached over them.</summary>
+    void DropStateNotReachableFrom(in StateId head);
 }
 
 // Used by overridable world state env that has its own snapshot repositories.

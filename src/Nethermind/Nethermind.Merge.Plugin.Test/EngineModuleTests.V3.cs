@@ -456,6 +456,7 @@ public partial class EngineModuleTests
                 Substitute.For<IBlobCustodyTracker>(),
                 chain.SpecProvider,
                 chain.Container.Resolve<GCKeeper>(),
+                chain.BlockProcessingQueue,
                 Substitute.For<ILogManager>()));
         }
 
