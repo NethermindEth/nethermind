@@ -7,10 +7,10 @@ namespace Nethermind.Era1;
 
 public interface IEraConfig : IConfig
 {
-    [ConfigItem(Description = "Directory of era1 archives to be imported. When set, the node runs the import and exits instead of starting, as with the `era-import` command.", DefaultValue = "", HiddenFromDocs = false)]
+    [ConfigItem(Description = "Directory of era1 archives to be imported.", DefaultValue = "", HiddenFromDocs = false)]
     string? ImportDirectory { get; set; }
 
-    [ConfigItem(Description = "Directory of archive export. When set, the node runs the export and exits instead of starting, as with the `era-export` command.", DefaultValue = "", HiddenFromDocs = false)]
+    [ConfigItem(Description = "Directory of archive export.", DefaultValue = "", HiddenFromDocs = false)]
     string? ExportDirectory { get; set; }
 
     [ConfigItem(Description = "Block number to import/export from.", DefaultValue = "0", HiddenFromDocs = false)]

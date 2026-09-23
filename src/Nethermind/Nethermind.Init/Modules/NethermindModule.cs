@@ -5,7 +5,6 @@ using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
@@ -21,7 +20,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
-using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
@@ -113,26 +111,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             ValidateReceiptDerivationConfig(configProvider);
             builder.AddModule(new ReceiptRegenerationModule());
         }
-
-        SelectEraTarget(builder, configProvider);
-    }
-
-    /// <summary>
-    /// Keeps the configuration-driven way of triggering an era job working now that the era steps are commands.
-    /// </summary>
-    /// <remarks>
-    /// The steps live in this assembly while the era wiring lives in the era assemblies, so neither
-    /// <see cref="Era1.EraModule"/> nor <see cref="EraE.EraEModule"/> can select them.
-    /// </remarks>
-    private static void SelectEraTarget(ContainerBuilder builder, IConfigProvider configProvider)
-    {
-        Era1.IEraConfig eraConfig = configProvider.GetConfig<Era1.IEraConfig>();
-        if (!string.IsNullOrEmpty(eraConfig.ImportDirectory)) builder.SelectStepTarget(typeof(EraImportStep));
-        if (!string.IsNullOrEmpty(eraConfig.ExportDirectory)) builder.SelectStepTarget(typeof(EraExportStep));
-
-        EraE.Config.IEraEConfig eraEConfig = configProvider.GetConfig<EraE.Config.IEraEConfig>();
-        if (!string.IsNullOrEmpty(eraEConfig.ImportDirectory)) builder.SelectStepTarget(typeof(EraEImportStep));
-        if (!string.IsNullOrEmpty(eraEConfig.ExportDirectory)) builder.SelectStepTarget(typeof(EraEExportStep));
     }
 
     /// <summary>

@@ -13,10 +13,8 @@ public class BuiltInStepsModule : Module
     [
         typeof(ApplyMemoryHint),
         typeof(DatabaseMigrations),
-        typeof(EraEExportStep),
-        typeof(EraEImportStep),
-        typeof(EraExportStep),
-        typeof(EraImportStep),
+        typeof(EraEStep),
+        typeof(EraStep),
         typeof(InitializeBlockchain),
         typeof(EvmWarmer),
         typeof(InitializeBlockProducer),
