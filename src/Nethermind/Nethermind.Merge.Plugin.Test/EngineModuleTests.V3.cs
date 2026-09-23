@@ -53,7 +53,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(
+        ExecutionPayload executionPayload = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
 
         ResultWrapper<PayloadStatusV1> result = version == 1
@@ -68,7 +68,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(
+        ExecutionPayload executionPayload = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [],
                 blobGasUsed: blobGasUsed, excessBlobGas: excessBlobGas, parentBeaconBlockRoot: parentBlockBeaconRoot);
 
@@ -82,7 +82,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
+        ExecutionPayloadV3 executionPayload = await CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(executionPayload, [], executionPayload.ParentBeaconBlockRoot);
@@ -297,7 +297,7 @@ public partial class EngineModuleTests
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
-        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
+        ExecutionPayloadV3 executionPayload = await CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [], blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem.KeccakA);
 
         return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, chain.Container.Resolve<GCKeeper>()), new(RpcEndpoint.Http), new(), executionPayload);
@@ -554,7 +554,7 @@ public partial class EngineModuleTests
         (MergeTestBlockchain blockchain, IEngineRpcModule engineRpcModule) = await MockRpc();
         (byte[][] blobVersionedHashes, Transaction[] transactions) = BuildTransactionsAndBlobVersionedHashesList(hashesFirstBytes, transactionsAndFirstBytesOfTheirHashes, blockchain.SpecProvider.ChainId);
 
-        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
+        ExecutionPayloadV3 executionPayload = await CreateBlockRequestV3(
             blockchain, CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: [], 0, 0, transactions: transactions, parentBeaconBlockRoot: Keccak.Zero);
         ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, Array.ConvertAll(blobVersionedHashes, static h => new Hash256(h)), Keccak.Zero);
 
