@@ -15,6 +15,9 @@ public static class ThreadExtensions
 
         internal Disposable(Thread thread, ThreadPriority priority = ThreadPriority.AboveNormal)
         {
+            // Linux's normal scheduling policy maps every ThreadPriority to zero but still makes native calls.
+            if (OperatingSystem.IsLinux()) return;
+
             _thread = thread;
             _previousPriority = thread.Priority;
             thread.Priority = priority;

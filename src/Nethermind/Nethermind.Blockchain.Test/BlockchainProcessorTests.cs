@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Autofac;
 using ConcurrentCollections;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -34,6 +35,127 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
+    [Test]
+    public async Task Waiting_for_processing_handles_queue_draining_during_subscription()
+    {
+        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
+        queue.IsEmpty.Returns(false, true);
+
+        await queue.WaitForBlockProcessing().WaitAsync(TimeSpan.FromSeconds(2));
+
+        queue.Received().ProcessingQueueEmpty -= Arg.Any<EventHandler>();
+    }
+
+    [Test, NonParallelizable]
+    public void Dedicated_thread_wakes_without_thread_pool_capacity([Values] bool resume)
+    {
+        using BasicTestBlockchain chain = BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<IBlocksConfig>(new BlocksConfig { DedicatedProcessingThread = true })).GetAwaiter().GetResult();
+        using ManualResetEventSlim removed = new();
+        using ManualResetEventSlim occupied = new();
+        using ManualResetEventSlim release = new();
+        IBlockProcessingQueue queue = chain.BlockProcessingQueue;
+        IBlockProcessingPauseControl pause = (IBlockProcessingPauseControl)queue;
+        Thread? processingThread = null;
+        queue.BlockRemoved += (_, _) =>
+        {
+            processingThread = Thread.CurrentThread;
+            removed.Set();
+        };
+        queue.Enqueue(chain.BlockTree.Head!, ProcessingOptions.None).GetAwaiter().GetResult();
+        Assert.That(removed.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        Assert.That(SpinWait.SpinUntil(() => queue.IsEmpty, TimeSpan.FromSeconds(5)), Is.True);
+        removed.Reset();
+        if (resume)
+        {
+            pause.Pause();
+            queue.Enqueue(chain.BlockTree.Head!, ProcessingOptions.None).GetAwaiter().GetResult();
+        }
+        Assert.That(SpinWait.SpinUntil(() => (processingThread!.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(5)), Is.True);
+
+        ThreadPool.GetMinThreads(out int minWorkers, out int minIo);
+        ThreadPool.GetMaxThreads(out int maxWorkers, out int maxIo);
+        Task? blocker = null;
+        try
+        {
+            blocker = Task.Run(() =>
+            {
+                occupied.Set();
+                release.Wait();
+            });
+            Assert.That(occupied.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(ThreadPool.SetMinThreads(1, minIo), Is.True);
+            Assert.That(ThreadPool.SetMaxThreads(Thread.CurrentThread.IsThreadPoolThread ? 2 : 1, maxIo), Is.True);
+            ThreadPool.GetAvailableThreads(out int availableWorkers, out _);
+            Assert.That(availableWorkers, Is.Zero);
+
+            if (resume)
+            {
+                pause.Resume();
+            }
+            else
+            {
+                ValueTask enqueued = queue.Enqueue(chain.BlockTree.Head!, ProcessingOptions.None);
+                Assert.That(enqueued.IsCompletedSuccessfully, Is.True);
+            }
+            Assert.That(removed.Wait(TimeSpan.FromSeconds(2)), Is.True, "queue writes and resumes must wake the dedicated reader directly");
+        }
+        finally
+        {
+            release.Set();
+            ThreadPool.SetMaxThreads(maxWorkers, maxIo);
+            ThreadPool.SetMinThreads(minWorkers, minIo);
+            if (blocker is not null) Assert.That(blocker.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Queued_blocks_respect_dedicated_thread_configuration([Values] bool dedicated, [Values(ProcessingCores.All, ProcessingCores.Performance)] ProcessingCores cores)
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<IBlocksConfig>(new BlocksConfig { DedicatedProcessingThread = dedicated, ProcessingCores = cores }));
+        List<(int Id, string? Name, bool IsPool, bool IsMain, ThreadPriority Priority)> executions = [];
+        chain.BranchProcessor.BlocksProcessing += (_, _) => executions.Add((Environment.CurrentManagedThreadId,
+            Thread.CurrentThread.Name, Thread.CurrentThread.IsThreadPoolThread, BlockchainProcessor.IsMainProcessingThread, Thread.CurrentThread.Priority));
+
+        await chain.BuildSomeBlocks(1);
+        await chain.BlockProcessingQueue.WaitUntilRemovedAsync(chain.BlockTree.Head!.Hash!);
+        await chain.BuildSomeBlocks(1);
+        await chain.BlockProcessingQueue.WaitUntilRemovedAsync(chain.BlockTree.Head!.Hash!);
+        await chain.BlockProcessingQueue.StopAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executions, Has.Count.EqualTo(2));
+            ThreadPriority expectedPriority = OperatingSystem.IsLinux() ? ThreadPriority.Normal : ThreadPriority.Highest;
+            Assert.That(executions.All(execution => execution.IsMain && execution.Priority == expectedPriority), Is.True);
+            Assert.That(executions.All(execution => execution.Name == "Nethermind Block Processing"), Is.EqualTo(dedicated));
+            if (dedicated)
+            {
+                Assert.That(executions.Select(execution => execution.Id).Distinct().Count(), Is.EqualTo(1));
+                Assert.That(executions.All(execution => !execution.IsPool), Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Processing_stops_while_idle_or_paused([Values] bool dedicated, [Values] bool paused, [Values] bool drain)
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<IBlocksConfig>(new BlocksConfig { DedicatedProcessingThread = dedicated }));
+        IBlockProcessingQueue queue = chain.BlockProcessingQueue;
+        await queue.WaitForBlockProcessing().WaitAsync(TimeSpan.FromSeconds(5));
+        if (paused)
+        {
+            ((IBlockProcessingPauseControl)queue).Pause();
+            await queue.Enqueue(chain.BlockTree.Head!, ProcessingOptions.None);
+        }
+        Task removed = queue.WaitUntilRemovedAsync(chain.BlockTree.Head!.Hash!).AsTask();
+        Assert.That(removed.IsCompleted, Is.EqualTo(!paused));
+        await queue.StopAsync(drain).WaitAsync(TimeSpan.FromSeconds(5));
+        await removed.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     [Test]
     public void LogDiagnosticTrace_does_not_throw_for_edge_cases([Values("null_hash", "default_either")] string variant)
     {

@@ -13,6 +13,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
@@ -103,14 +104,14 @@ public class FullPruningDiskTest
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        public static async Task<PruningTestBlockchain> Create(IPruningConfig? pruningConfig = null, long testTimeoutMs = 10000)
+        public static async Task<PruningTestBlockchain> Create(IPruningConfig? pruningConfig = null, long testTimeoutMs = 10000, bool dedicatedProcessingThread = false)
         {
             PruningTestBlockchain chain = new()
             {
                 PruningConfig = pruningConfig ?? new PruningConfig(),
                 TestTimeout = testTimeoutMs,
             };
-            await chain.Build();
+            await chain.Build(builder => builder.Intercept<IBlocksConfig>(config => config.DedicatedProcessingThread = dedicatedProcessingThread));
             return chain;
         }
 
@@ -143,9 +144,9 @@ public class FullPruningDiskTest
     }
 
     [Test, MaxTime(Timeout.LongTestTime)]
-    public async Task prune_on_disk_multiple_times()
+    public async Task prune_on_disk_multiple_times([Values] bool dedicatedProcessingThread)
     {
-        using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 }, testTimeoutMs: Timeout.LongTestTime);
+        using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 }, testTimeoutMs: Timeout.LongTestTime, dedicatedProcessingThread: dedicatedProcessingThread);
         for (int i = 0; i < 3; i++)
         {
             await RunPruning(chain, i, false);
@@ -153,9 +154,9 @@ public class FullPruningDiskTest
     }
 
     [Test, MaxTime(Timeout.LongTestTime)]
-    public async Task prune_on_disk_only_once()
+    public async Task prune_on_disk_only_once([Values] bool dedicatedProcessingThread)
     {
-        using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 10 });
+        using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 10 }, dedicatedProcessingThread: dedicatedProcessingThread);
         for (int i = 0; i < 3; i++)
         {
             await RunPruning(chain, i, true);
@@ -196,6 +197,7 @@ public class FullPruningDiskTest
         {
             pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(100));
             await chain.AddBlockDoNotWaitForHead();
+            await chain.BlockProcessingQueue.WaitForBlockProcessing(chain.CancellationToken);
         }
 
         if (!onlyFirstRuns || time == 0)

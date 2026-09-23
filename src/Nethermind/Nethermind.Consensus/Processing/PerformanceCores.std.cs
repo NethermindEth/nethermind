@@ -13,13 +13,13 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// The performance cores of an Intel hybrid CPU, and a scope that keeps the calling thread on them.
+/// CPU selections and affinity scopes for processing, prewarming, and background workers.
 /// </summary>
 /// <remarks>
 /// The processing loop continues on whichever thread-pool thread resumes it, and on a CPU with performance and
 /// efficiency cores the scheduler can start that thread on an efficiency core for a block that lasts tens of
-/// milliseconds. The core types come from Linux's Intel hybrid PMU listing (<c>/sys/devices/cpu_core/cpus</c>);
-/// other hybrid designs do not publish it, and there this is a no-op. The allowed CPUs are read once, so a cpuset
+/// milliseconds. Hybrid core types come from Linux's Intel hybrid PMU listing (<c>/sys/devices/cpu_core/cpus</c>)
+/// or Windows CPU Sets. Dedicated Linux workers also use per-CPU capacity when available. The allowed CPUs are read once, so a cpuset
 /// changed at runtime is not seen; the kernel then refuses a mask outside it and the scope does nothing, and a restore
 /// it refuses falls back to every CPU the cpuset allows. A thread started from a narrowed thread does not keep its
 /// mask: the runtime resets every new managed thread to the process's mask as it starts.
@@ -67,7 +67,7 @@ internal static partial class PerformanceCores
     /// warm the far end of the block. Null on a CPU with one kind of core, or a cpuset holding only one kind.
     /// </summary>
     public static PrewarmSplit? PrewarmFor(ProcessingCores cores) =>
-        cores == ProcessingCores.All || (uint)cores >= (uint)ModeCount || !OperatingSystem.IsLinux() ? null
+        cores == ProcessingCores.All || (uint)cores >= (uint)ModeCount || !(OperatingSystem.IsLinux() || OperatingSystem.IsWindows()) ? null
         : cores == ProcessingCores.Dedicated ? Host.PrewarmDedicated
         : Host.Prewarm;
 
@@ -86,6 +86,7 @@ internal static partial class PerformanceCores
 
     private static Scope Narrow(Selection selection, ILogger logger)
     {
+        if (OperatingSystem.IsWindows()) return NarrowWindows(selection, logger);
         // pid 0 is the calling thread.
         if (sched_getaffinity(0, CpuMaskSize, out CpuMask previous) != 0) return default;
         CpuMask mask = selection.Mask;
@@ -97,6 +98,7 @@ internal static partial class PerformanceCores
         private readonly bool _narrowed;
         private readonly CpuMask _previous;
         private readonly ILogger _logger;
+        private readonly uint[]? _previousCpuSets;
 
         internal Scope(CpuMask previous, ILogger logger)
         {
@@ -105,8 +107,20 @@ internal static partial class PerformanceCores
             _logger = logger;
         }
 
+        internal Scope(uint[] previousCpuSets, ILogger logger)
+        {
+            _previousCpuSets = previousCpuSets;
+            _logger = logger;
+        }
+
         public void Dispose()
         {
+            if (_previousCpuSets is { } previous)
+            {
+                if (!SetThreadSelectedCpuSets(GetCurrentThread(), previous, (uint)previous.Length) && _logger.IsWarn)
+                    _logger.Warn("Could not restore the worker's Windows CPU Sets.");
+                return;
+            }
             if (!_narrowed) return;
 
             CpuMask restored = _previous;
@@ -124,6 +138,7 @@ internal static partial class PerformanceCores
     {
         public CpuMask Mask { get; } = mask;
         public int[] Cpus { get; } = cpus;
+        public uint[]? CpuSets { get; init; }
     }
 
     /// <summary>Built on first use by a mode that narrows, so <see cref="ProcessingCores.All"/> alone leaves the host untouched.</summary>
@@ -132,12 +147,22 @@ internal static partial class PerformanceCores
         public static readonly Selection?[] Selections;
         public static readonly PrewarmSplit? Prewarm;
         public static readonly PrewarmSplit? PrewarmDedicated;
+        public static readonly Selection? DedicatedProcessing;
+        public static readonly Selection? DedicatedBackground;
 
         static Host()
         {
             Selections = new Selection?[ModeCount];
             try
             {
+                List<Cpu> cpus = ReadCpus();
+                DedicatedProcessing = DedicatedSelection(cpus, background: false);
+                DedicatedBackground = DedicatedSelection(cpus, background: true);
+                if (OperatingSystem.IsWindows())
+                {
+                    BuildWindowsSelections(cpus, Selections, out Prewarm, out PrewarmDedicated);
+                    return;
+                }
                 string? performanceCpus = ReadOrNull("/sys/devices/cpu_core/cpus");
                 if (performanceCpus is null || !TryReadAffinity(out CpuMask allowedMask)) return;
 
@@ -149,8 +174,8 @@ internal static partial class PerformanceCores
 
                 foreach (ProcessingCores cores in Enum.GetValues<ProcessingCores>())
                 {
-                    if (TryBuildMask(cores, performanceCpus, allowed, ReadSiblings, out CpuMask mask, out int[] cpus))
-                        Selections[(int)cores] = new Selection(mask, cpus);
+                    if (TryBuildMask(cores, performanceCpus, allowed, ReadSiblings, out CpuMask mask, out int[] selectedCpus))
+                        Selections[(int)cores] = new Selection(mask, selectedCpus);
                 }
 
                 if (Selections[(int)ProcessingCores.Performance] is { } near
@@ -175,13 +200,15 @@ internal static partial class PerformanceCores
                 Selections = new Selection?[ModeCount];
                 Prewarm = null;
                 PrewarmDedicated = null;
+                DedicatedProcessing = null;
+                DedicatedBackground = null;
             }
         }
     }
 
     // Any value the enum does not name - the config binder accepts numbers - narrows nothing.
     private static Selection? Selected(ProcessingCores cores) =>
-        cores != ProcessingCores.All && (uint)cores < (uint)ModeCount && OperatingSystem.IsLinux() ? Host.Selections[(int)cores] : null;
+        cores != ProcessingCores.All && (uint)cores < (uint)ModeCount && (OperatingSystem.IsLinux() || OperatingSystem.IsWindows()) ? Host.Selections[(int)cores] : null;
 
     /// <summary>
     /// The logical processors of the first performance core that does not hold CPU 0, which takes more interrupts; the
