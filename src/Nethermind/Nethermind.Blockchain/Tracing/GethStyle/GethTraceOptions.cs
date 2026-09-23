@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -65,14 +66,26 @@ public record GethTraceOptions
         /// <inheritdoc/>
         public override ulong Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            if (reader.TokenType != JsonTokenType.String) throw new JsonException("Transaction index must be a hex quantity string.");
-            string value = reader.GetString()!;
-            if (value.Length < 3 || value[0] != '0' || (value[1] != 'x' && value[1] != 'X')
-                || (value.Length > 3 && value[2] == '0')
-                || !ulong.TryParse(value.AsSpan(2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out ulong index))
-                throw new JsonException("Invalid transaction index hex quantity.");
+            if (reader.TokenType != JsonTokenType.String) ThrowInvalidToken();
+            const int maxQuantityLength = 18;
+            const int maxEscapedLength = maxQuantityLength * 6;
+            long length = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
+            if (length > maxEscapedLength) ThrowInvalidQuantity();
+            Span<byte> buffer = stackalloc byte[maxEscapedLength];
+            ReadOnlySpan<byte> value = buffer[..reader.CopyString(buffer)];
+            if (value.Length is < 3 or > maxQuantityLength || value[0] != '0' || (value[1] != 'x' && value[1] != 'X')
+                || (value.Length > 3 && value[2] == '0'))
+                ThrowInvalidQuantity();
+            if (!ulong.TryParse(value[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out ulong index))
+                ThrowInvalidQuantity();
             return index;
         }
+
+        [DoesNotReturn]
+        private static void ThrowInvalidToken() => throw new JsonException("Transaction index must be a hex quantity string.");
+
+        [DoesNotReturn]
+        private static void ThrowInvalidQuantity() => throw new JsonException("Invalid transaction index hex quantity.");
 
         /// <inheritdoc/>
         public override void Write(Utf8JsonWriter writer, ulong value, JsonSerializerOptions options) => writer.WriteStringValue($"0x{value:x}");
