@@ -336,7 +336,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
                 if (!_snapshotRepository.HasState(baseBlock))
                 {
-                    throw new StateNotRetainedException($"State {baseBlock} no longer exists; concurrently removed.");
+                    throw new StateNotRetainedException($"No state available for block {baseBlock.BlockNumber} with state root {baseBlock.StateRoot}");
                 }
 
                 attempt++;

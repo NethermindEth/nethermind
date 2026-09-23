@@ -990,6 +990,7 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(notRetained, ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, bare)");
         yield return new TestCaseData(new TargetInvocationException(notRetained), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, wrapped)");
         yield return new TestCaseData(MissingTrieNode(notRetained), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, missing-trie wrap)");
+        yield return new TestCaseData(new TargetInvocationException(MissingTrieNode(notRetained)), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, wrapped missing-trie wrap)");
 
         // A history row that cannot be trusted keeps the pre-existing mapping: -32000 with the WARN that is the
         // operator's only sign of corruption at the default log level, or an internal error when nothing wrapped it.
