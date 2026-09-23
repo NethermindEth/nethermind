@@ -178,11 +178,10 @@ public class VisitorProgressTrackerTests
     [Test]
     public void OnNodeVisited_WithoutHeartbeat_ReportsEveryPercentageChangeOnce()
     {
-        // Arrange - reportingInterval: 1 re-evaluates progress on every state node
+        // Arrange
         VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, new ManualTimeProvider(), reportingInterval: 1);
 
-        // Act - a branch below level 3 does not move the percentage; of the seven level-3 nodes that follow,
-        // only the last one takes the estimate from 4096 to 4103 / 65536, the first value that reads 6.26 %
+        // Act - the branch keeps 6.25 %; only the 7th level-3 node reaches 6.26 % (4103 / 65536)
         tracker.OnNodeVisited(DepthOneLeaf(0), isStorage: false, isLeaf: true);
         tracker.OnNodeVisited(DeepBranch, isStorage: false, isLeaf: false);
         for (int i = 0; i < 7; i++)
@@ -207,14 +206,14 @@ public class VisitorProgressTrackerTests
         VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, time, TimeSpan.FromSeconds(60), reportingInterval: 1);
 
         // Act
-        tracker.OnNodeVisited(DepthOneLeaf(0), isStorage: false, isLeaf: true); // first line straight away
-        tracker.OnNodeVisited(DepthOneLeaf(1), isStorage: false, isLeaf: true); // 12.50 %, but not due yet
+        tracker.OnNodeVisited(DepthOneLeaf(0), isStorage: false, isLeaf: true); // first line at once
+        tracker.OnNodeVisited(DepthOneLeaf(1), isStorage: false, isLeaf: true); // 12.50 %, not due
         time.Advance(TimeSpan.FromSeconds(59));
         tracker.OnNodeVisited(DeepBranch, isStorage: false, isLeaf: false);
         time.Advance(TimeSpan.FromSeconds(1));
         tracker.OnNodeVisited(DeepBranch, isStorage: false, isLeaf: false);
         time.Advance(TimeSpan.FromSeconds(60));
-        tracker.OnNodeVisited(DeepBranch, isStorage: false, isLeaf: false); // due again without any progress
+        tracker.OnNodeVisited(DeepBranch, isStorage: false, isLeaf: false); // due, no progress
 
         // Assert
         logger.Received(3).Debug(Arg.Any<string>());
@@ -234,8 +233,7 @@ public class VisitorProgressTrackerTests
         ManualTimeProvider time = new();
         VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, time, ToInterval(heartbeatSeconds));
 
-        // Act - storage nodes never re-evaluate progress themselves, so only the check on every
-        // 2^16-th visited node can notice that the interval has passed
+        // Act - storage nodes reach the clock only through the 2^16-th node check
         tracker.OnNodeVisited(DepthOneLeaf(0), isStorage: false, isLeaf: true);
         time.Advance(TimeSpan.FromSeconds(60));
         for (int i = 1; i < 1 << 16; i++)
@@ -254,7 +252,7 @@ public class VisitorProgressTrackerTests
         ManualTimeProvider time = new();
         VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, time);
 
-        // Act - three level-3 nodes are below 1 %, so nothing is written during the first 5 seconds
+        // Act - below 1 %, so nothing is written in the first 5 s
         for (int i = 0; i < 3; i++)
         {
             tracker.OnNodeVisited(LevelThreeNode(i));
@@ -264,7 +262,7 @@ public class VisitorProgressTrackerTests
         time.Advance(TimeSpan.FromSeconds(5));
         tracker.OnNodeVisited(LevelThreeNode(3));
 
-        // Assert - 4 / 65536 still reads 0.00 %, and that first line is written
+        // Assert - 4 / 65536 reads 0.00 %
         logger.Received(1).Debug(Arg.Any<string>());
         logger.Received(1).Debug(Arg.Is<string>(line => line.Contains(" 0.00 %")));
     }
@@ -278,7 +276,7 @@ public class VisitorProgressTrackerTests
         // Arrange
         VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, new ManualTimeProvider(), ToInterval(heartbeatSeconds));
 
-        // Act - 16 depth-1 leaves cover the whole key space, so the traversal itself already reports 100 %
+        // Act - 16 depth-1 leaves already reach 100 %
         for (int i = 0; i < depthOneLeaves; i++)
         {
             tracker.OnNodeVisited(DepthOneLeaf((byte)i), isStorage: false, isLeaf: true);
@@ -296,7 +294,7 @@ public class VisitorProgressTrackerTests
     [TestCase(0)]
     public void OnNodeVisited_ConcurrentVisitorsNeverReportLowerProgress(int? heartbeatSeconds)
     {
-        // Arrange - lines are written under the tracker's lock, so the list is in write order
+        // Arrange - written under the tracker's lock, so the list is in write order
         TestLogger testLogger = new();
         VisitorProgressTracker tracker = new("Test", new OneLoggerLogManager(new ILogger(testLogger)),
             heartbeatInterval: ToInterval(heartbeatSeconds), timeProvider: new ManualTimeProvider());
@@ -304,7 +302,7 @@ public class VisitorProgressTrackerTests
         // Act
         Parallel.For(0, 1 << 16, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i => tracker.OnNodeVisited(LevelThreeNode(i)));
 
-        // Assert - without a heartbeat each percentage is written once; with one it may repeat but never go back
+        // Assert
         double[] percentages = testLogger.LogList.Select(ParsePercentage).ToArray();
         Assert.That(percentages, heartbeatSeconds is null ? Is.Ordered.Ascending.And.Unique : Is.Ordered.Ascending);
         Assert.That(percentages[^1], Is.EqualTo(100));
@@ -315,10 +313,10 @@ public class VisitorProgressTrackerTests
         Assert.That(() => new VisitorProgressTracker("Test", LimboLogs.Instance, heartbeatInterval: TimeSpan.FromSeconds(-1)),
             Throws.InstanceOf<ArgumentOutOfRangeException>().With.Property(nameof(ArgumentException.ParamName)).EqualTo("heartbeatInterval"));
 
-    // A branch below level 3, which never moves the estimate
+    // Below level 3, so it never moves the estimate
     private static readonly TreePath DeepBranch = TreePath.FromNibble(new byte[] { 0, 1, 2, 3, 4 });
 
-    // Covers 16^3 of the 65536 level-3 prefixes, i.e. 6.25 %
+    // 16^3 of 65536 level-3 prefixes = 6.25 %
     private static TreePath DepthOneLeaf(byte nibble) => TreePath.FromNibble(new[] { nibble });
 
     private static TreePath LevelThreeNode(int index) =>

@@ -17,15 +17,14 @@ public class VisitorProgressTracker
 {
     public const int Level3Depth = 4; // 4 nibbles
     private const int MaxNodes = 65536; // 16^4 possible 4-nibble prefixes
-    private const int ProgressScale = 10_000; // 0.01% precision of the reported percentage
-    // Storage nodes never reach the state-node reporting paths, so a long storage trie would
-    // otherwise never look at the clock; checking every 2^16 nodes is a single mask test
+    private const int ProgressScale = 10_000; // 0.01% precision
+    // Heartbeat check for storage nodes, which never reach the state-node triggers
     private const long HeartbeatCheckMask = (1 << 16) - 1;
 
     private int _seenCount; // Count of level-3 nodes seen (or estimated from shallow leaves)
 
     private long _nodeCount;
-    private long _lastReportedProgress = -1; // Guarded by _reportLock; below zero until the first line, so 0.00 % is reported
+    private long _lastReportedProgress = -1; // Guarded by _reportLock; negative until the first line
     private long _lastReportTimestamp; // Guarded by _reportLock
     private readonly Lock _reportLock = new();
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
@@ -38,22 +37,17 @@ public class VisitorProgressTracker
     private readonly TimeSpan? _heartbeatInterval;
 
     /// <summary>
-    /// Creates a tracker that writes the estimated traversal progress at <paramref name="logLevel"/>.
+    /// Creates a tracker that logs the estimated traversal progress at <paramref name="logLevel"/>.
     /// </summary>
     /// <remarks>
-    /// Without <paramref name="heartbeatInterval"/> a line is written every time the estimated percentage changes,
-    /// i.e. up to once per 0.01 %. With it, a line is written once the interval has passed since the previous one,
-    /// also when the percentage has not moved, so a slow traversal still shows its node count growing. The clock is
-    /// only checked as nodes are visited: a traversal that visits no nodes at all, e.g. one blocked on a full
-    /// downstream queue, writes nothing until it resumes.
+    /// With <paramref name="heartbeatInterval"/>, a line is written once the interval has passed, even without progress.
+    /// The clock is only checked when a node is visited.
     /// </remarks>
-    /// <param name="operationName">Prefix of every progress line.</param>
-    /// <param name="logManager">Source of the logger the progress lines are written to.</param>
-    /// <param name="reportingInterval">Number of state nodes after which progress is re-evaluated even without level-3 coverage.</param>
-    /// <param name="printNodes">Whether the lines include the number of visited nodes.</param>
-    /// <param name="logLevel">Level the progress lines are written at.</param>
-    /// <param name="heartbeatInterval">Minimum time between two lines, or <c>null</c> to write a line on every percentage change.</param>
-    /// <param name="timeProvider">Clock for the start-up delay and the heartbeat; <see cref="TimeProvider.System"/> when <c>null</c>.</param>
+    /// <param name="operationName">Line prefix.</param>
+    /// <param name="reportingInterval">State nodes between extra progress re-evaluations.</param>
+    /// <param name="printNodes">Whether lines include the visited node count.</param>
+    /// <param name="heartbeatInterval">Minimum time between lines, except the final one; <c>null</c> reports every change.</param>
+    /// <param name="timeProvider">Defaults to <see cref="TimeProvider.System"/>.</param>
     public VisitorProgressTracker(
         string operationName,
         ILogManager logManager,
@@ -170,9 +164,7 @@ public class VisitorProgressTracker
 
         long progressValue = (long)(progress * ProgressScale);
 
-        // Decided and written under the lock so concurrent visitors neither duplicate a line nor
-        // write a stale, lower percentage after a higher one. Reached at most once per level-3 node,
-        // _reportingInterval state nodes or heartbeat check, so contention is negligible.
+        // Decide and write under one lock: no duplicate or out-of-order lines
         lock (_reportLock)
         {
             long now = _timeProvider.GetTimestamp();
@@ -202,7 +194,6 @@ public class VisitorProgressTracker
 
         lock (_reportLock)
         {
-            // A traversal that already reported 100 % does not repeat the line
             if (_lastReportedProgress < ProgressScale)
             {
                 _lastReportedProgress = ProgressScale;

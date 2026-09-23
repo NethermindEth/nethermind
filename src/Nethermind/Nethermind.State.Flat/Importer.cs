@@ -66,8 +66,7 @@ public class Importer(
                     MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount), // Tend to be faster with low thread
                 });
 
-                // Reports 100 %, so only for a traversal that completed: a cancelled one also returns
-                // normally, because ShouldVisit turns false
+                // Reports 100 %, so only on completion; a cancelled traversal can also return normally
                 if (!cancellationToken.IsCancellationRequested)
                 {
                     visitor.Finish();

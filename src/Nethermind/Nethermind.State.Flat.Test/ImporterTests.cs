@@ -112,7 +112,7 @@ public class ImporterTests
     {
         (Importer importer, InterfaceLogger logger) = CreateImporterWithInfoLogger();
 
-        // The state root is not in node storage, so the traversal fails on its first node
+        // Unknown state root, so the traversal fails on its first node
         await Assert.ThatAsync(async () => await importer.Copy(new StateId(0, TestItem.KeccakA)),
             Throws.InstanceOf<TrieException>());
 
@@ -122,7 +122,7 @@ public class ImporterTests
     [Test]
     public async Task Copy_DoesNotReportFullProgressWhenCancelledDuringTheTraversal()
     {
-        // Fixed addresses keep the trie shape deterministic; its depth-1 leaves produce a progress line
+        // Fixed addresses give depth-1 leaves, so a progress line is written mid-traversal
         _stateTree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(1));
         _stateTree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(2));
         _stateTree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(3));
