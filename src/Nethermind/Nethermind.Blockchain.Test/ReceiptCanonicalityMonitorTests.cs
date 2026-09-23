@@ -80,7 +80,29 @@ public class ReceiptCanonicalityMonitorTests
     }
 
     [Test]
-    public void Drops_events_still_queued_for_an_unsubscribed_handler()
+    public void Publishes_new_block_when_reading_the_removed_block_fails()
+    {
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, LimboLogs.Instance);
+
+        Block removed = Build.A.Block.WithNumber(1).WithExtraData([1]).TestObject;
+        Block added = Build.A.Block.WithNumber(1).TestObject;
+        receiptStorage.Get(removed).Returns(_ => throw new InvalidOperationException());
+        receiptStorage.Get(added).Returns([]);
+
+        using ManualResetEventSlim addedPublished = new();
+        monitor.ReceiptsInserted += (_, e) =>
+        {
+            if (e.BlockHeader.Hash == added.Hash) addedPublished.Set();
+        };
+
+        RaiseNewCanonical(receiptStorage, added, removed);
+
+        Assert.That(addedPublished.Wait(Timeout), Is.True);
+    }
+
+    [Test]
+    public void Drops_events_still_queued_for_an_unsubscribed_handler([Values] bool disposeMonitor)
     {
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         receiptStorage.Get(Arg.Any<Block>()).Returns([]);
@@ -108,7 +130,15 @@ public class ReceiptCanonicalityMonitorTests
         RaiseNewCanonical(receiptStorage, Build.A.Block.WithNumber(2).TestObject);
         Assert.That(secondQueued.Wait(Timeout), Is.True);
 
-        monitor.ReceiptsInserted -= handler;
+        if (disposeMonitor)
+        {
+            monitor.Dispose();
+        }
+        else
+        {
+            monitor.ReceiptsInserted -= handler;
+        }
+
         release.Set();
 
         // Had block 2's event not been dropped, it would be delivered right after block 1's handler returns.

@@ -63,28 +63,31 @@ namespace Nethermind.Blockchain
 
         private void TriggerReceiptInsertedEvent(Block newBlock, Block? previousBlock)
         {
+            if (previousBlock is not null)
+            {
+                Publish(previousBlock, removed: true);
+            }
+
+            Publish(newBlock, removed: false);
+        }
+
+        private void Publish(Block block, bool removed)
+        {
+            // Also skips the receipts read once the monitor is disposed.
+            Subscriber[] subscribers = _subscribers;
+            if (subscribers.Length == 0) return;
+
             try
             {
-                if (previousBlock is not null)
+                ReceiptsEventArgs e = new(block.Header, _receiptStorage.Get(block), removed);
+                foreach (Subscriber subscriber in subscribers)
                 {
-                    TxReceipt[] removedReceipts = _receiptStorage.Get(previousBlock);
-                    Publish(new ReceiptsEventArgs(previousBlock.Header, removedReceipts, true));
+                    subscriber.Enqueue(this, e);
                 }
-
-                TxReceipt[] insertedReceipts = _receiptStorage.Get(newBlock);
-                Publish(new ReceiptsEventArgs(newBlock.Header, insertedReceipts));
             }
             catch (Exception exception)
             {
-                if (_logger.IsError) _logger.Error($"Couldn't correctly trigger receipt event. New block {newBlock.ToString(Block.Format.FullHashAndNumber)}, Prev block {previousBlock?.ToString(Block.Format.FullHashAndNumber)}.", exception);
-            }
-        }
-
-        private void Publish(ReceiptsEventArgs e)
-        {
-            foreach (Subscriber subscriber in _subscribers)
-            {
-                subscriber.Enqueue(this, e);
+                if (_logger.IsError) _logger.Error($"Couldn't correctly trigger receipt event for {(removed ? "removed" : "new")} block {block.ToString(Block.Format.FullHashAndNumber)}.", exception);
             }
         }
 
