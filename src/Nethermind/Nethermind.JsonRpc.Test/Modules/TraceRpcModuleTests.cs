@@ -98,8 +98,11 @@ public class TraceRpcModuleTests
         else
         {
             string expected = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", new { fromBlock = "0x1", toBlock });
-            Assert.That(response, Is.EqualTo(expected));
-            Assert.That(result.GetArrayLength(), Is.GreaterThan(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Is.EqualTo(expected));
+                Assert.That(result.GetArrayLength(), Is.GreaterThan(0));
+            }
         }
     }
 
@@ -113,11 +116,8 @@ public class TraceRpcModuleTests
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
         long headNumber = (long)blockchain.BlockTree.Head!.Number;
         long missingStateNumber = headNumber - missingStateOffset;
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.HasStateForBlock(Arg.Any<BlockHeader>())
-            .Returns(call => call.Arg<BlockHeader>().Number != (ulong)missingStateNumber);
-        using ILifetimeScope scope = blockchain.Container.BeginLifetimeScope(builder => builder
-            .AddSingleton<IBlockchainBridge>(bridge).AddSingleton<TraceModuleFactory>());
+        using ILifetimeScope scope = WithStateAvailability(blockchain,
+            header => header.Number != (ulong)missingStateNumber);
         ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
 
         // Cover unavailable state at either end of the range and at its initial parent.
@@ -140,16 +140,86 @@ public class TraceRpcModuleTests
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         ulong headNumber = blockchain.BlockTree.Head!.Number;
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(false);
-        using ILifetimeScope scope = blockchain.Container.BeginLifetimeScope(builder => builder
-            .AddSingleton<IBlockchainBridge>(bridge).AddSingleton<TraceModuleFactory>());
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => false);
         ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
 
         string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
             new { fromBlock = $"0x{headNumber:x}", toBlock = $"0x{headNumber - 2:x}" });
         Assert.That(response, Is.EqualTo(
             $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidInput},\"message\":\"From block number: {headNumber} is greater than to block number {headNumber - 2}\"}},\"id\":67}}"));
+    }
+
+    private static ILifetimeScope WithStateAvailability(TestRpcBlockchain blockchain, Func<BlockHeader, bool> hasState)
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(call => hasState(call.Arg<BlockHeader>()));
+        return blockchain.Container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IBlockchainBridge>(bridge).AddSingleton<TraceModuleFactory>());
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Trace_filter_observes_timeout_during_state_preflight([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        TimeoutTest.TrackingCancellationTokenSource timeout = TimeoutTest.RentTrackingTimeoutSourceForNextRequest();
+        int stateChecks = 0;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ =>
+        {
+            stateChecks++;
+            timeout.Cancel();
+            return true;
+        });
+        try
+        {
+            ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+            Assert.Throws<OperationCanceledException>(() => module.trace_filter(new TraceFilterForRpc
+            {
+                FromBlock = new BlockParameter(1),
+                ToBlock = BlockParameter.Latest
+            }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stateChecks, Is.EqualTo(1));
+                Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            TimeoutTest.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Trace_filter_keeps_preflight_timeout_for_deferred_execution()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+        TimeoutTest.TrackingCancellationTokenSource timeout = TimeoutTest.RentTrackingTimeoutSourceForNextRequest();
+        try
+        {
+            using (ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_filter(new TraceFilterForRpc
+            {
+                FromBlock = new BlockParameter(1),
+                ToBlock = BlockParameter.Latest
+            }))
+            {
+                Assert.That(timeout.DisposeCount, Is.Zero);
+                timeout.Cancel();
+                Assert.Throws<OperationCanceledException>(() => result.Data.ToArray());
+            }
+            Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            TimeoutTest.DisposeIfNotAlreadyObserved(timeout);
+        }
     }
 
     [Test]
