@@ -19,6 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IReceiptMonitor _receiptCanonicalityMonitor;
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
+        private readonly bool _isBlockHashFilter;
 
         public LogsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -51,12 +52,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (_logger.IsTrace) _logger.Trace($"Logs Subscription {Id}: Argument \"filter\" was null and created LogFilter with arguments: FromBlock: BlockParameter.Latest, ToBlock: BlockParameter.Latest");
             }
 
+            _isBlockHashFilter = _filter.FromBlock.Equals(_filter.ToBlock);
             _receiptCanonicalityMonitor.ReceiptsInserted += OnReceiptsInserted;
             if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
 
         /// <remarks>
-        /// Filtered before queueing, so the send queue holds one entry per notification and retains no receipts.
+        /// Filtered before queueing, so a queued block retains no receipts and a block without matches is not queued.
+        /// A block's logs are queued as one entry, so a log-heavy block cannot overflow the queue of a client that keeps up.
         /// </remarks>
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
@@ -67,17 +70,21 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 return;
             }
 
-            foreach (FilterLog filterLog in GetFilterLogs(blockHeader, e.TxReceipts, e.WasRemoved))
+            FilterLog[] filterLogs = [.. GetFilterLogs(blockHeader, e.TxReceipts, e.WasRemoved)];
+            if (filterLogs.Length > 0)
             {
-                ScheduleAction(() => PublishLog(filterLog));
+                ScheduleAction(() => PublishLogs(filterLogs));
             }
         }
 
-        private async Task PublishLog(FilterLog filterLog)
+        private async Task PublishLogs(FilterLog[] filterLogs)
         {
-            using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
-            await JsonRpcDuplexClient.SendJsonRpcResult(result);
-            if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
+            foreach (FilterLog filterLog in filterLogs)
+            {
+                using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
+                await JsonRpcDuplexClient.SendJsonRpcResult(result);
+                if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
+            }
         }
 
         /// <summary>
@@ -93,7 +100,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             BlockParameterType.Latest or BlockParameterType.Pending => true,
             BlockParameterType.Earliest when lowerBound => true,
             BlockParameterType.BlockNumber => IsOnSide(header.Number, bound.BlockNumber, lowerBound),
-            BlockParameterType.BlockHash when _filter.FromBlock.Equals(_filter.ToBlock) => header.Hash == bound.BlockHash,
+            BlockParameterType.BlockHash when _isBlockHashFilter => header.Hash == bound.BlockHash,
             _ => IsOnSide(header.Number, _blockTree.FindHeader(bound)?.Number, lowerBound),
         };
 

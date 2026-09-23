@@ -644,6 +644,24 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
+        [Test]
+        public void Subscription_does_not_disconnect_a_client_on_one_log_heavy_block()
+        {
+            _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>())
+                .Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
+            ReceiptsEventArgs receiptsEvent = MatchingLogEvent(Build.A.BlockHeader.WithNumber(1).TestObject, logCount: Subscription.MaxQueuedMessages + 2);
+            using ManualResetEventSlim disposed = new();
+            _jsonRpcDuplexClient.When(c => c.Dispose()).Do(_ => disposed.Set());
+
+            using (new LogsSubscription(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, null))
+            {
+                receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+
+                Assert.That(disposed.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
+            }
+        }
+
         private void SetHead(ulong number)
         {
             BlockHeader head = Build.A.BlockHeader.WithNumber(number).TestObject;
@@ -651,10 +669,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(head);
         }
 
-        private static ReceiptsEventArgs MatchingLogEvent(BlockHeader header, bool removed = false)
+        private static ReceiptsEventArgs MatchingLogEvent(BlockHeader header, bool removed = false, int logCount = 1)
         {
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            TxReceipt[] receipts = { Build.A.Receipt.WithBlockNumber(header.Number).WithBlockHash(header.Hash).WithLogs(logEntry).TestObject };
+            TxReceipt[] receipts = { Build.A.Receipt.WithBlockNumber(header.Number).WithBlockHash(header.Hash).WithLogs(Enumerable.Repeat(logEntry, logCount).ToArray()).TestObject };
             return new ReceiptsEventArgs(header, receipts, removed);
         }
 

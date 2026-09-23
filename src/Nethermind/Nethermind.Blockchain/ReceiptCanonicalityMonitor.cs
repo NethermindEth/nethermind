@@ -58,6 +58,10 @@ namespace Nethermind.Blockchain
             {
                 Publish(block, removed: true);
             }
+            else if (_logger.IsDebug)
+            {
+                _logger.Debug($"Removed block {e.Header.ToString(BlockHeader.Format.FullHashAndNumber)} not found, its removed logs are not published.");
+            }
         });
 
         private void Enqueue(Action action)

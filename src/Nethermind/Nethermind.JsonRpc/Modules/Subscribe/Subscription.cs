@@ -38,6 +38,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public abstract string Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
 
+        /// <summary>
+        /// Maximum number of queued sends; each is one notification or batch, e.g. one new head or one block's logs.
+        /// </summary>
         internal const int MaxQueuedMessages = 20_000;
 
         private volatile bool _overflowed;
@@ -69,7 +72,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 }, default);
 
         /// <remarks>
-        /// A client that falls <see cref="MaxQueuedMessages"/> messages behind is disconnected rather than buffered
+        /// A client that falls <see cref="MaxQueuedMessages"/> sends behind is disconnected rather than buffered
         /// without limit, and its backlog is dropped.
         /// </remarks>
         protected void ScheduleAction(Func<Task> action)
