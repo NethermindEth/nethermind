@@ -5,8 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -1312,19 +1314,31 @@ public class EthSimulateTestsBlocksAndTransactions
     /// <summary>
     /// Regression test for #13683: under EIP-7843 <c>SLOTNUM</c> must return a value instead of faulting
     /// with an invalid instruction, and the value must advance block by block across a multi-block
-    /// simulation. Covers both an already-post-fork chain and a pre-fork head whose block override
-    /// activates the fork.
+    /// simulation. Covers an already-post-fork chain, a pre-fork head whose block override activates the
+    /// fork, and a chain whose spec carries a beacon genesis, where the slot is the beacon chain's own.
     /// </summary>
-    [TestCase(false, TestName = "slotnum_on_post_activation_chain")]
-    [TestCase(true, TestName = "slotnum_with_time_override_activating_the_fork")]
-    public async Task eth_simulateV1_slotnum_returns_a_slot_advancing_per_block(bool crossFork)
+    [TestCase(false, false, TestName = "slotnum_on_post_activation_chain")]
+    [TestCase(true, false, TestName = "slotnum_with_time_override_activating_the_fork")]
+    [TestCase(false, true, TestName = "slotnum_derived_from_the_beacon_genesis")]
+    public async Task eth_simulateV1_slotnum_returns_a_slot_advancing_per_block(bool crossFork, bool withBeaconGenesis)
     {
         const ulong amsterdamTimestamp = 2_000_000_000;
+        const ulong headBeaconSlot = 13_000_000;
         const int blockCount = 3;
 
         TestRpcBlockchain chain;
         ulong? firstBlockTime = null;
-        if (crossFork)
+        ulong firstSlot = 0;
+        if (withBeaconGenesis)
+        {
+            TestSpecProvider specProvider = new(Amsterdam.Instance) { AllowTestChainOverride = false };
+            chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+            ulong secondsPerSlot = chain.Container.Resolve<IBlocksConfig>().SecondsPerSlot;
+            // Place the beacon genesis so the head sits on a realistic mainnet-scale slot.
+            specProvider.BeaconChainGenesisTimestamp = chain.BlockFinder.Head!.Header.Timestamp - headBeaconSlot * secondsPerSlot;
+            firstSlot = headBeaconSlot + 1;
+        }
+        else if (crossFork)
         {
             CustomSpecProvider specProvider = new(
                 ((ForkActivation)0, Prague.Instance),
@@ -1375,7 +1389,7 @@ public class EthSimulateTestsBlocksAndTransactions
             Assert.That(call.Status, Is.EqualTo((ulong)ResultType.Success), call.Error?.Message);
             Assert.That(call.ReturnData, Is.Not.Null);
             UInt256 returnedSlot = new(call.ReturnData!, isBigEndian: true);
-            Assert.That((ulong)returnedSlot, Is.EqualTo((ulong)i), $"SLOTNUM in simulated block {i}");
+            Assert.That((ulong)returnedSlot, Is.EqualTo(firstSlot + (ulong)i), $"SLOTNUM in simulated block {i}");
         }
     }
 }

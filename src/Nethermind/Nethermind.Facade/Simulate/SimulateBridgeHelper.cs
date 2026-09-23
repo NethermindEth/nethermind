@@ -300,9 +300,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
         if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
-        // EIP-7843: advance the parent's slot, seeding 0 where the parent has none so SLOTNUM stays executable
-        // (no real slot is derivable here), and clear it pre-fork so the header is never encoded with a slot.
-        result.SlotNumber = spec.IsEip7843Enabled ? result.SlotNumber ?? (parent.SlotNumber + 1) ?? 0 : null;
+        // EIP-7843: the beacon slot of the block's overridden timestamp, else the parent's advanced, else a synthetic 0 so
+        // SLOTNUM stays executable; cleared pre-fork so the header is never encoded with a slot.
+        result.SlotNumber = spec.IsEip7843Enabled
+            ? DeriveSlot(specProvider, parent, block.BlockOverrides?.Time ?? result.Timestamp) ?? result.SlotNumber ?? (parent.SlotNumber + 1) ?? 0
+            : null;
 
         // In non-validation mode base fee is set to 0 if it is not overridden.
         // This is because it creates an edge case in EVM where gasPrice < baseFee.
@@ -321,6 +323,32 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         block.BlockOverrides?.ApplyOverrides(result);
 
         return (result, spec);
+    }
+
+    /// <summary>
+    /// Returns the beacon chain slot containing <paramref name="timestamp"/>, or <c>null</c> when it cannot be derived.
+    /// </summary>
+    /// <remarks>
+    /// <c>slot = (timestamp - beacon genesis) / seconds per slot</c>, exact because every post-merge block sits on that grid.
+    /// A parent off the grid, or carrying a slot that disagrees with it, means the configured slot length or genesis is not
+    /// this chain's, so the value would be wrong; returning <c>null</c> lets the caller fall back instead.
+    /// </remarks>
+    private ulong? DeriveSlot(ISpecProvider specProvider, BlockHeader parent, ulong timestamp)
+    {
+        ulong secondsPerSlot = blocksConfig.SecondsPerSlot;
+        if (specProvider.BeaconChainGenesisTimestamp is not { } genesis
+            || secondsPerSlot == 0
+            || parent.Timestamp < genesis
+            || timestamp < genesis)
+        {
+            return null;
+        }
+
+        ulong parentOffset = parent.Timestamp - genesis;
+        bool parentOnGrid = parentOffset % secondsPerSlot == 0
+            && (parent.SlotNumber is not { } parentSlot || parentSlot == parentOffset / secondsPerSlot);
+
+        return parentOnGrid ? (timestamp - genesis) / secondsPerSlot : null;
     }
 
     private static ForkActivation GetSimulatedActivation(BlockOverride? overrides, BlockHeader header) =>
