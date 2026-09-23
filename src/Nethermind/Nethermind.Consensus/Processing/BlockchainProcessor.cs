@@ -356,6 +356,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
+        if (_options.PreferPerformanceCores && PerformanceCores.Cpus.Length > 0 && _logger.IsInfo)
+            _logger.Info($"Block processing runs on the performance cores only: CPUs {string.Join(',', PerformanceCores.Cpus.ToArray())}");
+
         _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
@@ -524,6 +527,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
+            // Released within the iteration, before the loop awaits and the thread can go back to the pool.
+            using PerformanceCores.Scope performanceCores = _options.PreferPerformanceCores ? PerformanceCores.NarrowCurrentThread() : default;
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
@@ -857,5 +862,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         public bool StoreReceiptsByDefault { get; set; } = true;
 
         public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
+
+        /// <summary>Keeps block processing on the performance cores of a hybrid CPU; see <see cref="PerformanceCores"/>.</summary>
+        public bool PreferPerformanceCores { get; set; }
     }
 }
