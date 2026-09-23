@@ -168,9 +168,24 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(NetworkNode networkNode)
         {
+            bool isTrusted = networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode);
+            if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing) &&
+                (networkNode.IsEnode ||
+                 (existing.Node.Enr is { } current && existing.Node.IsVerifiedEnr(current) &&
+                  current.EnrSequence >= networkNode.Enr!.EnrSequence)))
+            {
+                if (isTrusted && !existing.Node.IsTrusted)
+                {
+                    existing.Node.IsTrusted = true;
+                    if (_logger.IsDebug) DebugPromoted(existing.Node, "trusted");
+                }
+
+                return existing;
+            }
+
             Node node = new(networkNode)
             {
-                IsTrusted = networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode)
+                IsTrusted = isTrusted
             };
             return GetOrAdd(node);
         }

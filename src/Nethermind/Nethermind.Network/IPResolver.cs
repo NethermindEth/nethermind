@@ -34,6 +34,7 @@ public class IPResolver : IIPResolver, IAsyncDisposable
 
     private readonly Lock _lock = new();
     private Task<IIPResolver.NethermindIp>? _resolveTask;
+    // Resolution I/O is serialized: only the initial operation or a refresh can rearm the one-shot timer.
     private Task _resolutionWorker = Task.CompletedTask;
     private Task? _disposeTask;
     private bool _disposed;
@@ -103,8 +104,8 @@ public class IPResolver : IIPResolver, IAsyncDisposable
         IIPResolver.NethermindIp previous;
         lock (_lock)
         {
-            if (_disposed) return;
-            previous = _resolveTask!.Result;
+            if (_disposed || _resolveTask is not { IsCompletedSuccessfully: true } resolved) return;
+            previous = resolved.Result;
             completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _resolutionWorker = completion.Task;
         }

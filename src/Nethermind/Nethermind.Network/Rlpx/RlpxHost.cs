@@ -377,6 +377,7 @@ namespace Nethermind.Network.Rlpx
                 record.EnrSequence < node.HighestObservedEnrSequence ||
                 !Node.TryFromEnr(record, alternateFamily, out alternate) ||
                 alternate.Id != node.Id || alternate.Address.Equals(node.Address) ||
+                (IPAddress.IsLoopback(alternate.Address.Address) && !IPAddress.IsLoopback(node.Address.Address)) ||
                 !IsDialAddressAcceptable(alternate.Address.Address, allowNonRoutable))
             {
                 alternate = null;

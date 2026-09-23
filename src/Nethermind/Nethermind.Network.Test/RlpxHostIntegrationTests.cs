@@ -737,6 +737,27 @@ public class RlpxHostIntegrationTests
         Assert.That(RlpxHost.TryCreateAlternateDialNode(stale, allowNonRoutable: false, out _), Is.False);
     }
 
+    [TestCase("10.0.0.1", "::1", false)]
+    [TestCase("fc00::1", "127.0.0.1", false)]
+    [TestCase("127.0.0.1", "::1", true)]
+    [TestCase("::1", "127.0.0.1", true)]
+    [TestCase("10.0.0.1", "fc00::1", true)]
+    [TestCase("fc00::1", "10.0.0.1", true)]
+    public void Alternate_dial_only_allows_loopback_from_loopback(string primaryAddress, string alternateAddress, bool expected)
+    {
+        IPAddress primary = IPAddress.Parse(primaryAddress);
+        IPAddress alternate = IPAddress.Parse(alternateAddress);
+        bool ipv4Primary = primary.AddressFamily == AddressFamily.InterNetwork;
+        NodeRecord record = CreateDualStackRecord(
+            ipv4Primary ? primary : alternate, 30303,
+            ipv4Primary ? alternate : primary, 30304,
+            sequence: 0);
+        Assert.That(Node.TryFromEnr(record, primary.AddressFamily, out Node? node), Is.True);
+        Assert.That(node!.SetVerifiedEnr(record), Is.True);
+
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out _), Is.EqualTo(expected));
+    }
+
     [Test]
     public void Alternate_dial_obeys_withdrawal_family_validation_and_routability()
     {

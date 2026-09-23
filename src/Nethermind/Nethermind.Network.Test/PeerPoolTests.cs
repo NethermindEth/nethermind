@@ -366,8 +366,13 @@ public class PeerPoolTests
         }
     }
 
-    [Test]
-    public void GetOrAdd_RestoresPersistedEnrAndMergesItIntoExistingPeer()
+    [TestCase(null, false, 4)]
+    [TestCase(2, true, 4)]
+    [TestCase(8, false, 4)]
+    [TestCase(4, true, 4)]
+    [TestCase(5, true, 5)]
+    [TestCase(2, true, 4, 8)]
+    public void GetOrAdd_RestoresPersistedEnrAndMergesItIntoExistingPeer(int? currentSequence, bool verified, int expectedSequence, int observedSequence = 0)
     {
         PeerPool pool = CreatePeerPool(
             new TestNodeSource(),
@@ -376,6 +381,11 @@ public class PeerPoolTests
             maxCandidatePeerCount: 10);
         NodeRecord persistedRecord = CreateSignedEnr(enrSequence: 4, includeIpv6: true);
         Peer existing = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "8.8.8.8", 30303));
+        if (currentSequence is int sequence)
+        {
+            pool.GetOrAdd(CreateEnrNode(CreateSignedEnr((ulong)sequence, includeIpv6: false), verified));
+        }
+        existing.Node.ObserveEnrSequence((ulong)observedSequence);
 
         Peer restored = pool.GetOrAdd(new NetworkNode(persistedRecord.ToString()));
 
@@ -383,8 +393,34 @@ public class PeerPoolTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(restored, Is.SameAs(existing));
-            Assert.That(existing.Node.Enr!.EnrSequence, Is.EqualTo(4));
+            Assert.That(existing.Node.Enr!.EnrSequence, Is.EqualTo(expectedSequence));
             Assert.That(existing.Node.IsVerifiedEnr(existing.Node.Enr), Is.True);
+            Assert.That(existing.Node.HighestObservedEnrSequence, Is.EqualTo(Math.Max(expectedSequence, observedSequence)));
+        }
+    }
+
+    [Test]
+    public void GetOrAdd_ExistingNetworkNodeDoesNotAllocate([Values] bool enr)
+    {
+        PeerPool pool = CreatePeerPool(
+            new TestNodeSource(),
+            new TrustedNodesManager("trusted-nodes.json", LimboLogs.Instance),
+            maxActivePeers: 10,
+            maxCandidatePeerCount: 10);
+        NetworkNode networkNode = enr
+            ? new NetworkNode(CreateSignedEnr(4, includeIpv6: true).ToString())
+            : new NetworkNode(TestItem.PublicKeyA, "8.8.8.8", 30303);
+        Peer existing = pool.GetOrAdd(networkNode);
+        for (int i = 0; i < 1000; i++) pool.GetOrAdd(networkNode);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++) pool.GetOrAdd(networkNode);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.Zero);
+            Assert.That(pool.GetOrAdd(networkNode), Is.SameAs(existing));
         }
     }
 
