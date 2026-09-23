@@ -261,11 +261,14 @@ public class FlatDbManagerTests
         _persistenceManager.Received(1).LeaseReader();
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task GatherReadOnlySnapshotBundle_FullScanNeverSharesCachedReaders(bool populateCacheFirst)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public async Task GatherReadOnlySnapshotBundle_FullScanNeverSharesCachedReaders(bool populateCacheFirst, bool wrapHistory)
     {
         StateId stateId = CreateStateId(10);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(stateId);
         _persistenceManager.LeaseReader(Arg.Any<ReaderFlags>()).Returns(_ =>
         {
             IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -275,7 +278,8 @@ public class FlatDbManagerTests
         _snapshotRepository.AssembleSnapshots(stateId, stateId, Arg.Any<int>())
             .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
 
-        await using FlatDbManager manager = CreateManager();
+        await using FlatDbManager inner = CreateManager();
+        IFlatDbManager manager = wrapHistory ? WrapHistory(inner) : inner;
         if (populateCacheFirst)
         {
             using ReadOnlySnapshotBundle cached = manager.GatherReadOnlySnapshotBundle(stateId);
