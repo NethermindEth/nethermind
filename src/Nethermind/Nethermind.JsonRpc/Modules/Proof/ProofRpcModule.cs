@@ -92,14 +92,23 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Transaction[] txs = block.Transactions;
 
-            using Scope<ITracer> scope = tracerEnv.BuildAndOverride(blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
+            // Without the parent's state the retrace fails on its first transaction with a misleading execution error.
+            BlockHeader? parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+            if (parent is null || !blockchainBridge.HasStateForBlock(parent))
+            {
+                return ResultWrapper<ReceiptWithProof>.Fail(
+                    $"No state available to re-execute block {block.Header.ToString(BlockHeader.Format.Short)} for a receipt proof",
+                    ErrorCodes.ResourceUnavailable);
+            }
+
+            using Scope<ITracer> scope = tracerEnv.BuildAndOverride(parent);
 
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             scope.Component.Trace(block, receiptsTracer);
 
             TxReceipt[] tracedReceipts = receiptsTracer.TxReceipts.ToArray();
-            // A retrace that does not reproduce every transaction still yields a proof of the wrong trie, served as a success.
+            // Backstop: a retrace that does not reproduce every transaction would still yield a proof of the wrong trie.
             if (tracedReceipts.Length != txs.Length)
             {
                 return ResultWrapper<ReceiptWithProof>.Fail(
@@ -118,11 +127,16 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 block.Timestamp,
                 txs[txIndex].GetGasInfo(spec, block.Header),
                 logIndexStart);
-            // ReceiptForRpc (and each LogEntryForRpc) copies the stored Index; the proofs below attest to the block-derived position.
+            // ReceiptForRpc (and each LogEntryForRpc) copies the stored Index and block coordinates; the proofs below
+            // attest to the resolved block and the transaction's position in it.
             receiptWithProof.Receipt.TransactionIndex = txIndex;
+            receiptWithProof.Receipt.BlockHash = block.Hash;
+            receiptWithProof.Receipt.BlockNumber = block.Number;
             foreach (LogEntryForRpc log in receiptWithProof.Receipt.Logs)
             {
                 log.TransactionIndex = txIndex;
+                log.BlockHash = block.Hash!;
+                log.BlockNumber = block.Number;
             }
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, tracedReceipts, txIndex);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), txIndex);

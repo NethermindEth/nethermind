@@ -235,6 +235,8 @@ public class ProofRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receiptWithProof.Receipt.TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex));
+            Assert.That(receiptWithProof.Receipt.BlockHash, Is.EqualTo(block.Hash));
+            Assert.That(receiptWithProof.Receipt.BlockNumber, Is.EqualTo(block.Number));
             Assert.That(receiptWithProof.Receipt.Logs, Has.Length.EqualTo(StaleReceiptIndexLogsOnRequested));
             // The starting offset is identical under both scenarios, so the stale stored Index moves nothing; and
             // non-zero, where the retraced block emits no logs at all, so the count came from the stored set the
@@ -243,6 +245,8 @@ public class ProofRpcModuleTests
             {
                 Assert.That(receiptWithProof.Receipt.Logs[i].LogIndex, Is.EqualTo(StaleReceiptIndexLogsBefore + i), $"log {i} index");
                 Assert.That(receiptWithProof.Receipt.Logs[i].TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex), $"log {i} transaction index");
+                Assert.That(receiptWithProof.Receipt.Logs[i].BlockHash, Is.EqualTo(block.Hash), $"log {i} block hash");
+                Assert.That(receiptWithProof.Receipt.Logs[i].BlockNumber, Is.EqualTo(block.Number), $"log {i} block number");
             }
             Assert.That(receiptWithProof.TxProof, Is.EqualTo(TxTrie.CalculateProof(block.Transactions, StaleReceiptIndexTxIndex)));
             Assert.That(receiptWithProof.ReceiptProof, Is.EqualTo(expectedReceiptProof));
@@ -266,11 +270,10 @@ public class ProofRpcModuleTests
     }
 
     /// <remarks>
-    /// <c>BlockchainProcessor.Process</c> returns null after only a debug log when the parent is not a known block —
-    /// what a node that expired the parent header while keeping the transaction index and receipts reaches — leaving
-    /// the receipts tracer empty. <c>ReceiptTrie.CalculateReceiptProofs</c> does not throw on that: the proof is built
-    /// by walking toward the encoded index, not by indexing the receipt array, so without the guard the caller is
-    /// served a Success whose <c>receiptProof</c> is an empty array.
+    /// Pins the receipt-count backstop, which the real tracer does not reach once the parent check has passed, hence
+    /// the substituted <see cref="ITracer"/>. <c>ReceiptTrie.CalculateReceiptProofs</c> does not throw on a short set:
+    /// it walks toward the encoded index rather than indexing the array, so without the backstop the caller is served
+    /// a Success whose <c>receiptProof</c> is an empty array.
     /// </remarks>
     [Test]
     public async Task When_the_retrace_yields_no_receipts_transaction_receipt_fails_instead_of_proving_an_empty_trie()
@@ -292,6 +295,38 @@ public class ProofRpcModuleTests
         scopeCloser.Received(1).Dispose();
         Assert.That(response, Is.EqualTo(
             """{"jsonrpc":"2.0","error":{"code":-32002,"message":"Unable to re-execute block 1 (0xda4b91...9f813d) for a receipt proof"},"id":67}"""));
+    }
+
+    /// <remarks>
+    /// Runs the real tracer environment. Without the parent check, an unknown parent retraces over empty state and
+    /// fails on the first transaction with "insufficient funds", and a pruned one with a missing trie node.
+    /// </remarks>
+    [Test]
+    public void When_parent_state_is_unavailable_transaction_receipt_fails_with_resource_unavailable([Values] bool parentHeaderKnown)
+    {
+        Block block = _blockTree.FindBlock(1)!;
+        Hash256 txHash = block.Transactions[0].Hash!;
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(txHash).Returns(block.Hash);
+        receiptFinder.Get(Arg.Any<Block>()).Returns(_receiptStorage.Get(block));
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        if (parentHeaderKnown)
+        {
+            // A known header whose state root the node no longer holds.
+            blockFinder.FindHeader(block.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+                .Returns(Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakH).TestObject);
+        }
+        RebuildContainerWith(receiptFinder, blockFinder: blockFinder);
+
+        ResultWrapper<ReceiptWithProof?> result = _proofRpcModule.proof_getTransactionReceipt(txHash, false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        }
     }
 
     /// <summary>
@@ -457,7 +492,8 @@ public class ProofRpcModuleTests
             logs[i] = Build.A.LogEntry.TestObject;
         }
 
-        return new TxReceipt { TxHash = txHash, Index = index, Logs = logs, Bloom = new Bloom(logs) };
+        // Block coordinates of another block, as a stale blob would carry.
+        return new TxReceipt { TxHash = txHash, Index = index, Logs = logs, Bloom = new Bloom(logs), BlockHash = TestItem.KeccakH, BlockNumber = 5 };
     }
 
     public enum ProofMethod
