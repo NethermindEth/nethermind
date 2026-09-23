@@ -130,39 +130,25 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return writer.CopyRange(entries, _offsets, _lengths, startPosition, lastPosition);
     }
 
-    /// <summary>Reads the node at <paramref name="position"/>, or an empty subtree when the group holds none there.</summary>
-    /// <remarks>
-    /// A position the group leaves implicit is rebuilt from its children, which is why composition claims an untouched
-    /// entry through <see cref="Take"/> rather than reading its encoding. Acquiring neither consumes the position nor
-    /// insists that it is occupied, so it is the read behind both <see cref="Take"/> and the tests that pin those two
-    /// distinctions.
-    /// </remarks>
-    internal TrieUpdater<TKey, TPath>.Subtree Acquire(scoped in PbtTraversalPath path, int position)
+    /// <summary>Takes the node stored at <paramref name="position"/> as the bytes composition writes back unchanged, or empty when the group stores none there.</summary>
+    /// <remarks>The hash is the seeded link hash where a link named this node; composition otherwise hashes the encoding the once it is needed.</remarks>
+    internal TrieUpdater<TKey, TPath>.DirectCopySubtree TakeDirectCopy(scoped in PbtTraversalPath path, int position)
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
-        ValueHash256 knownHash = (_hashed & (1u << position)) != 0 ? _hashes[position] : default;
-        if (encoding.IsEmpty)
-        {
-            int width = PbtFourLevelGroupGeometry.WidthOf(position);
-            if (width is 1 or PbtFourLevelGroupGeometry.BoundarySlots) return default;
-            GetChildHashes(path, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
-            return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.LocalPathOf(position), left, right, knownHash);
-        }
-        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
-        // The only stored leaf is the root of a single-leaf tree, whose hash is this group's identity.
-        if (node.IsLeaf) return new(TKey.Create(node.Key), _groupHash);
-        return new(encoding, PbtFourLevelGroupGeometry.LocalPathOf(position), knownHash);
+        if (encoding.IsEmpty) return default;
+        Taken |= 1U << position;
+        return new(encoding, PbtFourLevelGroupGeometry.LocalPathOf(position), SeededHash(position));
     }
 
-    /// <summary>Records the hash a parent node holds for <paramref name="position"/>, so acquiring it needs no rehash.</summary>
+    /// <summary>Records the hash a parent node holds for <paramref name="position"/>, so composing it needs no rehash.</summary>
     internal void SeedHash(int position, in ValueHash256 hash)
     {
         _hashes[position] = hash;
         _hashed |= 1u << position;
     }
 
-    /// <summary>Whether the hash of the node at <paramref name="position"/> is already known.</summary>
-    internal readonly bool IsHashSeeded(int position) => (_hashed & (1u << position)) != 0;
+    /// <summary>The hash a parent's link held for the node at <paramref name="position"/>, or default when no link named it.</summary>
+    internal readonly ValueHash256 SeededHash(int position) => (_hashed & (1u << position)) != 0 ? _hashes[position] : default;
 
     /// <summary>The positions this frame stores an encoding at, loading it if it has not been read yet.</summary>
     internal uint StoredPositions(scoped in PbtTraversalPath path)
@@ -228,7 +214,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     /// <see cref="GetHash"/> for both children of an omitted branch; two stored encodings that still need
     /// hashing are hashed together.
     /// </summary>
-    private void GetChildHashes(scoped in PbtTraversalPath path, int leftPosition, int rightPosition, out ValueHash256 left, out ValueHash256 right)
+    internal void GetChildHashes(scoped in PbtTraversalPath path, int leftPosition, int rightPosition, out ValueHash256 left, out ValueHash256 right)
     {
         uint bits = (1u << leftPosition) | (1u << rightPosition);
         if ((_hashed & bits) == 0)
@@ -291,16 +277,4 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     {
         private int _element;
     }
-
-    internal TrieUpdater<TKey, TPath>.Subtree Take(scoped in PbtTraversalPath path, PbtNodeGroupWriter<TPath> writer, int position)
-    {
-        Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
-        TrieUpdater<TKey, TPath>.Subtree node = (Taken & (1U << position)) == 0
-            ? Acquire(path, position)
-            : default;
-        if (node.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
-        Taken |= 1U << position;
-        return node;
-    }
-
 }

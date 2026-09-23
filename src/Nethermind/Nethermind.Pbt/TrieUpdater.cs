@@ -20,7 +20,7 @@ public static partial class TrieUpdater
 {
     internal static int GetBit(ReadOnlySpan<byte> bytes, int bit) => (bytes[bit >> 3] >> (7 - (bit & 7))) & 1;
 
-    internal enum NodeKind : byte { Empty, Original, Leaf, Branch }
+    internal enum NodeKind : byte { Empty, Leaf, Branch }
 
     /// <summary>Where a boundary node's complete key is read from, which is also whether it is a leaf at all.</summary>
     internal enum LeafSource : byte
@@ -616,16 +616,41 @@ internal static partial class TrieUpdater<TKey, TPath>
         return frontier.TakeBoundaryNode(ref reader, path, slot);
     }
 
-    /// <inheritdoc cref="TakeBoundary"/>
-    /// <remarks>Composition places the node against the cursor rather than descending into it.</remarks>
-    private static TraversalSubtree TakeBoundarySubtree(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
-        scoped ref Frontier frontier, int slot)
+    /// <summary>Takes the entry at <paramref name="position"/> as the node composition stores there, or empty when the frontier holds none.</summary>
+    /// <remarks>
+    /// The frontier hands out a boundary node, a fold's result or a direct copy; this is where each becomes a node
+    /// placed against the cursor. A boundary node is the only one anchored above the cursor, so it is the only one
+    /// that owns the compressed prefix below the cursor that places it. A stored node is copied, and a position the
+    /// group leaves implicit is rebuilt from the children it does store.
+    /// </remarks>
+    internal static TraversalSubtree TakeSubtree(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
+        scoped ref Frontier frontier, int position)
     {
-        uint bit = 1u << BoundaryPosition(slot);
+        uint bit = 1u << position;
         if ((frontier.Mask & bit) == 0) return default;
-        TraversalSubtree result = frontier.Take(ref reader, writer, path, slot);
+        Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
+        TraversalSubtree taken = frontier.Take(ref reader, path, PbtFourLevelGroupGeometry.LocalPathOf(position).Slot, out BoundaryNode boundary);
         frontier.Mask &= ~bit;
-        return result;
+        if (!boundary.IsEmpty) return new TraversalSubtree(path, boundary.ToOwnedSubtree(path, path.BitDepth).Node);
+        return taken.IsEmpty ? ImplicitBranch(ref reader, path, position) : taken;
+    }
+
+    /// <summary>The branch at <paramref name="position"/> that the group leaves implicit, rebuilt from the children it stores.</summary>
+    /// <remarks>
+    /// Only an interior prefixless branch is ever left out (<see cref="PbtNodeGroupCodec.ShouldOmit"/>), so a
+    /// boundary position or the root with nothing stored, or a child missing, is a corrupt group. The link hash
+    /// decomposition seeded is kept, so the branch is only hashed again if a sibling's deletion promotes it.
+    /// </remarks>
+    private static TraversalSubtree ImplicitBranch(scoped ref GroupFrameReader<TKey, TPath> reader, PbtTraversalPath path, int position)
+    {
+        int width = PbtFourLevelGroupGeometry.WidthOf(position);
+        if (width is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
+        {
+            reader.GetChildHashes(path, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
+            if (left != default && right != default)
+                return new TraversalSubtree(path, new Subtree(PbtFourLevelGroupGeometry.LocalPathOf(position), left, right, reader.SeededHash(position)));
+        }
+        throw new InvalidDataException("A referenced PBT node is missing.");
     }
 
     internal static void SetBoundary(ref Frontier frontier, int slot, ref TraversalSubtree result)
@@ -671,7 +696,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
                 if (width == 2)
                 {
-                    result = TakeBoundarySubtree(ref reader, writer, path, ref frontier, frame.Path.Slot + 1);
+                    result = TakeSubtree(ref reader, writer, path, ref frontier, BoundaryPosition(frame.Path.Slot + 1));
                     if (promoteRight) frameCount--;
                 }
                 else if (promoteRight)
@@ -692,10 +717,9 @@ internal static partial class TrieUpdater<TKey, TPath>
                 frameCount--;
                 continue;
             }
-            if ((frontier.Mask & (1u << position)) != 0)
+            result = TakeSubtree(ref reader, writer, path, ref frontier, position);
+            if (!result.IsEmpty)
             {
-                result = frontier.Take(ref reader, writer, path, frame.Path.Slot);
-                frontier.Mask &= ~(1u << position);
                 // An internal frontier entry is an unchanged subtree reached from the original input.
                 // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
                 if (!result.IsLeaf)
@@ -709,7 +733,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
             frame.Stage = ComposeStage.LeftCompleted;
             if (width == 2)
-                result = TakeBoundarySubtree(ref reader, writer, path, ref frontier, frame.Path.Slot);
+                result = TakeSubtree(ref reader, writer, path, ref frontier, BoundaryPosition(frame.Path.Slot));
             else
                 frames[frameCount++] = new(frame.Path.Left);
         }
@@ -869,7 +893,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     private static void SeedLinkHash(ref GroupFrameReader<TKey, TPath> reader, scoped in PbtTraversalPath path,
         int bitDepth, uint stored, int position, ref Frontier frontier)
     {
-        if (reader.IsHashSeeded(position)) return;
+        if (reader.SeededHash(position) != default) return;
         NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
         SpineNode node = NodeAt(ref reader, path, frontier.Root, bitDepth, DeepestStoredAbove(stored, position));
         int linkDepth = bitDepth + local.Length;

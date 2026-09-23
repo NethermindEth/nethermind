@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
@@ -48,34 +49,36 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
         }
 
-        /// <summary>Takes the node at <paramref name="slot"/> for composition, which places it against the cursor itself.</summary>
-        /// <remarks>
-        /// A position is acquired through the frame, which rebuilds the prefixless branches its group leaves implicit.
-        /// The input node is the only one anchored above the cursor, so it is the only one that has to own the
-        /// compressed prefix below the cursor that places it.
-        /// </remarks>
-        internal TraversalSubtree Take(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int slot)
+        /// <summary>Takes the entry at <paramref name="slot"/> for composition, as one of the three things a frontier holds.</summary>
+        /// <returns>
+        /// A fold's composed result or the direct copy of the stored node the entry names, or default with
+        /// <paramref name="boundary"/> set when the entry is a boundary node: the input node, or a leaf that it or a
+        /// stored branch inlines. What each becomes at the cursor is composition's to derive.
+        /// </returns>
+        internal TraversalSubtree Take(scoped ref GroupFrameReader<TKey, TPath> reader, PbtTraversalPath path, int slot, out BoundaryNode boundary)
         {
             DecompositionEntry entry = Entries[slot];
-            Entries[slot] = default;
             switch (entry.Source)
             {
                 case EntrySource.Node:
+                    Entries[slot] = default;
+                    boundary = default;
                     return new TraversalSubtree(path, Subtree.Move(ref entry.Node));
                 case EntrySource.AtPosition when entry.SourcePosition != RootSource:
-                    return new TraversalSubtree(path, reader.Take(path, writer, entry.SourcePosition));
-                case EntrySource.AtPosition:
-                    return new TraversalSubtree(path, BoundaryNode.Move(ref Root).ToOwnedSubtree(path, path.BitDepth).Node);
+                    Entries[slot] = default;
+                    boundary = default;
+                    return new TraversalSubtree(path, reader.TakeDirectCopy(path, entry.SourcePosition));
                 default:
-                    bool right = entry.Source == EntrySource.RightLeafOf;
-                    BoundaryNode leaf = entry.SourcePosition == RootSource
-                        ? Root.InlineLeaf(right)
-                        : reader.TakeInlineLeaf(path, entry.SourcePosition, right);
-                    return new TraversalSubtree(path, new Subtree(leaf.LeafKey, leaf.Hash));
+                    boundary = TakeBoundaryNode(ref reader, path, slot);
+                    return default;
             }
         }
 
-        internal void Set(int slot, ref TraversalSubtree result) => Entries[slot] = new DecompositionEntry(ref result.Node);
+        internal void Set(int slot, ref TraversalSubtree result)
+        {
+            Debug.Assert(result.Copy.IsEmpty, "A fold result is composed, never a node still borrowed from a frame.");
+            Entries[slot] = new DecompositionEntry(ref result.Node);
+        }
     }
 
     /// <summary>The source position standing for <see cref="Frontier.Root"/>, which no group position addresses.</summary>
