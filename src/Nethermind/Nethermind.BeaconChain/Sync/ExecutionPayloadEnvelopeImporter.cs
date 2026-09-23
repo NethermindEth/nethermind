@@ -60,8 +60,9 @@ public enum ExecutionPayloadEnvelopeImportResult
 /// stack separate from its block's import; a verdict read from anywhere shared could belong to a
 /// different payload. The recorder is a local of <see cref="Import"/>, never a field and never the
 /// block import's, so no verdict outlives the call that produced it. Only
-/// <see cref="ExecutionPayloadEnvelopeImportResult.Invalid"/> is counted as a fork-choice rejection; the other non-verified outcomes are retriable. Not thread-safe;
-/// call from the import worker that owns <c>states</c>.
+/// <see cref="ExecutionPayloadEnvelopeImportResult.Invalid"/> is counted as a fork-choice rejection;
+/// the other non-verified outcomes are retriable. Not thread-safe; call from the import worker that
+/// owns <c>states</c>.
 /// </para>
 /// </remarks>
 /// <param name="states">The frozen Gloas post-states by block root (the spec store's <c>block_states</c>).</param>
