@@ -43,6 +43,22 @@ public record GethTraceOptions
     [JsonConverter(typeof(TransactionIndexConverter))]
     public ulong? TxIndex { get; init; }
 
+    public JsonElement? TracerConfig { get; init; }
+
+    public Dictionary<Address, AccountOverride>? StateOverrides { get; init; }
+
+    public BlockOverride? BlockOverrides { get; set; }
+
+    [JsonIgnore]
+    public bool NoBaseFee { get; init; }
+
+    /// <summary>
+    /// When set, overrides <c>JsonRpc.EnableTracingStreamMode</c> for this single call.
+    /// </summary>
+    public bool? StreamMode { get; init; }
+
+    public static GethTraceOptions Default { get; } = new();
+
     /// <summary>Reads a transaction index as an unsigned hexadecimal JSON quantity.</summary>
     public sealed class TransactionIndexConverter : JsonConverter<ulong>
     {
@@ -61,22 +77,6 @@ public record GethTraceOptions
         /// <inheritdoc/>
         public override void Write(Utf8JsonWriter writer, ulong value, JsonSerializerOptions options) => writer.WriteStringValue($"0x{value:x}");
     }
-
-    public JsonElement? TracerConfig { get; init; }
-
-    public Dictionary<Address, AccountOverride>? StateOverrides { get; init; }
-
-    public BlockOverride? BlockOverrides { get; set; }
-
-    [JsonIgnore]
-    public bool NoBaseFee { get; init; }
-
-    /// <summary>
-    /// When set, overrides <c>JsonRpc.EnableTracingStreamMode</c> for this single call.
-    /// </summary>
-    public bool? StreamMode { get; init; }
-
-    public static GethTraceOptions Default { get; } = new();
 
     /// <summary>
     /// Reads a signed JSON integer or null for the opcode logger byte limit.

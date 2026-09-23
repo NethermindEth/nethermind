@@ -85,7 +85,7 @@ public class GethStyleTracer(
         CancellationToken cancellationToken, Utf8JsonWriter? writer, PipeWriter? pipeWriter)
     {
         if (block.IsGenesis) throw new GenesisNotTraceableException();
-        if (index >= (ulong)block.Transactions.Length && !(index == 0 && block.Transactions.Length == 0))
+        if (index >= (ulong)Math.Max(block.Transactions.Length, 1))
             throw new ArgumentOutOfRangeException(nameof(index));
 
         Transaction[] transactions = new Transaction[(int)index + 1];
@@ -106,12 +106,14 @@ public class GethStyleTracer(
         try
         {
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
-            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), call, tracedBlock =>
+            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, call, tracedBlock =>
             {
                 options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
                 if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
-                state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, callSpec);
-                state.Commit(callSpec.WithoutEip158());
+                IReleaseSpec overrideSpec = callSpec.WithoutEip158();
+                state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, overrideSpec);
+                state.Commit(overrideSpec);
+                // LoadNonceFromState ran before this callback, so re-read after applying the nonce override.
                 call.Nonce = state.GetNonce(call.SenderAddress!);
                 transactionProcessorAdapter.CurrentAdapterFactory = processor =>
                 {
@@ -121,6 +123,7 @@ public class GethStyleTracer(
             });
             IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
+            if (!callTracer.IsPrepared) throw new InvalidOperationException("The synthetic call was not prepared for tracing.");
             return tracer.BuildResult().SingleOrDefault();
         }
         catch
@@ -134,18 +137,23 @@ public class GethStyleTracer(
         }
     }
 
-    private sealed class CallAtIndexBlockTracer(IBlockTracer inner, Transaction call, Action<Block> prepareCall) : IBlockTracer
+    private sealed class CallAtIndexBlockTracer(IBlockTracer inner, BlockHeader callHeader, Transaction call, Action<Block> prepareCall) : IBlockTracer
     {
         private Block _block = null!;
+        public bool IsPrepared { get; private set; }
         public bool IsTracingRewards => inner.IsTracingRewards;
         public void StartNewBlockTrace(Block block)
         {
             _block = block;
-            inner.StartNewBlockTrace(block);
+            inner.StartNewBlockTrace(block.WithReplacedHeader(callHeader));
         }
         public ITxTracer StartNewTxTrace(Transaction? transaction)
         {
-            if (ReferenceEquals(transaction, call)) prepareCall(_block);
+            if (ReferenceEquals(transaction, call))
+            {
+                prepareCall(_block);
+                IsPrepared = true;
+            }
             return inner.StartNewTxTrace(transaction);
         }
         public void EndTxTrace() => inner.EndTxTrace();

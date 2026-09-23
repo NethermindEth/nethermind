@@ -175,12 +175,12 @@ public class DebugRpcModule(
             error = ResultWrapper<GethLikeTxTrace>.Fail("no transaction in genesis", ErrorCodes.InvalidInput);
             return null;
         }
-        if (txIndex >= (ulong)block.Transactions.Length && !(txIndex == 0 && block.Transactions.Length == 0))
+        if (txIndex >= (ulong)Math.Max(block.Transactions.Length, 1))
         {
             error = ResultWrapper<GethLikeTxTrace>.Fail($"transaction index {txIndex} out of range for block {block.Hash}", ErrorCodes.InvalidInput);
             return null;
         }
-        TryGetHeaderAndCheckState(block.ParentHash!, out error);
+        _ = TryGetHeaderAndCheckState(block.ParentHash!, out error);
         return error is null ? block.Header : null;
     }
 
