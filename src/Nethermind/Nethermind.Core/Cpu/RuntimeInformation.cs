@@ -55,8 +55,9 @@ public static class RuntimeInformation
     public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? ProcessorCount;
 
     /// <summary>
-    /// The logical processors this process may run on that sit on performance cores: on a hybrid CPU, whose core types
-    /// Linux lists separately, the efficiency cores are left out; everywhere else it is <see cref="ProcessorCount"/>.
+    /// The logical processors this process may run on that sit on one kind of core: on a hybrid CPU, whose core types
+    /// Linux lists separately, the larger of its allowed performance and efficiency logical processors, which on an unpinned
+    /// hybrid CPU is its performance ones; everywhere else it is <see cref="ProcessorCount"/>.
     /// </summary>
     /// <remarks>
     /// Size CPU-bound work that runs alongside block processing by this. Counting efficiency cores as equal oversubscribes
@@ -77,9 +78,13 @@ public static class RuntimeInformation
     }
 
     /// <summary>
-    /// The performance cores' logical processors among the ones the process may run on, or <paramref name="processorCount"/>
-    /// when the CPU lists no performance cores or the process may run on none of them.
+    /// The larger of the performance and the efficiency logical processors the process may run on, or
+    /// <paramref name="processorCount"/> when the CPU lists no performance cores.
     /// </summary>
+    /// <remarks>
+    /// The larger group is as many threads as fit on one kind of core without spilling onto the other, and it never
+    /// shrinks when the process is allowed one more CPU of either kind.
+    /// </remarks>
     /// <param name="performanceCpus">Linux's list of the performance cores' logical processors, null on a CPU without one.</param>
     /// <param name="allowedCpus">The CPUs the process may run on, null when unknown.</param>
     /// <param name="processorCount">The logical processors available to the process.</param>
@@ -88,8 +93,20 @@ public static class RuntimeInformation
         if (performanceCpus is null) return processorCount;
 
         HashSet<int> performance = ParseCpuList(performanceCpus);
-        if (allowedCpus is not null) performance.IntersectWith(ParseCpuList(allowedCpus));
-        return performance.Count > 0 ? Math.Min(performance.Count, processorCount) : processorCount;
+        int efficiency;
+        if (allowedCpus is null)
+        {
+            efficiency = processorCount - performance.Count;
+        }
+        else
+        {
+            HashSet<int> allowed = ParseCpuList(allowedCpus);
+            performance.IntersectWith(allowed);
+            efficiency = allowed.Count - performance.Count;
+        }
+
+        int largest = Math.Max(performance.Count, efficiency);
+        return largest > 0 ? Math.Min(largest, processorCount) : processorCount;
     }
 
     /// <summary>Parses a Linux CPU list such as <c>0-11,14</c>, skipping malformed entries.</summary>
@@ -131,7 +148,7 @@ public static class RuntimeInformation
         }
     }
 
-    // The CPUs the process may run on, which a cpuset or an affinity mask narrows below the host's.
+    /// <summary>The CPUs the process may run on, which a cpuset or an affinity mask narrows below the host's.</summary>
     private static string? ReadAllowedCpus()
     {
         const string prefix = "Cpus_allowed_list:";

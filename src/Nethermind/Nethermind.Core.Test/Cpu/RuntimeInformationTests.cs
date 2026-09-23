@@ -44,12 +44,16 @@ public class RuntimeInformationTests
         Assert.That(RuntimeInformation.ParseCpuList(cpuList), Has.Count.EqualTo(expected), "the number of CPUs the list names");
 
     [TestCase("0-11", "0-19", 20, 12, TestName = "PerformanceCountFrom_UnpinnedHybrid_CountsPerformanceCores")]
-    [TestCase("0-11", "0-3,12-19", 12, 4, TestName = "PerformanceCountFrom_PinnedToMixedCpus_CountsAllowedPerformanceCores")]
-    [TestCase("0-11", "12-19", 8, 8, TestName = "PerformanceCountFrom_PinnedToEfficiencyCores_FallsBackToLogicalCount")]
+    [TestCase("0-11", "0-15", 16, 12, TestName = "PerformanceCountFrom_PinnedToMostlyPerformanceCpus_CountsPerformanceCores")]
+    [TestCase("0-11", "0-3,12-19", 12, 8, TestName = "PerformanceCountFrom_PinnedToMostlyEfficiencyCpus_CountsEfficiencyCores")]
+    [TestCase("0-11", "0,12-19", 9, 8, TestName = "PerformanceCountFrom_PinnedToOnePerformanceCpu_KeepsEfficiencyCores")]
+    [TestCase("0-11\n", "\t0-3,12-19\n", 12, 8, TestName = "PerformanceCountFrom_AsTheProcFilesSpellThem_ParsesBothLists")]
+    [TestCase("0-11", "12-19", 8, 8, TestName = "PerformanceCountFrom_PinnedToEfficiencyCores_CountsEfficiencyCores")]
     [TestCase(null, "0-15", 16, 16, TestName = "PerformanceCountFrom_NoCoreTypes_FallsBackToLogicalCount")]
     [TestCase("0-11", null, 20, 12, TestName = "PerformanceCountFrom_AllowedCpusUnknown_CountsPerformanceCores")]
+    [TestCase("0-11", "", 20, 20, TestName = "PerformanceCountFrom_AllowedCpusUnparsable_FallsBackToLogicalCount")]
     [TestCase("0-11", "0-19", 1, 1, TestName = "PerformanceCountFrom_FewerLogicalProcessors_ClampsToLogicalCount")]
-    public void PerformanceCountFrom_CountsAllowedPerformanceCores(string? performanceCpus, string? allowedCpus, int processorCount, int expected) =>
+    public void PerformanceCountFrom_CountsLargerKindOfCore(string? performanceCpus, string? allowedCpus, int processorCount, int expected) =>
         Assert.That(RuntimeInformation.PerformanceCountFrom(performanceCpus, allowedCpus, processorCount), Is.EqualTo(expected),
-            "performance cores the process may run on, never more than its logical processors");
+            "the larger kind of core the process may run on, never more than its logical processors");
 }
