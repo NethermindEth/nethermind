@@ -260,7 +260,7 @@ file static class Eip7708SelfDestructScenario
     private const long CallGas = 500_000;
 
     /// <summary>Init code deploying a contract that self-destructs to <paramref name="inheritor"/> unless it is called with value.</summary>
-    public static byte[] InitCode(Address inheritor) => Prepare.EvmCode
+    private static byte[] InitCode(Address inheritor) => Prepare.EvmCode
         .ForInitOf(Prepare.EvmCode
             .CALLVALUE()
             .Op(Instruction.ISZERO)
