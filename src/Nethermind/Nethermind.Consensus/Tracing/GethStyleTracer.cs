@@ -113,7 +113,7 @@ public class GethStyleTracer(
                 IReleaseSpec overrideSpec = callSpec.WithoutEip158();
                 state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, overrideSpec);
                 state.Commit(overrideSpec);
-                // LoadNonceFromState ran before this callback, so re-read after applying the nonce override.
+                // Keep transaction metadata consistent with overrides applied after LoadNonceFromState.
                 call.Nonce = state.GetNonce(call.SenderAddress!);
                 transactionProcessorAdapter.CurrentAdapterFactory = processor =>
                 {
@@ -145,6 +145,7 @@ public class GethStyleTracer(
         public void StartNewBlockTrace(Block block)
         {
             _block = block;
+            // Tracers capture the call context now; prefix execution still uses its separate canonical header.
             inner.StartNewBlockTrace(block.WithReplacedHeader(callHeader));
         }
         public ITxTracer StartNewTxTrace(Transaction? transaction)

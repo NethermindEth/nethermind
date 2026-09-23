@@ -106,6 +106,31 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_traceCall_txIndex_creation_uses_overridden_sender_nonce(
+        [Values(-1, 0, 1)] int index, [Values] bool blockAccessLists)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { AllowTestChainOverride = false }));
+        await AddTraceCallPrefixTransfers(chain, 2);
+        const ulong overriddenNonce = 37;
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressA.ToString(), gas = "0x989680", data = "0x00" }, "latest",
+            new
+            {
+                txIndex = index < 0 ? null : $"0x{index:x}",
+                tracer = "callTracer",
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressA.ToString()] = new { nonce = $"0x{overriddenNonce:x}" } }
+            });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["result"]!["type"], Is.EqualTo("CREATE"), response);
+            Assert.That((string?)json["result"]!["to"], Is.EqualTo(ContractAddress.From(TestItem.AddressA, overriddenNonce).ToString()), response);
+        }
+    }
+
     private static async Task<Block> AddTraceCallPrefixTransfers(TestRpcBlockchain chain, int count)
     {
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
