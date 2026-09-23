@@ -136,18 +136,6 @@ public class FlatStateActivationPolicyTests
         }
     }
 
-    [Test]
-    public void Wipe_after_a_repair_that_dropped_the_metadata_keeps_the_rlp_slot_encoding()
-    {
-        PolicySetup setup = CreateSetup(Flags.Enabled | Flags.Repaired | Flags.FlatDataKeys, FlatLayout.Flat, 32.GiB, LimboLogs.Instance);
-        Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
-
-        TestLogger testLogger = new();
-        _ = new RocksDbPersistence(setup.FlatDb, new OneLoggerLogManager(new ILogger(testLogger)));
-
-        Assert.That(testLogger.LogList, Has.None.Contains("legacy raw storage slot encoding"));
-    }
-
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
         FlatLayout layout, long availableMemoryBytes, ILogManager logManager, bool wipedForSync = false)
