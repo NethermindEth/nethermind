@@ -70,7 +70,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 {
                     int length = ctx.ReadSequenceLength();
                     int checkPosition = ctx.Position + length;
-                    ValueHash256 path = ctx.DecodeValueKeccak() ?? throw new RlpException("Account path cannot be null.");
+                    ValueHash256 path = ctx.DecodeValueKeccakNonNull();
                     pathsWithAccounts.Add(new PathWithAccount(path, _decoder.DecodeGuardNotNull(ref ctx)));
                     ctx.Check(checkPosition);
                 }
