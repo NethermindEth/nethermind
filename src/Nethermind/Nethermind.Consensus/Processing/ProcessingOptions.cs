@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// It will not update the storage data (will discard any changes).
         /// </summary>
-        ReadOnlyChain = 1 | DoNotUpdateHead,
+        ReadOnlyChain = 1,
 
         /// <summary>
         /// Will process the block even if it was processed in the past.

@@ -26,11 +26,21 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class TrieNodeTests
 {
+    /// <param name="dirtyChildWidth">
+    /// Children per dirty child, which sets the RLP length and so the padded length its batch
+    /// groups by: 0 is a leaf, 3 a branch, both one rate block; 4, 12 and 15 are branches padding
+    /// to two, three and four blocks; 16 is a saturated branch at exactly 532 bytes.
+    /// </param>
     [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
-        [Values(0, 2, 4)] int dirtyBranchCount)
+        [Values(0, 2, 3, 8, 15)] int dirtyBranchCount,
+        [Values(0, 3, 4, 12, 15, 16)] int dirtyChildWidth,
+        [Values(false, true)] bool mixChildKinds,
+        [Values(false, true)] bool canBeParallel)
     {
+        AssertDirtyChildLengthClass(dirtyChildWidth);
+
         TrieNode original = new(NodeType.Branch);
         TrieNode expected = new(NodeType.Branch);
         for (int i = 0; i < 16; i++)
@@ -55,23 +65,71 @@ public class TrieNodeTests
         expected.SetChild(changedIndex, replacement);
         if (replacementKind == 3) restored.UnresolveChild(changedIndex);
 
+        List<TrieNode> dirtyChildren = new(dirtyBranchCount);
         for (int i = 1; i <= dirtyBranchCount; i++)
         {
             int index = (changedIndex + i) % TrieNode.BranchesCount;
-            TrieNode branch = new(NodeType.Branch);
-            for (int childIndex = 0; childIndex < TrieNode.BranchesCount; childIndex++)
-            {
-                branch.SetChild(childIndex, new TrieNode(NodeType.Unknown, Keccak.Compute([(byte)index, (byte)childIndex])));
-            }
-            restored.SetChild(index, branch);
-            expected.SetChild(index, branch);
+            // A parent holding both kinds is what lets a leaf join a batch the branches opened.
+            int width = mixChildKinds && (i & 1) == 1 ? 0 : dirtyChildWidth;
+            // Separate instances per side. Sharing them would let the first encoding fix every hash
+            // and the second reuse it, and would keep the fresh parent off the paths taken by a
+            // parent that has no RLP yet.
+            TrieNode restoredChild = BuildDirtyChild(index, width);
+            TrieNode expectedChild = BuildDirtyChild(index, width);
+            dirtyChildren.Add(restoredChild);
+            dirtyChildren.Add(expectedChild);
+            restored.SetChild(index, restoredChild);
+            expected.SetChild(index, expectedChild);
         }
 
-        // Four materialized children select the parallel measuring path even without AVX-512VL;
-        // two dirty branches select batched measuring on hosts that support it.
-        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: dirtyBranchCount == 4);
-        CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
+        CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
         Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
+        AssertChildHashesMatchScalarKeccak(dirtyChildren);
+    }
+
+    /// <remarks>
+    /// The encodings above could still agree on a wrong hash, so only a comparison against a
+    /// separately computed digest covers the batch kernels.
+    /// </remarks>
+    private static void AssertChildHashesMatchScalarKeccak(List<TrieNode> children)
+    {
+        foreach (TrieNode child in children)
+        {
+            Assert.That(child.FullRlp.Length, Is.GreaterThanOrEqualTo(Hash256.Size), "a child this short would be inlined, not hashed");
+            Assert.That(child.Keccak, Is.EqualTo(Keccak.Compute(child.FullRlp.AsSpan())));
+        }
+    }
+
+    private static TrieNode BuildDirtyChild(int seed, int width)
+    {
+        if (width == 0)
+        {
+            // Long enough to be hashed rather than inlined into the parent, short enough for one block.
+            return TrieNodeFactory.CreateLeaf([(byte)seed, 0x1], new CappedArray<byte>(Keccak.Compute([(byte)seed]).BytesToArray()));
+        }
+
+        TrieNode branch = new(NodeType.Branch);
+        for (int childIndex = 0; childIndex < width; childIndex++)
+        {
+            branch.SetChild(childIndex, new TrieNode(NodeType.Unknown, Keccak.Compute([(byte)seed, (byte)childIndex])));
+        }
+
+        return branch;
+    }
+
+    /// <remarks>
+    /// Guards the parameterisation itself: without this the widths could all encode into the same
+    /// length class and the test would silently stop covering the paths it names.
+    /// </remarks>
+    private static void AssertDirtyChildLengthClass(int width)
+    {
+        TreePath path = TreePath.Empty;
+        int length = BuildDirtyChild(0, width).RlpEncode(NullTrieNodeResolver.Instance, ref path).Length;
+        Assert.That(length, Is.GreaterThanOrEqualTo(Hash256.Size), "a child this short would be inlined, not hashed");
+        int expectedBlocks = width switch { 0 or 3 => 1, 4 => 2, 12 => 3, _ => 4 };
+        Assert.That(length / 136 + 1, Is.EqualTo(expectedBlocks), $"width {width} should pad to {expectedBlocks} rate block(s)");
+        if (width == 16) Assert.That(length, Is.EqualTo(532), "a saturated branch has its own kernel");
     }
 
     // private TrieNode _tiniestLeaf;
@@ -409,13 +467,10 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Resolves_full_branch_children_to_their_individual_hashes([Values(0x0001, 0x0003, 0x0007, 0x5555, 0xffff)] int branchMask)
+    public void Resolves_full_branch_children_to_their_individual_hashes(
+        [Values(0x0001, 0x0003, 0x0007, 0x000f, 0x001f, 0x003f, 0x007f, 0x5555, 0x01ff, 0x03ff, 0x07ff, 0x7fff, 0xffff)] int branchMask,
+        [Values] bool inlineNonCandidate)
     {
-        if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
-        {
-            Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
-        }
-
         TrieNode root = new(NodeType.Branch);
         TrieNode?[] branches = new TrieNode?[TrieNode.BranchesCount];
 
@@ -439,8 +494,9 @@ public class TrieNodeTests
         if (branchMask != 0xffff)
         {
             const int nonCandidateIndex = TrieNode.BranchesCount - 1;
-            nonCandidate = new TrieNode(NodeType.Branch);
-            nonCandidate.SetChild(0, new TrieNode(NodeType.Unknown, Keccak.Compute([0xff])));
+            nonCandidate = inlineNonCandidate ? new Context().TiniestLeaf : new TrieNode(NodeType.Branch);
+            if (!inlineNonCandidate)
+                nonCandidate.SetChild(0, new TrieNode(NodeType.Unknown, Keccak.Compute([0xff])));
             root.SetChild(nonCandidateIndex, nonCandidate);
         }
 
@@ -462,10 +518,21 @@ public class TrieNodeTests
             if (nonCandidate is not null)
             {
                 Assert.That(nonCandidate.FullRlp.Length, Is.Not.EqualTo(532), "non-candidate RLP length");
-                Assert.That(nonCandidate.Keccak, Is.EqualTo(Keccak.Compute(nonCandidate.FullRlp.AsSpan())),
+                Assert.That(nonCandidate.Keccak, Is.EqualTo(inlineNonCandidate ? null : Keccak.Compute(nonCandidate.FullRlp.AsSpan())),
                     "non-candidate hash");
             }
             Assert.That(root.Keccak, Is.EqualTo(Keccak.Compute(root.FullRlp.AsSpan())), "root hash");
+            Assert.That(path, Is.EqualTo(TreePath.Empty), "path restored");
+
+            TrieNode expected = new(NodeType.Branch);
+            for (int i = 0; i < branches.Length; i++)
+            {
+                if (branches[i] is { } branch)
+                    expected.SetChild(i, new TrieNode(NodeType.Unknown, Keccak.Compute(branch.FullRlp.AsSpan())));
+            }
+            if (nonCandidate is not null) expected.SetChild(TrieNode.BranchesCount - 1, nonCandidate);
+            Assert.That(root.FullRlp.ToArray(), Is.EqualTo(expected.RlpEncode(NullTrieNodeResolver.Instance, ref path).ToArray()),
+                "parent references match individually hashed children");
         }
     }
 
