@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.Spec;
@@ -34,6 +35,8 @@ namespace Nethermind.BeaconChain.Test.Sync;
 public class ExecutionPayloadEnvelopeImporterTests
 {
     private static readonly StringLabel EnvelopeRejected = new("execution_payload_envelope");
+
+    private readonly List<IContainer> _containers = [];
 
     /// <summary>
     /// SYNCING and ACCEPTED are "not rejected, not validated". Reporting either as
@@ -361,12 +364,28 @@ public class ExecutionPayloadEnvelopeImporterTests
 
     private static Withdrawal ExpectedWithdrawal() => new() { Index = 5, ValidatorIndex = 1, Address = new Address(BuilderWithdrawalCredentials(0xC1).Bytes[12..]), Amount = 7 * Gwei };
 
-    private static ExecutionPayloadEnvelopeImporter CreateImporter(IGloasBlockStateProvider states, IEngineRpcModule engine, Func<Hash256, ExecutionPayloadBid, bool>? isDataAvailable = null, PubkeyCache? pubkeys = null)
+    [TearDown]
+    public void DisposeContainers()
     {
-        ExternalClDetector detector = new(new BeaconChainConfig { Enabled = true }, new Lazy<IEngineRpcModule>(engine), LimboLogs.Instance);
-        _ = new ExternalClInterceptingEngineRpcModule(engine, detector);
-        EngineDriver driver = new(detector, LimboLogs.Instance);
-        return new ExecutionPayloadEnvelopeImporter(states, driver, pubkeys ?? new PubkeyCache(), isDataAvailable ?? ((_, _) => true), LimboLogs.Instance);
+        foreach (IContainer container in _containers)
+        {
+            container.Dispose();
+        }
+
+        _containers.Clear();
+    }
+
+    /// <summary>An importer over the <see cref="EngineDriver"/> the production module wires in front of <paramref name="engine"/>.</summary>
+    private ExecutionPayloadEnvelopeImporter CreateImporter(IGloasBlockStateProvider states, IEngineRpcModule engine, Func<Hash256, ExecutionPayloadBid, bool>? isDataAvailable = null, PubkeyCache? pubkeys = null)
+    {
+        IContainer container = new ContainerBuilder()
+            .AddModule(new BeaconChainModule())
+            .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig { Enabled = true })
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton(engine) // registered by MergePlugin in production
+            .Build();
+        _containers.Add(container);
+        return new ExecutionPayloadEnvelopeImporter(states, container.Resolve<EngineDriver>(), pubkeys ?? new PubkeyCache(), isDataAvailable ?? ((_, _) => true), LimboLogs.Instance);
     }
 
     private static IEngineRpcModule ScriptedEngine(ResultWrapper<PayloadStatusV1> answer)
