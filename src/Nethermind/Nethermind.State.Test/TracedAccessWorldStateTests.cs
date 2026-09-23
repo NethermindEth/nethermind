@@ -537,14 +537,9 @@ public class TracedAccessWorldStateTests(bool parallel)
                     tws.AddToBalance(Address.SystemUser, 0u, Spec, out _);
                     break;
                 case SystemUserTouch.AddToBalanceAndCreateIfNotExists:
-                    tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
-                    break;
-                case SystemUserTouch.CreateAccount:
-                    tws.CreateAccount(Address.SystemUser, 0u);
-                    break;
-                case SystemUserTouch.CreateAccountIfNotExists:
-                    tws.CreateAccountIfNotExists(Address.SystemUser, 0u);
-                    break;
+    [Test]
+    public void Zero_balance_touch_of_system_user_recorded_only_outside_suppression(
+        [Values] bool suppressed, [Values] SystemUserTouch touch)
             }
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(Address.SystemUser);

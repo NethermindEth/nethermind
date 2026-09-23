@@ -78,8 +78,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         UInt256 newBalance = oldBalance + balanceChange;
         if (!ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange))
         {
-            GeneratingBlockAccessList.RecordAccountExistence(address, true);
+            // The entry is already known to exist physically; skip the redundant GetOrAddAccountChanges probe.
+            if (accountChanges?.AccountExists is not true) GeneratingBlockAccessList.RecordAccountExistence(address, true);
             GeneratingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        }
         }
 
         return wasCreated;
