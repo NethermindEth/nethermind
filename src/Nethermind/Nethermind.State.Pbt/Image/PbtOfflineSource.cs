@@ -27,9 +27,9 @@ internal static class PbtOfflineSource
 
     private const string ScanPhase = "PBT export scan";
 
-    public static void WriteArtifacts(FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore codeSource,
-        PbtArtifactIdentity identity, PbtImageAnchor anchor, string scratchDirectory,
-        Stream snapshot, Stream preimages, Stream manifest, ILogManager logManager,
+    public static PbtArtifactWriter.PbtArtifactDigests WriteArtifacts(FlatPersistence.IPersistenceReader source,
+        IReadOnlyKeyValueStore codeSource, PbtImageAnchor anchor, string scratchDirectory,
+        Stream snapshot, Stream preimages, ILogManager logManager,
         int sortBufferBytes = 256 * 1024 * 1024, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(sortBufferBytes, 1024);
@@ -37,11 +37,7 @@ internal static class PbtOfflineSource
         cancellationToken.ThrowIfCancellationRequested();
         if (!source.IsPreimageMode || source.CurrentState.BlockNumber != anchor.Header.Number ||
             anchor.Header.StateRoot is null || source.CurrentState.StateRoot != anchor.Header.StateRoot.ValueHash256 ||
-            !anchor.IsFinalized || anchor.Header.Timestamp >= anchor.ActivationTimestamp || anchor.Header.Hash is null ||
-            identity.ChainId != anchor.ChainId || identity.AnchorNumber != anchor.Header.Number ||
-            !string.Equals(identity.AnchorHash, anchor.Header.Hash.ToString(), StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(identity.GenesisHash, anchor.GenesisHash.ToString(), StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(identity.AnchorMptRoot, anchor.Header.StateRoot.ToString(), StringComparison.OrdinalIgnoreCase))
+            anchor.ActivationTimestamp is { } activation && anchor.Header.Timestamp >= activation || anchor.Header.Hash is null)
             throw new InvalidDataException("Offline source does not match the trusted pre-activation anchor.");
         ILogger logger = logManager.GetClassLogger(typeof(PbtOfflineSource));
         Stopwatch exporting = Stopwatch.StartNew();
@@ -121,10 +117,11 @@ internal static class PbtOfflineSource
 
             ulong leafCount = 0;
             ValueHash256 root = PbtImageRootCalculator.Calculate(CountLeaves(), cancellationToken);
-            PbtArtifactWriter.Write(snapshot, preimages, manifest, identity, root, leafCount,
+            PbtArtifactWriter.PbtArtifactDigests digests = PbtArtifactWriter.Write(snapshot, preimages, root, leafCount,
                 Leaves("PBT export snapshot", leafCount), Accounts(), cancellationToken);
             if (logger.IsInfo)
                 logger.Info($"PBT export wrote {leafCount:N0} leaves for {scannedAccounts:N0} accounts and {scannedSlots:N0} slots in {exporting.Elapsed:hh\\:mm\\:ss}.");
+            return digests;
 
             IEnumerable<RebuildEntry> CountLeaves()
             {

@@ -66,22 +66,7 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
         {
             config.MigrationSnapshotPath = Path.Combine(fixtures, "canonical", "anchor", "snapshot.pbt");
             config.MigrationPreimagesPath = Path.Combine(fixtures, "canonical", "anchor", "preimages.bin");
-            config.MigrationManifestPath = targetPath + ".manifest.json";
-            File.WriteAllText(config.MigrationManifestPath, JsonSerializer.Serialize(new
-            {
-                version = 1,
-                chainId = chain.ChainId.ToString(),
-                genesisHash = blocks["anchor"].Hash!.ToString(),
-                anchorHash = blocks["anchor"].Hash!.ToString(),
-                anchorNumber = 0,
-                anchorMptRoot = blocks["anchor"].StateRoot!.ToString(),
-                pbtRoot = expected["anchor"].GetProperty("pbtRoot").GetString(),
-                snapshotDigest = Keccak.Compute(File.ReadAllBytes(config.MigrationSnapshotPath)).ToString(),
-                preimageDigest = Keccak.Compute(File.ReadAllBytes(config.MigrationPreimagesPath)).ToString(),
-                formatRevision = "f3079a09e8c606afcb0e5e1a309ff228b88dc067",
-                producerRevision = "e31a37fb88c2b75c0897c033bd3f4279dee42268",
-                sourceKind = "portable"
-            }));
+            config.MigrationAnchor = (long)blocks["anchor"].Number;
         }
         configureMigration?.Invoke(config);
         FlatDbConfig flatConfig = new() { Enabled = true, Layout = FlatLayout.Flat };

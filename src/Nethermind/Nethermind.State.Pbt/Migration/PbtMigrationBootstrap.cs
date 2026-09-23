@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Globalization;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -40,8 +39,7 @@ internal sealed class PbtMigrationBootstrap(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PbtMigrationBootstrap>();
 
-    /// <returns>True when the run only exported artifacts and the process should exit.</returns>
-    public async Task<bool> Initialize(CancellationToken cancellationToken)
+    public async Task Initialize(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         BlockHeader genesis = blockTree.Genesis ?? throw new InvalidDataException("Migration requires initialized MPT genesis.");
@@ -51,19 +49,13 @@ internal sealed class PbtMigrationBootstrap(
         if (!HasSource())
         {
             VerifyAlignment();
-            return false;
+            return;
         }
 
         genesisBootstrap?.EnsureSource(cancellationToken);
         using RuntimeBootstrapLease lease = CreateLease(genesis);
-        if (configuration.MigrationExportPath is { } outputPath)
-        {
-            PbtOfflineExport.Export(lease, outputPath, logManager, cancellationToken);
-            return true;
-        }
         await Import(lease, cancellationToken);
         VerifyAlignment();
-        return false;
     }
 
     private bool HasSource() => configuration.MigrationSnapshotPath is not null || configuration.MigrationPreimageSourcePath is not null || configuration.MigrationGenesisBootstrap;
@@ -71,8 +63,9 @@ internal sealed class PbtMigrationBootstrap(
     private async Task Import(PbtBootstrapLease lease, CancellationToken cancellationToken)
     {
         BlockHeader header = lease.Anchor.Header;
-        if (header.StateRoot is null || header.Hash is null || !lease.Anchor.IsFinalized || header.Timestamp >= lease.Anchor.ActivationTimestamp)
-            throw new InvalidDataException("Migration requires a trusted finalized pre-activation anchor.");
+        if (header.StateRoot is null || header.Hash is null ||
+            lease.Anchor.ActivationTimestamp is { } activation && header.Timestamp >= activation)
+            throw new InvalidDataException("Migration requires a trusted pre-activation anchor.");
         if (lease.MptAnchor.IsPreimageMode)
             throw new InvalidDataException("Migration requires a standard-flat target; preimage-flat is an offline source only.");
         if (!lease.IsAnchorCurrent()) throw new InvalidOperationException("Migration anchor is no longer available.");
@@ -80,7 +73,7 @@ internal sealed class PbtMigrationBootstrap(
         {
             if (lease.OfflineSource is not null || lease.OfflineCode is not null)
                 throw new InvalidDataException("Migration bootstrap has more than one source.");
-            await publication.Publish(snapshot, preimages, lease.Identity, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
+            await publication.Publish(snapshot, preimages, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
             return;
         }
         if (lease.Snapshot is not null || lease.Preimages is not null || lease.OfflineSource is null || lease.OfflineCode is null)
@@ -93,12 +86,11 @@ internal sealed class PbtMigrationBootstrap(
         {
             await using FileStream exportedSnapshot = new(Path.Combine(directory, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             await using FileStream exportedPreimages = new(Path.Combine(directory, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-            await using FileStream manifest = new(Path.Combine(directory, "manifest.json"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-            PbtOfflineSource.WriteArtifacts(lease.OfflineSource, lease.OfflineCode, lease.Identity, lease.Anchor,
-                directory, exportedSnapshot, exportedPreimages, manifest, logManager, cancellationToken: cancellationToken);
+            PbtOfflineSource.WriteArtifacts(lease.OfflineSource, lease.OfflineCode, lease.Anchor,
+                directory, exportedSnapshot, exportedPreimages, logManager, cancellationToken: cancellationToken);
             exportedSnapshot.Position = 0;
             exportedPreimages.Position = 0;
-            await publication.Publish(exportedSnapshot, exportedPreimages, lease.Identity, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
+            await publication.Publish(exportedSnapshot, exportedPreimages, lease.Anchor, lease.ScratchDirectory, lease.IsAnchorCurrent, cancellationToken);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
@@ -118,30 +110,15 @@ internal sealed class PbtMigrationBootstrap(
 
     private RuntimeBootstrapLease CreateLease(BlockHeader genesis)
     {
-        PbtArtifactIdentity identity;
-        if (configuration.MigrationGenesisBootstrap)
-            identity = new(chainSpec.ChainId.ToString(CultureInfo.InvariantCulture), genesis.Hash!.ToString(), genesis.Hash.ToString(),
-                0, genesis.StateRoot!.ToString(), "f3079a09e8c606afcb0e5e1a309ff228b88dc067", "nethermind", "genesis");
-        else
-        {
-            using FileStream manifest = File.OpenRead(configuration.MigrationManifestPath!);
-            identity = PbtArtifactManifest.Read(manifest);
-        }
-        BlockHeader header = blockTree.FindHeader(new Hash256(identity.AnchorHash), BlockTreeLookupOptions.RequireCanonical)
+        ulong anchorNumber = configuration.MigrationGenesisBootstrap
+            ? genesis.Number
+            : (ulong)configuration.MigrationAnchor!.Value;
+        BlockHeader header = blockTree.FindHeader(anchorNumber, BlockTreeLookupOptions.RequireCanonical)
             ?? throw new InvalidDataException("Migration anchor is not present in the trusted canonical chain.");
-        bool IsCurrent() => blockTree.IsMainChain(header) && (header.IsGenesis || IsFinalized(header));
-        if (!IsCurrent()) throw new InvalidDataException("Migration anchor is not finalized; re-anchor required.");
-        PbtImageAnchor anchor = new(chainSpec.ChainId.ToString(CultureInfo.InvariantCulture), genesis.Hash!, header,
-            true, chainSpec.Parameters.Eip8347TransitionTimestamp!.Value, 256 * 1024 * 1024);
+        bool IsCurrent() => blockTree.IsMainChain(header);
+        PbtImageAnchor anchor = PbtMigrationAnchor.Create(chainSpec, genesis, header);
         string scratch = Path.Combine(dbFactory.GetFullDbPath(new DbSettings("migration-work", "migration-work")), "bootstrap");
-        return RuntimeBootstrapLease.Create(anchor, identity, flatPersistence, pbtDatabase, scratch, IsCurrent,
+        return RuntimeBootstrapLease.Create(anchor, flatPersistence, pbtDatabase, scratch, IsCurrent,
             configuration, genesisBootstrap?.Source, dbProvider.CodeDb, logManager);
-    }
-
-    private bool IsFinalized(BlockHeader header)
-    {
-        if (blockTree.FinalizedHash is not { } finalizedHash) return false;
-        BlockHeader? finalized = blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.RequireCanonical);
-        return finalized is not null && finalized.Number >= header.Number;
     }
 }

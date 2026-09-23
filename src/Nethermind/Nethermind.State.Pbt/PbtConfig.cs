@@ -10,12 +10,13 @@ namespace Nethermind.State.Pbt;
 public class PbtConfig : IPbtConfig
 {
     public bool Enabled { get; set; }
-    public string? MigrationManifestPath { get; set; }
+    public long? MigrationAnchor { get; set; }
     public string? MigrationSnapshotPath { get; set; }
     public string? MigrationPreimagesPath { get; set; }
     public string? MigrationPreimageSourcePath { get; set; }
     public bool MigrationGenesisBootstrap { get; set; }
     public string? MigrationExportPath { get; set; }
+    public int ExportStepDistance { get; set; }
     public bool FakeMatchingStateRoot { get; set; }
     public ulong AccountTrieNodeCacheSizeBudget { get; set; } = 128UL.MiB;
     public ulong CodeTrieNodeCacheSizeBudget { get; set; } = 32UL.MiB;

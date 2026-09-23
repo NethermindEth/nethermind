@@ -12,9 +12,13 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Whether to use the experimental EIP-8297 partitioned binary tree state backend. With a binaryTrieTime after genesis in the chain specification the node migrates from the flat state at activation (EIP-8347); otherwise the binary tree is used from genesis and the state root will not match networks using the hexary Patricia trie.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    /// <summary>Path to the migration anchor manifest; null for genesis bootstrap or an already seeded PBT database. Defaults to null.</summary>
-    [ConfigItem(Description = "Path to the migration anchor manifest; null for genesis bootstrap or an already seeded PBT database. A populated PBT database imported from another source is rejected; delete it to re-anchor.", DefaultValue = "null")]
-    string? MigrationManifestPath { get; set; }
+    /// <summary>Block number of the EIP-8347 anchor block whose state is converted. Defaults to null.</summary>
+    /// <remarks>EIP-8347 leaves the anchor out of the artifacts, so it is supplied out of band. Required to import
+    /// external artifacts. For an export, null anchors at the current persisted flat state, and a number ahead of it
+    /// runs the node until persistence lands on it. A populated PBT database seeded from another anchor is rejected;
+    /// delete it to re-anchor.</remarks>
+    [ConfigItem(Description = "Block number of the EIP-8347 anchor block, whose state is converted. Required to import external artifacts. For an export, null anchors at the current persisted flat state, and a number ahead of it runs the node until persistence lands on it.", DefaultValue = "null")]
+    long? MigrationAnchor { get; set; }
 
     /// <summary>Path to the canonical EIP-8347 PBT snapshot; paired with MigrationPreimagesPath. Defaults to null.</summary>
     [ConfigItem(Description = "Path to the canonical EIP-8347 PBT snapshot; paired with MigrationPreimagesPath.", DefaultValue = "null")]
@@ -32,9 +36,17 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Whether to generate a separate offline source from the MPT genesis allocation.", DefaultValue = "false")]
     bool MigrationGenesisBootstrap { get; set; }
 
-    /// <summary>New directory for a verified offline snapshot, preimages and manifest; export then exit. Defaults to null.</summary>
-    [ConfigItem(Description = "Export verified portable artifacts from genesis bootstrap or an offline preimage source into a new directory, then exit before networking. Requires a scheduled binaryTrieTime.", DefaultValue = "null", HiddenFromDocs = true)]
+    /// <summary>New directory for the verified EIP-8347 snapshot and preimages; export then exit. Defaults to null.</summary>
+    /// <remarks>Requires FlatDb.Enabled and a preimage-flat layout, since deriving EIP-8297 keys needs the
+    /// addresses and slot keys that a hash-keyed flat database does not retain.</remarks>
+    [ConfigItem(Description = "Export the verified EIP-8347 artifacts for MigrationAnchor from this node's own persisted state into a new directory, then exit. Requires FlatDb.Enabled and a preimage-flat layout.", DefaultValue = "null", HiddenFromDocs = true)]
     string? MigrationExportPath { get; set; }
+
+    /// <summary>Distance from the export anchor, in blocks, at which persistence stops batching. Defaults to 0.</summary>
+    /// <remarks>Flat persistence only lands on CompactSize-aligned boundaries, so it would step over an arbitrary
+    /// anchor. Within this distance it persists one block at a time instead, and stops on the anchor itself.</remarks>
+    [ConfigItem(Description = "Distance from the export anchor, in blocks, within which flat persistence stops batching by FlatDb.CompactSize and persists one block at a time so that it lands exactly on the anchor. 0 uses FlatDb.CompactSize.", DefaultValue = "0", HiddenFromDocs = true)]
+    int ExportStepDistance { get; set; }
 
     /// <summary>Whether to report the known child header's state root instead of the computed PBT root. Defaults to false.</summary>
     [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root. Does not affect flat mirror mode.", DefaultValue = "false")]

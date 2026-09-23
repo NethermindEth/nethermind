@@ -44,15 +44,12 @@ public class PbtAnchorPublicationTests
     private static string Fixtures => Path.Combine(TestContext.CurrentContext.TestDirectory, "Fixtures", "Eip8347");
 
     [Test]
-    public async Task Production_module_initializes_only_after_standard_flat_genesis([Values("normal", "wrong-genesis", "export")] string mode)
+    public async Task Production_module_initializes_only_after_standard_flat_genesis([Values("normal", "wrong-genesis")] string mode)
     {
         using Stream input = typeof(PbtAnchorPublicationTests).Assembly.GetManifestResourceStream("Nethermind.State.Pbt.Test.Fixtures.Eip8347.genesis.json")!;
         ChainSpec chain = new GethGenesisLoader(new EthereumJsonSerializer()).Load(input);
         PbtConfig config = new() { Enabled = true, MigrationGenesisBootstrap = true };
         using TempPath scratch = TempPath.GetTempDirectory();
-        if (mode == "export") config.MigrationExportPath = Path.Combine(scratch.Path, "bundle");
-        using CancellationTokenSource exitCancellation = new();
-        ProcessExitSource? exit = mode == "export" ? new(exitCancellation.Token) : null;
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider(new FlatDbConfig { Enabled = true },
                 new Nethermind.Api.InitConfig { BaseDbPath = scratch.Path, GenesisHash = mode == "wrong-genesis" ? Hash256.Zero.ToString() : null }), chain, useTestSpecProvider: false))
@@ -86,42 +83,22 @@ public class PbtAnchorPublicationTests
         Hash256 expectedShadowRoot = new(Metadata("anchor").GetProperty("pbtRoot").GetString()!);
         Nethermind.JsonRpc.Modules.DebugModule.IMigrationTelemetry telemetry = container.Resolve<Nethermind.JsonRpc.Modules.DebugModule.IMigrationTelemetry>();
         Assert.That(telemetry.GetShadowRoot(genesis.Hash!), Is.EqualTo(expectedShadowRoot), "genesis is mirrored into PBT by main processing");
-        if (mode == "export")
-        {
-            InitializePbtMigration step = new(bootstrap, container.Resolve<PbtBalFollowerScheduler>(), container.Resolve<MerkleShadowFollower>(), exit!);
-            Assert.ThrowsAsync<TaskCanceledException>(() => step.Execute(exit!.Token));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(exit!.ExitCode, Is.Zero);
-                Assert.That(exit.Token.IsCancellationRequested, Is.True);
-                Assert.That(Directory.GetFiles(config.MigrationExportPath!), Has.Length.EqualTo(3));
-            }
-            using FileStream manifest = File.OpenRead(Path.Combine(config.MigrationExportPath!, "manifest.json"));
-            PbtArtifactIdentity identity = PbtArtifactManifest.Read(manifest);
-            using FileStream snapshot = File.OpenRead(Path.Combine(config.MigrationExportPath!, "snapshot.pbt"));
-            using FileStream preimages = File.OpenRead(Path.Combine(config.MigrationExportPath!, "preimages.bin"));
-            using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, identity,
-                new PbtImageAnchor(chain.ChainId.ToString(), genesis.Hash!, genesis.Header, true,
-                    chain.Parameters.Eip8347TransitionTimestamp!.Value, 256 * 1024 * 1024), scratch.Path, LimboLogs.Instance);
-            Assert.That(verified.PbtRoot, Is.EqualTo(expectedShadowRoot.ValueHash256));
-        }
-        else if (mode == "wrong-genesis")
+        if (mode == "wrong-genesis")
         {
             Assert.ThrowsAsync<InvalidDataException>(() => bootstrap.Initialize(CancellationToken.None));
+            return;
         }
-        else
+
+        await bootstrap.Initialize(CancellationToken.None);
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(await bootstrap.Initialize(CancellationToken.None), Is.False);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(manager.GlobalStateReader.HasStateForBlock(genesis.Header), Is.True);
-                Assert.That(telemetry.GetShadowRoot(genesis.Hash!), Is.EqualTo(expectedShadowRoot));
-                Assert.That(container.Resolve<IColumnsDb<PbtColumns>>().GetColumnDb(PbtColumns.Metadata).Get("migrationPreparedAnchor"u8), Is.Not.Null, "the verified image is recorded as the anchor's provenance");
-            }
-            // A restart with the same source takes the fast path over the persisted native state.
-            manager.FlushCache(CancellationToken.None);
-            Assert.That(await bootstrap.Initialize(CancellationToken.None), Is.False);
+            Assert.That(manager.GlobalStateReader.HasStateForBlock(genesis.Header), Is.True);
+            Assert.That(telemetry.GetShadowRoot(genesis.Hash!), Is.EqualTo(expectedShadowRoot));
+            Assert.That(container.Resolve<IColumnsDb<PbtColumns>>().GetColumnDb(PbtColumns.Metadata).Get("migrationPreparedAnchor"u8), Is.Not.Null, "the verified image is recorded as the anchor's provenance");
         }
+        // A restart with the same source takes the fast path over the persisted native state.
+        manager.FlushCache(CancellationToken.None);
+        await bootstrap.Initialize(CancellationToken.None);
     }
 
     [Test]
@@ -144,16 +121,13 @@ public class PbtAnchorPublicationTests
         AssertPublishedState(harness, reused, name);
     }
 
+    /// <remarks>The anchor now comes only from the consumer's own chain, so the image's agreement with the
+    /// anchor's MPT root is the whole of the check; there is no second description of the anchor to disagree.</remarks>
     [Test]
-    public void Wrong_input_anchor_does_not_stage_or_publish([Values("hash", "root", "number")] string mismatch)
+    public void Image_that_does_not_rebuild_the_anchor_root_does_not_stage_or_publish()
     {
         using Harness harness = new("anchor");
-        harness.Identity = mismatch switch
-        {
-            "hash" => harness.Identity with { AnchorHash = Hash256.Zero.ToString() },
-            "root" => harness.Identity with { AnchorMptRoot = Hash256.Zero.ToString() },
-            _ => harness.Identity with { AnchorNumber = harness.Identity.AnchorNumber + 1 }
-        };
+        harness.Anchor = harness.WithStateRoot(Hash256.Zero);
 
         Assert.ThrowsAsync<InvalidDataException>(() => harness.Publish());
 
@@ -188,7 +162,7 @@ public class PbtAnchorPublicationTests
         harness.Reopen();
         if (changeSource)
         {
-            harness.Identity = harness.Identity with { ProducerRevision = "another-producer" };
+            harness.Anchor = harness.Anchor with { ChainId = "another-chain" };
             Assert.ThrowsAsync<InvalidDataException>(() => harness.Publish());
             Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
         }
@@ -226,23 +200,23 @@ public class PbtAnchorPublicationTests
         using BootstrapLease lease = new(harness, "a5", offline: true);
         string output = Path.Combine(harness.Scratch.Path, "bundle");
         if (mode == "existing") Directory.CreateDirectory(output);
-        if (mode == "corrupt") harness.Identity = harness.Identity with { AnchorMptRoot = Hash256.Zero.ToString() };
-        if (mode == "existing") Assert.Throws<IOException>(() => PbtOfflineExport.Export(lease, output, LimboLogs.Instance, CancellationToken.None));
+        if (mode == "corrupt") harness.Anchor = harness.WithStateRoot(Hash256.Zero);
+        void Export() => PbtOfflineExport.Export(lease.OfflineSource!, lease.OfflineCode!, harness.Anchor,
+            output, harness.Scratch.Path, harness.IsAnchorCurrent, LimboLogs.Instance, CancellationToken.None);
+        if (mode == "existing") Assert.Throws<IOException>(Export);
         else if (mode == "corrupt")
         {
-            Assert.Throws<InvalidDataException>(() => PbtOfflineExport.Export(lease, output, LimboLogs.Instance, CancellationToken.None));
+            Assert.Throws<InvalidDataException>(Export);
             Assert.That(Directory.Exists(output), Is.False);
         }
         else
         {
-            PbtOfflineExport.Export(lease, output, LimboLogs.Instance, CancellationToken.None);
+            Export();
             using FileStream expected = OpenArtifact("a5", "snapshot.pbt");
             using MemoryStream expectedBytes = new();
             expected.CopyTo(expectedBytes);
             Assert.That(File.ReadAllBytes(Path.Combine(output, "snapshot.pbt")), Is.EqualTo(expectedBytes.ToArray()));
-            using FileStream manifest = File.OpenRead(Path.Combine(output, "manifest.json"));
-            Assert.That(PbtArtifactManifest.Read(manifest), Is.EqualTo(harness.Identity));
-            Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(3));
+            Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(2));
         }
         Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Has.Length.EqualTo(mode == "corrupt" ? 0 : 1));
         AssertNoNativeState(harness);
@@ -257,31 +231,13 @@ public class PbtAnchorPublicationTests
         Directory.CreateDirectory(directory);
         await using FileStream exportedSnapshot = new(Path.Combine(directory, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         await using FileStream exportedPreimages = new(Path.Combine(directory, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-        await using FileStream manifest = new(Path.Combine(directory, "manifest.json"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-        PbtOfflineSource.WriteArtifacts(lease.OfflineSource!, lease.OfflineCode!, lease.Identity, lease.Anchor, directory, exportedSnapshot, exportedPreimages, manifest, LimboLogs.Instance);
+        PbtOfflineSource.WriteArtifacts(lease.OfflineSource!, lease.OfflineCode!, lease.Anchor, directory, exportedSnapshot, exportedPreimages, LimboLogs.Instance);
         exportedSnapshot.Position = 0;
         exportedPreimages.Position = 0;
 
-        ValueHash256 root = await harness.Publication.Publish(exportedSnapshot, exportedPreimages, harness.Identity, harness.Anchor, harness.Scratch.Path, () => true);
+        ValueHash256 root = await harness.Publication.Publish(exportedSnapshot, exportedPreimages, harness.Anchor, harness.Scratch.Path, () => true);
 
         AssertPublishedState(harness, root, "a5");
-    }
-
-    [Test]
-    public void Manifest_roundtrips_identity_and_rejects_duplicate_fields([Values] bool duplicate)
-    {
-        using Harness harness = new("anchor");
-        using MemoryStream snapshot = new(), preimages = new(), manifest = new();
-        PbtArtifactWriter.Write(snapshot, preimages, manifest, harness.Identity, default, 0, [], []);
-        if (duplicate)
-        {
-            manifest.Position = manifest.Length - 1;
-            manifest.Write(",\"version\":1}"u8);
-        }
-        manifest.Position = 0;
-
-        if (duplicate) Assert.Throws<InvalidDataException>(() => PbtArtifactManifest.Read(manifest));
-        else Assert.That(PbtArtifactManifest.Read(manifest), Is.EqualTo(harness.Identity));
     }
 
     [Test]
@@ -388,8 +344,7 @@ public class PbtAnchorPublicationTests
     {
         public readonly TempPath Scratch = TempPath.GetTempDirectory();
         public readonly SyncColumnsDb Target = new();
-        public readonly PbtImageAnchor Anchor;
-        public PbtArtifactIdentity Identity;
+        public PbtImageAnchor Anchor;
         public Func<bool> IsAnchorCurrent = () => true;
         public int MaxBufferedRuns { get; init; } = 4096;
         public PbtTestContext Pbt { get; private set; } = null!;
@@ -406,11 +361,14 @@ public class PbtAnchorPublicationTests
             JsonElement metadata = Metadata(name);
             BlockHeader header = Build.A.BlockHeader.WithNumber(metadata.GetProperty("number").GetUInt64())
                 .WithTimestamp(0).WithStateRoot(new Hash256(metadata.GetProperty("mptRoot").GetString()!)).TestObject;
-            Anchor = new("1", new Hash256(Metadata("anchor").GetProperty("blockHash").GetString()!), header, true, 48, 24576);
-            Identity = new(Anchor.ChainId, Anchor.GenesisHash.ToString(), header.Hash!.ToString(), header.Number,
-                header.StateRoot!.ToString(), "eip-8347", "test", "fixture-state");
+            Anchor = new("1", new Hash256(Metadata("anchor").GetProperty("blockHash").GetString()!), header, 48, 24576);
             Open();
         }
+
+        public PbtImageAnchor WithStateRoot(Hash256 stateRoot) => Anchor with
+        {
+            Header = Build.A.BlockHeader.WithNumber(Anchor.Header.Number).WithTimestamp(0).WithStateRoot(stateRoot).TestObject
+        };
 
         /// <summary>Reopens the native PBT stack over the same database, as a restart would.</summary>
         public void Reopen()
@@ -429,7 +387,7 @@ public class PbtAnchorPublicationTests
         {
             using FileStream snapshot = OpenArtifact(_name, "snapshot.pbt");
             using FileStream preimages = OpenArtifact(_name, "preimages.bin");
-            return await Publication.Publish(snapshot, preimages, Identity, Anchor, Scratch.Path, IsAnchorCurrent, cancellationToken);
+            return await Publication.Publish(snapshot, preimages, Anchor, Scratch.Path, IsAnchorCurrent, cancellationToken);
         }
 
         public void Dispose()
@@ -465,7 +423,7 @@ public class PbtAnchorPublicationTests
                 PreimageRocksdbPersistence source = new(_sourceDatabase, LimboLogs.Instance, FlatLayout.PreimageFlat);
                 using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
                 using FileStream preimages = OpenArtifact(name, "preimages.bin");
-                using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity, Anchor, ScratchDirectory, LimboLogs.Instance);
+                using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Anchor, ScratchDirectory, LimboLogs.Instance);
                 using (IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(Anchor.Header), WriteFlags.None))
                     image.Replay((address, account, code) =>
                     {
@@ -482,7 +440,6 @@ public class PbtAnchorPublicationTests
         }
 
         public override PbtImageAnchor Anchor => _harness.Anchor;
-        public override PbtArtifactIdentity Identity => _harness.Identity;
         public override IPersistence.IPersistenceReader MptAnchor => _mptReader;
         public override IColumnsDb<PbtColumns> Target => _harness.Target;
         public override string ScratchDirectory => _harness.Scratch.Path;

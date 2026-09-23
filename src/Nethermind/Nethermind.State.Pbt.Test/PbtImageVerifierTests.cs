@@ -41,7 +41,7 @@ public class PbtImageVerifierTests
         PbtImageAnchor anchor = SyntheticAnchor(metadata);
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
         using FileStream preimages = OpenArtifact(name, "preimages.bin");
-        using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance);
+        using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, anchor, _stagingDirectory, LimboLogs.Instance);
         using JsonDocument state = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Fixtures, "states", name + ".alloc.json")));
         Dictionary<Address, (Account Account, byte[] Code)> accounts = [];
         Dictionary<(Address Address, UInt256 Slot), ValueHash256> storage = [];
@@ -90,11 +90,11 @@ public class PbtImageVerifierTests
         JsonElement metadata = Metadata(name);
         BlockHeader header = Rlp.Decode<BlockHeader>(new Rlp(Bytes.FromHexString(metadata.GetProperty("headerRlp").GetString()!)))!;
         PbtImageAnchor anchor = SyntheticAnchor(metadata) with { Header = header };
-        Assert.That(header.Timestamp, Is.GreaterThanOrEqualTo(anchor.ActivationTimestamp));
+        Assert.That(header.Timestamp, Is.GreaterThanOrEqualTo(anchor.ActivationTimestamp!.Value));
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
         using FileStream preimages = OpenArtifact(name, "preimages.bin");
 
-        Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance));
+        Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, anchor, _stagingDirectory, LimboLogs.Instance));
         Assert.That(Directory.GetFileSystemEntries(_stagingDirectory), Is.Empty);
     }
 
@@ -160,7 +160,7 @@ public class PbtImageVerifierTests
         PbtPreimageCodec.Write(preimages, accounts);
         preimages.Position = 0;
 
-        InvalidDataException exception = Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance))!;
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, anchor, _stagingDirectory, LimboLogs.Instance))!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception.Message, Does.Not.Contain("PBT snapshot root mismatch"));
@@ -191,21 +191,14 @@ public class PbtImageVerifierTests
     }
 
     [Test]
-    public void Rejects_wrong_trusted_anchor_or_identity(
-        [Values("chain", "genesis", "hash", "number", "root", "trusted-root", "unfinalized", "activation", "missing-hash", "missing-root", "claimed-pbt-root")] string failure)
+    public void Rejects_wrong_trusted_anchor(
+        [Values("trusted-root", "activation", "missing-hash", "missing-root", "claimed-pbt-root")] string failure)
     {
         PbtImageAnchor anchor = SyntheticAnchor(Metadata("anchor"));
-        PbtArtifactIdentity identity = Identity(anchor);
         switch (failure)
         {
-            case "chain": identity = identity with { ChainId = "other" }; break;
-            case "genesis": identity = identity with { GenesisHash = Hash256.Zero.ToString() }; break;
-            case "hash": identity = identity with { AnchorHash = Hash256.Zero.ToString() }; break;
-            case "number": identity = identity with { AnchorNumber = identity.AnchorNumber + 1 }; break;
-            case "root": identity = identity with { AnchorMptRoot = Hash256.Zero.ToString() }; break;
-            case "trusted-root": anchor.Header.StateRoot = Hash256.Zero; identity = Identity(anchor); break;
-            case "unfinalized": anchor = anchor with { IsFinalized = false }; break;
-            case "activation": anchor.Header.Timestamp = anchor.ActivationTimestamp; break;
+            case "trusted-root": anchor.Header.StateRoot = Hash256.Zero; break;
+            case "activation": anchor.Header.Timestamp = anchor.ActivationTimestamp!.Value; break;
             case "missing-hash": anchor.Header.Hash = null; break;
             case "missing-root": anchor.Header.StateRoot = null!; break;
         }
@@ -214,8 +207,22 @@ public class PbtImageVerifierTests
         using MemoryStream snapshot = new(bytes);
         using FileStream preimages = OpenArtifact("anchor", "preimages.bin");
 
-        Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, identity, anchor, _stagingDirectory, LimboLogs.Instance));
+        Assert.Throws<InvalidDataException>(() => PbtImageVerifier.Verify(snapshot, preimages, anchor, _stagingDirectory, LimboLogs.Instance));
         Assert.That(Directory.GetFileSystemEntries(_stagingDirectory), Is.Empty);
+    }
+
+    /// <remarks>An anchor without an activation is an export on a chain specification that schedules no
+    /// binaryTrieTime; there is then nothing for the anchor to precede.</remarks>
+    [Test]
+    public void Accepts_an_anchor_without_an_activation()
+    {
+        PbtImageAnchor anchor = SyntheticAnchor(Metadata("anchor")) with { ActivationTimestamp = null };
+        using FileStream snapshot = OpenArtifact("anchor", "snapshot.pbt");
+        using FileStream preimages = OpenArtifact("anchor", "preimages.bin");
+
+        using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, anchor, _stagingDirectory, LimboLogs.Instance);
+
+        Assert.That(image.PbtRoot, Is.Not.EqualTo(default(ValueHash256)));
     }
 
     [Test]
@@ -226,11 +233,11 @@ public class PbtImageVerifierTests
         using FileStream preimages = OpenArtifact("anchor", "preimages.bin");
         if (cancelVerification)
         {
-            Assert.Throws<OperationCanceledException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance, new CancellationToken(true)));
+            Assert.Throws<OperationCanceledException>(() => PbtImageVerifier.Verify(snapshot, preimages, anchor, _stagingDirectory, LimboLogs.Instance, new CancellationToken(true)));
         }
         else
         {
-            using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance);
+            using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, anchor, _stagingDirectory, LimboLogs.Instance);
             Assert.That(Directory.GetDirectories(_stagingDirectory), Has.Length.EqualTo(1));
             Assert.Throws<OperationCanceledException>(() => image.Replay((_, _, _) => Assert.Fail("Cancelled replay"), (_, _, _) => Assert.Fail("Cancelled replay"), new CancellationToken(true)));
             image.Dispose();
@@ -251,12 +258,12 @@ public class PbtImageVerifierTests
         using FileStream snapshot = OpenArtifact("a5", "snapshot.pbt");
         using FileStream preimages = OpenArtifact("a5", "preimages.bin");
 
-        Assert.Throws<PbtImageResourceLimitException>(() => PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor),
+        Assert.Throws<PbtImageResourceLimitException>(() => PbtImageVerifier.Verify(snapshot, preimages,
             anchor with { MaxBufferedCodeBytes = 0 }, _stagingDirectory, LimboLogs.Instance));
         Assert.That(Directory.GetFileSystemEntries(_stagingDirectory), Is.Empty);
         snapshot.Position = 0;
         preimages.Position = 0;
-        using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, Identity(anchor), anchor, _stagingDirectory, LimboLogs.Instance);
+        using PbtVerifiedImage image = PbtImageVerifier.Verify(snapshot, preimages, anchor, _stagingDirectory, LimboLogs.Instance);
     }
 
     private static FileStream OpenArtifact(string name, string file) => File.OpenRead(Path.Combine(Fixtures, "canonical", name, file));
@@ -274,11 +281,8 @@ public class PbtImageVerifierTests
         // These verify fixture states, not their post-fork headers: the synthetic trusted header commits to the MPT root.
         BlockHeader header = Build.A.BlockHeader.WithNumber(metadata.GetProperty("number").GetUInt64())
             .WithTimestamp(0).WithStateRoot(new Hash256(metadata.GetProperty("mptRoot").GetString()!)).TestObject;
-        return new("1", new Hash256(Metadata("anchor").GetProperty("blockHash").GetString()!), header, true, 48, 24576);
+        return new("1", new Hash256(Metadata("anchor").GetProperty("blockHash").GetString()!), header, 48, 24576);
     }
-
-    private static PbtArtifactIdentity Identity(PbtImageAnchor anchor) => new(anchor.ChainId, anchor.GenesisHash.ToString(),
-        anchor.Header.Hash!.ToString(), anchor.Header.Number, anchor.Header.StateRoot!.ToString(), "eip-8347", "test", "fixture-state");
 
     private static UInt256 Number(string hex) => new(Bytes.FromHexString(hex), isBigEndian: true);
 

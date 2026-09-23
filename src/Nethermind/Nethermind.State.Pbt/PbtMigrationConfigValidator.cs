@@ -15,11 +15,9 @@ internal static class PbtMigrationConfigValidator
 
     internal static void Validate(IPbtConfig config, IFlatDbConfig flatConfig, ChainSpec chainSpec, string targetPath)
     {
-        if (!IsScheduledMigration(chainSpec))
-        {
-            if (config.MigrationExportPath is not null) Fail("MigrationExportPath requires a scheduled binaryTrieTime migration.");
-            return;
-        }
+        if (config.MigrationAnchor is < 0) Fail("MigrationAnchor must not be negative.");
+        ValidateExport(config, flatConfig, chainSpec, targetPath);
+        if (!IsScheduledMigration(chainSpec)) return;
 
         if (config.MirrorFlat || config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree)
             Fail("A scheduled binaryTrieTime migration cannot be combined with mirror, fake-root, offline import or scan modes.");
@@ -44,26 +42,10 @@ internal static class PbtMigrationConfigValidator
             Fail("MigrationSnapshotPath and MigrationPreimagesPath must be supplied together.");
         if (config.MigrationGenesisBootstrap ? snapshot || source : snapshot && source)
             Fail("Select at most one migration source: snapshot/preimages, offline preimage-flat, or genesis bootstrap.");
-        if ((snapshot || source) && !HasPath(config.MigrationManifestPath))
-            Fail("MigrationManifestPath is required for an external migration source.");
+        if ((snapshot || source) && config.MigrationAnchor is null)
+            Fail("MigrationAnchor is required for an external migration source.");
 
-        if (config.MigrationExportPath is { } exportPath)
-        {
-            if (!HasPath(exportPath) || snapshot || !(source || config.MigrationGenesisBootstrap))
-                Fail("MigrationExportPath requires genesis bootstrap or an offline preimage source, not portable input.");
-            string output = Path.GetFullPath(exportPath);
-            RejectLinks(output);
-            if (Directory.Exists(output) || File.Exists(output)) Fail("MigrationExportPath must be a new directory.");
-            foreach (string? input in new[] { targetPath, config.MigrationManifestPath, config.MigrationPreimageSourcePath })
-            {
-                if (input is null) continue;
-                RejectLinks(Path.GetFullPath(input));
-                if (ContainsPath(Path.GetFullPath(input), output) || ContainsPath(output, Path.GetFullPath(input)))
-                    Fail("Migration export must not overlap target or source paths.");
-            }
-        }
-
-        foreach (string? path in new[] { config.MigrationManifestPath, config.MigrationSnapshotPath, config.MigrationPreimagesPath, config.MigrationPreimageSourcePath })
+        foreach (string? path in new[] { config.MigrationSnapshotPath, config.MigrationPreimagesPath, config.MigrationPreimageSourcePath })
         {
             if (path is null) continue;
             if (!HasPath(path)) Fail("Migration input paths must not be empty or whitespace.");
@@ -71,6 +53,30 @@ internal static class PbtMigrationConfigValidator
             string target = Path.GetFullPath(targetPath);
             if (ContainsPath(target, input) || ContainsPath(input, target))
                 Fail("Migration input paths must not overlap the writable target database path.");
+        }
+    }
+
+    /// <remarks>The export reads this node's own state, so unlike the import it does not depend on a scheduled
+    /// binaryTrieTime; it does depend on a preimage layout, since EIP-8297 keys are derived from the addresses and
+    /// slot keys that a hash-keyed flat database does not retain.</remarks>
+    private static void ValidateExport(IPbtConfig config, IFlatDbConfig flatConfig, ChainSpec chainSpec, string targetPath)
+    {
+        if (config.MigrationExportPath is not { } exportPath) return;
+        if (!HasPath(exportPath)) Fail("MigrationExportPath must not be empty or whitespace.");
+        if (config.Enabled || config.MirrorFlat || config.ImportFromPreimageFlat || config.ScanTree || IsScheduledMigration(chainSpec))
+            Fail("MigrationExportPath reads the flat state instead of running the binary tree, so it cannot be combined with the PBT backend, a scheduled binaryTrieTime, or the other one-shot modes.");
+        if (!flatConfig.Enabled || flatConfig.Layout is not (FlatLayout.PreimageFlat or FlatLayout.PreimageFlatV1))
+            Fail("MigrationExportPath requires FlatDb.Enabled and a preimage-flat layout.");
+        if (config.ExportStepDistance < 0) Fail("ExportStepDistance must not be negative.");
+        string output = Path.GetFullPath(exportPath);
+        RejectLinks(output);
+        if (Directory.Exists(output) || File.Exists(output)) Fail("MigrationExportPath must be a new directory.");
+        foreach (string? input in new[] { targetPath, config.MigrationPreimageSourcePath })
+        {
+            if (input is null) continue;
+            RejectLinks(Path.GetFullPath(input));
+            if (ContainsPath(Path.GetFullPath(input), output) || ContainsPath(output, Path.GetFullPath(input)))
+                Fail("Migration export must not overlap target or source paths.");
         }
     }
 

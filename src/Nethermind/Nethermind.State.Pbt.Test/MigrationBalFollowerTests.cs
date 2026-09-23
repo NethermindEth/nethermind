@@ -294,14 +294,12 @@ public class MigrationBalFollowerTests
         public async Task Publish()
         {
             BlockHeader header = Blocks["anchor"].Header;
-            PbtImageAnchor anchor = new("1", header.Hash!, header, true, 48, 24576);
-            PbtArtifactIdentity identity = new("1", header.Hash!.ToString(), header.Hash.ToString(), header.Number,
-                header.StateRoot!.ToString(), "eip-8347", "test", "fixture-state");
+            PbtImageAnchor anchor = new("1", header.Hash!, header, 48, 24576);
             Directory.CreateDirectory(_scratch.Path);
             using FileStream snapshot = File.OpenRead(Path.Combine(Fixtures, "canonical", "anchor", "snapshot.pbt"));
             using FileStream preimages = File.OpenRead(Path.Combine(Fixtures, "canonical", "anchor", "preimages.bin"));
             await new PbtAnchorPublication(new PbtRocksDbPersistence(_target, new PbtConfig()), _target, _pbt.Persistence, _pbt.Manager, _pbt.Coordinator, new PbtConfig(), LimboLogs.Instance)
-                .Publish(snapshot, preimages, identity, anchor, _scratch.Path, () => true, default);
+                .Publish(snapshot, preimages, anchor, _scratch.Path, () => true, default);
         }
 
         public void Dispose()

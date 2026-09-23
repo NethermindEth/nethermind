@@ -31,6 +31,13 @@ internal sealed class PbtAnchorPublication(
     ILogManager logManager)
 {
     private static readonly byte[] _provenanceKey = "migrationPreparedAnchor"u8.ToArray();
+
+    /// <summary>Which anchor a native PBT database was seeded from, so a restart against a different one is refused.</summary>
+    private sealed record AnchorProvenance(string ChainId, string GenesisHash, string AnchorHash, long AnchorNumber, string AnchorMptRoot);
+
+    private static byte[] Provenance(PbtImageAnchor anchor) => System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+        new AnchorProvenance(anchor.ChainId, anchor.GenesisHash.ToString(), anchor.Header.Hash!.ToString(),
+            (long)anchor.Header.Number, anchor.Header.StateRoot!.ToString()));
     private const int BatchSize = 4096;
     private const string StagePhase = "PBT anchor staging";
 
@@ -38,12 +45,12 @@ internal sealed class PbtAnchorPublication(
     internal int MaxBufferedRuns { get; init; } = 4096;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorPublication>();
 
-    public async Task<ValueHash256> Publish(Stream snapshot, Stream preimages, PbtArtifactIdentity identity,
+    public async Task<ValueHash256> Publish(Stream snapshot, Stream preimages,
         PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Stopwatch importing = Stopwatch.StartNew();
-        byte[] provenance = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(identity);
+        byte[] provenance = Provenance(anchor);
         IDb metadata = targetDb.GetColumnDb(PbtColumns.Metadata);
         StateId anchorState = new(anchor.Header);
         if (target.IsValid && metadata.Get(_provenanceKey) is { } prepared)
@@ -63,7 +70,7 @@ internal sealed class PbtAnchorPublication(
             await using FileStream copiedSnapshot = new(copyPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             await snapshot.CopyToAsync(copiedSnapshot, cancellationToken);
             copiedSnapshot.Position = 0;
-            using PbtVerifiedImage image = PbtImageVerifier.Verify(copiedSnapshot, preimages, identity, anchor, scratchDirectory, logManager, cancellationToken);
+            using PbtVerifiedImage image = PbtImageVerifier.Verify(copiedSnapshot, preimages, anchor, scratchDirectory, logManager, cancellationToken);
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
 
             if (manager.HasStateForBlock(anchorState))
@@ -76,7 +83,7 @@ internal sealed class PbtAnchorPublication(
                 return held;
             }
 
-            RecoverStaging(targetDb, identity, cancellationToken);
+            RecoverStaging(targetDb, anchor, cancellationToken);
             if (target.IsValid) throw new InvalidOperationException("An unpublished populated PBT target requires recovery, not replacement.");
             using (IPbtPersistence.IReader reader = target.CreateReader())
                 if (reader.CurrentState != StateId.PreGenesis)
@@ -194,10 +201,10 @@ internal sealed class PbtAnchorPublication(
         finally { File.Delete(copyPath); }
     }
 
-    private static void RecoverStaging(IColumnsDb<PbtColumns> database, PbtArtifactIdentity identity, CancellationToken token)
+    private static void RecoverStaging(IColumnsDb<PbtColumns> database, PbtImageAnchor anchor, CancellationToken token)
     {
         byte[] key = "migrationPreparedAnchor"u8.ToArray();
-        byte[] provenance = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(identity);
+        byte[] provenance = Provenance(anchor);
         IDb metadata = database.GetColumnDb(PbtColumns.Metadata);
         byte[]? prepared = metadata.Get(key);
         if (prepared is not null)

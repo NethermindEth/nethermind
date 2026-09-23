@@ -29,7 +29,6 @@ public class PbtPortableCodecTests
         byte[] preimages = File.ReadAllBytes(Path.Combine(Fixtures, "canonical", name, "preimages.bin"));
         using JsonDocument golden = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Fixtures, "canonical-manifest.json")));
         JsonElement expected = golden.RootElement.GetProperty("artifacts").EnumerateArray().Single(item => item.GetProperty("name").GetString() == name);
-        byte[]? previousManifest = null;
         for (int repetition = 0; repetition < 2; repetition++)
         {
             using MemoryStream snapshotInput = new(snapshot);
@@ -37,21 +36,16 @@ public class PbtPortableCodecTests
             (ValueHash256 root, ulong count) = PbtSnapshotCodec.ReadHeader(snapshotInput);
             using MemoryStream snapshotOutput = new();
             using MemoryStream preimageOutput = new();
-            using MemoryStream manifest = new();
-            PbtArtifactWriter.Write(snapshotOutput, preimageOutput, manifest,
-                new("1", "genesis", "anchor", 0, "mpt", "eips", "geth", "portable"), root, count,
+            PbtArtifactWriter.PbtArtifactDigests digests = PbtArtifactWriter.Write(snapshotOutput, preimageOutput, root, count,
                 PbtSnapshotCodec.ReadLeaves(snapshotInput, count), ReadAccounts(preimageInput));
-            using JsonDocument actual = JsonDocument.Parse(manifest.ToArray());
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(snapshotOutput.ToArray(), Is.EqualTo(snapshot));
                 Assert.That(preimageOutput.ToArray(), Is.EqualTo(preimages));
-                Assert.That(actual.RootElement.GetProperty("snapshotDigest").GetString(), Is.EqualTo(expected.GetProperty("snapshotDigest").GetString()));
-                Assert.That(actual.RootElement.GetProperty("preimageDigest").GetString(), Is.EqualTo(expected.GetProperty("preimageDigest").GetString()));
-                if (previousManifest is not null) Assert.That(manifest.ToArray(), Is.EqualTo(previousManifest));
-                Assert.That(snapshotOutput.CanWrite && preimageOutput.CanWrite && manifest.CanWrite, Is.True);
+                Assert.That(digests.Snapshot.ToString(), Is.EqualTo(expected.GetProperty("snapshotDigest").GetString()));
+                Assert.That(digests.Preimages.ToString(), Is.EqualTo(expected.GetProperty("preimageDigest").GetString()));
+                Assert.That(snapshotOutput.CanWrite && preimageOutput.CanWrite, Is.True);
             }
-            previousManifest = manifest.ToArray();
         }
     }
 

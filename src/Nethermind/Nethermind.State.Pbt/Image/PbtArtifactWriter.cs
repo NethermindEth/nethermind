@@ -1,21 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Pbt.Image;
 
-/// <summary>Advisory provenance supplied by the offline producer, never a trust anchor.</summary>
-internal sealed record PbtArtifactIdentity(string ChainId, string GenesisHash, string AnchorHash, ulong AnchorNumber,
-    string AnchorMptRoot, string FormatRevision, string ProducerRevision, string SourceKind);
-
-/// <summary>Writes two canonical streams and their deterministic version-one manifest.</summary>
+/// <summary>Writes the two canonical EIP-8347 streams and reports their digests.</summary>
 /// <remarks>Inputs are already sorted offline streams. Outputs must be separate, unpublished streams owned by the caller.
 /// This helper neither verifies roots nor publishes state. On failure the caller discards partial outputs.</remarks>
 internal static class PbtArtifactWriter
 {
-    public static void Write(Stream snapshot, Stream preimages, Stream manifest, PbtArtifactIdentity identity,
+    /// <summary>Keccak over each whole stream, as EIP-8347 defines them. They let consumers agree on an
+    /// artifact ahead of an expensive download; they are not roots of trust.</summary>
+    internal readonly record struct PbtArtifactDigests(ValueHash256 Snapshot, ValueHash256 Preimages);
+
+    public static PbtArtifactDigests Write(Stream snapshot, Stream preimages,
         ValueHash256 pbtRoot, ulong leafCount, IEnumerable<RebuildEntry> leaves,
         IEnumerable<PbtAccountPreimages> accounts, CancellationToken cancellationToken = default)
     {
@@ -24,22 +23,7 @@ internal static class PbtArtifactWriter
         PbtSnapshotCodec.Write(snapshotWriter, pbtRoot, leafCount, leaves, cancellationToken);
         PbtPreimageCodec.Write(preimageWriter, accounts, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        using Utf8JsonWriter json = new(manifest);
-        json.WriteStartObject();
-        json.WriteNumber("version", 1);
-        json.WriteString("chainId", identity.ChainId);
-        json.WriteString("genesisHash", identity.GenesisHash);
-        json.WriteString("anchorHash", identity.AnchorHash);
-        json.WriteNumber("anchorNumber", identity.AnchorNumber);
-        json.WriteString("anchorMptRoot", identity.AnchorMptRoot);
-        json.WriteString("pbtRoot", pbtRoot.ToString());
-        json.WriteString("snapshotDigest", snapshotWriter.Digest.ToString());
-        json.WriteString("preimageDigest", preimageWriter.Digest.ToString());
-        json.WriteString("formatRevision", identity.FormatRevision);
-        json.WriteString("producerRevision", identity.ProducerRevision);
-        json.WriteString("sourceKind", identity.SourceKind);
-        json.WriteEndObject();
-        json.Flush();
+        return new(snapshotWriter.Digest, preimageWriter.Digest);
     }
 
     private sealed class DigestWriter(Stream destination) : Stream

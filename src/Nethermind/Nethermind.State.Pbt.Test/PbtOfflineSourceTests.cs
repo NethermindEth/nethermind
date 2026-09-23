@@ -38,9 +38,7 @@ public class PbtOfflineSourceTests
                 if (block.GetProperty("name").GetString() == name) metadata = block;
             BlockHeader header = Build.A.BlockHeader.WithNumber(metadata.GetProperty("number").GetUInt64())
                 .WithTimestamp(0).WithStateRoot(new Hash256(metadata.GetProperty("mptRoot").GetString()!)).TestObject;
-            PbtImageAnchor anchor = new("1", header.Hash!, header, true, 48, 24576);
-            PbtArtifactIdentity identity = new("1", header.Hash!.ToString(), header.Hash.ToString(), header.Number,
-                header.StateRoot!.ToString(), "eip-8347", "test", "preimage-flat");
+            PbtImageAnchor anchor = new("1", header.Hash!, header, 48, 24576);
             byte[] expectedSnapshot = File.ReadAllBytes(Path.Combine(fixtures, "canonical", name, "snapshot.pbt"));
             byte[] expectedPreimages = File.ReadAllBytes(Path.Combine(fixtures, "canonical", name, "preimages.bin"));
             using MemoryStream inputSnapshot = new(expectedSnapshot);
@@ -48,7 +46,7 @@ public class PbtOfflineSourceTests
             using SnapshotableMemColumnsDb<FlatDbColumns> database = new("offline");
             using MemDb codes = new();
             PreimageRocksdbPersistence persistence = new(database, LimboLogs.Instance, FlatLayout.PreimageFlat);
-            using (PbtVerifiedImage image = PbtImageVerifier.Verify(inputSnapshot, inputPreimages, identity, anchor, directory, LimboLogs.Instance))
+            using (PbtVerifiedImage image = PbtImageVerifier.Verify(inputSnapshot, inputPreimages, anchor, directory, LimboLogs.Instance))
             using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(header), WriteFlags.None))
                 image.Replay((address, account, code) =>
                 {
@@ -56,8 +54,8 @@ public class PbtOfflineSourceTests
                     if (code.Length != 0) codes[account.CodeHash.Bytes] = code;
                 }, (address, slot, value) => batch.SetStorage(address, slot, new UInt256(value.Bytes, true)));
             using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-            using MemoryStream snapshot = new(), preimages = new(), manifest = new();
-            PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, directory, snapshot, preimages, manifest, LimboLogs.Instance, bufferBytes);
+            using MemoryStream snapshot = new(), preimages = new();
+            PbtOfflineSource.WriteArtifacts(reader, codes, anchor, directory, snapshot, preimages, LimboLogs.Instance, bufferBytes);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(snapshot.ToArray(), Is.EqualTo(expectedSnapshot));
@@ -66,7 +64,7 @@ public class PbtOfflineSourceTests
                 Assert.That(Directory.GetFileSystemEntries(directory), Is.Empty);
             }
             snapshot.Position = preimages.Position = 0;
-            using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, identity, anchor, directory, LimboLogs.Instance);
+            using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, anchor, directory, LimboLogs.Instance);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
@@ -79,18 +77,16 @@ public class PbtOfflineSourceTests
         {
             Address address = new("0xffffffffffffffffffffffffffffffffffffffff");
             BlockHeader header = Build.A.BlockHeader.TestObject;
-            PbtImageAnchor anchor = new("1", header.Hash!, header, true, ulong.MaxValue, 24576);
-            PbtArtifactIdentity identity = new("1", header.Hash!.ToString(), header.Hash.ToString(), header.Number,
-                header.StateRoot!.ToString(), "eip-8347", "test", "preimage-flat");
+            PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue, 24576);
             using SnapshotableMemColumnsDb<FlatDbColumns> database = new("offline");
             using MemDb codes = new();
             PreimageRocksdbPersistence persistence = new(database, LimboLogs.Instance, FlatLayout.PreimageFlat);
             using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(header), WriteFlags.None))
                 batch.SetAccount(address, new Account(1, 100));
             using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-            using MemoryStream snapshot = new(), preimages = new(), manifest = new();
+            using MemoryStream snapshot = new(), preimages = new();
             TestLogger log = new();
-            PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, directory, snapshot, preimages, manifest,
+            PbtOfflineSource.WriteArtifacts(reader, codes, anchor, directory, snapshot, preimages,
                 new OneLoggerLogManager(new ILogger(log)), 1024);
             preimages.Position = 0;
             PbtPreimageReader output = new(preimages);
@@ -114,13 +110,11 @@ public class PbtOfflineSourceTests
         PreimageRocksdbPersistence persistence = new(database, LimboLogs.Instance, FlatLayout.PreimageFlat);
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        PbtImageAnchor anchor = new("1", header.Hash!, header, true, ulong.MaxValue, 24576);
-        PbtArtifactIdentity identity = new("1", header.Hash!.ToString(), header.Hash.ToString(), header.Number,
-            header.StateRoot!.ToString(), "eip-8347", "test", "preimage-flat");
-        using MemoryStream snapshot = new(), preimages = new(), manifest = new();
-        Assert.That(() => PbtOfflineSource.WriteArtifacts(reader, codes, identity, anchor, ".", snapshot, preimages, manifest, LimboLogs.Instance,
+        PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue, 24576);
+        using MemoryStream snapshot = new(), preimages = new();
+        Assert.That(() => PbtOfflineSource.WriteArtifacts(reader, codes, anchor, ".", snapshot, preimages, LimboLogs.Instance,
             cancellationToken: new CancellationToken(cancel)), cancel ? Throws.TypeOf<OperationCanceledException>() : Throws.TypeOf<InvalidDataException>());
-        Assert.That(snapshot.Length + preimages.Length + manifest.Length, Is.Zero);
+        Assert.That(snapshot.Length + preimages.Length, Is.Zero);
     }
 
     /// <summary>A fan-in below the run count forces intermediate merge rounds before the final merge.</summary>

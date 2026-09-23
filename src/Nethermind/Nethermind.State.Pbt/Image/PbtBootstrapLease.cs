@@ -13,7 +13,6 @@ namespace Nethermind.State.Pbt.Image;
 internal abstract class PbtBootstrapLease : IDisposable
 {
     public abstract PbtImageAnchor Anchor { get; }
-    public abstract PbtArtifactIdentity Identity { get; }
     public abstract IPersistence.IPersistenceReader MptAnchor { get; }
     public abstract IColumnsDb<PbtColumns> Target { get; }
     public abstract string ScratchDirectory { get; }

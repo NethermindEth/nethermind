@@ -48,7 +48,7 @@ public class PbtMigrationConfigTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(config.MigrationGenesisBootstrap, Is.False);
-            Assert.That(config.MigrationManifestPath, Is.Null);
+            Assert.That(config.MigrationAnchor, Is.Null);
             Assert.That(config.MigrationSnapshotPath, Is.Null);
             Assert.That(config.MigrationPreimagesPath, Is.Null);
             Assert.That(config.MigrationPreimageSourcePath, Is.Null);
@@ -63,17 +63,13 @@ public class PbtMigrationConfigTests
         if (source != "genesis")
         {
             config.MigrationGenesisBootstrap = false;
+            config.MigrationAnchor = 25;
             if (source == "portable")
             {
-                config.MigrationManifestPath = "source/manifest.json";
                 config.MigrationSnapshotPath = "source/snapshot.pbt";
                 config.MigrationPreimagesPath = "source/preimages.bin";
             }
-            else if (source == "preimage")
-            {
-                config.MigrationManifestPath = "source/manifest.json";
-                config.MigrationPreimageSourcePath = "source/db";
-            }
+            else if (source == "preimage") config.MigrationPreimageSourcePath = "source/db";
         }
         Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(config, Flat(), Chain(), "target"));
     }
@@ -81,7 +77,7 @@ public class PbtMigrationConfigTests
     [Test]
     public void Rejects_invalid_configuration([Values(
         "mirror", "fake", "import", "scan", "flat-disabled", "layout",
-        "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "partial", "mixed", "no-manifest", "overlap", "whitespace")] string invalid)
+        "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "partial", "mixed", "no-anchor", "negative-anchor", "overlap", "whitespace")] string invalid)
     {
         PbtConfig config = Config();
         FlatDbConfig flat = Flat();
@@ -102,9 +98,10 @@ public class PbtMigrationConfigTests
             case "late-deletion": chain.Parameters.Eip6780TransitionTimestamp = 100; break;
             case "partial": config.MigrationSnapshotPath = "source/snapshot.pbt"; break;
             case "mixed": config.MigrationPreimageSourcePath = "source/db"; break;
-            case "no-manifest": config.MigrationGenesisBootstrap = false; config.MigrationPreimageSourcePath = "source/db"; break;
-            case "overlap": config.MigrationManifestPath = "target/manifest.json"; break;
-            case "whitespace": config.MigrationManifestPath = " "; break;
+            case "no-anchor": config.MigrationGenesisBootstrap = false; config.MigrationPreimageSourcePath = "source/db"; break;
+            case "negative-anchor": config.MigrationAnchor = -1; break;
+            case "overlap": config.MigrationPreimageSourcePath = "target/source"; config.MigrationAnchor = 25; config.MigrationGenesisBootstrap = false; break;
+            case "whitespace": config.MigrationPreimageSourcePath = " "; config.MigrationAnchor = 25; config.MigrationGenesisBootstrap = false; break;
         }
         Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(config, flat, chain, "target"));
     }
@@ -130,24 +127,46 @@ public class PbtMigrationConfigTests
         Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(Config(), flat, new ChainSpec(), "target"));
     }
 
+    /// <remarks>The export reads the node's own preimage-flat state, so it runs on a chain specification that
+    /// schedules nothing and refuses to share the node with the binary tree backend.</remarks>
     [Test]
-    public void Offline_export_requires_isolated_new_output_and_source_mode([Values("valid", "unscheduled", "portable", "target", "empty")] string mode)
+    public void Export_requires_a_preimage_flat_node_and_an_isolated_new_output(
+        [Values("valid", "scheduled", "pbt-enabled", "hashed-layout", "flat-disabled", "target", "empty", "negative-distance")] string mode)
     {
-        PbtConfig config = Config();
+        PbtConfig config = new();
+        FlatDbConfig flat = new() { Enabled = true, Layout = FlatLayout.PreimageFlat };
         ChainSpec chain = Chain();
+        chain.Parameters.Eip8347TransitionTimestamp = null;
         config.MigrationExportPath = Path.Combine(Path.GetTempPath(), "pbt-export-" + System.Guid.NewGuid().ToString("N"));
-        if (mode == "unscheduled") chain.Parameters.Eip8347TransitionTimestamp = null;
-        if (mode == "portable")
+        switch (mode)
         {
-            config.MigrationGenesisBootstrap = false;
-            config.MigrationManifestPath = "source/manifest.json";
-            config.MigrationSnapshotPath = "source/snapshot.pbt";
-            config.MigrationPreimagesPath = "source/preimages.bin";
+            case "scheduled": chain.Parameters.Eip8347TransitionTimestamp = 100; break;
+            case "pbt-enabled": config.Enabled = true; break;
+            case "hashed-layout": flat.Layout = FlatLayout.Flat; break;
+            case "flat-disabled": flat.Enabled = false; break;
+            case "target": config.MigrationExportPath = "target/export"; break;
+            case "empty": config.MigrationExportPath = " "; break;
+            case "negative-distance": config.ExportStepDistance = -1; break;
         }
-        if (mode == "target") config.MigrationExportPath = "target/export";
-        if (mode == "empty") config.MigrationExportPath = " ";
-        if (mode == "valid") Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(config, Flat(), chain, "target"));
-        else Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(config, Flat(), chain, "target"));
+        if (mode == "valid") Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(config, flat, chain, "target"));
+        else Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(config, flat, chain, "target"));
+    }
+
+    /// <remarks>Exporting reads the flat state rather than replacing it, so the plugin must not need
+    /// Pbt.Enabled and must not pull in a PBT backend module.</remarks>
+    [Test]
+    public void Export_selects_its_own_module_without_enabling_the_binary_tree()
+    {
+        ChainSpec chain = Chain();
+        chain.Parameters.Eip8347TransitionTimestamp = null;
+        PbtConfig config = new() { MigrationExportPath = Path.Combine(Path.GetTempPath(), "pbt-export-" + System.Guid.NewGuid().ToString("N")) };
+        PbtPlugin plugin = new(config, new FlatDbConfig { Enabled = true, Layout = FlatLayout.PreimageFlat }, chain, new InitConfig { BaseDbPath = "target" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(plugin.Enabled, Is.True);
+            Assert.That(plugin.Module, Is.TypeOf<PbtExportModule>());
+        }
     }
 
     [Test]

@@ -19,8 +19,10 @@ namespace Nethermind.State.Pbt.Image;
 /// <summary>Anchor information obtained from the consumer's chain, never from an artifact.</summary>
 /// <param name="MaxBufferedCodeBytes">Local byte budget for whole code plus its 32-byte chunk encoding;
 /// not a deployment-code limit. Exhaustion is retryable resource unavailability, not invalid state.</param>
+/// <param name="ActivationTimestamp">The chain specification's binaryTrieTime, or null when it schedules none.
+/// An anchor must precede it; there is nothing to precede when it is null.</param>
 internal sealed record PbtImageAnchor(string ChainId, Hash256 GenesisHash, BlockHeader Header,
-    bool IsFinalized, ulong ActivationTimestamp, int MaxBufferedCodeBytes);
+    ulong? ActivationTimestamp, int MaxBufferedCodeBytes);
 
 /// <summary>Local buffering budget exhausted; this does not classify an artifact as invalid.</summary>
 internal sealed class PbtImageResourceLimitException(string message) : Exception(message);
@@ -55,10 +57,10 @@ internal static class PbtImageVerifier
     private const int SlotCountLength = sizeof(uint);
     private const int LeafLength = 32;
 
-    public static PbtVerifiedImage Verify(Stream snapshot, Stream preimages, PbtArtifactIdentity identity,
+    public static PbtVerifiedImage Verify(Stream snapshot, Stream preimages,
         PbtImageAnchor anchor, string stagingDirectory, ILogManager logManager, CancellationToken cancellationToken = default)
     {
-        ValidateAnchor(identity, anchor);
+        ValidateAnchor(anchor);
         ILogger logger = logManager.GetClassLogger(typeof(PbtImageVerifier));
         Stopwatch verifying = Stopwatch.StartNew();
         string directory = Path.Combine(stagingDirectory, $"pbt-verify-{Guid.NewGuid():N}");
@@ -332,17 +334,12 @@ internal static class PbtImageVerifier
         return (value, new ValueHash256(cursor.Value.Slice(2, LeafLength)));
     }
 
-    private static void ValidateAnchor(PbtArtifactIdentity identity, PbtImageAnchor anchor)
+    private static void ValidateAnchor(PbtImageAnchor anchor)
     {
         BlockHeader header = anchor.Header;
-        if (!anchor.IsFinalized || header.Timestamp >= anchor.ActivationTimestamp || header.Hash is null || header.StateRoot is null)
-            throw new InvalidDataException("Image requires a finalized pre-activation MPT anchor.");
+        if (anchor.ActivationTimestamp is { } activation && header.Timestamp >= activation || header.Hash is null || header.StateRoot is null)
+            throw new InvalidDataException("Image requires a pre-activation MPT anchor.");
         ArgumentOutOfRangeException.ThrowIfNegative(anchor.MaxBufferedCodeBytes);
-        if (identity.ChainId != anchor.ChainId || identity.AnchorNumber != header.Number ||
-            !string.Equals(identity.GenesisHash, anchor.GenesisHash.ToString(), StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(identity.AnchorHash, header.Hash.ToString(), StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(identity.AnchorMptRoot, header.StateRoot.ToString(), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Artifact identity does not match the consumer's chain anchor.");
     }
 
     private static byte[] ReadCode(Address address, int size, bool hasCodeHash, in ValueHash256 codeHashLeaf,

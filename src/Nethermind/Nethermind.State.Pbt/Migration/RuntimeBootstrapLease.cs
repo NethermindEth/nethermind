@@ -19,11 +19,10 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
     private IPersistence.IPersistenceReader? _source;
     private IReadOnlyKeyValueStore? _code;
 
-    private RuntimeBootstrapLease(PbtImageAnchor anchor, PbtArtifactIdentity identity, IPersistence flatPersistence,
+    private RuntimeBootstrapLease(PbtImageAnchor anchor, IPersistence flatPersistence,
         IColumnsDb<PbtColumns> target, string scratchDirectory, Func<bool> isCurrent)
     {
         Anchor = anchor;
-        Identity = identity;
         MptAnchor = flatPersistence.CreateReader();
         _owned.Add(MptAnchor);
         Target = target;
@@ -31,11 +30,11 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
         _isCurrent = isCurrent;
     }
 
-    public static RuntimeBootstrapLease Create(PbtImageAnchor anchor, PbtArtifactIdentity identity, IPersistence flatPersistence,
+    public static RuntimeBootstrapLease Create(PbtImageAnchor anchor, IPersistence flatPersistence,
         IColumnsDb<PbtColumns> target, string scratchDirectory, Func<bool> isCurrent, IPbtConfig configuration,
         MigrationGenesisSource? genesisSource, IReadOnlyKeyValueStore code, ILogManager logManager)
     {
-        RuntimeBootstrapLease lease = new(anchor, identity, flatPersistence, target, scratchDirectory, isCurrent);
+        RuntimeBootstrapLease lease = new(anchor, flatPersistence, target, scratchDirectory, isCurrent);
         try
         {
             if (configuration.MigrationSnapshotPath is { } snapshot)
@@ -64,7 +63,6 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
     }
 
     public override PbtImageAnchor Anchor { get; }
-    public override PbtArtifactIdentity Identity { get; }
     public override IPersistence.IPersistenceReader MptAnchor { get; }
     public override IColumnsDb<PbtColumns> Target { get; }
     public override string ScratchDirectory { get; }
