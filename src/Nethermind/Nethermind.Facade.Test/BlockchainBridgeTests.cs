@@ -1070,7 +1070,7 @@ public class BlockchainBridgeTests
         BlockReceiptsTracer receiptsTracer,
         Transaction transaction)
     {
-        using ITxTracer tracer = receiptsTracer.StartNewTxTrace(transaction);
+        receiptsTracer.StartNewTxTrace(transaction);
         adapter.Execute(transaction, receiptsTracer);
         receiptsTracer.EndTxTrace();
     }

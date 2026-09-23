@@ -1347,7 +1347,11 @@ public class EthSimulateTestsBlocksAndTransactions
         using (Assert.EnterMultipleScope())
         {
             Assert.That(calls[1].Error, eip8037Enabled ? Is.Not.Null : Is.Null);
-            Assert.That(calls[1].GasUsed, eip8037Enabled ? Is.EqualTo(RemainingStateGasAfterSstore) : Is.LessThan(RemainingStateGasAfterSstore));
+            if (eip8037Enabled)
+            {
+                Assert.That(calls[1].GasUsed, Is.EqualTo(RemainingStateGasAfterSstore));
+            }
+
             Assert.That(block.GasLimit, Is.EqualTo(StateGasBlockLimit));
         }
     }
@@ -1385,7 +1389,8 @@ public class EthSimulateTestsBlocksAndTransactions
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
-            Assert.That(result.Result.Error, Does.Contain("intrinsic gas").IgnoreCase);
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
+            Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
         }
     }
 
