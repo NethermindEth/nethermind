@@ -401,7 +401,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     bool tracingRefunds = tracer.IsTracingRefunds;
                     bool tracingLogs = tracer.IsTracingLogs;
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
-                    if (count > 1)
+                    // Only the Burn log is order-observable, so specs that emit none skip the sort.
+                    if (!removeSelfdestructBurn && count > 1)
                     {
                         Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
                         try
@@ -419,10 +420,13 @@ namespace Nethermind.Evm.TransactionProcessing
                             SafeArrayPool<Address>.Shared.Return(buffer);
                         }
                     }
-                    else if (count == 1)
+                    else
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, commit, removeSelfdestructBurn, tracer, tracingLogs);
-                        if (tracingRefunds) tracer.ReportRefund(destroyRefund);
+                        foreach (Address toBeDestroyed in destroyList)
+                        {
+                            FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit, removeSelfdestructBurn, tracer, tracingLogs);
+                            if (tracingRefunds) tracer.ReportRefund(destroyRefund);
+                        }
                     }
                 }
 
@@ -1457,8 +1461,9 @@ namespace Nethermind.Evm.TransactionProcessing
                         JournalCollection<LogEntry> logs = substate.Logs;
 
                         // The finalization log below is the only order-observable effect here, and it feeds
-                        // the receipt, so emit by ascending address rather than in hash-slot order. Specs
-                        // that emit no such log keep iterating the set directly.
+                        // the receipts root, so emit by ascending address rather than in hash-slot order —
+                        // the same order the deferred path already applies, rather than a second convention.
+                        // Specs that emit no such log keep iterating the set directly.
                         int destroyCount = destroyList.Count;
                         if (eip7708Enabled && !removeSelfdestructBurn && destroyCount > 1)
                         {

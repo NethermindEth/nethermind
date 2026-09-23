@@ -191,12 +191,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         tracer.EndTxTrace();
         tracer.EndBlockTrace();
 
-        LogEntry[] finalizationLogs = Array.FindAll(tracer.TxReceipts[0].Logs!, static log => log.Topics[0] == TransferLog.SelfDestructSignature);
-        LogEntry[] expected = Array.ConvertAll(scenario.ByAddress, static destroyed => new LogEntry(
-            TransferLog.Sender, Hash256.FromBytesWithPadding([destroyed.Funds]).BytesToArray(),
-            [TransferLog.SelfDestructSignature, destroyed.Account.ToHash().ToHash256()]));
-
-        Assert.That(finalizationLogs, Is.EqualTo(expected).UsingPropertiesComparer(), "receipt log order must follow ascending address order");
+        Eip7708SelfDestructScenario.AssertReceiptFinalizationOrder(tracer.TxReceipts[0], TransferLog.SelfDestructSignature, scenario);
     }
 
     private static IEnumerable<TestCaseData> TransferLogCases()
@@ -247,6 +242,23 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
         Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
+    }
+
+    [Test(Description = "The deferred path must order its Burn logs by address like the inline path")]
+    public void FinalizationBurnLogs_AreSortedByAddressInReceipt()
+    {
+        Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
+
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, scenario.FactoryCode, value: 0);
+        block.Header.GasUsed = 0;
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+        tracer.StartNewTxTrace(tx);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+
+        Eip7708SelfDestructScenario.AssertReceiptFinalizationOrder(tracer.TxReceipts[0], TransferLog.BurnSignature, scenario);
     }
 }
 
@@ -312,5 +324,16 @@ file static class Eip7708SelfDestructScenario
         }
 
         return new MultiDestroy(factory.STOP().Done, byAddress);
+    }
+
+    /// <summary>Asserts that the receipt's finalization logs carrying <paramref name="signature"/> follow ascending address order.</summary>
+    public static void AssertReceiptFinalizationOrder(TxReceipt receipt, Hash256 signature, MultiDestroy scenario)
+    {
+        LogEntry[] finalizationLogs = Array.FindAll(receipt.Logs!, log => log.Topics[0] == signature);
+        LogEntry[] expected = Array.ConvertAll(scenario.ByAddress, destroyed => new LogEntry(
+            TransferLog.Sender, Hash256.FromBytesWithPadding([destroyed.Funds]).BytesToArray(),
+            [signature, destroyed.Account.ToHash().ToHash256()]));
+
+        Assert.That(finalizationLogs, Is.EqualTo(expected).UsingPropertiesComparer(), "receipt log order must follow ascending address order");
     }
 }
