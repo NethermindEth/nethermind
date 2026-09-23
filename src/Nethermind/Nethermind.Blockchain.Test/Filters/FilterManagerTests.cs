@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Facade.Filters;
@@ -405,6 +406,55 @@ public class FilterManagerTests
         });
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void block_receipts_are_released_once_every_log_filter_has_read_them()
+    {
+        LogFilter polled = BuildFilter(static _ => { });
+        LogFilter lagging = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(polled);
+        _filterStore.SaveFilter(lagging);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
+        _filterManager.PollLogs(polled.Id);
+        RaiseBlockProcessed();
+        Assert.That(IsCollected(receipt), Is.False, "the lagging filter has not read the block yet");
+
+        _filterStore.RemoveFilter(lagging.Id);
+        RaiseBlockProcessed();
+        Assert.That(IsCollected(receipt), Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void block_filters_do_not_keep_receipts_alive()
+    {
+        BlockFilter blockFilter = new(_currentFilterId++);
+        _filterStore.SaveFilter(blockFilter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(IsCollected(receipt), Is.True);
+            Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Has.Length.EqualTo(1));
+        });
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void pending_transactions_are_released_when_the_last_pending_filter_is_removed()
+    {
+        PendingTransactionFilter filter = new(_currentFilterId++);
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        WeakReference hash = RaiseNewPendingWithUnreferencedHash();
+        Assert.That(IsCollected(hash), Is.False, "the filter has not read the transaction yet");
+
+        _filterStore.RemoveFilter(filter.Id);
+        Assert.That(IsCollected(hash), Is.True);
+    }
+
     private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
         => LogsShouldNotBeEmpty([filterBuilder], [receiptBuilder]);
 
@@ -479,6 +529,30 @@ public class FilterManagerTests
         builder(builderInstance);
 
         return builderInstance.TestObject;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private WeakReference RaiseBlockProcessedWithUnreferencedReceipt()
+    {
+        TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(1L));
+        RaiseBlockProcessed(receipt);
+        return new WeakReference(receipt);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private WeakReference RaiseNewPendingWithUnreferencedHash()
+    {
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(transaction));
+        return new WeakReference(transaction.Hash);
+    }
+
+    private static bool IsCollected(WeakReference reference)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        return !reference.IsAlive;
     }
 
     private Block RaiseBlockProcessed(params TxReceipt[] receipts)

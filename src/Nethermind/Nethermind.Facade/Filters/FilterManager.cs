@@ -23,11 +23,12 @@ namespace Nethermind.Facade.Filters
     /// Serves <c>eth_getFilterChanges</c> for installed filters.
     /// </summary>
     /// <remarks>
-    /// Filters do not buffer results. Processed blocks (with their receipts), reorg removals and new pending
-    /// transactions are each appended once to a log shared by all filters of that kind, every filter holds only a
-    /// cursor into it, and its results are matched when it is polled. Memory is therefore independent of the number
-    /// of filters and of how many results they match: a log keeps what the least recently polled filter has not read
-    /// yet, and a filter that stops polling is removed by the <see cref="FilterStore"/> timeout.
+    /// Filters do not buffer results. Processed blocks with their receipts and reorg removals (for log filters),
+    /// block hashes (for block filters) and new pending transactions are each appended once to a log shared by all
+    /// filters of that kind, every filter holds only a cursor into it, and its results are matched when it is polled.
+    /// Memory is therefore independent of the number of filters and of how many results they match: a log keeps what
+    /// the least recently polled filter has not read yet, and a filter that stops polling is removed by the
+    /// <see cref="FilterStore"/> timeout. Only log filters keep receipts alive.
     /// </remarks>
     public sealed class FilterManager
     {
@@ -35,6 +36,7 @@ namespace Nethermind.Facade.Filters
         private const int PendingTransactionsTrimInterval = 256;
 
         private readonly FilterEventLog<BlockEvent> _blocks;
+        private readonly FilterEventLog<Hash256> _blockHashes;
         private readonly FilterEventLog<Option<Hash256>> _pendingTransactions;
         private readonly ConcurrentDictionary<Hash256, Option<Hash256>> _pendingTransactionsByHash = new();
 
@@ -54,6 +56,7 @@ namespace Nethermind.Facade.Filters
             ArgumentNullException.ThrowIfNull(receiptMonitor);
             _logger = logManager?.GetClassLogger<FilterManager>() ?? throw new ArgumentNullException(nameof(logManager));
             _blocks = new FilterEventLog<BlockEvent>(filterStore);
+            _blockHashes = new FilterEventLog<Hash256>(filterStore);
             _pendingTransactions = new FilterEventLog<Option<Hash256>>(filterStore, OnPendingTransactionDropped);
             mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
             receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
@@ -81,8 +84,11 @@ namespace Nethermind.Facade.Filters
         {
             switch (filter)
             {
-                case LogFilter or BlockFilter:
+                case LogFilter:
                     _blocks.Track(filter.Id);
+                    break;
+                case BlockFilter:
+                    _blockHashes.Track(filter.Id);
                     break;
                 case PendingTransactionFilter:
                     _pendingTransactions.Track(filter.Id);
@@ -93,6 +99,7 @@ namespace Nethermind.Facade.Filters
         private void OnFilterRemoved(object sender, FilterEventArgs e)
         {
             _blocks.Untrack(e.FilterId);
+            _blockHashes.Untrack(e.FilterId);
             _pendingTransactions.Untrack(e.FilterId);
         }
 
@@ -101,23 +108,33 @@ namespace Nethermind.Facade.Filters
             Block block = e.Block;
             Hash256 blockHash = block.Hash ?? throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             _lastBlockHash = blockHash;
-            _blocks.Append(new BlockEvent(blockHash, block.Timestamp, block.Header.Bloom, e.TxReceipts, Removed: false));
+            _blockHashes.Append(blockHash);
+            if (_blocks.IsTracking)
+            {
+                _blocks.Append(new BlockEvent(block.Timestamp, block.Header.Bloom, e.TxReceipts, Removed: false));
+            }
         }
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
-            if (!e.WasRemoved || e.TxReceipts is null || e.TxReceipts.Length == 0)
+            if (!e.WasRemoved || e.TxReceipts is null || e.TxReceipts.Length == 0 || !_blocks.IsTracking)
             {
                 return;
             }
 
-            // The stored receipts are not guaranteed to carry blooms, so a removal is never skipped by bloom.
-            _blocks.Append(new BlockEvent(e.BlockHeader.Hash!, e.BlockHeader.Timestamp, null, e.TxReceipts, Removed: true));
+            // Built from the logs, as stored receipts are not guaranteed to carry blooms.
+            Bloom bloom = new();
+            foreach (TxReceipt receipt in e.TxReceipts)
+            {
+                if (receipt.Logs is not null) bloom.Add(receipt.Logs);
+            }
+
+            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, bloom, e.TxReceipts, Removed: true));
         }
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
         {
-            if (e.Transaction.Hash is not { } hash)
+            if (e.Transaction.Hash is not { } hash || !_pendingTransactions.IsTracking)
             {
                 return;
             }
@@ -145,15 +162,14 @@ namespace Nethermind.Facade.Filters
 
         public FilterLog[] GetLogs(int filterId) => GetLogs(filterId, advance: false);
 
-        public Hash256[] GetBlocksHashes(int filterId) =>
-            _blocks.Read(filterId, advance: false, out _) is { } events ? GetBlockHashes(events) : [];
+        public Hash256[] GetBlocksHashes(int filterId) => _blockHashes.Read(filterId, advance: false, out _) ?? [];
 
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
         public Hash256[] PollBlockHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
-            BlockEvent[]? events = _blocks.Read(filterId, advance: true, out bool noEventSinceTracked);
-            if (events is null || noEventSinceTracked)
+            Hash256[]? blockHashes = _blockHashes.Read(filterId, advance: true, out bool noEventSinceTracked);
+            if (blockHashes is null || noEventSinceTracked)
             {
                 if (_lastBlockHash is not null)
                 {
@@ -165,7 +181,7 @@ namespace Nethermind.Facade.Filters
                 return [];
             }
 
-            return GetBlockHashes(events);
+            return blockHashes;
         }
 
         public FilterLog[] PollLogs(int filterId)
@@ -186,19 +202,6 @@ namespace Nethermind.Facade.Filters
                 if (!transaction.IsRemoved)
                 {
                     result.Add(transaction.Value);
-                }
-            }
-            return result.ToArray();
-        }
-
-        private static Hash256[] GetBlockHashes(BlockEvent[] events)
-        {
-            using ArrayPoolListRef<Hash256> result = new(events.Length);
-            foreach (BlockEvent blockEvent in events)
-            {
-                if (!blockEvent.Removed)
-                {
-                    result.Add(blockEvent.BlockHash);
                 }
             }
             return result.ToArray();
@@ -277,7 +280,7 @@ namespace Nethermind.Facade.Filters
             return new FilterLog(index, txReceipt, logEntry, blockTimestamp, removed);
         }
 
-        private sealed record BlockEvent(Hash256 BlockHash, ulong Timestamp, Bloom? Bloom, TxReceipt[] Receipts, bool Removed);
+        private sealed record BlockEvent(ulong Timestamp, Bloom? Bloom, TxReceipt[] Receipts, bool Removed);
 
         /// <summary>
         /// Events shared by the filters of one kind, each filter reading them through its own cursor.
@@ -294,8 +297,17 @@ namespace Nethermind.Facade.Filters
             private readonly Dictionary<int, Cursor> _cursors = [];
             private long _firstSequence;
             private int _appendsSinceTrim;
+            private bool _isTracking;
 
             private long NextSequence => _firstSequence + _events.Count;
+
+            /// <summary>
+            /// Whether any filter is tracked, read without locking so callers can skip building an event nobody reads.
+            /// </summary>
+            /// <remarks>
+            /// A filter tracked concurrently may miss that event, as if it had been installed a moment later.
+            /// </remarks>
+            public bool IsTracking => Volatile.Read(ref _isTracking);
 
             public void Track(int filterId)
             {
@@ -303,6 +315,7 @@ namespace Nethermind.Facade.Filters
                 {
                     long next = NextSequence;
                     _cursors.TryAdd(filterId, new Cursor(next, next));
+                    Volatile.Write(ref _isTracking, true);
                 }
             }
 
@@ -312,6 +325,7 @@ namespace Nethermind.Facade.Filters
                 {
                     if (_cursors.Remove(filterId) && _cursors.Count == 0)
                     {
+                        Volatile.Write(ref _isTracking, false);
                         Drop(_events.Count);
                     }
                 }
@@ -389,6 +403,8 @@ namespace Nethermind.Facade.Filters
                 {
                     _cursors.Remove(id);
                 }
+
+                Volatile.Write(ref _isTracking, _cursors.Count > 0);
 
                 Drop((int)(oldest - _firstSequence));
             }
