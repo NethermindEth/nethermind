@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -31,19 +32,24 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
-        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null) return;
-
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        Address historyAddress = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        if (!preExecution.WorldState.IsContract(historyAddress)) return;
+        BlockhashStore blockhashStore = new(preExecution.WorldState);
+        if (!spec.IsEip8037Enabled)
+        {
+            blockhashStore.ApplyBlockhashStateChanges(header, spec);
+            return;
+        }
+
+        if (!blockhashStore.TryGetHistoryContract(header, spec, out Address? historyContract)) return;
 
         // EIP-2935 runs whatever code the account holds; a direct storage write matches only the canonical bytecode.
-        Transaction transaction = spec.IsEip8037Enabled
-            ? new SystemCall { GasLimit = Eip8037Constants.SystemCallGasLimit }
-            : new Transaction { GasLimit = Eip8037Constants.SystemCallBaseGasLimit };
-        transaction.Data = header.ParentHash.Bytes.ToArray();
-        transaction.To = historyAddress;
-        transaction.SenderAddress = Address.SystemUser;
+        SystemCall transaction = new()
+        {
+            GasLimit = Eip8037Constants.SystemCallGasLimit,
+            Data = header.ParentHash!.Bytes.ToArray(),
+            To = historyContract,
+            SenderAddress = Address.SystemUser,
+        };
         preExecution.TxProcessor.Execute(transaction, NullTxTracer.Instance);
     }
 
