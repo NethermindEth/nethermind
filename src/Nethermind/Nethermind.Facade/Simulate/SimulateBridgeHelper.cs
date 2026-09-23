@@ -14,11 +14,14 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
+
+[assembly: InternalsVisibleTo("Nethermind.Facade.Test")]
 
 namespace Nethermind.Facade.Simulate;
 
@@ -278,7 +281,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return transaction;
     }
 
-    private (BlockHeader, IReleaseSpec) GetCallHeader(
+    internal (BlockHeader, IReleaseSpec) GetCallHeader(
         ISpecProvider specProvider,
         BlockStateCall<TransactionWithSourceDetails> block,
         BlockHeader parent,
@@ -300,10 +303,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
         if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
-        // EIP-7843: advance the parent's slot, seeding 0 where the parent has none (the chain has not
-        // reached the fork yet). A synthetic seed keeps SLOTNUM executable; the beacon genesis time the
-        // real slot derives from is not available here.
-        if (spec.IsEip7843Enabled) result.SlotNumber ??= (parent.SlotNumber + 1) ?? 0;
+        // EIP-7843: advance the parent's slot, seeding 0 where the parent has none so SLOTNUM stays executable
+        // (no real slot is derivable here), and clear it pre-fork so the header is never encoded with a slot.
+        result.SlotNumber = spec.IsEip7843Enabled ? result.SlotNumber ?? (parent.SlotNumber + 1) ?? 0 : null;
 
         // In non-validation mode base fee is set to 0 if it is not overridden.
         // This is because it creates an edge case in EVM where gasPrice < baseFee.
