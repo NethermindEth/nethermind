@@ -80,7 +80,9 @@ public static partial class TrieUpdater
         {
             memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
             using ArrayPoolListRef<Frontier> zoneFrontiers = new(16, 16);
+            using ArrayPoolListRef<BoundaryResults> zoneResults = new(16, 16);
             Frontier rootFrontier = default;
+            BoundaryResults rootResults = default;
             Span<int> touchedZoneMasks = stackalloc int[16];
             touchedZoneMasks.Clear();
             try
@@ -104,7 +106,7 @@ public static partial class TrieUpdater
                         touchedZoneMasks[worker.Zone >> 4] |= 1 << (worker.Zone & 15);
                     }
                     TraversalSubtree root = new(rootPath, rootReader.Take(rootPath, rootWriter, PbtFourLevelGroupGeometry.RootPosition, allowAbsent: true));
-                    Decompose(ref rootReader, rootWriter, rootPath, ref root, 0, ref rootFrontier, touchedRootMask);
+                    Decompose(ref rootReader, rootWriter, rootPath, ref root, 0, ref rootFrontier, ref rootResults, touchedRootMask);
                     foreach (PartitionFold worker in workers)
                     {
                         int slot = worker.Zone >> 4;
@@ -113,14 +115,14 @@ public static partial class TrieUpdater
                         ref GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                         if (sharedWriters[slot] is not { } sharedWriter)
                         {
-                            TraversalSubtree boundary = TakeBoundary(ref rootReader, rootWriter, rootPath, ref rootFrontier, slot, sourceBuffer);
+                            TraversalSubtree boundary = TakeBoundary(ref rootReader, rootWriter, rootPath, ref rootFrontier, ref rootResults, slot, sourceBuffer);
                             sharedReader = new(store, 4, boundary.Hash(4, metrics), metrics);
                             sharedWriter = new(4, memoryProvider, prefixlessBranchOmission);
                             sharedWriters[slot] = sharedWriter;
                             ResolveAbsentGroup(ref sharedReader, in rootReader, sharedPath, boundary);
-                            Decompose(ref sharedReader, sharedWriter, sharedPath, ref boundary, 4, ref zoneFrontiers.AsSpan()[slot], touchedZoneMasks[slot]);
+                            Decompose(ref sharedReader, sharedWriter, sharedPath, ref boundary, 4, ref zoneFrontiers.AsSpan()[slot], ref zoneResults.AsSpan()[slot], touchedZoneMasks[slot]);
                         }
-                        TraversalSubtree workerBoundary = TakeBoundary(ref sharedReader, sharedWriter, sharedPath, ref zoneFrontiers.AsSpan()[slot], worker.Zone & 15, sourceBuffer);
+                        TraversalSubtree workerBoundary = TakeBoundary(ref sharedReader, sharedWriter, sharedPath, ref zoneFrontiers.AsSpan()[slot], ref zoneResults.AsSpan()[slot], worker.Zone & 15, sourceBuffer);
                         // Workers fold on other threads, so the shared frame's size is handed over here; the frame is
                         // resolved whenever the boundary is a branch, which is the only case that inherits it.
                         if (IsAbsentGroupBelow(workerBoundary, 8)) worker.InheritedDescendantBytes = sharedReader.DescendantBytes(worker.Zone & 15);
@@ -160,7 +162,7 @@ public static partial class TrieUpdater
                         PbtTraversalPath sharedPath = new(sharedPathBuffer);
                         sharedPath.AppendMut(worker.Zone >> 4);
                         TraversalSubtree workerResult = worker.Result.Borrow(sourceBuffer);
-                        SetBoundary(sharedPath, ref zoneFrontiers.AsSpan()[worker.Zone >> 4], worker.Zone & 15, ref workerResult);
+                        SetBoundary(sharedPath, ref zoneFrontiers.AsSpan()[worker.Zone >> 4], ref zoneResults.AsSpan()[worker.Zone >> 4], worker.Zone & 15, ref workerResult);
                         sharedWriters[worker.Zone >> 4]!.AddDescendantDelta(worker.Zone & 15, worker.Result.SizeDelta);
                         worker.Result = default;
                         if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
@@ -171,13 +173,13 @@ public static partial class TrieUpdater
                         PbtTraversalPath sharedPath = new(sharedPathBuffer);
                         sharedPath.AppendMut(slot);
                         ref GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
-                        TraversalSubtree composed = Compose(ref sharedReader, sharedWriter, sharedPath, metrics, ref zoneFrontiers.AsSpan()[slot], sourceBuffer);
+                        TraversalSubtree composed = Compose(ref sharedReader, sharedWriter, sharedPath, metrics, ref zoneFrontiers.AsSpan()[slot], ref zoneResults.AsSpan()[slot], sourceBuffer);
                         ValueHash256 groupHash = composed.Hash(4, metrics);
                         long zoneDelta = PublishGroup(store, ref sharedReader, sharedWriter, sharedPath, groupHash);
-                        SetBoundary(rootPath, ref rootFrontier, slot, ref composed);
+                        SetBoundary(rootPath, ref rootFrontier, ref rootResults, slot, ref composed);
                         rootWriter.AddDescendantDelta(slot, zoneDelta);
                     }
-                    TraversalSubtree result = Compose(ref rootReader, rootWriter, rootPath, metrics, ref rootFrontier, sourceBuffer);
+                    TraversalSubtree result = Compose(ref rootReader, rootWriter, rootPath, metrics, ref rootFrontier, ref rootResults, sourceBuffer);
                     ValueHash256 hash = rootWriter.Write(rootPath, PbtFourLevelGroupGeometry.RootPosition, 0, ref result, metrics);
                     PublishGroup(store, ref rootReader, rootWriter, rootPath, hash);
                     return hash;

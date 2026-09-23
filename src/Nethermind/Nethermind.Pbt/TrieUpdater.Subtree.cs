@@ -316,46 +316,4 @@ internal static partial class TrieUpdater<TKey, TPath>
             return subtree;
         }
     }
-
-    /// <summary>Keeps foreign result anchors separate from compact local frontier entries.</summary>
-    internal struct Frontier
-    {
-        internal EntryBuffer Entries;
-        private AnchorBuffer _anchors;
-        private ushort _anchorMask;
-        internal uint Mask;
-
-        internal TraversalSubtree Take(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int slot, Span<byte> scratch)
-        {
-            Subtree node = Entries[slot].TakeSubtree(ref reader, writer, path);
-            PbtTraversalPath sourcePath = path;
-            if ((_anchorMask & (1 << slot)) != 0)
-            {
-                sourcePath = PbtTraversalPath.FromPath(scratch, _anchors[slot]);
-                _anchorMask &= (ushort)~(1 << slot);
-                _anchors[slot] = default;
-            }
-            return new(sourcePath, node);
-        }
-
-        internal void Set(PbtTraversalPath path, int slot, ref TraversalSubtree result)
-        {
-            _anchorMask &= (ushort)~(1 << slot);
-            _anchors[slot] = default;
-            if (!result.IsEmpty && !result.IsLeaf &&
-                (path.BitDepth != result.GroupPath.BitDepth || !path.Bytes.SequenceEqual(result.GroupPath.Bytes)))
-            {
-                // A descendant cursor may have filled the unused tail of this borrowed ancestor view.
-                _anchors[slot] = PbtNodePathOperations.Prefix<TPath>(result.GroupPath.Bytes, result.GroupPath.BitDepth, result.GroupPath.BitDepth);
-                _anchorMask |= (ushort)(1 << slot);
-            }
-            Entries[slot] = new(ref result.Node);
-        }
-    }
-
-    [InlineArray(PbtFourLevelGroupGeometry.BoundarySlots)]
-    internal struct EntryBuffer { private DecompositionEntry _element; }
-
-    [InlineArray(PbtFourLevelGroupGeometry.BoundarySlots)]
-    private struct AnchorBuffer { private TPath _element; }
 }
