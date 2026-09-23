@@ -116,7 +116,7 @@ public interface IDiscoveryConfig : IConfig
     NetworkNode[] Bootnodes { get; set; }
 
     /// <summary>
-    /// Timeout for closing UDP channel in milliseconds
+    /// Timeout for closing the UDP channels and shutting their event loop down, in milliseconds
     /// </summary>
     [ConfigItem(DefaultValue = "5000")]
     int UdpChannelCloseTimeout { get; }

@@ -43,7 +43,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
     // Code staged for CodeDb by the current transaction, paired with the change-log position of the
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
-    private readonly List<(int Position, ValueHash256 CodeHash)> _codeInsertJournal = [];
+    private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
@@ -175,7 +175,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
             if (journalCode)
             {
-                _codeInsertJournal.Add((_changes.Count, codeHash));
+                _codeInsertJournal.Add((_changes.Count, codeHash, code.Length));
 
                 _metrics.IncrementCodeWrites();
                 _metrics.IncrementCodeBytesWritten(code.Length);
@@ -474,19 +474,21 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// reference it. Dropping it loses nothing: such code is already durable in CodeDb, which is why
     /// the account carries its hash, so the staging is a redundant re-write rather than load-bearing.
     /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
-    /// same code would be suppressed and lost.
+    /// same code would be suppressed and lost. The staged-write counters are rolled back too, so they
+    /// keep reporting the bytes that actually reach CodeDb.
     /// </remarks>
     private void RestoreCodeInserts(int snapshot)
     {
-        ReadOnlySpan<(int Position, ValueHash256 CodeHash)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
+        ReadOnlySpan<(int Position, ValueHash256 CodeHash, int Length)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
         int keep = entries.Length;
         while (keep > 0)
         {
-            ref readonly (int Position, ValueHash256 CodeHash) entry = ref entries[keep - 1];
+            ref readonly (int Position, ValueHash256 CodeHash, int Length) entry = ref entries[keep - 1];
             if (entry.Position <= snapshot) break;
 
             _codeBatchAlternate.Remove(entry.CodeHash);
             _blockCodeInsertFilter.Delete(entry.CodeHash);
+            _metrics.DecrementCodeWrites(entry.Length);
             keep--;
         }
 
@@ -584,6 +586,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             Dictionary<AddressAsKey, ChangeTrace> trace = [];
             CommitChanges<OnFlag>(changes, removeEmptyAccounts, isTracing, trace);
+            // Reporting code changes reads both the code DB and the lookup recycled by the flush worker.
+            AwaitCodeFlush(codeFlushTask);
             trace.ReportStateTrace(stateTracer, _nullAccountReads, this);
         }
         else
@@ -894,6 +898,20 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     internal Account? GetPureRead(Address address) => GetState(address);
 
+    /// <summary>Layers a transaction prefix over cached block-start account changes.</summary>
+    internal void ApplyAccountOverlay(IStateReadOverlay overlay)
+    {
+        InvalidateFrontCache();
+        _nullAccountReads.ClearAndTrim();
+        if (_blockChanges.Count == 0) return;
+
+        foreach (AddressAsKey key in _blockChanges.Keys)
+        {
+            ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+            if (overlay.TryGetAccount(key.Value, change.After, out Account? account)) change.After = account;
+        }
+    }
+
     private Account? GetState(Address address)
     {
         AddressAsKey addressAsKey = address;
@@ -915,14 +933,24 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     internal void SetState(Address address, Account? account)
     {
         _metrics.IncrementAccountWrites();
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out bool exists);
         if (account is null)
         {
             _metrics.IncrementAccountDeleted();
+            // A block that removes an account it never read has nothing to compare against, so the removal would go
+            // unrecorded and the storage that goes with the account would stay readable to a cache that cannot infer
+            // the wipe from a root. Resolved here rather than through GetState: the block did not read this account,
+            // and the read counters must keep saying so.
+            if (!exists)
+            {
+                Account? removed = Tree.Get(address);
+                accountChanges = new(removed, removed);
+            }
+            // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
+            if (accountChanges.After is { } previous && (previous.HasStorage || !Tree.StorageRootsAreAuthoritative))
+                _removedWithStorage.Add(address);
         }
 
-        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
-        // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
-        if (account is null && accountChanges.After?.HasStorage == true) _removedWithStorage.Add(address);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }
@@ -1027,19 +1055,16 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public void Reset(bool resetBlockChanges = true)
     {
         if (_logger.IsTrace) Trace();
+        // The changes being discarded are exactly the ones the journal covers (it is cleared on every
+        // commit), so unwind it on both paths: otherwise its code either reaches CodeDb unreferenced
+        // or, when the batch is dropped below, stays counted as written without ever being written.
+        if (_codeInsertJournal.Count > 0) RestoreCodeInserts(Snapshot.EmptyPosition);
         if (resetBlockChanges)
         {
             _blockCodeInsertFilter.Clear();
             _blockChanges.Clear();
             _removedWithStorage.Clear();
             _codeBatch?.Clear();
-            _codeInsertJournal.Clear();
-        }
-        else
-        {
-            // The batch survives this reset, but the changes being discarded are exactly the ones the
-            // journal covers (it is cleared on every commit), so their code would reach CodeDb unreferenced.
-            if (_codeInsertJournal.Count > 0) RestoreCodeInserts(Snapshot.EmptyPosition);
         }
         _intraTxCache.ClearAndTrim();
         _committedThisRound.ClearAndTrim();
