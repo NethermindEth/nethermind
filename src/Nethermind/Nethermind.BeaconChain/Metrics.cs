@@ -91,7 +91,7 @@ public class Metrics
     public static ConcurrentDictionary<ReqRespFailureKey, long> BeaconChainReqRespFailures { get; } = new();
 
     [KeyIsLabel("operation")]
-    [Description("Attestations and attester slashings refused by fork choice after the state transition or gossip validation accepted them, by source: block body operations (tolerated, the block still imports) and gossip messages (dropped).")]
+    [Description("Attestations, attester slashings and execution payload envelopes refused by fork choice after the state transition or gossip validation accepted them, by source: block body operations (tolerated, the block still imports) and received messages (dropped).")]
     public static ConcurrentDictionary<StringLabel, long> BeaconChainForkChoiceRejections { get; } = new();
 
     [CounterMetric]
