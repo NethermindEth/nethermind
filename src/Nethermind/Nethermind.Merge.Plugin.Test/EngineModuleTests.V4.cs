@@ -294,6 +294,7 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Result.Error, Does.StartWith("Block access list"));
         }
     }
 
@@ -376,6 +377,7 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Result.Error, Does.StartWith("Block access list"));
         }
     }
 

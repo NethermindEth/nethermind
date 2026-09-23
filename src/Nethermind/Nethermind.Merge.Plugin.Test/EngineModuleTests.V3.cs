@@ -289,9 +289,9 @@ public partial class EngineModuleTests
     }
 
     private async Task<(JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 correctExecutionPayload)>
-            PreparePayloadRequestEnv()
+            PreparePayloadRequestEnv(IReleaseSpec? releaseSpec = null)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec ?? Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { ModuleType.Engine } };
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -304,24 +304,30 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV3_should_reject_null_or_missing_required_fields(
+    public async Task NewPayload_should_reject_null_or_missing_required_fields(
+        [Values(3, 4, 5)] int version,
         [Values("withdrawals", "blobGasUsed", "excessBlobGas")] string field,
         [Values] bool omit)
     {
+        IReleaseSpec releaseSpec = version switch { 3 => Cancun.Instance, 4 => Prague.Instance, _ => Amsterdam.Instance };
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
-            = await PreparePayloadRequestEnv();
+            = await PreparePayloadRequestEnv(releaseSpec);
 
         JsonObject payload = serializer.Deserialize<JsonObject>(serializer.Serialize(executionPayload))!;
+        if (version >= EngineApiVersions.NewPayload.V5)
+        {
+            payload["blockAccessList"] = "0xc0";
+            payload["slotNumber"] = "0x1";
+        }
+
         if (omit)
             payload.Remove(field);
         else
             payload[field] = null;
 
-        JsonRpcRequest request = RpcTest.BuildJsonRequest(
-            nameof(IEngineRpcModule.engine_newPayloadV3),
-            serializer.Serialize(payload),
-            serializer.Serialize(Array.Empty<byte[]>()),
-            TestItem.KeccakA.ToString());
+        List<object> parameters = [serializer.Serialize(payload), serializer.Serialize(Array.Empty<byte[]>()), TestItem.KeccakA.ToString()];
+        if (version >= EngineApiVersions.NewPayload.V4) parameters.Add(serializer.Serialize(Array.Empty<byte[]>()));
+        JsonRpcRequest request = RpcTest.BuildJsonRequest($"engine_newPayloadV{version}", [.. parameters]);
 
         using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
         Error error = RpcTest.AssertError(response);
@@ -329,7 +335,16 @@ public partial class EngineModuleTests
         {
             Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
             // Omitted blob fields are rejected earlier by [JsonRequired] with a deserialization message.
-            if (!omit) Assert.That(error.Message, Does.Contain("must be set"));
+            if (!omit || field == "withdrawals")
+            {
+                string expectedMessage = field switch
+                {
+                    "withdrawals" => "Withdrawals must be set",
+                    "blobGasUsed" => "Blob gas used must be set",
+                    _ => "Excess blob gas must be set"
+                };
+                Assert.That(error.Message, Is.EqualTo(expectedMessage));
+            }
         }
     }
 
