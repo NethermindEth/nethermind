@@ -430,7 +430,7 @@ public sealed class ForkChoiceRunner
         GetHead();
 
         bool headLate = IsHeadLate(headRoot);
-        bool shufflingStable = IsShufflingStable(proposalSlot, _spec.SlotsPerEpoch);
+        // No is_shuffling_stable: Fulu's proposer lookahead fixes the proposer before the epoch boundary (specs/fulu/fork-choice.md, EIP-7917).
         bool ffgCompetitive = _protoArray.GetUnrealizedJustifiedCheckpoint(headRoot) == _protoArray.GetUnrealizedJustifiedCheckpoint(parentRoot);
         bool finalizationOk = IsFinalizationOk(proposalSlot, _store.FinalizedCheckpoint.Epoch, ReorgMaxEpochsSinceFinalization);
         bool proposingOnTime = IsProposingOnTime();
@@ -442,7 +442,7 @@ public sealed class ForkChoiceRunner
         bool headWeak = headWeight < _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgHeadWeightThresholdPercent);
         bool parentStrong = parentWeight > _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgParentWeightThresholdPercent);
 
-        return headLate && shufflingStable && ffgCompetitive && finalizationOk && proposingOnTime && singleSlotReorg && headWeak && parentStrong;
+        return headLate && ffgCompetitive && finalizationOk && proposingOnTime && singleSlotReorg && headWeak && parentStrong;
     }
 
     /// <summary>The spec's <c>is_head_late</c>: a block with no recorded timeliness (unknown to this store) is treated as late, denying a reorg rather than allowing one on missing data.</summary>
@@ -455,9 +455,6 @@ public sealed class ForkChoiceRunner
         ulong cutoff = _spec.SecondsPerSlot / Presets.IntervalsPerSlot / 2;
         return timeIntoSlot <= cutoff;
     }
-
-    /// <summary>The spec's <c>is_shuffling_stable</c>: false only at an epoch's first slot, where the proposer shuffling could have just changed.</summary>
-    public static bool IsShufflingStable(ulong slot, ulong slotsPerEpoch) => slot % slotsPerEpoch != 0;
 
     /// <summary>
     /// The spec's <c>is_finalization_ok</c>: whether finality is recent enough, as of <paramref name="slot"/>,
