@@ -358,8 +358,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
         ReadOnlySpan<int> processingCpus = PerformanceCores.Cpus(_options.ProcessingCores);
-        if (processingCpus.Length > 0 && _logger.IsInfo)
-            _logger.Info($"Block processing runs on {_options.ProcessingCores} cores only: CPUs {string.Join(',', processingCpus.ToArray())}");
+        if (processingCpus.Length > 0)
+        {
+            if (_logger.IsInfo) _logger.Info($"Block processing runs on {_options.ProcessingCores} cores only: CPUs {string.Join(',', processingCpus.ToArray())}");
+        }
+        else if (_options.ProcessingCores != ProcessingCores.All && _logger.IsWarn)
+        {
+            _logger.Warn($"Blocks.ProcessingCores is {_options.ProcessingCores}, but this host gives it nothing to narrow, so block processing runs on every core.");
+        }
 
         _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
@@ -530,7 +536,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             // Released within the iteration, before the loop awaits and the thread can go back to the pool.
-            using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores);
+            using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores, _logger);
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;

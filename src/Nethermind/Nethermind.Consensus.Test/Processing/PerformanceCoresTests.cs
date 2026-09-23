@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Processing;
@@ -15,6 +17,8 @@ public class PerformanceCoresTests
     // 8 efficiency cores are 12-19.
     private const string PerformanceCpus = "0-11";
     private static readonly Func<int, string> Siblings = static cpu => cpu < 12 ? $"{cpu & ~1}-{cpu | 1}" : $"{cpu}";
+
+    private static HashSet<int> Allowed(string allowedCpus) => allowedCpus is null ? null : PerformanceCores.ParseCpuList(allowedCpus);
 
     [TestCase("0-11", 12, TestName = "ParseCpuList_SingleRange_ListsEveryCpu")]
     [TestCase("0-3,8,10-11\n", 7, TestName = "ParseCpuList_RangesAndSingles_ListsEach")]
@@ -35,7 +39,7 @@ public class PerformanceCoresTests
     [TestCase(ProcessingCores.PerformancePhysical, "0-11", new[] { 0, 2, 4, 6, 8, 10 }, TestName = "TryBuildMask_PerformancePhysical_PinnedToPerformanceCores_StillNarrowsToOnePerCore")]
     public void TryBuildMask_SelectsLogicalProcessors(ProcessingCores cores, string allowedCpus, int[] expected)
     {
-        bool narrows = PerformanceCores.TryBuildMask(cores, PerformanceCpus, allowedCpus, Siblings, out PerformanceCores.CpuMask mask, out int[] cpus);
+        bool narrows = PerformanceCores.TryBuildMask(cores, PerformanceCpus, Allowed(allowedCpus), Siblings, out PerformanceCores.CpuMask mask, out int[] cpus);
 
         using (Assert.EnterMultipleScope())
         {
@@ -45,12 +49,6 @@ public class PerformanceCoresTests
         }
     }
 
-    [TestCase("1234 (dotnet) S 1 1234 1234 0 -1 4194560 100 0 0 0 5 3 0 0 20 0 57 0 100 1000 200", 57, TestName = "ParseThreadCount_PlainCommand_ReadsTheTwentiethField")]
-    [TestCase("1234 (a b) c) S 1 1234 1234 0 -1 4194560 100 0 0 0 5 3 0 0 20 0 9 0 100 1000 200", 9, TestName = "ParseThreadCount_CommandWithSpacesAndParentheses_CountsFromTheLastOne")]
-    [TestCase("garbage", -1, TestName = "ParseThreadCount_Malformed_IsUnknown")]
-    public void ParseThreadCount_ReadsProcSelfStat(string stat, int expected) =>
-        Assert.That(PerformanceCores.ParseThreadCount(stat), Is.EqualTo(expected));
-
     [Test]
     public void Undefined_mode_narrows_nothing()
     {
@@ -59,7 +57,7 @@ public class PerformanceCoresTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(PerformanceCores.Cpus(undefined).ToArray(), Is.Empty, "a number the config binder accepts must not index past the modes");
-            Assert.DoesNotThrow(() => PerformanceCores.NarrowCurrentThread(undefined).Dispose());
+            Assert.DoesNotThrow(() => PerformanceCores.NarrowCurrentThread(undefined, LimboLogs.Instance.GetClassLogger<PerformanceCoresTests>()).Dispose());
         }
     }
 
@@ -70,12 +68,57 @@ public class PerformanceCoresTests
     [TestCase(ProcessingCores.PerformancePhysical, PerformanceCpus, "0,2,4", TestName = "TryBuildMask_PerformancePhysical_OneHyperthreadPerCoreAlready_HasNothingToNarrow")]
     public void TryBuildMask_DoesNotNarrow(ProcessingCores cores, string performanceCpus, string allowedCpus)
     {
-        bool narrows = PerformanceCores.TryBuildMask(cores, performanceCpus, allowedCpus, Siblings, out _, out int[] cpus);
+        bool narrows = PerformanceCores.TryBuildMask(cores, performanceCpus, Allowed(allowedCpus), Siblings, out _, out int[] cpus);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(narrows, Is.False);
             Assert.That(cpus, Is.Empty);
         }
+    }
+
+    [Test]
+    public void TryBuildMask_PerformancePhysical_SiblingsUnknown_DoesNotNarrow()
+    {
+        bool narrows = PerformanceCores.TryBuildMask(ProcessingCores.PerformancePhysical, PerformanceCpus, Allowed("0-19"), static _ => null, out _, out int[] cpus);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(narrows, Is.False, "without the hyperthreads it would narrow to what Performance does, and the arms would measure the same thing");
+            Assert.That(cpus, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void WidenInheritors_PutsBackOnlyThreadsHoldingTheNarrowedMask()
+    {
+        PerformanceCores.CpuMask narrowed = Mask(0, 2, 4);
+        PerformanceCores.CpuMask target = Mask(Enumerable.Range(0, 20).ToArray());
+        PerformanceCores.CpuMask other = Mask(12, 13);
+        // 1 inherited the narrowed mask, 2 was pinned elsewhere, 3 exited before the scan read it.
+        Dictionary<int, PerformanceCores.CpuMask> threads = new() { [1] = narrowed, [2] = other };
+
+        int widened = PerformanceCores.WidenInheritors([1, 2, 3], narrowed, target,
+            (int tid, out PerformanceCores.CpuMask mask) => threads.TryGetValue(tid, out mask) ? 0 : -1,
+            (int tid, ref PerformanceCores.CpuMask mask) =>
+            {
+                if (!threads.ContainsKey(tid)) return -1;
+                threads[tid] = mask;
+                return 0;
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(widened, Is.EqualTo(1));
+            Assert.That(threads[1].SequenceEqual(target), Is.True, "the inheritor is put back on the target");
+            Assert.That(threads[2].SequenceEqual(other), Is.True, "a thread with a mask of its own is left alone");
+        }
+    }
+
+    private static PerformanceCores.CpuMask Mask(params int[] cpus)
+    {
+        PerformanceCores.CpuMask mask = default;
+        foreach (int cpu in cpus) mask.Add(cpu);
+        return mask;
     }
 }

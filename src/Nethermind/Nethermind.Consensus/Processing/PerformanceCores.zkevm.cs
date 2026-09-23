@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -13,7 +14,7 @@ internal static partial class PerformanceCores
 {
     public static ReadOnlySpan<int> Cpus(ProcessingCores cores) => [];
 
-    public static Scope NarrowCurrentThread(ProcessingCores cores) => default;
+    public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger) => default;
 
     public readonly struct Scope : IDisposable
     {
