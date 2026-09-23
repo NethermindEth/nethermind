@@ -114,11 +114,9 @@ namespace Nethermind.Network
             (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb).PutSpan(nodeId.Bytes, rlp);
             _updateCounter++;
 
-            ref NetworkNode? storedNode = ref CollectionsMarshal.GetValueRefOrAddDefault(_nodesDict, nodeId, out bool exists);
+            ref NetworkNode? storedNode = ref CollectionsMarshal.GetValueRefOrAddDefault(_nodesDict, nodeId, out _);
             storedNode = node;
-
-            // New node, clear the cache
-            if (!exists) _nodes = null;
+            _nodes = null;
         }
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
