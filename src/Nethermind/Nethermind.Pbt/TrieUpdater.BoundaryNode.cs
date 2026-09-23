@@ -99,6 +99,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
         }
         /// <summary>The hash of this node as it is stored, which its parent's link already held.</summary>
+        /// <remarks>
+        /// It is kept rather than derived because only an inlined leaf could derive it for free, from the branch it
+        /// points at. A branch would have to hash its own preimage, which is the work decomposition exists to avoid and
+        /// which every node opening a group below it would pay; a stored leaf cannot derive it at all, since a leaf
+        /// hashes over its value as well and no value is stored (<see cref="PbtNodeCodec.Hash"/> refuses a leaf).
+        /// </remarks>
         internal readonly ValueHash256 Hash => _hash;
         /// <summary>The absolute depth this node's encoding is anchored at, never deeper than its boundary slot.</summary>
         internal readonly int AnchorDepth => _anchorDepth;
