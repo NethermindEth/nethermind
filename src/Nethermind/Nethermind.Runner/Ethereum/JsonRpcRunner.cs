@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -106,7 +109,7 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton<ApplicationLifetime>();
                     startup.ConfigureServices(s);
                 })
-                .UseUrls(urls)
+                .UseUrls(GetListenUrls(_jsonRpcUrlCollection.Values, Dns.GetHostAddresses))
                 .ConfigureLogging(logging =>
                 {
                     logging.SetMinimumLevel(LogLevel.Information);
@@ -135,6 +138,47 @@ namespace Nethermind.Runner.Ethereum
                 // distinguish a node still gated behind startup work from one already serving.
                 if (_logger.IsInfo) _logger.Info($"JSON-RPC is listening on {urlsString}");
             }
+        }
+
+        /// <summary>
+        /// Builds the addresses Kestrel binds to, replacing each host name with the IP addresses it resolves to.
+        /// </summary>
+        /// <remarks>
+        /// Kestrel binds any host that is neither an IP literal nor <c>localhost</c> to all interfaces,
+        /// so a host name such as <c>node.lan</c> would otherwise expose the port on every address of the machine.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">A host name resolves to no addresses.</exception>
+        internal static string[] GetListenUrls(IEnumerable<JsonRpcUrl> urls, Func<string, IPAddress[]> resolveHost)
+        {
+            List<string> listenUrls = [];
+            foreach (JsonRpcUrl url in urls)
+            {
+                if (IPAddress.TryParse(url.Host, out _) ||
+                    url.Host is "*" or "+" ||
+                    string.Equals(url.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+                {
+                    listenUrls.Add(url.ToString());
+                    continue;
+                }
+
+                IPAddress[] addresses = resolveHost(url.Host);
+                if (addresses.Length == 0)
+                {
+                    throw new InvalidOperationException($"JSON RPC host '{url.Host}' does not resolve to any IP address");
+                }
+
+                foreach (IPAddress address in addresses)
+                {
+                    string host = address.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
+                    string listenUrl = $"{url.Scheme}://{host}:{url.Port}";
+                    if (!listenUrls.Contains(listenUrl))
+                    {
+                        listenUrls.Add(listenUrl);
+                    }
+                }
+            }
+
+            return listenUrls.ToArray();
         }
 
         public async ValueTask DisposeAsync()
