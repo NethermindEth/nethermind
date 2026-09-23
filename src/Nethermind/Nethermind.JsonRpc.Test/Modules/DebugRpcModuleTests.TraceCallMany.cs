@@ -8,8 +8,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -20,6 +22,7 @@ using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test.Modules.Eth;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -380,6 +383,38 @@ public partial class DebugRpcModuleTests
             Assert.That(trace.Failed, Is.False);
             Assert.That(trace.ReturnValue.ToUInt256(), Is.GreaterThan(UInt256.Zero));
             Assert.That(trace.ReturnValue.ToUInt256(), Is.LessThanOrEqualTo((UInt256)Eip8037Constants.TxMaxTotalGasLimit));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_with_overrides_caps_default_gas_by_the_executing_block_spec(
+        [Values(1UL, 2UL)] ulong blockGap)
+    {
+        const ulong amsterdamTimestamp = 2_000_000_000;
+        CustomSpecProvider specProvider = new(
+            ((ForkActivation)0, Osaka.Instance),
+            (ForkActivation.TimestampOnly(amsterdamTimestamp), Amsterdam.Instance));
+        using Context ctx = await Context.Create(specProvider);
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().GasCap = 1_000_000_000_000UL;
+        ulong secondsPerSlot = ctx.Blockchain.Container.Resolve<IBlocksConfig>().SecondsPerSlot;
+        ulong headNumber = ctx.Blockchain.BlockTree.Head!.Number;
+
+        // The first bundle runs pre-fork; the second lands exactly on activation through the derived clock,
+        // after blockGap - 1 filler blocks.
+        TransactionBundle preFork = CreateGasProbeBundle();
+        preFork.BlockOverride = new BlockOverride { Time = amsterdamTimestamp - blockGap * secondsPerSlot };
+        TransactionBundle activation = CreateGasProbeBundle();
+        activation.BlockOverride = new BlockOverride { Number = headNumber + 1 + blockGap };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            ctx.DebugRpcModule.debug_traceCallMany([preFork, activation], BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.Zero, result.Result.Error);
+        GethLikeTxTrace[] traces = [.. result.Data.Select(static bundle => bundle.Single())];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces, Has.Length.EqualTo(2));
+            Assert.That(traces.Select(static trace => trace.Failed), Is.All.False);
         }
     }
 }
