@@ -2530,6 +2530,118 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void Registered_parallel_and_fallback_validation_publish_only_accepted_canonical_receipt_events(
+        [Values] bool retry,
+        [Values] bool validationSucceeds)
+    {
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry, validationSucceeds);
+        using IContainer container = setup.Container;
+
+        if (validationSucceeds)
+        {
+            setup.BranchProcessor.Process(null, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance);
+        }
+        else
+        {
+            Assert.Throws<InvalidBlockException>(() =>
+                setup.BranchProcessor.Process(null, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setup.BalManager.ProcessingAttempts, Is.EqualTo(retry ? 2 : 1));
+            Assert.That(
+                setup.Handler.Events,
+                validationSucceeds ? Is.EqualTo(CanonicalReceiptEvents) : Is.Empty,
+                "only an accepted processing attempt may publish callbacks");
+        }
+    }
+
+    [Test]
+    public void Rejected_block_releases_the_transaction_events_it_staged()
+    {
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry: false, validationSucceeds: false);
+        using IContainer container = setup.Container;
+
+        Assert.Throws<InvalidBlockException>(() =>
+            setup.BranchProcessor.Process(null, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance));
+
+        // Nothing re-enters ProcessTransactions here, so this publishes whatever the rejected
+        // attempt left staged.
+        setup.Executor.PublishTransactionProcessedEvents();
+
+        Assert.That(setup.Handler.Events, Is.Empty, "a rejected attempt must not leave callbacks staged");
+    }
+
+    [Test]
+    public void IncrementalValidation_publishes_canonical_receipt_metadata()
+    {
+        GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
+        Block block = BuildParallelValidationBlock(gasConsumed.Length);
+        block.Header.GasLimit = 500_000;
+        RecordingTransactionProcessedEventHandler handler = new();
+
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+        balManager.IncrementalValidation(
+            block,
+            BuildGasResults(gasConsumed),
+            BuildParallelReceiptTracers(block, gasConsumed),
+            handler,
+            CancellationToken.None);
+
+        Assert.That(handler.Events, Is.EqualTo(CanonicalReceiptEvents));
+    }
+
+    [Test]
+    public void Failed_parallel_validation_harvests_canonical_receipt_metadata()
+    {
+        GasConsumed[] gasConsumed =
+        [
+            new(21_000, 21_000),
+            new(21_001, 21_001),
+        ];
+        Block block = BuildParallelValidationBlock(gasConsumed.Length);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        ParallelTestBlockAccessListManager balManager = new(new ReceiptMetadataTransactionProcessorAdapter(gasConsumed))
+        {
+            IncrementalValidationAction = (b, gasResults) =>
+            {
+                for (int i = 0; i < b.Transactions.Length; i++)
+                {
+                    gasResults[i].GetResult();
+                }
+
+                throw new InvalidBlockException(b, "diagnostic harvest");
+            },
+        };
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            balManager,
+            LimboLogs.Instance);
+        BlockReceiptsTracer receiptsTracer = new();
+
+        Assert.Throws<InvalidBlockException>(() => executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            receiptsTracer,
+            CancellationToken.None));
+
+        TxReceipt[] receipts = [.. receiptsTracer.TxReceipts];
+        Assert.That(receipts, Has.Length.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].Index, Is.Zero);
+            Assert.That(receipts[1].Index, Is.EqualTo(1));
+            Assert.That(receipts[0].GasUsedTotal, Is.EqualTo(21_000));
+            Assert.That(receipts[1].GasUsedTotal, Is.EqualTo(42_001));
+        }
+    }
+
+    [Test]
     public void IncrementalValidation_surfaces_worker_exception_before_gas_accounting()
     {
         // tx0's worker rejected the tx (e.g. signature/nonce/balance check inside ProcessTransaction
@@ -2885,6 +2997,32 @@ public class BlockProcessorTests
         }
     }
 
+    /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s ordering and its
+    /// running EIP-8037 header gas, so tests can exercise the staging and retry wiring without the real
+    /// manager. Receipt index and cumulative receipt gas are deliberately left to the executor under
+    /// test; <see cref="IncrementalValidation_publishes_canonical_receipt_metadata"/> is what covers the
+    /// real manager's own metadata contract.</summary>
+    private static void ReplayProcessedEvents(
+        Block block,
+        GasValidationResultSlot[] gasResults,
+        BlockReceiptsTracer[] receiptsTracers,
+        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler)
+    {
+        ulong cumulativeExecutionGas = 0;
+        ulong cumulativeStateGas = 0;
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            GasValidationResult gasResult = gasResults[i].GetResult();
+            cumulativeExecutionGas += gasResult.BlockGasUsed;
+            cumulativeStateGas += gasResult.BlockStateGasUsed;
+            transactionProcessedEventHandler?.OnTransactionProcessed(
+                new TxProcessedEventArgs(i, block.Transactions[i], block.Header, receiptsTracers[i].TxReceipts[0])
+                {
+                    HeaderGasUsed = Math.Max(cumulativeExecutionGas, cumulativeStateGas),
+                });
+        }
+    }
+
     private static GasValidationResultSlot[] ResultsForCount(int count)
     {
         GasValidationResultSlot[] results = new GasValidationResultSlot[count];
@@ -2915,6 +3053,112 @@ public class BlockProcessorTests
             slots[i].TrySetResult(GasResult(block, i, rows[i].Gas, rows[i].StateGas, rows[i].Exception));
         }
         return slots;
+    }
+
+    private static GasValidationResultSlot[] BuildGasResults(GasConsumed[] gasConsumed)
+    {
+        GasValidationResultSlot[] slots = ResultsForCount(gasConsumed.Length);
+        for (int i = 0; i < gasConsumed.Length; i++)
+        {
+            slots[i].TrySetResult(new GasValidationResult(
+                gasConsumed[i].EffectiveBlockGas,
+                gasConsumed[i].BlockStateGas,
+                null));
+        }
+
+        return slots;
+    }
+
+    private static BlockReceiptsTracer[] BuildParallelReceiptTracers(Block block, GasConsumed[] gasConsumed)
+    {
+        BlockReceiptsTracer[] tracers = new BlockReceiptsTracer[gasConsumed.Length];
+        for (int i = 0; i < gasConsumed.Length; i++)
+        {
+            BlockReceiptsTracer tracer = new(true);
+            tracer.ResetForParallelTx(block, NullBlockTracer.Instance);
+            tracer.StartNewTxTrace(block.Transactions[i]);
+            tracer.MarkAsSuccess(Address.Zero, gasConsumed[i], [], []);
+            tracer.EndTxTrace();
+            tracers[i] = tracer;
+        }
+
+        return tracers;
+    }
+
+    private static GasConsumed[] CanonicalReceiptGasConsumed() =>
+    [
+        new(50_000, 20_000, 20_000, 30_000),
+        new(70_000, 50_000, 50_000, 20_000),
+    ];
+
+    /// <summary>The callbacks <see cref="CanonicalReceiptGasConsumed"/> must produce: receipt gas is the
+    /// post-refund cumulative, header gas the EIP-8037 running <c>max(execution, state)</c>.</summary>
+    private static readonly TransactionProcessedSnapshot[] CanonicalReceiptEvents =
+    [
+        new(0, 0, 50_000, 50_000, 30_000, 0),
+        new(1, 1, 70_000, 120_000, 70_000, 1),
+    ];
+
+    private readonly record struct CanonicalReceiptEventSetup(
+        Block Block,
+        ParallelTestBlockAccessListManager BalManager,
+        RecordingTransactionProcessedEventHandler Handler,
+        IBlockProcessor.IBlockTransactionsExecutor Executor,
+        BranchProcessor BranchProcessor,
+        IContainer Container);
+
+    /// <summary>Wires the registered parallel decorator over a real <see cref="BlockProcessor"/> and
+    /// <see cref="BranchProcessor"/> so a test can drive whole processing attempts — including the BAL
+    /// sequential retry — against a recording transaction-processed handler.</summary>
+    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool retry, bool validationSucceeds)
+    {
+        GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
+        Block block = BuildParallelValidationBlock(gasConsumed.Length);
+        block.Header.GasLimit = 500_000;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
+        RecordingTransactionProcessedEventHandler handler = new();
+        ReceiptMetadataTransactionProcessorAdapter transactionProcessorAdapter = new(gasConsumed);
+        ParallelTestBlockAccessListManager balManager = new(transactionProcessorAdapter)
+        {
+            FailFirstSetBlockAccessList = retry,
+        };
+        IContainer container = new ContainerBuilder()
+            .AddSingleton<IWorldState>(stateProvider)
+            .AddSingleton<ISpecProvider>(specProvider)
+            .AddSingleton<IBlockAccessListManager>(balManager)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<ITransactionProcessorAdapter>(transactionProcessorAdapter)
+            .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(handler)
+            .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
+            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>()
+            .Build();
+        IBlockProcessor.IBlockTransactionsExecutor executor = container.Resolve<IBlockProcessor.IBlockTransactionsExecutor>();
+        Assert.That(executor, Is.TypeOf<BlockProcessor.ParallelBlockValidationTransactionsExecutor>(), "registered decorator");
+
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockProcessor processor = new(
+            specProvider,
+            new TestBlockValidator(validationSucceeds),
+            NoBlockRewards.Instance,
+            executor,
+            stateProvider,
+            NullReceiptStorage.Instance,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            new ExecutionRequestsProcessor(transactionProcessor),
+            balManager);
+        BranchProcessor branchProcessor = new(
+            processor,
+            specProvider,
+            stateProvider,
+            Substitute.For<IBlockhashProvider>(),
+            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()),
+            LimboLogs.Instance);
+
+        return new(block, balManager, handler, executor, branchProcessor, container);
     }
 
     [Test]
@@ -3124,15 +3368,19 @@ public class BlockProcessorTests
         }
 
         public Action<Block, GasValidationResultSlot[]>? IncrementalValidationAction { get; init; }
+        public bool FailFirstSetBlockAccessList { get; init; }
+        public int ProcessingAttempts { get; private set; }
 
         public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
-        public bool ParallelExecutionEnabled => true;
+        public bool ParallelExecutionEnabled { get; private set; } = true;
         public bool BatchReadEnabled => false;
         public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
         public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
         {
+            ProcessingAttempts++;
+            ParallelExecutionEnabled = !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList);
         }
 
         public void WaitForBalWarmup()
@@ -3166,10 +3414,22 @@ public class BlockProcessorTests
         }
 
         public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
-            => IncrementalValidationAction?.Invoke(block, gasResults);
+        {
+            if (IncrementalValidationAction is not null)
+            {
+                IncrementalValidationAction(block, gasResults);
+                return;
+            }
+
+            ReplayProcessedEvents(block, gasResults, receiptsTracers, transactionProcessedEventHandler);
+        }
 
         public void SetBlockAccessList(Block block)
         {
+            if (FailFirstSetBlockAccessList && ProcessingAttempts == 1)
+            {
+                throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "retry after transaction validation");
+            }
         }
 
         public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true)
@@ -3217,6 +3477,44 @@ public class BlockProcessorTests
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
         }
+    }
+
+    private sealed class ReceiptMetadataTransactionProcessorAdapter(GasConsumed[] gasConsumed) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            int txIndex = (int)transaction.Nonce;
+            GasConsumed consumed = gasConsumed[txIndex];
+            transaction.BlockGasUsed = consumed.EffectiveBlockGas;
+            txTracer.MarkAsSuccess(Address.Zero, consumed, [], []);
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
+    }
+
+    private readonly record struct TransactionProcessedSnapshot(
+        int EventIndex,
+        int ReceiptIndex,
+        ulong GasUsed,
+        ulong GasUsedTotal,
+        ulong HeaderGasUsed,
+        ulong TransactionNonce);
+
+    private sealed class RecordingTransactionProcessedEventHandler
+        : BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
+    {
+        public List<TransactionProcessedSnapshot> Events { get; } = [];
+
+        public void OnTransactionProcessed(TxProcessedEventArgs args) => Events.Add(new(
+            args.Index,
+            args.TxReceipt.Index,
+            args.TxReceipt.GasUsed,
+            args.TxReceipt.GasUsedTotal,
+            args.HeaderGasUsed,
+            args.Transaction.Nonce));
     }
 
     /// <summary>Counts executed transactions, holding everything after <c>decisiveIndex</c> until
