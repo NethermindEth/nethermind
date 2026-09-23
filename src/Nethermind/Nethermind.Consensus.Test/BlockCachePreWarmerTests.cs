@@ -1837,8 +1837,7 @@ public class BlockCachePreWarmerTests
             {
                 Assert.That(workerLeftDry.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
                     "precondition: a worker must have run dry and left before the wave lands");
-                recovery.Publish(lateB, TestItem.AddressB);
-                recovery.Publish(lateC, TestItem.AddressC);
+                recovery.PublishWave((lateB, TestItem.AddressB), (lateC, TestItem.AddressC));
             },
             workerLeftDry: workerLeftDry,
             recovery: recovery);
@@ -2467,10 +2466,23 @@ public class BlockCachePreWarmerTests
             }
         }
 
-        public void Publish(Transaction tx, Address sender)
+        public void Publish(Transaction tx, Address sender) => PublishWave((tx, sender));
+
+        /// <summary>Publishes several senders as one wave.</summary>
+        /// <remarks>
+        /// A waiter rescans when the recovered count moves, and past its spin window on every wake as well,
+        /// so publishing one at a time pulses it awake straight into the gap between the writes: it claims
+        /// the first sender alone, finds nothing else ready and recruits no one. Every sender is therefore
+        /// set before the count moves and before the pulse.
+        /// </remarks>
+        public void PublishWave(params ReadOnlySpan<(Transaction Tx, Address Sender)> wave)
         {
-            tx.SenderAddress = sender;
-            Interlocked.Increment(ref _recovered);
+            foreach ((Transaction tx, Address sender) in wave)
+            {
+                tx.SenderAddress = sender;
+            }
+
+            Interlocked.Add(ref _recovered, wave.Length);
             lock (_gate)
             {
                 Monitor.PulseAll(_gate);
