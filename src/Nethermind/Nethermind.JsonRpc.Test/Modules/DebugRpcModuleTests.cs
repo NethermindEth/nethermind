@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -18,6 +21,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -30,6 +34,93 @@ namespace Nethermind.JsonRpc.Test.Modules;
 [Parallelizable(ParallelScope.Self)]
 public partial class DebugRpcModuleTests
 {
+    private static IEnumerable<TestCaseData> ValidTransactionIndices()
+    {
+        (string Json, ulong? Value)[] cases =
+        [
+            ("null", null),
+            ("\"0x0\"", 0),
+            ("\"0XABCDEF\"", 0xabcdef),
+            ("\"0xffffffffffffffff\"", ulong.MaxValue),
+            ("\"\\u0030\\u0078\\u0031\"", 1),
+            ("\"\\u0030\\u0078" + new string('f', 16).Replace("f", "\\u0066") + "\"", ulong.MaxValue)
+        ];
+        foreach ((string json, ulong? value) in cases)
+            foreach (bool segmented in new[] { false, true })
+                yield return new TestCaseData(json, value, segmented);
+    }
+
+    [TestCaseSource(nameof(ValidTransactionIndices))]
+    public void Trace_options_read_transaction_index_quantities(string json, ulong? expected, bool segmented) =>
+        Assert.That(ReadTransactionIndex(json, segmented), Is.EqualTo(expected));
+
+    private static IEnumerable<TestCaseData> InvalidTransactionIndices()
+    {
+        string[] cases =
+        [
+            "0", "true", "[]", "{}", "\"\"", "\"0x\"", "\"0x00\"", "\"0xg\"", "\"0x1 \"",
+            "\"0x10000000000000000\"", "\"\\u0030\\u0078\\u0030\\u0030\"",
+            "\"0x" + new string('f', 107) + "\""
+        ];
+        foreach (string json in cases)
+            foreach (bool segmented in new[] { false, true })
+                yield return new TestCaseData(json, segmented);
+    }
+
+    [TestCaseSource(nameof(InvalidTransactionIndices))]
+    public void Trace_options_reject_invalid_transaction_index_quantities(string json, bool segmented) =>
+        Assert.Throws<JsonException>(() => ReadTransactionIndex(json, segmented));
+
+    [TestCase("\"0x1\"")]
+    [TestCase("\"\\u0030\\u0078\\u0031\"")]
+    public void Transaction_index_reader_does_not_allocate_strings(string json)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
+        GethTraceOptions.TransactionIndexConverter converter = new();
+        JsonSerializerOptions options = new();
+        ulong Read()
+        {
+            Utf8JsonReader reader = new(bytes);
+            reader.Read();
+            return converter.Read(ref reader, typeof(ulong), options);
+        }
+        Assert.That(Read(), Is.EqualTo(1UL));
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++) Read();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.That(allocated, Is.Zero);
+    }
+
+    private static ulong? ReadTransactionIndex(string json, bool segmented)
+    {
+        const string prefix = "{\"txIndex\":";
+        byte[] bytes = Encoding.UTF8.GetBytes(prefix + json + "}");
+        if (!segmented) return JsonSerializer.Deserialize<GethTraceOptions>(bytes, EthereumJsonSerializer.JsonOptions)!.TxIndex;
+        int split = prefix.Length + Encoding.UTF8.GetByteCount(json) / 2;
+        TransactionIndexJsonSegment first = new(bytes.AsMemory(0, split));
+        TransactionIndexJsonSegment last = first.Append(bytes.AsMemory(split));
+        Utf8JsonReader reader = new(new ReadOnlySequence<byte>(first, 0, last, last.Memory.Length));
+        Utf8JsonReader tokenReader = reader;
+        tokenReader.Read();
+        tokenReader.Read();
+        tokenReader.Read();
+        if (tokenReader.TokenType == JsonTokenType.String && json.Length > 2)
+            Assert.That(tokenReader.HasValueSequence, Is.True, "the quantity must cross the buffer boundary");
+        return JsonSerializer.Deserialize<GethTraceOptions>(ref reader, EthereumJsonSerializer.JsonOptions)!.TxIndex;
+    }
+
+    private sealed class TransactionIndexJsonSegment : ReadOnlySequenceSegment<byte>
+    {
+        public TransactionIndexJsonSegment(ReadOnlyMemory<byte> memory) => Memory = memory;
+
+        public TransactionIndexJsonSegment Append(ReadOnlyMemory<byte> memory)
+        {
+            TransactionIndexJsonSegment next = new(memory) { RunningIndex = RunningIndex + Memory.Length };
+            Next = next;
+            return next;
+        }
+    }
+
     [Test]
     public async Task Debug_traceCall_txIndex_uses_prefix_before_overrides(
         [Values(-1, 0, 1, 2)] int index,

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -28,6 +29,17 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceCall_log_indices_include_prefix_transactions([Values] bool revertFirst)
+    {
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+            RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+                new { from = TestItem.AddressB.ToString(), input = block.Transactions[2].Data.ToArray().ToHexString(true), gas = "0x186a0" },
+                block.Hash!, new { tracer = "callTracer", tracerConfig = new { withLog = true }, txIndex = "0x2" }));
+
+        AssertLastTransactionLogIndex(responses, revertFirst);
+    }
+
     [Test]
     public async Task Debug_traceTransaction_log_indices_include_preceding_transactions([Values] bool revertFirst)
     {
