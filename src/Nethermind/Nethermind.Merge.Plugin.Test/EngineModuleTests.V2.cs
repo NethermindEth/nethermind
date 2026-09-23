@@ -297,6 +297,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV1(getPayloadResult.ExecutionPayload);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await chain.WaitForCommitted(getPayloadResult.ExecutionPayload.BlockHash);
 
         BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.ExecutionPayload.BlockHash);
         UInt256 finalBalance = chain.StateReader.GetBalance(payloadBlock, feeRecipient);
