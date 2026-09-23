@@ -14,7 +14,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// Entries are filled by <see cref="Decompose"/> as it resolves the existing node group, and by the folds that
     /// replace its touched slots, then taken back by <see cref="Compose"/> as it rebuilds. A decomposed entry names
-    /// where its node is read from rather than holding it, so only the folds' own results are carried here.
+    /// where its node is read from rather than holding it, so only the folds' own results are carried here. A stored
+    /// node no touched slot lies under has no entry, since composition copies it without consulting the frontier.
     /// </remarks>
     internal struct Frontier
     {

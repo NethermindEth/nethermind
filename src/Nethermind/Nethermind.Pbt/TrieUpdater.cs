@@ -432,7 +432,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (!foldedInParallel)
             FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition);
 
-        return Compose(ref reader, writer, path, context.Metrics, ref frontier).Materialize(resultDepth);
+        return Compose(ref reader, writer, path, context.Metrics, ref frontier, partition.UsedMask).Materialize(resultDepth);
     }
 
     private static void FoldBuckets(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
@@ -616,19 +616,21 @@ internal static partial class TrieUpdater<TKey, TPath>
         return frontier.TakeBoundaryNode(ref reader, path, slot);
     }
 
-    /// <summary>Takes the entry at <paramref name="position"/> as the node composition stores there, or empty when the frontier holds none.</summary>
+    /// <summary>Takes the node composition stores at <paramref name="position"/>, or empty when neither <paramref name="copies"/> nor the frontier holds one.</summary>
     /// <remarks>
-    /// The frontier hands out a boundary node, a fold's result or a direct copy; this is where each becomes a node
-    /// placed against the cursor. A boundary node is the only one anchored above the cursor, so it is the only one
-    /// that owns the compressed prefix below the cursor that places it. A stored node is copied, and a position the
-    /// group leaves implicit is rebuilt from the children it does store.
+    /// A position in <paramref name="copies"/> is a stored node with no touched slot under it, copied straight from the
+    /// frame. Otherwise the frontier hands out a boundary node, a fold's result or a direct copy; this is where each
+    /// becomes a node placed against the cursor. A boundary node is the only one anchored above the cursor, so it is the
+    /// only one that owns the compressed prefix below the cursor that places it. A stored node is copied, and a position
+    /// the group leaves implicit is rebuilt from the children it does store.
     /// </remarks>
     internal static TraversalSubtree TakeSubtree(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
-        scoped ref Frontier frontier, int position)
+        scoped ref Frontier frontier, uint copies, int position)
     {
         uint bit = 1u << position;
-        if ((frontier.Mask & bit) == 0) return default;
+        if (((frontier.Mask | copies) & bit) == 0) return default;
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
+        if ((copies & bit) != 0) return new TraversalSubtree(path, reader.TakeDirectCopy(path, position));
         TraversalSubtree taken = frontier.Take(ref reader, path, PbtFourLevelGroupGeometry.LocalPathOf(position).Slot, out BoundaryNode boundary);
         frontier.Mask &= ~bit;
         if (!boundary.IsEmpty) return new TraversalSubtree(path, boundary.ToOwnedSubtree(path, path.BitDepth).Node);
@@ -662,8 +664,10 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     [SkipLocalsInit]
     internal static TraversalSubtree Compose(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, TrieUpdaterMetrics? metrics,
-        scoped ref Frontier frontier)
+        scoped ref Frontier frontier, int touchedMask)
     {
+        // A frame decomposition never read holds a leaf or a spanning branch, so its group stores nothing to copy.
+        uint copies = reader.IsResolved ? DirectCopyPositions(reader.StoredPositions(path), touchedMask) : 0;
         ComposeFrameBuffer frames = default;
         // A left child's preimage waits here, one slice per frame, until its sibling is written and both can be hashed at once.
         Span<byte> pendingPreimages = stackalloc byte[(PbtFourLevelGroupGeometry.LevelsPerGroup + 1) * PbtNodeCodec.MaxBranchPreimageLength];
@@ -679,7 +683,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 // Establish right occupancy without decoding it, so the left root can be emitted first.
                 uint rightMask = ((1u << (width - 1)) - 1) << (position - width + 1);
-                if ((frontier.Mask & rightMask) == 0)
+                if (((frontier.Mask | copies) & rightMask) == 0)
                 {
                     frameCount--;
                     continue;
@@ -696,7 +700,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
                 if (width == 2)
                 {
-                    result = TakeSubtree(ref reader, writer, path, ref frontier, BoundaryPosition(frame.Path.Slot + 1));
+                    result = TakeSubtree(ref reader, writer, path, ref frontier, copies, BoundaryPosition(frame.Path.Slot + 1));
                     if (promoteRight) frameCount--;
                 }
                 else if (promoteRight)
@@ -717,7 +721,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 frameCount--;
                 continue;
             }
-            result = TakeSubtree(ref reader, writer, path, ref frontier, position);
+            result = TakeSubtree(ref reader, writer, path, ref frontier, copies, position);
             if (!result.IsEmpty)
             {
                 // An internal frontier entry is an unchanged subtree reached from the original input.
@@ -733,7 +737,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
             frame.Stage = ComposeStage.LeftCompleted;
             if (width == 2)
-                result = TakeSubtree(ref reader, writer, path, ref frontier, BoundaryPosition(frame.Path.Slot));
+                result = TakeSubtree(ref reader, writer, path, ref frontier, copies, BoundaryPosition(frame.Path.Slot));
             else
                 frames[frameCount++] = new(frame.Path.Left);
         }
@@ -785,7 +789,9 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// Every entry is resolved from its own position upwards, against the deepest node the group stores above that
     /// position, or against the input when it stores none. That node's link is what both names the entry and holds its
     /// hash, so entries are placed without hashing anything. Entries use their leftmost boundary slot; the mask retains
-    /// their group positions. An opaque subtree and its descendants never coexist, so their slots cannot collide.
+    /// their group positions. An opaque subtree and its descendants never coexist, so their slots cannot collide. A
+    /// stored node with no touched slot under it gets no entry: <see cref="Compose"/> copies it from the stored and
+    /// touched positions alone, so only its link hash is seeded here.
     /// </remarks>
     [SkipLocalsInit]
     internal static void Decompose(ref GroupFrameReader<TKey, TPath> reader, scoped in PbtTraversalPath path, ref BoundaryNode input,
@@ -812,6 +818,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         // The root is held by the frontier, not by the group, so its position never answers the climb.
         uint stored = reader.StoredPositions(path) & ~(1u << PbtFourLevelGroupGeometry.RootPosition);
+        uint copies = DirectCopyPositions(stored, touchedMask);
         for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots;)
         {
             // A touched slot is resolved on its own; everything else in the widest aligned untouched block it starts.
@@ -821,7 +828,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                        && (slot & (2 * width - 1)) == 0
                        && (touchedMask & (((1 << (2 * width)) - 1) << slot)) == 0)
                     width <<= 1;
-            ResolveBlock(ref reader, path, bitDepth, stored, slot, width, ref frontier);
+            ResolveBlock(ref reader, path, bitDepth, stored, copies, slot, width, ref frontier);
             slot += width;
         }
     }
@@ -834,7 +841,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// seeded at the level the link addresses rather than at the block's own.
     /// </remarks>
     private static void ResolveBlock(ref GroupFrameReader<TKey, TPath> reader, scoped in PbtTraversalPath path,
-        int bitDepth, uint stored, int slot, int width, ref Frontier frontier)
+        int bitDepth, uint stored, uint copies, int slot, int width, ref Frontier frontier)
     {
         int level = PbtFourLevelGroupGeometry.LevelsPerGroup - BitOperations.Log2((uint)width);
         int position = new NodeGroupPath(slot, level).Position;
@@ -882,7 +889,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         reader.SeedHash(linkPosition, side == 0 ? branch.LeftHash : branch.RightHash);
         Debug.Assert(linkPosition == position || level < PbtFourLevelGroupGeometry.LevelsPerGroup,
             "A boundary node is never left implicit, so its link addresses it directly.");
-        frontier.Place(slot, position, EntrySource.AtPosition, position);
+        if ((copies & (1u << position)) == 0) frontier.Place(slot, position, EntrySource.AtPosition, position);
     }
 
     /// <summary>Seeds the hash of the node stored at <paramref name="position"/> from the link that names it.</summary>
@@ -900,6 +907,19 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (node.BranchDepth != linkDepth - 1) return;
         int side = local.GetBit(local.Length - 1);
         reader.SeedHash(position, side == 0 ? node.Node.LeftHash : node.Node.RightHash);
+    }
+
+    /// <summary>The stored positions below the group root with no touched slot under them, which composition copies unchanged.</summary>
+    private static uint DirectCopyPositions(uint stored, int touchedMask)
+    {
+        uint copies = 0;
+        for (uint remaining = stored & ~(1u << PbtFourLevelGroupGeometry.RootPosition); remaining != 0; remaining &= remaining - 1)
+        {
+            int position = BitOperations.TrailingZeroCount(remaining);
+            NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
+            if ((touchedMask & (((1 << local.Width) - 1) << local.Slot)) == 0) copies |= 1u << position;
+        }
+        return copies;
     }
 
     /// <summary>The deepest position above <paramref name="position"/> that the group stores a node at, or -1 for its root.</summary>

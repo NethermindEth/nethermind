@@ -1253,7 +1253,7 @@ public class PbtNodeGroupTests
                     InvalidDataException? failure = null;
                     try
                     {
-                        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
+                        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, 0, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
                     }
                     catch (InvalidDataException exception)
                     {
@@ -1263,16 +1263,15 @@ public class PbtNodeGroupTests
                 }
                 else
                 {
-                    result = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
+                    result = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, 0, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
                     using (Assert.EnterMultipleScope())
                     {
                         Assert.That(frontier.Entries[0].IsEmpty, Is.True);
                         Assert.That(result.IsEmpty, Is.EqualTo(scenario == 0));
-                        Assert.That(reader.Taken, Is.EqualTo(scenario == 1 ? 1u << 30 : 0u));
                         Assert.That(result.Copy.IsEmpty, Is.EqualTo(scenario != 1), "a stored node is taken as its bytes");
                         Assert.That(result.IsLeaf, Is.EqualTo(scenario == 2), "a fold's result is taken as composed");
                     }
-                    scoped TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree second = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
+                    scoped TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree second = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, 0, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
                     Assert.That(second.IsEmpty, Is.True, "consumption clears carried nodes and source positions alike");
                 }
             }
@@ -1310,6 +1309,7 @@ public class PbtNodeGroupTests
         {
             root = reader.TakeRoot(groupPath);
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Decompose(ref reader, groupPath, ref root, 0, ref frontier, touchedMask);
+            uint stored = reader.StoredPositions(groupPath) & ~(1u << PbtFourLevelGroupGeometry.RootPosition);
             uint expectedFrontier = 0;
             int[] expectedPositions = new int[16];
             Array.Fill(expectedPositions, -1);
@@ -1324,11 +1324,10 @@ public class PbtNodeGroupTests
             }
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reader.Taken, Is.EqualTo(1u << 30), "decomposition acquires nothing but the group root");
                 Assert.That(frontier.Mask, Is.EqualTo(expectedFrontier));
                 Assert.That(actualFrontier, Is.EqualTo(expectedFrontier), "untouched siblings stay at their internal positions");
             }
-            result = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
+            result = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, touchedMask);
             ValueHash256 hash = writer.Write(groupPath, 30, 0, ref result, null);
             Span<long> descendantBytes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
             for (int slot = 0; slot < descendantBytes.Length; slot++) descendantBytes[slot] = reader.DescendantBytes(slot);
@@ -1341,10 +1340,10 @@ public class PbtNodeGroupTests
 
             void Visit(int slot, int width, int position)
             {
-                if (width == 1 || (touchedMask & (((1 << width) - 1) << slot)) == 0)
+                bool untouched = (touchedMask & (((1 << width) - 1) << slot)) == 0;
+                if (width == 1 || untouched)
                 {
-                    expectedPositions[slot] = position;
-                    expectedFrontier |= 1u << position;
+                    Expect(slot, position, untouched);
                     return;
                 }
                 if (compressedSiblings && width == 8)
@@ -1353,13 +1352,20 @@ public class PbtNodeGroupTests
                     position = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(slot + 1) + 1;
                     if ((touchedMask & (3 << slot)) == 0)
                     {
-                        expectedPositions[slot] = position;
-                        expectedFrontier |= 1u << position;
+                        Expect(slot, position, true);
                         return;
                     }
                 }
                 Visit(slot, width / 2, position - width);
                 Visit(slot + width / 2, width / 2, position - 1);
+            }
+
+            void Expect(int slot, int position, bool untouched)
+            {
+                // Composition copies an untouched stored node from the masks, so decomposition leaves it no entry.
+                if (untouched && (stored & (1u << position)) != 0) return;
+                expectedPositions[slot] = position;
+                expectedFrontier |= 1u << position;
             }
         }
     }
@@ -1383,7 +1389,7 @@ public class PbtNodeGroupTests
             Assert.That(frontier.Mask, Is.Zero);
             Assert.That(TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeBoundary(ref reader, groupPath, ref frontier, slot).IsEmpty,
                 Is.True, "an absent group has no boundary node to fold into");
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
+            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, 1 << slot);
             Assert.That(subtree.IsEmpty, Is.True);
 
             subtree = new(groupPath, new TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1))));
@@ -1391,7 +1397,7 @@ public class PbtNodeGroupTests
             Assert.That(frontier.Mask, Is.EqualTo(1u << TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(slot)));
             subtree = default;
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref subtree);
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
+            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, 1 << slot);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(frontier.Mask, Is.Zero);
@@ -1400,7 +1406,7 @@ public class PbtNodeGroupTests
 
             subtree = new(groupPath, new TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1))));
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref subtree);
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
+            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, 1 << slot);
             Assert.That(writer.Write(groupPath, 30, 0, ref subtree, null), Is.EqualTo(expected.ApplyBatch([(key, Value(1))])));
         }
     }
@@ -2106,10 +2112,9 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Explicit_emissions_preserve_only_selected_nodes_independently_of_taken_positions(
+    public void Explicit_emissions_preserve_only_selected_nodes(
         [Values(0, 4, 516)] int groupDepth,
         [Values(0u, 0x400C0189u, 0x7FFFFFFFu)] uint selected,
-        [Values] bool markTaken,
         [Values] bool copyRanges)
     {
         PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
@@ -2134,8 +2139,6 @@ public class PbtNodeGroupTests
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, new TrackingMemoryProvider(), PbtPrefixlessBranchOmission.Interior);
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
-            uint taken = markTaken ? 0x7FFFFFFFu : 0;
-            reader.Taken = taken;
             int nextPosition = 0;
             int lastEmittedPosition = -1;
             foreach (int endPosition in new[] { 0, 3, 8, 19, 31 })
@@ -2161,11 +2164,7 @@ public class PbtNodeGroupTests
                     if (copyRanges) reader.CopyRange(groupPath, writer, startPosition, nextPosition);
                 }
 
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(writer.LastPosition, Is.EqualTo(lastEmittedPosition));
-                    Assert.That(reader.Taken, Is.EqualTo(taken));
-                }
+                Assert.That(writer.LastPosition, Is.EqualTo(lastEmittedPosition));
             }
             using RefCountingMemory? payload = writer.Detach(default);
             Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(expectedRecords.Count == 0 ? null : EncodeGroup(groupKey, expectedRecords)));

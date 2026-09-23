@@ -25,7 +25,6 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     private HashBuffer _hashes;
     private uint _hashed;
     private uint _stored;
-    internal uint Taken;
 
     internal GroupFrameReader(IPbtStore store, int bitDepth, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
         : this(store, bitDepth, metrics) => _groupHash = groupHash;
@@ -136,7 +135,6 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
         if (encoding.IsEmpty) return default;
-        Taken |= 1U << position;
         return new(encoding, PbtFourLevelGroupGeometry.LocalPathOf(position), SeededHash(position));
     }
 
@@ -161,7 +159,6 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     internal TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot(scoped in PbtTraversalPath path)
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(path, PbtFourLevelGroupGeometry.RootPosition);
-        Taken |= 1U << PbtFourLevelGroupGeometry.RootPosition;
         if (encoding.IsEmpty) return default;
         return PbtNodeReader.FromValidated(encoding.Span).IsLeaf
             ? new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, _groupHash)
@@ -174,7 +171,6 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
         if (encoding.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
-        Taken |= 1U << position;
         if (PbtNodeReader.FromValidated(encoding.Span).IsLeaf) return new(encoding, _groupHash);
         return new(encoding, BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, GetHash(path, position));
     }
