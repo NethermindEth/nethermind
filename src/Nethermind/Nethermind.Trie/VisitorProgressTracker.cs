@@ -18,7 +18,7 @@ public class VisitorProgressTracker
 {
     public const int Level3Depth = 4; // 4 nibbles
     private const int MaxNodes = 65536; // 16^4 possible 4-nibble prefixes
-    private const int ProgressScale = 100; // 1% granularity: one report per percentage point
+    private const int DefaultProgressScale = 10_000; // 0.01% granularity
 
     private int _seenCount; // Count of level-3 nodes seen (or estimated from shallow leaves)
 
@@ -29,20 +29,27 @@ public class VisitorProgressTracker
     private readonly string _operationName;
     private readonly int _reportingInterval;
     private readonly bool _printNodes;
+    private readonly int _progressScale;
+    private readonly string _percentageFormat;
 
     public VisitorProgressTracker(
         string operationName,
         ILogManager logManager,
         int reportingInterval = 100_000,
         bool printNodes = true,
-        LogLevel logLevel = LogLevel.Debug)
+        LogLevel logLevel = LogLevel.Debug,
+        int progressScale = DefaultProgressScale)
     {
         ArgumentNullException.ThrowIfNull(logManager);
+        ArgumentOutOfRangeException.ThrowIfLessThan(progressScale, 1);
 
         _operationName = operationName;
         _printNodes = printNodes;
+        _progressScale = progressScale;
+        // Show only the digits the scale can resolve: 10_000 -> "P2" (12.34 %), 100 -> "P0" (12 %)
+        _percentageFormat = $"P{Math.Max(0, (int)Math.Log10(progressScale) - 2)}";
         _logger = new ProgressLogger(operationName, logManager, logLevel: logLevel);
-        _logger.Reset(0, ProgressScale);
+        _logger.Reset(0, (ulong)progressScale);
         _logger.SetFormat(FormatProgress);
         _reportingInterval = reportingInterval;
         _startTime = DateTime.UtcNow;
@@ -50,12 +57,12 @@ public class VisitorProgressTracker
 
     private string FormatProgress(ProgressLogger logger)
     {
-        float percentage = Math.Clamp(logger.CurrentValue / (float)ProgressScale, 0, 1);
+        float percentage = Math.Clamp(logger.CurrentValue / (float)_progressScale, 0, 1);
         long work = Interlocked.Read(ref _totalWorkDone);
         string workStr = work >= 1_000_000 ? $"{work / 1_000_000.0:F1}M" : $"{work:N0}";
         return _printNodes
-            ? $"{_operationName,-25} {percentage.ToString("P0", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} nodes: {workStr,8}"
-            : $"{_operationName,-25} {percentage.ToString("P0", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)}";
+            ? $"{_operationName,-25} {percentage.ToString(_percentageFormat, CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} nodes: {workStr,8}"
+            : $"{_operationName,-25} {percentage.ToString(_percentageFormat, CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)}";
     }
 
     /// <summary>
@@ -123,7 +130,7 @@ public class VisitorProgressTracker
             return;
         }
 
-        ulong progressValue = (ulong)(progress * ProgressScale);
+        ulong progressValue = (ulong)(progress * _progressScale);
 
         _logger.Update(progressValue);
         _logger.LogProgress();
@@ -134,7 +141,7 @@ public class VisitorProgressTracker
     /// </summary>
     public void Finish()
     {
-        _logger.Update(ProgressScale);
+        _logger.Update((ulong)_progressScale);
         _logger.MarkEnd();
         _logger.LogProgress();
     }

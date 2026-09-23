@@ -150,14 +150,15 @@ public class VisitorProgressTrackerTests
         Assert.That(tracker.GetProgress(), Is.EqualTo(0)); // Empty path doesn't contribute to progress
     }
 
-    [TestCase(LogLevel.Debug, 0)]
-    [TestCase(LogLevel.Info, 1)]
-    public void OnNodeVisited_ReportsProgressAtRequestedLevel(LogLevel logLevel, int expectedReports)
+    [TestCase(LogLevel.Debug, true, 0, 1)]
+    [TestCase(LogLevel.Debug, false, 0, 0)]
+    [TestCase(LogLevel.Info, false, 1, 0)]
+    public void OnNodeVisited_ReportsProgressAtRequestedLevel(LogLevel logLevel, bool isDebugEnabled, int expectedInfoReports, int expectedDebugReports)
     {
-        // Arrange - a node running at the default Info level, where Debug reporting is invisible
+        // Arrange
         InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
         innerLogger.IsInfo.Returns(true);
-        innerLogger.IsDebug.Returns(false);
+        innerLogger.IsDebug.Returns(isDebugEnabled);
         ILogger logger = new(innerLogger);
         ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ProgressLogger>().Returns(logger);
@@ -166,9 +167,30 @@ public class VisitorProgressTrackerTests
 
         // Act - a leaf at depth 1 covers 16^3 level-3 nodes, which clears the 1% threshold
         // that otherwise suppresses reporting during the first 5 seconds
-        tracker.OnNodeVisited(TreePath.FromNibble([0]), isStorage: false, isLeaf: true);
+        tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 0 }), isStorage: false, isLeaf: true);
 
         // Assert
-        innerLogger.Received(expectedReports).Info(Arg.Any<string>());
+        innerLogger.Received(expectedInfoReports).Info(Arg.Any<string>());
+        innerLogger.Received(expectedDebugReports).Debug(Arg.Any<string>());
+    }
+
+    [TestCase(10_000, "6.25 %")]
+    [TestCase(100, "6 %")]
+    public void OnNodeVisited_FormatsPercentageToScaleResolution(int progressScale, string expectedPercentage)
+    {
+        // Arrange
+        InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
+        innerLogger.IsDebug.Returns(true);
+        ILogger logger = new(innerLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<ProgressLogger>().Returns(logger);
+
+        VisitorProgressTracker tracker = new("Test", logManager, progressScale: progressScale);
+
+        // Act - a leaf at depth 1 is 4096 / 65536 = 6.25%
+        tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 0 }), isStorage: false, isLeaf: true);
+
+        // Assert
+        innerLogger.Received(1).Debug(Arg.Is<string>(line => line.Contains(expectedPercentage)));
     }
 }

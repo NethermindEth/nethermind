@@ -32,6 +32,7 @@ public class Importer(
     private const int BatchSize = 128_000;
     private const int FlushInterval = 50_000_000;
     private const int CheckCancelInterval = 100_000;
+    private const int ProgressScale = 100; // one Info line per percentage point, ~100 per import
 
     private record struct Entry(Hash256? address, TreePath path, TrieNode node);
 
@@ -53,7 +54,7 @@ public class Importer(
         if (_logger.IsWarn) _logger.Warn("Starting import");
 
         int maxConcurrency = 8;
-        VisitorProgressTracker progressTracker = new("Flat Import", logManager, logLevel: LogLevel.Info);
+        VisitorProgressTracker progressTracker = new("Flat Import", logManager, logLevel: LogLevel.Info, progressScale: ProgressScale);
 
         Task visitTask = Task.Run(() =>
         {
