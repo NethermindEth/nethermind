@@ -583,12 +583,13 @@ public class ProtocolsManagerTests
             .VerifyPersistedEnr(record);
     }
 
-    [TestCase("35.0.0.1", true, TestName = "Persists the dialed endpoint when the verified ENR names another address")]
-    [TestCase("35.0.0.9", false, TestName = "Persists the dialed endpoint when the ENR is unverified")]
-    public void Persists_dialed_endpoint_instead_of_an_untrusted_or_mismatched_enr(string enrIp, bool verified)
+    [TestCase("35.0.0.1", false, "35.0.0.9", true, TestName = "Persists the dialed endpoint when the verified ENR names another address")]
+    [TestCase("35.0.0.9", false, "35.0.0.9", false, TestName = "Persists the dialed endpoint when the ENR is unverified")]
+    [TestCase("35.0.0.9", true, "2606:4700:4700::1111", true, TestName = "Persists the dialed endpoint when a dual-stack ENR was reached over IPv6")]
+    public void Persists_dialed_endpoint_instead_of_an_untrusted_or_mismatched_enr(string enrIp, bool includeIpv6, string dialedHost, bool verified)
     {
-        NodeRecord record = CreateSignedRecord(enrIp, includeIpv6: false);
-        Node node = new(TestItem.PublicKeyB, "35.0.0.9", 30000);
+        NodeRecord record = CreateSignedRecord(enrIp, includeIpv6);
+        Node node = new(TestItem.PublicKeyB, dialedHost, 30000);
         if (verified)
         {
             Assert.That(node.SetVerifiedEnr(record), Is.True);
@@ -604,7 +605,7 @@ public class ProtocolsManagerTests
             .ReceiveHello()
             .ReceiveStatus()
             .VerifyEthInitialized()
-            .VerifyPersistedEnode("35.0.0.9");
+            .VerifyPersistedEnode(dialedHost);
     }
 
     private static NodeRecord CreateSignedRecord(string ip, bool includeIpv6)

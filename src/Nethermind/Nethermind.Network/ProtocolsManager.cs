@@ -328,10 +328,10 @@ namespace Nethermind.Network
         {
             long reputation = _stats.GetOrAdd(node).NewPersistedNodeReputation(DateTime.UtcNow);
             NodeRecord? record = node.Enr;
-            // A reloaded ENR replaces the dialed endpoint, so it is kept only when it names the address that worked.
-            // Ports are not compared because the Hello message overwrites the node's port.
+            // A reloaded ENR is dialed at its default TCP endpoint, so it is kept only when that is the address that
+            // worked. Ports are not compared because the Hello message overwrites the node's port.
             if (record is not null && node.IsVerifiedEnr(record) && record.EnrSequence >= node.HighestObservedEnrSequence &&
-                record.TryGetTcpEndpoint(node.Address.AddressFamily, out IPEndPoint? tcpEndpoint) &&
+                record.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint) &&
                 tcpEndpoint.Address.Equals(node.Address.Address))
             {
                 return new NetworkNode(record.ToString()) { Reputation = reputation };

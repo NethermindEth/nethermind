@@ -421,12 +421,19 @@ public class IPResolverTests
             Assert.That(sourceCalls, Is.EqualTo(5));
         }
 
+        for (int attempt = 1; attempt < 5; attempt++)
+        {
+            timeProvider.Advance(TimeSpan.FromSeconds(10));
+        }
+
+        Assert.That(sourceCalls, Is.EqualTo(9), "a network that comes up late still gets the ten-second retries");
+
         timeProvider.Advance(TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(59));
-        Assert.That(sourceCalls, Is.EqualTo(5));
+        Assert.That(sourceCalls, Is.EqualTo(9));
 
         timeProvider.Advance(TimeSpan.FromSeconds(1));
         await ipResolver.Resolve();
-        Assert.That(sourceCalls, Is.EqualTo(6));
+        Assert.That(sourceCalls, Is.EqualTo(10));
     }
 
     [Test]

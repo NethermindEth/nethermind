@@ -19,6 +19,7 @@ namespace Nethermind.Network;
 public class IPResolver : IIPResolver, IAsyncDisposable
 {
     private const int UnresolvedFastAttemptLimit = 5;
+    private const int StartupAttemptLimit = 5;
     private static readonly TimeSpan ResolutionCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan UnresolvedRetryDelay = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StartupRetryDelay = TimeSpan.FromSeconds(2);
@@ -150,10 +151,17 @@ public class IPResolver : IIPResolver, IAsyncDisposable
         {
             // Startup consumers such as the enode read the first result once, so it gets the bounded retry.
             IIPResolver.NethermindIp result = await ResolveAndRecord(_shutdown.Token);
-            while (_retryUnresolvedResolution)
+            for (int attempt = 1; attempt < StartupAttemptLimit && _retryUnresolvedResolution; attempt++)
             {
                 await Task.Delay(StartupRetryDelay, _timeProvider, _shutdown.Token);
                 result = await ResolveAndRecord(_shutdown.Token);
+            }
+
+            if (_consecutiveUnresolvedResolutionAttempts > 0)
+            {
+                // Startup attempts must not use up the background fast retries for a network that comes up late.
+                _consecutiveUnresolvedResolutionAttempts = 1;
+                _retryUnresolvedResolution = true;
             }
 
             completion.SetResult(result);

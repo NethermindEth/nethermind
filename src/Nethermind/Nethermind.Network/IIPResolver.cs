@@ -24,9 +24,9 @@ namespace Nethermind.Network
         /// <remarks>
         /// Results containing automatically detected addresses are refreshed in the background once they are
         /// five minutes old, while callers keep receiving the cached result; the initial resolution makes up to
-        /// five attempts two seconds apart before it completes, because some consumers read it only once. A refresh
-        /// that loses every previously resolved address is retried after ten seconds for up to five attempts, and
-        /// fully configured results do not expire.
+        /// five attempts two seconds apart before it completes, because some consumers read it only once. If all of
+        /// them fail, or a refresh loses every previously resolved address, background retries follow every ten
+        /// seconds for up to four more attempts. Fully configured results do not expire.
         /// Refresh is scheduled independently of subsequent calls. Concurrent callers await the
         /// same initial in-flight resolution. Explicit local, primary, IPv4, and IPv6 overrides are honored when
         /// set. Otherwise, enabled automatic resolution independently detects missing address families supported
