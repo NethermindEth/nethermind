@@ -53,9 +53,18 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return failure.IsError ? ResultWrapper<TransactionForRpcWithProof>.Fail(failure) : ResultWrapper<TransactionForRpcWithProof>.Success(null);
             }
 
-            (Block block, int txIndex, _, TxReceipt? receipt) = resolved;
+            (Block block, int txIndex) = resolved;
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[txIndex];
+
+            // Only a deposit transaction reads its receipt (for the deposit nonce), so no other type pays for the
+            // lookup or fails on receipts that are unavailable; without one its nonce would be served as zero.
+            TxReceipt? receipt = null;
+            if (transaction.Type == TxType.DepositTx)
+            {
+                receipt = receiptFinder.Get(block).ForTransaction(txHash);
+                if (receipt is null) return ResultWrapper<TransactionForRpcWithProof>.Success(null);
+            }
 
             TransactionForRpcWithProof txWithProof = new();
             TransactionForRpcContext extraData = new(
@@ -83,10 +92,11 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return failure.IsError ? ResultWrapper<ReceiptWithProof>.Fail(failure) : ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
-            (Block block, int txIndex, TxReceipt[] storedReceipts, TxReceipt? receipt) = resolved;
+            (Block block, int txIndex) = resolved;
+            TxReceipt[] storedReceipts = receiptFinder.Get(block);
+            TxReceipt? receipt = storedReceipts.ForTransaction(txHash);
             if (receipt is null)
             {
-                // Only this method needs the receipt itself; without one there is nothing to return a proof for.
                 return ResultWrapper<ReceiptWithProof>.Success(null);
             }
 
@@ -176,12 +186,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             });
         }
 
-        /// <param name="Receipt">
-        /// The stored receipt, or <c>null</c> when the resolved block's receipt set no longer carries one for this
-        /// transaction. Proving the transaction's inclusion needs only its position, so only the receipt method
-        /// treats a missing receipt as unservable.
-        /// </param>
-        private readonly record struct ResolvedTransaction(Block Block, int TxIndex, TxReceipt[] StoredReceipts, TxReceipt? Receipt);
+        private readonly record struct ResolvedTransaction(Block Block, int TxIndex);
 
         /// <remarks>
         /// <paramref name="failure"/> is populated only for a search error the caller must surface, and left default
@@ -214,8 +219,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 return false;
             }
 
-            TxReceipt[] storedReceipts = receiptFinder.Get(block);
-            resolved = new ResolvedTransaction(block, txIndex, storedReceipts, storedReceipts.ForTransaction(txHash));
+            resolved = new ResolvedTransaction(block, txIndex);
             return true;
         }
 
@@ -224,12 +228,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
         /// receipts the served logs themselves come from.
         /// </summary>
         /// <remarks>
-        /// Deliberately not <see cref="ReceiptsExtensions.GetBlockLogFirstIndex"/>, which tests the threshold against
-        /// each stored <c>Index</c>: a stale index on the requested receipt counts its own logs toward its own
-        /// starting offset, and one on any other receipt moves that receipt in or out of the prefix. Matching by
-        /// transaction hash puts the prefix in block order instead, which also drops receipts for transactions the
-        /// resolved block no longer contains. A preceding transaction with no stored receipt contributes nothing,
-        /// as it does for <c>eth_getTransactionReceipt</c> over the same partial set.
+        /// Matches by transaction hash rather than using <see cref="ReceiptsExtensions.GetBlockLogFirstIndex"/>,
+        /// which trusts each stored <c>Index</c> and so miscounts when those indices are stale.
         /// </remarks>
         private static int GetLogIndexStart(Transaction[] txs, TxReceipt[] storedReceipts, int txIndex)
         {
