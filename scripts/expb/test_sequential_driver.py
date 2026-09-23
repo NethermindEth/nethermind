@@ -158,6 +158,22 @@ class CollectMetricsTests(unittest.TestCase):
         self.assertTrue(parsed["shutdown"] and parsed["cleanup"])
         self.assertEqual(diagnostics, {"exceptions": [], "invalid": [], "severe": []})
 
+    def test_a_missing_feed_record_leaves_the_paired_figures_unavailable(self) -> None:
+        # Nothing says which payload lacks its record, so pairing by position would shear every value after
+        # the gap; the gate still accepts one missing record, so the paired figures must decline instead.
+        log = self.write_log(
+            "[payload-server] client_metric block_number=100 processing_ms=20\n"
+            "| 1 | 30000000 | 25.0 |\n"
+            "| 2 | 30000000 | 35.0 |\n"
+        )
+        parsed, _ = driver.collect_metrics(log)
+        self.assertEqual((parsed["source"], parsed["delivered"], parsed["sse_count"]), ("SSE", 2, 1))
+        self.assertEqual(parsed["processing"]["avg"], 20.0)
+        self.assertIsNone(parsed["outside"]["avg"])
+        self.assertIsNone(parsed["mgas_s"])
+        # The request series pairs gas and time within the same k6 row, so it covers every payload.
+        self.assertAlmostEqual(parsed["request_mgas_s"], 60 / (60 / 1000))
+
     def test_without_sse_the_request_timings_stand_in_and_outside_is_empty(self) -> None:
         parsed, _ = driver.collect_metrics(self.write_log("| 1 | 30000000 | 25.0 |\n"))
         self.assertEqual(parsed["source"], "TTFB")
@@ -297,19 +313,20 @@ class CampaignScopeTests(unittest.TestCase):
             {"scenarios": {"nethermind": {}}, "paths": {"work": "work"}}
         )
 
-    def run_campaign(self, failing: set[str], **values: str) -> tuple[int, list[str]]:
+    def run_campaign(self, failing: set[str], unclean: frozenset[str] = frozenset(), **values: str) -> tuple[int, list[str]]:
         attempted: list[str] = []
 
         def fake_run_sample(_base: dict, image: dict, run: int, root: Path) -> dict:
             sample_id = f"{image['id']}-run{run}"
             attempted.append(sample_id)
-            status = "failed" if image["id"] in failing else "success"
+            status = "failed" if image["id"] in failing | unclean else "success"
             return {
                 "sample_id": sample_id,
                 "image_id": image["id"],
                 "image": image["image"],
                 "run": run,
                 "status": status,
+                "cleanup_verified": image["id"] not in unclean,
                 "metrics": {"source": "SSE", "count": 1, "avg": 25.0, "delivered": 1, "ids": [1]},
                 "sse_block_ids": [1],
             }
@@ -338,6 +355,25 @@ class CampaignScopeTests(unittest.TestCase):
         campaign = json.loads((self.directory / "campaign" / "campaign.json").read_text(encoding="utf-8"))
         self.assertEqual([sample["status"] for sample in campaign["samples"]].count("failed"), 1)
         self.assertTrue((self.directory / "campaign" / "summary.md").is_file())
+
+    def test_a_cleanup_verification_failure_stops_even_a_retrospective_sweep(self) -> None:
+        # Debris the next sample would inherit makes every later measurement suspect, whatever the campaign is for.
+        code, attempted = self.run_campaign(set(), frozenset({"image-2"}), RUN_COUNT="2", CAMPAIGN_FAIL_FAST="false")
+        self.assertEqual(code, 1)
+        self.assertEqual(attempted, ["image-1-run1", "image-1-run2", "image-2-run1"])
+
+    def test_a_summary_that_cannot_be_written_still_leaves_the_campaign_record(self) -> None:
+        def broken_summary(*_args) -> None:
+            raise KeyError("metrics")
+
+        original = driver.write_summary
+        driver.write_summary = broken_summary
+        self.addCleanup(setattr, driver, "write_summary", original)
+        code, attempted = self.run_campaign(set(), RUN_COUNT="1")
+        self.assertEqual(code, 1)
+        campaign = json.loads((self.directory / "campaign" / "campaign.json").read_text(encoding="utf-8"))
+        self.assertEqual([sample["sample_id"] for sample in campaign["samples"]], attempted)
+        self.assertIn("summary could not be written", campaign["failure_reasons"][0])
 
     def test_a_clean_campaign_runs_every_sample_and_succeeds(self) -> None:
         code, attempted = self.run_campaign(set(), RUN_COUNT="1")

@@ -2987,7 +2987,7 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          pattern: expb-campaign-*
+          pattern: expb-campaign-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/campaign
           merge-multiple: true
       - name: Publish campaign summary

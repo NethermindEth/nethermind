@@ -180,7 +180,10 @@ def collect_metrics(log_path: Path | str, use_sse: bool = True) -> tuple[dict, d
 
     processing_values = [value for _, value in sse] if sse else [value for _, _, value in rows]
     request_values = [value for _, _, value in rows]
-    outside_values = [request - processing for (_, _, request), (_, processing) in zip(rows, sse)]
+    # k6 rows and feed records share no key, so they pair by position only when every payload has both;
+    # with one record missing, a positional pairing shears every value after the gap.
+    paired = bool(sse) and len(sse) == len(rows)
+    outside_values = [request - processing for (_, _, request), (_, processing) in zip(rows, sse)] if paired else []
     primary = metric_stats(processing_values)
     processing = metric_stats([value for _, value in sse])
     request = metric_stats(request_values)
@@ -188,17 +191,14 @@ def collect_metrics(log_path: Path | str, use_sse: bool = True) -> tuple[dict, d
     processing_source = "SSE" if sse else "TTFB"
     mgas_s = None
     request_mgas_s = None
-    # The feed reports a block when the next payload is requested, so it can lack the last one; both
-    # throughputs divide the gas of the same payloads, so they stay directly comparable.
-    paired = min(len(rows), len(sse)) if sse else len(rows)
-    paired_gas = sum(gas for _, gas, _ in rows[:paired]) / 1_000_000
-    if sse and rows:
-        processing_total = sum(value for _, value in sse[:paired])
+    total_gas = sum(gas for _, gas, _ in rows) / 1_000_000
+    if paired:
+        processing_total = sum(value for _, value in sse)
         if processing_total > 0:
-            mgas_s = paired_gas / (processing_total / 1_000)
-    request_total = sum(value for _, _, value in rows[:paired])
+            mgas_s = total_gas / (processing_total / 1_000)
+    request_total = sum(request_values)
     if request_total > 0:
-        request_mgas_s = paired_gas / (request_total / 1_000)
+        request_mgas_s = total_gas / (request_total / 1_000)
     parsed = {
         "source": processing_source if processing_values else "none",
         "count": len(processing_values),
@@ -210,7 +210,7 @@ def collect_metrics(log_path: Path | str, use_sse: bool = True) -> tuple[dict, d
         "primary": primary,
         "processing": processing,
         "request": request,
-        "outside": outside if sse else metric_stats([]),
+        "outside": outside,
         "mgas_s": mgas_s,
         "request_mgas_s": request_mgas_s,
         "warm_ok": sorted(warm_ok),
@@ -293,8 +293,8 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     if parsed["severe_count"]: print(f"::warning::severe runtime signal in {sample_id}; see combined log")
     for line in (diagnostics["exceptions"] + diagnostics["invalid"] + diagnostics["severe"])[:20]: print(line, file=sys.stderr)
     return result
-def save_campaign(root: Path, started: str, images: list[dict], run_count: int, samples: list[dict]) -> None:
-    (root / "campaign.json").write_text(json.dumps({"started_at": started, "finished_at": now(), "images": images, "run_count": run_count, "architecture": platform.machine(), "runner_hostname": socket.gethostname(), "samples": samples}, indent=2) + "\n", encoding="utf-8")
+def save_campaign(root: Path, started: str, images: list[dict], run_count: int, samples: list[dict], failure_reasons: list[str] | None = None) -> None:
+    (root / "campaign.json").write_text(json.dumps({"started_at": started, "finished_at": now(), "images": images, "run_count": run_count, "architecture": platform.machine(), "runner_hostname": socket.gethostname(), "samples": samples, **({"failure_reasons": failure_reasons} if failure_reasons else {})}, indent=2) + "\n", encoding="utf-8")
 def image_stats(items: list[dict]) -> tuple[float | None, float | None]:
     signatures = {sample_signature(x) for x in items}
     if len(signatures) != 1: return None, None
@@ -381,11 +381,20 @@ def main() -> int:
             samples.append(item)
             save_campaign(root, started, images, run_count, samples)
             if item["status"] != "success":
-                if fail_fast: cancelled = True
+                # Cleanup that failed to verify leaves the runner itself suspect, so no later image can be trusted.
+                if fail_fast or not item.get("cleanup_verified", True): cancelled = True
                 break
         if cancelled: break
-    write_summary(root, images, run_count, samples)
-    save_campaign(root, started, images, run_count, samples)
-    return 0 if not cancelled and len(samples) == len(images) * run_count and all(x["status"] == "success" for x in samples) else 1
+    failure_reasons = []
+    try:
+        write_summary(root, images, run_count, samples)
+    except Exception as error:
+        failure_reasons.append(f"summary could not be written: {error}")
+    try:
+        save_campaign(root, started, images, run_count, samples, failure_reasons)
+    except Exception as error:
+        (root / "campaign.json").write_text(json.dumps({"status": "failed", "failure_reasons": [*failure_reasons, f"campaign record could not be written: {error}"]}, indent=2) + "\n", encoding="utf-8")
+        return 1
+    return 0 if not cancelled and not failure_reasons and len(samples) == len(images) * run_count and all(x["status"] == "success" for x in samples) else 1
 if __name__ == "__main__":
     raise SystemExit(main())
