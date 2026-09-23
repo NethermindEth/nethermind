@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -137,9 +138,11 @@ public class BranchProcessor(
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
                 Block processedBlock;
                 TxReceipt[] receipts;
+                GcBlockDiagnostics.Snapshot gcBefore = GcBlockDiagnostics.Snapshot.Take();
                 try
                 {
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
+                    if (notReadOnly) GcBlockDiagnostics.BlockProcessed(suggestedBlock.Number, gcBefore, _logger);
                 }
                 catch (BlockProcessor.BlockAccessListSequentialRetryException) when (
                     worldStateCloser is not null &&

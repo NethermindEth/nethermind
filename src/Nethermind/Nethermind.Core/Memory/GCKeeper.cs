@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -78,6 +79,7 @@ public class GCKeeper : IDisposable
             if (!eligible)
             {
                 if (_logger.IsDebug) _logger.Debug("No-GC region entry disallowed by strategy.");
+                GcBlockDiagnostics.RegionSkipped("ineligible", _logger);
                 return region;
             }
             Interlocked.Increment(ref _payloadsSinceDecommit);
@@ -86,11 +88,17 @@ public class GCKeeper : IDisposable
                 // A payload that starts while the previous one is still inside its region shares that region rather
                 // than running unprotected: it then ends when the last payload leaves, not when the first returns.
                 // The newcomer keeps a lease of its own so its scheduler pause and its collection stay its own.
-                if (_region.TryAddLease()) return new SharedRegionLease(_region, region);
+                if (_region.TryAddLease())
+                {
+                    GcBlockDiagnostics.RegionSkipped("shared-with-previous", _logger);
+                    return new SharedRegionLease(_region, region);
+                }
                 if (_logger.IsDebug) _logger.Debug("No-GC region entry skipped: previous entry or region is still active.");
+                GcBlockDiagnostics.RegionSkipped("previous-still-active", _logger);
                 return region;
             }
             _region = region;
+            GcBlockDiagnostics.RegionRequested();
         }
 
         try
@@ -152,9 +160,11 @@ public class GCKeeper : IDisposable
             }
 
             bool started = false;
+            GcBlockDiagnostics.Snapshot beforeEntry = GcBlockDiagnostics.Snapshot.Take();
             try
             {
                 started = keeper._runtime.TryStart(_defaultSize, _lohSize);
+                GcBlockDiagnostics.RegionEntered(beforeEntry, started, keeper._logger);
                 if (!started && keeper._logger.IsDebug) keeper._logger.Debug("Runtime declined no-GC region entry.");
             }
             catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
@@ -213,7 +223,9 @@ public class GCKeeper : IDisposable
         {
             try
             {
-                if (keeper._runtime.IsActive)
+                bool runtimeActive = keeper._runtime.IsActive;
+                GcBlockDiagnostics.RegionReleased(startedByUs: true, runtimeActive, keeper._logger);
+                if (runtimeActive)
                 {
                     keeper._runtime.End();
                 }
@@ -331,7 +343,10 @@ public class GCKeeper : IDisposable
                     }
 
                     if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
+                    GcBlockDiagnostics.Snapshot beforeCollect = GcBlockDiagnostics.Snapshot.Take();
                     bool collected = _runtime.Collect(generation, mode, compacting);
+                    GcBlockDiagnostics.Snapshot afterCollect = GcBlockDiagnostics.Snapshot.Take();
+                    if (_logger.IsInfo) _logger.Info($"GCDIAG scheduled-gc gen {generation} mode {mode} compacting {compacting} collected {collected} took {Stopwatch.GetElapsedTime(beforeCollect.Timestamp, afterCollect.Timestamp).TotalMilliseconds:F2} ms pause +{(afterCollect.Pause - beforeCollect.Pause).TotalMilliseconds:F2} ms");
                     if (collected && decommit)
                     {
                         Interlocked.Add(ref _payloadsSinceDecommit, -payloadsSinceDecommit);
