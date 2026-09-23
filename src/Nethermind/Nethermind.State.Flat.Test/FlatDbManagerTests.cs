@@ -261,6 +261,45 @@ public class FlatDbManagerTests
         _persistenceManager.Received(1).LeaseReader();
     }
 
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public async Task GatherReadOnlySnapshotBundle_FullScanNeverSharesCachedReaders(bool populateCacheFirst, bool wrapHistory)
+    {
+        StateId stateId = CreateStateId(10);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(stateId);
+        _persistenceManager.LeaseReader(Arg.Any<ReaderFlags>()).Returns(_ =>
+        {
+            IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+            reader.CurrentState.Returns(stateId);
+            return reader;
+        });
+        _snapshotRepository.AssembleSnapshots(stateId, stateId, Arg.Any<int>())
+            .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
+
+        await using FlatDbManager inner = CreateManager();
+        IFlatDbManager manager = wrapHistory ? WrapHistory(inner) : inner;
+        if (populateCacheFirst)
+        {
+            using ReadOnlySnapshotBundle cached = manager.GatherReadOnlySnapshotBundle(stateId);
+        }
+
+        using ReadOnlySnapshotBundle fullScan = manager.GatherReadOnlySnapshotBundle(stateId, ReaderFlags.FullScan);
+        using ReadOnlySnapshotBundle normal = manager.GatherReadOnlySnapshotBundle(stateId);
+        using ReadOnlySnapshotBundle anotherFullScan = manager.GatherReadOnlySnapshotBundle(stateId, ReaderFlags.FullScan);
+        using ReadOnlySnapshotBundle cachedNormal = manager.GatherReadOnlySnapshotBundle(stateId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fullScan, Is.Not.SameAs(normal));
+            Assert.That(anotherFullScan, Is.Not.SameAs(fullScan));
+            Assert.That(cachedNormal, Is.SameAs(normal));
+            _persistenceManager.Received(1).LeaseReader(ReaderFlags.None);
+            _persistenceManager.Received(2).LeaseReader(ReaderFlags.FullScan);
+        }
+    }
+
     [Test]
     public async Task AddSnapshot_DuplicateSnapshot_DisposesSnapshotAndReturnsResource()
     {
