@@ -1740,6 +1740,32 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
+    /// Declining to answer VALID does not stop a consensus client forkchoicing to the block anyway, so the head
+    /// has to refuse a block whose state is gone as well - it is what the next payload is built on.
+    /// </summary>
+    [Test]
+    public async Task forkchoiceUpdatedV1_does_not_move_the_head_to_a_block_without_state()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+
+        // The client treats the block as optimistic and forkchoices to it without resubmitting the payload.
+        ExecutionPayload target = blocks[1];
+        pruned[target.BlockHash] = 0;
+
+        ForkchoiceStateV1 toTarget = new(target.BlockHash, Keccak.Zero, Keccak.Zero);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(toTarget);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[^1].BlockHash),
+                "the head must stay on a block the next payload can be built on");
+        }
+    }
+
+    /// <summary>
     /// A payload for a block the chain level already points at must not be staged as a beacon block: on a node
     /// that has finished syncing that arms the beacon pivot behind the head.
     /// </summary>
