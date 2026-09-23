@@ -229,7 +229,7 @@ public interface IJsonRpcConfig : IConfig
     int FiltersTimeout { get; set; }
 
     [ConfigItem(
-        Description = "The max number of results (logs, block hashes, or pending transaction hashes) queued across all `eth_filters`. New filters are rejected while this budget is exhausted, and once a processed block exceeds it, the filters with the most unpolled results are removed. `0` to disable the limit.",
+        Description = "The max number of results (logs, block hashes, or pending transaction hashes) queued across all `eth_filters`. Each installed filter counts as one item. New filters are rejected while this budget is exhausted, and once a processed block exceeds it, the least recently polled filters are removed. `0` to disable the limit.",
         DefaultValue = "1000000")]
     int FiltersMaxQueuedItems { get; set; }
 
