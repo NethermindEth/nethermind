@@ -62,9 +62,9 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
             WriteMemoryBlob(writer, mem);
         }
 
-        if (value.Stack is { Length: > 0 } stack)
+        writer.WritePropertyName("stack");
+        if (value.Stack is { } stack)
         {
-            writer.WritePropertyName("stack");
             writer.WriteStartArray();
 
             ReadOnlySpan<byte> stackSpan = stack.Span;
@@ -74,6 +74,10 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
                     zeroPadded: false, addHexPrefix: true);
 
             writer.WriteEndArray();
+        }
+        else
+        {
+            writer.WriteNullValue();
         }
 
         writer.WritePropertyName("depth");
