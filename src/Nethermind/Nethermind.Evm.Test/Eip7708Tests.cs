@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -34,6 +35,9 @@ public class Eip7708Tests(bool eip7708Enabled)
     private static LogEntry ExpectedSelfDestructLog(Address account, UInt256 value) =>
         new(TransferLog.Sender, value.ToBigEndian(), [TransferLog.SelfDestructSignature, account.ToHash().ToHash256()]);
 
+    /// <summary>The zero-topic, zero-data log emitted by <c>Prepare.EvmCode.Log(0, 0)</c> from <paramref name="contract"/>.</summary>
+    private static LogEntry ContractLog(Address contract) => new(contract, [], []);
+
     private void AssertLogs(TxReceipt[] receipts, LogEntry[] expectedLogs, bool logCondition = true)
     {
         LogEntry[][] expected = [eip7708Enabled && logCondition ? expectedLogs : []];
@@ -50,7 +54,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     [TestCase(0ul, 0, TestName = "transfer value = 0")]
     public async Task SimpleTransfer_EmitsLogs(ulong transferValue, int expectedLogCountWhenEnabled)
     {
-        BasicTestBlockchain chain = await CreateChain();
+        using BasicTestBlockchain chain = await CreateChain();
 
         ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
@@ -71,7 +75,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     [TestCase(0ul, TestName = "subcall with zero inner value")]
     public async Task Subcall_WithValueTransfer_EmitsTransferLogs(ulong innerValue)
     {
-        BasicTestBlockchain chain = await CreateChain();
+        using BasicTestBlockchain chain = await CreateChain();
 
         ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
@@ -117,7 +121,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     [TestCase(0ul, 0, TestName = "selfdestruct zero balance")]
     public async Task SelfDestruct_ToDifferentAccount_EmitsTransferLog(ulong contractBalance, int expectedLogCountWhenEnabled)
     {
-        BasicTestBlockchain chain = await CreateChain();
+        using BasicTestBlockchain chain = await CreateChain();
 
         ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
@@ -164,7 +168,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     {
         // Post-EIP-6780: selfdestruct to self when contract was NOT created in the same tx
         // is a complete no-op — no destruction, no ETH movement, no log.
-        BasicTestBlockchain chain = await CreateChain();
+        using BasicTestBlockchain chain = await CreateChain();
 
         ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
@@ -209,7 +213,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     [Test]
     public async Task SelfDestruct_ThenReceivesEth_EmitsLogs()
     {
-        BasicTestBlockchain chain = await CreateChain();
+        using BasicTestBlockchain chain = await CreateChain();
 
         ulong senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
@@ -284,5 +288,179 @@ public class Eip7708Tests(bool eip7708Enabled)
             ExpectedTransferLog(contractBAddress, contractAAddress, ethToSend),
             ExpectedSelfDestructLog(contractAAddress, ethToSend)
         ]);
+    }
+
+    [Test]
+    public async Task TxTransfer_Precedes_ContractLog_And_Bloom_Includes_Both()
+    {
+        using BasicTestBlockchain chain = await CreateChain();
+        ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+
+        byte[] runtime = Prepare.EvmCode.Log(0, 0).STOP().Done;
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        Address created = ContractAddress.From(TestItem.AddressA, nonce);
+
+        Transaction deployTx = Build.A.Transaction
+            .WithCode(init)
+            .WithValue(1.Ether)
+            .WithNonce(nonce)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await chain.AddBlock(deployTx);
+
+        Transaction callTx = Build.A.Transaction
+            .WithTo(created)
+            .WithValue(42)
+            .WithNonce(nonce + 1)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = await chain.AddBlock(callTx);
+
+        TxReceipt receipt = chain.ReceiptStorage.Get(block)[0];
+        (receipt.Logs ?? []).AssertEquivalentTo(eip7708Enabled
+            ? [ExpectedTransferLog(TestItem.AddressA, created, 42), ContractLog(created)]
+            : [ContractLog(created)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.Bloom!.Matches(Bloom.GetExtract(TransferLog.Sender)), Is.EqualTo(eip7708Enabled), "receipt bloom, transfer log sender");
+            Assert.That(receipt.Bloom.Matches(Bloom.GetExtract(TransferLog.TransferSignature)), Is.EqualTo(eip7708Enabled), "receipt bloom, transfer signature");
+            Assert.That(receipt.Bloom.Matches(Bloom.GetExtract(created)), Is.True, "receipt bloom, contract log address");
+            Assert.That(block.Header.Bloom!.Matches(Bloom.GetExtract(TransferLog.Sender)), Is.EqualTo(eip7708Enabled), "header bloom, transfer log sender");
+            Assert.That(block.Header.Bloom.Matches(Bloom.GetExtract(TransferLog.TransferSignature)), Is.EqualTo(eip7708Enabled), "header bloom, transfer signature");
+        }
+    }
+
+    [Test]
+    public async Task NestedCallTransfer_Precedes_OuterContractLog()
+    {
+        using BasicTestBlockchain chain = await CreateChain();
+        ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+
+        Address target = TestItem.AddressC;
+        byte[] runtime = Prepare.EvmCode
+            .CallWithValue(target, 50_000, 7)
+            .Log(0, 0)
+            .STOP()
+            .Done;
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        Address created = ContractAddress.From(TestItem.AddressA, nonce);
+
+        Transaction deployTx = Build.A.Transaction
+            .WithCode(init)
+            .WithValue(1.Ether)
+            .WithNonce(nonce)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await chain.AddBlock(deployTx);
+
+        Transaction callTx = Build.A.Transaction
+            .WithTo(created)
+            .WithValue(0)
+            .WithNonce(nonce + 1)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = await chain.AddBlock(callTx);
+
+        (chain.ReceiptStorage.Get(block)[0].Logs ?? []).AssertEquivalentTo(eip7708Enabled
+            ? [ExpectedTransferLog(created, target, 7), ContractLog(created)]
+            : [ContractLog(created)]);
+    }
+
+    [Test]
+    public async Task SameTx_SelfDestruct_ToSelf_Emits_OpcodeTime_SelfDestructLog()
+    {
+        // Inline path (7708 without 8037): same-tx self-burn emits the legacy SelfDestruct log at opcode time.
+        // Creation and SELFDESTRUCT must happen in the SAME transaction (EIP-6780).
+        using BasicTestBlockchain chain = await CreateChain();
+        ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+
+        byte[] selfDestructRuntime = Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done;
+        byte[] selfDestructInit = Prepare.EvmCode.ForInitOf(selfDestructRuntime).Done;
+        const ulong endowment = 1_000_000;
+
+        Address factory = ContractAddress.From(TestItem.AddressA, nonce);
+        Address child = ContractAddress.From(factory, 1);
+
+        byte[] factoryCode = Prepare.EvmCode
+            .Create(selfDestructInit, endowment)
+            .Call(child, 500_000)
+            .Log(0, 0)
+            .STOP()
+            .Done;
+        byte[] factoryInit = Prepare.EvmCode.ForInitOf(factoryCode).Done;
+
+        Transaction deployTx = Build.A.Transaction
+            .WithCode(factoryInit)
+            .WithValue(10.Ether)
+            .WithNonce(nonce)
+            .WithGasLimit(2_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await chain.AddBlock(deployTx);
+
+        Transaction callTx = Build.A.Transaction
+            .WithTo(factory)
+            .WithValue(0)
+            .WithNonce(nonce + 1)
+            .WithGasLimit(2_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = await chain.AddBlock(callTx);
+
+        // SELFDESTRUCT zeroes the balance as it logs, so the end-of-tx destroy pass sees zero and adds nothing:
+        // an end-of-tx-only implementation would place the self-destruct log after the factory's log, not before.
+        (chain.ReceiptStorage.Get(block)[0].Logs ?? []).AssertEquivalentTo(eip7708Enabled
+            ? [ExpectedTransferLog(factory, child, endowment), ExpectedSelfDestructLog(child, endowment), ContractLog(factory)]
+            : [ContractLog(factory)]);
+    }
+
+    [Test]
+    public async Task FailedPrecompileCall_Rolls_Back_Value_And_TransferLog()
+    {
+        // ecrecover costs 3000; the child gets 0 gas + 2300 CALL stipend, so it OOGs inside the precompile.
+        // Both the balance move and the transfer log must roll back with the child frame.
+        using BasicTestBlockchain chain = await CreateChain();
+        ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+
+        byte[] runtime = Prepare.EvmCode
+            .CallWithValue(ECRecoverPrecompile.Address, 0, 5)
+            .Log(0, 0)
+            .STOP()
+            .Done;
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        Address created = ContractAddress.From(TestItem.AddressA, nonce);
+
+        Transaction deployTx = Build.A.Transaction
+            .WithCode(init)
+            .WithValue(1.Ether)
+            .WithNonce(nonce)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await chain.AddBlock(deployTx);
+
+        Transaction callTx = Build.A.Transaction
+            .WithTo(created)
+            .WithValue(0)
+            .WithNonce(nonce + 1)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = await chain.AddBlock(callTx);
+
+        // The trailing log is the only one left: it proves execution ran past the CALL, so the missing
+        // transfer log is the child frame rolling back rather than the call site never being reached.
+        (chain.ReceiptStorage.Get(block)[0].Logs ?? []).AssertEquivalentTo([ContractLog(created)]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.StateReader.GetBalance(block.Header, created), Is.EqualTo((UInt256)1.Ether), "caller balance");
+            Assert.That(chain.StateReader.GetBalance(block.Header, ECRecoverPrecompile.Address), Is.EqualTo(UInt256.Zero), "precompile balance");
+        }
     }
 }
