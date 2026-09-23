@@ -277,7 +277,8 @@ public class PbtAnchorPublicationTests
 
     private static void AssertPublishedState(Harness harness, ValueHash256 root, string name)
     {
-        PbtRocksDbPersistence reopened = new(harness.Target, new PbtConfig());
+        PbtConfig config = new();
+        PbtRocksDbPersistence reopened = new(harness.Target, config);
         using IPbtPersistence.IReader reader = reopened.CreateReader();
         Hash256 expectedRoot = new(Metadata(name).GetProperty("pbtRoot").GetString()!);
         using (Assert.EnterMultipleScope())
@@ -314,7 +315,7 @@ public class PbtAnchorPublicationTests
         using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(0);
         foreach (RebuildEntry leaf in PbtSnapshotCodec.ReadLeaves(snapshot, count)) builder.Set(leaf.Key, leaf.Leaf);
         using PbtWriteBatch<PbtStorageTreeKey> batch = builder.Build();
-        Assert.That(TrieUpdater.UpdateRoot(oracle, default, batch), Is.EqualTo(expectedRoot.ValueHash256));
+        Assert.That(TrieUpdater.UpdateRoot(oracle, default, batch, config.PrefixlessBranchOmission), Is.EqualTo(expectedRoot.ValueHash256));
         using IPbtIterator<PbtStorageNodePath> groupKeys = reader.EnumerateNodeGroupKeys();
         Assert.That(CanonicalGroups(groupKeys.Drain(), reader.GetNodeGroup),
             Is.EqualTo(CanonicalGroups(oracle.EnumerateNodeGroupKeys(), oracle.GetPhysicalNodeGroup)));

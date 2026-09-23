@@ -33,6 +33,11 @@ public static partial class TrieUpdater
         TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider = null) =>
         TrieUpdater<PbtPath, PbtNodePath>.UpdateRoot(store, currentRoot, changes, metrics, memoryProvider);
 
+    /// <inheritdoc cref="TrieUpdater{TKey,TPath}.UpdateRoot(IPbtStore, in ValueHash256, PbtWriteBatch{TKey}, PbtPrefixlessBranchOmission)"/>
+    internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<PbtStorageTreeKey> changes,
+        PbtPrefixlessBranchOmission prefixlessBranchOmission) =>
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(store, currentRoot, changes, prefixlessBranchOmission);
+
     internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<PbtStorageTreeKey> changes,
         TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider = null) =>
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(store, currentRoot, changes, metrics, memoryProvider);

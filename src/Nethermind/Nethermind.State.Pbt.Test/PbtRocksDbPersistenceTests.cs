@@ -788,9 +788,10 @@ public class PbtRocksDbPersistenceTests
         where TPath : struct, IPbtNodePath<TPath>
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+        PbtConfig config = new();
+        PbtRocksDbPersistence persistence = new(db, config);
         TPath groupKey = PbtFourLevelGroupGeometry.Locate(path).GroupKey;
-        byte[] physicalKey = groupKey.ToStorageKey(column, PbtNodeGroupKeyLayout.Padded);
+        byte[] physicalKey = groupKey.ToStorageKey(column, config.NodeGroupKeyLayout);
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
@@ -839,9 +840,14 @@ public class PbtRocksDbPersistenceTests
         [Values] bool stamped)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        byte[] key = new PbtNodePath(Bytes.FromHexString("00"), 4).ToStorageKey(column, PbtNodeGroupKeyLayout.Padded);
+        PbtConfig config = new();
+        byte[] key = new PbtNodePath(Bytes.FromHexString("00"), 4).ToStorageKey(column, config.NodeGroupKeyLayout);
         db.GetColumnDb(column).Set(key, Bytes.FromHexString("01"));
-        if (stamped) db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(20));
+        if (stamped)
+        {
+            db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(20));
+            db.GetColumnDb(PbtColumns.Metadata).Set(NodeGroupKeyLayoutKey, [(byte)config.NodeGroupKeyLayout]);
+        }
 
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()),
             Throws.TypeOf<InvalidDataException>().With.Message.Contains(stamped ? "interrupted initialization" : "no schema epoch"));

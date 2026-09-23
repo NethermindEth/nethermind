@@ -524,7 +524,7 @@ public class ImportPbtFromPreimageFlatTests
             byte[] encoding = PbtNodeCodec.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, leftKey, rightKey);
             BufferWriter writer = new(new byte[1024]);
             PbtNodeGroupEncoder.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) }, default);
-            Add(column, group.ToStorageKey(column, PbtNodeGroupKeyLayout.Padded), writer.WrittenSpan.ToArray());
+            Add(column, group.ToStorageKey(column, config.NodeGroupKeyLayout), writer.WrittenSpan.ToArray());
             expectedGroups[depth]++;
             expectedPayloads[depth] += writer.WrittenSpan.Length;
             expectedNodes[node.BitDepth]++;

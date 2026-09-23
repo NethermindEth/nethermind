@@ -101,7 +101,8 @@ public class PbtRebuilderTests
     public async Task Rebuild_matches_reference_root_across_channel_chunks(int chunkSize, int windowSize)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence target = new(db, Config);
+        PbtConfig config = Config;
+        PbtRocksDbPersistence target = new(db, config);
         Dictionary<string, byte[]> model = [];
         List<RebuildEntry> leaves = BuildFixture(model, target);
 
@@ -118,7 +119,7 @@ public class PbtRebuilderTests
             using PbtWriteBatchBuilder<PbtStorageTreeKey> incrementalChange = new(0);
             incrementalChange.Set(key, value);
             using PbtWriteBatch<PbtStorageTreeKey> preparedChange = incrementalChange.Build();
-            incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, preparedChange);
+            incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, preparedChange, config.PrefixlessBranchOmission);
         }
 
         int physicalNodeCount = 0;

@@ -110,12 +110,26 @@ internal static partial class TrieUpdater<TKey, TPath>
     public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<TKey> changes) =>
         UpdateRoot(store, currentRoot, changes, null);
 
+    /// <inheritdoc cref="UpdateRoot(IPbtStore, in ValueHash256, PbtWriteBatch{TKey})"/>
+    /// <remarks>Groups rewritten by this fold leave prefixless interior branches implicit as <paramref name="prefixlessBranchOmission"/> selects.</remarks>
+    internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<TKey> changes, PbtPrefixlessBranchOmission prefixlessBranchOmission) =>
+        Fold(store, currentRoot, changes, prefixlessBranchOmission, null, null);
+
     internal static ValueHash256 UpdateRoot(
         IPbtStore store,
         in ValueHash256 currentRoot,
         PbtWriteBatch<TKey> changes,
         TrieUpdaterMetrics? metrics,
-        IRefCountingMemoryProvider? memoryProvider = null)
+        IRefCountingMemoryProvider? memoryProvider = null) =>
+        Fold(store, currentRoot, changes, PbtPrefixlessBranchOmission.Interior, metrics, memoryProvider);
+
+    private static ValueHash256 Fold(
+        IPbtStore store,
+        in ValueHash256 currentRoot,
+        PbtWriteBatch<TKey> changes,
+        PbtPrefixlessBranchOmission prefixlessBranchOmission,
+        TrieUpdaterMetrics? metrics,
+        IRefCountingMemoryProvider? memoryProvider)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
@@ -123,7 +137,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
         using ArrayPoolList<PbtWriteOperation<TKey>> ownedOperations = operations;
         using ArrayPoolList<int> ownedTable = table;
-        return UpdateRoot(store, currentRoot, operations.AsSpan(), changes.ShardNibbleIndex == 0 ? plan : default, metrics, memoryProvider);
+        return UpdateRoot(store, currentRoot, operations.AsSpan(), changes.ShardNibbleIndex == 0 ? plan : default, prefixlessBranchOmission, metrics, memoryProvider);
     }
 
     internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatchSet<TKey> changes, TrieUpdaterMetrics? metrics = null, IRefCountingMemoryProvider? memoryProvider = null)
@@ -133,16 +147,16 @@ internal static partial class TrieUpdater<TKey, TPath>
         changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> precalculated);
         using ArrayPoolList<PbtWriteOperation<TKey>> ownedOperations = operations;
         using ArrayPoolList<int> ownedTable = precalculated;
-        return UpdateRoot(store, currentRoot, operations.AsSpan(), new(precalculated.AsSpan(), 0, false), metrics, memoryProvider);
+        return UpdateRoot(store, currentRoot, operations.AsSpan(), new(precalculated.AsSpan(), 0, false), PbtPrefixlessBranchOmission.Interior, metrics, memoryProvider);
     }
 
     // Path buffers are cleared by the PbtTraversalPath constructor and the bucket buffer is written by
     // BucketSort before it is read, so the descent frames skip zero-initialization.
     [SkipLocalsInit]
-    private static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, Span<PbtWriteOperation<TKey>> operations, BucketPlan plan, TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider)
+    private static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, Span<PbtWriteOperation<TKey>> operations, BucketPlan plan, PbtPrefixlessBranchOmission prefixlessBranchOmission, TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider)
     {
         if (operations.IsEmpty) return currentRoot;
-        FoldContext context = new(store, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, null, null, default, PbtPrefixlessBranchOmission.Interior);
+        FoldContext context = new(store, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, null, null, default, prefixlessBranchOmission);
         Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
         PbtTraversalPath path = new(pathBuffer);
         GroupFrameReader<TKey, TPath> reader = new(store, 0, currentRoot, metrics);
