@@ -74,6 +74,54 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
+    // blockGasLimit above TX_MAX_TOTAL_GAS_LIMIT so only rule 1 (not the block gas limit) can reject.
+    private TransactionResult ExecuteTxWithGasLimit(ulong txGasLimit)
+    {
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(txGasLimit)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .To(Recipient)
+            .SignedAndResolved(new EthereumEcdsa(SpecProvider.ChainId), SenderKey)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            txGasLimit,
+            transaction: transaction,
+            blockGasLimit: Eip8037Constants.TxMaxTotalGasLimit + 1_000_000);
+
+        return _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            CreateTracer());
+    }
+
+    [Test]
+    public void Eip8037_rejects_tx_gas_limit_above_max_total_gas_limit()
+    {
+        TransactionResult result = ExecuteTxWithGasLimit(Eip8037Constants.TxMaxTotalGasLimit + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap));
+            Assert.That(TestState.GetNonce(Sender), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_accepts_tx_gas_limit_at_max_total_gas_limit()
+    {
+        TransactionResult result = ExecuteTxWithGasLimit(Eip8037Constants.TxMaxTotalGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(TestState.GetNonce(Sender), Is.EqualTo(1));
+        }
+    }
+
     [Test]
     public void Eip8037_soft_failed_call_refunds_spilled_new_account_state_gas_to_gas_left()
     {
