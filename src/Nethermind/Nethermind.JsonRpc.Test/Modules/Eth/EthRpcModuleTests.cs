@@ -561,9 +561,9 @@ public partial class EthRpcModuleTests
 
     // HasStateForBlock passes but the read finds the node gone: state this node does not hold (a still-syncing flat
     // node, #13603) is -32002, while a genuinely missing trie node keeps the Geth-parity -32000.
-    [TestCase(true, ErrorCodes.ResourceUnavailable)]
-    [TestCase(false, ErrorCodes.ResourceNotFound)]
-    public async Task Eth_get_storage_at_missing_trie_node_maps_by_cause(bool stateNotRetained, int expectedCode)
+    [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block")]
+    [TestCase(false, ErrorCodes.ResourceNotFound, "missing trie node")]
+    public async Task Eth_get_storage_at_missing_trie_node_maps_by_cause(bool stateNotRetained, int expectedCode, string expectedMessage)
     {
         using Context ctx = await Context.Create(configurer: builder =>
             builder.AddDecorator<IStateReader>((_, inner) => new MissingStorageStateReader(inner, stateNotRetained)));
@@ -571,6 +571,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
 
         Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
+        Assert.That(serialized, Does.Contain(expectedMessage));
     }
 
     private sealed class MissingStorageStateReader(IStateReader inner, bool stateNotRetained) : IStateReader
