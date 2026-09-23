@@ -32,15 +32,15 @@ public static class FrameTxSignatureValidator
     /// <summary>Address of the secp256r1 (P256VERIFY) precompile — EIP-7951 / RIP-7212.</summary>
     public static readonly Address P256VerifyPrecompileAddress = PrecompiledAddresses.P256Verify;
 
-    public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
-        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error);
+    public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures = false)
+        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures);
 
     /// <summary>Same validation for callers without a sig hash: computed lazily, so a transaction whose
     /// entries all carry an explicit digest never pays for it.</summary>
     public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
-        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error);
+        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
 
-    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
+    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures)
     {
         error = null;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
@@ -59,6 +59,17 @@ public static class FrameTxSignatureValidator
             if (!signature.Msg.IsEmpty && signature.Msg.Length != Hash256.Size)
             {
                 return Fail(InvalidMsgLength, out error);
+            }
+
+            if (allowEmptySignatures && signature.Signature.IsEmpty)
+            {
+                if (signature.Scheme == TxFrameSignature.SchemeSecp256k1) continue;
+                if (signature.Scheme == TxFrameSignature.SchemeP256)
+                {
+                    if (p256Precompile is null) return Fail(P256NotSupported, out error);
+                    continue;
+                }
+                return Fail(InvalidSignature, out error);
             }
 
             if (signature.Msg.IsEmpty && !sigHashComputed)
