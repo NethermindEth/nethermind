@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, BlockReplacementEventArgs blockEventArgs, out string subscriptionId, int expectedResults = 1)
         {
-            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
+            using LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
             subscriptionId = logsSubscription.Id;
 
             return CollectResults(logsSubscription, expectedResults, () =>
@@ -140,7 +140,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private static List<JsonRpcResult> CollectResults(LogsSubscription logsSubscription, int expectedResults, Action raiseEvents)
         {
             List<JsonRpcResult> jsonRpcResults = [];
-            using SemaphoreSlim received = new(0);
+            SemaphoreSlim received = new(0);
             logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
                 jsonRpcResults.Add(j);
@@ -151,7 +151,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             for (int i = 0; i < expectedResults; i++)
             {
-                received.Wait(TimeSpan.FromSeconds(30));
+                Assert.That(received.Wait(TimeSpan.FromSeconds(30)), Is.True, $"result {i + 1} of {expectedResults} was not published");
             }
 
             return jsonRpcResults;
@@ -627,7 +627,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private List<JsonRpcResult> PublishThroughLogsSubscription(Filter? filter, int expectedResults, params ReceiptsEventArgs[] events)
         {
             IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
-            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, filter);
+            using LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, filter);
 
             return CollectResults(logsSubscription, expectedResults, () =>
             {
