@@ -84,14 +84,7 @@ public class GethStyleTracer(
     private GethLikeTxTrace? TraceCallAtIndex(Block block, Transaction call, ulong index, GethTraceOptions options,
         CancellationToken cancellationToken, Utf8JsonWriter? writer, PipeWriter? pipeWriter)
     {
-        if (block.IsGenesis) throw new GenesisNotTraceableException();
-        if (index >= (ulong)Math.Max(block.Transactions.Length, 1))
-            throw new ArgumentOutOfRangeException(nameof(index));
-
-        Transaction[] transactions = new Transaction[(int)index + 1];
-        block.Transactions.AsSpan(0, (int)index).CopyTo(transactions);
-        transactions[^1] = call;
-        Block replay = block.WithReplacedBodyCloned(block.Body.WithChangedTransactions(transactions));
+        Block replay = CreateCallReplay(block, call, index);
         BlockHeader callHeader = block.Header.Clone();
         options.BlockOverrides?.ApplyOverrides(callHeader);
         if (options.NoBaseFee) callHeader.BaseFeePerGas = UInt256.Zero;
@@ -106,21 +99,8 @@ public class GethStyleTracer(
         try
         {
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
-            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, call, tracedBlock =>
-            {
-                options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
-                if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
-                IReleaseSpec overrideSpec = callSpec.WithoutEip158();
-                state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, overrideSpec);
-                state.Commit(overrideSpec);
-                // Keep transaction metadata consistent with overrides applied after LoadNonceFromState.
-                call.Nonce = state.GetNonce(call.SenderAddress!);
-                transactionProcessorAdapter.CurrentAdapterFactory = processor =>
-                {
-                    processor.SetBlockExecutionContext(new BlockExecutionContext(tracedBlock.Header, callSpec));
-                    return new TraceTransactionProcessorAdapter(processor);
-                };
-            });
+            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, call,
+                tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
             IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
             if (!callTracer.IsPrepared) throw new InvalidOperationException("The synthetic call was not prepared for tracing.");
@@ -135,6 +115,34 @@ public class GethStyleTracer(
         {
             transactionProcessorAdapter.CurrentAdapterFactory = previous;
         }
+    }
+
+    private static Block CreateCallReplay(Block block, Transaction call, ulong index)
+    {
+        if (block.IsGenesis) throw new GenesisNotTraceableException();
+        if (index >= (ulong)Math.Max(block.Transactions.Length, 1))
+            throw new ArgumentOutOfRangeException(nameof(index));
+
+        Transaction[] transactions = new Transaction[(int)index + 1];
+        block.Transactions.AsSpan(0, (int)index).CopyTo(transactions);
+        transactions[^1] = call;
+        return block.WithReplacedBodyCloned(block.Body.WithChangedTransactions(transactions));
+    }
+
+    private void PrepareIndexedCall(Block block, Transaction call, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec)
+    {
+        options.BlockOverrides?.ApplyOverrides(block.Header);
+        if (options.NoBaseFee) block.Header.BaseFeePerGas = UInt256.Zero;
+        IReleaseSpec overrideSpec = callSpec.WithoutEip158();
+        state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, overrideSpec);
+        state.Commit(overrideSpec);
+        // Keep transaction metadata consistent with overrides applied after LoadNonceFromState.
+        call.Nonce = state.GetNonce(call.SenderAddress!);
+        transactionProcessorAdapter.CurrentAdapterFactory = processor =>
+        {
+            processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, callSpec));
+            return new TraceTransactionProcessorAdapter(processor);
+        };
     }
 
     private sealed class CallAtIndexBlockTracer(IBlockTracer inner, BlockHeader callHeader, Transaction call, Action<Block> prepareCall) : IBlockTracer
