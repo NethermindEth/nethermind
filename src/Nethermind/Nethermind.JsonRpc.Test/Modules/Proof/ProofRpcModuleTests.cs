@@ -141,7 +141,7 @@ public class ProofRpcModuleTests
 
     /// <remarks>
     /// A transactionsRoot proof needs only the transaction's position in the resolved block, so receipts are not
-    /// looked up for a non-deposit transaction. A deliberate divergence from <c>eth_getTransactionByHash</c>, which
+    /// looked up. A deliberate divergence from <c>eth_getTransactionByHash</c>, which
     /// returns null when the receipt at the transaction's index is absent or carries a different hash.
     /// </remarks>
     [Test]
@@ -196,32 +196,6 @@ public class ProofRpcModuleTests
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
-        }
-    }
-
-    /// <remarks>
-    /// <c>DepositTransactionForRpc</c> takes its nonce from the receipt, so without one it would be served as zero.
-    /// </remarks>
-    [Test]
-    public void When_deposit_transaction_has_no_receipt_transaction_by_hash_returns_null_result()
-    {
-        Transaction deposit = Build.A.Transaction.WithType(TxType.DepositTx).WithHash(TestItem.KeccakG).TestObject;
-        // Built directly: BlockBuilder.WithTransactions encodes the transaction, which needs the Optimism decoder.
-        Block block = new(Build.A.BlockHeader.WithNumber(1).TestObject, new BlockBody([deposit], []));
-
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        receiptFinder.FindBlockHash(deposit.Hash!).Returns(block.Hash);
-        receiptFinder.Get(Arg.Any<Block>()).Returns([]);
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
-        RebuildContainerWith(receiptFinder, blockFinder: blockFinder);
-
-        ResultWrapper<TransactionForRpcWithProof?> result = _proofRpcModule.proof_getTransactionByHash(deposit.Hash!, false);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(result.Data, Is.Null);
         }
     }
 

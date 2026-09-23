@@ -57,15 +57,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[txIndex];
 
-            // Only a deposit transaction reads its receipt (for the deposit nonce), so no other type pays for the
-            // lookup or fails on receipts that are unavailable; without one its nonce would be served as zero.
-            TxReceipt? receipt = null;
-            if (transaction.Type == TxType.DepositTx)
-            {
-                receipt = receiptFinder.Get(block).ForTransaction(txHash);
-                if (receipt is null) return ResultWrapper<TransactionForRpcWithProof>.Success(null);
-            }
-
             TransactionForRpcWithProof txWithProof = new();
             TransactionForRpcContext extraData = new(
                 chainId: specProvider.ChainId,
@@ -73,8 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 blockNumber: block.Number,
                 txIndex: txIndex,
                 blockTimestamp: block.Timestamp,
-                baseFee: block.BaseFeePerGas,
-                receipt: receipt);
+                baseFee: block.BaseFeePerGas);
             txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, extraData);
             txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), txIndex);
             if (includeHeader)
