@@ -97,6 +97,28 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             Assert.That(fileSystem.File.ReadAllText(fileName), Is.EqualTo(limit < 0 ? "" : "{\"output\":\"2a\",\"gasUsed\":\"0xa\"}\n"));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void File_stack_distinguishes_empty_populated_and_disabled(bool disableStack)
+    {
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.POP).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        string[] records = TraceFile(code, disableStack: disableStack).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] expectedStacks = ["[]", "[\"0x2a\"]", "[\"0x2a\",\"0x0\"]", "[\"0x2a\"]", "[]"];
+        Assert.That(records, Has.Length.EqualTo(expectedStacks.Length + 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < expectedStacks.Length; i++)
+            {
+                using JsonDocument record = JsonDocument.Parse(records[i]);
+                bool hasStack = record.RootElement.TryGetProperty("stack", out JsonElement stack);
+                Assert.That(hasStack, Is.True, $"opcode record {i} must include stack");
+                if (hasStack)
+                    Assert.That(stack.GetRawText(), Is.EqualTo(disableStack ? "null" : expectedStacks[i]), $"opcode record {i}");
+            }
+        }
+    }
+
     [Test]
     public void Requires_active_specification()
     {
@@ -241,11 +263,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         blockTracer.EndTxTrace();
     }
 
-    private string TraceFile(byte[] code, long limit = 0)
+    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
-        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit }, fileSystem, Spec);
+        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack }, fileSystem, Spec);
         ExecuteBlock(tracer, code);
         return fileSystem.File.ReadAllText(tracer.FileNames.Single());
     }
