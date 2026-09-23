@@ -78,7 +78,7 @@ public class WorldStateDbDeciderModuleTests
             .AddModule(new TestNethermindModule())
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new(testLogger)))
             .Intercept<IFlatDbConfig>((cfg) => cfg.Enabled = flatEnabled)
-            .Intercept<IPruningConfig>((cfg) => cfg.FullPruningTrigger = trigger)
+            .Intercept<IPruningConfig>((cfg) => { cfg.FullPruningTrigger = trigger; cfg.Mode = PruningMode.Memory; })
             .Build();
 
         container.Resolve<IWorldStateManager>();

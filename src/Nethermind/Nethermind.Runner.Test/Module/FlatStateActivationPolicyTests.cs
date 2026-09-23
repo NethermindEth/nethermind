@@ -11,6 +11,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
@@ -31,7 +32,9 @@ public class FlatStateActivationPolicyTests
         Enabled = 1,
         FlatHasData = 2,
         ImportFromPruningTrieState = 4,
-        PatriciaHasData = 8
+        PatriciaHasData = 8,
+        FastSync = 16,
+        SnapSync = 32
     }
 
     // Branch 1: Enabled=false, no flat directory → false
@@ -44,6 +47,8 @@ public class FlatStateActivationPolicyTests
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState=true → true")]
     [TestCase(Flags.Enabled | Flags.PatriciaHasData, false, Description = "Patricia has data → false")]
     [TestCase(Flags.Enabled, true, Description = "Fresh node, flat enabled → true")]
+    [TestCase(Flags.Enabled | Flags.FastSync | Flags.SnapSync, true, Description = "Fresh, fast + snap → true")]
+    [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState | Flags.PatriciaHasData | Flags.FastSync, true, Description = "Import from patricia, fast without snap → true")]
     public void ShouldTurnOnFlatDb_ReturnsExpected(Flags flags, bool expected)
     {
         FlatStateActivationPolicy policy = CreatePolicy(
@@ -53,7 +58,9 @@ public class FlatStateActivationPolicyTests
             patriciaHasData: flags.HasFlag(Flags.PatriciaHasData),
             layout: FlatLayout.Flat,
             availableMemoryBytes: 32.GiB,
-            logManager: LimboLogs.Instance);
+            logManager: LimboLogs.Instance,
+            fastSync: flags.HasFlag(Flags.FastSync),
+            snapSync: flags.HasFlag(Flags.SnapSync));
 
         Assert.That(policy.ShouldTurnOnFlatDb(), Is.EqualTo(expected));
     }
@@ -79,12 +86,14 @@ public class FlatStateActivationPolicyTests
         Assert.That(warned, Is.EqualTo(expectWarn));
     }
 
-    [Test]
-    public void Fresh_flat_with_fast_sync_and_no_snap_is_refused()
+    // ImportFlatDb skips when patricia holds no state, so the import flag alone must not exempt a fresh node.
+    [TestCase(false, Description = "Fresh node")]
+    [TestCase(true, Description = "Import flag set, but patricia is empty")]
+    public void Fresh_flat_with_fast_sync_and_no_snap_is_refused(bool importFromPruning)
     {
         InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreatePolicy(
             enabled: true,
-            importFromPruning: false,
+            importFromPruning: importFromPruning,
             flatHasData: false,
             patriciaHasData: false,
             layout: FlatLayout.Flat,
@@ -96,40 +105,6 @@ public class FlatStateActivationPolicyTests
         Assert.That(ex.Message, Does.Contain("SnapSync").And.Contain("FlatDb.Enabled"));
     }
 
-    [Test]
-    public void Fresh_flat_with_fast_and_snap_is_allowed()
-    {
-        FlatStateActivationPolicy policy = CreatePolicy(
-            enabled: true,
-            importFromPruning: false,
-            flatHasData: false,
-            patriciaHasData: false,
-            layout: FlatLayout.Flat,
-            availableMemoryBytes: 32.GiB,
-            logManager: LimboLogs.Instance,
-            fastSync: true,
-            snapSync: true);
-
-        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
-    }
-
-    [Test]
-    public void Import_from_patricia_with_fast_sync_and_no_snap_is_allowed()
-    {
-        FlatStateActivationPolicy policy = CreatePolicy(
-            enabled: true,
-            importFromPruning: true,
-            flatHasData: false,
-            patriciaHasData: true,
-            layout: FlatLayout.Flat,
-            availableMemoryBytes: 32.GiB,
-            logManager: LimboLogs.Instance,
-            fastSync: true,
-            snapSync: false);
-
-        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
-    }
-
     // The DB layer roots a relative BaseDbPath at the executing directory; the probe must resolve it the same way.
     [TestCase("/data")]
     [TestCase("nethermind_db/mainnet")]
@@ -138,16 +113,22 @@ public class FlatStateActivationPolicyTests
         InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreatePolicy(
             enabled: false,
             importFromPruning: false,
-            flatHasData: true,
+            flatHasData: false,
             patriciaHasData: false,
             layout: FlatLayout.Flat,
             availableMemoryBytes: 32.GiB,
             logManager: LimboLogs.Instance,
-            flatDirectoryExists: true,
+            sstFiles: ["state.sst"],
             baseDbPath: baseDbPath))!;
 
         Assert.That(ex.Message, Does.Contain("FlatDb.Enabled").And.Contain("existing"));
     }
+
+    // RocksDB writes CURRENT when opening an empty DB, so a flat directory without SST files holds no state.
+    [Test]
+    public void Disabling_flat_with_an_empty_flat_directory_stays_on_patricia() =>
+        Assert.That(CreatePolicy(enabled: false, importFromPruning: false, flatHasData: false, patriciaHasData: false,
+            layout: FlatLayout.Flat, availableMemoryBytes: 32.GiB, logManager: LimboLogs.Instance, sstFiles: []).ShouldTurnOnFlatDb(), Is.False);
 
     [Test]
     public void Existing_flat_with_fast_sync_and_no_snap_keeps_serving()
@@ -171,7 +152,7 @@ public class FlatStateActivationPolicyTests
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
         FlatLayout layout, long availableMemoryBytes, ILogManager logManager,
-        bool fastSync = false, bool snapSync = false, bool flatDirectoryExists = false, string baseDbPath = "/data")
+        bool fastSync = false, bool snapSync = false, string[] sstFiles = null, string baseDbPath = "/data")
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(enabled);
@@ -194,10 +175,10 @@ public class FlatStateActivationPolicyTests
         IInitConfig initConfig = Substitute.For<IInitConfig>();
         initConfig.BaseDbPath.Returns(baseDbPath);
         IDirectory directory = Substitute.For<IDirectory>();
-        string flatPath = DbNames.Flat.GetApplicationResourcePath(baseDbPath);
+        string flatPath = DbOnTheRocks.GetFullDbPath(DbNames.Flat, baseDbPath);
         directory.EnumerateFiles(Arg.Any<string>(), "*.sst").Returns(call =>
-            flatDirectoryExists && call.ArgAt<string>(0) == flatPath
-                ? ["state.sst"]
+            sstFiles is not null && call.ArgAt<string>(0) == flatPath
+                ? sstFiles
                 : throw new DirectoryNotFoundException(call.ArgAt<string>(0)));
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         fileSystem.Directory.Returns(directory);

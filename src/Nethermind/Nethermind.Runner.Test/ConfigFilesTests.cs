@@ -59,10 +59,16 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("archive")]
     public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
 
-    [TestCase("poacore.json")]
-    [TestCase("poacore_validator.json")]
-    public void Poacore_non_archive_keeps_patricia(string config) =>
-        Test<IFlatDbConfig, bool>(config, static c => c.Enabled, false);
+    [TestCase("*")]
+    public void Fast_sync_without_snap_stays_on_patricia(string configWildcard)
+    {
+        foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
+        {
+            ISyncConfig sync = configProvider.GetConfig<ISyncConfig>();
+            if (sync.FastSync && !sync.SnapSync)
+                Assert.That(configProvider.GetConfig<IFlatDbConfig>().Enabled, Is.False, configProvider.FileName);
+        }
+    }
 
     [TestCase("archive", true)]
     [TestCase("fast", true)]
