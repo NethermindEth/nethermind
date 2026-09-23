@@ -73,12 +73,6 @@ namespace Nethermind.Core.Collections
         void ICollection<T>.Add(T item) => Add(item);
         public bool Contains(T item) => _set.Contains(item);
         /// <summary>
-        /// Gets the first item added to the set.
-        /// </summary>
-        /// <remarks>The caller must ensure the set is not empty.</remarks>
-        public T First => _items[0];
-
-        /// <summary>
         /// Gets the items in the order they were first added, without the ones dropped by <see cref="Restore"/>.
         /// </summary>
         /// <remarks>

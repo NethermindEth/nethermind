@@ -1437,17 +1437,10 @@ namespace Nethermind.Evm.TransactionProcessing
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
                         bool tracingLogs = tracer.IsTracingLogs;
-                        JournalCollection<LogEntry> logs = substate.Logs;
-
                         // The finalization log below is the only order-observable effect here, and it feeds
                         // the receipts root, so emit in the order the accounts were destroyed: the set records
                         // it already and reverted frames drop out of it, whereas hash-slot order is arbitrary.
                         foreach (Address toBeDestroyed in destroyList.AsSpan())
-                        {
-                            FinalizeDestroyedAccountInline(toBeDestroyed);
-                        }
-
-                        void FinalizeDestroyedAccountInline(Address toBeDestroyed)
                         {
                             if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
 
@@ -1457,7 +1450,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             if (eip7708Enabled && !removeSelfdestructBurn && !balance.IsZero)
                             {
                                 LogEntry selfDestructLog = TransferLog.CreateSelfDestruct(toBeDestroyed, balance);
-                                logs.Add(selfDestructLog);
+                                substate.Logs.Add(selfDestructLog);
                                 if (tracingLogs) tracer.ReportLog(selfDestructLog);
                             }
 
