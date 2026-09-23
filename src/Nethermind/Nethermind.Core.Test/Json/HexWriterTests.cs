@@ -17,6 +17,8 @@ public class HexWriterTests
     private const string ZeroWord = "0000000000000000000000000000000000000000000000000000000000000000";
     private const string PatternWord = "00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9";
     private const string OnesWord = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    // Bytes all distinct and neighbours differ in both nibbles, so swapped bytes or nibbles change the output.
+    private const string DistinctWord = "1f5489bef3285d92c7fc31669bd0053a6fa4d90e4378ade2174c81b6eb20558a";
 
     private static string WriteToString(Action<Utf8JsonWriter> writeAction)
     {
@@ -58,6 +60,7 @@ public class HexWriterTests
     [TestCase(OnesWord, false, "\"" + OnesWord + "\"", TestName = "Fixed32_NoPrefix_AllOnes")]
     [TestCase(ZeroWord, true, "\"0x" + ZeroWord + "\"", TestName = "Fixed32_WithPrefix_AllZeros")]
     [TestCase(PatternWord, true, "\"0x" + PatternWord + "\"", TestName = "Fixed32_WithPrefix_Pattern")]
+    [TestCase(DistinctWord, true, "\"0x" + DistinctWord + "\"", TestName = "Fixed32_WithPrefix_DistinctBytes")]
     public void WriteFixed32HexRawValue_PrefixVariants(string inputHex, bool addPrefix, string expected)
     {
         byte[] data = HexBytes(inputHex);
@@ -99,10 +102,30 @@ public class HexWriterTests
     [TestCase("abcd", false, false, "abcd", TestName = "U256Buffer_Mid_TrimmedNoPrefix")]
     [TestCase("abcd", true, true, "0x" + "000000000000000000000000000000000000000000000000000000000000" + "abcd", TestName = "U256Buffer_Mid_ZeroPaddedWithPrefix")]
     [TestCase("abcd", true, false, "000000000000000000000000000000000000000000000000000000000000abcd", TestName = "U256Buffer_Mid_ZeroPaddedNoPrefix")]
+    [TestCase(DistinctWord, true, false, DistinctWord, TestName = "U256Buffer_DistinctBytes_ZeroPaddedNoPrefix")]
     public void WriteUInt256HexString_AllVariants(string valueHex, bool zeroPadded, bool addPrefix, string expectedBody)
     {
         string actual = WriteToString(w => HexWriter.WriteUInt256HexString(w, UInt256FromHex(valueHex), zeroPadded, addPrefix));
         Assert.That(actual, Is.EqualTo("\"" + expectedBody + "\""));
+    }
+
+    [TestCase(0x0123456789abcdefUL)]
+    [TestCase(0xfedcba9876543210UL)]
+    public void WriteUlongHexStringValue_DistinctNibbles(ulong value)
+    {
+        string actual = WriteToString(w => HexWriter.WriteUlongHexStringValue(w, value));
+        Assert.That(actual, Is.EqualTo($"\"0x{value:x}\""));
+    }
+
+    // 0..97 bytes covers every mix of 32-byte blocks, the 16-byte block and the scalar tail.
+    [Test]
+    public void WriteHexStringValue_EveryBlockAndTailLength([Range(0, 97)] int length)
+    {
+        byte[] data = new byte[length];
+        for (int i = 0; i < length; i++) data[i] = (byte)(i * 37 + length);
+
+        string actual = WriteToString(w => HexWriter.WriteHexStringValue(w, data));
+        Assert.That(actual, Is.EqualTo("\"0x" + Convert.ToHexStringLower(data) + "\""));
     }
 
     [TestCase(0x0UL, true, true, "0x" + ZeroWord, TestName = "U256Prop_ZeroPaddedWithPrefix_Zero")]
