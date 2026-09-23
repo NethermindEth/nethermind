@@ -14,6 +14,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.OverridableEnv;
@@ -21,6 +22,26 @@ namespace Nethermind.Evm.Test.OverridableEnv;
 [Parallelizable(ParallelScope.All)]
 public class DisposableScopeOverridableEnvTests
 {
+    [Test]
+    public void Code_override_remains_available_to_execution_and_state([Values(0, 32, 1024)] int length)
+    {
+        using TestContext ctx = new();
+        byte[] code = new byte[length];
+        new Random(42).NextBytes(code);
+        using Scope<Components> scope = ctx.Env.BuildAndOverride(
+            Build.A.BlockHeader.TestObject,
+            new Dictionary<Address, AccountOverride>
+            {
+                { TestItem.AddressA, new AccountOverride { Code = code } }
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Component.WorldState.GetCodeHash(TestItem.AddressA), Is.EqualTo(Keccak.Compute(code)));
+            Assert.That(scope.Component.CodeInfoRepository.GetCachedCodeInfo(TestItem.AddressA, false, Prague.Instance, out _).Code.ToArray(), Is.EqualTo(code));
+        }
+    }
+
     [Test]
     public void Create_ReturnsEnvWithOverriddenComponents()
     {

@@ -108,10 +108,8 @@ public class TraceStoreRpcModuleTests
         Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void trace_filter_returns_from_inner_module_when_any_block_trace_is_missing(int parallelization)
+    [Test]
+    public void trace_filter_returns_from_inner_module_when_any_block_trace_is_missing([Values(0, 1, 2)] int parallelization)
     {
         TestContext test = new(parallelization: parallelization);
 

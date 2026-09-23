@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -73,6 +74,106 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
 
     private static byte[] SstoreSetThenRevert() =>
         Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Revert(0, 0).Done;
+
+    [Test]
+    public void Top_level_halt_settlement_burns_restored_spill(
+        [Values(0L, 50_000L)] long reservoir,
+        [Values] bool executionGasAlreadyCleared,
+        [Values(0UL, 1_000UL)] ulong executionRefund)
+    {
+        ulong gasLimit = reservoir == 0 ? 1_000_000 : Eip7825Constants.DefaultTxGasLimitCap + (ulong)reservoir;
+        Transaction tx = Build.A.Transaction.WithTo(null).WithGasLimit(gasLimit).TestObject;
+        EthereumGasPolicy intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, Spec).Standard;
+        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, Spec, out EthereumGasPolicy gas), Is.True);
+        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.CreateState), Is.True);
+        Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.SSetState), Is.True);
+        EthereumGasPolicy.RefundStateGas(ref gas, GasCostOf.SSetState, stateGasFloor: 0);
+        Assert.That(gas.StateGasSpill - gas.StateGasSpillRefunded, Is.EqualTo(GasCostOf.CreateState - reservoir));
+
+        if (executionGasAlreadyCleared)
+            EthereumGasPolicy.ClearExecutionGas(ref gas);
+
+        // Receipt accounting excludes gas_left on halt, so observe the settled policy as well.
+        UInt256 gasPrice = UInt256.Zero;
+        GasConsumed consumed = ((TransactionProcessorBase<EthereumGasPolicy>)_processor).CompleteEip8037Halt(
+            tx, Spec, ExecutionOptions.None, ref gas, in gasPrice, in intrinsic, 0, reservoir, executionRefund);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gas.Value, Is.Zero, "restored spill must burn after state-gas rollback");
+            Assert.That(gas.StateReservoir, Is.EqualTo(reservoir));
+            Assert.That(gas.StateGasUsed, Is.Zero);
+            Assert.That(gas.StateGasSpill, Is.Zero);
+            Assert.That(gas.StateGasSpillRefunded, Is.EqualTo(GasCostOf.CreateState + GasCostOf.SSetState - reservoir));
+            Assert.That(consumed.SpentGas, Is.EqualTo(gasLimit - (ulong)reservoir - executionRefund));
+            Assert.That(consumed.BlockGas, Is.EqualTo(gasLimit - (ulong)reservoir));
+            Assert.That(consumed.BlockStateGas, Is.Zero);
+            Assert.That(consumed.GasRefund, Is.EqualTo(executionRefund));
+        }
+    }
+
+    [Test]
+    public void Top_level_create_failure_rolls_back_state_and_charges_execution(
+        [Values(EvmExceptionType.TransactionCollision, EvmExceptionType.InvalidCode, EvmExceptionType.BadInstruction, EvmExceptionType.OutOfGas)] EvmExceptionType failure,
+        [Values(0L, 50_000L)] long reservoir)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .SSTORE(0, [1])
+            .SSTORE(0, [0])
+            .SSTORE(1, [2])
+            .Done;
+        initCode = failure switch
+        {
+            EvmExceptionType.BadInstruction => Prepare.EvmCode.Data(initCode).Op(Instruction.INVALID).Done,
+            EvmExceptionType.OutOfGas => Prepare.EvmCode.Data(initCode).Return((int)Spec.MaxCodeSize + 1, 0).Done,
+            _ => Prepare.EvmCode.Data(initCode).MSTORE8(0, [0xef]).Return(1, 0).Done,
+        };
+        ulong gasLimit = reservoir == 0 ? 1_000_000 : Eip7825Constants.DefaultTxGasLimitCap + (ulong)reservoir;
+        (Block block, Transaction tx) = PrepareTx(Activation, gasLimit, value: 7, blockGasLimit: 100_000_000);
+        tx.To = null;
+        tx.Data = initCode;
+        Address created = ContractAddress.From(Sender, tx.Nonce);
+        bool collision = failure == EvmExceptionType.TransactionCollision;
+        if (collision)
+        {
+            TestState.CreateAccount(created, 11, 1);
+            TestState.InsertCode(created, new byte[] { 0x00 }, Spec);
+            TestState.Set(new StorageCell(created, 3), (UInt256)42);
+            TestState.Commit(Spec);
+        }
+
+        UInt256 senderBalance = TestState.GetBalance(Sender);
+        TestAllTracerWithOutput tracer = CreateTracer();
+        tracer.IsTracingAccess = false;
+        TransactionResult result = _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+        TestState.Commit(Spec);
+
+        ulong executionGas = gasLimit - (ulong)reservoir;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(result.EvmExceptionType, Is.EqualTo(failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(executionGas));
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(executionGas));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.Refund, Is.EqualTo(collision ? 0L : (long)Eip8038Constants.StorageWrite), "refund generated during initcode");
+            Assert.That(tracer.GasConsumedResult.GasRefund, Is.Zero, "initcode refunds are rolled back");
+            Assert.That(block.Header.GasUsed, Is.EqualTo(executionGas));
+            Assert.That(TestState.GetBalance(Sender), Is.EqualTo(senderBalance - executionGas));
+            Assert.That(TestState.GetNonce(Sender), Is.EqualTo(tx.Nonce + 1));
+            Assert.That(TestState.AccountExists(created), Is.EqualTo(collision));
+            Assert.That(TestState.GetBalance(created), Is.EqualTo((UInt256)(collision ? 11 : 0)));
+            Assert.That(TestState.GetNonce(created), Is.EqualTo(collision ? 1UL : 0UL));
+            AssertStorage(new StorageCell(created, 0), UInt256.Zero);
+            AssertStorage(new StorageCell(created, 1), UInt256.Zero);
+            if (collision)
+            {
+                Assert.That(TestState.GetCode(created), Is.EqualTo(new byte[] { 0x00 }));
+                AssertStorage(new StorageCell(created, 3), (UInt256)42);
+            }
+        }
+    }
 
     public static IEnumerable<Scenario> Scenarios()
     {

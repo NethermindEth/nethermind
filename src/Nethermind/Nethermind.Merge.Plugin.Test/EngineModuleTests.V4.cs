@@ -268,9 +268,8 @@ public partial class EngineModuleTests
         Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list(bool blockAccessListsEnabled)
+    [Test]
+    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list([Values] bool blockAccessListsEnabled)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(
             blockAccessListsEnabled ? Amsterdam.Instance : Prague.Instance);
@@ -406,6 +405,23 @@ public partial class EngineModuleTests
         // ExecutionRequests is a transient property (not in RLP), so it may not survive
         // cache round-trips. Verify via RequestsHash on the header instead, which IS persisted.
         Assert.That(head!.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests)));
+    }
+
+    // EIP-7843: in SimulateBlockProduction mode the attributes are synthesised from the head itself,
+    // so their slot must be strictly greater than the head's or the handler rejects its own attributes.
+    [Test]
+    public async Task ForkchoiceUpdatedV4_without_attributes_simulates_block_production_after_Eip7843()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            Amsterdam.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", SimulateBlockProduction = true });
+        Hash256 head = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await chain.EngineRpcModule
+            .engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(head, head, head), null);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,

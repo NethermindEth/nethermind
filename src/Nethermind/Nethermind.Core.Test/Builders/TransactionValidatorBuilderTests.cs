@@ -11,9 +11,8 @@ namespace Nethermind.Core.Test.Builders
     [TestFixture]
     public class TransactionValidatorBuilderTests
     {
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Should_configure_all_validation_overloads(bool shouldSucceed)
+        [Test]
+        public void Should_configure_all_validation_overloads([Values] bool shouldSucceed)
         {
             TransactionValidatorBuilder builder = new();
             ITxValidator validator = (shouldSucceed

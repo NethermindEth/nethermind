@@ -167,6 +167,28 @@ public class Snap1ProtocolHandlerTests
     public void ClampResponseBytes_clamps_to_valid_range(long input, long expected) => Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
 
     [Test]
+    public void GetStorageRange_rejects_missing_root_hash()
+    {
+        Context ctx = new();
+
+        Assert.That(
+            async () => await ctx.Snap1ProtocolHandler.GetStorageRange(new StorageRange(), CancellationToken.None),
+            Throws.ArgumentException);
+    }
+
+    [Test]
+    public void GetPathGroups_rejects_missing_account_path()
+    {
+        using AccountsToRefreshRequest request = new()
+        {
+            RootHash = Keccak.Zero,
+            Paths = new ArrayPoolList<AccountWithStorageStartingHash>(1) { new() }
+        };
+
+        Assert.That(() => Snap1ProtocolHandler.GetPathGroups(request), Throws.ArgumentException);
+    }
+
+    [Test]
     public void GetTrieNodes_forwards_requested_byte_budget_to_snap_server()
     {
         ISnapServer snapServer = Substitute.For<ISnapServer>();

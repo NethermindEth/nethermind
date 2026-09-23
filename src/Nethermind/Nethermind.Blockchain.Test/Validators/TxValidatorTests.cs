@@ -125,9 +125,8 @@ public class TxValidatorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden(bool validateChainId)
+    [Test]
+    public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden([Values] bool validateChainId)
     {
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
@@ -679,29 +678,41 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
-    [Test]
-    public void IsWellFormed_TransactionWithGasLimitExceedingEip7825Cap_ReturnsFalse()
+    private static IEnumerable<TestCaseData> TxGasLimitCapCases()
     {
-        Transaction tx = Build.A.Transaction
-            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
-            .WithChainId(TestBlockchainIds.ChainId)
-            .SignedAndResolved().TestObject;
-
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
         // todo: change to osaka
-        IReleaseSpec releaseSpec = new ReleaseSpec() { IsEip7825Enabled = true };
-        ValidationResult result = txValidator.IsWellFormed(tx, releaseSpec);
+        yield return new TestCaseData(new ReleaseSpec { IsEip7825Enabled = true }, Eip7825Constants.DefaultTxGasLimitCap)
+            .SetName("Eip7825_execution_gas_cap");
+        // EIP-8037 caps tx.gas as a whole at TX_MAX_TOTAL_GAS_LIMIT once the EIP-7825 execution-gas
+        // cap no longer applies to it directly.
+        yield return new TestCaseData(Amsterdam.Instance, Eip8037Constants.TxMaxTotalGasLimit)
+            .SetName("Eip8037_total_gas_cap");
+    }
+
+    [TestCaseSource(nameof(TxGasLimitCapCases))]
+    public void IsWellFormed_TransactionGasLimitIsValidatedAgainstCap(IReleaseSpec releaseSpec, ulong cap)
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(TxWithGasLimit(cap), releaseSpec).AsBool, Is.True, "at-cap must pass");
+
+        ValidationResult result = txValidator.IsWellFormed(TxWithGasLimit(cap + 1), releaseSpec);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.AsBool, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip7825Constants.DefaultTxGasLimitCap)));
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(cap + 1, cap)));
             Assert.That(result.IsIntrinsicGasError, Is.False);
         }
+
+        static Transaction TxWithGasLimit(ulong gasLimit) => Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
     }
 
     [Test]
-    public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse()
+    public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse([Values] bool skipErrorDetails, [Values] bool skipMemo)
     {
         byte[] data = new byte[262_000];
         Array.Fill(data, (byte)0xff);
@@ -712,13 +723,19 @@ public class TxValidatorTests
             .SignedAndResolved().TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance);
+        TxValidationOptions options = skipErrorDetails ? TxValidationOptions.SkipErrorDetails : TxValidationOptions.None;
+        if (skipMemo) options |= TxValidationOptions.SkipIntrinsicGasMemo;
+        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance, blockGasLimit: 0, options);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
             Assert.That(result.IsIntrinsicGasError, Is.True);
+            Assert.That(tx.IntrinsicGasMemo, skipMemo ? Is.Null : Is.Not.Null);
+            Assert.That(result.Error, skipErrorDetails
+                ? Is.SameAs(TxErrorMessages.IntrinsicGasTooLow)
+                : Does.Contain("exceeded cap of 16777216"));
         }
     }
 

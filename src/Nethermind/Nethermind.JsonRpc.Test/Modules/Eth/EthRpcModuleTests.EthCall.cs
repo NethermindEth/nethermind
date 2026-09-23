@@ -14,6 +14,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init;
 using Nethermind.Specs;
@@ -36,6 +38,97 @@ public partial class EthRpcModuleTests
         + GasCostOf.TxValueCostEip2780
         + (ulong)GasCostOf.NewAccountState;
     private const string FreshRecipientAddress = "0xc278000000000000000000000000000000000000";
+
+    [Test]
+    public async Task Rpc_discards_unobserved_logs(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [Range(0, 4)] int topicCount,
+        [Values(0, 128)] int logSize,
+        [Values] bool stateOverride)
+    {
+        Hash256[] topics = new Hash256[topicCount];
+        Array.Fill(topics, TestItem.KeccakA);
+        byte[] code = Prepare.EvmCode.PushData(7).Op(Instruction.SLOAD).Op(Instruction.POP)
+            .PushData(0x42).Log(logSize, 1024, topics)
+            .Op(Instruction.MSIZE).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).Op(Instruction.MSTORE)
+            .PushData(64).PushData(0).Op(Instruction.RETURN).Done;
+        await AssertRpcLogSuppression(method, code, stateOverride, expectLogs: true);
+    }
+
+    [Test]
+    public async Task Rpc_log_suppression_preserves_failures(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [ValueSource(nameof(FailingRpcLogCode))] byte[] code)
+        => await AssertRpcLogSuppression(method, code, stateOverride: true, expectLogs: false);
+
+    private static IEnumerable<byte[]> FailingRpcLogCode()
+    {
+        yield return Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.LOG4).Done;
+        yield return Prepare.EvmCode.PushData(1).PushData(UInt256.MaxValue).Op(Instruction.LOG0).Done;
+        yield return Prepare.EvmCode.Log(1_000_000, 0).Done;
+        yield return Prepare.EvmCode.Log(128, 1024).PushData(32).PushData(1024).Op(Instruction.REVERT).Done;
+    }
+
+    private static async Task AssertRpcLogSuppression(string method, byte[] code, bool stateOverride, bool expectLogs)
+    {
+        using RpcLogObserver observer = new();
+        using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance), configurer: builder =>
+            builder.AddDecorator<ITransactionProcessor>((_, processor) => new LogObservingProcessor(processor, observer)));
+        Transaction tx = Build.A.Transaction.WithGasLimit(500_000).WithGasPrice(0)
+            .WithTo(stateOverride ? TestItem.AddressB : null)
+            .WithData(stateOverride ? [] : code).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(BlockchainIds.Mainnet));
+        object[] parameters = stateOverride
+            ? [transaction, "latest", new Dictionary<Address, AccountOverride> { [TestItem.AddressB] = new() { Code = code } }]
+            : [transaction, "latest"];
+
+        TestRpcBlockchain test = ctx.Test;
+        observer.LogCount = 0;
+        string baseline = await test.TestEthRpc(method, parameters);
+        int baselineLogs = observer.LogCount;
+        observer.SuppressLogs = true;
+        observer.LogCount = 0;
+        observer.ExecutionCount = 0;
+        string optimized = await test.TestEthRpc(method, parameters);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized, Is.EqualTo(baseline));
+            Assert.That(observer.ExecutionCount, Is.GreaterThan(0));
+            Assert.That(observer.LogCount, Is.Zero);
+            if (expectLogs)
+            {
+                Assert.That(baselineLogs, Is.GreaterThan(0));
+                if (method == "eth_createAccessList" && stateOverride)
+                    Assert.That(JToken.Parse(optimized)["result"]!["accessList"]!.HasValues, Is.True);
+            }
+        }
+    }
+
+    private sealed class RpcLogObserver : TxTracer
+    {
+        public override bool IsTracingReceipt => true;
+        public override bool IsCollectingLogs => !SuppressLogs;
+        public bool SuppressLogs { get; set; }
+        public int LogCount { get; set; }
+        public int ExecutionCount { get; set; }
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+            => LogCount += logs.Length;
+    }
+
+    private sealed class LogObservingProcessor(ITransactionProcessor inner, RpcLogObserver observer) : ITransactionProcessor
+    {
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+        {
+            observer.ExecutionCount++;
+            return inner.Process(transaction, new CompositeTxTracer(txTracer, observer), options);
+        }
+
+        public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+    }
 
     [Test]
     public async Task Eth_call_web3_sample()
@@ -598,6 +691,39 @@ public partial class EthRpcModuleTests
         ulong blockGasLimit = Convert.ToUInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
         ulong gasCap = blockGasLimit * 10;
+
+        // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
+        // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
+        UInt256 gasAvailable = await GasAvailableForGaslessCall(ctx, gasCap);
+
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+    }
+
+    /// <summary>
+    /// EIP-7825's execution-gas cap is enforced by <c>TxValidator</c> and the gas estimator, never by the
+    /// transaction processor, so it must not clamp the gas-less default on the validation-skipping call paths.
+    /// 16,777,216 is below both a typical <c>JsonRpc.GasCap</c> and the mainnet block gas limit, so clamping
+    /// there would silently under-execute heavy simulations that omit <c>gas</c>.
+    /// </summary>
+    [Test]
+    public async Task Eth_call_without_gas_under_eip7825_still_defaults_to_gas_cap()
+    {
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        ulong gasCap = Eip7825Constants.DefaultTxGasLimitCap * 4;
+
+        UInt256 gasAvailable = await GasAvailableForGaslessCall(ctx, gasCap);
+
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap),
+            $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not the EIP-7825 execution-gas cap ({Eip7825Constants.DefaultTxGasLimitCap})");
+    }
+
+    /// <summary>
+    /// Sets <c>ctx.Test.RpcConfig.GasCap</c>, then runs an <c>eth_call</c> with no <c>gas</c> field
+    /// and returns the gas available at the start of contract execution.
+    /// </summary>
+    private static async Task<UInt256> GasAvailableForGaslessCall(Context ctx, ulong gasCap)
+    {
         ctx.Test.RpcConfig.GasCap = gasCap;
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
@@ -605,18 +731,33 @@ public partial class EthRpcModuleTests
         object? stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
-        // No gas field — should default to gasCap, not blockGasLimit.
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             """{"to":"0xc200000000000000000000000000000000000000"}""")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
-        string result = JToken.Parse(serialized).Value<string>("result")!;
-        UInt256 gasAvailable = Bytes.FromHexString(result).ToUInt256();
+        return Bytes.FromHexString(JToken.Parse(serialized).Value<string>("result")!).ToUInt256();
+    }
 
-        // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
-        // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
-        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+    /// <summary>
+    /// A gas-less call defaults its gas limit to the RPC gas cap, which is unbounded when
+    /// <c>JsonRpc.GasCap</c> is unset or <c>0</c>. EIP-8037 rejects any transaction above
+    /// TX_MAX_TOTAL_GAS_LIMIT regardless of validation being skipped, so the default has to be
+    /// clamped to that cap or the call is rejected before it runs.
+    /// </summary>
+    [TestCase(0UL, TestName = "Eth_call_without_gas_is_clamped_to_eip8037_total_cap(uncapped)")]
+    [TestCase(1_000_000_000_000UL, TestName = "Eth_call_without_gas_is_clamped_to_eip8037_total_cap(above cap)")]
+    public async Task Eth_call_without_gas_is_clamped_to_eip8037_total_cap(ulong gasCap)
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{TestItem.AddressA}\", \"to\": \"{SecondaryTestAddress}\"}}")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
     [Test]
@@ -812,9 +953,8 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified\"},\"id\":67}"));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Eth_call_no_blobs_in_blob_tx(bool isNull)
+    [Test]
+    public async Task Eth_call_no_blobs_in_blob_tx([Values] bool isNull)
     {
         using Context ctx = await Context.Create();
         Transaction tx = Build.A.Transaction

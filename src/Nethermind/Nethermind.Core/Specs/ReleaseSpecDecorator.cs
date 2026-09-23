@@ -109,6 +109,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual ulong ElasticityMultiplier => spec.ElasticityMultiplier;
     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
+    bool IReleaseSpec.IsPrecompile(Address address) => spec.IsPrecompile(address);
     public virtual bool IsEip7939Enabled => spec.IsEip7939Enabled;
     public virtual bool IsEip7928Enabled => spec.IsEip7928Enabled;
     public virtual bool IsEip8037Enabled => spec.IsEip8037Enabled;

@@ -65,7 +65,9 @@ public class BlockTreeTests
         _headersDb?.Dispose();
     }
 
-    private BlockTree BuildBlockTree()
+    private BlockTree BuildBlockTree() => BuildBlockTreeBuilder().TestObject;
+
+    private BlockTreeBuilder BuildBlockTreeBuilder()
     {
         _blocksDb = new TestMemDb();
         _headersDb = new TestMemDb();
@@ -75,7 +77,7 @@ public class BlockTreeTests
             .WithHeadersDb(_headersDb)
             .WithBlockInfoDb(_blocksInfosDb)
             .WithoutSettingHead;
-        return builder.TestObject;
+        return builder;
     }
 
     private static void AddToMain(BlockTree blockTree, Block block0)
@@ -473,6 +475,70 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block1);
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Suggesting_a_block_whose_header_is_already_known_stores_missing_payloads(bool bodyAlreadyStored)
+    {
+        BlockTreeBuilder builder = BuildBlockTreeBuilder();
+        BlockTree blockTree = builder.TestObject;
+        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
+        IBlockStore blockStore = builder.BlockStore;
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        blockTree.SuggestBlock(block0);
+
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block1.EncodedBlockAccessList = encodedBal;
+        block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
+        if (bodyAlreadyStored)
+        {
+            blockStore.Insert(block1);
+        }
+
+        blockTree.Insert(block1.Header); // fast sync inserts headers ahead of the bodies
+
+        AddBlockResult result = blockTree.SuggestBlock(block1);
+
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block1.Number, block1.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
+            Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
+                Is.Not.Null, "a known header must not make the block's body be discarded");
+            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Suggesting_a_block_whose_body_is_already_stored_still_stores_its_access_list()
+    {
+        BlockTreeBuilder builder = BuildBlockTreeBuilder();
+        BlockTree blockTree = builder.TestObject;
+        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        blockTree.SuggestBlock(block0);
+
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
+        blockTree.Insert(block1.Header);
+        blockTree.SuggestBlock(block1); // the bodies feed lands first, carrying no access list
+
+        // the access lists feed descends independently, so the same block can come back carrying only that
+        block1.EncodedBlockAccessList = encodedBal;
+
+        AddBlockResult result = blockTree.SuggestBlock(block1);
+
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block1.Number, block1.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
+            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal),
+                "a stored body must not make the block's access list be discarded");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1783,10 +1849,8 @@ public class BlockTreeTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1ul)]
-    [TestCase(2ul)]
-    [TestCase(3ul)]
-    public void Loads_best_known_correctly_on_inserts_followed_by_suggests(ulong pivotNumber)
+    [Test]
+    public void Loads_best_known_correctly_on_inserts_followed_by_suggests([Values(1ul, 2ul, 3ul)] ulong pivotNumber)
     {
         SyncConfig syncConfig = new()
         {
@@ -2280,9 +2344,8 @@ public class BlockTreeTests
         Assert.That(findFunction(blockTree, invalidBlock.Hash, lookupOptions), Is.EqualTo(foundInvalid ? invalidBlock.Header : null));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void On_restart_loads_already_processed_genesis_block(bool wereProcessed)
+    [Test]
+    public void On_restart_loads_already_processed_genesis_block([Values] bool wereProcessed)
     {
         TestMemDb blocksDb = new();
         TestMemDb headersDb = new();

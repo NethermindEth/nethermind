@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 
@@ -25,29 +24,31 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath3Param
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<TOpMath>(ref gas);
+        if (!TGasPolicy.UpdateGas<TOpMath>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        // Pop a and b, peek the third slot for in-place write; skips the push overflow check.
-        if (!stack.EnsureDepth(3)) goto StackUnderflow;
-        ref byte topRef = ref stack.Pop2Peek32BytesUnchecked(out UInt256 a, out UInt256 b);
+        if (!stack.EnsureDepth(3)) return EvmExceptionType.StackUnderflow;
+        return Math3ParamCore<TOpMath, TTracingInst>(ref stack);
+    }
 
-        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 c);
-        if (c.IsZero)
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType Math3ParamCore<TOpMath, TTracingInst>(ref EvmStack stack)
+        where TOpMath : struct, IOpMath3Param
+        where TTracingInst : struct, IFlag
+    {
+        ref byte topRef = ref stack.Pop2Peek32BytesUnchecked();
+
+        if (!EvmStack.IsSlotZero(ref topRef))
         {
-            // c-slot already held c; overwrite with zero (matches PushZero semantics).
-            Unsafe.As<byte, Vector256<byte>>(ref topRef) = default;
-        }
-        else
-        {
+            EvmStack.ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, EvmStack.WordSize), out UInt256 b);
+            EvmStack.ReadUInt256FromSlot(ref Unsafe.Add(ref topRef, 2 * EvmStack.WordSize), out UInt256 a);
+            EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 c);
             TOpMath.Operation(in a, in b, in c, out UInt256 result);
             EvmStack.WriteUInt256ToSlot(ref topRef, in result);
         }
 
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
-    StackUnderflow:
-        // Jump forward to be unpredicted by the branch predictor
-        return EvmExceptionType.StackUnderflow;
     }
 
     public struct OpAddMod : IOpMath3Param

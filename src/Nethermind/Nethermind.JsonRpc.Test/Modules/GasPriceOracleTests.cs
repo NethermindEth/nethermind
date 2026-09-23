@@ -99,9 +99,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(result, Is.EqualTo((UInt256)7));
         }
 
-        [TestCase(null)]
-        [TestCase(100ul)]
-        public async ValueTask GasPriceEstimate_IfPreviousGasPriceDoesNotExist_ShouldBeEmptyPrice(ulong? gasPrice)
+        [Test]
+        public async ValueTask GasPriceEstimate_IfPreviousGasPriceDoesNotExist_ShouldBeEmptyPrice([Values(null, 100ul)] ulong? gasPrice)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -112,9 +111,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(estimate, Is.EqualTo(expectedGasPrice));
         }
 
-        [TestCase(3)]
-        [TestCase(10)]
-        public async ValueTask GasPriceEstimate_IfPreviousGasPriceExists_ShouldEqualLastGasPrice(int lastGasPrice)
+        [Test]
+        public async ValueTask GasPriceEstimate_IfPreviousGasPriceExists_ShouldEqualLastGasPrice([Values(3, 10)] int lastGasPrice)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -128,9 +126,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(estimate, Is.EqualTo((UInt256?)lastGasPrice));
         }
 
-        [TestCase(null)]
-        [TestCase(100ul)]
-        public async ValueTask GasPriceEstimate_EmptyChain_BaseFeeIncluded(ulong? gasPrice)
+        [Test]
+        public async ValueTask GasPriceEstimate_EmptyChain_BaseFeeIncluded([Values(null, 100ul)] ulong? gasPrice)
         {
             UInt256 baseFeePerGas = 10.GWei;
             Block headBlock = Build.A.Block.WithBaseFeePerGas(baseFeePerGas).TestObject;
@@ -472,9 +469,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(estimate, Is.EqualTo((UInt256)expected));
         }
 
-        [TestCase(null)]
-        [TestCase(100ul)]
-        public void GetMaxPriorityGasFeeEstimate_EmptyChain_BaseFeeNotIncluded(ulong? minGasPrice)
+        [Test]
+        public void GetMaxPriorityGasFeeEstimate_EmptyChain_BaseFeeNotIncluded([Values(null, 100ul)] ulong? minGasPrice)
         {
             Block headBlock = Build.A.Block.WithBaseFeePerGas(10.GWei).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();

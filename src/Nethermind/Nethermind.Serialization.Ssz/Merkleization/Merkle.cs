@@ -285,14 +285,15 @@ public static partial class Merkle
 
     private static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
     {
-        if (limit == 0 && (value.Length + lastChunk.Length == 1))
+        if (limit <= 1 && value.Length + lastChunk.Length <= 1)
         {
-            root = value.Length == 0 ? lastChunk[0] : value[0];
+            root = value.Length == 1 ? value[0] : lastChunk.Length == 1 ? lastChunk[0] : UInt256.Zero;
             return;
         }
 
         int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
-        Merkleizer merkleizer = new(depth);
+        Span<UInt256> scratch = stackalloc UInt256[depth + 1];
+        Merkleizer merkleizer = new(scratch);
         int length = value.Length;
         for (int i = 0; i < length; i++)
         {
@@ -309,14 +310,17 @@ public static partial class Merkle
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
     {
-        if (limit == 0 && value.Length == 1)
+        // A single-chunk tree is its own root, and an empty one is the zero chunk.
+        // With no chunks fed, CalculateRoot's final top-slot read would use unwritten scratch.
+        if (limit <= 1 && value.Length <= 1)
         {
-            root = value[0];
+            root = value.Length == 1 ? value[0] : UInt256.Zero;
             return;
         }
 
         int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
-        Merkleizer merkleizer = new(depth);
+        Span<UInt256> scratch = stackalloc UInt256[depth + 1];
+        Merkleizer merkleizer = new(scratch);
         int length = value.Length;
         for (int i = 0; i < length; i++)
         {

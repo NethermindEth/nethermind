@@ -147,10 +147,8 @@ internal class ProposedBlockTests
         Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.Hash, Is.EqualTo(head.Hash!));
     }
 
-    [TestCase(1)]
-    [TestCase(10)]
-    [TestCase(30)]
-    public async Task CanBuildAFinalizedChain(int count)
+    [Test]
+    public async Task CanBuildAFinalizedChain([Values(1, 10, 30)] int count)
     {
         using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(0, true);
         blockChain.ChangeReleaseSpec((s) =>

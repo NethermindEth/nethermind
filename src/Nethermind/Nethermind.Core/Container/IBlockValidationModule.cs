@@ -11,4 +11,6 @@ namespace Nethermind.Core.Container;
 /// </summary>
 public interface IBlockValidationModule : IModule
 {
+    /// <summary>Whether this module's processor and executor support the standard transaction-only replay pipeline.</summary>
+    bool SupportsTransactionTracePrefix => false;
 }
