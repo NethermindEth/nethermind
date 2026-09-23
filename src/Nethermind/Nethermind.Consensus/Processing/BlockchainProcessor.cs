@@ -359,7 +359,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
-            using BlockProcessingPriorityScope priorityScope = BlockProcessingPriorityScope.Enter(_logger);
+            using BlockProcessingPriorityScope priorityScope = BlockProcessingPriorityScope.Enter(_logger, _options.BoostNativeProcessingPriority);
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
@@ -944,5 +944,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         public bool StoreReceiptsByDefault { get; set; } = true;
 
         public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
+
+        public bool BoostNativeProcessingPriority { get; set; } = true;
     }
 }

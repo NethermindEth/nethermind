@@ -106,6 +106,24 @@ public class BlockProcessingPriorityScopeTests
     }
 
     [Test]
+    public void Disabled_native_priority_keeps_managed_priority_only()
+    {
+        FakeNative native = new() { InitialNice = 5 };
+        ThreadPriority originalPriority = Thread.CurrentThread.Priority;
+
+        using (BlockProcessingPriorityScope scope = Enter(native, boostNativePriority: false))
+        {
+            Assert.That(Thread.CurrentThread.Priority, Is.EqualTo(ThreadPriority.Highest));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Thread.CurrentThread.Priority, Is.EqualTo(originalPriority));
+            Assert.That(native.SetValues, Is.Empty);
+        }
+    }
+
+    [Test]
     public void Native_restore_failure_is_logged_without_replacing_processing_failure()
     {
         FakeNative native = new() { FailRestore = true };
@@ -161,7 +179,7 @@ public class BlockProcessingPriorityScopeTests
                     expectedDuring = originalNice;
                 }
 
-                using (BlockProcessingPriorityScope scope = BlockProcessingPriorityScope.Enter(new ILogger(new TestLogger())))
+                using (BlockProcessingPriorityScope scope = BlockProcessingPriorityScope.Enter(new ILogger(new TestLogger()), boostNativePriority: true))
                 {
                     duringNice = ReadNativeNice();
                 }
@@ -205,7 +223,7 @@ public class BlockProcessingPriorityScopeTests
         }
 
         ThreadPriority originalPriority = Thread.CurrentThread.Priority;
-        using (BlockProcessingPriorityScope scope = BlockProcessingPriorityScope.Enter(new ILogger(new TestLogger())))
+        using (BlockProcessingPriorityScope scope = BlockProcessingPriorityScope.Enter(new ILogger(new TestLogger()), boostNativePriority: true))
         {
             Assert.That(Thread.CurrentThread.Priority, Is.EqualTo(ThreadPriority.Highest));
         }
@@ -213,11 +231,12 @@ public class BlockProcessingPriorityScopeTests
         Assert.That(Thread.CurrentThread.Priority, Is.EqualTo(originalPriority));
     }
 
-    private static BlockProcessingPriorityScope Enter(FakeNative native, TestLogger? logger = null)
+    private static BlockProcessingPriorityScope Enter(FakeNative native, TestLogger? logger = null, bool boostNativePriority = true)
     {
         logger ??= new TestLogger();
         return BlockProcessingPriorityScope.Enter(
             new ILogger(logger),
+            boostNativePriority,
             native.TryGetNice,
             native.TrySetNice);
     }

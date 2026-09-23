@@ -40,22 +40,27 @@ internal ref struct BlockProcessingPriorityScope
         _originalNice = originalNice;
     }
 
-    internal static BlockProcessingPriorityScope Enter(ILogger logger)
+    internal static BlockProcessingPriorityScope Enter(ILogger logger, bool boostNativePriority)
     {
         if (!OperatingSystem.IsLinux())
         {
-            return new BlockProcessingPriorityScope(Thread.CurrentThread.SetHighestPriority(), logger, null, 0);
+            return EnterManagedOnly(logger);
         }
 
-        return Enter(logger, TryGetCurrentNice, TrySetCurrentNice);
+        return Enter(logger, boostNativePriority, TryGetCurrentNice, TrySetCurrentNice);
     }
 
-    internal static BlockProcessingPriorityScope Enter(ILogger logger, TryGetNice getNice, TrySetNice setNice)
+    internal static BlockProcessingPriorityScope Enter(ILogger logger, bool boostNativePriority, TryGetNice getNice, TrySetNice setNice)
     {
+        if (!boostNativePriority)
+        {
+            return EnterManagedOnly(logger);
+        }
+
         if (!getNice(out int originalNice, out int error))
         {
             LogDebug(logger, "getpriority", error);
-            return new BlockProcessingPriorityScope(Thread.CurrentThread.SetHighestPriority(), logger, null, 0);
+            return EnterManagedOnly(logger);
         }
 
         ThreadExtensions.Disposable managedPriority = Thread.CurrentThread.SetHighestPriority();
@@ -77,6 +82,9 @@ internal ref struct BlockProcessingPriorityScope
             requestedNice != originalNice ? setNice : null,
             originalNice);
     }
+
+    private static BlockProcessingPriorityScope EnterManagedOnly(ILogger logger) =>
+        new(Thread.CurrentThread.SetHighestPriority(), logger, null, 0);
 
     public void Dispose()
     {

@@ -80,6 +80,7 @@ namespace Nethermind.Config
 
         public bool ParallelExecution { get; set; } = true;
         public bool ParallelExecutionBatchRead { get; set; } = true;
+        public bool BoostNativeProcessingPriority { get; set; } = true;
 
         public string ExtraData
         {

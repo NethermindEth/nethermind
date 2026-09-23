@@ -79,6 +79,13 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "true")]
     bool ParallelExecutionBatchRead { get; set; }
 
+    [ConfigItem(
+        Description = "Whether the block-processing thread raises its native Linux scheduling priority (nice value) while processing blocks. " +
+                      "It requests `-20`, falls back to `-6`, never weakens a stronger existing priority, and restores the original value afterwards. " +
+                      "Requires `CAP_SYS_NICE` or a sufficient `RLIMIT_NICE`; ignored on other operating systems.",
+        DefaultValue = "true")]
+    bool BoostNativeProcessingPriority { get; set; }
+
     byte[] GetExtraDataBytes();
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]
