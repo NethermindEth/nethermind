@@ -6,7 +6,9 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Memory;
@@ -28,6 +30,15 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly SemaphoreSlim _locker = new(1, 1);
     private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
     private readonly GCKeeper _gcKeeper = gcKeeper;
+    private readonly IBlockProcessingQueue _processingQueue = processingQueue;
+    /// <summary>How long the no-GC region is kept for a commit after the answer has gone out.</summary>
+    /// <remarks>
+    /// Shorter than the budget the request waits on for the same commit, and for a different reason: nothing is
+    /// blocked on this, and the one requirement is that a region can never be left standing. A commit slower than
+    /// this loses protection for its tail, which is the end to fail on - the alternative keeps collections off for
+    /// the whole request budget behind a commit that is stuck.
+    /// </remarks>
+    private static readonly TimeSpan NoGCRegionCommitBound = TimeSpan.FromSeconds(1);
 
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
@@ -66,6 +77,23 @@ public partial class EngineRpcModule : IEngineRpcModule
     }
 
 
+    private async Task EndNoGCRegionAfterCommitAsync(IDisposable region, Hash256 blockHash)
+    {
+        try
+        {
+            Task removed = _processingQueue.WaitUntilRemovedAsync(blockHash, executedOnly: true).AsTask();
+            if (!removed.IsCompleted)
+            {
+                using CancellationTokenSource bound = new();
+                if (await Task.WhenAny(removed, Task.Delay(NoGCRegionCommitBound, bound.Token)) == removed) bound.Cancel();
+            }
+        }
+        finally
+        {
+            region.Dispose();
+        }
+    }
+
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         _engineRequestsTracker.OnNewPayloadCalled();
@@ -99,8 +127,20 @@ public partial class EngineRpcModule : IEngineRpcModule
                 // overlap that work; keep it inside the lock so competing requests cannot run
                 // trie work concurrently.
                 _ = executionPayload.StartTxRootComputation();
-                using IDisposable region = _gcKeeper.TryStartNoGCRegion();
-                return await _newPayloadV1Handler.HandleAsync(executionPayload);
+                IDisposable? region = _gcKeeper.TryStartNoGCRegion();
+                try
+                {
+                    ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    // The answer is out before the block is committed; the region stays for the commit's allocations
+                    // and ends when the block leaves the queue, on the thread that sees it leave.
+                    _ = EndNoGCRegionAfterCommitAsync(region, executionPayload.BlockHash);
+                    region = null;
+                    return result;
+                }
+                finally
+                {
+                    region?.Dispose();
+                }
             }
             catch (BlockchainException exception)
             {
