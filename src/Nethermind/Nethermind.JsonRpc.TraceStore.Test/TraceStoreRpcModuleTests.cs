@@ -6,9 +6,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
-using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -37,6 +37,15 @@ public class TraceStoreRpcModuleTests
 {
     private static readonly EthereumJsonSerializer Serializer = new();
 
+    private static async Task<byte[]> Serialize(JsonRpcResponse response)
+    {
+        using MemoryStream buffer = new();
+        PipeWriter writer = PipeWriter.Create(buffer);
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        await writer.CompleteAsync();
+        return buffer.ToArray();
+    }
+
     [Test]
     public async Task Stored_replay_preserves_output_without_trace(
         [Values("stateDiff", "vmTrace", "")] string selection, [Values] bool blockReplay, [Values] bool streaming)
@@ -51,11 +60,8 @@ public class TraceStoreRpcModuleTests
         using JsonRpcResponse response = blockReplay
             ? test.Module.trace_replayBlockTransactions(BlockParameter.Latest, types)
             : test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, types);
-        using MemoryStream buffer = new();
-        PipeWriter writer = PipeWriter.Create(buffer);
-        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
-        await writer.CompleteAsync();
-        using JsonDocument document = JsonDocument.Parse(buffer.ToArray());
+        byte[] serialized = await Serialize(response);
+        using JsonDocument document = JsonDocument.Parse(serialized);
         JsonElement result = document.RootElement.GetProperty("result");
         if (blockReplay)
         {
@@ -101,11 +107,8 @@ public class TraceStoreRpcModuleTests
         }
 
         using JsonRpcResponse response = test.Module.trace_replayBlockTransactions(BlockParameter.Latest, types);
-        using MemoryStream buffer = new();
-        PipeWriter writer = PipeWriter.Create(buffer);
-        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
-        await writer.CompleteAsync();
-        JToken actual = JToken.Parse(Encoding.UTF8.GetString(buffer.ToArray()))["result"]!;
+        byte[] serialized = await Serialize(response);
+        JToken actual = JToken.Parse(Encoding.UTF8.GetString(serialized))["result"]!;
 
         // The default store records Trace|Rewards only, so it has no state diff to compare against live replay.
         foreach (JObject entry in expected.Children<JObject>().Concat(actual.Children<JObject>())) entry.Remove("stateDiff");

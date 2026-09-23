@@ -67,7 +67,7 @@ public class ParityLikeTxTracer : TxTracer
     }
 
     public sealed override bool IsTracingActions { get; protected set; }
-    public sealed override bool IsTracingReceipt { get; protected set; } = true;
+    public sealed override bool IsTracingReceipt => true;
     public override bool IsCollectingLogs => false;
     public sealed override bool IsTracingInstructions { get; protected set; }
     public sealed override bool IsTracingCode { get; protected set; }

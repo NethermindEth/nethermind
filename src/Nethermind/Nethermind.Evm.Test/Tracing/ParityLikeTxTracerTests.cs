@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -23,6 +26,64 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Output_only_receipts_do_not_allocate_actions(
+        [Values(ParityTraceTypes.None, ParityTraceTypes.StateDiff)] ParityTraceTypes types, [Values] bool failed)
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[1024]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        OutputOnlyTracer tracer = new(block, tx, types);
+        byte[] output = [42];
+        if (failed) tracer.MarkAsFailed(TestItem.AddressA, default, output, "Reverted");
+        else tracer.MarkAsSuccess(TestItem.AddressA, default, output, []);
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Output, Is.EqualTo(output));
+            Assert.That(trace.Action, Is.Null);
+        }
+    }
+
+    private sealed class OutputOnlyTracer(Block block, Transaction tx, ParityTraceTypes types)
+        : ParityLikeTxTracer(block, tx, types)
+    {
+        protected override ParityTraceAction RentAction() => throw new AssertionException("Output capture must not allocate an action");
+    }
+
+    [Test]
+    public void Streaming_vm_only_trace_returns_discarded_action_input()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[1024]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        InputReturningTracer tracer = new(block, tx, writer);
+        try
+        {
+            tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
+            tracer.BuildResult();
+            Assert.That(tracer.ReturnedInputs, Is.EqualTo(1));
+            tracer.ResetForNextTx(block, tx);
+            tracer.ReleaseResources();
+            Assert.That(tracer.ReturnedInputs, Is.EqualTo(1));
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    private sealed class InputReturningTracer(Block block, Transaction tx, Utf8JsonWriter writer)
+        : StreamingParityLikeTxTracer(block, tx, ParityTraceTypes.VmTrace, writer, null, CancellationToken.None, fillVmTraceSlot: false)
+    {
+        public int ReturnedInputs { get; private set; }
+        protected override void ReturnInputBytes(in CappedArray<byte> input)
+        {
+            if (input.Length > 0) ReturnedInputs++;
+            base.ReturnInputBytes(input);
+        }
+    }
+
     [Test]
     public void On_failure_result_is_null()
     {
