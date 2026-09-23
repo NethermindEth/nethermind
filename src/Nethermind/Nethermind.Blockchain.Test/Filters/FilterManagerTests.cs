@@ -349,11 +349,8 @@ public class FilterManagerTests
         _filterStore.SaveFilter(filter);
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
-        Block block = Build.A.Block.TestObject;
         TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(2L));
-
-        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
-        _mainProcessingContext.RaiseTransactionProcessed(new TxProcessedEventArgs(1, Build.A.Transaction.TestObject, block.Header, receipt));
+        Block block = RaiseBlockProcessed(receipt);
 
         _receiptMonitor.ReceiptsInserted += Raise.EventWith(_receiptMonitor, new ReceiptsEventArgs(block.Header, [receipt], wasRemoved: true));
 
@@ -362,6 +359,49 @@ public class FilterManagerTests
         {
             Assert.That(logs.Any(static l => l.Removed), Is.True);
             Assert.That(logs.Any(static l => !l.Removed), Is.True);
+        });
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void filter_sees_only_blocks_processed_after_it_was_installed()
+    {
+        LogFilter early = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(early);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        RaiseBlockProcessed(BuildReceipt(static r => r.WithBlockNumber(1L)));
+        LogFilter late = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(late);
+        RaiseBlockProcessed(BuildReceipt(static r => r.WithBlockNumber(2L)));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_filterManager.PollLogs(early.Id).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 1, 2 }));
+            Assert.That(_filterManager.PollLogs(late.Id).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 2 }));
+            Assert.That(_filterManager.PollLogs(early.Id), Is.Empty);
+        });
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void filter_not_polled_within_retained_blocks_is_removed()
+    {
+        BlockFilter unpolled = new(_currentFilterId++);
+        BlockFilter polled = new(_currentFilterId++);
+        _filterStore.SaveFilter(unpolled);
+        _filterStore.SaveFilter(polled);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        const int maxRetainedBlocks = 1024;
+        for (int i = 0; i <= maxRetainedBlocks; i++)
+        {
+            RaiseBlockProcessed();
+            _filterManager.PollBlockHashes(polled.Id);
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_filterStore.FilterExists(unpolled.Id), Is.False);
+            Assert.That(_filterStore.FilterExists(polled.Id), Is.True);
         });
     }
 
@@ -403,7 +443,6 @@ public class FilterManagerTests
         }
 
         // adding always a simple block filter and test
-        Block block = Build.A.Block.TestObject;
         BlockFilter blockFilter = new(_currentFilterId++);
         filters.Add(blockFilter);
 
@@ -411,15 +450,7 @@ public class FilterManagerTests
         _filterStore.SaveFilters(filters.OfType<BlockFilter>());
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
-        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
-
-        int index = 1;
-        foreach (TxReceipt receipt in receipts)
-        {
-            _mainProcessingContext.RaiseTransactionProcessed(
-                new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, block.Header, receipt));
-            index++;
-        }
+        RaiseBlockProcessed([.. receipts]);
 
         Assert.Multiple(() =>
         {
@@ -448,6 +479,19 @@ public class FilterManagerTests
         builder(builderInstance);
 
         return builderInstance.TestObject;
+    }
+
+    private Block RaiseBlockProcessed(params TxReceipt[] receipts)
+    {
+        Bloom bloom = new();
+        foreach (TxReceipt receipt in receipts)
+        {
+            if (receipt.Logs is not null) bloom.Add(receipt.Logs);
+        }
+
+        Block block = Build.A.Block.WithBloom(bloom).TestObject;
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, receipts));
+        return block;
     }
 }
 
