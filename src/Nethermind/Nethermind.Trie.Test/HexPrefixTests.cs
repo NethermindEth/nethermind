@@ -178,7 +178,7 @@ public class HexPrefixTests
         Assert.That(Nibbles.ToCompactHexEncoding(nibbles), Is.EqualTo(expected).AsCollection);
     }
 
-    /// <summary>Nibbles where no pair and no 16-nibble block repeats within 256 nibbles, so a misplaced one cannot pass.</summary>
+    /// <summary>Nibbles where no 16-nibble window repeats within 256 nibbles, so a misplaced block cannot pass.</summary>
     private static byte[] NibblePath(int nibbleCount)
     {
         byte[] nibbles = new byte[nibbleCount];
