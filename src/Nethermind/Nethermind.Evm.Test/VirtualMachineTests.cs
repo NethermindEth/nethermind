@@ -81,6 +81,21 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
     }
 
+    /// <summary>Asserts that the per-test <see cref="VirtualMachineTestsBase.Setup"/> resets the fork activation that a previous test leaked into it.</summary>
+    /// <remarks>The fixture lifecycle is driven by hand because NUnit gives no ordering contract between tests, so the leak can only be observed deterministically within a single test.</remarks>
+    [Test]
+    public void Setup_restores_default_activation_between_tests()
+    {
+        Execute(MainnetSpecProvider.CancunActivation, (byte)Instruction.STOP);
+        Assert.That(Activation, Is.EqualTo(MainnetSpecProvider.CancunActivation));
+
+        TearDown();
+        Setup();
+
+        Assert.That(Activation, Is.EqualTo(new ForkActivation(DefaultBlockNumber, DefaultTimestamp)));
+        AssertExpZeroTo160();
+    }
+
     [Test]
     public void Opcode_refresh_recaptures_frame_handlers()
     {
@@ -923,7 +938,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 
@@ -942,7 +957,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 1 }), "storage");
+            AssertStorage(UInt256.Zero, UInt256.One);
         }
     }
 
@@ -961,7 +976,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 1 }), "storage");
+            AssertStorage(UInt256.Zero, UInt256.One);
         }
     }
 
@@ -1080,7 +1095,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet + GasCostOf.Exp + GasCostOf.ExpByteEip160), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Pow(2, 160).ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, BigInteger.Pow(2, 160));
         }
     }
 
@@ -1099,12 +1114,14 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.One.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.One);
         }
     }
 
     [Test]
-    public void Exp_0_160()
+    public void Exp_0_160() => AssertExpZeroTo160();
+
+    private void AssertExpZeroTo160()
     {
         TestAllTracerWithOutput receipt = Execute(
             (byte)Instruction.PUSH1,
@@ -1118,7 +1135,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 
@@ -1137,7 +1154,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.One.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.One);
         }
     }
 
@@ -1156,7 +1173,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 
@@ -1173,7 +1190,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo((BigInteger.Pow(2, 256) - 1).ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.MaxValue);
         }
     }
 
@@ -1192,7 +1209,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 
@@ -1208,7 +1225,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 

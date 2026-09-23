@@ -313,8 +313,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="storageCellAddress"></param>
     /// <param name="storageIndex"></param>
-    /// <param name="newValue"></param>
-    /// <param name="currentValue"></param>
+    /// <param name="newValue">32-byte big-endian value, including zero.</param>
+    /// <param name="currentValue">The value held in the cell immediately before this write, encoded as one zero byte for zero or 32-byte big-endian otherwise.</param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
     void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
 
@@ -332,7 +332,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="storageCellAddress"></param>
     /// <param name="storageIndex"></param>
-    /// <param name="value"></param>
+    /// <param name="value">Big-endian value: one zero byte for zero, otherwise 32 bytes.</param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
     void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
 
@@ -380,6 +380,18 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="evmExceptionType"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionError(EvmExceptionType evmExceptionType);
+
+    /// <summary>
+    /// Reports the remaining gas observed at an execution-segment boundary.
+    /// </summary>
+    /// <param name="gas">Gas remaining in the frame.</param>
+    /// <remarks>
+    /// Depends on <see cref="IsTracingActions"/>. Checkpoints are emitted when execution suspends,
+    /// resumes, completes or fails, before the corresponding action completion or error notification
+    /// where applicable. These are not per-opcode updates; early action failures can occur without
+    /// a new checkpoint, leaving the previous observation in effect. The default implementation drops it.
+    /// </remarks>
+    void ReportActionRemainingGas(ulong gas) { }
 
     /// <summary>
     ///

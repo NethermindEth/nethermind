@@ -157,8 +157,16 @@ public class BlockHeaderTests
             Assert.That(child.BlobGasUsed, Is.Null);
             Assert.That(child.ExcessBlobGas, Is.Null);
             Assert.That(child.ParentBeaconBlockRoot, Is.Null);
-            Assert.That(child.SlotNumber, Is.Null);
+            Assert.That(child.SlotNumber, Is.EqualTo(parent.SlotNumber + 1));
         });
+    }
+
+    [Test]
+    public void CreateSimulatedChild_should_leave_slot_number_unset_for_a_parent_without_one()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithSlotNumber(null).TestObject;
+
+        Assert.That(parent.CreateSimulatedChild(112).SlotNumber, Is.Null);
     }
 
     [Test]

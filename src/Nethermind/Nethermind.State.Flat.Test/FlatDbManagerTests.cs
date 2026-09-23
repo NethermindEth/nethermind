@@ -161,74 +161,34 @@ public class FlatDbManagerTests
         Assert.That(result, Is.False);
     }
 
+    // Regression: flushing on dispose persisted the unfinalized tail as the single RocksDB state, so a
+    // reorg below the pre-shutdown head could never be served after a restart.
     [Test]
-    public async Task DisposeAsync_CallsFlushOnce([Values(1, 2)] int disposeCalls)
+    public async Task DisposeAsync_DoesNotFlushToPersistence()
     {
-        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(CreateStateId(10));
+        (FlatDbManager manager, _) = CreateManagerWithQueuedSnapshot();
 
-        FlatDbManager manager = CreateManager();
-        for (int i = 0; i < disposeCalls; i++) await manager.DisposeAsync();
+        await manager.DisposeAsync();
 
-        _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
+        _persistenceManager.DidNotReceive().FlushToPersistence(Arg.Any<CancellationToken>());
     }
 
     [Test]
-    public async Task AddSnapshot_QueuedCompactionAndPersistence_AreDrainedBeforeFlushOnDispose(
+    public async Task AddSnapshot_QueuedCompactionAndPersistence_AreDrainedOnDispose(
         [Values] bool processExitAlreadyCancelled)
     {
         (FlatDbManager manager, StateId snapshotTo) =
             CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);
-        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(snapshotTo);
 
         await manager.DisposeAsync();
 
         _snapshotRepository.Received(1).AddStateId(snapshotTo);
         await _persistenceManager.Received(1).AddToPersistence(snapshotTo);
-        _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
         Received.InOrder(() =>
         {
             _snapshotRepository.AddStateId(snapshotTo);
             _ = _persistenceManager.AddToPersistence(snapshotTo);
-            _persistenceManager.FlushToPersistence(CancellationToken.None);
         });
-    }
-
-    [Test]
-    public async Task DisposeAsync_FlushThrows_AwaitsWorkerCleanup()
-    {
-        TaskCompletionSource populateStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource releasePopulate = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource flushAttempted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        InvalidOperationException flushFailure = new("Flush failed");
-        _trieNodeCache.When(cache => cache.Add(Arg.Any<TransientResource>())).Do(_ =>
-        {
-            populateStarted.TrySetResult();
-            releasePopulate.Task.GetAwaiter().GetResult();
-        });
-
-        (FlatDbManager manager, _) = CreateManagerWithQueuedSnapshot();
-        _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(_ =>
-        {
-            flushAttempted.TrySetResult();
-            throw flushFailure;
-        });
-
-        await populateStarted.Task;
-        Task disposeTask = manager.DisposeAsync().AsTask();
-        await flushAttempted.Task;
-        await Task.Yield();
-
-        try
-        {
-            Assert.That(disposeTask.IsCompleted, Is.False);
-        }
-        finally
-        {
-            releasePopulate.TrySetResult();
-        }
-
-        await Assert.ThatAsync(async () => await disposeTask,
-            Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo(flushFailure.Message));
     }
 
     [Test]
@@ -341,7 +301,8 @@ public class FlatDbManagerTests
         using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(historicalBlock);
 
         Account? account = bundle.GetAccount(HistoryAddr);
-        byte[]? slot = bundle.GetSlot(HistoryAddr, HistorySlot, bundle.DetermineSelfDestructSnapshotIdx(HistoryAddr));
+        bundle.GetSlot(HistoryAddr, HistorySlot, bundle.DetermineSelfDestructSnapshotIdx(HistoryAddr), out UInt256? stored);
+        byte[]? slot = stored is { } slotValue ? slotValue.ToMinimalBigEndian() : null;
 
         using (Assert.EnterMultipleScope())
         {
@@ -588,7 +549,7 @@ public class FlatDbManagerTests
         Span<byte> value = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         int written = rawValue.IsEmpty
             ? 0
-            : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
+            : BaseFlatPersistence.EncodeSlotValue(BaseFlatPersistence.DecodeSlotValue(rawValue), rlpWrapSlots: true, value);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         _storageStore.RecordChange(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));

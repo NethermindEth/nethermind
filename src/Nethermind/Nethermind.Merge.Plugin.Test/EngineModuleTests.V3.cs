@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -19,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -29,7 +31,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
@@ -299,7 +300,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [], blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem.KeccakA);
 
-        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig), new(RpcEndpoint.Http), new(), executionPayload);
+        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, chain.Container.Resolve<GCKeeper>()), new(RpcEndpoint.Http), new(), executionPayload);
     }
 
     [Test]
@@ -419,7 +420,9 @@ public partial class EngineModuleTests
     {
         async Task<(MergeTestBlockchain blockchain, IEngineRpcModule engineRpcModule)> MockRpc()
         {
-            MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+            MergeTestBlockchain chain = await CreateBlockchain(
+                releaseSpec: Cancun.Instance,
+                configurer: builder => builder.AddSingleton<IGCStrategy>(NoGCStrategy.Instance));
             IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadHandlerMock =
                 Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>();
             newPayloadHandlerMock.HandleAsync(Arg.Any<ExecutionPayload>())
@@ -452,7 +455,8 @@ public partial class EngineModuleTests
                 Substitute.For<IEngineRequestsTracker>(),
                 Substitute.For<IBlobCustodyTracker>(),
                 chain.SpecProvider,
-                new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
+                chain.Container.Resolve<GCKeeper>(),
+                chain.BlockProcessingQueue,
                 Substitute.For<ILogManager>()));
         }
 

@@ -55,6 +55,7 @@ public abstract class BlockchainTestBase
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
+    private static readonly TimeSpan EngineProcessingTimeout = TimeSpan.FromMinutes(10);
 
     /// <summary>
     /// Override to force parallel or sequential BAL execution in tests.
@@ -161,7 +162,7 @@ public abstract class BlockchainTestBase
 
         if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
         {
-            mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(10).TotalMilliseconds;
+            mergeConfig.NewPayloadBlockProcessingTimeout = (int)EngineProcessingTimeout.TotalMilliseconds;
         }
 
         ILogManager componentLogManager = ComponentLogManagerOverride ?? _logManager;
@@ -198,9 +199,10 @@ public abstract class BlockchainTestBase
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
+        IBlockProcessingQueue blockchainProcessingQueue = mainBlockProcessingContext.BlockProcessingQueue;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
-        blockchainProcessor.Start();
+        blockchainProcessingQueue.Start();
 
         try
         {
@@ -276,7 +278,7 @@ public abstract class BlockchainTestBase
                 IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
                 JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
                 JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
-                Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!, engineWitnessDifferences);
+                Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, blockchainProcessingQueue, parentHeader.Hash!, engineWitnessDifferences);
                 lastPayloadStatus = payloadResult.Data ?? "";
                 lastValidationError = payloadResult.Error;
             }
@@ -287,7 +289,7 @@ public abstract class BlockchainTestBase
 
             // NOTE: Tracer removal must happen AFTER StopAsync to ensure all blocks are traced
             // Blocks are queued asynchronously, so we need to wait for processing to complete
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             lastValidationError ??= asyncBlockError;
             stopwatch?.Stop();
 
@@ -342,7 +344,7 @@ public abstract class BlockchainTestBase
         }
         catch (Exception)
         {
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             throw;
         }
     }
@@ -434,7 +436,7 @@ public abstract class BlockchainTestBase
     /// carried a validation error, that error in <see cref="Result{TData}.Error"/> (an expected
     /// rejection does not fail the test, so the status is still populated).
     /// </returns>
-    private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash, List<string> witnessDifferences)
+    private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, IBlockProcessingQueue processingQueue, Hash256 initialHeadHash, List<string> witnessDifferences)
     {
         if (newPayloads is null || newPayloads.Length == 0) return Result<string>.Success("");
 
@@ -496,7 +498,7 @@ public abstract class BlockchainTestBase
                             CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
                         }
 
-                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
+                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
                     }
                 }
                 else
@@ -510,8 +512,8 @@ public abstract class BlockchainTestBase
                     // The block is committed even when unsatisfied, so the head must still advance.
                     if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                     {
-                        string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
-                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                        Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
+                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
                     }
                 }
             }
@@ -730,6 +732,28 @@ public abstract class BlockchainTestBase
     private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
         SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
 
+    /// <summary>
+    /// VALID arrives before the block is committed, and forkchoice gives a committing head only a short wait before
+    /// answering SYNCING; a slow commit on a loaded runner must not leave the head on the parent, so the head moves
+    /// once the block has left the queue and anything but VALID fails here rather than as a post-state diff.
+    /// </summary>
+    private static async Task MoveHeadToCommitted(IJsonRpcService rpcService, JsonRpcContext context, IBlockProcessingQueue processingQueue, int fcuVersion, Hash256 blockHash)
+    {
+        await processingQueue.WaitUntilRemovedAsync(blockHash).AsTask().WaitAsync(EngineProcessingTimeout);
+        JsonRpcResponse response = await SendFcu(rpcService, context, fcuVersion, blockHash.ToString());
+        AssertRpcSuccess(response);
+        string? status = response switch
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper => resultWrapper.Data?.PayloadStatus.Status,
+            // engine_forkchoiceUpdatedV5 returns ForkchoiceUpdatedV2Result, which does not derive from V1.
+            ResultWrapper<ForkchoiceUpdatedV2Result> v2Wrapper => v2Wrapper.Data?.PayloadStatus.Status,
+            JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV1Result result } => result.PayloadStatus.Status,
+            JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV2Result v2Result } => v2Result.PayloadStatus.Status,
+            _ => null
+        };
+        Assert.That(status, Is.EqualTo(PayloadStatus.Valid), $"engine_forkchoiceUpdatedV{fcuVersion} to {blockHash} answered {response.GetType().Name}");
+    }
+
     private static void AssertRpcSuccess(JsonRpcResponse response)
     {
         Assert.That(response, Is.InstanceOf<IResultWrapper>(), response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
@@ -798,7 +822,7 @@ public abstract class BlockchainTestBase
         {
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
             {
-                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), new UInt256(storageItem.Value, isBigEndian: true));
             }
 
             stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
@@ -876,19 +900,21 @@ public abstract class BlockchainTestBase
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key));
-                if (!value.IsZero())
+                UInt256 value = UInt256.Zero;
+                if (stateProvider.AccountExists(accountAddress)) stateProvider.Get(new StorageCell(accountAddress, clearedStorage.Key), out value);
+                if (!value.IsZero)
                 {
-                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToMinimalBigEndian().ToHexString(true)}");
                 }
             }
 
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
             {
-                ReadOnlySpan<byte> value = !stateProvider.AccountExists(accountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(accountAddress, storageItem.Key));
-                if (!Bytes.AreEqual(storageItem.Value, value))
+                UInt256 value = UInt256.Zero;
+                if (stateProvider.AccountExists(accountAddress)) stateProvider.Get(new StorageCell(accountAddress, storageItem.Key), out value);
+                if (new UInt256(storageItem.Value, isBigEndian: true) != value)
                 {
-                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
+                    differences.Add($"{accountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToMinimalBigEndian().ToHexString(true)}");
                 }
             }
 

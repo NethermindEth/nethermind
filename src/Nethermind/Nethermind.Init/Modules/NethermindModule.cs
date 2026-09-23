@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -43,6 +44,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
     {
         builder
             .AddServiceStopper()
+            .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
+            .AddSingleton<GCKeeper>()
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
             .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
