@@ -286,7 +286,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 BlockParameter toBlock = traceFilterForRpc.ToBlock ?? BlockParameter.Latest;
 
                 // Collect the whole range first so search errors (e.g. from > to) take precedence over state checks.
-                List<Block> searchedBlocks = [];
+                List<(Block Block, BlockHeader Parent)> blocks = [];
                 foreach (SearchResult<Block> blockSearch in blockFinder.SearchForBlocksOnMainChain(fromBlock, toBlock))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -294,15 +294,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     {
                         return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
                     }
-                    searchedBlocks.Add(blockSearch.Object!);
+                    Block block = blockSearch.Object!;
+                    if (!block.IsGenesis) blocks.Add((block, null!));
                 }
 
-                List<(Block Block, BlockHeader Parent)> blocks = new(searchedBlocks.Count);
                 BlockHeader? previous = null;
-                foreach (Block block in searchedBlocks)
+                for (int i = 0; i < blocks.Count; i++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (block.IsGenesis) continue;
+                    Block block = blocks[i].Block;
                     if (!blockchainBridge.HasStateForBlock(block.Header))
                     {
                         return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
@@ -328,7 +328,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                         }
                     }
 
-                    blocks.Add((block, parentHeader));
+                    blocks[i] = (block, parentHeader);
                     previous = block.Header;
                 }
 
