@@ -16,7 +16,12 @@ public static class BlockProcessingQueueExtensions
         if (!blockProcessingQueue.IsEmpty)
         {
             await Wait.ForEvent(cancellationToken,
-                e => blockProcessingQueue.ProcessingQueueEmpty += e,
+                e =>
+                {
+                    blockProcessingQueue.ProcessingQueueEmpty += e;
+                    // The queue may have drained between the initial check and subscribing.
+                    if (blockProcessingQueue.IsEmpty) e(blockProcessingQueue, EventArgs.Empty);
+                },
                 e => blockProcessingQueue.ProcessingQueueEmpty -= e);
         }
     }
