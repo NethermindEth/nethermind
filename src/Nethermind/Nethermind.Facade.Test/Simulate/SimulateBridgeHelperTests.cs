@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -78,6 +79,8 @@ public class SimulateBridgeHelperTests
         { ExpectedResult = 0UL, TestName = "a slot length that does not fit the parent falls back" };
         yield return new TestCaseData(MainnetBeaconGenesis, MainnetSlotLength, MainnetHeadTime, 7UL, MainnetHeadTime + MainnetSlotLength)
         { ExpectedResult = 8UL, TestName = "a parent slot that disagrees with the grid falls back to the parent's slot plus one" };
+        yield return new TestCaseData(GnosisBeaconGenesis, MainnetSlotLength, GnosisHeadTime, GnosisHeadSlot, GnosisHeadTime + MainnetSlotLength)
+        { ExpectedResult = GnosisHeadSlot + 1, TestName = "a slot length too long for a parent carrying a slot gives the parent's slot plus one" };
         yield return new TestCaseData(MainnetBeaconGenesis, 0UL, MainnetHeadTime, null, MainnetHeadTime + MainnetSlotLength)
         { ExpectedResult = 0UL, TestName = "a zero slot length falls back" };
         yield return new TestCaseData(MainnetBeaconGenesis, MainnetSlotLength, MainnetBeaconGenesis - 1_204, null, MainnetBeaconGenesis + 5 * MainnetSlotLength)
@@ -86,7 +89,26 @@ public class SimulateBridgeHelperTests
         { ExpectedResult = 0UL, TestName = "a timestamp before the beacon genesis falls back" };
     }
 
-    private static ulong? GetCallHeaderSlot(ISpecProvider specProvider, ulong secondsPerSlot, BlockHeader parent, ulong? overrideTime)
+    /// <summary>
+    /// A time override that falls between slots must neither repeat the parent's slot nor switch derivation off for the
+    /// blocks after it: each block still reports the beacon slot of its time, kept above its parent's.
+    /// </summary>
+    [TestCase(null, ExpectedResult = new[] { MainnetHeadSlot, MainnetHeadSlot + 3 }, TestName = "an off-grid override keeps later blocks derived")]
+    [TestCase(MainnetHeadSlot, ExpectedResult = new[] { MainnetHeadSlot + 1, MainnetHeadSlot + 3 }, TestName = "an off-grid override advances past the parent's slot and keeps later blocks derived")]
+    public ulong[] Off_grid_time_override_keeps_slots_derived_and_increasing(ulong? headSlot)
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance) { BeaconChainGenesisTimestamp = MainnetBeaconGenesis };
+        BlockHeader head = Build.A.BlockHeader.WithNumber(10).WithTimestamp(MainnetHeadTime).WithSlotNumber(headSlot).TestObject;
+
+        BlockHeader first = GetCallHeader(specProvider, MainnetSlotLength, head, MainnetHeadTime + 1);
+        BlockHeader second = GetCallHeader(specProvider, MainnetSlotLength, first, MainnetHeadTime + 1 + 3 * MainnetSlotLength);
+        return [first.SlotNumber!.Value, second.SlotNumber!.Value];
+    }
+
+    private static ulong? GetCallHeaderSlot(ISpecProvider specProvider, ulong secondsPerSlot, BlockHeader parent, ulong? overrideTime) =>
+        GetCallHeader(specProvider, secondsPerSlot, parent, overrideTime).SlotNumber;
+
+    private static BlockHeader GetCallHeader(ISpecProvider specProvider, ulong secondsPerSlot, BlockHeader parent, ulong? overrideTime)
     {
         SimulateBridgeHelper helper = new(new BlocksConfig { SecondsPerSlot = secondsPerSlot }, specProvider);
         BlockStateCall<TransactionWithSourceDetails> block = new()
@@ -95,7 +117,8 @@ public class SimulateBridgeHelperTests
         };
 
         (BlockHeader callHeader, _) = helper.GetCallHeader(specProvider, block, parent, validate: true);
-        return callHeader.SlotNumber;
+        callHeader.Hash = callHeader.CalculateHash();
+        return callHeader;
     }
 
     private static BlockHeader WithSlotFillingChild(BlockHeader parent) =>

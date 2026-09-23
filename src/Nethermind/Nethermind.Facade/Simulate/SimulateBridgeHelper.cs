@@ -330,8 +330,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     /// </summary>
     /// <remarks>
     /// <c>slot = (timestamp - beacon genesis) / seconds per slot</c>, exact because every post-merge block sits on that grid.
-    /// A parent off the grid, or carrying a slot that disagrees with it, means the configured slot length or genesis is not
-    /// this chain's, so the value would be wrong; returning <c>null</c> lets the caller fall back instead.
+    /// A slotless parent (normally the real base block) off the grid means the configured slot length or genesis is not this
+    /// chain's, so <c>null</c> lets the caller fall back. A parent carrying a slot may be a simulated block whose time override
+    /// fell between slots and was advanced, so its grid slot is only a floor. The result stays above the parent's slot, as
+    /// slots never repeat; that also caps a slot length too long for the chain at the parent's slot + 1.
     /// </remarks>
     private ulong? DeriveSlot(ISpecProvider specProvider, BlockHeader parent, ulong timestamp)
     {
@@ -345,10 +347,16 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         }
 
         ulong parentOffset = parent.Timestamp - genesis;
-        bool parentOnGrid = parentOffset % secondsPerSlot == 0
-            && (parent.SlotNumber is not { } parentSlot || parentSlot == parentOffset / secondsPerSlot);
+        bool parentFitsGrid = parent.SlotNumber is { } parentSlot
+            ? parentSlot >= parentOffset / secondsPerSlot
+            : parentOffset % secondsPerSlot == 0;
+        if (!parentFitsGrid)
+        {
+            return null;
+        }
 
-        return parentOnGrid ? (timestamp - genesis) / secondsPerSlot : null;
+        ulong slot = (timestamp - genesis) / secondsPerSlot;
+        return parent.SlotNumber is { } previousSlot && slot <= previousSlot ? previousSlot + 1 : slot;
     }
 
     private static ForkActivation GetSimulatedActivation(BlockOverride? overrides, BlockHeader header) =>
