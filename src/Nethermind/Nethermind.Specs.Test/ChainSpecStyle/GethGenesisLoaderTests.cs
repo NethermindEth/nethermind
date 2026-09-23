@@ -618,6 +618,15 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [TestCase("\"beaconChainGenesisTimestamp\": 1742213400", 1742213400UL)]
+    [TestCase("", null)]
+    public void Loads_beacon_chain_genesis_timestamp(string configExtra, ulong? expected)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+
+        Assert.That(chainSpec.Parameters.BeaconChainGenesisTimestamp, Is.EqualTo(expected));
+    }
+
     /// <summary>
     /// Returns EIP numbers newly enabled by <paramref name="fork"/> compared to its <paramref name="parent"/>.
     /// </summary>

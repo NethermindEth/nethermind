@@ -72,6 +72,15 @@ public class GethGenesisConfigJson : IHasNamedForks
     public UInt256? TerminalTotalDifficulty { get; set; }
     public bool? TerminalTotalDifficultyPassed { get; set; }
     public Address? DepositContractAddress { get; set; }
+
+    /// <summary>
+    /// Unix timestamp, in seconds, of the beacon chain genesis; <c>null</c> when the chain has no beacon chain.
+    /// </summary>
+    /// <remarks>
+    /// Not part of EIP-7949; mirrors <c>params.beaconChainGenesisTimestamp</c> of Parity-style chainspecs.
+    /// </remarks>
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
+
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 
     IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkBlocks => _blocks;
