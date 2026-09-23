@@ -29,6 +29,9 @@ public record GethTraceOptions
     /// Byte limit for serialized opcode logs or JSON Lines file records. Zero is unlimited; a negative value suppresses all records.
     /// The entry that exceeds the limit is included. Execution and named tracers are unaffected.
     /// </summary>
+    /// <remarks>
+    /// File budgets include each record's terminating line feed; ordinary opcode log budgets count only the serialized entries.
+    /// </remarks>
     [JsonConverter(typeof(LimitConverter))]
     public long Limit { get; init; }
 
