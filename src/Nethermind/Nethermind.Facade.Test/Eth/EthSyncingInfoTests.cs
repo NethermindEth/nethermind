@@ -99,6 +99,7 @@ namespace Nethermind.Facade.Test.Eth
         }
 
         [TestCase(10005UL, 10000UL, 130000UL, true, 130000UL, TestName = "BeaconTargetFarAhead")]
+        [TestCase(20000UL, 10000UL, 15000UL, true, 20000UL, TestName = "BeaconTargetBelowBestSuggested")]
         [TestCase(10005UL, 10000UL, 10000UL, false, 0UL, TestName = "BeaconTargetCaughtUp")]
         [TestCase(10005UL, 10000UL, null, false, 0UL, TestName = "BeaconSyncFinished")]
         [TestCase(0UL, 0UL, 1UL, true, 1UL, TestName = "AtGenesisWithNearbyBeaconTarget")]

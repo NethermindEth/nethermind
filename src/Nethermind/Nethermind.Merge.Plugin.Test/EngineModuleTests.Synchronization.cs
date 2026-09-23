@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -318,6 +319,46 @@ public partial class EngineModuleTests
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
         AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
+    }
+
+    [Test]
+    public async Task Eth_syncing_reports_beacon_target_until_beacon_pivot_is_removed()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        EthSyncingInfo ethSyncingInfo = new(chain.BlockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
+            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), chain.BeaconSync!, LimboLogs.Instance);
+        // Leave genesis, which reports syncing on its own
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
+        ulong targetNumber = chain.BlockTree.Head!.Number + EthSyncingInfo.MaxDistanceForSynced + 1;
+        BlockHeader unknownParent = Build.A.BlockHeader.WithNumber(targetNumber - 1).TestObject;
+        Block target = Build.A.Block
+            .WithNumber(targetNumber)
+            .WithParent(unknownParent)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithPostMergeFlag(true)
+            .TestObject;
+
+        await rpc.engine_newPayloadV1(ExecutionPayload.Create(target));
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
+            await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(target.Hash!, startingHead, startingHead));
+        SyncingResult syncing = ethSyncingInfo.GetFullInfo();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(syncing.IsSyncing, Is.True);
+            Assert.That(syncing.HighestBlock, Is.EqualTo(targetNumber));
+        }
+
+        await ProduceBranchV1(rpc, chain, 1, branch[^1], true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
+            Assert.That(ethSyncingInfo.GetFullInfo().IsSyncing, Is.False);
+        }
     }
 
     [Test]
