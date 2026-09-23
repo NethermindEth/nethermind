@@ -47,7 +47,7 @@ namespace Nethermind.Init.Steps
             _loader = loader ?? throw new ArgumentNullException(nameof(loader));
             _targets = targets.ToArray();
             _commandSelections = commandSelections.ToArray();
-            _processExitSource = processExitSource;
+            _processExitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
         }
 
         /// <summary>Whether this run is a one-shot command rather than a node start.</summary>
@@ -192,21 +192,37 @@ namespace Nethermind.Init.Steps
 
             foreach (StepCommandSelection selection in _commandSelections)
             {
-                StepInfo commandStep = resolvedSteps.FirstOrDefault(step =>
-                    string.Equals(step.Command, selection.Name, StringComparison.OrdinalIgnoreCase))
-                    ?? throw new InvalidConfigurationException(
+                StepInfo[] matches = [.. resolvedSteps.Where(step =>
+                    string.Equals(step.Command, selection.Name, StringComparison.OrdinalIgnoreCase))];
+
+                if (matches.Length == 0)
+                    throw new InvalidConfigurationException(
                         $"Unknown command '{selection.Name}'. {DescribeAvailableCommands(resolvedSteps)}",
                         ExitCodes.UnrecognizedOption);
 
-                targets.Add(commandStep.StepBaseType);
+                // Commands come from whatever steps are registered, including a plugin's, so two of them can
+                // claim the same name. Picking one silently would make which job runs depend on plugin order.
+                if (matches.Length > 1)
+                    throw new InvalidConfigurationException(
+                        $"Command '{selection.Name}' is claimed by more than one step: {string.Join(", ", matches.Select(static s => s.StepType.FullName).Order())}.",
+                        ExitCodes.ConflictingConfigurations);
+
+                targets.Add(matches[0].StepBaseType);
             }
 
             if (targets.Count > 1)
                 throw new InvalidConfigurationException(
-                    $"Only one command can run at a time, but {string.Join(", ", targets.Select(static t => t.Name).Order())} were all selected.",
+                    $"Only one command can run at a time, but these were all selected: {string.Join(", ", targets.Select(t => DescribeTarget(resolvedSteps, t)).Order())}.",
                     ExitCodes.ConflictingConfigurations);
 
             return targets.FirstOrDefault();
+        }
+
+        /// <summary>Names a target the way the operator asked for it — by command where it has one.</summary>
+        private static string DescribeTarget(IReadOnlyList<StepInfo> resolvedSteps, Type stepBaseType)
+        {
+            string? command = resolvedSteps.FirstOrDefault(step => step.StepBaseType == stepBaseType)?.Command;
+            return command is null ? stepBaseType.Name : $"'{command}'";
         }
 
         private static string DescribeAvailableCommands(IReadOnlyList<StepInfo> resolvedSteps)

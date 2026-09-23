@@ -19,10 +19,7 @@ using Nethermind.Trie;
 namespace Nethermind.Init.Steps;
 
 [StepCommand("import-flat-db", "Copy the pruning-trie state database into the flat state database.")]
-[RunnerStepDependencies(
-    dependencies: [typeof(InitializeBlockTree)],
-    dependents: [typeof(InitializeBlockchain)]
-)]
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
 public class ImportFlatDb(
     IBlockTree blockTree,
     IPersistence persistence,
@@ -68,6 +65,15 @@ public class ImportFlatDb(
 
         if (_logger.IsInfo) _logger.Info($"Copying state {head.ToString(BlockHeader.Format.Short)} with state root {head.StateRoot}");
 
-        await importer.Copy(new StateId(head), cancellationToken);
+        try
+        {
+            await importer.Copy(new StateId(head), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutdown has already set the exit code; report it as the interruption it is rather than letting
+            // the step machinery log a failure stack trace.
+            if (_logger.IsInfo) _logger.Info("Import cancelled by user");
+        }
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Logging;
-using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1;
 
@@ -36,10 +35,6 @@ public class EraCliRunner(
         {
             _logger.Warn($"A running export job was cancelled.");
         }
-        catch (Exception e) when (e is EraException)
-        {
-            _logger.Error($"The export failed with the message: {e.Message}");
-        }
         catch (Exception e)
         {
             _logger.Error("Export error", e);
@@ -56,10 +51,6 @@ public class EraCliRunner(
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {
             _logger.Warn($"A running import job was cancelled.");
-        }
-        catch (Exception e) when (e is EraException or EraImportException)
-        {
-            _logger.Error($"The import failed with the message: {e.Message}");
         }
         catch (Exception e)
         {

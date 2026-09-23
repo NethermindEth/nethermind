@@ -312,6 +312,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        [CancelAfter(5000)]
+        public async Task Config_and_command_selecting_the_same_step_is_not_a_conflict(CancellationToken cancellationToken)
+        {
+            // The production path for `nethermind era-import`: the command names the step and the era config
+            // that supplies its directory selects the very same one.
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(CommandStep), CommandStep.CommandName, _targetGraph);
+
+            container.Resolve<StepE>().Waiter.SetResult();
+            await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken);
+
+            Assert.That(container.Resolve<CommandStep>().WasExecuted, Is.True);
+        }
+
+        [Test]
         public async Task Two_distinct_targets_are_rejected()
         {
             await using IContainer container = CreateNethermindEnvironment(typeof(StepA), CommandStep.CommandName, _targetGraph);

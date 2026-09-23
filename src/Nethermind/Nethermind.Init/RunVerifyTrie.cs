@@ -15,10 +15,7 @@ using Nethermind.State;
 namespace Nethermind.Init;
 
 [StepCommand("verify-trie", "Verify that the full state trie is stored for the current head.")]
-[RunnerStepDependencies(
-    dependencies: [typeof(InitializeBlockTree)],
-    dependents: [typeof(InitializeBlockchain)]
-)]
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
 public class RunVerifyTrie(
     IWorldStateManager worldStateManager,
     IBlockTree blockTree,
@@ -32,12 +29,19 @@ public class RunVerifyTrie(
     {
         _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
         BlockHeader? head = blockTree!.Head?.Header;
-        if (head is not null)
+
+        // Report the verdict through the exit code so the command is usable from a script. Having nothing to
+        // verify is a failure too: a caller asking for verification must not read "no head" as "state is fine".
+        if (head is null)
+        {
+            if (_logger.IsError) _logger.Error("Verify trie failed: the block tree has no head to verify.");
+            processExitSource!.Exit(ExitCodes.GeneralError);
+        }
+        else
         {
             _logger.Info($"Starting from {head.Number} {head.StateRoot}{Environment.NewLine}");
             if (!worldStateManager.VerifyTrie(head, processExitSource!.Token))
             {
-                // Report the verdict through the exit code so the command is usable from a script.
                 if (_logger.IsError) _logger.Error("Verify trie failed");
                 processExitSource.Exit(ExitCodes.GeneralError);
             }
