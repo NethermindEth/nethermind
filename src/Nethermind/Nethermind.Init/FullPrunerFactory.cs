@@ -95,22 +95,18 @@ public class FullPrunerFactory(
     /// for automatic pruning to ever observe enough free disk space to start.
     /// </summary>
     /// <remarks>
-    /// <c>FullPruner.HaveEnoughDiskSpaceToRun</c> refuses to start pruning unless free space is at
-    /// least <see cref="FullPruner.ChainSizeThresholdFactor"/>% of the estimated pruning size. A threshold
-    /// set below that requirement can never be observed as sufficient by the time it fires, so automatic
-    /// pruning would never run (#6838).
+    /// The trigger fires only while free space is below the threshold, but <see cref="FullPruner"/> starts
+    /// only once free space reaches <see cref="FullPruner.GetRequiredFreeSpace"/>. A threshold at or below
+    /// that requirement leaves no free-space value satisfying both, so automatic pruning never runs (#6838).
     /// </remarks>
     private void WarnIfThresholdBelowRequiredSpace(long threshold, IChainEstimations chainEstimations)
     {
-        if (!pruningConfig.AvailableSpaceCheckEnabled) return;
-
-        long? pruningSizeEstimate = chainEstimations.PruningSize;
-        if (pruningSizeEstimate is null) return;
-
-        long requiredSpace = pruningSizeEstimate.Value * FullPruner.ChainSizeThresholdFactor / 100;
-        if (threshold <= requiredSpace && _logger.IsWarn)
+        if (_logger.IsWarn
+            && pruningConfig.AvailableSpaceCheckEnabled
+            && FullPruner.GetRequiredFreeSpace(chainEstimations) is long requiredSpace
+            && threshold <= requiredSpace)
         {
-            _logger.Warn($"Full pruning threshold {threshold.SizeToString(true)} (={threshold.SizeToString()}) is below the estimated {requiredSpace.SizeToString(true)} (={requiredSpace.SizeToString()}) required to run full pruning; automatic pruning may never find enough free disk space to start. Consider raising Pruning.{nameof(IPruningConfig.FullPruningThresholdMb)}.");
+            _logger.Warn($"Full pruning threshold {threshold.SizeToString(true)} (={threshold.SizeToString()}) is at or below the estimated {requiredSpace.SizeToString(true)} (={requiredSpace.SizeToString()}) required to run full pruning; automatic pruning may never find enough free disk space to start. Consider raising Pruning.{nameof(IPruningConfig.FullPruningThresholdMb)}.");
         }
     }
 }
