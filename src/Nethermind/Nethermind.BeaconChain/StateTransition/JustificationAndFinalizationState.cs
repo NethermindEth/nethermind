@@ -15,20 +15,49 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// Fork choice uses this to compute a block's <em>unrealized</em> checkpoints (the spec's
 /// <c>compute_pulled_up_tip</c>) from its post-state without the state copy the spec performs.
 /// The <see cref="Checkpoint"/> instances are shared with the state and treated as immutable; the
-/// justification bits are cloned. Call <see cref="ApplyTo"/> to commit the result, as the realized
+/// justification bits are cloned. Call <see cref="ApplyTo(BeaconStateFulu)"/> to commit the result, as the realized
 /// epoch processing does.
 /// </remarks>
-public sealed class JustificationAndFinalizationState(BeaconStateFulu state)
+public sealed class JustificationAndFinalizationState
 {
-    public Checkpoint PreviousJustifiedCheckpoint { get; set; } = state.PreviousJustifiedCheckpoint!;
+    /// <summary>Detaches the justification and finalization fields of a Fulu <paramref name="state"/>, cloning its justification bits.</summary>
+    public JustificationAndFinalizationState(BeaconStateFulu state)
+        : this(state.PreviousJustifiedCheckpoint!, state.CurrentJustifiedCheckpoint!, state.FinalizedCheckpoint!, state.JustificationBits!)
+    {
+    }
 
-    public Checkpoint CurrentJustifiedCheckpoint { get; set; } = state.CurrentJustifiedCheckpoint!;
+    /// <summary>Detaches the justification and finalization fields of a Gloas <paramref name="state"/>, cloning its justification bits.</summary>
+    public JustificationAndFinalizationState(BeaconStateGloas state)
+        : this(state.PreviousJustifiedCheckpoint!, state.CurrentJustifiedCheckpoint!, state.FinalizedCheckpoint!, state.JustificationBits!)
+    {
+    }
 
-    public Checkpoint FinalizedCheckpoint { get; set; } = state.FinalizedCheckpoint!;
+    private JustificationAndFinalizationState(Checkpoint previousJustified, Checkpoint currentJustified, Checkpoint finalized, BitArray justificationBits)
+    {
+        PreviousJustifiedCheckpoint = previousJustified;
+        CurrentJustifiedCheckpoint = currentJustified;
+        FinalizedCheckpoint = finalized;
+        JustificationBits = new BitArray(justificationBits);
+    }
 
-    public BitArray JustificationBits { get; } = new(state.JustificationBits!);
+    public Checkpoint PreviousJustifiedCheckpoint { get; set; }
+
+    public Checkpoint CurrentJustifiedCheckpoint { get; set; }
+
+    public Checkpoint FinalizedCheckpoint { get; set; }
+
+    public BitArray JustificationBits { get; }
 
     public void ApplyTo(BeaconStateFulu state)
+    {
+        state.PreviousJustifiedCheckpoint = PreviousJustifiedCheckpoint;
+        state.CurrentJustifiedCheckpoint = CurrentJustifiedCheckpoint;
+        state.FinalizedCheckpoint = FinalizedCheckpoint;
+        state.JustificationBits = JustificationBits;
+    }
+
+    /// <summary>Writes these fields back to a Gloas <paramref name="state"/>, as <c>process_justification_and_finalization</c> does.</summary>
+    public void ApplyTo(BeaconStateGloas state)
     {
         state.PreviousJustifiedCheckpoint = PreviousJustifiedCheckpoint;
         state.CurrentJustifiedCheckpoint = CurrentJustifiedCheckpoint;
