@@ -82,7 +82,7 @@ public class FlatTrieVerifier
 
         // FullScan on the bundle only: trie nodes are read through its persistence reader. `reader` just
         // serves metadata and range iterators, which never take the readahead path, so it stays flagless
-        // and shares the cached reader instead of pinning a second snapshot.
+        // on the shared cached reader. The run therefore pins two snapshots: that one and the bundle's.
         using ReadOnlySnapshotBundle bundle = _flatDbManager.GatherReadOnlySnapshotBundle(stateId, ReaderFlags.FullScan);
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
 
