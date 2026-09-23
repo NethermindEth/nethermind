@@ -344,8 +344,21 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (ownerReader.BitDepth == bitDepth)
             return FoldBoundaryFromPartition(context, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, resultDepth, partition);
 
-        // A deeper group needs its own frame. Publish its completed contents here; the returned subtree root
-        // is left for the caller to place, allowing composition to promote it through a compressed path.
+        return FoldInOwnFrame(context, in ownerReader, current, operations, ref path, bitDepth, resultDepth, partition);
+    }
+
+    /// <summary>Folds a group deeper than the open frame in a frame of its own, publishing it before returning its root.</summary>
+    /// <remarks>
+    /// The returned subtree root is left for the caller to place, allowing composition to promote it through a
+    /// compressed path. Kept out of line: the frame and the node temporaries hold references, so the JIT zeroes their
+    /// stack space on entry, which inlined would be paid by every fold that reuses its owner's frame.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    [SkipLocalsInit]
+    private static FoldResult FoldInOwnFrame(FoldContext context, in GroupFrameReader<TKey, TPath> ownerReader, scoped in BoundaryNode current,
+        Span<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int resultDepth, scoped PartitionOutcome partition)
+    {
+        TrieUpdaterMetrics? metrics = context.Metrics;
         GroupFrameReader<TKey, TPath> reader = new(context.Store, bitDepth, metrics);
         using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
