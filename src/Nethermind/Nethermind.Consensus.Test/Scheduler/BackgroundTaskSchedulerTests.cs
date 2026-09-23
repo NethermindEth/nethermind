@@ -64,7 +64,7 @@ public class BackgroundTaskSchedulerTests
             Assert.That(before, Is.SameAs(after));
             Assert.That(before.IsThreadPoolThread, Is.False);
             Assert.That(before.Name, Does.StartWith("Nethermind Background"));
-            Assert.That(before.Priority, Is.EqualTo(ThreadPriority.BelowNormal));
+            Assert.That(before.Priority, Is.EqualTo(OperatingSystem.IsLinux() ? ThreadPriority.Normal : ThreadPriority.BelowNormal));
         }
     }
 

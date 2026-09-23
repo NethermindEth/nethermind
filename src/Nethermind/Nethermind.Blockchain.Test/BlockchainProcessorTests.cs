@@ -127,7 +127,8 @@ public class BlockchainProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(executions, Has.Count.EqualTo(2));
-            Assert.That(executions.All(execution => execution.IsMain && execution.Priority == ThreadPriority.Highest), Is.True);
+            ThreadPriority expectedPriority = OperatingSystem.IsLinux() ? ThreadPriority.Normal : ThreadPriority.Highest;
+            Assert.That(executions.All(execution => execution.IsMain && execution.Priority == expectedPriority), Is.True);
             Assert.That(executions.All(execution => execution.Name == "Nethermind Block Processing"), Is.EqualTo(dedicated));
             if (dedicated)
             {

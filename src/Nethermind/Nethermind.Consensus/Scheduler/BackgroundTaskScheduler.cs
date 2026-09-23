@@ -439,9 +439,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                                 Thread thread = new (ProcessBackgroundTasks)
                                 {
                                     IsBackground = true,
-                                    Priority = ThreadPriority.BelowNormal,
                                     Name = $"Nethermind Background {i + 1}",
                                 };
+                                if (!OperatingSystem.IsLinux()) thread.Priority = ThreadPriority.BelowNormal;
                                 thread.Start();
                                 return thread;
                             })];
