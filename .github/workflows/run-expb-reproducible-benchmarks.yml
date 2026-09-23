@@ -2650,6 +2650,7 @@ jobs:
             fi
           done <<< "${mounted_targets}"
           rm -rf -- "${target}"
+          rmdir --ignore-fail-on-non-empty -- "$(dirname -- "${target}")"
           echo "Removed uploaded campaign directory: ${target}"
       - name: Collect and upload profiling artifacts
         id: collect-profiling
