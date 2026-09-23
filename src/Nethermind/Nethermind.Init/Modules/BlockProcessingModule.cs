@@ -112,7 +112,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,
                 initConfig.BackgroundTaskMaxNumber,
-                logManager))
+                logManager,
+                blocksConfig.ProcessingCores))
 
             // Some configuration that applies to validation and rpc but not to block producer. Plugins can add
             // modules in case they have special case where it only apply to validation and rpc but not block producer.

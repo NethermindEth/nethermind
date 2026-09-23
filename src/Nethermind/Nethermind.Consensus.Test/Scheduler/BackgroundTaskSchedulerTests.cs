@@ -47,6 +47,28 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
+    public async Task Background_work_and_continuations_stay_on_dedicated_workers()
+    {
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 16, LimboLogs.Instance);
+        System.Threading.Tasks.TaskCompletionSource<(Thread Before, Thread After)> completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.That(scheduler.TryScheduleTask(default(TestRequest), async (_, _) =>
+        {
+            Thread before = Thread.CurrentThread;
+            await Task.Yield();
+            completed.SetResult((before, Thread.CurrentThread));
+        }), Is.True);
+
+        (Thread before, Thread after) = await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.SameAs(after));
+            Assert.That(before.IsThreadPoolThread, Is.False);
+            Assert.That(before.Name, Does.StartWith("Nethermind Background"));
+            Assert.That(before.Priority, Is.EqualTo(ThreadPriority.BelowNormal));
+        }
+    }
+
+    [Test]
     public async Task DisposeAsync_should_complete_when_scheduler_is_idle()
     {
         BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);

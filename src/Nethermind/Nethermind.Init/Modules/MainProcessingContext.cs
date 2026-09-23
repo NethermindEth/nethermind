@@ -50,7 +50,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 {
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump,
-                    ProcessingCores = blocksConfig.ProcessingCores
+                    ProcessingCores = blocksConfig.ProcessingCores,
+                    DedicatedProcessingThread = blocksConfig.DedicatedProcessingThread
                 })
                 .AddScoped<BlockchainProcessor>()
                 .Bind<IBlockchainProcessor, BlockchainProcessor>()

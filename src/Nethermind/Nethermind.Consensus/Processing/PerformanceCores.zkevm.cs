@@ -18,6 +18,10 @@ internal static partial class PerformanceCores
 
     public static PrewarmSplit? PrewarmFor(ProcessingCores cores) => null;
 
+    internal static Scope NarrowDedicatedThread(ProcessingCores cores, bool background, ILogger logger) => default;
+
+    internal static ReadOnlySpan<int> DedicatedCpus(ProcessingCores cores) => [];
+
     internal sealed class PrewarmSplit
     {
         public int NearWorkers => 0;

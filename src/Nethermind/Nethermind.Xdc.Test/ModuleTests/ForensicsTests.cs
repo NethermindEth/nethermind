@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Config;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
@@ -16,7 +17,9 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
-public class ForensicsTests
+[TestFixture(false)]
+[TestFixture(true)]
+public class ForensicsTests(bool dedicatedProcessingThread)
 {
     [Test]
     public async Task TestProcessQcShallSetForensicsCommittedQc()
@@ -614,5 +617,9 @@ public class ForensicsTests
         return ulong.Parse(value, CultureInfo.InvariantCulture);
     }
 
-    private static void RegisterRealForensicsProcessor(ContainerBuilder builder) => builder.RegisterType<ForensicsProcessor>().As<IForensicsProcessor>().SingleInstance();
+    private void RegisterRealForensicsProcessor(ContainerBuilder builder)
+    {
+        builder.Intercept<IBlocksConfig>(config => config.DedicatedProcessingThread = dedicatedProcessingThread);
+        builder.RegisterType<ForensicsProcessor>().As<IForensicsProcessor>().SingleInstance();
+    }
 }

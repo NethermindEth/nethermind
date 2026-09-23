@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -810,9 +811,10 @@ public partial class EngineModuleTests
 
     [Test]
     [CancelAfter(30000)]
-    public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync(CancellationToken cancellationToken)
+    public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync([Values] bool dedicatedProcessingThread, CancellationToken cancellationToken)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder =>
+            builder.Intercept<IBlocksConfig>(config => config.DedicatedProcessingThread = dedicatedProcessingThread));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash!;
         // create 7 block gap

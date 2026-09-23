@@ -115,6 +115,7 @@ public class TestBlockchainUtil(
         // by block (e.g. flat) retain the fork's state and can build further blocks on top of it.
         if (parentToBuildOn.Hash != headBeforeSuggest)
         {
+            await mainProcessingContext.Value.BlockProcessingQueue.WaitForBlockProcessing(cancellationToken);
             mainProcessingContext.Value.BlockchainProcessor.Process(block!, ProcessingOptions.EthereumMerge | ProcessingOptions.ForceProcessing, NullBlockTracer.Instance, cancellationToken);
         }
 

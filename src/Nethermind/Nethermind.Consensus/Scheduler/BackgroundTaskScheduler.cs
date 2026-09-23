@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -45,7 +46,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private long _lastDropLogTicks;
     private bool _disposed = false;
 
-    public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager)
+    public BackgroundTaskScheduler(IBranchProcessor branchProcessor, IChainHeadInfoProvider headInfo, int concurrency, int capacity, ILogManager logManager, ProcessingCores processingCores = ProcessingCores.Performance)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(concurrency, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
@@ -73,7 +74,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         // TaskScheduler to run tasks at BelowNormal priority
         _scheduler = new BelowNormalPriorityTaskScheduler(
             concurrency,
-            logManager);
+            logManager,
+            processingCores);
 
         TaskFactory factory = new(_scheduler);
         _tasksExecutors = [.. Enumerable.Range(0, concurrency).Select(_ => factory.StartNew(StartChannel).Unwrap())];
@@ -422,13 +424,15 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         private readonly Thread[] workerThreads;
         private readonly int _maxDegreeOfParallelism;
         private readonly ILogger _logger;
+        private readonly ProcessingCores _processingCores;
 
-        public BelowNormalPriorityTaskScheduler(int maxDegreeOfParallelism, ILogManager logManager)
+        public BelowNormalPriorityTaskScheduler(int maxDegreeOfParallelism, ILogManager logManager, ProcessingCores processingCores)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
 
             _logger = logManager.GetClassLogger<BelowNormalPriorityTaskScheduler>();
             _maxDegreeOfParallelism = maxDegreeOfParallelism;
+            _processingCores = processingCores;
             workerThreads = [.. Enumerable.Range(0, maxDegreeOfParallelism)
                             .Select(i =>
                             {
@@ -447,6 +451,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         {
             try
             {
+                using PerformanceCores.Scope affinity = PerformanceCores.NarrowDedicatedThread(_processingCores, background: true, _logger);
                 foreach (Task task in _tasks.GetConsumingEnumerable())
                 {
                     try

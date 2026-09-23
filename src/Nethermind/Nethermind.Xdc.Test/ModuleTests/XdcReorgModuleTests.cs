@@ -6,15 +6,18 @@ using Nethermind.Xdc.Test.Helpers;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Config;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
-internal class XdcReorgModuleTests
+[TestFixture(false)]
+[TestFixture(true)]
+internal class XdcReorgModuleTests(bool dedicatedProcessingThread)
 {
     [Test]
     public async Task TestNormalReorgWhenNotInvolveCommittedBlock()
     {
-        using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create();
+        using XdcTestBlockchain blockChain = await CreateBlockchain();
         ulong startRound = blockChain.XdcContext.CurrentRound;
         await blockChain.AddBlocks(3);
         // Simulate timeout to make block rounds non-consecutive preventing finalization
@@ -33,7 +36,7 @@ internal class XdcReorgModuleTests
     [Test]
     public async Task BuildAValidForkOnFinalizedBlockAndAssertForkBecomesCanonical()
     {
-        using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(3);
+        using XdcTestBlockchain blockChain = await CreateBlockchain();
         ulong startRound = blockChain.XdcContext.CurrentRound;
         await blockChain.AddBlocks(10);
 
@@ -73,7 +76,7 @@ internal class XdcReorgModuleTests
     [Test]
     public async Task TestShouldNotReorgCommittedBlock([Values(5, 900, 901)] int number)
     {
-        using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create();
+        using XdcTestBlockchain blockChain = await CreateBlockchain();
         ulong startRound = blockChain.XdcContext.CurrentRound;
         await blockChain.AddBlocks(number);
         BlockRoundInfo finalizedBlockInfo = blockChain.XdcContext.HighestCommitBlock;
@@ -90,7 +93,7 @@ internal class XdcReorgModuleTests
     [Test]
     public async Task AfterReorgSnapshotManagerReturnsSnapshotForNewChainGapBlock()
     {
-        using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(3);
+        using XdcTestBlockchain blockChain = await CreateBlockchain();
         blockChain.ChangeReleaseSpec(spec => { spec.EpochLength = 10; spec.Gap = 5; });
         await blockChain.AddBlocks(3);
 
@@ -129,4 +132,7 @@ internal class XdcReorgModuleTests
         Assert.That(snapshotAfterReorg, Is.Not.Null);
         Assert.That(snapshotAfterReorg.HeaderHash, Is.EqualTo(newChainGapBlock.Hash!));
     }
+
+    private Task<XdcTestBlockchain> CreateBlockchain() => XdcTestBlockchain.Create(configurer: builder =>
+        builder.Intercept<IBlocksConfig>(config => config.DedicatedProcessingThread = dedicatedProcessingThread));
 }

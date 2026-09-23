@@ -51,11 +51,15 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
-    [ConfigItem(Description = "On an Intel hybrid CPU, pin block processing to: `All` logical processors, both hyperthreads of every `Performance` core, one hyperthread of every performance core (`PerformancePhysical`), or one performance core to itself, the first without CPU 0, kept clear of prewarm (`Dedicated`). No effect on other CPUs.", DefaultValue = "Performance", HiddenFromDocs = true)]
+    [ConfigItem(Description = "On a supported hybrid CPU, pin block processing to: `All` logical processors, both hyperthreads of every `Performance` core, one hyperthread of every performance core (`PerformancePhysical`), or one performance core to itself, the first without CPU 0, kept clear of prewarm (`Dedicated`). No effect on other CPUs. Background workers prefer efficiency cores independently of DedicatedProcessingThread; All disables their affinity too.", DefaultValue = "Performance", HiddenFromDocs = true)]
     ProcessingCores ProcessingCores { get; set; }
 
-    [ConfigItem(Description = "On an Intel hybrid CPU, keep the pre-warm workers for the transactions block processing reaches next on the performance cores and the rest on the efficiency cores. No effect on other CPUs, nor with `ProcessingCores` set to `All`.", DefaultValue = "true", HiddenFromDocs = true)]
+    [ConfigItem(Description = "On a supported hybrid CPU, keep the pre-warm workers for the transactions block processing reaches next on the performance cores and the rest on the efficiency cores. No effect on other CPUs, nor with `ProcessingCores` set to `All`.", DefaultValue = "true", HiddenFromDocs = true)]
     bool PreWarmCoreSplit { get; set; }
+
+    /// <summary>Whether to use a dedicated block-processing thread and topology-based worker affinity. Defaults to false.</summary>
+    [ConfigItem(Description = "Use a dedicated block-processing thread on the second available physical performance core, falling back to the first. Avoid CPU 0 when another suitable logical processor is available. ProcessingCores=All disables affinity while retaining the dedicated thread. Affinity is best effort on supported Linux and Windows hosts. Enable only after benchmarking; multiple instances sharing an unrestricted CPU set select the same processing CPU.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool DedicatedProcessingThread { get => false; set { } }
 
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
     int MempoolPreWarmConcurrency { get; set; }
