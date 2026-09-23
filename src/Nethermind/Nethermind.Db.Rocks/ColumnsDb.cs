@@ -190,7 +190,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
             // Shared by all column iterator managers; the ReadOptions it returns is created lazily
             // on the first HintReadAhead read, so snapshots that never iterate allocate nothing extra.
-            Func<ReadOptions>? readAheadOptionsFactory = sequentialReadAhead ? GetOrCreateReadAheadReadOptions : null;
+            // ReadAheadSize = 0 opts out of readahead iterators, matching DbOnTheRocks.
+            Func<ReadOptions>? readAheadOptionsFactory = sequentialReadAhead && columnsDb.ReadAheadSize > 0 ? GetOrCreateReadAheadReadOptions : null;
             T[] keys = CreateKeyCache(columnsDb);
             GetCachedMaxOrdinal(columnsDb, keys);
             _readers = CreateReaders();
@@ -276,10 +277,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             if (options is not null) return options;
 
             ReadOptions created = CreateReadOptions(_columnsDb, _snapshot);
-            if (_columnsDb.ReadAheadSize > 0)
-            {
-                created.SetReadaheadSize(_columnsDb.ReadAheadSize);
-            }
+            created.SetReadaheadSize(_columnsDb.ReadAheadSize);
 
             options = Interlocked.CompareExchange(ref _readAheadReadOptions, created, null);
             if (options is not null)

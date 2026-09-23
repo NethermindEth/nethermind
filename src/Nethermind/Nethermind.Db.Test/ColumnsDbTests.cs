@@ -29,19 +29,20 @@ public class ColumnsDbTests
         }
 
         Directory.CreateDirectory(DbPath);
-        ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath,
-            new("Blocks", DbPath)
+        _db = CreateDb(DbPath, new DbConfig());
+    }
+
+    private static ColumnsDb<ReceiptsColumns> CreateDb(string path, DbConfig dbConfig) =>
+        new(path,
+            new("Blocks", path)
             {
                 DeleteOnStart = true,
             },
-            new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+            dbConfig,
+            new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<ReceiptsColumns>()
         );
-
-        _db = columnsDb;
-    }
 
     [TearDown]
     public void TearDown() => _db.Dispose();
@@ -212,6 +213,18 @@ public class ColumnsDbTests
 
         Assert.That(((RocksDbReader)snapshot.GetColumn(ReceiptsColumns.Blocks)).IteratorManager, Is.Null,
             "snapshots without the sequential-read-ahead opt-in must keep point-Get behavior for HintReadAhead");
+    }
+
+    [Test]
+    public void Snapshot_SequentialReadAhead_WithReadAheadDisabled_HasNoIteratorManager()
+    {
+        string path = DbPath + "-no-readahead";
+        Directory.CreateDirectory(path);
+        using ColumnsDb<ReceiptsColumns> db = CreateDb(path, new DbConfig { ReadAheadSize = 0 });
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)db).CreateSnapshot(sequentialReadAhead: true);
+
+        Assert.That(((RocksDbReader)snapshot.GetColumn(ReceiptsColumns.Blocks)).IteratorManager, Is.Null,
+            "ReadAheadSize = 0 must opt snapshots out of readahead iterators, as it does for DbOnTheRocks");
     }
 
     [TestCase(false)]
