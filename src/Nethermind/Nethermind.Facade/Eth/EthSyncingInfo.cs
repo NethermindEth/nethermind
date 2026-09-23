@@ -29,14 +29,13 @@ namespace Nethermind.Facade.Eth
         private readonly ISyncProgressResolver _syncProgressResolver = syncProgressResolver;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy;
 
+        /// <remarks>
+        /// CL-driven catch-up keeps <c>Head</c> close to <c>BestSuggestedHeader</c> while the beacon sync target is far ahead,
+        /// so the highest block is widened with <see cref="IBeaconSyncStrategy.GetTargetBlockHeight"/>.
+        /// <c>BestSuggestedBeaconHeader</c> is not used: it is a high-water mark that an abandoned fork can leave above the head.
+        /// </remarks>
         public SyncingResult GetFullInfo()
         {
-            // CL-driven catch-up keeps Head close to BestSuggestedHeader while the FCU/beacon
-            // destination remains far ahead. Widen with IBeaconSyncStrategy.GetTargetBlockHeight
-            // so eth_syncing does not report false for the entire forward sync (#12673).
-            // That API is null for No.BeaconSync and after the beacon pivot is removed, so PoW
-            // and idle post-Merge keep Head vs BestSuggestedHeader. Do not use
-            // BestSuggestedBeaconHeader: it is a historical high-water mark, not the current CL target.
             (bool isSyncing, ulong headNumberOrZero, ulong bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
             ulong beaconSyncTarget = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
             if (beaconSyncTarget > bestSuggestedNumber)

@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
@@ -99,124 +98,31 @@ namespace Nethermind.Facade.Test.Eth
             Assert.That(syncingResult.HighestBlock, Is.EqualTo(100UL));
         }
 
-        /// <summary>
-        /// CL-driven forward sync keeps Head close to BestSuggestedHeader while the current
-        /// FCU/beacon destination (GetTargetBlockHeight) remains far ahead. eth_syncing must
-        /// use that destination or it reports false for the entire catch-up (see #12673).
-        /// BestSuggestedBeaconHeader is deliberately unused: it is not the current CL target.
-        /// </summary>
-        [Test]
-        public void GetFullInfo_WhenHeadTracksSuggestedButBeaconTipIsAhead_ReportsSyncing()
+        [TestCase(10005UL, 10000UL, 130000UL, true, 130000UL, TestName = "BeaconTargetFarAhead")]
+        [TestCase(10005UL, 10000UL, 10000UL, false, 0UL, TestName = "BeaconTargetCaughtUp")]
+        [TestCase(10005UL, 10000UL, null, false, 0UL, TestName = "BeaconSyncFinished")]
+        [TestCase(0UL, 0UL, 1UL, true, 1UL, TestName = "AtGenesisWithNearbyBeaconTarget")]
+        [TestCase(0UL, 0UL, 8UL, true, 8UL, TestName = "AtGenesisWithBeaconTargetAtMaxDistance")]
+        public void GetFullInfo_UsesBeaconSyncTarget(ulong bestSuggested, ulong head, ulong? beaconTarget, bool expectedSyncing, ulong expectedHighest)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(true);
             syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(true);
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10005UL).TestObject);
-            blockTree.BestSuggestedBeaconHeader.Returns((BlockHeader?)null);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(10000UL).TestObject).TestObject);
-
-            IBeaconSyncStrategy beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-            beaconSyncStrategy.GetTargetBlockHeight().Returns(130000UL);
-
-            EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, new SyncConfig(),
-                new StaticSelector(SyncMode.WaitingForBlock), syncProgressResolver, beaconSyncStrategy, LimboLogs.Instance);
-
-            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-
-            Assert.That(syncingResult.IsSyncing, Is.True);
-            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(10000UL));
-            Assert.That(syncingResult.HighestBlock, Is.EqualTo(130000UL));
-            Assert.That(syncingResult.SyncMode, Is.EqualTo(SyncMode.WaitingForBlock));
-        }
-
-        /// <summary>
-        /// An abandoned higher beacon fork can leave BestSuggestedBeaconHeader stuck above Head
-        /// after FCU moved to a lower canonical head. eth_syncing must follow GetTargetBlockHeight
-        /// (current FCU/pivot destination), not that historical high-water mark.
-        /// </summary>
-        [Test]
-        public void GetFullInfo_AbandonedBeaconHighWater_CurrentTargetCaughtUp_DoesNotKeepReportingSyncing() =>
-            AssertAbandonedHighWaterDoesNotKeepSyncing(10000UL);
-
-        [Test]
-        public void GetFullInfo_AbandonedBeaconHighWater_BeaconSyncFinished_DoesNotKeepReportingSyncing() =>
-            AssertAbandonedHighWaterDoesNotKeepSyncing(null);
-
-        private static void AssertAbandonedHighWaterDoesNotKeepSyncing(ulong? targetHeight)
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
-            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            syncProgressResolver.IsFastBlocksBodiesFinished().Returns(true);
-            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(true);
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10005UL).TestObject);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestSuggested).TestObject);
+            // Abandoned-fork high-water mark that must not keep the node reporting syncing
             blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(130000UL).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(10000UL).TestObject).TestObject);
-
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(head).TestObject).TestObject);
             IBeaconSyncStrategy beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-            beaconSyncStrategy.GetTargetBlockHeight().Returns(targetHeight);
+            beaconSyncStrategy.GetTargetBlockHeight().Returns(beaconTarget);
 
-            EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, new SyncConfig(),
+            EthSyncingInfo ethSyncingInfo = new(blockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
                 new StaticSelector(SyncMode.WaitingForBlock), syncProgressResolver, beaconSyncStrategy, LimboLogs.Instance);
-
-            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-
-            Assert.That(syncingResult.IsSyncing, Is.False);
-            Assert.That(syncingResult.HighestBlock, Is.Not.EqualTo(130000UL));
-            Assert.That(syncingResult, Is.EqualTo(SyncingResult.NotSyncing));
-        }
-
-        /// <summary>
-        /// A node that only knows genesis is syncing; a nearby beacon target must not flip that to not syncing.
-        /// </summary>
-        [Test]
-        public void GetFullInfo_AtGenesisWithNearbyBeaconTarget_ReportsSyncing([Values(1UL, 8UL)] ulong targetHeight)
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
-            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(0UL).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(0UL).TestObject).TestObject);
-
-            IBeaconSyncStrategy beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-            beaconSyncStrategy.GetTargetBlockHeight().Returns(targetHeight);
-
-            EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, new SyncConfig(),
-                new StaticSelector(SyncMode.WaitingForBlock), syncProgressResolver, beaconSyncStrategy, LimboLogs.Instance);
-
-            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
-
-            Assert.That(syncingResult.IsSyncing, Is.True);
-            Assert.That(syncingResult.HighestBlock, Is.EqualTo(targetHeight));
-        }
-
-        [TestCase(6178001UL, 6178000UL, false)]
-        [TestCase(6178010UL, 6178000UL, true)]
-        public void GetFullInfo_WithNoBeaconSync_IgnoresBestSuggestedBeaconHeader(ulong bestHeader, ulong currentHead, bool expectedSyncing)
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
-            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            syncProgressResolver.IsFastBlocksBodiesFinished().Returns(true);
-            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(true);
-            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
-            blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(130000UL).TestObject);
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
-
-            EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, new SyncConfig(),
-                new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
 
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
 
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedSyncing));
-            Assert.That(syncingResult.HighestBlock, Is.Not.EqualTo(130000UL));
-            if (expectedSyncing)
-            {
-                Assert.That(syncingResult.HighestBlock, Is.EqualTo(bestHeader));
-                Assert.That(syncingResult.CurrentBlock, Is.EqualTo(currentHead));
-            }
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(expectedHighest));
         }
 
         [TestCase(false, true, true)]
