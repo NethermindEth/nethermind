@@ -385,6 +385,27 @@ public class BlockProcessorTests
         }
     }
 
+    // EIP-2935 runs the code the history account holds, with EIP-8037's full 30M execution grant; a direct
+    // storage write of the parent hash is equivalent only for the canonical bytecode.
+    [Test]
+    public async Task Eip2935_HistorySystemCall_RunsAccountCodeWithFullExecutionGrant()
+    {
+        IReleaseSpec spec = Amsterdam.Instance;
+        byte[] storeGasLeft = [(byte)Instruction.GAS, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE];
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .WithGenesisPostProcessor((_, state) =>
+            {
+                state.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
+                state.InsertCode(Eip2935Constants.BlockHashHistoryAddress, storeGasLeft, spec);
+            }));
+
+        Block block = await chain.AddBlock();
+
+        chain.StateReader.GetStorage(block.Header, Eip2935Constants.BlockHashHistoryAddress, UInt256.Zero, out UInt256 gasLeft);
+        Assert.That(gasLeft, Is.EqualTo((UInt256)(Eip8037Constants.SystemCallBaseGasLimit - GasCostOf.Base)));
+    }
+
     [Test]
     public async Task TransactionTraceBoundary_WhenThePrefixIsSeeded_TellsNoHandlerAboutMisnumberedReceipts()
     {

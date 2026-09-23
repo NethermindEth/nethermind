@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -31,8 +31,20 @@ public partial class BlockAccessListManager
     {
         CheckInitialized();
 
+        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null) return;
+
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
+        Address historyAddress = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        if (!preExecution.WorldState.IsContract(historyAddress)) return;
+
+        // EIP-2935 runs whatever code the account holds; a direct storage write matches only the canonical bytecode.
+        Transaction transaction = spec.IsEip8037Enabled
+            ? new SystemCall { GasLimit = Eip8037Constants.SystemCallGasLimit }
+            : new Transaction { GasLimit = Eip8037Constants.SystemCallBaseGasLimit };
+        transaction.Data = header.ParentHash.Bytes.ToArray();
+        transaction.To = historyAddress;
+        transaction.SenderAddress = Address.SystemUser;
+        preExecution.TxProcessor.Execute(transaction, NullTxTracer.Instance);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
