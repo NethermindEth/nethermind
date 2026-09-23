@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core.Caching;
@@ -46,6 +48,7 @@ public class Engine : IDisposable
     private static int _liveEngines;
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
     private static readonly LruCache<string, V8Script> _runtimeScripts = new(10, "runtime scripts");
+    private static readonly FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> _shippedTracers = LoadShippedTracerNames();
 
     public static Engine? CurrentEngine
     {
@@ -128,6 +131,17 @@ public class Engine : IDisposable
         {
             LoadBuiltIn(Name, Code);
         }
+    }
+
+    private static FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> LoadShippedTracerNames()
+    {
+        List<string> names = [];
+        foreach (string tracer in Directory.EnumerateFiles(TracersPath.GetApplicationResourcePath(), $"*.{Extension}", SearchOption.AllDirectories))
+        {
+            names.Add(Path.GetFileNameWithoutExtension(tracer));
+        }
+
+        return names.ToFrozenSet(StringComparer.Ordinal).GetAlternateLookup<ReadOnlySpan<char>>();
     }
 
     private static V8Script LoadBuiltIn(string name, string code) => _builtInScripts.AddOrUpdate(name, c => _runtime.Compile(code), static (_, script) => script);
@@ -307,10 +321,7 @@ public class Engine : IDisposable
             }
             else if (tracer.StartsWith('{') && tracer.EndsWith('}'))
             {
-                return _runtimeScripts.SetOrGet(
-                    tracer,
-                    tracer,
-                    static (_, tracerCode) => _runtime.Compile(PackTracerCode(tracerCode)));
+                return CompileTracerCode(tracer);
             }
             else
             {
@@ -352,29 +363,41 @@ public class Engine : IDisposable
     }
 
     /// <summary>
-    /// Reports whether <paramref name="tracer"/> is inline tracer code or names a tracer shipped under
-    /// <c>Data/JSTracers</c>, so a request naming anything else can be refused before a script engine is created.
+    /// Refuses a tracer that no script engine could load: inline tracer code that does not compile, or a name that
+    /// is internal or not shipped under <c>Data/JSTracers</c>.
     /// </summary>
-    public static bool IsKnownTracer(string tracer)
+    /// <remarks>
+    /// Every traced transaction gets its own engine, so checking once per request keeps an unusable tracer from
+    /// creating an engine per transaction. Inline code is compiled through the shared runtime, which needs no
+    /// engine, and the compiled script is cached for the engines that follow.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The tracer is not found or its code does not compile.</exception>
+    public static void ValidateTracer(string tracer)
     {
-        tracer = tracer.Trim();
-        if (tracer.StartsWith('_'))
+        ReadOnlySpan<char> trimmed = tracer.AsSpan().Trim();
+        if (trimmed.StartsWith('{') && trimmed.EndsWith('}'))
         {
-            return false;
+            try
+            {
+                CompileTracerCode(tracer.Trim());
+            }
+            catch (ScriptEngineException e) when (!e.IsFatal)
+            {
+                throw new ArgumentException($"Tracer code could not be compiled: {e.Message}", e);
+            }
         }
-
-        if (tracer.StartsWith('{') && tracer.EndsWith('}'))
+        else if (trimmed.StartsWith('_')
+            || Path.GetFileName(trimmed).Length != trimmed.Length
+            || !_shippedTracers.Contains(Path.GetFileNameWithoutExtension(trimmed)))
         {
-            return true;
+            throw new ArgumentException($"Tracer '{tracer}' not found");
         }
-
-        string fileName = ToTracerFileName(tracer);
-        return Path.GetFileName(fileName) == fileName
-            && (_builtInScripts.ContainsKey(fileName) || File.Exists(Path.Combine(TracersPath, fileName).GetApplicationResourcePath()));
     }
 
-    private static string ToTracerFileName(string tracer) =>
-        !Path.HasExtension(tracer) || Path.GetExtension(tracer) != Extension ? Path.ChangeExtension(tracer, Extension) : tracer;
+    private static V8Script CompileTracerCode(string tracerCode) =>
+        _runtimeScripts.SetOrGet(tracerCode, tracerCode, static (_, code) => _runtime.Compile(PackTracerCode(code)));
+
+    private static string ToTracerFileName(string tracer) => Path.ChangeExtension(tracer, Extension);
 
     private static string LoadJavaScriptCodeFromFile(string tracerFileName) =>
         File.ReadAllText(Path.Combine(TracersPath, tracerFileName).GetApplicationResourcePath());
