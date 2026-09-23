@@ -7,6 +7,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Consensus.Processing;
@@ -293,46 +295,73 @@ public class FilterManagerTests
 
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void new_filters_are_rejected_when_queued_item_budget_is_exhausted()
+    public void new_filters_are_rejected_until_queued_item_budget_is_released([Values] bool releaseByPolling)
     {
         const int maxQueuedItems = 4;
         using FilterStore filterStore = new(new TimerFactory(), maxQueuedItems: maxQueuedItems);
+        _filterManager = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
         BlockFilter blockFilter = new(_currentFilterId++);
         filterStore.SaveFilter(blockFilter);
-        _filterManager = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
         for (int i = 0; i < maxQueuedItems; i++)
         {
-            _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(
-                new BlockProcessedEventArgs(Build.A.Block.WithNumber(i).TestObject, []));
+            RaiseBlockProcessed((ulong)i);
         }
 
         Assert.Throws<ConcurrencyLimitReachedException>(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
 
-        // draining the queue frees the budget again
-        _filterManager.PollBlockHashes(blockFilter.Id);
+        if (releaseByPolling)
+        {
+            _filterManager.PollBlockHashes(blockFilter.Id);
+        }
+        else
+        {
+            filterStore.RemoveFilter(blockFilter.Id);
+        }
+
         Assert.DoesNotThrow(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void removing_a_filter_frees_its_queued_item_budget()
+    public void filter_with_most_unpolled_results_is_removed_once_queued_item_budget_is_exceeded()
     {
-        const int maxQueuedItems = 2;
+        const int maxQueuedItems = 3;
         using FilterStore filterStore = new(new TimerFactory(), maxQueuedItems: maxQueuedItems);
-        BlockFilter blockFilter = new(_currentFilterId++);
-        filterStore.SaveFilter(blockFilter);
         _filterManager = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+        BlockFilter unpolled = new(_currentFilterId++);
+        BlockFilter polled = new(_currentFilterId++);
+        filterStore.SaveFilter(unpolled);
+        filterStore.SaveFilter(polled);
 
         for (int i = 0; i < maxQueuedItems; i++)
         {
-            _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(
-                new BlockProcessedEventArgs(Build.A.Block.WithNumber(i).TestObject, []));
+            RaiseBlockProcessed((ulong)i);
+            _filterManager.PollBlockHashes(polled.Id);
         }
 
-        Assert.Throws<ConcurrencyLimitReachedException>(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
+        Assert.Multiple(() =>
+        {
+            Assert.That(filterStore.FilterExists(unpolled.Id), Is.False);
+            Assert.That(filterStore.FilterExists(polled.Id), Is.True);
+        });
+    }
 
-        filterStore.RemoveFilter(blockFilter.Id);
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void queue_recreated_by_enqueue_racing_filter_removal_is_not_counted_in_budget()
+    {
+        using FilterStore filterStore = new(new TimerFactory(), maxQueuedItems: 1);
+        _filterManager = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+        int filterId = _currentFilterId++;
+        // Removes the filter after it was enumerated for the receipt but before its queue is created.
+        filterStore.SaveFilter(new LogFilter(filterId, BlockParameter.Earliest, BlockParameter.Latest, AddressFilter.AnyAddress,
+            new RemovingTopicsFilter(() => filterStore.RemoveFilter(filterId))));
+
+        Block block = Build.A.Block.TestObject;
+        TxReceipt receipt = BuildReceipt(static r => r.WithLogs(Build.A.LogEntry.TestObject));
+        _mainProcessingContext.RaiseTransactionProcessed(new TxProcessedEventArgs(0, Build.A.Transaction.TestObject, block.Header, receipt));
+
         Assert.DoesNotThrow(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
+        Assert.That(_filterManager.GetLogs(filterId), Is.Empty);
     }
 
     [Test, CancelAfter(Timeout.MaxTestTime)]
@@ -492,6 +521,26 @@ public class FilterManagerTests
         builder(builderInstance);
 
         return builderInstance.TestObject;
+    }
+
+    private void RaiseBlockProcessed(ulong number) =>
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(
+            new BlockProcessedEventArgs(Build.A.Block.WithNumber(number).TestObject, []));
+
+    private sealed class RemovingTopicsFilter(Action onAccept) : TopicsFilter
+    {
+        public override IEnumerable<TopicExpression> Expressions => [];
+        public override bool AcceptsAnyBlock => true;
+
+        public override bool Accepts(LogEntry entry)
+        {
+            onAccept();
+            return true;
+        }
+
+        public override bool Accepts(ref LogEntryStructRef entry) => true;
+        public override bool Matches(Bloom bloom) => true;
+        public override bool Matches(ref BloomStructRef bloom) => true;
     }
 }
 

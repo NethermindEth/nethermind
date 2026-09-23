@@ -49,7 +49,7 @@ namespace Nethermind.Facade.Filters
             mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
             _filterStore.FilterRemoved += OnFilterRemoved;
-            _filterStore.QueuedItemCount = CountQueuedItems;
+            _filterStore.IsQueuedItemBudgetExhausted = IsQueuedItemBudgetExhausted;
             txPool.NewPending += OnNewPendingTransaction;
             txPool.RemovedPending += OnRemovedPendingTransaction;
         }
@@ -63,20 +63,85 @@ namespace Nethermind.Facade.Filters
         }
 
         /// <summary>
-        /// Sums the results currently queued across all filters.
+        /// Whether the results queued across all live filters have reached <see cref="FilterStore.MaxQueuedItems"/>.
+        /// </summary>
+        private bool IsQueuedItemBudgetExhausted()
+        {
+            int maxQueuedItems = _filterStore.MaxQueuedItems;
+            return CountQueuedItems(maxQueuedItems) >= maxQueuedItems;
+        }
+
+        /// <summary>
+        /// Removes the filters with the largest queues until the queued results fit <see cref="FilterStore.MaxQueuedItems"/>.
         /// </summary>
         /// <remarks>
-        /// Computed on demand from the live queues rather than tracked incrementally, so it cannot drift
-        /// under the concurrent enqueue/poll/remove races on these lock-free collections. Called only from
-        /// <see cref="FilterStore.SaveFilter"/> (filter creation), which is rare relative to the store/poll paths.
+        /// Run once per processed block, so memory stays bounded by the budget plus one block of results, and
+        /// the cost lands on the filters that are not being polled rather than on callers creating new ones.
         /// </remarks>
-        private long CountQueuedItems()
+        private void EvictFiltersOverBudget()
         {
-            long total = 0;
-            foreach (KeyValuePair<int, ConcurrentQueue<FilterLog>> entry in _logs) total += entry.Value.Count;
-            foreach (KeyValuePair<int, ConcurrentQueue<Hash256>> entry in _blockHashes) total += entry.Value.Count;
-            foreach (KeyValuePair<int, ConcurrentQueue<Option<Hash256>>> entry in _pendingTransactions) total += entry.Value.Count;
+            int maxQueuedItems = _filterStore.MaxQueuedItems;
+            if (maxQueuedItems == 0) return;
+
+            long total = CountQueuedItems(long.MaxValue);
+            if (total <= maxQueuedItems) return;
+
+            using ArrayPoolList<(int Id, int Count)> queues = new(_logs.Count + _blockHashes.Count + _pendingTransactions.Count);
+            AddQueueSizes(_logs, queues);
+            AddQueueSizes(_blockHashes, queues);
+            AddQueueSizes(_pendingTransactions, queues);
+            queues.AsSpan().Sort(static (a, b) => b.Count.CompareTo(a.Count));
+
+            foreach ((int id, int count) in queues.AsSpan())
+            {
+                if (total <= maxQueuedItems) break;
+                _filterStore.RemoveFilter(id);
+                total -= count;
+                if (_logger.IsDebug) _logger.Debug($"Removed filter {id} with {count} unpolled results, queued filter results exceeded {maxQueuedItems}.");
+            }
+        }
+
+        /// <summary>
+        /// Sums the results queued across all live filters, stopping once <paramref name="limit"/> is reached.
+        /// </summary>
+        /// <remarks>
+        /// Computed from the queues rather than tracked incrementally, so it cannot drift. A queue whose filter is
+        /// gone is dropped instead of counted: an enqueue racing a removal can re-create it after
+        /// <see cref="OnFilterRemoved"/> has run, and nothing else would ever remove it.
+        /// </remarks>
+        private long CountQueuedItems(long limit)
+        {
+            long total = CountQueuedItems(_logs, 0, limit);
+            total = CountQueuedItems(_blockHashes, total, limit);
+            return CountQueuedItems(_pendingTransactions, total, limit);
+        }
+
+        private long CountQueuedItems<T>(ConcurrentDictionary<int, ConcurrentQueue<T>> queues, long total, long limit)
+        {
+            foreach (KeyValuePair<int, ConcurrentQueue<T>> entry in queues)
+            {
+                if (total >= limit) break;
+
+                if (_filterStore.FilterExists(entry.Key))
+                {
+                    total += entry.Value.Count;
+                }
+                else
+                {
+                    queues.TryRemove(entry.Key, out _);
+                }
+            }
+
             return total;
+        }
+
+        private static void AddQueueSizes<T>(ConcurrentDictionary<int, ConcurrentQueue<T>> queues, ArrayPoolList<(int Id, int Count)> sizes)
+        {
+            foreach (KeyValuePair<int, ConcurrentQueue<T>> entry in queues)
+            {
+                int count = entry.Value.Count;
+                if (count > 0) sizes.Add((entry.Key, count));
+            }
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -84,6 +149,7 @@ namespace Nethermind.Facade.Filters
             _lastBlockHash = e.Block.Hash;
             _logIndex = 0;
             AddBlock(e.Block);
+            EvictFiltersOverBudget();
         }
 
         private void OnTransactionProcessed(object sender, TxProcessedEventArgs e) => AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);

@@ -59,6 +59,7 @@ namespace Nethermind.Facade.Filters
 
         public FilterStore(ITimerFactory timerFactory, int timeout = 15 * 60 * 1000, int cleanupInterval = 5 * 60 * 1000, int maxQueuedItems = 0)
         {
+            ArgumentOutOfRangeException.ThrowIfNegative(maxQueuedItems);
             _maxQueuedItems = maxQueuedItems;
             _timeout = TimeSpan.FromMilliseconds(timeout);
             _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(cleanupInterval));
@@ -141,22 +142,34 @@ namespace Nethermind.Facade.Filters
         public event EventHandler<FilterEventArgs>? FilterRemoved;
 
         /// <summary>
-        /// Reports the number of results currently queued across all filters.
+        /// The max number of results queued across all filters; <c>0</c> when unlimited.
+        /// </summary>
+        internal int MaxQueuedItems => _maxQueuedItems;
+
+        /// <summary>
+        /// Reports whether the queued results have reached <see cref="MaxQueuedItems"/>.
         /// </summary>
         /// <remarks>
-        /// Set by <see cref="FilterManager"/>, which owns the queues. Filter results are only bounded by the
-        /// inactivity timeout, so without a budget a caller installing filters it never polls can grow them
-        /// until the node runs out of memory. When a budget is configured (<c>maxQueuedItems &gt; 0</c>) this
-        /// delegate must be wired for the budget to take effect; a null delegate leaves it inert. In the
-        /// standard DI graph <see cref="FilterManager"/> always wires it, so the budget is never silently off.
+        /// Set once by <see cref="FilterManager"/>, which owns the queues. This limits filter admission only;
+        /// <see cref="FilterManager"/> bounds the queues of installed filters by evicting the largest ones.
         /// </remarks>
-        internal Func<long>? QueuedItemCount { get; set; }
+        internal Func<bool>? IsQueuedItemBudgetExhausted
+        {
+            get;
+            set => field = field is null ? value : throw new InvalidOperationException($"The queued-items budget is already tracked by another {nameof(FilterManager)}.");
+        }
 
         public void SaveFilter(FilterBase filter)
         {
-            if (_maxQueuedItems > 0 && QueuedItemCount?.Invoke() >= _maxQueuedItems)
+            if (_maxQueuedItems > 0)
             {
-                throw new ConcurrencyLimitReachedException($"Cannot create a new filter: {_maxQueuedItems} queued filter results reached.");
+                Func<bool> isBudgetExhausted = IsQueuedItemBudgetExhausted
+                    ?? throw new InvalidOperationException($"A {nameof(FilterManager)} must track this store before filters are saved while a queued-items budget is configured.");
+
+                if (isBudgetExhausted())
+                {
+                    throw new ConcurrencyLimitReachedException($"Cannot create a new filter: {_maxQueuedItems} queued filter results reached.");
+                }
             }
 
             if (!_filters.TryAdd(filter.Id, filter))
