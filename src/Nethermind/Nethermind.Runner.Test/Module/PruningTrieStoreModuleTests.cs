@@ -5,7 +5,6 @@ using System;
 using System.IO;
 using Autofac;
 using Nethermind.Core;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
