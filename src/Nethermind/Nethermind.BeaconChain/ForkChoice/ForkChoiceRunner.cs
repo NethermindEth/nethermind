@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
-using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
@@ -15,16 +16,19 @@ namespace Nethermind.BeaconChain.ForkChoice;
 /// <summary>
 /// The spec-level fork-choice handlers (<c>on_tick</c>, <c>on_block</c>, <c>on_attestation</c>,
 /// <c>on_attester_slashing</c>, <c>get_head</c>) over the proto-array implementation, following
-/// the consensus-specs fork-choice document (Electra/Fulu rules).
+/// the consensus-specs fork-choice document (Electra/Fulu rules), with Gloas blocks registered through
+/// their own <see cref="OnBlock(SignedBeaconBlockGloas, BeaconStateGloas)"/> overload.
 /// </summary>
 /// <remarks>
 /// Owns the spec <c>Store</c> state that is not in the proto-array: wall-clock time, the realized
 /// and unrealized checkpoints (via <see cref="ForkChoiceStore"/>), the proposer boost root,
 /// equivocating indices, queued current-slot attestations, and the derived checkpoint states and
 /// justified balances (cached per checkpoint). Block post-states come from
-/// <see cref="IForkChoiceStateProvider"/>; the state transition itself stays outside — callers run
+/// <see cref="IForkChoiceStateProvider"/> for Fulu blocks and <see cref="IGloasBlockStateProvider"/> for
+/// Gloas blocks, chosen by the fork of the block's own slot; the state transition itself stays outside - callers run
 /// it and pass the post-state to <see cref="OnBlock"/>. Unrealized checkpoints are computed
-/// clone-free via <see cref="EpochProcessing.ComputeJustificationAndFinalization"/>.
+/// clone-free via <see cref="EpochProcessing.ComputeJustificationAndFinalization"/> and
+/// <see cref="GloasEpochProcessing.ComputeJustificationAndFinalization"/>.
 /// Not thread-safe.
 /// </remarks>
 public sealed class ForkChoiceRunner
@@ -40,12 +44,13 @@ public sealed class ForkChoiceRunner
 
     private readonly BeaconChainSpec _spec;
     private readonly IForkChoiceStateProvider _stateProvider;
+    private readonly IGloasBlockStateProvider? _gloasStateProvider;
     private readonly PubkeyCache _pubkeys;
     private readonly ForkChoiceStore _store;
     private readonly ProtoArrayForkChoice _protoArray;
     private readonly HashSet<ulong> _equivocatingIndices = [];
     private readonly List<QueuedAttestation> _queuedAttestations = [];
-    private readonly Dictionary<CheckpointRef, BeaconStateFulu> _checkpointStates = [];
+    private readonly Dictionary<CheckpointRef, ForkedBeaconState> _checkpointStates = [];
     private readonly Dictionary<CheckpointRef, JustifiedBalances> _justifiedBalances = [];
 
     /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attesting interval, keyed by block root.</summary>
@@ -57,22 +62,31 @@ public sealed class ForkChoiceRunner
     /// <summary>An attestation for the current slot, validated and indexed, waiting for the next slot tick (the spec only counts attestations from past slots).</summary>
     private readonly record struct QueuedAttestation(ulong Slot, ulong[] AttestingIndices, Hash256 BlockRoot, ulong TargetEpoch);
 
+    /// <summary>The fields an indexed attestation carries in both the Fulu and the Gloas container.</summary>
+    private readonly record struct IndexedVote(ulong[] AttestingIndices, AttestationData Data, BlsSignature Signature);
+
     /// <summary>Creates the store from an anchor (the spec's <c>get_forkchoice_store</c>): the anchor becomes the justified and finalized checkpoint at its own epoch.</summary>
     /// <param name="anchorState">The post-state of <paramref name="anchorBlock"/>; also supplies the genesis time.</param>
     /// <param name="anchorBlock">The finalized block to root the block tree at.</param>
+    /// <param name="gloasStateProvider">
+    /// The post-states of Gloas blocks. Without it every Gloas block is refused, because none of its
+    /// checkpoint states could ever be resolved.
+    /// </param>
     /// <exception cref="ForkChoiceException">The anchor block's state root does not match the anchor state.</exception>
     public ForkChoiceRunner(
         BeaconChainSpec spec,
         BeaconStateFulu anchorState,
         BeaconBlock anchorBlock,
         IForkChoiceStateProvider stateProvider,
-        PubkeyCache pubkeys)
+        PubkeyCache pubkeys,
+        IGloasBlockStateProvider? gloasStateProvider = null)
     {
         if (anchorBlock.StateRoot != SszRoots.HashTreeRoot(anchorState))
             throw new ForkChoiceException("Anchor block state root does not match the anchor state");
 
         _spec = spec;
         _stateProvider = stateProvider;
+        _gloasStateProvider = gloasStateProvider;
         _pubkeys = pubkeys;
         GenesisTime = anchorState.GenesisTime;
         Time = GenesisTime + spec.SecondsPerSlot * anchorState.Slot;
@@ -232,59 +246,133 @@ public sealed class ForkChoiceRunner
     public void OnBlock(SignedBeaconBlock signedBlock, BeaconStateFulu postState, ExecutionStatus executionStatus, IDataAvailabilityRule availability)
     {
         BeaconBlock block = signedBlock.Message!;
+        if (IsGloasSlot(block.Slot))
+            throw new ForkChoiceException($"Block at slot {block.Slot} is in a Gloas epoch; it must be a {nameof(SignedBeaconBlockGloas)}");
         Hash256 parentRoot = block.ParentRoot!;
-        CheckpointRef finalized = _store.FinalizedCheckpoint;
-        if (!_protoArray.ContainsBlock(parentRoot))
-            throw new ForkChoiceException($"Parent {parentRoot} of the block at slot {block.Slot} is unknown to fork choice");
-        if (block.Slot > _store.CurrentSlot)
-            throw new ForkChoiceException($"Block at slot {block.Slot} is from the future (current slot {_store.CurrentSlot})");
-        ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
-        if (block.Slot <= finalizedSlot)
-            throw new ForkChoiceException($"Block at slot {block.Slot} is not after the finalized slot {finalizedSlot}");
-        if (GetCheckpointBlock(parentRoot, finalized.Epoch) != finalized.Root)
-            throw new ForkChoiceException($"Block at slot {block.Slot} does not descend from the finalized checkpoint {finalized}");
+        ValidateOnBlock(block.Slot, parentRoot);
 
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
         if (!availability.IsDataAvailable(block, blockRoot, _spec))
             throw new ForkChoiceException($"Block {blockRoot} at slot {block.Slot} does not have all its blob data available");
-        ExtendPubkeys(postState);
+        ExtendPubkeys(postState.Validators!);
 
+        ulong epochStartSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
+        RegisterBlock(
+            block.Slot,
+            blockRoot,
+            parentRoot,
+            block.StateRoot!,
+            block.Slot == epochStartSlot ? blockRoot : postState.GetBlockRootAtSlot(epochStartSlot),
+            CheckpointRef.From(postState.CurrentJustifiedCheckpoint!),
+            CheckpointRef.From(postState.FinalizedCheckpoint!),
+            EpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache()),
+            executionStatus,
+            block.Body?.ExecutionPayload?.BlockHash);
+    }
+
+    /// <summary>
+    /// The Gloas <c>on_block</c>, minus the state transition: the caller has already computed
+    /// <paramref name="postState"/> by applying <paramref name="signedBlock"/> to its parent state.
+    /// Validates the block against the store, applies the proposer boost when timely, updates the
+    /// realized and unrealized checkpoints, and registers the block with the proto-array.
+    /// </summary>
+    /// <remarks>
+    /// The block is registered <see cref="ExecutionStatus.Optimistic"/> with the committed bid's
+    /// <c>block_hash</c> as its execution block hash: under EIP-7732 the block carries only the bid and
+    /// its payload arrives later in an envelope, and the invalidation walk maps a <c>latestValidHash</c>
+    /// to roots through that hash, so the parent's applied hash would be wrong there.
+    /// There is no availability argument because the Gloas <c>on_block</c> no longer calls
+    /// <c>is_data_available</c>. The body replay contract is the one the Fulu overload documents, through
+    /// the <see cref="AttestationGloas"/> and <see cref="AttesterSlashingGloas"/> overloads.
+    /// </remarks>
+    /// <exception cref="ForkChoiceException">
+    /// The block's slot is before the Gloas fork, this runner has no <see cref="IGloasBlockStateProvider"/>,
+    /// or the block violates an <c>on_block</c> assertion.
+    /// </exception>
+    public void OnBlock(SignedBeaconBlockGloas signedBlock, BeaconStateGloas postState)
+    {
+        BeaconBlockGloas block = signedBlock.Message!;
+        if (!IsGloasSlot(block.Slot))
+            throw new ForkChoiceException($"Block at slot {block.Slot} is before the Gloas fork; it must be a {nameof(SignedBeaconBlock)}");
+        if (_gloasStateProvider is null)
+            throw new ForkChoiceException($"Block at slot {block.Slot} is a Gloas block, but no {nameof(IGloasBlockStateProvider)} was supplied to resolve its checkpoint states");
+        Hash256 parentRoot = block.ParentRoot!;
+        ValidateOnBlock(block.Slot, parentRoot);
+
+        Hash256 blockRoot = SszRoots.HashTreeRoot(block);
+        ExtendPubkeys(postState.Validators!);
+
+        ulong epochStartSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
+        RegisterBlock(
+            block.Slot,
+            blockRoot,
+            parentRoot,
+            block.StateRoot!,
+            block.Slot == epochStartSlot ? blockRoot : postState.GetBlockRootAtSlot(epochStartSlot),
+            CheckpointRef.From(postState.CurrentJustifiedCheckpoint!),
+            CheckpointRef.From(postState.FinalizedCheckpoint!),
+            GloasEpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache()),
+            ExecutionStatus.Optimistic,
+            block.Body!.SignedExecutionPayloadBid!.Message!.BlockHash!);
+    }
+
+    /// <summary>The fork-independent <c>on_block</c> assertions: a known parent, not from the future, after the finalized slot and descending from the finalized checkpoint.</summary>
+    private void ValidateOnBlock(ulong slot, Hash256 parentRoot)
+    {
+        CheckpointRef finalized = _store.FinalizedCheckpoint;
+        if (!_protoArray.ContainsBlock(parentRoot))
+            throw new ForkChoiceException($"Parent {parentRoot} of the block at slot {slot} is unknown to fork choice");
+        if (slot > _store.CurrentSlot)
+            throw new ForkChoiceException($"Block at slot {slot} is from the future (current slot {_store.CurrentSlot})");
+        ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
+        if (slot <= finalizedSlot)
+            throw new ForkChoiceException($"Block at slot {slot} is not after the finalized slot {finalizedSlot}");
+        if (GetCheckpointBlock(parentRoot, finalized.Epoch) != finalized.Root)
+            throw new ForkChoiceException($"Block at slot {slot} does not descend from the finalized checkpoint {finalized}");
+    }
+
+    /// <summary>The store updates of an accepted <c>on_block</c>: proposer boost, realized and unrealized checkpoints, and the proto-array node.</summary>
+    /// <param name="pulledUp">The justification weighing run on the block's post-state; the spec's <c>compute_pulled_up_tip</c>.</param>
+    private void RegisterBlock(
+        ulong slot,
+        Hash256 blockRoot,
+        Hash256 parentRoot,
+        Hash256 stateRoot,
+        Hash256 targetRoot,
+        CheckpointRef stateJustified,
+        CheckpointRef stateFinalized,
+        JustificationAndFinalizationState pulledUp,
+        ExecutionStatus executionStatus,
+        Hash256? executionBlockHash)
+    {
         // Proposer boost for the first block of the slot arriving in the attesting interval.
         ulong timeIntoSlot = (Time - GenesisTime) % _spec.SecondsPerSlot;
         bool isBeforeAttestingInterval = timeIntoSlot < _spec.SecondsPerSlot / Presets.IntervalsPerSlot;
-        bool isTimely = block.Slot == _store.CurrentSlot && isBeforeAttestingInterval;
+        bool isTimely = slot == _store.CurrentSlot && isBeforeAttestingInterval;
         _blockTimeliness[blockRoot] = isTimely;
         if (isTimely && _store.ProposerBoostRoot == Hash256.Zero)
             _store.ProposerBoostRoot = blockRoot;
 
-        CheckpointRef stateJustified = CheckpointRef.From(postState.CurrentJustifiedCheckpoint!);
-        CheckpointRef stateFinalized = CheckpointRef.From(postState.FinalizedCheckpoint!);
         _store.UpdateCheckpoints(stateJustified, stateFinalized);
 
-        // The spec's compute_pulled_up_tip: eagerly run the justification weighing on the
-        // post-state; for blocks from prior epochs the unrealized values are already realized.
-        JustificationAndFinalizationState pulledUp = EpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache());
+        // For blocks from prior epochs the unrealized values are already realized.
         CheckpointRef unrealizedJustified = CheckpointRef.From(pulledUp.CurrentJustifiedCheckpoint);
         CheckpointRef unrealizedFinalized = CheckpointRef.From(pulledUp.FinalizedCheckpoint);
         _store.UpdateUnrealizedCheckpoints(unrealizedJustified, unrealizedFinalized);
-        ulong blockEpoch = BeaconStateAccessors.ComputeEpochAtSlot(block.Slot);
-        if (blockEpoch < _store.CurrentEpoch)
+        if (BeaconStateAccessors.ComputeEpochAtSlot(slot) < _store.CurrentEpoch)
             _store.UpdateCheckpoints(unrealizedJustified, unrealizedFinalized);
-
-        ulong epochStartSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(blockEpoch);
-        Hash256 targetRoot = block.Slot == epochStartSlot ? blockRoot : postState.GetBlockRootAtSlot(epochStartSlot);
 
         _protoArray.ProcessBlock(
             new ProtoBlock(
-                Slot: block.Slot,
+                Slot: slot,
                 Root: blockRoot,
                 ParentRoot: parentRoot,
-                StateRoot: block.StateRoot!,
+                StateRoot: stateRoot,
                 TargetRoot: targetRoot,
                 JustifiedCheckpoint: stateJustified,
                 FinalizedCheckpoint: stateFinalized,
                 ExecutionStatus: executionStatus,
-                ExecutionBlockHash: block.Body?.ExecutionPayload?.BlockHash,
+                ExecutionBlockHash: executionBlockHash,
                 UnrealizedJustifiedCheckpoint: unrealizedJustified,
                 UnrealizedFinalizedCheckpoint: unrealizedFinalized),
             _store.CurrentSlot,
@@ -292,18 +380,33 @@ public sealed class ForkChoiceRunner
             _store.FinalizedCheckpoint);
     }
 
+    /// <summary>Whether <paramref name="slot"/> is in an epoch at or after <see cref="BeaconChainSpec.GloasForkEpoch"/>.</summary>
+    /// <remarks>Compares the epoch directly: <see cref="BeaconChainSpec.ForkAtEpoch"/> throws for pre-Electra epochs, which the mainnet fork-choice vectors use.</remarks>
+    private bool IsGloasSlot(ulong slot) => _spec.GetEpoch(slot) >= _spec.GloasForkEpoch;
+
     /// <summary>
     /// The spec's <c>on_attestation</c>: validates the attestation against the store, indexes and
     /// verifies it against the target checkpoint state, and records the LMD votes — queueing
     /// current-slot attestations until the next tick.
     /// </summary>
+    /// <remarks>
+    /// The committees and the signature domain come from the target checkpoint state, whose fork is
+    /// that of the target epoch rather than of the container: a Gloas block's body can carry a vote
+    /// targeting a Fulu epoch, and a checkpoint rooted in a Fulu block can be a Gloas state.
+    /// </remarks>
     /// <param name="isFromBlock">Whether the attestation came in a block body, which skips the wall-clock recency checks.</param>
     /// <param name="verifySignature">Skippable for attestations whose aggregate signature was already verified by the state transition.</param>
     /// <exception cref="ForkChoiceException">The attestation violates a <c>validate_on_attestation</c> rule or its signature is invalid.</exception>
     /// <exception cref="BeaconStateException">The attestation's bitfields are inconsistent with the target state's committees.</exception>
-    public void OnAttestation(Attestation attestation, bool isFromBlock = false, bool verifySignature = true)
+    public void OnAttestation(Attestation attestation, bool isFromBlock = false, bool verifySignature = true) =>
+        OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock, verifySignature);
+
+    /// <inheritdoc cref="OnAttestation(Attestation, bool, bool)"/>
+    public void OnAttestation(AttestationGloas attestation, bool isFromBlock = false, bool verifySignature = true) =>
+        OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock, verifySignature);
+
+    private void OnAttestation(AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, bool isFromBlock, bool verifySignature)
     {
-        AttestationData data = attestation.Data!;
         CheckpointRef target = CheckpointRef.From(data.Target!);
         Hash256 beaconBlockRoot = data.BeaconBlockRoot!;
 
@@ -330,21 +433,29 @@ public sealed class ForkChoiceRunner
         if (GetCheckpointBlock(beaconBlockRoot, target.Epoch) != target.Root)
             throw new ForkChoiceException($"Attestation target {target.Root} is not the head block's ancestor at the target epoch start");
 
-        BeaconStateFulu targetState = GetCheckpointState(target);
-        CommitteeCache committees = _committees.GetCommitteeCache(targetState, target.Epoch);
-        IndexedAttestation indexed = targetState.GetIndexedAttestation(attestation, committees);
-        if (!BlockProcessing.IsValidIndexedAttestation(targetState, indexed, _pubkeys, verifySignature))
+        ForkedBeaconState targetState = GetCheckpointState(target);
+        ulong[] attestingIndices = targetState switch
+        {
+            ForkedBeaconState.OfFulu fulu => fulu.State.GetAttestingIndices(
+                new Attestation { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits },
+                _committees.GetCommitteeCache(fulu.State, target.Epoch)),
+            ForkedBeaconState.OfGloas gloas => gloas.State.GetAttestingIndices(
+                new AttestationGloas { AggregationBits = aggregationBits, Data = data, Signature = signature, CommitteeBits = committeeBits },
+                _committees.GetCommitteeCache(gloas.State, target.Epoch)),
+            _ => throw new NotSupportedException($"Unhandled checkpoint state {targetState.GetType().Name}"),
+        };
+        if (!IsValidIndexedAttestation(targetState, new IndexedVote(attestingIndices, data, signature), verifySignature))
             throw new ForkChoiceException("Attestation indices or aggregate signature are invalid");
 
         // Attestations can only affect the fork choice of subsequent slots; current-slot
         // attestations wait in the queue until the next tick.
         if (!isFromBlock && data.Slot == _store.CurrentSlot)
         {
-            _queuedAttestations.Add(new QueuedAttestation(data.Slot, indexed.AttestingIndices!, beaconBlockRoot, target.Epoch));
+            _queuedAttestations.Add(new QueuedAttestation(data.Slot, attestingIndices, beaconBlockRoot, target.Epoch));
             return;
         }
 
-        ApplyVotes(indexed.AttestingIndices!, beaconBlockRoot, target.Epoch);
+        ApplyVotes(attestingIndices, beaconBlockRoot, target.Epoch);
     }
 
     /// <summary>
@@ -352,29 +463,64 @@ public sealed class ForkChoiceRunner
     /// justified state and their slashability, then discounts the equivocating validators from all
     /// future <see cref="GetHead"/> computations.
     /// </summary>
+    /// <remarks>The justified state is the justified block's own post-state, of that block's fork whichever container carried the slashing.</remarks>
     /// <param name="verifySignatures">Skippable for slashings whose signatures were already verified by the state transition.</param>
     /// <exception cref="ForkChoiceException">The slashing violates an <c>on_attester_slashing</c> assertion.</exception>
     public void OnAttesterSlashing(AttesterSlashing slashing, bool verifySignatures = true)
     {
         IndexedAttestation attestation1 = slashing.Attestation1!;
         IndexedAttestation attestation2 = slashing.Attestation2!;
-        if (!BeaconStateAccessors.IsSlashableAttestationData(attestation1.Data!, attestation2.Data!))
+        OnAttesterSlashing(
+            new IndexedVote(attestation1.AttestingIndices!, attestation1.Data!, attestation1.Signature),
+            new IndexedVote(attestation2.AttestingIndices!, attestation2.Data!, attestation2.Signature),
+            verifySignatures);
+    }
+
+    /// <inheritdoc cref="OnAttesterSlashing(AttesterSlashing, bool)"/>
+    public void OnAttesterSlashing(AttesterSlashingGloas slashing, bool verifySignatures = true)
+    {
+        IndexedAttestationGloas attestation1 = slashing.Attestation1!;
+        IndexedAttestationGloas attestation2 = slashing.Attestation2!;
+        OnAttesterSlashing(
+            new IndexedVote(attestation1.AttestingIndices!, attestation1.Data!, attestation1.Signature),
+            new IndexedVote(attestation2.AttestingIndices!, attestation2.Data!, attestation2.Signature),
+            verifySignatures);
+    }
+
+    private void OnAttesterSlashing(IndexedVote attestation1, IndexedVote attestation2, bool verifySignatures)
+    {
+        if (!BeaconStateAccessors.IsSlashableAttestationData(attestation1.Data, attestation2.Data))
             throw new ForkChoiceException("Attester slashing votes are not slashable");
 
-        BeaconStateFulu justifiedState = _stateProvider.GetBlockState(_store.JustifiedCheckpoint.Root)
-            ?? throw new ForkChoiceException($"No state for the justified root {_store.JustifiedCheckpoint.Root}");
-        if (!BlockProcessing.IsValidIndexedAttestation(justifiedState, attestation1, _pubkeys, verifySignatures))
+        ForkedBeaconState justifiedState = GetBlockState(_store.JustifiedCheckpoint.Root);
+        if (!IsValidIndexedAttestation(justifiedState, attestation1, verifySignatures))
             throw new ForkChoiceException("Attester slashing attestation 1 is invalid");
-        if (!BlockProcessing.IsValidIndexedAttestation(justifiedState, attestation2, _pubkeys, verifySignatures))
+        if (!IsValidIndexedAttestation(justifiedState, attestation2, verifySignatures))
             throw new ForkChoiceException("Attester slashing attestation 2 is invalid");
 
-        HashSet<ulong> indices2 = [.. attestation2.AttestingIndices!];
-        foreach (ulong index in attestation1.AttestingIndices!)
+        HashSet<ulong> indices2 = [.. attestation2.AttestingIndices];
+        foreach (ulong index in attestation1.AttestingIndices)
         {
             if (indices2.Contains(index))
                 _equivocatingIndices.Add(index);
         }
     }
+
+    /// <summary>The spec's <c>is_valid_indexed_attestation</c> of <paramref name="state"/>'s fork, over the vote in that fork's container.</summary>
+    private bool IsValidIndexedAttestation(ForkedBeaconState state, IndexedVote vote, bool verifySignature) => state switch
+    {
+        ForkedBeaconState.OfFulu fulu => BlockProcessing.IsValidIndexedAttestation(
+            fulu.State,
+            new IndexedAttestation { AttestingIndices = vote.AttestingIndices, Data = vote.Data, Signature = vote.Signature },
+            _pubkeys,
+            verifySignature),
+        ForkedBeaconState.OfGloas gloas => GloasBlockProcessing.IsValidIndexedAttestation(
+            gloas.State,
+            new IndexedAttestationGloas { AttestingIndices = vote.AttestingIndices, Data = vote.Data, Signature = vote.Signature },
+            _pubkeys,
+            verifySignature),
+        _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
+    };
 
     /// <summary>The spec's <c>get_head</c>: LMD-GHOST from the justified checkpoint, weighted by the justified state's balances and the proposer boost.</summary>
     public Hash256 GetHead()
@@ -474,26 +620,84 @@ public sealed class ForkChoiceRunner
         _protoArray.GetAncestor(root, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch))
             ?? throw new ForkChoiceException($"Block {root} is unknown to fork choice");
 
-    /// <summary>The spec's <c>store_target_checkpoint_state</c>: the checkpoint's block state advanced to the checkpoint epoch start, cached.</summary>
-    private BeaconStateFulu GetCheckpointState(CheckpointRef checkpoint)
+    /// <summary>
+    /// The spec's <c>store.block_states[root]</c>, typed by the fork of the block's own slot so that a
+    /// Gloas root is never offered to the Fulu-typed <see cref="IForkChoiceStateProvider"/>.
+    /// </summary>
+    /// <exception cref="ForkChoiceException">The block is unknown, has no state, or is a Gloas block and this runner has no <see cref="IGloasBlockStateProvider"/>.</exception>
+    private ForkedBeaconState GetBlockState(Hash256 blockRoot)
     {
-        if (_checkpointStates.TryGetValue(checkpoint, out BeaconStateFulu? cached))
+        ulong slot = _protoArray.GetBlockSlot(blockRoot) ?? throw new ForkChoiceException($"Block {blockRoot} is unknown to fork choice");
+        if (!IsGloasSlot(slot))
+        {
+            return new ForkedBeaconState.OfFulu(_stateProvider.GetBlockState(blockRoot)
+                ?? throw new ForkChoiceException($"No state for the block {blockRoot}"));
+        }
+
+        IGloasBlockStateProvider provider = _gloasStateProvider
+            ?? throw new ForkChoiceException($"Block {blockRoot} at slot {slot} is a Gloas block, but no {nameof(IGloasBlockStateProvider)} was supplied");
+        return new ForkedBeaconState.OfGloas(provider.GetGloasBlockState(blockRoot)
+            ?? throw new ForkChoiceException($"No state for the Gloas block {blockRoot}"));
+    }
+
+    /// <summary>The spec's <c>store_target_checkpoint_state</c>: the checkpoint's block state advanced to the checkpoint epoch start, cached.</summary>
+    /// <remarks>
+    /// A checkpoint at or after <see cref="BeaconChainSpec.GloasForkEpoch"/> whose block is a Fulu block
+    /// (the epoch opened with skipped slots) is advanced to the fork boundary, upgraded, and then
+    /// advanced under the Gloas slot processing, exactly as <see cref="ForkedStateTransition"/> carries a
+    /// state across the fork. The block state itself is never mutated.
+    /// </remarks>
+    /// <exception cref="ForkChoiceException">The checkpoint block's state cannot be resolved; see <see cref="GetBlockState"/>.</exception>
+    internal ForkedBeaconState GetCheckpointState(CheckpointRef checkpoint)
+    {
+        if (_checkpointStates.TryGetValue(checkpoint, out ForkedBeaconState? cached))
             return cached;
 
-        BeaconStateFulu state = _stateProvider.GetBlockState(checkpoint.Root)
-            ?? throw new ForkChoiceException($"No state for the checkpoint {checkpoint}");
+        ForkedBeaconState state = GetBlockState(checkpoint.Root);
         ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(checkpoint.Epoch);
         if (state.Slot < startSlot)
         {
-            state = _stateProvider.CopyBlockState(checkpoint.Root)!;
-            SlotProcessing.ProcessSlots(state, startSlot, new EpochCache());
+            state = AdvanceCopy(checkpoint.Root, state, startSlot, IsGloasSlot(startSlot) ? BeaconFork.Gloas : BeaconFork.Fulu);
             // The epoch transitions above can apply pending deposits and grow the registry.
-            ExtendPubkeys(state);
+            ExtendPubkeys(ValidatorsOf(state));
         }
 
         _checkpointStates[checkpoint] = state;
         return state;
     }
+
+    /// <summary>A mutable copy of <paramref name="blockState"/> advanced to <paramref name="targetSlot"/>, crossing into <paramref name="targetFork"/> on the way when needed.</summary>
+    private ForkedBeaconState AdvanceCopy(Hash256 blockRoot, ForkedBeaconState blockState, ulong targetSlot, BeaconFork targetFork)
+    {
+        EpochCache cache = new();
+        ForkedBeaconState state = blockState switch
+        {
+            ForkedBeaconState.OfFulu => new ForkedBeaconState.OfFulu(_stateProvider.CopyBlockState(blockRoot)!),
+            ForkedBeaconState.OfGloas gloas => new ForkedBeaconState.OfGloas(gloas.State.Clone()),
+            _ => throw new NotSupportedException($"Unhandled block state {blockState.GetType().Name}"),
+        };
+
+        state = ForkedStateTransition.CrossBoundaryIfNeeded(state, targetFork, _spec, cache);
+        switch (state)
+        {
+            case ForkedBeaconState.OfFulu fulu:
+                SlotProcessing.ProcessSlots(fulu.State, targetSlot, cache);
+                break;
+            // The crossing stops at the boundary slot, which may already be the target.
+            case ForkedBeaconState.OfGloas gloas when gloas.Slot < targetSlot:
+                GloasSlotProcessing.ProcessSlots(gloas.State, targetSlot, cache);
+                break;
+        }
+
+        return state;
+    }
+
+    private static Validator[] ValidatorsOf(ForkedBeaconState state) => state switch
+    {
+        ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
+        ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+        _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
+    };
 
     /// <summary>The spec's <c>get_weight</c> balance source: effective balances of the justified state's active, unslashed validators.</summary>
     private JustifiedBalances GetJustifiedBalances(CheckpointRef justified)
@@ -501,9 +705,9 @@ public sealed class ForkChoiceRunner
         if (_justifiedBalances.TryGetValue(justified, out JustifiedBalances? cached))
             return cached;
 
-        BeaconStateFulu state = GetCheckpointState(justified);
-        ulong epoch = state.GetCurrentEpoch();
-        Validator[] validators = state.Validators!;
+        ForkedBeaconState state = GetCheckpointState(justified);
+        ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
+        Validator[] validators = ValidatorsOf(state);
         ulong[] effectiveBalances = new ulong[validators.Length];
         for (int i = 0; i < validators.Length; i++)
         {
@@ -540,9 +744,9 @@ public sealed class ForkChoiceRunner
         }
     }
 
-    private void ExtendPubkeys(BeaconStateFulu state)
+    private void ExtendPubkeys(Validator[] validators)
     {
-        if (state.Validators!.Length > _pubkeys.Count)
-            _pubkeys.Extend(state.Validators, _pubkeys.Count);
+        if (validators.Length > _pubkeys.Count)
+            _pubkeys.Extend(validators, _pubkeys.Count);
     }
 }

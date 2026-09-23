@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Linq;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -257,6 +258,72 @@ public class GloasEpochProcessingTests
             Assert.That(availability[33], Is.False, "process_slot at slot 32 unsets slot 33");
             Assert.That(availability[34], Is.False, "process_slot at slot 33 unsets slot 34");
             Assert.That(availability[32], Is.True, "the slot already processed under Fulu keeps its upgrade-time value");
+        });
+    }
+
+    // ---- process_justification_and_finalization, computed without mutating ----
+
+    /// <summary>
+    /// Fork choice's pulled-up tip of a Gloas block is the non-mutating weighing, so it must be exactly
+    /// what the epoch transition applies, and it must leave the post-state it reads untouched. Each case
+    /// isolates one of the four finalization rules of <c>weigh_justification_and_finalization</c>: only
+    /// that rule's bits and epoch distance line up. Old checkpoint roots are 0xB0 plus their epoch and
+    /// epoch-start block roots 0xA0 plus theirs, so a new checkpoint shows which source its root came from.
+    /// </summary>
+    [TestCase(3ul, 1ul, 2ul, new[] { true, true, false, false }, false, 2ul, 0xA2, 1ul, 0xB1, new[] { false, true, true, false },
+        TestName = "bits_1_and_2_finalize_the_old_previous_justified_two_epochs_back")]
+    [TestCase(4ul, 1ul, 2ul, new[] { false, true, true, false }, false, 3ul, 0xA3, 1ul, 0xB1, new[] { false, true, true, true },
+        TestName = "bits_1_2_and_3_finalize_the_old_previous_justified_three_epochs_back")]
+    [TestCase(4ul, 0ul, 2ul, new[] { false, true, false, false }, true, 4ul, 0xA4, 2ul, 0xB2, new[] { true, true, true, false },
+        TestName = "bits_0_1_and_2_finalize_the_old_current_justified_two_epochs_back")]
+    [TestCase(3ul, 1ul, 2ul, new[] { true, true, false, false }, true, 3ul, 0xA3, 2ul, 0xB2, new[] { true, true, true, false },
+        TestName = "bits_0_and_1_finalize_the_old_current_justified_one_epoch_back")]
+    public void ComputeJustificationAndFinalization_is_what_the_epoch_transition_applies_and_leaves_the_state_alone(
+        ulong currentEpoch,
+        ulong oldPreviousJustifiedEpoch,
+        ulong oldCurrentJustifiedEpoch,
+        bool[] oldBits,
+        bool currentEpochParticipates,
+        ulong expectedJustifiedEpoch,
+        byte expectedJustifiedRootFill,
+        ulong expectedFinalizedEpoch,
+        byte expectedFinalizedRootFill,
+        bool[] expectedBits)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.Slot = currentEpoch * SlotsPerEpoch + 5;
+        for (ulong epoch = 1; epoch <= currentEpoch; epoch++)
+        {
+            state.BlockRoots![epoch * SlotsPerEpoch] = Hash((byte)(0xA0 + epoch));
+        }
+
+        state.PreviousJustifiedCheckpoint = new Checkpoint { Epoch = oldPreviousJustifiedEpoch, Root = Hash((byte)(0xB0 + oldPreviousJustifiedEpoch)) };
+        state.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = oldCurrentJustifiedEpoch, Root = Hash((byte)(0xB0 + oldCurrentJustifiedEpoch)) };
+        state.FinalizedCheckpoint = new Checkpoint { Epoch = 0, Root = Hash(0xF0) };
+        state.JustificationBits = new BitArray(oldBits);
+        byte timelyTarget = (byte)(1 << Presets.TimelyTargetFlagIndex);
+        Array.Fill(state.PreviousEpochParticipation!, timelyTarget);
+        Array.Fill(state.CurrentEpochParticipation!, currentEpochParticipates ? timelyTarget : (byte)0);
+        Hash256 rootBefore = SszRoots.HashTreeRoot(state);
+
+        JustificationAndFinalizationState computed = GloasEpochProcessing.ComputeJustificationAndFinalization(state, new EpochCache());
+        Hash256 rootAfterCompute = SszRoots.HashTreeRoot(state);
+        GloasEpochProcessing.ProcessJustificationAndFinalization(state, new EpochCache());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(rootAfterCompute, Is.EqualTo(rootBefore), "computing the pulled-up tip must not touch the post-state");
+            Assert.That(computed.CurrentJustifiedCheckpoint.Epoch, Is.EqualTo(expectedJustifiedEpoch));
+            Assert.That(computed.CurrentJustifiedCheckpoint.Root, Is.EqualTo(Hash(expectedJustifiedRootFill)));
+            Assert.That(computed.PreviousJustifiedCheckpoint.Root, Is.EqualTo(Hash((byte)(0xB0 + oldCurrentJustifiedEpoch))), "the old current checkpoint becomes the previous one");
+            Assert.That(computed.FinalizedCheckpoint.Epoch, Is.EqualTo(expectedFinalizedEpoch));
+            Assert.That(computed.FinalizedCheckpoint.Root, Is.EqualTo(Hash(expectedFinalizedRootFill)));
+            Assert.That(computed.JustificationBits.Cast<bool>(), Is.EqualTo(expectedBits).AsCollection);
+
+            Assert.That(CheckpointRef.From(state.CurrentJustifiedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.CurrentJustifiedCheckpoint)));
+            Assert.That(CheckpointRef.From(state.PreviousJustifiedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.PreviousJustifiedCheckpoint)));
+            Assert.That(CheckpointRef.From(state.FinalizedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.FinalizedCheckpoint)));
+            Assert.That(state.JustificationBits!.Cast<bool>(), Is.EqualTo(expectedBits).AsCollection);
         });
     }
 
