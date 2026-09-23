@@ -362,9 +362,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             if (_logger.IsInfo) _logger.Info($"Block processing runs on {_options.ProcessingCores} cores only: CPUs {string.Join(',', processingCpus.ToArray())}");
         }
-        else if (_options.ProcessingCores != ProcessingCores.All && _logger.IsWarn)
+        else if (_options.ProcessingCores != ProcessingCores.All && _logger.IsDebug)
         {
-            _logger.Warn($"Blocks.ProcessingCores is {_options.ProcessingCores}, but this host gives it nothing to narrow, so block processing runs on every core.");
+            // The default on every host, and most have one kind of core, so this is no warning.
+            _logger.Debug($"Blocks.ProcessingCores is {_options.ProcessingCores}, but this host gives it nothing to narrow, so block processing runs on every core.");
         }
 
         _loopCancellationSource ??= new CancellationTokenSource();
