@@ -196,8 +196,12 @@ if [ -z "$CHOSEN_ZONE" ]; then
   if [ -n "$QUOTA_SEEN" ]; then
     echo "::error title=GCP runner::regions at quota:${QUOTA_SEEN}"
   fi
-  if [ "${#MODELS[@]}" -eq 1 ] && [ "$PROVISIONING_MODEL" = SPOT ]; then
+  if [ "${#MODELS[@]}" -eq 1 ] && [ "$PROVISIONING_MODEL" = SPOT ] && [ -z "$QUOTA_SEEN" ]; then
     echo "::error title=GCP runner::no SPOT capacity in any zone and STANDARD was not requested; re-run later, or re-dispatch with an explicit STANDARD provisioning model if on-demand cost is acceptable"
+    {
+      echo "spot_exhausted=true"
+      echo "spot_exhausted_at=$(date +%s)"
+    } >> "$GITHUB_OUTPUT"
   fi
   cleanup_failed
   exit 1
@@ -210,7 +214,6 @@ if [ "$MODEL_USED" = STANDARD ]; then
     echo "::warning title=GCP runner::${RUNNER_LABEL} fell back to STANDARD (no ${PROVISIONING_MODEL} capacity), billed at on-demand rates"
   fi
 fi
-echo "\`${RUNNER_LABEL}\` → ${MODEL_USED} in ${CHOSEN_ZONE} (${MACHINE_TYPE})" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 INSTANCE_IP=$(jq -r '(if type == "array" then .[0] else . end)
   | .networkInterfaces[0].accessConfigs[0].natIP // empty' <<<"$INSTANCE_JSON")
@@ -223,6 +226,7 @@ echo "created ${INSTANCE_NAME} in ${CHOSEN_ZONE} as ${MODEL_USED}, ip ${INSTANCE
   echo "runner_id=${RUNNER_ID}"
   echo "provisioning_model_used=${MODEL_USED}"
 } >> "$GITHUB_OUTPUT"
+echo "- \`${RUNNER_LABEL}\` → ${MODEL_USED} in ${CHOSEN_ZONE} (${MACHINE_TYPE})" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 deadline=$((SECONDS + BOOT_TIMEOUT))
 last_vm_check=0

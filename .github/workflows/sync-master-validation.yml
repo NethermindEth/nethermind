@@ -209,7 +209,8 @@ jobs:
             jobs=""
           fi
 
-          # A reclaimed runner leaves a marker artifact; only unexplained failures may page.
+          # A reclaimed runner, or a create that found no SPOT capacity, leaves a marker
+          # artifact; only unexplained failures may page.
           # Markers carry the attempt because a re-run inherits the earlier attempt's artifacts.
           if ! names=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
             --paginate -q '.artifacts[].name'); then
@@ -217,7 +218,7 @@ jobs:
             names=""
           fi
           markers=$(printf '%s\n' "$names" \
-            | sed -n "s/^preempted-${RUN_ATTEMPT}-\([0-9][0-9]*\)-\(.*\)$/\1 \2/p") || markers=""
+            | sed -nE "s/^(preempted|spot-exhausted)-${RUN_ATTEMPT}-([0-9]+)-(.*)$/\2 \3/p") || markers=""
           reclaims=$(jq -r --arg markers "$markers" \
             '($markers | split("\n") | map(select(length > 0)) | map(split(" "))) as $m
              | . as $matrix
@@ -244,7 +245,7 @@ jobs:
               fi
             done <<<"$reclaims"
             if [ "$explained" = true ]; then
-              echo "ignoring ${job}: its runner was preempted"
+              echo "ignoring ${job}: its runner was preempted or found no SPOT capacity"
             else
               unexplained="${unexplained}$(cut -c1-60 <<<"$job"), "
             fi
@@ -254,7 +255,7 @@ jobs:
           # An empty list means the lookup told us nothing, not that every failure was a
           # reclaim, so it must still page.
           if [ "$listed" -gt 0 ] && [ -z "$unexplained" ]; then
-            echo "every failure was a preemption, not paging" >> "$GITHUB_STEP_SUMMARY"
+            echo "every failure was a preemption or SPOT exhaustion, not paging" >> "$GITHUB_STEP_SUMMARY"
             echo "should_page=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

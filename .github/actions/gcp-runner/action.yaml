@@ -132,6 +132,14 @@ outputs:
   provisioning_model_used:
     description: SPOT or STANDARD; differs from the request only when spot_fallback_to_standard was set.
     value: ${{ steps.create.outputs.provisioning_model_used }}
+  spot_exhausted:
+    description: >-
+      Whether create failed only because no zone had SPOT capacity, an infrastructure event
+      rather than a job failure. Empty otherwise.
+    value: ${{ steps.create.outputs.spot_exhausted }}
+  spot_exhausted_at:
+    description: Epoch seconds at which SPOT exhaustion was declared.
+    value: ${{ steps.create.outputs.spot_exhausted_at }}
   preempted:
     description: Whether the VM was reclaimed by GCE rather than deleted by this action.
     value: ${{ steps.destroy.outputs.preempted }}

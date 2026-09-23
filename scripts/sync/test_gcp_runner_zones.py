@@ -226,8 +226,8 @@ class CreateZoneWalkTest(unittest.TestCase):
     def create(self, zones, **overrides):
         """Returns (exit code, stdout, the zones gcloud was asked to create in, in order).
 
-        The provisioning models of those attempts and the job summary are left on
-        self.models and self.summary.
+        The provisioning models of those attempts, the job summary and the step outputs are
+        left on self.models, self.summary and self.outputs.
         """
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -272,6 +272,12 @@ class CreateZoneWalkTest(unittest.TestCase):
             )
             self.models = models.read_text().split()
             self.summary = summary.read_text()
+            output = tmp / "out"
+            self.outputs = dict(
+                line.split("=", 1)
+                for line in (output.read_text() if output.exists() else "").splitlines()
+                if "=" in line
+            )
             return run.returncode, run.stdout + run.stderr, attempts.read_text().split()
 
     def test_a_quota_error_skips_the_regions_other_zones_and_tries_the_next(self):
@@ -295,7 +301,7 @@ class CreateZoneWalkTest(unittest.TestCase):
 
     def test_the_action_defaults_to_no_fallback(self):
         block = re.search(
-            r"^  spot_fallback_to_standard:\n(?:    .*\n|      .*\n)*",
+            r"^  spot_fallback_to_standard:\n(?:    .*\n)*",
             (ACTION / "action.yaml").read_text(),
             re.MULTILINE,
         )
@@ -312,7 +318,8 @@ class CreateZoneWalkTest(unittest.TestCase):
         self.assertEqual(attempts, ["europe-west1-b", "europe-west4-a"])
         self.assertEqual(set(self.models), {"SPOT"})
         self.assertIn("regions at quota:", out)
-        self.assertIn("no SPOT capacity in any zone", out)
+        self.assertNotIn("no SPOT capacity in any zone", out)
+        self.assertNotIn("spot_exhausted", self.outputs)
         self.assertEqual(self.summary, "")
 
     def test_spot_exhaustion_on_capacity_fails_without_trying_standard(self):
@@ -324,8 +331,10 @@ class CreateZoneWalkTest(unittest.TestCase):
         self.assertEqual(attempts, zones.split(","))
         self.assertEqual(set(self.models), {"SPOT"})
         self.assertIn("no SPOT capacity in any zone", out)
+        self.assertEqual(self.outputs.get("spot_exhausted"), "true")
+        self.assertRegex(self.outputs.get("spot_exhausted_at", ""), r"^[1-9][0-9]+$")
 
-    def test_an_explicit_fallback_retries_standard_and_announces_it(self):
+    def test_an_explicit_fallback_retries_every_zone_as_standard(self):
         code, out, attempts = self.create(
             "europe-west1-b,europe-west4-a",
             PROVISIONING_MODEL="SPOT",
@@ -340,6 +349,7 @@ class CreateZoneWalkTest(unittest.TestCase):
         )
         self.assertEqual(self.models, ["SPOT", "SPOT", "STANDARD", "STANDARD"])
         self.assertNotIn("no SPOT capacity in any zone", out)
+        self.assertNotIn("spot_exhausted", self.outputs)
 
     def test_a_fallback_to_standard_warns_and_lands_in_the_summary(self):
         code, out, _ = self.create(
