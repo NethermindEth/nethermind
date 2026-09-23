@@ -95,10 +95,10 @@ public class ImporterTests
 
         await importer.Copy(new StateId(42, _stateTree.RootHash));
 
-        int firstFlush = log.IndexOf("flush");
+        // Straight after, not merely after: a periodic ingest flush would satisfy the weaker check on a larger seed.
         int advance = log.IndexOf("advance-pointer");
-        Assert.That(firstFlush, Is.GreaterThanOrEqualTo(0), "data must be flushed during the copy");
-        Assert.That(advance, Is.GreaterThan(firstFlush), "the state pointer must advance only after the data flush");
+        Assert.That(advance, Is.GreaterThan(0), "the state pointer must advance, and not before a flush");
+        Assert.That(log[advance - 1], Is.EqualTo("flush"), "the state pointer must advance straight after a flush");
     }
 
     [Test]
