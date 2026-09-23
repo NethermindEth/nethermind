@@ -61,6 +61,12 @@ namespace Nethermind.Network
         public static NonBlocking.ConcurrentDictionary<MsgType, long> DiscoveryMessagesSent { get; } = new();
 
         [CounterMetric]
+        [Description("Number of sent discovery messages by protocol")]
+        [DetailedMetric]
+        [KeyIsLabel("protocol", "message_type")]
+        public static NonBlocking.ConcurrentDictionary<DiscoveryMessageKey, long> DiscoveryMessagesSentByProtocol { get; } = new();
+
+        [CounterMetric]
         [Description("Number of sent discovery message")]
         [DetailedMetric]
         [KeyIsLabel("message_type")]

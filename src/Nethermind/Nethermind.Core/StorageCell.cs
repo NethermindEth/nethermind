@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -17,16 +18,17 @@ namespace Nethermind.Core
     {
         public static GenericEqualityComparer<StorageCell> EqualityComparer { get; } = new();
         private readonly AddressAsKey _address = address;
-        private readonly UInt256 _index = index;
+        [JsonInclude]
+        public readonly UInt256 Index = index;
 
         public Address Address => _address.Value;
-        public UInt256 Index => _index;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(in StorageCell other)
         {
-            if (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _index)) !=
-                Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in other._index)))
+            if (!Extensions.Bytes.AreEqual32(
+                    ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in Index)),
+                    ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in other.Index))))
                 return false;
 
             // Inline 20-byte Address comparison: avoids the Address.Equals call
@@ -39,14 +41,16 @@ namespace Nethermind.Core
 
             ref byte ab = ref MemoryMarshal.GetReference(a.Bytes);
             ref byte bb = ref MemoryMarshal.GetReference(b.Bytes);
-            return Unsafe.As<byte, Vector128<byte>>(ref ab) == Unsafe.As<byte, Vector128<byte>>(ref bb)
+            return Unsafe.As<byte, Vector128<ulong>>(ref ab) == Unsafe.As<byte, Vector128<ulong>>(ref bb)
                 && Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, 16)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref bb, 16));
         }
 
         public bool Equals(StorageCell other) => Equals(in other);
 
-        public long GetHashCode64()
-            => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in _index))) ^ _address.Value.GetHashCode64();
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long GetHashCode64() => SpanExtensions.FastHash64ForAddressAndSlot(
+            ref MemoryMarshal.GetReference(_address.Value.Bytes),
+            ref Unsafe.As<UInt256, byte>(ref Unsafe.AsRef(in Index)));
 
         public override bool Equals(object? obj)
         {
@@ -58,10 +62,11 @@ namespace Nethermind.Core
             return obj is StorageCell address && Equals(address);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int GetHashCode()
         {
-            int hash = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _index), 1)).FastHash();
-            return hash ^ _address.Value.GetHashCode();
+            ulong hash = (ulong)GetHashCode64();
+            return (int)(hash ^ (hash >> 32));
         }
 
         public override string ToString() => $"{_address.Value}.{Index}";

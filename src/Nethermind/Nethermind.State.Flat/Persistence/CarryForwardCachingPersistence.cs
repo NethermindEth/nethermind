@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposable
 {
-    private const int DefaultMaxEntriesPerKind = 131072;
+    private const int DefaultMaxEntriesPerKind = 262144;
 
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
@@ -76,9 +76,13 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void TryCacheAccount(Address address, Account? account, long readerGeneration)
     {
+        // Another reader can fill the same base miss while this reader is doing I/O.
+        // The cache is best-effort, so a racing removal only loses a hint.
+        if (_accounts.ContainsKey(address)) return;
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
+            if (_accounts.ContainsKey(address)) return;
             if (_accountCount >= _maxEntriesPerKind)
             {
                 _accounts.Clear();
@@ -90,9 +94,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void TryCacheSlot(in (Address, UInt256) key, in CachedSlot slot, long readerGeneration)
     {
+        if (_slots.ContainsKey(key)) return;
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
+            if (_slots.ContainsKey(key)) return;
             if (_slotCount >= _maxEntriesPerKind)
             {
                 _slots.Clear();
@@ -141,10 +147,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _slotCount = 0;
     }
 
-    private readonly struct CachedSlot(bool found, SlotValue value)
+    private readonly struct CachedSlot(bool found, UInt256 value)
     {
         public readonly bool Found = found;
-        public readonly SlotValue Value = value;
+        public readonly UInt256 Value = value;
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
@@ -160,7 +166,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return account;
         }
 
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
         {
             (Address, UInt256) key = (address, slot);
             bool current = parent.IsCurrent(generation);
@@ -179,7 +185,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => inner.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
         public bool IsPreimageMode => inner.IsPreimageMode;
@@ -205,7 +211,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.SetAccount(addr, account);
         }
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             (_writtenSlots ??= []).Add((addr, slot));
             inner.SetStorage(addr, slot, value);

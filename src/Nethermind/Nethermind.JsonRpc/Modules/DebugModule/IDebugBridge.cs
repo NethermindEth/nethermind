@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
@@ -18,6 +19,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 public interface IDebugBridge
 {
     GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+
+    /// <remarks>Retained for out-of-tree plugins; nothing in the repository calls it.</remarks>
+    [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
     GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
@@ -33,7 +37,9 @@ public interface IDebugBridge
     object GetConfigValue(string category, string name);
     ChainLevelInfo GetLevelInfo(ulong number);
     int DeleteChainSlice(ulong startNumber, bool force = false);
-    void UpdateHeadBlock(Hash256 blockHash);
+    /// <summary>Moves the head to <paramref name="blockHash"/> and drops state kept for other branches.</summary>
+    /// <returns><c>false</c> when the block is unknown or cannot be made the head; nothing is dropped then.</returns>
+    bool UpdateHeadBlock(Hash256 blockHash);
     Task<bool> MigrateReceipts(ulong from, ulong to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
     SyncReportSummary GetCurrentSyncStage();

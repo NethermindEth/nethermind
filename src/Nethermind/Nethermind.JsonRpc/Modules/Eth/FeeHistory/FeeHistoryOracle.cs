@@ -75,7 +75,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double GasUsedRatio,
             double BlobGasUsedRatio,
             Hash256? ParentHash,
-            ulong GasUsed,
+            // Total of the per-tx reward weights. Not the header GasUsed: that is pre-refund under
+            // EIP-7778, and it never matched the GasLimit weights used when receipts are unavailable.
+            ulong RewardsGasUsedTotal,
             int BlockTransactionsLength,
             List<RewardInfo> RewardsInBlocks);
 
@@ -129,6 +131,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     ? fee
                     : UInt256.Zero;
 
+                List<RewardInfo> rewardsInBlock = GetRewardsInBlock(b, out ulong rewardsGasUsedTotal);
+
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
@@ -138,9 +142,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     b.GasUsed / (double)b.GasLimit,
                     blobGasUsedRatio,
                     b.ParentHash,
-                    b.GasUsed,
+                    rewardsGasUsedTotal,
                     b.Transactions.Length,
-                    GetRewardsInBlock(b));
+                    rewardsInBlock);
             }
 
             BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
@@ -254,7 +258,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? new ArrayPoolList<UInt256>(rewardPercentiles.Length, rewardPercentiles.Length)
                 : CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
 
-        private List<RewardInfo> GetRewardsInBlock(Block block)
+        private List<RewardInfo> GetRewardsInBlock(Block block, out ulong gasUsedTotal)
         {
             static IEnumerable<ulong> CalculateGasUsed(TxReceipt[] txReceipts)
             {
@@ -277,10 +281,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             List<RewardInfo> rewardInfos = new(txs.Length);
             Span<ulong> gasUsedSpan = gasUsed.AsSpan();
+            gasUsedTotal = 0;
             for (int i = 0; i < txs.Length; i++)
             {
                 txs[i].TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
                 rewardInfos.Add(new RewardInfo(gasUsedSpan[i], premiumPerGas));
+                gasUsedTotal += gasUsedSpan[i];
             }
 
             CollectionsMarshal.AsSpan(rewardInfos).Sort(default(RewardInfoByPremiumAscendingComparer));
@@ -299,7 +305,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             foreach (double percentile in rewardPercentiles)
             {
-                ulong thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
+                ulong thresholdGasUsed = (ulong)(blockInfo.RewardsGasUsedTotal * percentile / 100);
                 while (txIndex + 1 < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
                 {
                     txIndex++;

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
@@ -13,6 +14,37 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class NodeFilterTests
 {
+    [Test]
+    public void Touch_existing_address_does_not_allocate([Values] bool exactMatchOnly)
+    {
+        NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly);
+        IPAddress address = IPAddress.Parse("203.0.113.1");
+        for (int i = 0; i < 1000; i++) filter.Touch(address);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++) filter.Touch(address);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.Zero);
+            Assert.That(filter.TryAccept(address), Is.False);
+        }
+    }
+
+    [Test]
+    public void Touch_reinserts_evicted_address()
+    {
+        NodeFilter filter = CreateFilter(size: 1, exactMatchOnly: true);
+        IPAddress first = IPAddress.Parse("203.0.113.1");
+        IPAddress second = IPAddress.Parse("203.0.113.2");
+        filter.Touch(first);
+        filter.Touch(second);
+        filter.Touch(first);
+        Assert.That(filter.TryAccept(first), Is.False);
+        Assert.That(filter.TryAccept(second), Is.True);
+    }
+
     private static NodeFilter CreateFilter(int size = 100, bool exactMatchOnly = false,
         IPAddress? currentIp = null, long timeoutMs = 0) =>
         timeoutMs > 0
@@ -63,6 +95,21 @@ public class NodeFilterTests
         NodeFilter filter = CreateFilter();
         Assert.That(filter.TryAccept(IPAddress.Parse(first)), Is.True, "first address should be accepted");
         Assert.That(filter.TryAccept(IPAddress.Parse(second)), Is.EqualTo(secondAccepted));
+    }
+
+    [Test]
+    public void WouldAccept_IsReadOnlyAndTouchAccountsForThePublicIpv6Subnet()
+    {
+        NodeFilter filter = CreateFilter();
+        IPAddress first = IPAddress.Parse("2001:db8::1");
+        IPAddress sameSubnet = IPAddress.Parse("2001:db8::2");
+
+        Assert.That(filter.WouldAccept(first), Is.True);
+        Assert.That(filter.WouldAccept(sameSubnet), Is.True, "a read-only probe must not consume filter capacity");
+
+        filter.Touch(first);
+
+        Assert.That(filter.WouldAccept(sameSubnet), Is.False, "a successful dial must account for the IPv6 /64");
     }
 
     [Test]
@@ -182,6 +229,15 @@ public class NodeFilterTests
     [TestCase("8.8.8.8", false, Description = "Public IPv4")]
     [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
     public void IPAddressExtensions_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsLoopbackOrPrivateOrLinkLocal, Is.EqualTo(expected));
+
+    [TestCase("0.0.0.0", true, Description = "Unspecified IPv4")]
+    [TestCase("::", true, Description = "Unspecified IPv6")]
+    [TestCase("255.255.255.255", true, Description = "IPv4 None sentinel")]
+    [TestCase("::ffff:0.0.0.0", true, Description = "IPv4-mapped unspecified address")]
+    [TestCase("::ffff:255.255.255.255", true, Description = "IPv4-mapped None sentinel")]
+    [TestCase("8.8.8.8", false, Description = "Public IPv4")]
+    [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
+    public void IPAddressExtensions_IsWildcardOrNone(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsWildcardOrNone, Is.EqualTo(expected));
 
     [TestCase("0.1.2.3", true, Description = "IPv4 this-network")]
     [TestCase("192.0.0.1", true, Description = "IPv4 IETF protocol assignments")]

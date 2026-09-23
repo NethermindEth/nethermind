@@ -11,7 +11,9 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -42,6 +44,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
     {
         builder
             .AddServiceStopper()
+            .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
+            .AddSingleton<GCKeeper>()
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
             .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
@@ -67,6 +71,9 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new KeyStoreModule())
             .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
+
+            // Sequences deferred block-data flushing before state persistence (see IStatePersistenceBarrier).
+            .AddSingleton<IStatePersistenceBarrier, StatePersistenceBarrier>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INodeKeyManager>().LoadNodeKey())
             .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
@@ -99,6 +106,39 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
         }
 
+        if (configProvider.GetConfig<IReceiptConfig>().DeriveFromState)
+        {
+            ValidateReceiptDerivationConfig(configProvider);
+            builder.AddModule(new ReceiptRegenerationModule());
+        }
+    }
+
+    /// <summary>
+    /// Refuses configurations under which receipt derivation would silently lose data.
+    /// </summary>
+    /// <remarks>
+    /// Refused rather than warned: the first derived block stops writing bodies that cannot be reconstructed
+    /// afterwards, so a node started on the wrong combination loses receipts permanently.
+    /// </remarks>
+    internal static void ValidateReceiptDerivationConfig(IConfigProvider configProvider)
+    {
+        if (!configProvider.GetConfig<IReceiptConfig>().StoreReceipts)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(IReceiptConfig.DeriveFromState)} requires Receipt.{nameof(IReceiptConfig.StoreReceipts)}: without the receipt database neither pre-Byzantium bodies nor the transaction index are written, so transaction-addressed queries cannot locate their block.", -1);
+        }
+
+        if (!configProvider.GetConfig<IFlatDbConfig>().HistoryEnabled)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(IReceiptConfig.DeriveFromState)} requires FlatDb.{nameof(IFlatDbConfig.HistoryEnabled)}: receipt bodies are not written and can only be reproduced by re-executing over state history.", -1);
+        }
+
+        if (configProvider.GetConfig<ILogIndexConfig>().Enabled)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(IReceiptConfig.DeriveFromState)} cannot be combined with LogIndex.{nameof(ILogIndexConfig.Enabled)}: the index builder reads stored receipt bodies and would stall at the first derived block.", -1);
+        }
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -85,13 +84,13 @@ public class XdcBlockHeader(
         internal set
         {
             _extraFieldsV2 = value;
-            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(value).Bytes];
+            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.EncodeAsBytes(value)];
         }
     }
 
     public bool IsSelfMined { get; } = isSelfMined;
 
-    internal BlockReward[]? ProcessedRewards { get; set; }
+    internal XdcProcessedRewards? ProcessedRewards { get; set; }
 
     public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
@@ -117,6 +116,7 @@ public class XdcBlockHeader(
         {
             MixHash = Hash256.Zero,
             RequestsHash = requestsHash,
+            SlotNumber = SlotNumber + 1,
         };
     }
 
@@ -155,6 +155,7 @@ public class XdcBlockHeader(
         header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         header.ExcessBlobGas = ExcessBlobGas;
         header.BlobGasUsed = BlobGasUsed;
+        header.SlotNumber = SlotNumber;
         header.Validator = Validator;
         header.Validators = Validators;
         header.Penalties = Penalties;
@@ -187,6 +188,7 @@ public class XdcBlockHeader(
             ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
             ExcessBlobGas = src.ExcessBlobGas,
             BlobGasUsed = src.BlobGasUsed,
+            SlotNumber = src.SlotNumber,
         };
 
         return x;

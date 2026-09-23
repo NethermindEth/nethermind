@@ -35,6 +35,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     /// <summary>Sentinel for <c>lastBlockNumber</c> meaning no receipt block has been seen yet.</summary>
     private const ulong NoBlockSeen = ulong.MaxValue;
+    // Before EIP-3529, refunds could reduce gas used by at most half.
+    private const ulong MinimumSupportedTransactionGas = GasCostOf.Transaction / 2;
 
     private readonly MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70> _receiptsRequests70;
     private readonly ISpecProvider _specProvider;
@@ -94,14 +96,14 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private ReceiptsResponse FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
         ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-        ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
+        ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
         bool lastBlockIncomplete = false;
 
         try
         {
             ulong responseReceiptsContentSize = 0;
             bool hasNonEmptyReceiptBlock = false;
-            for (int blockIndex = 0; blockIndex < hashes.Length; blockIndex++)
+            for (int blockIndex = 0; blockIndex < hashes.Length && blockIndex < MaxReceiptsLookups; blockIndex++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -569,7 +571,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private static ulong GetPreviousGasUsedForSegment(int firstReceiptIndex, ulong previousGasUsed)
     {
-        ulong minimalPreviousGasUsed = checked((ulong)firstReceiptIndex * GasCostOf.Transaction);
+        ulong minimalPreviousGasUsed = checked((ulong)firstReceiptIndex * MinimumSupportedTransactionGas);
         return Math.Max(previousGasUsed, minimalPreviousGasUsed);
     }
 
@@ -598,7 +600,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private static void ValidateReceiptGasCoversIntrinsicCost(ulong receiptGasUsed)
     {
-        if (GasCostOf.Transaction > receiptGasUsed)
+        if (MinimumSupportedTransactionGas > receiptGasUsed)
         {
             throw new SubprotocolException("Intrinsic gas lower bound exceeds block gas used");
         }

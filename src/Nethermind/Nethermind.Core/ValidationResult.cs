@@ -5,6 +5,9 @@ namespace Nethermind.Core;
 
 public readonly record struct ValidationResult(string? Error)
 {
+    /// <summary>Whether the error was produced by intrinsic gas validation.</summary>
+    public bool IsIntrinsicGasError { get; init; }
+
     public static ValidationResult Success => new(null);
     public static implicit operator bool(ValidationResult result) => result.AsBool();
     public static implicit operator ValidationResult(string error) => new(error);

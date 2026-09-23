@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core;
@@ -12,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
@@ -22,14 +24,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     private readonly dynamic _tracer;
     private readonly Log _log = new();
-    private readonly IDisposable _blockTracer;
     private readonly Engine _engine;
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
     private readonly CancellationTokenSource _cts;
-    private readonly IDisposable _ctsRegistration;
-    private bool _resultConstructed;
+    private readonly CancellationTokenRegistration _ctsRegistration;
+    private bool _disposed;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
     private int _depth = -1;
@@ -39,7 +40,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly TracerFunctions _functions;
 
     public GethLikeJavaScriptTxTracer(
-        IDisposable blockTracer,
         Engine engine,
         Db db,
         Context ctx,
@@ -50,7 +50,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         IsTracingMemory = true;
         IsTracingStack = true;
 
-        _blockTracer = blockTracer;
         _engine = engine;
         _db = db;
         _ctx = ctx;
@@ -69,18 +68,38 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
     }
 
-    protected override GethLikeTxTrace CreateTrace() => new(_engine);
-
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
 
         result.TxHash = _ctx.TxHash;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = _tracer.result(_ctx, _db) };
-        _ctsRegistration.Dispose();
-        _resultConstructed = true;
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(_tracer.result(_ctx, _db)) };
+        Dispose();
 
         return result;
+    }
+
+    /// <summary>
+    /// Renders the script result to UTF-8 JSON while its engine is alive, so the engine can go right after and
+    /// the trace keeps nothing in the V8 heap. The bytes are written to the response verbatim.
+    /// </summary>
+    /// <remarks>
+    /// Renders with the static <see cref="EthereumJsonSerializer.JsonOptions"/>, since the request's serializer
+    /// is not reachable from the tracer; the response serializer's depth limit is applied when the bytes are
+    /// written, see <see cref="RenderedJsonConverter"/>.
+    /// </remarks>
+    private static RenderedJson MaterializeResult(object? scriptResult)
+    {
+        NumberConversion previousConversion = ForcedNumberConversion.Value;
+        ForcedNumberConversion.Value = NumberConversion.Raw;
+        try
+        {
+            return new RenderedJson(JsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions));
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = previousConversion;
+        }
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -98,19 +117,25 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             _ctx.Input = input;
             _ctx.Value = value;
         }
-        else if (_functions.HasFlag(TracerFunctions.enter))
+        else
         {
+            // Always track the parent frame contract so it can be restored on frame exit,
+            // even when the tracer defines no enter/exit callbacks.
             _contracts ??= new Stack<Log.Contract>();
             _contracts.Push(_log.contract);
-            _frame.From = from;
-            _frame.To = to;
-            _frame.Input = input;
-            _frame.Value = callType == ExecutionType.STATICCALL ? null : value;
-            _frame.Gas = gas;
-            _frame.Type = callType.FastToString();
-            _tracer.enter(_frame);
-            _frameGas ??= new Stack<ulong>();
-            _frameGas.Push(gas);
+
+            if (_functions.HasFlag(TracerFunctions.enter))
+            {
+                _frame.From = from;
+                _frame.To = to;
+                _frame.Input = input;
+                _frame.Value = callType == ExecutionType.STATICCALL ? null : value;
+                _frame.Gas = gas;
+                _frame.Type = callType.FastToString();
+                _tracer.enter(_frame);
+                _frameGas ??= new Stack<ulong>();
+                _frameGas.Push(gas);
+            }
         }
 
         _log.contract = callType == ExecutionType.DELEGATECALL
@@ -160,7 +185,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
-        base.ReportActionError(EvmExceptionType.Revert);
+        base.ReportActionRevert(gasLeft, output);
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
     }
 
@@ -261,13 +286,28 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     public override void Dispose()
     {
-        base.Dispose();
-        _ctsRegistration.Dispose();
-        _cts.Dispose();
-
-        if (!_resultConstructed)
+        if (_disposed)
         {
-            _blockTracer.Dispose();
+            return;
+        }
+
+        _disposed = true;
+        try
+        {
+            base.Dispose();
+            _ctsRegistration.Dispose();
+            _cts.Dispose();
+        }
+        finally
+        {
+            try
+            {
+                ((object)_tracer as IDisposable)?.Dispose();
+            }
+            finally
+            {
+                _engine.Dispose();
+            }
         }
     }
 

@@ -21,9 +21,11 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -33,11 +35,13 @@ public class DebugBridge : IDebugBridge
     private readonly IGethStyleTracer _tracer;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
+    private readonly IReceiptFinder _receiptFinder;
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
@@ -46,22 +50,29 @@ public class DebugBridge : IDebugBridge
         IGethStyleTracer tracer,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore)
+        IBadBlockStore badBlockStore,
+        IBlockStore blockStore,
+        IWorldStateManager worldStateManager)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
+        // Use the shared singleton store, not a private one over the raw DB, so debug reads observe the
+        // deferred-body overlay (a private store would miss a block whose body write is still queued).
+        _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
+        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
-        IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
         IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
         IDb metadataDb = dbProvider.MetadataDb ?? throw new ArgumentNullException(nameof(dbProvider.MetadataDb));
@@ -75,8 +86,6 @@ public class DebugBridge : IDebugBridge
             {DbNames.Metadata, metadataDb},
             {DbNames.Code, codeDb},
         };
-
-        _blockStore = new BlockStore(blocksDb);
 
         IColumnsDb<ReceiptsColumns> receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
         foreach (ReceiptsColumns receiptsDbColumnKey in receiptsDb.ColumnKeys)
@@ -93,7 +102,29 @@ public class DebugBridge : IDebugBridge
 
     public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
 
-    public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
+    public bool UpdateHeadBlock(Hash256 blockHash)
+    {
+        BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+        if (header is null) return false;
+
+        // Move the live head first, by the route forkchoiceUpdated takes, so `latest` and the state kept
+        // below agree; pruning against a head the node does not advertise would drop the state it serves.
+        // A successful move also writes the persisted head pointer; a rejected one must not, or a restart
+        // would start from a head the node never reached.
+        if (_blockTree.Head?.Hash != header.Hash
+            && !_blockTree.TryUpdateMainChain(header, wereProcessed: true, forceUpdateHeadBlock: true))
+        {
+            return false;
+        }
+
+        // benchmarkoor compatibility: it rewinds to the same head after every test, so state kept for the
+        // branches those tests built must go, or it accumulates for the whole run.
+        // Known limitation: the block tree keeps WasProcessed on the dropped blocks and NewPayloadHandler
+        // keeps its result cache, so resubmitting one of them returns VALID without re-execution and its
+        // child then answers SYNCING for want of parent state. Callers must replay fresh payloads only.
+        _worldStateManager.DropStateNotReachableFrom(header);
+        return true;
+    }
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);
 
@@ -126,7 +157,7 @@ public class DebugBridge : IDebugBridge
         }
 
         Block block = searchResult.Object;
-        return _receiptStorage.Get(block);
+        return _receiptFinder.Get(block);
     }
 
     public Transaction? GetTransactionFromHash(Hash256 txHash)
@@ -140,10 +171,11 @@ public class DebugBridge : IDebugBridge
             throw new InvalidDataException(searchResult.Error);
         }
         Block block = searchResult.Object;
-        TxReceipt txReceipt = _receiptStorage.Get(block).ForTransaction(txHash);
+        TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
         return block?.Transactions[txReceipt.Index];
     }
 
+    [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
     public GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
@@ -194,7 +226,7 @@ public class DebugBridge : IDebugBridge
 
     public SyncReportSummary GetCurrentSyncStage() => new()
     {
-        CurrentStage = _syncModeSelector.Current.ToString()
+        CurrentStage = _syncModeSelector.Current.ToFlagsString()
     };
 
     public bool HaveNotSyncedHeadersYet() => _syncModeSelector.Current.HaveNotSyncedHeadersYet();
@@ -215,18 +247,20 @@ public class DebugBridge : IDebugBridge
 
     public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
+        BlockHeader? header = _blockTree.FindHeader(blockParameter);
+        IReleaseSpec? spec = header is null ? null : _specProvider.GetSpec(header);
         foreach (TransactionBundle bundle in bundles)
         {
-            yield return GetBundleTrace(bundle, blockParameter, gasCap, cancellationToken, gethTraceOptions);
+            yield return GetBundleTrace(bundle, blockParameter, gasCap, spec, cancellationToken, gethTraceOptions);
         }
     }
 
-    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
+    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, ulong? gasCap, IReleaseSpec? spec, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
     {
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
-            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: gasCap);
+            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: gasCap, spec: spec);
             if (txResult.IsError)
             {
                 trace = CreateFailTrace(txForRpc.Gas);

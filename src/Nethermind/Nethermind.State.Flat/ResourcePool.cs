@@ -53,7 +53,18 @@ public class ResourcePool : IResourcePool
 
     public void ReturnSnapshotContent(Usage usage, SnapshotContent snapshotContent) => _categories[usage].ReturnSnapshotContent(snapshotContent);
 
-    public TransientResource GetCachedResource(Usage usage) => _categories[usage].GetCachedResource();
+    public SortedSnapshotContent GetSortedSnapshotContent(Usage usage) => _categories[usage].GetSortedSnapshotContent();
+
+    public void ReturnSortedSnapshotContent(Usage usage, SortedSnapshotContent sortedContent) => _categories[usage].ReturnSortedSnapshotContent(sortedContent);
+
+    public TransientResource GetCachedResource(Usage usage)
+    {
+        TransientResource transientResource = _categories[usage].GetCachedResource();
+        // Arm the owner lease and register the return owner at the checkout itself, so no caller can
+        // obtain a resource whose final ReleaseLease has nowhere to return it.
+        transientResource.OnRented(this, usage);
+        return transientResource;
+    }
 
     public void ReturnCachedResource(Usage usage, TransientResource transientResource) => _categories[usage].ReturnCachedResource(transientResource);
 
@@ -124,9 +135,11 @@ public class ResourcePool : IResourcePool
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int cachedResourcePoolSize)
     {
         private readonly ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
+        private readonly ConcurrentStackPool<SortedSnapshotContent> _sortedPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
         private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
+        private readonly PooledResourceLabel _sortedLabel = new(usage.ToString(), "SortedSnapshotContent");
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
 
         public SnapshotContent GetSnapshotContent()
@@ -150,6 +163,26 @@ public class ResourcePool : IResourcePool
             }
 
             Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
+        }
+
+        public SortedSnapshotContent GetSortedSnapshotContent()
+        {
+            Metrics.ActivePooledResource.AddBy(_sortedLabel, 1);
+            if (_sortedPool.TryGet(out SortedSnapshotContent? sortedContent))
+            {
+                Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
+                return sortedContent;
+            }
+
+            Metrics.CreatedPooledResource.AddBy(_sortedLabel, 1);
+            return new SortedSnapshotContent();
+        }
+
+        public void ReturnSortedSnapshotContent(SortedSnapshotContent sortedContent)
+        {
+            Metrics.ActivePooledResource.AddBy(_sortedLabel, -1);
+            _sortedPool.Return(sortedContent);
+            Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
         }
 
         public TransientResource GetCachedResource()

@@ -4,8 +4,8 @@
 using System.IO.Abstractions;
 using Autofac;
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -26,10 +26,6 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
     : INethermindPlugin, IAsyncDisposable
 {
     private readonly CancellationTokenSource _cancellationTokenSource = new();
-    private INethermindApi _api = null!;
-    private IBlocksConfig _blocksConfig = null!;
-    private ILogger _logger;
-    private ILogManager _logManager = null!;
     public string Name => "StatsAnalyzer";
     public string Description => "Allows to serve traces of stats over blocks, by saving them to a file.";
     public string Author => "Nethermind";
@@ -37,29 +33,6 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
     public bool Enabled => patternAnalyzerConfig.Enabled || callAnalyzerConfig.Enabled;
 
     public IModule Module => new StatsAnalyzerPluginModule(patternAnalyzerConfig, callAnalyzerConfig, _cancellationTokenSource.Token);
-
-    public Task Init(INethermindApi nethermindApi)
-    {
-        _api = nethermindApi;
-        _logManager = _api.LogManager;
-        _logger = _logManager.GetClassLogger<StatsAnalyzerPlugin>();
-        _blocksConfig = _api.Config<IBlocksConfig>();
-
-        // Analyzers share mutable state across transactions and are unsafe
-        // under parallel BAL execution; the block tracer skips recording on
-        // such blocks, so warn once that coverage will be partial.
-        if (Enabled && _blocksConfig.ParallelExecution && _logger.IsWarn)
-        {
-            _logger.Warn(
-                "Blocks.ParallelExecution=true: StatsAnalyzer Pattern/Call analyzers " +
-                "will skip recording on blocks executed with parallel BAL. " +
-                "Pre-Amsterdam and sequentially-executed blocks will still be recorded. " +
-                "Set Blocks.ParallelExecution=false to capture every block. " +
-                "See tools/StatsAnalyzer/EIP-7928-references.md for details.");
-        }
-
-        return Task.CompletedTask;
-    }
 
     ValueTask IAsyncDisposable.DisposeAsync()
     {
@@ -74,8 +47,35 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
         CancellationToken cancellationToken) : Module
     {
         protected override void Load(ContainerBuilder builder) => builder
+            .AddStep(typeof(WarnParallelExecutionStep))
             .AddSingleton<IMainProcessingModule>(
                 new StatsAnalyzerMainProcessingModule(patternAnalyzerConfig, callAnalyzerConfig, cancellationToken));
+    }
+
+    /// <summary>
+    /// Warns once at startup that the Pattern/Call analyzers skip recording on blocks executed with parallel BAL.
+    /// Registered only when the plugin is enabled, so it does not re-check the enabled flag.
+    /// </summary>
+    public sealed class WarnParallelExecutionStep(IBlocksConfig blocksConfig, ILogManager logManager) : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken)
+        {
+            ILogger logger = logManager.GetClassLogger<StatsAnalyzerPlugin>();
+
+            // Analyzers share mutable state across transactions and are unsafe under parallel BAL execution;
+            // the block tracer skips recording on such blocks, so warn once that coverage will be partial.
+            if (blocksConfig.ParallelExecution && logger.IsWarn)
+            {
+                logger.Warn(
+                    "Blocks.ParallelExecution=true: StatsAnalyzer Pattern/Call analyzers " +
+                    "will skip recording on blocks executed with parallel BAL. " +
+                    "Pre-Amsterdam and sequentially-executed blocks will still be recorded. " +
+                    "Set Blocks.ParallelExecution=false to capture every block. " +
+                    "See tools/StatsAnalyzer/EIP-7928-references.md for details.");
+            }
+
+            return Task.CompletedTask;
+        }
     }
 
     // Contributes the Call/Pattern analyzer block tracers to the main block processor only.

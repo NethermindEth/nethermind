@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
@@ -78,7 +79,7 @@ public class GasEstimator(
         if (CheckFunds(tx, spec, gasTracer, senderBalance, out UInt256 available) is { } fundsResult)
             return fundsResult;
 
-        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit).MinimalGas;
+        ulong intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, header.GasLimit).MinRequiredGasLimit;
         ulong leftBound = Math.Max(gasTracer.GasSpent.SaturatingSub(1), intrinsicGas.SaturatingSub(1));
         ulong rightBound = Math.Min(
             tx.GasLimit != 0 && tx.GasLimit >= intrinsicGas ? tx.GasLimit : header.GasLimit,
@@ -143,9 +144,12 @@ public class GasEstimator(
         Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer,
         EstimationBounds bounds, ulong errorMargin, CancellationToken token)
     {
-        // Short-circuit: simple ETH transfers need exactly the intrinsic gas.
-        if (IsSimpleTransfer(tx) && TryExecute(tx, header, spec, bounds.IntrinsicGas, gasTracer, token, out _))
-            return EstimationResult.Success(bounds.IntrinsicGas);
+        if (IsSimpleTransfer(tx) && !stateProvider.IsContract(tx.To!))
+        {
+            ulong exact = Math.Max(bounds.IntrinsicGas, gasTracer.GasSpent);
+            if (exact <= bounds.RightBound && TryExecute(tx, header, spec, exact, gasTracer, token, out _))
+                return EstimationResult.Success(exact);
+        }
 
         // Execute at maximum gas first (Geth parity): gas-related failure → allowance error; other → surface directly.
         if (!TryExecute(tx, header, spec, bounds.RightBound, gasTracer, token, out bool isGasRelatedFailure))
@@ -200,7 +204,7 @@ public class GasEstimator(
                              EstimateGasTracer gasTracer, CancellationToken token, out bool isGasRelatedFailure)
     {
         Transaction txClone = new();
-        transaction.CopyTo(txClone);
+        transaction.CopyTo(txClone, copyHash: false);
         txClone.GasLimit = gasLimit;
 
         transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));

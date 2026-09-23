@@ -7,5 +7,6 @@ public enum FlatLayout
 {
     Flat,
     FlatInTrie,
+    PreimageFlatV1,
     PreimageFlat,
 }

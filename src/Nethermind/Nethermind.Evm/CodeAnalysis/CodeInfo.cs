@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
+public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; }
     // Empty code sentinel
@@ -24,11 +28,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     // Empty
     private CodeInfo() { }
-    private CodeInfo(JumpDestinationAnalyzer analyzer)
-    {
-        _analyzer = analyzer;
-        _streamBuildState = StreamBuildUnavailable;
-    }
+    private CodeInfo(JumpDestinationAnalyzer analyzer) => _analyzer = analyzer;
 
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
@@ -37,7 +37,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         if (code.Length == 0)
         {
             _analyzer = _emptyAnalyzer;
-            _streamBuildState = StreamBuildUnavailable;
         }
         else
         {
@@ -50,15 +49,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         Precompile = precompile;
         _analyzer = null;
-        _streamBuildState = StreamBuildUnavailable;
-    }
-
-    protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
-    {
-        Precompile = precompile;
-        Code = code;
-        _analyzer = null;
-        _streamBuildState = StreamBuildUnavailable;
     }
 
     public ReadOnlyMemory<byte> Code { get; }
@@ -67,52 +57,26 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
-    private int _streamHits;
+    /// <summary>The keccak of the code, stamped when a cache stores this instance.</summary>
+    /// <remarks>An instance that never passed through <c>ICodeCache.Set</c> — a precompile,
+    /// <see cref="Empty"/>, or anything resolved under <c>NoopCodeCache</c> — reports <c>default</c>
+    /// rather than its own hash. See <see cref="StampCodeHash"/> for why it cannot be re-pointed.</remarks>
+    public ValueHash256 CodeHash { get; private set; }
 
-    private const int StreamBuildIdle = 0;
-    private const int StreamBuildScheduled = 1;
-    private const int StreamBuildUnavailable = 2;
-    private int _streamBuildState;
-
-    // Key into the shared InstructionStreamCache (set by the repository), so a built stream
-    // survives this instance's eviction.
-    public ValueHash256 CodeHash { get; set; }
-
-    /// <summary>
-    /// Built stream from the shared cache, or <c>null</c> until built (scheduled once past
-    /// <see cref="StreamInterpreter.BuildThreshold"/>, never blocks). Held only by the shared cache, not this instance.
-    /// </summary>
-    internal InstructionStream? GetOrBuildStream()
+    /// <summary>Stamps the keccak of this instance's code, as an <c>ICodeCache</c> does on insert.</summary>
+    /// <remarks><c>CacheCodeInfoRepository</c>'s last-resolved memo decides which bytecode executes from
+    /// this value alone, so a stamp that is not the keccak of <see cref="CodeSpan"/> would silently serve
+    /// the wrong contract. Re-stamping the same hash is allowed — two threads may race to cache the same
+    /// code — but re-pointing an instance at a different one is not.</remarks>
+    /// <exception cref="InvalidOperationException">The instance already carries a different hash.</exception>
+    internal void StampCodeHash(in ValueHash256 codeHash)
     {
-        if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
-            return null;
-        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
-            return cached;
-        if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
-            return null;
+        if (CodeHash != default && CodeHash != codeHash) ThrowRestamped(in codeHash);
+        CodeHash = codeHash;
 
-        if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
-            ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
-
-        return null;
-    }
-
-    private void BuildStream()
-    {
-        InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
-        if (stream is not null && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
-        {
-            InstructionStreamCache.Set(CodeHash, stream);
-        }
-        else
-        {
-            Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
-        }
-    }
-
-    private sealed class StreamBuilder(CodeInfo codeInfo) : IThreadPoolWorkItem
-    {
-        public void Execute() => codeInfo.BuildStream();
+        [DoesNotReturn, StackTraceHidden]
+        void ThrowRestamped(in ValueHash256 attempted)
+            => throw new InvalidOperationException($"{nameof(CodeInfo)} carrying {CodeHash} cannot be re-stamped as {attempted}");
     }
 
     /// <summary>
@@ -128,15 +92,23 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public bool ValidateJump(int destination)
         => _analyzer?.ValidateJump(destination) ?? false;
 
+    /// <summary>The jump-destination bitmap of this code, built on first use.</summary>
+    internal long[] JumpDestinationBitmap
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+    }
+
     void IThreadPoolWorkItem.Execute()
         => _analyzer?.Execute();
 
     public void AnalyzeInBackgroundIfRequired()
     {
-#if !ZK_EVM
+        // Analysis only runs ahead of execution on another processor; the guest folds the queue away.
+        if (RuntimeInformation.IsSingleProcessor) return;
+
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
-#endif
     }
 
     public override bool Equals(object? obj)

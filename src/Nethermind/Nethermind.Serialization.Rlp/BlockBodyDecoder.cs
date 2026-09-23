@@ -6,11 +6,16 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
+/// <summary>Encodes and decodes block bodies.</summary>
+/// <remarks>
+/// The standard decode entry point rents transactions unless <see cref="RlpBehaviors.SkipPooledTransactions"/>
+/// is specified. Retained blocks must opt out; pooled transactions require an exclusive owner and a return path.
+/// </remarks>
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
 public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
 {
     private static RlpLimit TransactionsCountLimit => RlpLimit.For<BlockBody>(
-        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.Transaction + 1)),
+        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.TransactionEip2780 + 1)),
         nameof(BlockBody.Transactions)
     );
 
@@ -27,7 +32,8 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     private static BlockBodyDecoder? _instance;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
-    public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetBodyLength(item));
+    public override int GetLength(BlockBody? item, RlpBehaviors rlpBehaviors)
+        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetBodyLength(item));
 
     public int GetBodyLength(BlockBody b)
     {
@@ -38,8 +44,11 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     }
 
     public (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b) =>
+        GetBodyComponentLength(b, GetTxLength(b.Transactions));
+
+    internal (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b, int transactionLength) =>
     (
-        GetTxLength(b.Transactions),
+        transactionLength,
         GetUnclesLength(b.Uncles),
         b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null
     );
@@ -92,18 +101,28 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             return null;
         }
 
-        return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
+        return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength,
+            usePooledTransactions: (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) == 0);
     }
 
-    public BlockBody? DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
+    /// <summary>Decodes body contents after the outer sequence prefix, with optional transaction pooling.</summary>
+    /// <param name="ctx">Reader positioned at the transaction sequence.</param>
+    /// <param name="lastPosition">Expected reader position after the body contents.</param>
+    /// <param name="usePooledTransactions">
+    /// Rent exclusively owned transactions. Return them to <see cref="TxDecoder.TxObjectPool"/> at most once,
+    /// after all consumers finish. Pass false for retained blocks.
+    /// </param>
+    public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, bool usePooledTransactions)
     {
-        Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
-        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
+        Transaction[] transactions = _txDecoder.DecodeNonNullArray(
+            ref ctx, usePooledTransactions ? RlpBehaviors.None : RlpBehaviors.SkipPooledTransactions,
+            limit: TransactionsCountLimit);
+        BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;
 
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
-            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
+            withdrawals = ctx.DecodeNonNullArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
         }
 
         ctx.Check(lastPosition);

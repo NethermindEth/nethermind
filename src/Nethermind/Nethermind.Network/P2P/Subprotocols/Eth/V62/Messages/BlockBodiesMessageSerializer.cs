@@ -57,8 +57,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             int startingPosition = ctx.Position;
             try
             {
-                BlockBody[]? bodies = ctx.DecodeArray(_blockBodyDecoder, false, allowNulls: true, limit: RlpLimit);
-                OwnedBlockBodies ownedBodies = new(bodies, memoryOwner);
+                BlockBody?[] bodies = ctx.DecodeNullableArray(_blockBodyDecoder, false, limit: RlpLimit);
+                OwnedBlockBodies ownedBodies = new(bodies, memoryOwner, ownsPooledTransactions: true);
                 memoryOwner = null;
                 byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 

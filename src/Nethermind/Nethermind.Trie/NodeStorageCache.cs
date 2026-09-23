@@ -26,6 +26,8 @@ public sealed class NodeStorageCache
         return _cache.GetOrAdd(in nodeKey, tryLoadRlp);
     }
 
+    /// <summary>Disables and clears the cache.</summary>
+    /// <returns><see langword="true"/> when the cache was enabled; this does not indicate whether it contained entries.</returns>
     public bool ClearCaches()
     {
         bool wasEnabled = _enabled;

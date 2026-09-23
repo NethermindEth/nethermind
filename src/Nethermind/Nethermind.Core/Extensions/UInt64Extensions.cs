@@ -11,6 +11,10 @@ namespace Nethermind.Core.Extensions;
 
 public static class UInt64Extensions
 {
+    /// <summary>Returns <c>min(ulong.MaxValue, a + b)</c> without wrapping around 2^64.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong SaturatingAdd(this ulong a, ulong b) => b > ulong.MaxValue - a ? ulong.MaxValue : a + b;
+
     /// <summary>Returns <c>max(0, a - b)</c> without wrapping around 2^64.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong SaturatingSub(this ulong a, ulong b) => a > b ? a - b : 0UL;

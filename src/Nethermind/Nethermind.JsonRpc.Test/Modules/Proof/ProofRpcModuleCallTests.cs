@@ -55,10 +55,8 @@ public class ProofRpcModuleCallTests
         Assert.That(lastHeader.Hash, Is.EqualTo(head.Hash!), "the executed-against block header must be included");
     }
 
-    [TestCase("number")]
-    [TestCase("hash")]
-    [TestCase("latest")]
-    public async Task Proof_call_accepts_block_number_hash_and_latest(string mode)
+    [Test]
+    public async Task Proof_call_accepts_block_number_hash_and_latest([Values("number", "hash", "latest")] string mode)
     {
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         await CreateTransferTx(blockchain);
@@ -269,8 +267,8 @@ public class ProofRpcModuleCallTests
         AccountProofCollector expectedCollector = new(contractAddress, [UInt256.Zero]);
         blockchain.StateReader.RunTreeVisitor(expectedCollector, sourceHeader);
         AccountProof expectedProof = expectedCollector.BuildResult();
-        byte[][] expectedStorageProofNodes = expectedProof.StorageProofs!
-            .SelectMany(sp => sp.Proof!)
+        byte[][] expectedStorageProofNodes = expectedProof.StorageProofs
+            .SelectMany(sp => sp.Proof)
             .ToArray();
         Assert.That(expectedStorageProofNodes, Is.Not.Empty,
             "the contract should have a non-empty storage proof for slot 0 in the parent state");
@@ -439,7 +437,7 @@ public class ProofRpcModuleCallTests
         Assert.That(reconstructedCode, Is.EqualTo(runtimeCode),
             "the contract bytecode must be reconstructible from witness.Codes");
 
-        UInt256 slot0 = new(statelessWorld.Get(new StorageCell(contractAddress, 0)), isBigEndian: true);
+        statelessWorld.Get(new StorageCell(contractAddress, 0), out UInt256 slot0);
         Assert.That(slot0, Is.EqualTo((UInt256)0xAB),
             "slot 0 must be reachable through witness state nodes");
     }

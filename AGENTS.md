@@ -1,6 +1,6 @@
 # AGENTS instructions
 
-This guide helps to get started with the Nethermind Ethereum execution client repository, which targets `net10.0` and uses C# language version `14.0`. It covers the project structure, how to build and test the code, and follow the PR workflow.
+This guide helps to get started with the Nethermind Ethereum execution client repository. It covers the repo layout, coding guidelines, testing, and the PR workflow.
 
 ## Repo structure
 
@@ -20,6 +20,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
   - Prefer composition over inheritance — inheritance has caused many extensibility issues in this code base.
 - When multiple solutions are viable, prefer them in this order: one that removes code, then one that adds code without adding surface area (new interfaces or public methods) or touching existing code, and last, one that modifies existing code. Removing code removes failure points; additive changes generally don't regress existing behavior and are the easiest to review. This ranks viable designs — a bug in existing code should still be fixed in place, not wrapped. If a change makes existing code unused, remove it.
 - When fixing a bug, always add a regression test
+- Nethermind supports little-endian platforms only; `Nethermind.Runner/Program.cs` throws at startup otherwise. Do not add `BitConverter.IsLittleEndian` checks, endian-neutral fallbacks or comments noting the assumption, and do not raise little-endian assumptions as review findings.
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
 - Prefer self-documenting code — clear names and structure should remove the need for most comments. Emit a comment only when it captures context that is not obvious from the code itself: the _why_ behind a non-obvious choice, an invariant, a workaround, an EIP/Yellow-Paper reference, a subtle edge case, etc. Comments that merely restate the code are noise — don't add them, and remove them when you encounter them. Keep comments concise and ensure that they make sense in the context of the master branch, not referencing the specifics of the current session.
 - When in doubt, do not add a comment. An unnecessary comment contributes to reviewer fatigue.
@@ -30,7 +31,9 @@ This guide helps to get started with the Nethermind Ethereum execution client re
   - For interface implementations and overrides, prefer `<inheritdoc/>` (optionally with `cref=`) to propagate the contract from the base/interface instead of duplicating it. Add `<remarks>` only when the implementation introduces caller-visible behavior beyond the inherited contract.
   - Reserve in-line comments for implementation-specific details that cannot reasonably live on the member header — e.g. why a particular branch is taken, why a value is computed this way at this exact spot, or a local workaround for a bug elsewhere.
 - Avoid code duplication, especially in tests:
-  - When tests differ only by inputs and expected outputs, parameterize a single test with `[TestCase(...)]` or `[TestCaseSource(...)]` rather than copy-pasting the body. Before adding a new test, check whether an existing one can be extended with another `[TestCase]`.
+  - When tests differ only by inputs and expected outputs, parameterize a single test rather than copy-pasting the body. Before adding a new test, check whether an existing one can be extended with another value or case.
+  - Prefer the parameter attributes for a run of positional-only cases: `[Values(...)]` (plus the `[Test]` that NUnit then needs for discovery), a bare `[Values]` on a `bool`, `[Range(from, to)]` for a contiguous integer run, or `[ValueSource(...)]` when the values are not attribute constants or are shared by several methods. `[Values]` on more than one parameter generates the cartesian product, so use it only when every combination is worth running.
+  - Keep `[TestCase(...)]` / `[TestCaseSource(...)]` where the parameter attributes cannot express the cases: sets that are not a product of independent values, array-valued arguments, per-case `ExpectedResult`/`TestName`/`Ignore`/`Explicit`, or a case that needs a comment of its own.
   - When only _parts_ of tests are similar (shared setup, common assertions, recurring scenarios), factor those parts into helper methods or helper types (e.g. a builder, a shared static helper, a test fixture base). Keep each test body focused on what makes the case unique.
   - See [`.agents/rules/test-infrastructure.md`](./.agents/rules/test-infrastructure.md) "Test guidelines" for details.
 
@@ -50,70 +53,6 @@ Detailed rules live in [`.agents/rules/`](./.agents/rules/). **You MUST read the
 - [git.md](./.agents/rules/git.md) — Load when interacting with git version control. Covers merging, rebasing, pushing, and more.
 - [agent-skills.md](./.agents/rules/agent-skills.md) — Load when working with agentic skills. Covers the symlink convention.
 
----
-
-## Project structure
-
-The codebase in [src/Nethermind](./src/Nethermind/) is organized into three independent solutions:
-
-- [Nethermind.slnx](./src/Nethermind/Nethermind.slnx): The Nethermind client codebase and tests
-- [EthereumTests.slnx](./src/Nethermind/EthereumTests.slnx): The Ethereum Foundation test suite
-- [Benchmarks.slnx](./src/Nethermind/Benchmarks.slnx): Performance benchmarking
-
-### Architecture
-
-- **Entry point and initialization**
-  - [Nethermind.Runner](./src/Nethermind/Nethermind.Runner/): The app entry point and startup orchestration
-  - [Nethermind.Init](./src/Nethermind/Nethermind.Init/): Initialization logic, memory management, metrics
-- **General API**
-  - [Nethermind.Api](./src/Nethermind/Nethermind.Api/): Core API interfaces and plugin API
-  - [Nethermind.Config](./src/Nethermind/Nethermind.Config/): Configuration handling
-  - [Nethermind.Logging](./src/Nethermind/Nethermind.Logging/): Logging
-- **Consensus algorithms**
-  - [Nethermind.Consensus.AuRa](./src/Nethermind/Nethermind.Consensus.AuRa/): Authority round (Aura)
-  - [Nethermind.Consensus.Clique](./src/Nethermind/Nethermind.Consensus.Clique/): Proof of Authority (PoA)
-  - [Nethermind.Consensus.Ethash](./src/Nethermind/Nethermind.Consensus.Ethash/): Proof of Work (PoW)
-  - [Nethermind.Merge.Plugin](./src/Nethermind/Nethermind.Merge.Plugin/): Proof of Stake (PoS)
-- **Core blockchain**
-  - [Nethermind.Blockchain](./src/Nethermind/Nethermind.Blockchain/): Block processing, chain management, validators
-  - [Nethermind.Core](./src/Nethermind/Nethermind.Core/): Foundational types
-  - [Nethermind.Crypto](./src/Nethermind/Nethermind.Crypto/): Core cryptographic algorithms
-  - [Nethermind.Evm](./src/Nethermind/Nethermind.Evm/): EVM implementation
-  - [Nethermind.Evm.Precompiles](./src/Nethermind/Nethermind.Evm.Precompiles/): EVM precompiled contracts
-  - [Nethermind.Specs](./src/Nethermind/Nethermind.Specs/): Network specifications and hard fork rules
-- **State and storage:**
-  - [Nethermind.Db](./src/Nethermind/Nethermind.Db/): Database abstraction layer
-  - [Nethermind.Db.Rocks](./src/Nethermind/Nethermind.Db.Rocks/): RocksDB implementation (primary storage backend)
-  - [Nethermind.State](./src/Nethermind/Nethermind.State/): World state management, accounts, contract storage
-  - [Nethermind.Trie](./src/Nethermind/Nethermind.Trie/): Merkle Patricia trie implementation
-- **Networking:**
-  - [Nethermind.Network](./src/Nethermind/Nethermind.Network/): devp2p protocol implementation
-  - [Nethermind.Network.Discovery](./src/Nethermind/Nethermind.Network.Discovery/): Peer discovery
-  - [Nethermind.Network.Dns](./src/Nethermind/Nethermind.Network.Dns/): DNS-based node discovery
-  - [Nethermind.Network.Enr](./src/Nethermind/Nethermind.Network.Enr/): Ethereum Node Records (ENR) handling
-  - [Nethermind.Synchronization](./src/Nethermind/Nethermind.Synchronization/): Block synchronization strategies (fast sync, snap sync)
-  - [Nethermind.UPnP.Plugin](./src/Nethermind/Nethermind.UPnP.Plugin/): UPnP support
-- **Transaction management:**
-  - [Nethermind.TxPool](./src/Nethermind/Nethermind.TxPool/): Transaction pool (mempool) management, validation, sorting
-- **RPC and external interface:**
-  - [Nethermind.Facade](./src/Nethermind/Nethermind.Facade/): High-level API facades for external interaction
-  - [Nethermind.JsonRpc](./src/Nethermind/Nethermind.JsonRpc/): JSON-RPC server
-  - [Nethermind.Sockets](./src/Nethermind/Nethermind.Sockets/): WebSocket server
-- **Monitoring**
-  - [Nethermind.HealthChecks](./src/Nethermind/Nethermind.HealthChecks/): Health checks
-  - [Nethermind.Monitoring](./src/Nethermind/Nethermind.Monitoring/): Monitoring API
-  - [Nethermind.Seq](./src/Nethermind/Nethermind.Seq/): Seq integration
-- **Serialization:**
-  - [Nethermind.Serialization.Json](./src/Nethermind/Nethermind.Serialization.Json/): JSON serialization
-  - [Nethermind.Serialization.Rlp](./src/Nethermind/Nethermind.Serialization.Rlp/): RLP serialization
-  - [Nethermind.Serialization.Ssz](./src/Nethermind/Nethermind.Serialization.Ssz/): SSZ serialization
-- **Third-party integration:**
-  - [Nethermind.Flashbots](./src/Nethermind/Nethermind.Flashbots/): Flashbots integration
-  - [Nethermind.Optimism](./src/Nethermind/Nethermind.Optimism/): Optimism network (OP Stack) support
-  - [Nethermind.Taiko](./src/Nethermind/Nethermind.Taiko/): Taiko network support
-- **Tests**
-  - Test suites reside in Nethermind.\*.Test directories
-
 ## Pull request guidelines
 
 Before creating a pull request:
@@ -129,86 +68,7 @@ Before creating a pull request:
   ```
 - Follow the [pull_request_template.md](.github/pull_request_template.md) format: fill in the changes section, tick the appropriate type-of-change checkboxes, and complete the testing/documentation sections. The checkboxes drive automatic PR labeling.
 
-## Prerequisites
+## Benchmark workflows
 
-See [global.json](./global.json) for the required .NET SDK version.
-
-## Reproducible Benchmark Workflow Guidance
-
-This repository contains a dedicated workflow for reproducible payload benchmarks:
-
-- Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
-- Main execution runner label: `reproducible-benchmarks`
-
-### What the workflow does
-
-- Resolves runtime inputs (branch, state layout, payload set, delay, optional extra flags).
-- Selects one benchmark config file from `/mnt/sda/expb-data`.
-- Builds or reuses Nethermind Docker image tag depending on branch rules.
-- Renders a temporary config (does not modify source files) by:
-  - replacing `<<DOCKER_TAG>>`
-  - replacing `<<DELAY>>`
-  - renaming scenario key `nethermind:` to a detailed scenario name
-  - appending user-provided extra flags under `extra_flags:`
-- Installs `expb` via `uv tool install --force --from ... expb`.
-- Runs `expb execute-scenarios` with per-payload metrics and logs.
-- Handles termination gracefully with cleanup grace period.
-- Metrics source: prefers SSE client metrics (`[payload-server] client_metric` lines — Nethermind internal processing times) over K6 TTFB. Falls back to the per-payload pipe table when SSE data is unavailable.
-- On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
-- The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
-- When `dottrace` input is enabled, passes `--dottrace` to expb. dotTrace snapshots (`.dtp` + chunk files) are zipped and uploaded as artifacts. A downstream Windows job (`generate-dottrace-reports`) runs Reporter.exe to produce XML reports (`*-report.xml`) uploaded as the `dottrace-reports` artifact. Each report contains `<Function>` nodes with `FQN`, `TotalTime`, `OwnTime`, `Calls`, and full call stacks — sort by `OwnTime` for hot spots, use `CallStack` attributes for call tree analysis.
-
-### What to inspect in run output
-
-- Inspect the `Run expb scenarios` step output first.
-- Treat any Nethermind `Exception` as a high-priority issue.
-- Explicitly scan logs for invalid block signals, including `Invalid Block` and `Invalid Blocks`.
-- Review the end-of-run summary section with per-block timings and totals.
-- Use summary timing values to derive aggregate metrics (average/mean at minimum; median/p95 when available).
-- If a run fails or is terminated, check whether cleanup grace-period handling completed cleanly.
-
-### Log structure reference
-
-- Reference run used for structure validation:
-  - Run: `https://github.com/NethermindEth/nethermind/actions/runs/22185801008`
-  - Job: `https://github.com/NethermindEth/nethermind/actions/runs/22185801008/job/64159725161`
-- Fetch logs with:
-  ```bash
-  gh run view 22185801008 --job 64159725161 --log
-  ```
-- GitHub job log lines are tab-separated in this shape:
-  - `<job-name>\t<step-name>\t<timestamp>\t<message>`
-  - Example step names in this workflow: `Print resolved inputs`, `Render benchmark config`, `Install or upgrade expb`, `Run expb scenarios`.
-- `Run expb scenarios` contains mixed streams:
-  - EXPB structured events like: `timestamp=... level=info event="..."`.
-  - K6 progress and metric blocks (`http_req_duration`, `iteration_duration`, percentiles like `p(95)`).
-  - Raw Nethermind runtime logs (received blocks, processed block timings, shutdown sequence).
-  - Per-payload metrics table near the end, marked by:
-    - `+---------+------------+-----------------+`
-    - `| payload | gas_used   | processing_ms   |`
-    - rows with payload id, gas used, processing time.
-- ANSI color codes are present; when searching/parsing, strip ANSI escape sequences first.
-- Some non-ASCII time-unit glyphs can appear mangled in plain terminal output, so prefer numeric metric fields when computing aggregates.
-
-### Mandatory log checks
-
-- Fail review if any of these appear in Nethermind logs:
-  - `Exception`
-  - `Invalid Block`
-  - `Invalid Blocks`
-- Workflow behavior requirement: any detected `Exception` in run output must fail the workflow after reporting matching lines.
-- Also flag severe runtime signals if present:
-  - `Unhandled`
-  - `Fatal`
-  - `ERROR`
-- Confirm normal shutdown markers at end:
-  - `Nethermind is shut down`
-  - `event="Cleanup completed"`
-
-### Notes for agents
-
-- The benchmark config is rendered to a temporary file and removed afterward; no source config revert is required.
-- For `pull_request` and `push` auto-runs, default mode is `flat` layout with both `superblocks` and `realblocks` payload sets.
-- Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
-- Optional low-variance mode: pass `-f expb_env="EXPB_EVM_WARMUP=1"` to enable expb's per-block EVM warmup (`eth_simulateV1` before each measured block). It serves the measured block's reads from warm caches, which lowers both run-to-run CV (~1.8%→~0.55% on flat-realblocks) and AVG. Pair it with a raised RPC gas cap — `-f additional_extra_flags="--JsonRpc.GasCap=1000000000000"` — otherwise the per-request gas budget (default 100M) is exhausted on dense blocks and the warmup `eth_simulateV1` calls fail with `-38013` (intrinsic gas), silently leaving those blocks un-warmed. Caveat: warmup minimizes cold RocksDB/storage interaction, so it is a low-variance *compute* signal, not a substitute for the default cold benchmark — don't use it when measuring storage-layer changes.
-- dotTrace XML reports are 50-70MB. **Never load full XML into context.** Use [`scripts/dottrace-report.sh`](./scripts/dottrace-report.sh): `top <report.xml> [N]` for hot spots, `compare <a.xml> <b.xml> [N]` for regressions/improvements. Runs in <2 seconds via grep+awk.
+- [expb-benchmark](./.agents/skills/expb-benchmark/SKILL.md) — reproducible payload benchmarks (`run-expb-reproducible-benchmarks.yml`), profiling, and run-log checks.
+- [rpc-benchmark](./.agents/skills/rpc-benchmark/SKILL.md) — JSON-RPC benchmarks (`run-rpc-benchmarks.yml`).

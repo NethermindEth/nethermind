@@ -30,13 +30,16 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Verifies the payload according to the execution environment rules and returns the verification status, hash of the last valid block, and the execution witness when the payload is valid.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitness(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
+    Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV5(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
 
     [JsonRpcMethod(
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null);
+    Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(
+        ForkchoiceStateV1 forkchoiceState,
+        PayloadAttributes? payloadAttributes = null,
+        [JsonRpcParameter(ConverterType = typeof(BlobCellBitArrayConverter))] BitArray? custodyColumns = null);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
@@ -54,5 +57,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns requested blob cells and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, BitArray indicesBitarray);
+    Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(
+        [JsonRpcParameter(ConverterType = typeof(BlobVersionedHashesV4Converter))] byte[][] blobVersionedHashes,
+        [JsonRpcParameter(ConverterType = typeof(BlobCellBitArrayConverter))] BitArray indicesBitarray);
 }

@@ -36,6 +36,8 @@ namespace Nethermind.Abi
 
         public virtual bool IsDynamic => false;
 
+        internal virtual int GetHeadSize(bool packed) => IsDynamic || !packed ? PaddingSize : 1;
+
         public abstract string Name { get; }
 
         public abstract (object, int) Decode(byte[] data, int position, bool packed);

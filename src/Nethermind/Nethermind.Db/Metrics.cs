@@ -48,10 +48,17 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]
-        public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Value;
+        public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Sum;
         private static CacheLinePaddedLong _mainStateReaderReads;
-        private static CacheLinePaddedLong _otherStateReaderReads;
-        internal static void IncrementStateReaderReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateReaderReads.Value : ref _otherStateReaderReads.Value);
+        // Bumped once per state read (StateReader), so every RPC and prewarm thread previously
+        // hit one shared word: a contended cross-core RMW per read. The block-processing thread
+        // keeps its own padded word and is left alone.
+        private static readonly StripedLong _otherStateReaderReads = new();
+        internal static void IncrementStateReaderReads()
+        {
+            if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStateReaderReads.Value);
+            else _otherStateReaderReads.Increment();
+        }
 
         [CounterMetric]
         [Description("Number of state trie writes.")]
@@ -86,10 +93,42 @@ namespace Nethermind.Db
         internal static void AddStorageTreeReads(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageTreeReads.Value : ref _otherStorageTreeReads.Value, count);
 
         [CounterMetric]
+        [Description("Number of pre-block (prewarmer-shared) cache hits for accounts, counted on the consumer scope only (populator probes excluded); first-in-block touches, so hits/(hits+misses) = prewarm coverage.")]
+        public static long PreBlockCacheAccountHits => _mainPreBlockAccountHits.Value + _otherPreBlockAccountHits.Value;
+        private static CacheLinePaddedLong _mainPreBlockAccountHits;
+        private static CacheLinePaddedLong _otherPreBlockAccountHits;
+        internal static long MainThreadPreBlockAccountHits => _mainPreBlockAccountHits.Value;
+        internal static void AddPreBlockAccountHits(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockAccountHits.Value : ref _otherPreBlockAccountHits.Value, count);
+
+        [CounterMetric]
+        [Description("Number of pre-block (prewarmer-shared) cache misses for accounts, counted on the consumer scope only (populator probes excluded).")]
+        public static long PreBlockCacheAccountMisses => _mainPreBlockAccountMisses.Value + _otherPreBlockAccountMisses.Value;
+        private static CacheLinePaddedLong _mainPreBlockAccountMisses;
+        private static CacheLinePaddedLong _otherPreBlockAccountMisses;
+        internal static long MainThreadPreBlockAccountMisses => _mainPreBlockAccountMisses.Value;
+        internal static void AddPreBlockAccountMisses(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockAccountMisses.Value : ref _otherPreBlockAccountMisses.Value, count);
+
+        [CounterMetric]
+        [Description("Number of pre-block (prewarmer-shared) cache hits for storage slots, counted on the consumer scope only (populator probes excluded); first-in-block touches, so hits/(hits+misses) = prewarm coverage.")]
+        public static long PreBlockCacheStorageHits => _mainPreBlockStorageHits.Value + _otherPreBlockStorageHits.Value;
+        private static CacheLinePaddedLong _mainPreBlockStorageHits;
+        private static CacheLinePaddedLong _otherPreBlockStorageHits;
+        internal static long MainThreadPreBlockStorageHits => _mainPreBlockStorageHits.Value;
+        internal static void AddPreBlockStorageHits(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockStorageHits.Value : ref _otherPreBlockStorageHits.Value, count);
+
+        [CounterMetric]
+        [Description("Number of pre-block (prewarmer-shared) cache misses for storage slots, counted on the consumer scope only (populator probes excluded).")]
+        public static long PreBlockCacheStorageMisses => _mainPreBlockStorageMisses.Value + _otherPreBlockStorageMisses.Value;
+        private static CacheLinePaddedLong _mainPreBlockStorageMisses;
+        private static CacheLinePaddedLong _otherPreBlockStorageMisses;
+        internal static long MainThreadPreBlockStorageMisses => _mainPreBlockStorageMisses.Value;
+        internal static void AddPreBlockStorageMisses(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockStorageMisses.Value : ref _otherPreBlockStorageMisses.Value, count);
+
+        [CounterMetric]
         [Description("Number of storage reader reads.")]
-        public static long StorageReaderReads => _storageReaderReads.Value;
-        private static CacheLinePaddedLong _storageReaderReads;
-        internal static void IncrementStorageReaderReads() => Interlocked.Increment(ref _storageReaderReads.Value);
+        public static long StorageReaderReads => _storageReaderReads.Sum;
+        private static readonly StripedLong _storageReaderReads = new();
+        internal static void IncrementStorageReaderReads() => _storageReaderReads.Increment();
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]
@@ -107,6 +146,16 @@ namespace Nethermind.Db
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
+        [GaugeMetric]
+        [Description("Duration of the last full pruning's trie copy and commit (excludes waiting for a suitable state root), in seconds.")]
+        public static long FullPruningLastDurationSeconds { get; set; }
+
+        [CounterMetric]
+        [Description("Number of full prunings completed since the node started.")]
+        public static long FullPruningCount => _fullPruningCount;
+        private static long _fullPruningCount;
+        internal static void IncrementFullPruningCount() => Interlocked.Increment(ref _fullPruningCount);
+
 #if ZK_EVM
         public static Dictionary<string, long> DbReads { get; } = [];
         public static Dictionary<string, long> DbWrites { get; } = [];
@@ -114,8 +163,7 @@ namespace Nethermind.Db
         public static Dictionary<string, long> DbMemtableSize { get; } = [];
         public static Dictionary<string, long> DbBlockCacheSize { get; } = [];
         public static Dictionary<string, long> DbIndexFilterSize { get; } = [];
-        public static Dictionary<(string, string), double> DbStats { get; } = [];
-        public static Dictionary<(string, int, string), double> DbCompactionStats { get; } = [];
+        // DbStats and DbCompactionStats omitted: double-valued and unread in the guest.
 #else
         [GaugeMetric]
         [Description("Database reads per database")]

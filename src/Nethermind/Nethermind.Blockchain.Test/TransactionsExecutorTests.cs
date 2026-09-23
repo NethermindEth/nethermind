@@ -446,13 +446,11 @@ namespace Nethermind.Blockchain.Test
     }
 
     public class WorldStateStab()
-        : WorldState(Substitute.For<IWorldStateScopeProvider>(), LimboLogs.Instance), IWorldState
+        : WorldStateDecorator(Substitute.For<IWorldState>())
     {
-        public new UInt256 GetBalance(Address address) => UInt256.MaxValue;
-
         public static IReadOnlyStateProvider GetUntrackedReader() => TestReadOnlyStateProvider.Instance;
 
-        public new bool TryGetAccount(Address address, out AccountStruct account)
+        public override bool TryGetAccount(Address address, out AccountStruct account)
         {
             account = new(0ul, ulong.MaxValue);
             return true;

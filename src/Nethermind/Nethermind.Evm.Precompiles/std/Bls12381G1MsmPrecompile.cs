@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using G1 = Nethermind.Crypto.Bls.P1;
+using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -54,10 +55,8 @@ public partial class Bls12381G1MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        // Scratch buffers rented without zero-init (ArrayPoolSpan does not clear on rent): MultiMult
-        // only reads the first npoints*G1.Sz longs and npoints*32 scalar bytes, and every one of those
-        // slots is fully written by TryDecodeG1ToBuffer before MultiMult runs, so a clear is wasted.
-        using ArrayPoolSpan<long> rawPoints = new(nItems * G1.Sz);
+        // rented without zero-init: every slot MultiMultAffine reads is written during decode below
+        using ArrayPoolSpan<long> rawPoints = new(nItems * G1Affine.Sz);
         using ArrayPoolSpan<byte> rawScalars = new(nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
@@ -111,7 +110,7 @@ public partial class Bls12381G1MsmPrecompile
             return result.Error!;
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
-        G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints, rawScalars, npoints);
+        G1 res = new G1(stackalloc long[G1.Sz]).MultiMultAffine(rawPoints, rawScalars, npoints);
         return res.EncodeRaw();
     }
 }

@@ -138,11 +138,11 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         {
             if (_blockRlp is { } blockRlp)
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList, includeBlockAccessList: true);
             }
             else
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList, includeBlockAccessList: true);
             }
         }
 

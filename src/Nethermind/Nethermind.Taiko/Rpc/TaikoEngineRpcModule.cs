@@ -10,9 +10,12 @@ using Microsoft.IO;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -24,7 +27,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
@@ -51,10 +53,16 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
         IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
-        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandler,
+        IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
+        IInclusionListTxSource inclusionListTxSource,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
+        IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
         IEngineRequestsTracker engineRequestsTracker,
+        IBlobCustodyTracker blobCustodyTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
+        IBlockProcessingQueue processingQueue,
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
@@ -79,12 +87,92 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getBlobsHandlerV4,
                 getPayloadBodiesByHashV2Handler,
                 getPayloadBodiesByRangeV2Handler,
-                newPayloadWithWitnessHandler,
+                getInclusionListTransactionsHandler,
+                inclusionListTxSource,
+                newPayloadWithWitnessHandlerV4,
+                newPayloadWithWitnessHandlerV5,
+                newPayloadWithWitnessHandlerV6,
                 engineRequestsTracker,
+                blobCustodyTracker,
                 specProvider,
                 gcKeeper,
+                processingQueue,
                 logManager), ITaikoEngineRpcModule
 {
+    /// <summary>Initializes the module with module-local blob custody tracking.</summary>
+    /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
+    public TaikoEngineRpcModule(
+        IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,
+        IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
+        IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
+        IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
+        IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
+        IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
+        IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
+        IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
+        IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
+        IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
+        IHandler<HashSet<string>, IReadOnlyList<string>> capabilitiesHandler,
+        IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> getBlobsHandler,
+        IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
+        IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
+        IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
+        IInclusionListTxSource inclusionListTxSource,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
+        IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
+        IEngineRequestsTracker engineRequestsTracker,
+        ISpecProvider specProvider,
+        GCKeeper gcKeeper,
+        IBlockProcessingQueue processingQueue,
+        ILogManager logManager,
+        ITxPool txPool,
+        IBlockFinder blockFinder,
+        IShareableTxProcessorSource txProcessorSource,
+        IRlpDecoder<Transaction> txDecoder,
+        IL1OriginStore l1OriginStore,
+        ISurgeConfig surgeConfig)
+        : this(
+            getPayloadHandlerV1,
+            getPayloadHandlerV2,
+            getPayloadHandlerV3,
+            getPayloadHandlerV4,
+            getPayloadHandlerV5,
+            getPayloadHandlerV6,
+            newPayloadV1Handler,
+            forkchoiceUpdatedV1Handler,
+            executionGetPayloadBodiesByHashV1Handler,
+            executionGetPayloadBodiesByRangeV1Handler,
+            transitionConfigurationHandler,
+            capabilitiesHandler,
+            getBlobsHandler,
+            getBlobsHandlerV2,
+            getBlobsHandlerV4,
+            getPayloadBodiesByHashV2Handler,
+            getPayloadBodiesByRangeV2Handler,
+            getInclusionListTransactionsHandler,
+            inclusionListTxSource,
+            newPayloadWithWitnessHandlerV4,
+            newPayloadWithWitnessHandlerV5,
+            newPayloadWithWitnessHandlerV6,
+            engineRequestsTracker,
+            new BlobCustodyTracker(),
+            specProvider,
+            gcKeeper,
+            processingQueue,
+            logManager,
+            txPool,
+            blockFinder,
+            txProcessorSource,
+            txDecoder,
+            l1OriginStore,
+            surgeConfig)
+    {
+    }
+
     /// <summary>
     /// Maximum number of blocks to scan backwards when the batch→block index is missing.
     /// Matches alethia-reth's <c>MAX_BACKWARD_SCAN_BLOCKS = 192 * 21_600</c>.

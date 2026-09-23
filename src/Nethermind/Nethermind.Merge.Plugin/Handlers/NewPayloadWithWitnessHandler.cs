@@ -19,26 +19,69 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public sealed class NewPayloadWithWitnessHandler(
     Lazy<IEngineRpcModule> engineModule,
     WitnessRendezvous rendezvous,
-    ILogManager? logManager = null) : IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>
+    ILogManager? logManager = null) :
+    IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>,
+    IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>,
+    IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result>
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<NewPayloadWithWitnessHandler>();
 
-    public async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(ExecutionPayloadParams<ExecutionPayloadV4> request)
+    public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(ExecutionPayloadParams<ExecutionPayloadV3> request) =>
+        HandleAsync(
+            request,
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4),
+            static (module, payload) => module.engine_newPayloadV4(
+                payload.ExecutionPayload,
+                payload.BlobVersionedHashes!,
+                payload.ParentBeaconBlockRoot,
+                payload.ExecutionRequests));
+
+    public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(ExecutionPayloadParams<ExecutionPayloadV4> request) =>
+        HandleAsync(
+            request,
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5),
+            static (module, payload) => module.engine_newPayloadV5(
+                payload.ExecutionPayload,
+                payload.BlobVersionedHashes!,
+                payload.ParentBeaconBlockRoot,
+                payload.ExecutionRequests));
+
+    /// <remarks>Inclusion-list compliance is not part of the witness contract, so the V5 response shape is
+    /// kept and callers read compliance for this head off <c>engine_forkchoiceUpdatedV5</c>.</remarks>
+    public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(InclusionListExecutionPayloadParams request) =>
+        HandleAsync(
+            request,
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6),
+            static async (module, payload) =>
+            {
+                ResultWrapper<PayloadStatusV2> result = await module.engine_newPayloadV6(
+                    payload.ExecutionPayload,
+                    payload.BlobVersionedHashes!,
+                    payload.ParentBeaconBlockRoot,
+                    payload.ExecutionRequests,
+                    payload.InclusionListTransactions);
+                return ResultWrapper<PayloadStatusV1>.From(result);
+            });
+
+    private async Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync<TExecutionPayload>(
+        ExecutionPayloadParams<TExecutionPayload> request,
+        string methodName,
+        Func<IEngineRpcModule, ExecutionPayloadParams<TExecutionPayload>, Task<ResultWrapper<PayloadStatusV1>>> submitPayload)
+        where TExecutionPayload : ExecutionPayload
     {
-        ExecutionPayloadV4 executionPayload = request.ExecutionPayload;
+        TExecutionPayload executionPayload = request.ExecutionPayload;
         Hash256? blockHash = executionPayload.BlockHash;
 
         if (blockHash is null)
         {
-            if (_logger.IsWarn) _logger.Warn("engine_newPayloadWithWitness: payload BlockHash is null — rejecting as InvalidParams.");
+            if (_logger.IsWarn) _logger.Warn($"{methodName}: payload BlockHash is null — rejecting as InvalidParams.");
             return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
                 "executionPayload.blockHash is required", ErrorCodes.InvalidParams);
         }
 
         using WitnessRequest witnessRequest = rendezvous.RequestWitness(blockHash);
 
-        using ResultWrapper<PayloadStatusV1> statusResult = await engineModule.Value.engine_newPayloadV5(
-            executionPayload, request.BlobVersionedHashes ?? [], request.ParentBeaconBlockRoot, request.ExecutionRequests);
+        using ResultWrapper<PayloadStatusV1> statusResult = await submitPayload(engineModule.Value, request);
 
         Witness? capturedWitness = witnessRequest.Task.IsCompletedSuccessfully ? witnessRequest.Task.Result : null;
 
@@ -46,7 +89,7 @@ public sealed class NewPayloadWithWitnessHandler(
         {
             capturedWitness?.Dispose();
             return ResultWrapper<NewPayloadWithWitnessV1Result>.Fail(
-                statusResult.Result.Error ?? "engine_newPayloadWithWitness: payload processing failed",
+                statusResult.Result.Error ?? $"{methodName}: payload processing failed",
                 statusResult.ErrorCode);
         }
 

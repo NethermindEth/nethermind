@@ -23,4 +23,3 @@ public class RevertTest : GeneralStateTestBase
         return tests.Where(t => !ignoredTests.Any(pattern => t.Name.Contains(pattern)));
     }
 }
-

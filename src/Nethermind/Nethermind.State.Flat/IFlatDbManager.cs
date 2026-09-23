@@ -1,17 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Trie.Pruning;
-
 namespace Nethermind.State.Flat;
 
 public interface IFlatDbManager : IFlatCommitTarget
 {
-    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
     SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage);
     ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock);
     void FlushCache(CancellationToken cancellationToken);
     bool HasStateForBlock(in StateId stateId);
+
+    /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/> and releases the
+    /// bundles cached over them.</summary>
+    void DropStateNotReachableFrom(in StateId head);
 }
 
 // Used by overridable world state env that has its own snapshot repositories.

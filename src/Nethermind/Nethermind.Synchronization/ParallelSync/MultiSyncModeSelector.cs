@@ -51,6 +51,10 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBetterPeerStrategy _betterPeerStrategy = betterPeerStrategy;
         private readonly bool _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
         private readonly ILogger _logger = logManager.GetClassLogger<MultiSyncModeSelector>();
+        private readonly Lock _modeLock = new();
+
+        private volatile SyncMode _current = SyncMode.Disconnected;
+        private EventHandler<SyncModeChangedEventArgs>? _changed;
 
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool FastBodiesEnabled => FastSyncEnabled && _syncConfig.DownloadBodiesInFastSync;
@@ -67,9 +71,13 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
-        public event EventHandler<SyncModeChangedEventArgs>? Changed;
+        public event EventHandler<SyncModeChangedEventArgs>? Changed
+        {
+            add { lock (_modeLock) _changed += value; }
+            remove { lock (_modeLock) _changed -= value; }
+        }
 
-        public SyncMode Current { get; private set; } = SyncMode.Disconnected;
+        public SyncMode Current => _current;
 
         public async Task StartAsync()
         {
@@ -180,7 +188,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             if (IsTheModeSwitchWorthMentioning(current, newModes))
                             {
                                 if (_logger.IsInfo)
-                                    _logger.Info($"Changing sync {current} to {newModes} at {BuildStateString(best)}");
+                                    _logger.Info($"Changing sync {current.ToFlagsString()} to {newModes.ToFlagsString()} at {BuildStateString(best)}");
                             }
                         }
                         catch (InvalidAsynchronousStateException)
@@ -213,7 +221,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Changing state to {newModes} | {reason}");
+                _logger.Trace($"Changing state to {newModes.ToFlagsString()} | {reason}");
             }
 
             SyncMode previous = Current;
@@ -226,8 +234,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
             Preparing?.Invoke(this, args);
             Changing?.Invoke(this, args);
-            Current = newModes;
-            Changed?.Invoke(this, args);
+            EventHandler<SyncModeChangedEventArgs>? changed;
+            lock (_modeLock)
+            {
+                _current = newModes;
+                changed = _changed;
+            }
+
+            changed?.Invoke(this, args);
         }
 
         /// <summary>

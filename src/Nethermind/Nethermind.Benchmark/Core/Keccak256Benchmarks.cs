@@ -4,7 +4,6 @@
 using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
 //using Nethermind.HashLib;
 
 namespace Nethermind.Benchmarks.Core
@@ -15,19 +14,11 @@ namespace Nethermind.Benchmarks.Core
 
         private byte[] _a;
 
-        private byte[][] _scenarios =
-        {
-            Array.Empty<byte>(),
-            new byte[]{1},
-            new byte[100000],
-            TestItem.AddressA.Bytes.ToArray()
-        };
-
-        [Params(1)]
-        public int ScenarioIndex { get; set; }
+        [Params(20, 32, 64)]
+        public int Length { get; set; }
 
         [GlobalSetup]
-        public void Setup() => _a = _scenarios[ScenarioIndex];
+        public void Setup() => _a = new byte[Length];
 
         [Benchmark]
         public void MeadowHashSpan() => MeadowHashBenchmarks.ComputeHash(_a);

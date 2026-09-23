@@ -18,6 +18,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
+using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
 namespace Nethermind.Benchmarks.State;
 
@@ -52,11 +53,23 @@ public class ReadOnlySnapshotBundleBenchmark
     private const int SnapshotCount = 8;
     private const int ArraySize = 32;
 
+    // false: bundle over mutable (ConcurrentDictionary) snapshots. true: over sorted (SortedSnapshotContent)
+    // snapshots — the compacted form most bundle snapshots have in production, and where the dictionary load
+    // factor affects lookups.
+    [Params(false, true)]
+    public bool SortedContent;
+
     [GlobalSetup]
     public void Setup()
     {
-        FlatDbConfig config = new();
+        FlatDbConfig config = new() { CompactionOffset = 0 };
         ResourcePool resourcePool = new(config);
+        // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
+        // repository itself does not use the arena managers, so the persisted tier can stay unwired.
+        SnapshotCompactor compactor = new(
+            config, new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
+            resourcePool, new SnapshotRepository(null!, null!, NullSnapshotCatalog.Instance, config, null!, NullLogManager.Instance),
+            NullLogManager.Instance);
         List<FlatSnapshot> allSnapshots = new(SnapshotCount);
         StateId currentStateId = new(0, Keccak.EmptyTreeHash);
 
@@ -132,8 +145,7 @@ public class ReadOnlySnapshotBundleBenchmark
                     IWorldStateScopeProvider.IStorageWriteBatch storageBatch = storageBatches[i];
                     for (int s = 0; s < slots; s++)
                     {
-                        storageBatch.Set((UInt256)(ulong)(s + 1),
-                            new byte[] { (byte)((s + 1) & 0xFF) });
+                        storageBatch.Set((UInt256)(ulong)(s + 1), new UInt256(new byte[] { (byte)((s + 1) & 0xFF) }, isBigEndian: true));
                     }
 
                     storageBatch.Dispose();
@@ -159,8 +171,16 @@ public class ReadOnlySnapshotBundleBenchmark
         SnapshotPooledList finalSnapshots = new(allSnapshots.Count);
         foreach (FlatSnapshot s in allSnapshots)
         {
-            s.TryAcquire();
-            finalSnapshots.Add(s);
+            if (SortedContent)
+            {
+                s.TryAcquire();
+                finalSnapshots.Add(compactor.CompactSnapshotBundle(new SnapshotPooledList(1) { s }));
+            }
+            else
+            {
+                s.TryAcquire();
+                finalSnapshots.Add(s);
+            }
         }
 
         // Build final ReadOnlySnapshotBundle with all 8 snapshots
@@ -307,10 +327,11 @@ public class ReadOnlySnapshotBundleBenchmark
         => _bundle.GetAccount(_hitAccounts[_index++ % _hitAccounts.Length]);
 
     [Benchmark]
-    public byte[] GetSlot()
+    public UInt256? GetSlot()
     {
         (Address addr, UInt256 slot) = _hitSlots[_index++ % _hitSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
+        return value;
     }
 
     [Benchmark]
@@ -335,10 +356,11 @@ public class ReadOnlySnapshotBundleBenchmark
     }
 
     [Benchmark]
-    public byte[] GetSlot_SameAccount()
+    public UInt256? GetSlot_SameAccount()
     {
         (Address addr, UInt256 slot) = _sameAccountSlots[_index++ % _sameAccountSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
+        return value;
     }
 
     [Benchmark]
@@ -354,10 +376,11 @@ public class ReadOnlySnapshotBundleBenchmark
         => _bundle.GetAccount(_missAccounts[_index++ % _missAccounts.Length]);
 
     [Benchmark]
-    public byte[] GetSlot_Miss()
+    public UInt256? GetSlot_Miss()
     {
         (Address addr, UInt256 slot) = _missSlots[_index++ % _missSlots.Length];
-        return _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1);
+        _bundle.GetSlot(addr, in slot, selfDestructStateIdx: -1, out UInt256? value);
+        return value;
     }
 
     [Benchmark]
@@ -382,48 +405,4 @@ public class ReadOnlySnapshotBundleBenchmark
         return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
     }
 
-    private static Address DeriveAddress(int index) =>
-        new(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
-
-    private sealed class NullTrieNodeCache : ITrieNodeCache
-    {
-        public bool TryGet(Hash256 address, in TreePath path, Hash256 hash, out TrieNode node)
-        {
-            node = null;
-            return false;
-        }
-
-        public void Add(TransientResource transientResource) { }
-
-        public void Clear() { }
-    }
-
-    private sealed class CapturingCommitTarget : IFlatCommitTarget
-    {
-        public FlatSnapshot LastSnapshot { get; private set; }
-        public TransientResource LastResource { get; private set; }
-
-        public void AddSnapshot(FlatSnapshot snapshot, TransientResource transientResource)
-        {
-            LastSnapshot = snapshot;
-            LastResource = transientResource;
-        }
-    }
-
-    private sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
-    {
-        public byte[] GetCode(in ValueHash256 codeHash) => null;
-
-        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
-            => NullCodeSetter.Instance;
-
-        private sealed class NullCodeSetter : IWorldStateScopeProvider.ICodeSetter
-        {
-            public static readonly NullCodeSetter Instance = new();
-
-            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) { }
-
-            public void Dispose() { }
-        }
-    }
 }

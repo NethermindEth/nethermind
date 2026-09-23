@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
@@ -12,20 +13,21 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
+    // Keeping this call boundary reduces guest execution cost.
+    private const MethodImplOptions ExecutionHandlersInlining = MethodImplOptions.NoInlining;
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
-    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? _opcodesNoTrace;
-    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? _opcodesTraced;
+    private static readonly OpcodeTable _opcodeTable = new();
 
-    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        _opcodeMethods = !TTracingInst.IsActive
-            ? _opcodesNoTrace ??= GenerateOpCodes<TTracingInst>(spec)
-            : _opcodesTraced ??= GenerateOpCodes<TTracingInst>(spec);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static OpcodeTable GetOpcodeTable() => _opcodeTable;
 
-    protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
+    /// <inheritdoc/>
+    /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
+    private partial bool ShouldRefreshOpcodes() => false;
+
+    public object? ReturnData;
 
     /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run
@@ -59,21 +61,21 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             snapshot: in snapshot,
             newAccountCharged: newAccountCharged);
 
-        CallResult callResult = ExecutePrecompile(child, _isTracingActionsCached, out Exception? failure, out _);
+        CallResult callResult = ExecutePrecompile(child, isTracingActions: false, out Exception? failure, out _);
 
         if (failure is not null)
         {
             // Precompile hard failure (out of gas): mirror HandleFailure + PopAndRestoreParentState.
             _worldState.Restore(child.Snapshot);
-            RevertParityTouchBugAccount();
+            VirtualMachineStatics.RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
             RemoveAdvancedStateGasRefund(child, ref child.Gas);
             TGasPolicy.RestoreChildStateGasOnHalt(ref parent.Gas, in child.Gas);
             // EIP-8037: the failed call did not create its (dead) recipient; refund NEW_ACCOUNT.
             if (child.NewAccountCharged)
                 CreditStateGasRefund(ref parent.Gas, TGasPolicy.GetNewAccountStateCost());
             child.Dispose();
-            ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         bool reverted = callResult.ShouldRevert;
@@ -81,6 +83,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         {
             IncorporateChildStateGasRefunds(child);
             TGasPolicy.Refund(ref parent.Gas, in child.Gas);
+            TGasPolicy.RepayStateGasSpill(ref parent.Gas);
         }
         else
         {
@@ -98,22 +101,22 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
         if (push == EvmExceptionType.None && outputLength > 0 && callResult.Output.Length > 0)
         {
-            ZeroPaddedSpan outSlice = callResult.Output.Span
-                .SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)outputLength));
+            ReadOnlySpan<byte> output = callResult.Output.Span[..Math.Min(callResult.Output.Length, (int)outputLength)];
             UInt256 dest = (ulong)outputDestination;
-            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)outSlice.Length, ref parent.Memory))
+            if (!TGasPolicy.UpdateMemoryCost(ref parent.Gas, in dest, (ulong)output.Length, ref parent.Memory))
             {
                 push = EvmExceptionType.OutOfGas;
             }
             else
             {
-                parent.Memory.TrySave(in dest, outSlice);
+                parent.Memory.SaveAfterGas(in dest, output);
             }
         }
 
         if (reverted)
         {
             _worldState.Restore(child.Snapshot);
+            VirtualMachineStatics.RestoreRipemdTouch(_worldState, BlockExecutionContext.Spec, _shouldRestoreRipemdTouch);
         }
         else
         {

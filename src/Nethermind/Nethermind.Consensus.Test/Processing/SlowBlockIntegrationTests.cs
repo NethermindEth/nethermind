@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using System;
 using System.Linq;
 using System.Text.Json;
@@ -9,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -18,6 +20,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
+using DbMetrics = Nethermind.Db.Metrics;
 
 #nullable enable
 
@@ -87,7 +90,7 @@ public class SlowBlockIntegrationTests
 
         byte[] code = Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.SLOAD).Op(Instruction.POP).Op(Instruction.STOP).Done;
         _harness.DeployCode(contract, code);
-        _harness.WorldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
+        _harness.WorldState.Set(new StorageCell(contract, 0), new UInt256(new byte[] { 0x42 }, isBigEndian: true));
         _harness.WorldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
@@ -112,7 +115,7 @@ public class SlowBlockIntegrationTests
             .Op(Instruction.PUSH0).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done;
         _harness.DeployCode(contract, code);
-        _harness.WorldState.Set(new StorageCell(contract, 1), new byte[] { 0xFF });
+        _harness.WorldState.Set(new StorageCell(contract, 1), new UInt256(new byte[] { 0xFF }, isBigEndian: true));
         _harness.WorldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(200_000)
@@ -123,6 +126,75 @@ public class SlowBlockIntegrationTests
         Assert.That(log.StateWrites.StorageSlots, Is.GreaterThan(0));
         Assert.That(log.StateWrites.StorageSlotsDeleted, Is.GreaterThanOrEqualTo(1));
         Assert.That(log.Evm.Sstore, Is.GreaterThanOrEqualTo(2));
+    }
+
+    [Test]
+    public void Cache_stats_report_first_touch_hit_rate_when_preblock_counters_present()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
+
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1.Ether)
+            .WithGasLimit(21_000).SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
+        Block block = _harness.CreateBlock(tx);
+
+        _stats.Start();
+        _stats.CaptureStartStats();
+
+        // Simulate the pre-block wrapper's first-touch probes (the harness world state has no
+        // prewarmer scope, so these are the only pre-block increments in the delta window) plus
+        // legacy blended hits, on the block-processing thread so they land in the main bucket.
+        bool wasProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = true;
+        try
+        {
+            DbMetrics.AddPreBlockAccountHits(90);
+            DbMetrics.AddPreBlockAccountMisses(10);
+            DbMetrics.AddPreBlockStorageHits(80);
+            DbMetrics.AddPreBlockStorageMisses(20);
+            // Legacy counters blend change-dict repeats with pre-block hits: 60 repeats + the 90/80 above.
+            DbMetrics.AddStateTreeCacheHits(150);
+            DbMetrics.AddStorageTreeCache(140);
+
+            _harness.ExecuteTx(tx, block);
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = wasProcessingThread;
+        }
+
+        _stats.UpdateStats(new[] { block }, Build.A.BlockHeader.TestObject, blockProcessingTimeInMicros: 100_000);
+        _slowBlockLogger.WaitForEntry(TimeSpan.FromSeconds(5));
+        SlowBlockLogEntry log = JsonSerializer.Deserialize<SlowBlockLogEntry>(_slowBlockLogger.LogList.Last())!;
+
+        // hits/misses/hit_rate must be the first-touch pre-block numbers, NOT the legacy blend
+        // (which would fold the 150/140 repeat-layer hits into hits and inflate misses).
+        Assert.That(log.Cache.Account.Hits, Is.EqualTo(90));
+        Assert.That(log.Cache.Account.Misses, Is.EqualTo(10));
+        Assert.That(log.Cache.Account.HitRate, Is.EqualTo(90.0));
+        Assert.That(log.Cache.Storage.Hits, Is.EqualTo(80));
+        Assert.That(log.Cache.Storage.Misses, Is.EqualTo(20));
+        Assert.That(log.Cache.Storage.HitRate, Is.EqualTo(80.0));
+        // repeat_hits = legacy hits minus pre-block hits; the real tx adds its own dict hits on top.
+        Assert.That(log.Cache.Account.RepeatHits, Is.Not.Null);
+        Assert.That(log.Cache.Account.RepeatHits, Is.GreaterThanOrEqualTo(60));
+        Assert.That(log.Cache.Storage.RepeatHits, Is.GreaterThanOrEqualTo(60));
+    }
+
+    [Test]
+    public void Cache_stats_fall_back_to_legacy_when_prewarmer_scope_absent()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
+
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1.Ether)
+            .WithGasLimit(21_000).SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
+
+        SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
+
+        // No pre-block counters moved: legacy semantics, and no repeat_hits field emitted.
+        Assert.That(log.Cache.Account.RepeatHits, Is.Null);
+        Assert.That(log.Cache.Storage.RepeatHits, Is.Null);
     }
 
     [Test]

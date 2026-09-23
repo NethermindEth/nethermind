@@ -18,13 +18,24 @@ defaults:
   run:
     shell: bash
 
+permissions:
+  contents: read
+
 jobs:
+  build:
+    uses: ./.github/workflows/build-test-artifacts.yml
+    with:
+      matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-x64","os":"ubuntu-latest","variant":"checked","build_args":"-p:DefineConstants=TRACE%3BDEBUG"}]}'
+
   tests:
     name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       DOTNET_GCConserveMemory: 9
+      # Only these fixture tests read the src/tests submodule at runtime.
+      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
       matrix:
@@ -32,9 +43,14 @@ jobs:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
-          - label: no-intrinsics
+            artifact: checked
+            avx512: 1
+          - &no_intrinsics
+            label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
+            artifact: release
+            avx512: 1
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -94,29 +110,125 @@ jobs:
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
+        include:
+          # The Keccak batch kernels are four lanes wide without AVX-512 and eight with it, and the
+          # code that feeds them differs too, so the default runners cover only one of the two.
+          - project: Nethermind.Core.Test
+            variant:
+              label: avx2
+              dotnet-args: ''
+              hw-intrinsic: ''
+              artifact: release
+              avx512: 0
+              require-avx2: 1
+          - project: Nethermind.Core.Test
+            variant:
+              label: avx512
+              dotnet-args: ''
+              hw-intrinsic: ''
+              artifact: release
+              avx512: 1
+              require-avx512: 1
+          # Hosted runners have AVX2, so no other lane runs the x64 128-bit nibble loops.
+          - project: Nethermind.Trie.Test
+            variant:
+              label: no-avx2
+              dotnet-args: ''
+              hw-intrinsic: ''
+              artifact: release
+              avx2: 0
+              avx512: 0
+        exclude:
+          - { variant: *no_intrinsics, project: Nethermind.Api.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Config.Test }
+          - { variant: *no_intrinsics, project: Nethermind.EthStats.Test }
+          - { variant: *no_intrinsics, project: Nethermind.HealthChecks.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Logging.NLog.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Monitoring.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Sockets.Test }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
+          submodules: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) && 'recursive' || 'false' }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: ${{ matrix.variant.artifact }}
 
       - name: ${{ matrix.project }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+          DOTNET_EnableAVX2: ${{ matrix.variant.avx2 }}
+          DOTNET_EnableAVX512: ${{ matrix.variant.avx512 }}
+          NETHERMIND_TEST_REQUIRE_AVX2: ${{ matrix.variant.require-avx2 }}
+          NETHERMIND_TEST_REQUIRE_AVX512: ${{ matrix.variant.require-avx512 }}
         run: |
-          dotnet build ${{ matrix.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          if [[ "${{ matrix.variant.label }}" == "avx512" ]]; then
+            for flag in avx512f avx512cd avx512bw avx512dq avx512vl; do
+              if ! grep -qw "$flag" /proc/cpuinfo; then
+                echo "::warning::AVX-512 tests skipped: this hosted runner lacks $flag."
+                echo "AVX-512 tests skipped: hosted runner lacks $flag; no AVX-512 coverage on this run." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+            done
+          fi
+          if [[ "${{ matrix.variant.label }}" == "avx2" || "${{ matrix.variant.label }}" == "avx512" ]]; then
+            for target in \
+              'Nethermind.Core.Test:KeccakTests|KeccakCacheTests' \
+              'Nethermind.Evm.Test:KeyedNonceManagerTests' \
+              'Ethereum.Trie.Test:StorageTrieTests' \
+              'Nethermind.State.Flat.History.Test:NodeViewsTests' \
+              'Nethermind.Trie.Test:TrieNodeTests|DirtyNodeHasherTests' \
+              'Nethermind.State.Test:StateTreeTests|ScopeProviderTests|AccountProofCollectorTests' \
+              'Nethermind.Blockchain.Test:TxTrieTests|ReceiptTrieTests|WithdrawalTrieTests'; do
+              project="${target%%:*}"
+              names="${target#*:}"
+              filter="FullyQualifiedName~${names//|/|FullyQualifiedName~}"
+              dotnet restore "../$project/$project.csproj"
+              dotnet test --project "../$project/$project.csproj" -c release --no-build --no-restore \
+                --hangdump --hangdump-timeout 8m --hangdump-type Mini \
+                --crashdump --crashdump-type Mini --crash-report-if-supported -- --filter "$filter"
+            done
+            echo "${{ matrix.variant.label }}: all selected test projects passed with runtime ISA assertions enabled." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          dotnet restore ${{ matrix.project }}.csproj
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
+          # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
+          test_args=(--no-build --no-restore
+            --hangdump --hangdump-timeout 8m --hangdump-type Mini
+            --crashdump --crashdump-type Mini --crash-report-if-supported)
+          if [[ "${{ matrix.variant.label }}" == "no-avx2" ]]; then
+            test_args+=(-- --filter "FullyQualifiedName~HexPrefixTests|FullyQualifiedName~NibbleTests")
+          fi
 
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+
+      - name: Upload dumps
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}-${{ matrix.variant.label }}-dumps
+          # The ISA lanes run several projects, each writing into its own TestResults.
+          path: |
+            src/Nethermind/*/TestResults/*_hang.*
+            src/Nethermind/*/TestResults/*_crash.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -128,9 +240,11 @@ jobs:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
+            artifact: checked
           - label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
+            artifact: release
         test:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
@@ -140,26 +254,19 @@ jobs:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
     steps:
-      - name: Free up disk space
-        if: startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: ${{ matrix.variant.artifact }}
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
@@ -169,15 +276,55 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
           TEST_SKIP_HEAVY: 1
         run: |
-          dotnet build ${{ matrix.test.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
-          test_args=(--no-build --no-restore)
+          dotnet restore ${{ matrix.test.project }}.csproj
+          # A hung test host is killed with a dump of every thread instead of running into the job
+          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
+          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+          # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
+          # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
+          test_args=(--no-build --no-restore
+            --hangdump --hangdump-timeout 8m --hangdump-type Mini
+            --crashdump --crashdump-type Mini --crash-report-if-supported)
 
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+
+      - name: Upload dumps
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.variant.label }}-dumps
+          path: |
+            src/Nethermind/${{ matrix.test.project }}/TestResults/*_hang.*
+            src/Nethermind/${{ matrix.test.project }}/TestResults/*_crash.*
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # The pyspec fixtures under the build variants now run through the reusable nethtest
+  # workflow instead of the Ethereum.Blockchain.Pyspec.Test NUnit shards. Matches the
+  # NUnit TEST_SKIP_HEAVY=1 scope those variant jobs used: the heavy engine / sync /
+  # Amsterdam-BAL fixtures are skipped (build-config bugs live in the EVM + crypto, which
+  # blockTest exercises as well as engineTest), leaving block + state + tx. Sequential
+  # (patricia) config, coarsely chunked, once per variant. checked builds the runner with
+  # DEBUG defines; no-intrinsics disables hardware intrinsics at run time.
+  pyspec-checked:
+    name: EEST nethtest (checked)
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: blockTest,stateTest,txTest
+      setup_group: sequential
+      variant: checked
+
+  pyspec-no-intrinsics:
+    name: EEST nethtest (no-intrinsics)
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: blockTest,stateTest,txTest
+      setup_group: sequential
+      variant: no-intrinsics
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-chunked]
+    needs: [tests, tests-chunked, pyspec-checked, pyspec-no-intrinsics]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -185,5 +332,7 @@ jobs:
         run: |
           [[ \
             "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" \
+            "${{ needs.tests-chunked.result }}" == "success" && \
+            "${{ needs.pyspec-checked.result }}" == "success" && \
+            "${{ needs.pyspec-no-intrinsics.result }}" == "success" \
           ]]

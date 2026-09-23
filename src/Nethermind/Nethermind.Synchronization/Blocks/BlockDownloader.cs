@@ -124,6 +124,13 @@ namespace Nethermind.Synchronization.Blocks
             {
                 return await DoPrepareRequest(options, fastSyncLag, cancellation);
             }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                // A cancelled request is not a downloader failure: the dispatcher owns cancellation
+                // handling. A cancellation raised by another token still falls through to the
+                // catch-all below, so a single bad response cannot finish the feed.
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.DebugError($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
@@ -642,25 +649,18 @@ namespace Nethermind.Synchronization.Blocks
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             if (_logger.IsDebug) _logger.Debug($"Suggesting block {currentBlock.Header.ToString(BlockHeader.Format.Short)} with option {suggestOptions}");
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
-            bool handled = false;
-            if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
+            bool handled = HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult);
+
+            if (downloadReceipts && addResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
             {
-                if (downloadReceipts)
+                if (receipts is not null)
                 {
-                    if (receipts is not null)
-                    {
-                        _receiptStorage.Insert(currentBlock, receipts);
-                    }
-                    else
-                    {
-                        // this shouldn't now happen with new validation above, still lets keep this check
-                        if (currentBlock.Header.HasTransactions)
-                        {
-                            if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
-                        }
-                    }
+                    _receiptStorage.Insert(currentBlock, receipts);
                 }
-                handled = true;
+                else if (currentBlock.Header.HasTransactions)
+                {
+                    if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
+                }
             }
 
             if (!shouldProcess)

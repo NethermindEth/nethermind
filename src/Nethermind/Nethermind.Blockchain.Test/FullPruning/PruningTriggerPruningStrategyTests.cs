@@ -15,6 +15,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class PruningTriggerPruningStrategyTests
     {
+        private const ulong PruningBoundary = 128; // Pruning.PruningBoundary with snap serving (SnapServingMaxDepth); minimum enforced is 64
+
         private IFullPruningDb _fullPruningDb;
         private IPruningStrategy _basePruningStrategy;
         private PruningTriggerPruningStrategy _strategy;
@@ -24,7 +26,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             _fullPruningDb = Substitute.For<IFullPruningDb>();
             _basePruningStrategy = Substitute.For<IPruningStrategy>();
-            _strategy = new PruningTriggerPruningStrategy(_fullPruningDb, _basePruningStrategy);
+            _strategy = new PruningTriggerPruningStrategy(_fullPruningDb, _basePruningStrategy, PruningBoundary);
         }
 
         [TearDown]
@@ -47,13 +49,75 @@ namespace Nethermind.Blockchain.Test.FullPruning
             Assert.That(_strategy.DeleteObsoleteKeys, Is.True);
         }
 
-        [Test]
-        public void ShouldPruneDirtyNode_should_return_true_when_in_pruning_and_difference_greater_than_32()
+        // The highest-risk surface of the #13199 fix is the path it must NOT change: a node that never runs full
+        // pruning has to keep deferring to the base strategy exactly as before, whatever the block distances are.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ShouldPruneDirtyNode_defers_to_the_base_strategy_when_not_pruning(bool baseSaysPrune)
         {
-            TrieStoreState state = new(100, 200, 300, 250); // LatestCommittedBlock - LastPersistedBlock = 50 > 32
+            // Distances that WOULD trip the in-pruning forced branch, to prove the branch is not consulted here.
+            TrieStoreState state = new(100, 200, 500, 300);
+            _basePruningStrategy.ShouldPruneDirtyNode(state).Returns(baseSaysPrune);
+            Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.EqualTo(baseSaysPrune));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ShouldPruneDirtyNode_returns_to_the_base_strategy_after_pruning_finished(bool baseSaysPrune)
+        {
+            TrieStoreState state = new(100, 200, 500, 300);
+            _basePruningStrategy.ShouldPruneDirtyNode(state).Returns(baseSaysPrune);
+            _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
+            _fullPruningDb.PruningFinished += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
+            Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.EqualTo(baseSaysPrune),
+                "the forced branch must not outlive the prune that justified it");
+        }
+
+        [Test]
+        public void ShouldPruneDirtyNode_should_return_true_when_in_pruning_and_difference_reaches_32()
+        {
+            TrieStoreState state = new(100, 200, 500, 300); // (LatestCommittedBlock - PruningBoundary) - LastPersistedBlock = 72 >= 32
             _basePruningStrategy.ShouldPruneDirtyNode(state).Returns(false);
             _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
             Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.True);
+        }
+
+        [Test]
+        public void ShouldPruneDirtyNode_should_not_fire_when_in_pruning_and_only_the_pruning_boundary_separates_head_from_persisted()
+        {
+            // A snapshot can only persist blocks older than the pruning boundary, so right after a snapshot
+            // LastPersistedBlock == LatestCommittedBlock - PruningBoundary. Nothing new is persistable here,
+            // so the full-pruning trigger must defer to the base strategy instead of forcing a prune.
+            TrieStoreState state = new(100, 200, 1000, 1000 - PruningBoundary);
+            _basePruningStrategy.ShouldPruneDirtyNode(Arg.Any<TrieStoreState>()).Returns(false);
+            _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
+            Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.False);
+        }
+
+        [Test]
+        public void ShouldPruneDirtyNode_should_fire_once_per_32_blocks_not_once_per_block_when_in_pruning()
+        {
+            // Simulate a node at head during full pruning: each block commit evaluates the strategy and,
+            // when it fires, a snapshot persists everything up to LatestCommittedBlock - PruningBoundary.
+            _basePruningStrategy.ShouldPruneDirtyNode(Arg.Any<TrieStoreState>()).Returns(false);
+            _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
+
+            const ulong startBlock = 1000;
+            const int blocks = 256;
+            ulong lastPersisted = startBlock - PruningBoundary;
+            int prunes = 0;
+            for (ulong block = startBlock + 1; block <= startBlock + blocks; block++)
+            {
+                if (_strategy.ShouldPruneDirtyNode(new TrieStoreState(100, 200, block, lastPersisted)))
+                {
+                    prunes++;
+                    lastPersisted = block - PruningBoundary;
+                }
+            }
+
+            // Every 32nd block (1032, 1064, ..., 1256) has 32 persistable blocks behind the boundary: 8 snapshots.
+            // A head-relative trigger fires on all 256 blocks, each persisting a single block.
+            Assert.That(prunes, Is.EqualTo(8));
         }
     }
 }

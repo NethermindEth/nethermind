@@ -37,6 +37,8 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         initConfig.AutoDump = DumpOptions.None;
 
+        configProvider.GetConfig<IFlatDbConfig>().EnableLongFinality = false;
+
         base.Load(builder);
         builder
             .AddModule(new NethermindModule(spec, configProvider, logManager))

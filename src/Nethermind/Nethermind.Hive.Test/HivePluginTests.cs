@@ -2,21 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using NSubstitute;
-using Nethermind.Api.Extensions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
@@ -30,13 +35,6 @@ namespace Nethermind.Hive.Test
         [Test]
         public void Can_create() =>
             _ = new HivePlugin(new HiveConfig() { Enabled = true });
-
-        [Test]
-        public void Can_initialize()
-        {
-            INethermindPlugin plugin = new HivePlugin(new HiveConfig() { Enabled = true });
-            plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
-        }
 
         [Test]
         public void Can_resolve_hive_step()
@@ -79,6 +77,89 @@ namespace Nethermind.Hive.Test
         }
 
         [Test]
+        [NonParallelizable]
+        public void Configures_flat_db_for_expected_deep_reorgs()
+        {
+            const string variable = "HIVE_EXPECT_DEEP_REORGS";
+            string previous = Environment.GetEnvironmentVariable(variable);
+            try
+            {
+                Environment.SetEnvironmentVariable(variable, "1");
+                FlatDbConfig config = new();
+
+                using IContainer container = new ContainerBuilder()
+                    .AddModule(new TestNethermindModule(config))
+                    .AddModule(new HiveModule())
+                    .Build();
+
+                Assert.That(container.Resolve<IFlatDbConfig>().MinReorgDepth, Is.EqualTo(544UL));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(variable, previous);
+            }
+        }
+
+        [Test]
+        public void Skips_evm_warmup_for_hive()
+        {
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new InitConfig()))
+                .AddModule(new HiveModule())
+                .Build();
+
+            Assert.That(container.Resolve<IInitConfig>().EvmWarmupEnabled, Is.False);
+        }
+
+        [Test]
+        public void Supplies_an_ephemeral_node_key_when_no_identity_is_configured()
+        {
+            string nodeKey = ResolveHiveKeyStoreConfig(new KeyStoreConfig()).TestNodeKey;
+            string next = ResolveHiveKeyStoreConfig(new KeyStoreConfig()).TestNodeKey;
+
+            Assert.That(nodeKey, Is.Not.Empty);
+
+            using PrivateKey parsed = new(nodeKey);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parsed.ToString(), Is.EqualTo(nodeKey));
+                Assert.That(next, Is.Not.EqualTo(nodeKey), "each container gets its own key");
+            }
+        }
+
+        [Test]
+        public void Keeps_a_configured_test_node_key()
+        {
+            const string configured = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
+
+            Assert.That(ResolveHiveKeyStoreConfig(new KeyStoreConfig { TestNodeKey = configured }).TestNodeKey, Is.EqualTo(configured));
+        }
+
+        // NodeKeyManager.LoadNodeKey prefers TestNodeKey over both, so supplying one would bypass them.
+        [TestCaseSource(nameof(ConfiguredEnodeIdentities))]
+        public void Defers_to_a_configured_enode_identity(KeyStoreConfig configured) =>
+            Assert.That(ResolveHiveKeyStoreConfig(configured).TestNodeKey, Is.Null.Or.Empty);
+
+        private static IEnumerable<TestCaseData> ConfiguredEnodeIdentities()
+        {
+            yield return new TestCaseData(new KeyStoreConfig { EnodeAccount = TestItem.AddressA.ToString() })
+                .SetName("Defers to a configured enode account");
+            yield return new TestCaseData(new KeyStoreConfig { EnodeKeyFile = "enode.key" })
+                .SetName("Defers to a configured enode key file");
+        }
+
+        private static IKeyStoreConfig ResolveHiveKeyStoreConfig(KeyStoreConfig keyStoreConfig)
+        {
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(keyStoreConfig))
+                .AddModule(new HiveModule())
+                .Build();
+
+            return container.Resolve<IKeyStoreConfig>();
+        }
+
+        [Test]
         public async Task Invalid_block_in_blocks_dir_does_not_become_parent_for_following_block()
         {
             Block genesis = Build.A.Block.Genesis.TestObject;
@@ -104,6 +185,7 @@ namespace Nethermind.Hive.Test
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
 
             blockTree.Genesis.Returns(genesis.Header);
+            blockTree.FindHeader(genesis.Hash!, BlockTreeLookupOptions.None, Arg.Any<ulong?>()).Returns(genesis.Header);
             blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
                 .Returns(new ValueTask<AddBlockResult>(AddBlockResult.AlreadyKnown));
             fileSystem.File.Exists(Arg.Any<string>()).Returns(false);
@@ -148,6 +230,112 @@ namespace Nethermind.Hive.Test
                 .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == invalidBlock.Hash), Arg.Any<BlockTreeSuggestOptions>());
             _ = blockTree.Received(1)
                 .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == validSibling.Hash), Arg.Any<BlockTreeSuggestOptions>());
+        }
+
+        [Test]
+        public async Task Side_chain_blocks_in_blocks_dir_are_validated_against_their_own_parent()
+        {
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block mainChainBlock = Build.A.Block
+                .WithParent(genesis.Header)
+                .WithExtraData([0x01])
+                .TestObject;
+            Block sideChainBlock = Build.A.Block
+                .WithParent(genesis.Header)
+                .WithExtraData([0x02])
+                .TestObject;
+            Block sideChainParent = Build.A.Block
+                .WithParent(sideChainBlock.Header)
+                .WithExtraData([0x03])
+                .TestObject;
+            Block invalidSideChainBlock = Build.A.Block
+                .WithParent(sideChainParent.Header)
+                .WithExtraData([0x04])
+                .TestObject;
+            Block validSideChainBlock = Build.A.Block
+                .WithParent(sideChainParent.Header)
+                .WithExtraData([0x05])
+                .TestObject;
+
+            using TempPath blocksDir = TempPath.GetTempDirectory(Path.Combine(nameof(HivePluginTests), Guid.NewGuid().ToString("N")));
+            Directory.CreateDirectory(blocksDir.Path);
+
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(mainChainBlock).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(sideChainBlock).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0003.rlp"), Rlp.Encode(sideChainParent).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0004.rlp"), Rlp.Encode(invalidSideChainBlock).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0005.rlp"), Rlp.Encode(validSideChainBlock).Bytes);
+
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+            IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            Dictionary<Hash256, BlockHeader> headers = new()
+            {
+                [genesis.Hash!] = genesis.Header,
+                [mainChainBlock.Hash!] = mainChainBlock.Header,
+                [sideChainBlock.Hash!] = sideChainBlock.Header,
+                [sideChainParent.Hash!] = sideChainParent.Header,
+            };
+
+            blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.None, Arg.Any<ulong?>())
+                .Returns(callInfo => headers.GetValueOrDefault(callInfo.ArgAt<Hash256>(0)));
+            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(new ValueTask<AddBlockResult>(AddBlockResult.AlreadyKnown));
+            fileSystem.File.Exists(Arg.Any<string>()).Returns(false);
+
+            blockValidator
+                .ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string>())
+                .Returns(callInfo =>
+                {
+                    Block block = callInfo.ArgAt<Block>(0);
+                    bool isValid = block.Hash != invalidSideChainBlock.Hash;
+                    callInfo[2] = isValid ? null : "invalid";
+                    return isValid;
+                });
+
+            HiveRunner hiveRunner = new(
+                blockTree,
+                blockProcessingQueue,
+                new HiveConfig
+                {
+                    BlocksDir = blocksDir.Path,
+                    ChainFile = Path.Combine(blocksDir.Path, "missing.rlp"),
+                },
+                LimboLogs.Instance,
+                fileSystem,
+                blockValidator);
+
+            await hiveRunner.Start(CancellationToken.None);
+
+            Received.InOrder(() =>
+            {
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == mainChainBlock.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == genesis.Header.Hash),
+                    out Arg.Any<string>());
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == sideChainBlock.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == genesis.Header.Hash),
+                    out Arg.Any<string>());
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == sideChainParent.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == sideChainBlock.Header.Hash),
+                    out Arg.Any<string>());
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == invalidSideChainBlock.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == sideChainParent.Header.Hash),
+                    out Arg.Any<string>());
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == validSideChainBlock.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == sideChainParent.Header.Hash),
+                    out Arg.Any<string>());
+            });
+
+            _ = blockTree.DidNotReceive()
+                .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == invalidSideChainBlock.Hash), Arg.Any<BlockTreeSuggestOptions>());
+            _ = blockTree.Received(1)
+                .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == validSideChainBlock.Hash), Arg.Any<BlockTreeSuggestOptions>());
         }
     }
 }
