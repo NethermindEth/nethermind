@@ -191,9 +191,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         tracer.EndTxTrace();
         tracer.EndBlockTrace();
 
-        // The log order is the only order-observable effect: finalizing the same accounts in any order
-        // leaves the same state. Asserted before the log order so that it is still checked when the
-        // ordering assertion below fails.
+        // Order-independent, so checked first: it must still hold when the log order check fails.
         foreach ((Address account, byte _) in scenario.InDestroyOrder)
         {
             Assert.That(TestState.AccountExists(account), Is.False, $"destroyed account {account} must be gone regardless of finalization order");
@@ -310,11 +308,7 @@ file static class Eip7708SelfDestructScenario
     public readonly record struct MultiDestroy(byte[] FactoryCode, (Address Account, byte Funds)[] InDestroyOrder);
 
     /// <summary>Builds a transaction that leaves three destroyed accounts, each with a distinct residual balance.</summary>
-    /// <remarks>
-    /// The contracts are destroyed in descending address order, so destroy order is the exact reverse of
-    /// ascending address order and expectations written against one cannot be satisfied by the other.
-    /// Creation and funding order differ from both, so the account-to-amount pairing identifies the order too.
-    /// </remarks>
+    /// <remarks>Destroyed in descending address order, so neither destroy nor address order can pass for the other.</remarks>
     public static MultiDestroy BuildMultiDestroy(Address creator, Address inheritor)
     {
         byte[] funds = [11, 22, 33];
@@ -328,7 +322,6 @@ file static class Eip7708SelfDestructScenario
         Prepare factory = Prepare.EvmCode;
         foreach (Address _ in created) factory = factory.Create(initCode, InitBalance);
         foreach (Address account in descending) factory = factory.Call(account, CallGas);
-        // Fund in creation order, so funding order matches neither destroy nor address order.
         for (int i = 0; i < created.Length; i++) factory = factory.CallWithValue(created[i], CallGas, funds[i]);
 
         (Address Account, byte Funds)[] inDestroyOrder = new (Address, byte)[descending.Length];

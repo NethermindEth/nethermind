@@ -64,7 +64,8 @@ namespace Nethermind.Core.Collections
             _set.Clear();
         }
 
-        public HashSet<T>.Enumerator GetEnumerator() => _set.GetEnumerator();
+        /// <summary>Enumerates the items in the order they were first added, excluding those dropped by <see cref="Restore"/>.</summary>
+        public List<T>.Enumerator GetEnumerator() => _items.GetEnumerator();
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
@@ -72,15 +73,6 @@ namespace Nethermind.Core.Collections
         public bool IsReadOnly => false;
         void ICollection<T>.Add(T item) => Add(item);
         public bool Contains(T item) => _set.Contains(item);
-        /// <summary>
-        /// Gets the items in the order they were first added, without the ones dropped by <see cref="Restore"/>.
-        /// </summary>
-        /// <remarks>
-        /// Unlike enumerating the set, this order is defined, so callers whose output depends on it stay
-        /// deterministic. <see cref="Add"/>, <see cref="Restore"/> and <see cref="Clear"/> invalidate the
-        /// returned span, so the caller must not mutate the set while reading it.
-        /// </remarks>
-        public ReadOnlySpan<T> AsSpan() => CollectionsMarshal.AsSpan(_items);
-        public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
+        public void CopyTo(T[] array, int arrayIndex) => _items.CopyTo(array, arrayIndex);
     }
 }

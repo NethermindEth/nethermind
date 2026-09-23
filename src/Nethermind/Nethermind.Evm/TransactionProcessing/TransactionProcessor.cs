@@ -400,9 +400,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     bool tracingRefunds = tracer.IsTracingRefunds;
                     bool tracingLogs = tracer.IsTracingLogs;
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
-                    // Same ordering rule as the inline path: the Burn log feeds the receipts root, so
-                    // emit in destroy order rather than in hash-slot order.
-                    foreach (Address toBeDestroyed in destroyList.AsSpan())
+                    foreach (Address toBeDestroyed in destroyList)
                     {
                         FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit, removeSelfdestructBurn, tracer, tracingLogs);
                         if (tracingRefunds) tracer.ReportRefund(destroyRefund);
@@ -1437,16 +1435,13 @@ namespace Nethermind.Evm.TransactionProcessing
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
                         bool tracingLogs = tracer.IsTracingLogs;
-                        // The finalization log below is the only order-observable effect here, and it feeds
-                        // the receipts root, so emit in the order the accounts were destroyed: the set records
-                        // it already and reverted frames drop out of it, whereas hash-slot order is arbitrary.
-                        foreach (Address toBeDestroyed in destroyList.AsSpan())
+                        foreach (Address toBeDestroyed in destroyList)
                         {
                             if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
 
                             UInt256 balance = eip7708Enabled || removeSelfdestructBurn ? WorldState.GetBalance(toBeDestroyed) : default;
 
-                            // EIP-7708 logs the self-destruct; suppressed once EIP-8246 stops burning.
+                            // EIP-7708 logs the burn; suppressed once EIP-8246 stops burning.
                             if (eip7708Enabled && !removeSelfdestructBurn && !balance.IsZero)
                             {
                                 LogEntry selfDestructLog = TransferLog.CreateSelfDestruct(toBeDestroyed, balance);

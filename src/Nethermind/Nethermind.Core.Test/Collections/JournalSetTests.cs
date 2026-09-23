@@ -56,13 +56,9 @@ namespace Nethermind.Core.Test.Collections
             Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
         }
 
-        /// <remarks>
-        /// The expected sequence is JournalSet's own contract and unsorted, so sorted order can never satisfy it.
-        /// Telling it apart from set order instead rests on an implementation detail: <see cref="HashSet{T}"/>
-        /// hands slots freed by the restore to later adds, so its enumeration stops following insertion order.
-        /// </remarks>
+        /// <remarks>Adds after a restore refill the freed slots, where a hash set's own order stops following insertion order.</remarks>
         [Test]
-        public void AsSpan_keeps_insertion_order_when_restored_slots_are_reused()
+        public void Enumerates_in_insertion_order_when_restored_slots_are_reused()
         {
             JournalSet<int> journalSet = CreateJournalSet();
             journalSet.AddRange([3, 1, 2]);
@@ -74,10 +70,8 @@ namespace Nethermind.Core.Test.Collections
             int[] insertionOrder = [3, 1, 2, 9, 7, 8];
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(journalSet.AsSpan().ToArray(), Is.EqualTo(insertionOrder), "span must follow insertion order, with restored items dropped");
-                Assert.That(journalSet, Is.Not.EqualTo(insertionOrder),
-                    "HashSet<T> no longer reorders reused slots, so this case cannot tell insertion order from set order; " +
-                    "not a JournalSet bug, but the construction needs revisiting for the new runtime");
+                Assert.That(journalSet, Is.EqualTo(insertionOrder), "enumeration");
+                Assert.That(journalSet.ToArray(), Is.EqualTo(insertionOrder), "CopyTo");
             }
         }
     }
