@@ -29,9 +29,62 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
-    public async Task Debug_callTracer_log_indices_span_transactions(
-        [Values("debug_traceTransaction", "debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
+    public async Task Debug_traceTransaction_log_indices_include_preceding_transactions([Values] bool revertFirst)
+    {
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+            RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", block.Transactions[2].Hash!,
+                new { tracer = "callTracer", tracerConfig = new { withLog = true } }));
+
+        AssertLastTransactionLogIndex(responses, revertFirst);
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_log_indices_span_transactions(
+        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
         [Values] bool revertFirst)
+    {
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+        {
+            object blockParameter = method switch
+            {
+                "debug_traceBlockByHash" => block.Hash!,
+                "debug_traceBlockByNumber" => "latest",
+                "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToString(),
+                _ => throw new AssertionException($"Unexpected block tracing method: {method}")
+            };
+            return RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter,
+                new { tracer = "callTracer", tracerConfig = new { withLog = true } });
+        });
+
+        foreach (string response in responses)
+        {
+            JToken json = JToken.Parse(response);
+            Assert.That(json["error"], Is.Null, response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = revertFirst ? 1 : 0; i < traces.Count; i++)
+                    Assert.That((string?)traces[i]["result"]?["logs"]?[0]?["index"], Is.EqualTo($"0x{i - (revertFirst ? 1 : 0):x}"), response);
+            }
+        }
+    }
+
+    private static void AssertLastTransactionLogIndex(string[] responses, bool revertFirst)
+    {
+        foreach (string response in responses)
+        {
+            JToken json = JToken.Parse(response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((string?)json["result"]?["logs"]?[0]?["index"], Is.EqualTo(revertFirst ? "0x1" : "0x2"), response);
+            }
+        }
+    }
+
+    private static async Task<string[]> TraceLogsBeforeAndAfterIndexing(
+        bool revertFirst, Func<TestRpcBlockchain, Block, Task<string>> trace)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -53,32 +106,10 @@ public partial class DebugRpcModuleTests
         }
         Block block = await chain.AddBlock(transactions);
         Assert.That(block.Transactions.Length, Is.EqualTo(3));
-        object blockParameter = method switch
-        {
-            "debug_traceTransaction" => block.Transactions[2].Hash!,
-            "debug_traceBlockByNumber" => "latest",
-            "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToString(),
-            _ => block.Hash!
-        };
-        object options = new { tracer = "callTracer", tracerConfig = new { withLog = true } };
-        string replayed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter, options);
+        string replayed = await trace(chain, block);
         IndexThroughTheCapture(chain, index, block, parent);
-        string indexed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter, options);
-
-        foreach (string response in new[] { replayed, indexed })
-        {
-            JToken json = JToken.Parse(response);
-            Assert.That(json["error"], Is.Null, response);
-            if (method == "debug_traceTransaction")
-                Assert.That((string?)json["result"]?["logs"]?[0]?["index"], Is.EqualTo(revertFirst ? "0x1" : "0x2"), response);
-            else
-            {
-                JArray traces = (JArray)json["result"]!;
-                Assert.That(traces, Has.Count.EqualTo(3));
-                for (int i = revertFirst ? 1 : 0; i < traces.Count; i++)
-                    Assert.That((string?)traces[i]["result"]?["logs"]?[0]?["index"], Is.EqualTo($"0x{i - (revertFirst ? 1 : 0):x}"), response);
-            }
-        }
+        string indexed = await trace(chain, block);
+        return [replayed, indexed];
     }
 
     [Test]
