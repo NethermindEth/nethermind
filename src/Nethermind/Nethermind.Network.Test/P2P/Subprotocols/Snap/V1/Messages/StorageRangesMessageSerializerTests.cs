@@ -73,6 +73,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         }
 
         [Test]
+        public void Roundtrip_EmptyAccountSlots()
+        {
+            using StorageRangeMessage msg = new()
+            {
+                RequestId = MessageConstants.Random.NextLong(),
+                Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+                {
+                    ArrayPoolList<PathWithStorageSlot>.Empty()
+                },
+                Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
+            };
+
+            StorageRangesMessageSerializer serializer = new();
+
+            SerializerTester.TestZero(serializer, msg);
+        }
+
+        [Test]
         public void Roundtrip_Many()
         {
             using StorageRangeMessage msg = new()
@@ -117,6 +135,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] serialized = serializer.Serialize(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+        }
+
+        [Test]
+        public void Deserialize_throws_on_null_storage_slot_path()
+        {
+            StorageRangesMessageSerializer serializer = new();
+
+            Assert.That(
+                () => serializer.Deserialize([0xc7, 0x01, 0xc4, 0xc3, 0xc2, 0x80, 0x80, 0xc0]),
+                Throws.InstanceOf<RlpException>());
         }
 
         [TestCase(SnapMessageLimits.MaxProofs, false)]

@@ -5,10 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -83,7 +85,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = checked(chain.Bridge.HeadBlock.Number + 10),
+                            Number = checked(chain.Bridge.HeadBlock!.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -128,7 +130,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = checked(chain.Bridge.HeadBlock.Number + 10),
+                            Number = checked(chain.Bridge.HeadBlock!.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -278,6 +280,86 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// Genesis persisted, the block below still queued: a body is readable only through the store that queued
+    /// its deferred write, so eth_simulateV1 must read through that store or silently build on an older parent.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_builds_on_requested_parent_while_its_body_write_is_pending()
+    {
+        PausedDeferredBlockDataWriter deferredWriter = new();
+        TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(new GenesisOnlyRpcBlockchain())
+            .Build((builder) => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
+                .AddSingleton<IDeferredBlockDataWriter>(deferredWriter));
+
+        deferredWriter.Drain();
+        Block parent = await chain.AddBlock();
+
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [new()] };
+
+        SimulateBlockResult<SimulateCallResult> simulated =
+            chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(parent.Number)).Data[0];
+
+        Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash));
+        Assert.That(simulated.Number, Is.EqualTo(parent.Number + 1));
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_reuses_environment_after_real_head_advances()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> firstPayload = new() { BlockStateCalls = [new()] };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> first =
+            chain.EthRpcModule.eth_simulateV1(firstPayload, BlockParameter.Latest);
+        Assert.That(first.Result.ResultType, Is.EqualTo(Core.ResultType.Success), first.Result.Error);
+
+        Block previousHead = chain.BlockTree.Head!;
+        Block realHead = await chain.AddBlock();
+        Assert.That(realHead.Number, Is.EqualTo(previousHead.Number + 1));
+        Assert.That(first.Data![0].Number, Is.EqualTo(realHead.Number));
+        Assert.That(first.Data![0].Hash, Is.Not.EqualTo(realHead.Hash));
+
+        SimulatePayload<TransactionForRpc> secondPayload = new() { BlockStateCalls = [new()] };
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> second =
+            chain.EthRpcModule.eth_simulateV1(secondPayload, BlockParameter.Latest);
+        Assert.That(second.Result.ResultType, Is.EqualTo(Core.ResultType.Success), second.Result.Error);
+        Assert.That(second.Data![0].ParentHash, Is.EqualTo(realHead.Hash));
+        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(realHead.Hash));
+    }
+
+    private sealed class PausedDeferredBlockDataWriter : IDeferredBlockDataWriter
+    {
+        private readonly List<Action> _queued = [];
+
+        public bool Enabled => true;
+
+        public void Enqueue(Action work)
+        {
+            lock (_queued) _queued.Add(work);
+        }
+
+        public void Drain()
+        {
+            Action[] pending;
+            lock (_queued)
+            {
+                pending = [.. _queued];
+                _queued.Clear();
+            }
+
+            foreach (Action work in pending) work();
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Drain();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <summary>
     ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
     ///     We test on blocks before current head and after it,
     ///     Note that if we get blocks before head we set simulation start state to one of that first block
@@ -389,7 +471,7 @@ public class EthSimulateTestsBlocksAndTransactions
                         ]
                        }
                        """;
-        return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
+        return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input)!;
     }
 
     [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
@@ -519,7 +601,7 @@ public class EthSimulateTestsBlocksAndTransactions
     public async Task eth_simulateV1_MovePrecompileToAddress_invalid_override_returns_error(string payloadJson, int expectedErrorCode, string expectedMessage)
     {
         EthereumJsonSerializer serializer = new();
-        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson);
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson)!;
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
@@ -593,9 +675,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
     // Verifies that blockOverrides.time is respected by the EVM TIMESTAMP opcode in eth_simulateV1
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Test_eth_simulateV1_block_override_time_is_seen_by_timestamp_opcode(bool validation)
+    [Test]
+    public async Task Test_eth_simulateV1_block_override_time_is_seen_by_timestamp_opcode([Values] bool validation)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
@@ -813,6 +894,59 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
         if (expectedMessage is not null)
             Assert.That(result.Result!.Error, Is.EqualTo(expectedMessage));
+    }
+
+    /// <summary>
+    /// An explicit <c>gas</c> above EIP-8037's TX_MAX_TOTAL_GAS_LIMIT must be reported as invalid input
+    /// rather than falling through to <c>-32603 Internal error</c>.
+    /// </summary>
+    /// <remarks>
+    /// Only reachable when the RPC gas cap does not already clamp the request, i.e. when
+    /// <c>JsonRpc.GasCap</c> is the "no cap" sentinel <c>0</c> or is itself above the consensus cap.
+    /// </remarks>
+    [Test]
+    public async Task eth_simulateV1_gas_above_eip8037_total_cap_returns_invalid_input()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
+        chain.RpcConfig.GasCap = 0;
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    // Above the cap so the block-level EIP-8037 inclusion check cannot reject first.
+                    BlockOverrides = new BlockOverride { GasLimit = Eip8037Constants.TxMaxTotalGasLimit + 1_000_000 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = UInt256.Zero,
+                            Gas = Eip8037Constants.TxMaxTotalGasLimit + 1,
+                            GasPrice = UInt256.Zero
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(result.Result!.Error, Does.Contain(
+                TxErrorMessages.TxGasLimitCapExceeded(Eip8037Constants.TxMaxTotalGasLimit + 1, Eip8037Constants.TxMaxTotalGasLimit)));
+        }
     }
 
     /// <summary>
@@ -1063,15 +1197,41 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
     }
 
-    /// <summary>
-    /// #12692 (item 1): a no-gas call must default to the block budget, not GasCap (100M) — which the EIP-8037
-    /// inclusion check rejects (ExecutionDimensionExceeded on a small block, StateDimensionExceeded below the cap).
-    /// </summary>
-    [TestCase(5_000_000ul, TestName = "no-gas call fits a small block's gas budget (execution dimension)")]
-    [TestCase(30_000_000ul, TestName = "no-gas call fits a realistic block's gas budget (state dimension)")]
-    public async Task eth_simulateV1_defaults_missing_gas_to_block_limit_on_bal_path(ulong blockGasLimit)
+    private static IEnumerable<TestCaseData> MissingGasBudgetCases()
     {
-        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        // A GasCap of 0 is "uncapped" (GasCapExtensions.EffectiveGasCap), so the block budget or the
+        // EIP-8037 cap is what binds; 100M sits below the EIP-8037 cap and binds ahead of it.
+        (ulong BlockGasLimit, ulong GasCap, string Dimension)[] budgets =
+        [
+            (5_000_000UL, 0UL, "a small block's gas budget (execution dimension)"),
+            (30_000_000UL, 0UL, "a realistic block's gas budget (state dimension)"),
+            (0x200000000UL, 0UL, "the EIP-8037 cap when the block budget exceeds it"),
+            (0x200000000UL, 100_000_000UL, "the RPC gas cap when it is below the EIP-8037 cap")
+        ];
+
+        foreach ((ulong blockGasLimit, ulong gasCap, string dimension) in budgets)
+        {
+            foreach (bool validation in new[] { true, false })
+            {
+                yield return new TestCaseData(blockGasLimit, gasCap, validation)
+                    .SetName($"no-gas call fits {dimension}, validation {validation}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// #12692 (item 1): a no-gas call defaults to the budget still available rather than to the raw
+    /// RPC <c>GasCap</c>, and never resolves above EIP-8037's <c>TX_MAX_TOTAL_GAS_LIMIT</c>.
+    /// </summary>
+    /// <remarks>
+    /// The cases pin the distinct limits the clamp can resolve to. The <c>GasCap</c> values dropped here sat
+    /// above their case's block budget, so they resolved to that budget like the cases already listed.
+    /// </remarks>
+    [TestCaseSource(nameof(MissingGasBudgetCases))]
+    public async Task eth_simulateV1_defaults_missing_gas_to_available_budget(ulong blockGasLimit, ulong gasCap, bool validation)
+    {
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        chain.RpcConfig.GasCap = gasCap;
 
         SimulatePayload<TransactionForRpc> payload = new()
         {
@@ -1090,7 +1250,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     ]
                 }
             ],
-            Validation = true
+            Validation = validation
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
@@ -1098,6 +1258,31 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+    }
+
+    /// <summary>
+    /// EIP-7825's execution-gas cap is enforced by <c>GasLimitCapTxValidator</c> and the gas estimator, never by the
+    /// transaction processor, so <see cref="SimulateTransactionProcessorAdapter"/> must not clamp the no-gas default
+    /// by it. 16,777,216 sits below a typical block gas limit, so clamping there would silently under-execute a
+    /// gas-less call against a block that can afford far more.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_defaults_missing_gas_above_the_eip7825_execution_cap()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        chain.RpcConfig.GasCap = Eip7825Constants.DefaultTxGasLimitCap * 4;
+
+        SimulatePayload<TransactionForRpc> payload = EthRpcSimulateTestsBase.CreateGasProbePayload();
+        payload.BlockStateCalls![0].BlockOverrides =
+            new BlockOverride { GasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2 };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        UInt256 gasAvailable = new(result.Data.First().Calls.First().ReturnData!, isBigEndian: true);
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap),
+            $"gas available ({gasAvailable}) should reflect the block budget, not the EIP-7825 execution-gas cap");
     }
 
     /// <summary>

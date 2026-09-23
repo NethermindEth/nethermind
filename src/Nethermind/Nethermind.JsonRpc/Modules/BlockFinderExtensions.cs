@@ -23,7 +23,9 @@ namespace Nethermind.JsonRpc.Modules
                     requestedBlock = headerResult.Object.Number;
                 }
             }
-            return requestedBlock < blockFinder.GetLowestBlock();
+            // The served floor, not the published boundary: during a backfill the two differ, and this check
+            // must agree with what the node advertises as earliest over eth/69.
+            return requestedBlock < blockFinder.LowestServedBlock;
         }
 
         public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)

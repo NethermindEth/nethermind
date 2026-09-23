@@ -34,8 +34,16 @@ public class SnapFlatStateServer(
             return false;
         }
 
-        bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
-        return true;
+        try
+        {
+            bundle = flatDbManager.GatherReadOnlySnapshotBundle(stateId);
+            return true;
+        }
+        catch (StateUnavailableException)
+        {
+            bundle = null!;
+            return false;
+        }
     }
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>
@@ -58,8 +66,9 @@ public class SnapFlatStateServer(
             StateTree tree = new(trieStore, logManager);
             bool abort = false;
             long responseSize = 0;
+            int lookups = 0;
 
-            for (int i = 0; i < pathLength && !abort && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; i++)
+            for (int i = 0; i < pathLength && !abort && responseSize < byteLimit && lookups < ISnapStateServer.MaxTrieNodeLookups && !cancellationToken.IsCancellationRequested; i++)
             {
                 byte[][]? requestedPath = pathSet[i].Group;
                 switch (requestedPath.Length)
@@ -70,6 +79,7 @@ public class SnapFlatStateServer(
                         try
                         {
                             byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), stateId.StateRoot.ToCommitment());
+                            lookups++;
                             writer.WriteValue(rlp);
                             responseSize += rlp?.Length ?? 0;
                         }
@@ -86,14 +96,16 @@ public class SnapFlatStateServer(
                                     ? requestedPath[0]
                                     : requestedPath[0].PadRight(Hash256.Size));
                             Account? account = GetAccountByPath(tree, stateId.StateRoot.ToCommitment(), requestedPath[0]);
+                            lookups++;
                             if (account is not null)
                             {
                                 Hash256? storageRoot = account.StorageRoot;
                                 StorageTree sTree = new(trieStore.GetStorageTrieStore(storagePath), storageRoot, logManager);
 
-                                for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
+                                for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && lookups < ISnapStateServer.MaxTrieNodeLookups && !cancellationToken.IsCancellationRequested; reqStorage++)
                                 {
                                     byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
+                                    lookups++;
                                     writer.WriteValue(sRlp);
                                     responseSize += sRlp?.Length ?? 0;
                                 }

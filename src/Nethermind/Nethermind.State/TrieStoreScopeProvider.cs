@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.Intrinsics.X86;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -14,6 +14,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -38,8 +39,11 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 {
     private readonly ITrieStore _trieStore = trieStore;
     private readonly ILogManager _logManager = logManager;
-    protected StateTree _backingStateTree;
+    protected StateTree? _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
+
+    protected StateTree BackingStateTree =>
+        _backingStateTree ?? throw new InvalidOperationException("A state tree is only available within a world-state scope.");
 
     protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
@@ -48,10 +52,10 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
-        _backingStateTree ??= CreateStateTree();
-        _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        StateTree backingStateTree = _backingStateTree ??= CreateStateTree();
+        backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
-        return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+        return new TrieStoreWorldStateBackendScope(backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
     }
 
     protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
@@ -72,6 +76,10 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         private void CancelHintBal()
         {
+            // HintBal never starts the warm-up task on a single processor, so both fields are null.
+            // Returning early keeps the task awaiter out of the guest image.
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor) return;
+
             _hintBalCts?.Cancel();
             try { _hintBalTask?.GetAwaiter().GetResult(); }
             catch (OperationCanceledException) { }
@@ -111,6 +119,19 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             int accountCount = bal.AccountChanges.Count;
             if (accountCount == 0) return Task.CompletedTask;
 
+            // The one processor that will run the block would only contend with a warm-up task, so
+            // feed the sink inline; the guest folds the threaded path away.
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            {
+                ReadOnlySpan<ReadOnlyAccountChanges> accounts = bal.AccountChanges.AsSpan();
+                for (int i = 0; i < accounts.Length; i++)
+                {
+                    WarmAccount(sink, in accounts[i]);
+                }
+
+                return Task.CompletedTask;
+            }
+
             // Copy the span into a pooled array so the Parallel.For body can capture it.
             ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
@@ -129,65 +150,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     {
                         if (token.IsCancellationRequested) return;
                         ReadOnlyAccountChanges ac = accountChanges[i];
-                        Address address = ac.Address;
-
-                        // Swallow MissingTrieNodeException so a partially-synced trie can't blow up
-                        // the background warmup task; it'll fault the main read path normally instead.
-                        try
-                        {
-                            StateTree privateStateTree = _scopeProvider.CreateStateTree();
-                            privateStateTree.RootHash = _backingStateTree.RootHash;
-
-                            Account? account;
-                            if (sink.StillNeeded(address, out Account? cached))
-                            {
-                                account = privateStateTree.Get(address);
-                                sink.OnAccountRead(address, account);
-                            }
-                            else
-                            {
-                                account = cached;
-                            }
-
-                            if (account is null) return;
-                            Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-                            if (storageRoot == Keccak.EmptyTreeHash) return;
-
-                            ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
-                            ReadOnlySpan<UInt256> reads = ac.StorageReads;
-                            if (changed.Length + reads.Length == 0) return;
-
-                            // Sorted-merge walk over (ChangedSlots, StorageReads) — both arrays are
-                            // ascending and disjoint, so one merged pass keeps adjacent trie paths
-                            // hot across consecutive Get calls.
-                            StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
-                            int slotIndex = 0;
-                            int readIndex = 0;
-                            while (slotIndex < changed.Length || readIndex < reads.Length)
-                            {
-                                UInt256 slot;
-                                if (readIndex >= reads.Length)
-                                {
-                                    slot = changed[slotIndex++];
-                                }
-                                else
-                                {
-                                    slot = reads[readIndex];
-                                    if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
-                                    {
-                                        slot = changed[slotIndex++];
-                                    }
-                                    else
-                                    {
-                                        readIndex++;
-                                    }
-                                }
-                                StorageCell cell = new(address, in slot);
-                                if (!sink.StillNeeded(in cell)) continue;
-                                sink.OnStorageRead(in cell, storageTree.Get(in slot));
-                            }
-                        }
-                        catch (MissingTrieNodeException) { }
+                        WarmAccount(sink, in ac);
                     });
                 }
                 catch (OperationCanceledException) { }
@@ -196,6 +159,70 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     accountChanges.Dispose();
                 }
             });
+        }
+
+        private void WarmAccount(IWorldStateScopeProvider.IAsyncBalReaderSink sink, in ReadOnlyAccountChanges ac)
+        {
+            Address address = ac.Address;
+
+            // Swallow MissingTrieNodeException so a partially-synced trie can't blow up
+            // the background warmup task; it'll fault the main read path normally instead.
+            try
+            {
+                StateTree privateStateTree = _scopeProvider.CreateStateTree();
+                privateStateTree.RootHash = _backingStateTree.RootHash;
+
+                Account? account;
+                if (sink.StillNeeded(address, out Account? cached))
+                {
+                    account = privateStateTree.Get(address);
+                    sink.OnAccountRead(address, account);
+                }
+                else
+                {
+                    account = cached;
+                }
+
+                if (account is null) return;
+                Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                if (storageRoot == Keccak.EmptyTreeHash) return;
+
+                ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
+                ReadOnlySpan<UInt256> reads = ac.StorageReads;
+                if (changed.Length + reads.Length == 0) return;
+
+                // Sorted-merge walk over (ChangedSlots, StorageReads) — both arrays are
+                // ascending and disjoint, so one merged pass keeps adjacent trie paths
+                // hot across consecutive Get calls.
+                StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
+                int slotIndex = 0;
+                int readIndex = 0;
+                while (slotIndex < changed.Length || readIndex < reads.Length)
+                {
+                    UInt256 slot;
+                    if (readIndex >= reads.Length)
+                    {
+                        slot = changed[slotIndex++];
+                    }
+                    else
+                    {
+                        slot = reads[readIndex];
+                        if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
+                        {
+                            slot = changed[slotIndex++];
+                        }
+                        else
+                        {
+                            readIndex++;
+                        }
+                    }
+                    StorageCell cell = new(address, in slot);
+                    if (!sink.StillNeeded(in cell)) continue;
+                    storageTree.Get(in slot, out UInt256 value);
+                    sink.OnStorageRead(in cell, in value);
+                }
+            }
+            catch (MissingTrieNodeException) { }
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
@@ -218,34 +245,46 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         {
             using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
-            // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-            // may make it worst. Always check on mainnet.
-            using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
             {
-                if (blockCommitter.TryRequestConcurrencyQuota())
-                {
-                    commitTask.Add(Task.Factory.StartNew((ctx) =>
-                    {
-                        StorageTree st = (StorageTree)ctx;
-                        st.Commit();
-                        blockCommitter.ReturnConcurrencyQuota();
-                    }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-                }
-                else
+                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
                 {
                     storage.Value.Commit();
                 }
             }
+            else
+            {
+                // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
+                // may make it worst. Always check on mainnet.
+                using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
+                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
+                {
+                    if (blockCommitter.TryRequestConcurrencyQuota())
+                    {
+                        commitTask.Add(Task.Factory.StartNew((ctx) =>
+                        {
+                            StorageTree st = ctx as StorageTree
+                                ?? throw new InvalidOperationException("A storage commit task requires a storage tree.");
+                            st.Commit();
+                            blockCommitter.ReturnConcurrencyQuota();
+                        }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
+                    }
+                    else
+                    {
+                        storage.Value.Commit();
+                    }
+                }
 
-            Task.WaitAll(commitTask.AsSpan());
+                Task.WaitAll(commitTask.AsSpan());
+            }
+
             _backingStateTree.Commit();
             _storages.Clear();
         }
 
         internal StorageTree LookupStorageTree(Address address)
         {
-            if (_storages.TryGetValue(address, out StorageTree storageTree))
+            if (_storages.TryGetValue(address, out StorageTree? storageTree))
             {
                 return storageTree;
             }
@@ -299,8 +338,13 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
             OnAccountUpdated = null;
 
-            using (StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
+            if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
             {
+                scope._backingStateTree.SetAccounts(_dirtyAccounts);
+            }
+            else
+            {
+                using StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count);
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                 {
                     stateSetter.Set(kv.Key, kv.Value);
@@ -335,18 +379,50 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 : null;
 
         private ValueHash256 _keyBuff = new();
+        private PendingHashes? _pendingHashes;
 
-        public void Set(in UInt256 index, byte[] value)
+        private sealed class PendingHashes
         {
+            internal KeyHashBatch Batch;
+            internal PendingHashes() => Batch.Initialize(Hash256.Size);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void AddUnhashedEntry(ReadOnlySpan<byte> preimage, ReadOnlySpan<byte> encoded, bool isZero)
+        {
+            PendingHashes pending = _pendingHashes ??= new();
+            int index = _bulkWrite!.Count;
+            _bulkWrite.Add(StorageTree.CreateBulkSetEntry(default, encoded, isZero));
+            pending.Batch.AddMissing(preimage, index);
+            if (pending.Batch.IsFull) pending.Batch.Flush(_bulkWrite.AsSpan());
+        }
+
+        [SkipLocalsInit]
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            Unsafe.SkipInit(out EvmWord word);
+            bool isZero = value.IsZero;
+            ReadOnlySpan<byte> encoded = isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word);
             _wasSetCalled = true;
             if (_bulkWrite is null)
             {
-                storageTree.Set(index, value);
+                storageTree.Set(index, encoded, isZero);
             }
             else
             {
-                StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
-                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
+                if (Avx2.IsSupported)
+                {
+                    if (!StorageTree.TryGetCachedKey(index, out _keyBuff, out ValueHash256 preimage))
+                    {
+                        AddUnhashedEntry(preimage.BytesAsSpan, encoded, isZero);
+                        return;
+                    }
+                }
+                else
+                {
+                    StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
+                }
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, encoded, isZero));
             }
         }
 
@@ -372,6 +448,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     storageTree.RootHash = Keccak.EmptyTreeHash;
                 }
 
+                _pendingHashes?.Batch.Flush(_bulkWrite.AsSpan());
+                _pendingHashes = null;
                 bulkCount = _bulkWrite.Count;
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
                 storageTree.BulkSet(asRef);
@@ -403,7 +481,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private readonly AssociativeKeyCache<ValueHash256>? _persistedHint
             = isPersistent ? new AssociativeKeyCache<ValueHash256>(1_024) : null;
 
-        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes]?.ToArray();
+        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes];
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(codeDb.StartWriteBatch());
 

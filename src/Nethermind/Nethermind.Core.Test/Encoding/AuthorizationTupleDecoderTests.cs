@@ -31,7 +31,7 @@ public class AuthorizationTupleDecoderTests
         Rlp result = sut.Encode(item);
         RlpReader ctx = new(result.Bytes);
 
-        AuthorizationTuple decoded = sut.Decode(ref ctx);
+        AuthorizationTuple decoded = sut.Decode(ref ctx)!;
         Assert.That(decoded, Is.EqualTo(item).UsingAuthorizationTupleComparer());
     }
 

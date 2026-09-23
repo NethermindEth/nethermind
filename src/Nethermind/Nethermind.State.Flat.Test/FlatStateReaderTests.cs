@@ -19,12 +19,12 @@ public class FlatStateReaderTests
     private static readonly BlockHeader _header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
 
     private static FlatStateReader CreateReader(IFlatDbManager manager) =>
-        new(new MemDb(), manager, LimboLogs.Instance);
+        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
         new TestCaseData((Action<FlatStateReader>)(reader => reader.TryGetAccount(_header, TestItem.AddressA, out _))) { TestName = "TryGetAccount" },
-        new TestCaseData((Action<FlatStateReader>)(reader => reader.GetStorage(_header, TestItem.AddressA, 1))) { TestName = "GetStorage" },
+        new TestCaseData((Action<FlatStateReader>)(reader => reader.GetStorage(_header, TestItem.AddressA, 1, out _))) { TestName = "GetStorage" },
         new TestCaseData((Action<FlatStateReader>)(reader => reader.RunTreeVisitor(new TreeDumper(), _header))) { TestName = "RunTreeVisitor" },
     ];
 
@@ -52,6 +52,7 @@ public class FlatStateReaderTests
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
+        public void DropStateNotReachableFrom(in StateId head) { }
         public bool HasStateForBlock(in StateId stateId) => false;
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
@@ -63,6 +64,7 @@ public class FlatStateReaderTests
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
+        public void DropStateNotReachableFrom(in StateId head) { }
         public bool HasStateForBlock(in StateId stateId) => true;
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }

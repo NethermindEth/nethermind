@@ -11,6 +11,18 @@ namespace Nethermind.State.Flat;
 
 public static class Metrics
 {
+    private static long _unreadableTransactionChangesetRows;
+
+    [CounterMetric]
+    [Description("Times a transaction changeset row could not be read. Repeated attempts on the same damaged row count separately; tracing falls back to replay.")]
+    public static long UnreadableTransactionChangesetRows
+    {
+        get => Volatile.Read(ref _unreadableTransactionChangesetRows);
+        set => Interlocked.Exchange(ref _unreadableTransactionChangesetRows, value);
+    }
+
+    public static void RecordUnreadableTransactionChangesetRow() => Interlocked.Increment(ref _unreadableTransactionChangesetRows);
+
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
@@ -306,6 +318,40 @@ public static class Metrics
     public static long FlatHistoryWatermark { get; set; }
 
     [GaugeMetric]
+    [Description("Lowest block the per-transaction changeset index covers; 0 when the index is disabled or has indexed nothing yet")]
+    public static long TransactionChangesetIndexFrom { get; set; }
+
+    [GaugeMetric]
+    [Description("Highest block the per-transaction changeset index covers; 0 when the index is disabled or has indexed nothing yet")]
+    public static long TransactionChangesetIndexTo { get; set; }
+
+    [GaugeMetric]
     [Description("1 when history capture has self-disabled (permanent gap, reorged capture, or repeated write failures); as-of reads above the watermark are refused until the flatHistory DB is resynced")]
     public static long FlatHistoryCaptureDisabled { get; set; }
+
+    [CounterMetric]
+    [Description("Trie nodes created by the trie reassembly that precedes BAL healing")]
+    public static long BalHealingReassembledNodes { get; set; }
+
+    [CounterMetric]
+    [Description("Block access lists replayed onto the reassembled state by BAL healing")]
+    public static long BalHealingBalsApplied { get; set; }
+
+    [GaugeMetric]
+    [Description("Lowest block still answerable from flat history (the retention floor); 0 when none has been published")]
+    public static long FlatHistoryFloor { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of rows deleted by the history window pruner")]
+    public static long FlatHistoryPrunedRows { get; set; }
+
+    [CounterMetric]
+    [Description("Number of accounts whose storage history was poisoned because a self-destruct exceeded the per-slot enumeration cap; storage reads below those blocks fail closed for that account")]
+    public static long FlatHistoryPoisonedDestructs { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of history window pruner passes that left work for the next pass - the wall-clock budget expired mid-sweep, a floor drain did not finish inside it, or a completed cycle found the floor had advanced under it and queued the next cycle")]
+    public static long FlatHistoryPrunePassesYielded { get; set; }
 }

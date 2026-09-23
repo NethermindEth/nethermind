@@ -66,6 +66,7 @@ public class TaikoExecutionPayloadTests
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
         Assert.That(result.Data.Header.RequestsHash, Is.EqualTo(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash));
+        Assert.That(result.Data.Withdrawals, Is.Empty);
         // A strict V2 driver (Rust) omits the blob gas fields; Unzen must still pin them to 0
         // so the reconstructed hash matches the producer's.
         Assert.That(result.Data.Header.BlobGasUsed, Is.EqualTo(0UL));

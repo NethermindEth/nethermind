@@ -440,10 +440,10 @@ FodyWeavers.xsd
 ## macOS
 .DS_Store
 
-# AI
+# Agents
 .claude/*
-!.claude/CLAUDE.md
 !.claude/skills
+.codex/
 .gemini/
 
 # Worktrees
@@ -451,10 +451,9 @@ FodyWeavers.xsd
 
 ## Nethermind
 keystore/
+/data/
+/bootnode-data/
 /.githooks
-
-# Worktrees
-.worktrees/
 /.dotnet-cli
 
 # Nix build output symlinks

@@ -9,15 +9,24 @@ namespace Nethermind.Core.Test;
 [TestFixture]
 public class SizeExtensionsTests
 {
-    [TestCase(0)]
-    [TestCase(1000)]
-    [TestCase(9223372036)] // Int64.MaxValue / 1_000_000_000
-    public void CheckOverflow_long(long testCase) => Assert.That(testCase.GB >= 0, Is.True);
+    // Int64.MaxValue / 1_000_000_000: the largest long whose GB product still fits in a long.
+    private const long MaxGbLong = 9_223_372_036L;
 
-    [TestCase(0)]
-    [TestCase(1000)]
-    [TestCase(2147483647)] // Int32.MaxValue
-    public void CheckOverflow_int(int testCase) => Assert.That(testCase.GB >= 0, Is.True);
+    [TestCase(0L, 0L)]
+    [TestCase(1L, 1_000_000_000L)]
+    [TestCase(1000L, 1_000_000_000_000L)]
+    [TestCase(MaxGbLong, 9_223_372_036_000_000_000L)]
+    public void GB_long_multiplies_exactly(long input, long expected) => Assert.That(input.GB, Is.EqualTo(expected));
+
+    // GB multiplies unchecked. One past the boundary wraps negative; callers must range-check first.
+    [Test]
+    public void GB_long_wraps_past_boundary() => Assert.That((MaxGbLong + 1).GB, Is.EqualTo(-9_223_372_036_709_551_616L));
+
+    // An int input cannot overflow: it widens to long before the multiply.
+    [TestCase(0, 0L)]
+    [TestCase(1000, 1_000_000_000_000L)]
+    [TestCase(int.MaxValue, 2_147_483_647_000_000_000L)]
+    public void GB_int_multiplies_exactly(int input, long expected) => Assert.That(input.GB, Is.EqualTo(expected));
 
     // SizeToString computes in integer/decimal arithmetic so that this assembly contributes no
     // FPU instructions to the zkEVM guest. These pin the rendering, which is what the previous

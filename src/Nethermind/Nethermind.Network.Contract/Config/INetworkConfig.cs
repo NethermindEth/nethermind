@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -17,15 +17,42 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The external IP. Use only when the external IP cannot be resolved automatically.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently when `{nameof(EnableExternalIpResolution)}` is enabled; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
+
+    /// <summary>
+    /// Gets or sets the external IPv4 address to advertise.
+    /// </summary>
+    /// <remarks>
+    /// When unset and <see cref="EnableExternalIpResolution"/> is enabled, the external IPv4 address is resolved automatically.
+    /// This address is advertised only when every currently bound inbound transport serves IPv4.
+    /// On platforms with dual-mode wildcard support, leave <see cref="LocalIp"/> unset or set it to
+    /// <c>::</c> to advertise both automatically resolved families.
+    /// </remarks>
+    [ConfigItem(Description = $"The external IPv4 address to advertise. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries.", DefaultValue = "null")]
+    string? ExternalIpV4 { get; set; }
+
+    /// <remarks>
+    /// User-facing override only. Code that needs the actual external IPv6 address must resolve it
+    /// through <c>IIPResolver.Resolve</c>. When unset and <see cref="EnableExternalIpResolution"/> is enabled,
+    /// the external IPv6 address is resolved automatically.
+    /// </remarks>
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries.", DefaultValue = "null")]
+    string? ExternalIpV6 { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether missing external IPv4 and IPv6 addresses available on active local interfaces are
+    /// resolved through public HTTPS services.
+    /// </summary>
+    [ConfigItem(Description = "Whether to resolve missing external IPv4 and IPv6 addresses available on active local interfaces through public HTTPS services. Disable this for restricted networks; explicit external IP overrides are still used.", DefaultValue = "true")]
+    bool EnableExternalIpResolution { get; set; }
 
     /// <remarks>
     /// User-facing override only. Code that needs the actual local IP must resolve it through
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically.", DefaultValue = "null")]
+    [ConfigItem(Description = "The local IP for inbound listeners. When unset, listeners try a dual-stack wildcard on supported platforms and fall back to IPv4 if it cannot bind; macOS uses IPv4 by default. Set to `0.0.0.0` for IPv4-only, `::` for a dual-stack wildcard, or a specific address to restrict listeners to that address and family.", DefaultValue = "null")]
     string? LocalIp { get; set; }
 
     [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null")]

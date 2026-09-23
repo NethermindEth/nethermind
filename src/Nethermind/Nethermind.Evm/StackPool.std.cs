@@ -2,37 +2,28 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Runtime.Intrinsics;
-using System.Threading;
 
 namespace Nethermind.Evm;
 
-internal sealed partial class StackPool
+internal static partial class StackPool
 {
-    private readonly ConcurrentQueue<StackItem> _stackPool = new();
+    // Stacks are ~32KB and pinned, and MaxStacksPooled bounds only the shared tier, so the pinned
+    // ceiling is MaxStacksPooled + LocalStacksPooled per thread that has run an EVM frame - held until
+    // the thread dies, and RegisterRpcModules raises the thread-pool minimum by ProcessorCount.
+    // A retiring thread abandons its slots rather than returning them, so thread churn also costs fresh
+    // pinned allocations, and a parked slot is unreachable to a busy thread with a dry shared tier. Every
+    // abandoned array is the size of its replacement, so both stay a Gen2 and footprint cost.
+    private const int LocalStacksPooled = 8;
 
-    public partial void ReturnStacks(byte[] dataStack)
+    private static readonly EvmObjectPool<StackItem> _stackPool = new(LocalStacksPooled, MaxStacksPooled);
+
+    public static partial void ReturnStacks(byte[] dataStack) => _stackPool.Enqueue(new(dataStack));
+
+    public static partial byte[] RentStacks()
     {
-        // Reserve a slot first - O(1) bound without touching ConcurrentQueue.Count.
-        if (Interlocked.Increment(ref _poolCount) > MaxStacksPooled)
+        if (_stackPool.TryDequeue(out StackItem result))
         {
-            // Cap hit - roll back the reservation and drop the item.
-            Interlocked.Decrement(ref _poolCount);
-            return;
-        }
-
-        _stackPool.Enqueue(new(dataStack));
-    }
-
-    // Manual reservation count - upper bound on items actually in the queue.
-    private int _poolCount;
-
-    public partial byte[] RentStacks()
-    {
-        if (Volatile.Read(ref _poolCount) > 0 && _stackPool.TryDequeue(out StackItem result))
-        {
-            Interlocked.Decrement(ref _poolCount);
             return result.DataStack;
         }
 

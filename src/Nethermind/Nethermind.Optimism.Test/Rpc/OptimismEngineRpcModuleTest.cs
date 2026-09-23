@@ -146,13 +146,13 @@ public class OptimismEngineRpcModuleTest
     private static IEnumerable<(string, string, OptimismProtocolVersion)> SignalSuperchainV1JsonCases()
     {
         yield return (
-            """{"recommended":"0x0000000000000000000000000000000000000200000000000000000000000000","required":"0x0000000000000000000000000000000000000100000000000000000000000000"}""",
-            """{"protocolVersion":"0x0000000000000000000000000000000000000300000002000000010000000000"}""",
+            """{"recommended":"0x0000000000000000000000000000000000000002000000000000000000000000","required":"0x0000000000000000000000000000000000000001000000000000000000000000"}""",
+            """{"protocolVersion":"0x0000000000000000000000000000000000000003000000020000000100000000"}""",
             new OptimismProtocolVersion.V0(new byte[8], 3, 2, 1, 0));
 
         yield return (
-            """{"recommended":"0x0000000000000000000000000000000000000400000000000000000000000000","required":"0x0000000000000000000000000000000000000300000000000000000000000000"}""",
-            """{"protocolVersion":"0x00000000000000000000000000000000000002000000090000000a0000000000"}""",
+            """{"recommended":"0x0000000000000000000000000000000000000004000000000000000000000000","required":"0x0000000000000000000000000000000000000003000000000000000000000000"}""",
+            """{"protocolVersion":"0x0000000000000000000000000000000000000002000000090000000a00000000"}""",
             new OptimismProtocolVersion.V0(new byte[8], 2, 9, 10, 0));
     }
     [TestCaseSource(nameof(SignalSuperchainV1JsonCases))]
@@ -162,7 +162,7 @@ public class OptimismEngineRpcModuleTest
         handler.CurrentVersion.Returns(testCase.Current);
         IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
 
-        OptimismSuperchainSignal signal = new EthereumJsonSerializer().Deserialize<OptimismSuperchainSignal>(testCase.Signal);
+        OptimismSuperchainSignal signal = new EthereumJsonSerializer().Deserialize<OptimismSuperchainSignal>(testCase.Signal)!;
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_signalSuperchainV1", signal);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse($$"""{"jsonrpc":"2.0","result":{{testCase.Expected}},"id":67}""")).Using(JToken.EqualityComparer));

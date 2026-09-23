@@ -25,6 +25,8 @@ public class HeaderStore(
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
 
+    private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
+
     private readonly IHeaderDecoder _headerDecoder = decoder ?? new HeaderDecoder();
     private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
 
@@ -109,27 +111,36 @@ public class HeaderStore(
         }
     }
 
+    public Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive) =>
+        PrefetchByNumberRange(fromInclusive, toExclusive, capacity: 0);
+
+    private Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive, int capacity)
+    {
+        Dictionary<ValueHash256, BlockHeader> prefetched = new(capacity);
+        if (toExclusive <= fromInclusive || headerDb is not ISortedKeyValueStore sorted) return prefetched;
+
+        Span<byte> startKey = stackalloc byte[NumberPrefixedKeyLength];
+        Span<byte> endKey = stackalloc byte[NumberPrefixedKeyLength];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(fromInclusive, default, startKey);
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(toExclusive, default, endKey);
+
+        using ISortedView view = sorted.GetViewBetween(startKey, endKey);
+        while (view.MoveNext())
+        {
+            if (view.CurrentKey.Length != NumberPrefixedKeyLength) continue; // skip old hash-only keys
+
+            BlockHeader header = _headerDecoder.Decode(view.CurrentValue);
+            header.Hash ??= new Hash256(view.CurrentKey[sizeof(ulong)..]);
+            prefetched[header.Hash.ValueHash256] = header;
+        }
+
+        return prefetched;
+    }
+
     public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(ulong endBlockNumber, Hash256 endBlockHash, int count)
     {
-        Dictionary<ValueHash256, BlockHeader> prefetched = new(count);
-
-        if (headerDb is ISortedKeyValueStore sorted)
-        {
-            Span<byte> startKey = stackalloc byte[40];
-            Span<byte> endKey = stackalloc byte[40];
-            ulong startBlockNumber = (endBlockNumber + 1).SaturatingSub((ulong)count);
-            KeyValueStoreExtensions.GetBlockNumPrefixedKey(startBlockNumber, default, startKey);
-            KeyValueStoreExtensions.GetBlockNumPrefixedKey(endBlockNumber + 1, default, endKey);
-
-            using ISortedView view = sorted.GetViewBetween(startKey, endKey);
-            while (view.MoveNext())
-            {
-                if (view.CurrentKey.Length != 40) continue; // skip old hash-only keys
-                BlockHeader header = _headerDecoder.Decode(view.CurrentValue);
-                header.Hash ??= new Hash256(view.CurrentKey[8..]);
-                prefetched[header.Hash.ValueHash256] = header;
-            }
-        }
+        ulong startBlockNumber = (endBlockNumber + 1).SaturatingSub((ulong)count);
+        Dictionary<ValueHash256, BlockHeader> prefetched = PrefetchByNumberRange(startBlockNumber, endBlockNumber + 1, count);
 
         BlockHeader? cursor = prefetched.TryGetValue(endBlockHash.ValueHash256, out BlockHeader? found)
             ? found

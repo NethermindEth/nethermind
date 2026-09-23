@@ -123,7 +123,7 @@ public class BlockDecoderTests
     {
         BlockDecoder decoder = new();
         Rlp result = decoder.Encode((Block?)null);
-        Block decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
+        Block? decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
         Assert.That(decoded, Is.Null);
     }
 
@@ -241,7 +241,11 @@ public class BlockDecoderTests
         Block blockWithEncoded = new(block.Header, block.Body) { EncodedTransactions = encodedTxs };
         Rlp fast = decoder.Encode(blockWithEncoded);
 
-        Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+            Assert.That(decoder.GetLength(blockWithEncoded, RlpBehaviors.None), Is.EqualTo(standard.Bytes.Length));
+        }
     }
 
     [Test]

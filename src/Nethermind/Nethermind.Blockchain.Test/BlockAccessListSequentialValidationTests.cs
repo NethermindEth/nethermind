@@ -115,7 +115,7 @@ public class BlockAccessListSequentialValidationTests
         RunSequential(stateProvider, balManager, block, blockAccessList: null);
 
         byte[] encoded = BlockAccessListDecoder.EncodeToBytes(balManager.GeneratedBlockAccessList);
-        return Rlp.Decode<ReadOnlyBlockAccessList>(encoded);
+        return Rlp.Decode<ReadOnlyBlockAccessList>(encoded)!;
     }
 
     private static BlockAccessListManager RunSequentialValidation(

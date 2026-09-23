@@ -13,18 +13,18 @@
       },
       "Microsoft.Build.Tasks.Git": {
         "type": "Direct",
-        "requested": "[10.0.400, )",
-        "resolved": "10.0.400",
-        "contentHash": "uXJ/eBDqAo9HlyPjvvvynjHb59KXQWG9txpBzyI1drO6MV3Lhndt2yhxuMKvIga4kND2UKc3xCNXlXBhWU8Hlg==",
+        "requested": "[10.0.401, )",
+        "resolved": "10.0.401",
+        "contentHash": "ZYctNuT10V9IYyCFydy63DXx0ggZQuynuzQOdLvW62dPgzjIz7f0ISEP75RGiq1jFQh8p6TmGSqxeQZQ87LCig==",
         "dependencies": {
-          "System.IO.Hashing": "10.0.11"
+          "System.IO.Hashing": "10.0.12"
         }
       },
       "Microsoft.Extensions.FileProviders.Embedded": {
         "type": "Direct",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "x1wiStyE0RsviK1jdE7a6ua7jIhA0xPXOq5YMfWCWN7RJ9D4Q70oSD9ZVEzHBvovB+f1YQFdPU4036Act442Ow=="
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "u9y/tTPnkv+lsIqN4NRjhzh5XGv7pPCXjPEdbYVK9daidg+xFFEHv//gTlrjZJAKLMcHbArnCU/wVl0KrPJEJA=="
       },
       "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": {
         "type": "Direct",
@@ -49,9 +49,9 @@
       },
       "System.CommandLine": {
         "type": "Direct",
-        "requested": "[2.0.11, )",
-        "resolved": "2.0.11",
-        "contentHash": "Pmg3/T0M37ZS3ovwPHtfBNTCdqNpnxo+tnZMg8JDHVR0qD8KwcPUKlheEiZysb1En8IyH7yDoa9QDq97Ny/vhQ=="
+        "requested": "[2.0.12, )",
+        "resolved": "2.0.12",
+        "contentHash": "FpW672e6qqrTd1EfKqsvUtFZaJWlTlszUR1o8tdakXhkzKbnEZVndtpfd4K3fUPCFcIs9UmcswMyYGJP1zp/rg=="
       },
       "AspNetCore.HealthChecks.UI.Core": {
         "type": "Transitive",
@@ -107,19 +107,6 @@
         "type": "Transitive",
         "resolved": "6.0.2",
         "contentHash": "8GZqv6buY71KQlWT+cl2eMi+aNX9xQ61RgI3Pzv9zPxPOX6tWCLRrBj0MYQ3h871r2RhiHUl7f0AXUD/POr8eA=="
-      },
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
-      "Grpc.Core.Api": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "Z7HJGqJYyKb53qfp1jf0wRDYs3sxOnkAFxXAW6q52LLmX/zxzjtFLI9eaWO5UC0weiWjn4iT1FzR+tj9qYZAMg=="
       },
       "Humanizer.Core": {
         "type": "Transitive",
@@ -304,18 +291,18 @@
       },
       "Nethermind.DotNetty.Codecs": {
         "type": "Transitive",
-        "resolved": "1.0.2.76",
-        "contentHash": "8K50pknD0si+zyO8tOsYMlGvEmtwu7KEU6AYbEoj9wFflenBsPHbI4o22LBU66AKoTFYyJwXllZSvlMZxuqV/g==",
+        "resolved": "0.8.0.11",
+        "contentHash": "RxVQiA2oH1MYlWLldTe7ehB5ffabp1JkPizKLF1ldqUumftmoC0odyRZomAQI12eMtR7vorcWSGQYF6eUYk7HQ==",
         "dependencies": {
-          "Nethermind.DotNetty.Buffers": "1.0.2.76",
-          "Nethermind.DotNetty.Common": "1.0.2.76",
-          "Nethermind.DotNetty.Transport": "1.0.2.76"
+          "Nethermind.DotNetty.Buffers": "0.8.0.11",
+          "Nethermind.DotNetty.Common": "0.8.0.11",
+          "Nethermind.DotNetty.Transport": "0.8.0.11"
         }
       },
       "Nethermind.DotNetty.Common": {
         "type": "Transitive",
-        "resolved": "1.0.2.76",
-        "contentHash": "rraxAOK8Pww3ReW2NkCCr/pwXTp88gI4lXaeA5TriPnp1wZg8jJdZYIj2m2+HKkVtw1C1F1sRA7FzfgBodA3Tw=="
+        "resolved": "0.8.0.11",
+        "contentHash": "ODezeZIFS6gYsPRHV5V3dRxpgvTwcJ+C50X0dQjr8vf7UXydOQmDHbR5ZS1c7i/pP08v2sAITpk1wbgnom+Mmw=="
       },
       "Nethermind.Libp2p.Core": {
         "type": "Transitive",
@@ -582,30 +569,29 @@
         "type": "Project",
         "dependencies": {
           "MathNet.Numerics.FSharp": "[5.0.0, )",
-          "Nethermind.Core": "[1.40.0-unstable, )"
+          "Nethermind.Core": "[2.1.0-unstable, )"
         }
       },
       "nethermind.api": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Facade": "[1.40.0-unstable, )",
-          "Nethermind.Grpc": "[1.40.0-unstable, )",
-          "Nethermind.History": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
-          "Nethermind.Monitoring": "[1.40.0-unstable, )",
-          "Nethermind.Network": "[1.40.0-unstable, )",
-          "Nethermind.Sockets": "[1.40.0-unstable, )"
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Facade": "[2.1.0-unstable, )",
+          "Nethermind.History": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )",
+          "Nethermind.Monitoring": "[2.1.0-unstable, )",
+          "Nethermind.Network": "[2.1.0-unstable, )",
+          "Nethermind.Sockets": "[2.1.0-unstable, )"
         }
       },
       "nethermind.balrecorder": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )"
         }
       },
       "nethermind.blockchain": {
@@ -618,15 +604,15 @@
           "Microsoft.ClearScript.V8.Native.osx-arm64": "[7.5.1, )",
           "Microsoft.ClearScript.V8.Native.osx-x64": "[7.5.1, )",
           "Microsoft.ClearScript.V8.Native.win-x64": "[7.5.1, )",
-          "Nethermind.Abi": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.Evm.Precompiles": "[1.40.0-unstable, )",
-          "Nethermind.Network.Stats": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )",
-          "Nethermind.State": "[1.40.0-unstable, )",
-          "Nethermind.TxPool": "[1.40.0-unstable, )",
+          "Nethermind.Abi": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.Evm.Precompiles": "[2.1.0-unstable, )",
+          "Nethermind.Network.Stats": "[2.1.0-unstable, )",
+          "Nethermind.Specs": "[2.1.0-unstable, )",
+          "Nethermind.State": "[2.1.0-unstable, )",
+          "Nethermind.TxPool": "[2.1.0-unstable, )",
           "Polly": "[8.7.0, )"
         }
       },
@@ -634,79 +620,79 @@
         "type": "Project",
         "dependencies": {
           "JetBrains.Profiler.Api": "[1.4.11, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )"
         }
       },
       "nethermind.censorshipdetector.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )",
-          "Nethermind.Merge.Plugin": "[1.40.0-unstable, )",
-          "Nethermind.TxPool": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.Logging": "[2.1.0-unstable, )",
+          "Nethermind.Merge.Plugin": "[2.1.0-unstable, )",
+          "Nethermind.TxPool": "[2.1.0-unstable, )"
         }
       },
       "nethermind.config": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Network.Enr": "[1.40.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Network.Enr": "[2.1.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
-          "System.Configuration.ConfigurationManager": "[10.0.11, )"
+          "System.Configuration.ConfigurationManager": "[10.0.12, )"
         }
       },
       "nethermind.consensus": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.TxPool": "[1.40.0-unstable, )"
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.TxPool": "[2.1.0-unstable, )"
         }
       },
       "nethermind.consensus.aura": {
         "type": "Project",
         "dependencies": {
           "BouncyCastle.Cryptography": "[2.7.0, )",
-          "Nethermind.Abi": "[1.40.0-unstable, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Facade": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )",
-          "Nethermind.Synchronization": "[1.40.0-unstable, )",
+          "Nethermind.Abi": "[2.1.0-unstable, )",
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Facade": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.Specs": "[2.1.0-unstable, )",
+          "Nethermind.Synchronization": "[2.1.0-unstable, )",
           "Nito.Collections.Deque": "[1.2.1, )"
         }
       },
       "nethermind.consensus.clique": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )"
         }
       },
       "nethermind.consensus.ethash": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.Specs": "[2.1.0-unstable, )"
         }
       },
       "nethermind.core": {
@@ -717,12 +703,11 @@
           "FastEnum": "[2.0.7, )",
           "Microsoft.IO.RecyclableMemoryStream": "[3.0.1, )",
           "Microsoft.IdentityModel.JsonWebTokens": "[8.22.0, )",
-          "Nethermind.Crypto.SecP256k1": "[1.6.0, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )",
-          "Nethermind.Numerics.Int256": "[1.6.0, )",
-          "Nethermind.Serialization.Ssz": "[1.40.0-unstable, )",
+          "Nethermind.Crypto.SecP256k1": "[1.7.0, )",
+          "Nethermind.Logging": "[2.1.0-unstable, )",
+          "Nethermind.Numerics.Int256": "[1.9.0, )",
+          "Nethermind.Serialization.Ssz": "[2.1.0-unstable, )",
           "NonBlocking": "[2.1.2, )",
-          "System.IO.Hashing": "[10.0.11, )",
           "Testably.Abstractions": "[10.3.0, )"
         }
       },
@@ -731,17 +716,17 @@
         "dependencies": {
           "BouncyCastle.Cryptography": "[2.7.0, )",
           "Ckzg.Bindings": "[2.1.8.1641, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.1.0, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "System.Security.Cryptography.ProtectedData": "[10.0.11, )"
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "System.Security.Cryptography.ProtectedData": "[10.0.12, )"
         }
       },
       "nethermind.db": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
           "Nethermind.TurboPForBindings": "[1.0.0, )",
           "NonBlocking": "[2.1.2, )"
         }
@@ -750,33 +735,33 @@
         "type": "Project",
         "dependencies": {
           "ConcurrentHashSet": "[1.3.0, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "NonBlocking": "[2.1.2, )",
-          "RocksDB": "[10.10.1.1747, 10.10.1.1747]"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.RocksDbBindings": "[11.8.1-preview.92, 11.8.1-preview.92]",
+          "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.db.rpc": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Json": "[1.40.0-unstable, )",
-          "Nethermind.State": "[1.40.0-unstable, )"
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Json": "[2.1.0-unstable, )",
+          "Nethermind.State": "[2.1.0-unstable, )"
         }
       },
       "nethermind.era1": {
         "type": "Project",
         "dependencies": {
           "CommunityToolkit.HighPerformance": "[8.4.2, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Ssz": "[1.40.0-unstable, )",
-          "Nethermind.State": "[1.40.0-unstable, )",
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Ssz": "[2.1.0-unstable, )",
+          "Nethermind.State": "[2.1.0-unstable, )",
           "Snappier": "[1.3.1, )"
         }
       },
@@ -784,16 +769,16 @@
         "type": "Project",
         "dependencies": {
           "CommunityToolkit.HighPerformance": "[8.4.2, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Era1": "[1.40.0-unstable, )",
-          "Nethermind.History": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Ssz": "[1.40.0-unstable, )",
-          "Nethermind.State": "[1.40.0-unstable, )",
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Era1": "[2.1.0-unstable, )",
+          "Nethermind.History": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Ssz": "[2.1.0-unstable, )",
+          "Nethermind.State": "[2.1.0-unstable, )",
           "Polly": "[8.7.0, )",
           "Snappier": "[1.3.1, )"
         }
@@ -801,71 +786,62 @@
       "nethermind.ethstats": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )",
-          "Nethermind.Network": "[1.40.0-unstable, )",
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )",
+          "Nethermind.Logging": "[2.1.0-unstable, )",
+          "Nethermind.Network": "[2.1.0-unstable, )",
           "Websocket.Client": "[5.5.0, )"
         }
       },
       "nethermind.evm": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )"
+          "Collections.Pooled": "[1.0.82, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.Specs": "[2.1.0-unstable, )"
         }
       },
       "nethermind.evm.precompiles": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.1.0, )",
           "Nethermind.Crypto.SecP256r1": "[1.1.0, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.GmpBindings": "[1.0.3, )",
-          "Nethermind.MclBindings": "[1.0.5, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )"
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.GmpBindings": "[2.0.0, )",
+          "Nethermind.MclBindings": "[2.0.0, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.Specs": "[2.1.0-unstable, )"
         }
       },
       "nethermind.externalsigner.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )"
         }
       },
       "nethermind.facade": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Synchronization": "[1.40.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.History": "[2.1.0-unstable, )",
+          "Nethermind.Synchronization": "[2.1.0-unstable, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.flashbots": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Merge.Plugin": "[1.40.0-unstable, )"
-        }
-      },
-      "nethermind.grpc": {
-        "type": "Project",
-        "dependencies": {
-          "Google.Protobuf": "[3.35.1, )",
-          "Google.Protobuf.Tools": "[3.35.1, )",
-          "Grpc": "[2.46.6, )",
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Json": "[1.40.0-unstable, )"
+          "Nethermind.Merge.Plugin": "[2.1.0-unstable, )"
         }
       },
       "nethermind.healthchecks": {
@@ -874,73 +850,73 @@
           "AspNetCore.HealthChecks.UI": "[9.0.0, )",
           "AspNetCore.HealthChecks.UI.InMemory.Storage": "[9.0.0, )",
           "KubernetesClient": "[19.0.2, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.Merge.Plugin": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.Merge.Plugin": "[2.1.0-unstable, )"
         }
       },
       "nethermind.history": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Consensus": "[1.40.0-unstable, )"
+          "Nethermind.Consensus": "[2.1.0-unstable, )"
         }
       },
       "nethermind.hive": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )"
         }
       },
       "nethermind.init": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Db.Rocks": "[1.40.0-unstable, )",
-          "Nethermind.Db.Rpc": "[1.40.0-unstable, )",
-          "Nethermind.Era1": "[1.40.0-unstable, )",
-          "Nethermind.EraE": "[1.40.0-unstable, )",
-          "Nethermind.Network.Discovery": "[1.40.0-unstable, )",
-          "Nethermind.Network.Dns": "[1.40.0-unstable, )",
-          "Nethermind.Network.Enr": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )",
-          "Nethermind.State.Flat": "[1.40.0-unstable, )",
-          "Nethermind.State.Flat.History": "[1.40.0-unstable, )",
-          "Nethermind.Synchronization": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Db.Rocks": "[2.1.0-unstable, )",
+          "Nethermind.Db.Rpc": "[2.1.0-unstable, )",
+          "Nethermind.Era1": "[2.1.0-unstable, )",
+          "Nethermind.EraE": "[2.1.0-unstable, )",
+          "Nethermind.Network.Discovery": "[2.1.0-unstable, )",
+          "Nethermind.Network.Dns": "[2.1.0-unstable, )",
+          "Nethermind.Network.Enr": "[2.1.0-unstable, )",
+          "Nethermind.Specs": "[2.1.0-unstable, )",
+          "Nethermind.State.Flat": "[2.1.0-unstable, )",
+          "Nethermind.State.Flat.History": "[2.1.0-unstable, )",
+          "Nethermind.Synchronization": "[2.1.0-unstable, )"
         }
       },
       "nethermind.init.snapshot": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
           "ZstdSharp.Port": "[0.8.8, )"
         }
       },
       "nethermind.jsonrpc": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Abi": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.Facade": "[1.40.0-unstable, )",
-          "Nethermind.History": "[1.40.0-unstable, )",
-          "Nethermind.Network": "[1.40.0-unstable, )",
-          "Nethermind.Network.Dns": "[1.40.0-unstable, )",
-          "Nethermind.Sockets": "[1.40.0-unstable, )",
-          "Nethermind.Synchronization": "[1.40.0-unstable, )",
-          "Nethermind.Wallet": "[1.40.0-unstable, )"
+          "Nethermind.Abi": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.Facade": "[2.1.0-unstable, )",
+          "Nethermind.History": "[2.1.0-unstable, )",
+          "Nethermind.Network": "[2.1.0-unstable, )",
+          "Nethermind.Network.Dns": "[2.1.0-unstable, )",
+          "Nethermind.Sockets": "[2.1.0-unstable, )",
+          "Nethermind.Synchronization": "[2.1.0-unstable, )",
+          "Nethermind.Wallet": "[2.1.0-unstable, )"
         }
       },
       "nethermind.jsonrpc.tracestore": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )"
         }
       },
       "nethermind.kademlia": {
@@ -952,10 +928,10 @@
       "nethermind.keystore": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Json": "[1.40.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Json": "[2.1.0-unstable, )",
           "SCrypt": "[2.0.0.2, )"
         }
       },
@@ -965,44 +941,44 @@
       "nethermind.logging.microsoft": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Logging": "[1.40.0-unstable, )"
+          "Nethermind.Logging": "[2.1.0-unstable, )"
         }
       },
       "nethermind.logging.nlog": {
         "type": "Project",
         "dependencies": {
           "NLog": "[5.5.1, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )"
+          "Nethermind.Logging": "[2.1.0-unstable, )"
         }
       },
       "nethermind.merge.aura": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Consensus.AuRa": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.Merge.Plugin": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )",
-          "Nethermind.State": "[1.40.0-unstable, )"
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Consensus.AuRa": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.Merge.Plugin": "[2.1.0-unstable, )",
+          "Nethermind.Specs": "[2.1.0-unstable, )",
+          "Nethermind.State": "[2.1.0-unstable, )"
         }
       },
       "nethermind.merge.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Ssz": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Ssz": "[2.1.0-unstable, )"
         }
       },
       "nethermind.monitoring": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Logging": "[2.1.0-unstable, )",
           "prometheus-net.AspNetCore": "[8.2.1, )"
         }
       },
@@ -1010,298 +986,299 @@
         "type": "Project",
         "dependencies": {
           "Crc32.NET": "[1.2.0, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.DotNetty.Handlers": "[1.0.2.76, )",
-          "Nethermind.Network.Contract": "[1.40.0-unstable, )",
-          "Nethermind.Network.Enr": "[1.40.0-unstable, )",
-          "Nethermind.Network.Stats": "[1.40.0-unstable, )",
-          "Nethermind.Synchronization": "[1.40.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.DotNetty.Handlers": "[0.8.0.11, )",
+          "Nethermind.Network.Contract": "[2.1.0-unstable, )",
+          "Nethermind.Network.Enr": "[2.1.0-unstable, )",
+          "Nethermind.Network.Stats": "[2.1.0-unstable, )",
+          "Nethermind.Synchronization": "[2.1.0-unstable, )",
           "Snappier": "[1.3.1, )"
         }
       },
       "nethermind.network.contract": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[1.40.0-unstable, )"
+          "Nethermind.Config": "[2.1.0-unstable, )"
         }
       },
       "nethermind.network.discovery": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Facade": "[1.40.0-unstable, )",
-          "Nethermind.Kademlia": "[1.40.0-unstable, )",
-          "Nethermind.Logging.Microsoft": "[1.40.0-unstable, )",
-          "Nethermind.Network": "[1.40.0-unstable, )",
-          "Nethermind.Network.Enr": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Facade": "[2.1.0-unstable, )",
+          "Nethermind.Kademlia": "[2.1.0-unstable, )",
+          "Nethermind.Logging.Microsoft": "[2.1.0-unstable, )",
+          "Nethermind.Network": "[2.1.0-unstable, )",
+          "Nethermind.Network.Enr": "[2.1.0-unstable, )"
         }
       },
       "nethermind.network.dns": {
         "type": "Project",
         "dependencies": {
           "DnsClient": "[1.8.0, )",
-          "Nethermind.Network": "[1.40.0-unstable, )",
-          "Nethermind.Network.Enr": "[1.40.0-unstable, )"
+          "Nethermind.Network": "[2.1.0-unstable, )",
+          "Nethermind.Network.Enr": "[2.1.0-unstable, )"
         }
       },
       "nethermind.network.enr": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )"
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )"
         }
       },
       "nethermind.network.stats": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )",
-          "Nethermind.Network.Contract": "[1.40.0-unstable, )",
-          "Nethermind.Network.Enr": "[1.40.0-unstable, )"
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Logging": "[2.1.0-unstable, )",
+          "Nethermind.Network.Contract": "[2.1.0-unstable, )",
+          "Nethermind.Network.Enr": "[2.1.0-unstable, )"
         }
       },
       "nethermind.opcodetracing.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )",
-          "Nethermind.Synchronization": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.Logging": "[2.1.0-unstable, )",
+          "Nethermind.Synchronization": "[2.1.0-unstable, )"
         }
       },
       "nethermind.optimism": {
         "type": "Project",
         "dependencies": {
           "Google.Protobuf": "[3.35.1, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )",
           "Nethermind.Libp2p": "[1.0.0-preview.45, )",
           "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0-preview.45, )",
-          "Nethermind.Merge.Plugin": "[1.40.0-unstable, )",
+          "Nethermind.Merge.Plugin": "[2.1.0-unstable, )",
           "Snappier": "[1.3.1, )"
         }
       },
       "nethermind.portfolioviewer.plugin": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.11, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Facade": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )"
+          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.12, )",
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Facade": "[2.1.0-unstable, )",
+          "Nethermind.History": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )"
         }
       },
       "nethermind.seq": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[1.40.0-unstable, )"
+          "Nethermind.Config": "[2.1.0-unstable, )"
         }
       },
       "nethermind.serialization.json": {
         "type": "Project",
         "dependencies": {
           "Microsoft.ClearScript.V8": "[7.5.1, )",
-          "Nethermind.Core": "[1.40.0-unstable, )"
+          "Nethermind.Core": "[2.1.0-unstable, )"
         }
       },
       "nethermind.serialization.rlp": {
         "type": "Project",
         "dependencies": {
           "Ckzg.Bindings": "[2.1.8.1641, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.DotNetty.Buffers": "[1.0.2.76, )"
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.DotNetty.Buffers": "[0.8.0.11, )"
         }
       },
       "nethermind.serialization.ssz": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Numerics.Int256": "[1.6.0, )"
+          "Nethermind.Numerics.Int256": "[1.9.0, )"
         }
       },
       "nethermind.shutter": {
         "type": "Project",
         "dependencies": {
           "Google.Protobuf": "[3.35.1, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
           "Nethermind.Libp2p": "[1.0.0-preview.45, )",
           "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0-preview.45, )",
-          "Nethermind.Logging.Microsoft": "[1.40.0-unstable, )",
-          "Nethermind.Merge.Plugin": "[1.40.0-unstable, )",
-          "Nethermind.Network.Discovery": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Ssz": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )"
+          "Nethermind.Logging.Microsoft": "[2.1.0-unstable, )",
+          "Nethermind.Merge.Plugin": "[2.1.0-unstable, )",
+          "Nethermind.Network.Discovery": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Ssz": "[2.1.0-unstable, )",
+          "Nethermind.Specs": "[2.1.0-unstable, )"
         }
       },
       "nethermind.sockets": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Json": "[1.40.0-unstable, )"
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Logging": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Json": "[2.1.0-unstable, )"
         }
       },
       "nethermind.specs": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Json": "[1.40.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Json": "[2.1.0-unstable, )",
           "ZstdSharp.Port": "[0.8.8, )"
         }
       },
       "nethermind.state": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Trie": "[1.40.0-unstable, )"
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.Trie": "[2.1.0-unstable, )"
         }
       },
       "nethermind.state.flat": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.State": "[1.40.0-unstable, )",
-          "Nethermind.Synchronization": "[1.40.0-unstable, )",
-          "Nethermind.Trie": "[1.40.0-unstable, )",
-          "System.IO.Hashing": "[10.0.11, )"
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.State": "[2.1.0-unstable, )",
+          "Nethermind.Synchronization": "[2.1.0-unstable, )",
+          "Nethermind.Trie": "[2.1.0-unstable, )",
+          "System.IO.Hashing": "[10.0.12, )"
         }
       },
       "nethermind.state.flat.history": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.State": "[1.40.0-unstable, )",
-          "Nethermind.State.Flat": "[1.40.0-unstable, )",
-          "Nethermind.Trie": "[1.40.0-unstable, )"
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.State": "[2.1.0-unstable, )",
+          "Nethermind.State.Flat": "[2.1.0-unstable, )",
+          "Nethermind.Trie": "[2.1.0-unstable, )"
         }
       },
       "nethermind.statediff.core": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Trie": "[1.40.0-unstable, )"
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.Trie": "[2.1.0-unstable, )"
         }
       },
       "nethermind.statediffswriter": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.Db.Rocks": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.State.Flat": "[1.40.0-unstable, )",
-          "Nethermind.StateDiff.Core": "[1.40.0-unstable, )",
-          "Nethermind.Trie": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.Db.Rocks": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.State.Flat": "[2.1.0-unstable, )",
+          "Nethermind.StateDiff.Core": "[2.1.0-unstable, )",
+          "Nethermind.Trie": "[2.1.0-unstable, )"
         }
       },
       "nethermind.synchronization": {
         "type": "Project",
         "dependencies": {
           "ConcurrentHashSet": "[1.3.0, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.History": "[1.40.0-unstable, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )",
-          "Nethermind.Network.Contract": "[1.40.0-unstable, )",
-          "Nethermind.Trie": "[1.40.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.History": "[2.1.0-unstable, )",
+          "Nethermind.Logging": "[2.1.0-unstable, )",
+          "Nethermind.Network.Contract": "[2.1.0-unstable, )",
+          "Nethermind.Trie": "[2.1.0-unstable, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.taiko": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.Evm.Precompiles": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
-          "Nethermind.Logging": "[1.40.0-unstable, )",
-          "Nethermind.Merge.Plugin": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Json": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.Evm.Precompiles": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )",
+          "Nethermind.Logging": "[2.1.0-unstable, )",
+          "Nethermind.Merge.Plugin": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Json": "[2.1.0-unstable, )"
         }
       },
       "nethermind.trie": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.txpool": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Crypto": "[1.40.0-unstable, )",
-          "Nethermind.Db": "[1.40.0-unstable, )",
-          "Nethermind.Evm": "[1.40.0-unstable, )",
-          "Nethermind.Network.Contract": "[1.40.0-unstable, )",
-          "Nethermind.State": "[1.40.0-unstable, )",
+          "Nethermind.Config": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Crypto": "[2.1.0-unstable, )",
+          "Nethermind.Db": "[2.1.0-unstable, )",
+          "Nethermind.Evm": "[2.1.0-unstable, )",
+          "Nethermind.Network.Contract": "[2.1.0-unstable, )",
+          "Nethermind.State": "[2.1.0-unstable, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.upnp.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
+          "Nethermind.Api": "[2.1.0-unstable, )",
           "Open.NAT.Core": "[2.1.0.5, )"
         }
       },
       "nethermind.wallet": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.KeyStore": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.TxPool": "[1.40.0-unstable, )"
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.KeyStore": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.TxPool": "[2.1.0-unstable, )"
         }
       },
       "nethermind.xdc": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Core": "[1.40.0-unstable, )",
-          "Nethermind.Init": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
-          "Nethermind.Network.Discovery": "[1.40.0-unstable, )",
-          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.State": "[1.40.0-unstable, )"
+          "Nethermind.Api": "[2.1.0-unstable, )",
+          "Nethermind.Blockchain": "[2.1.0-unstable, )",
+          "Nethermind.Consensus": "[2.1.0-unstable, )",
+          "Nethermind.Core": "[2.1.0-unstable, )",
+          "Nethermind.Init": "[2.1.0-unstable, )",
+          "Nethermind.JsonRpc": "[2.1.0-unstable, )",
+          "Nethermind.Network.Discovery": "[2.1.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[2.1.0-unstable, )",
+          "Nethermind.State": "[2.1.0-unstable, )"
         }
       },
       "AspNetCore.HealthChecks.UI": {
@@ -1400,21 +1377,6 @@
         "requested": "[3.35.1, )",
         "resolved": "3.35.1",
         "contentHash": "pxtkuXhR8svkvDTQrYew9GZQt6eWhblz/V/WKUFrQgkHYlQPsumJTeF6ppHRJpe6j9ffukkd5lQULiiKaek4xA=="
-      },
-      "Google.Protobuf.Tools": {
-        "type": "CentralTransitive",
-        "requested": "[3.35.1, )",
-        "resolved": "3.35.1",
-        "contentHash": "tM2NOWuOYMGjU3zIRqTl8LBt6YgeRXVKHRPCf1T+dTac9sW0WYYFmrkPq6lzgrxflGOk8r6PtDBbj0OjqOPrvA=="
-      },
-      "Grpc": {
-        "type": "CentralTransitive",
-        "requested": "[2.46.6, )",
-        "resolved": "2.46.6",
-        "contentHash": "vpC39vgCxbVBnsn8boeQv2aGIdEFqQMnjsoDvyYfr6tC93Fe9KqNG1mAiF6KLzJTwk6aiWHGNYE2EqmDUzk5ng==",
-        "dependencies": {
-          "Grpc.Core": "2.46.6"
-        }
       },
       "JetBrains.Profiler.Api": {
         "type": "CentralTransitive",
@@ -1539,9 +1501,9 @@
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.6.0, )",
-        "resolved": "1.6.0",
-        "contentHash": "KUOJyQ+bGrCgNvmNux4GLXafas7GKq/LK9dNZhWC+PhCwm35wT1CDpI7Q0n7xaSCSiUtiDNeWVRcP1VAoEhTGg=="
+        "requested": "[1.7.0, )",
+        "resolved": "1.7.0",
+        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
@@ -1551,40 +1513,40 @@
       },
       "Nethermind.DotNetty.Buffers": {
         "type": "CentralTransitive",
-        "requested": "[1.0.2.76, )",
-        "resolved": "1.0.2.76",
-        "contentHash": "bI9wc+xazOgsgibMvPaMWtQ4dNWktBBCo3fZeUVFgEsDBMwagl3GqIozx4D1I1GbozkhCpUD55Q2KGx0CuDHHQ==",
+        "requested": "[0.8.0.11, )",
+        "resolved": "0.8.0.11",
+        "contentHash": "H1urL+G+bG2O9ER91sZ21lop77e427Co32ngD8+TUvxTGPCAGqP9z4FVd0sXvQ8xMqG5CgDu1LtyXpTHKShEiw==",
         "dependencies": {
-          "Nethermind.DotNetty.Common": "1.0.2.76"
+          "Nethermind.DotNetty.Common": "0.8.0.11"
         }
       },
       "Nethermind.DotNetty.Handlers": {
         "type": "CentralTransitive",
-        "requested": "[1.0.2.76, )",
-        "resolved": "1.0.2.76",
-        "contentHash": "/x4hbadusLECVrnMVWpjLtwJ1fJQmbMXaD4Y8kZN+X0BJqAGXReN62HnaFWkgL8w3CJAB0aJySAE1sC5xlZjpg==",
+        "requested": "[0.8.0.11, )",
+        "resolved": "0.8.0.11",
+        "contentHash": "HdM7op1nVgoL5fUANakKC/Vs5agB2ropVcU+4Han1oEz+jUilIkJ665ePnF0R2I12nJWxlMjPbDMIvWY3x0kig==",
         "dependencies": {
-          "Nethermind.DotNetty.Buffers": "1.0.2.76",
-          "Nethermind.DotNetty.Codecs": "1.0.2.76",
-          "Nethermind.DotNetty.Common": "1.0.2.76",
-          "Nethermind.DotNetty.Transport": "1.0.2.76"
+          "Nethermind.DotNetty.Buffers": "0.8.0.11",
+          "Nethermind.DotNetty.Codecs": "0.8.0.11",
+          "Nethermind.DotNetty.Common": "0.8.0.11",
+          "Nethermind.DotNetty.Transport": "0.8.0.11"
         }
       },
       "Nethermind.DotNetty.Transport": {
         "type": "CentralTransitive",
-        "requested": "[1.0.2.76, )",
-        "resolved": "1.0.2.76",
-        "contentHash": "ZbTY44wAfOY8LPc/+/CO3NBezNzO6ZPpaZJTWJ7tzo7+IO2WuAvIoRGRPf5DOAhOozYZvUaDvaO7glKrzS6JAQ==",
+        "requested": "[0.8.0.11, )",
+        "resolved": "0.8.0.11",
+        "contentHash": "GwnyAcSKyC9xY9tRXk7hpDhZBgPKY802oMnGPb/56L68hiQBF0uMJ+gnP4cVaGEhVmE86aot6GiCuq+3ublxLQ==",
         "dependencies": {
-          "Nethermind.DotNetty.Buffers": "1.0.2.76",
-          "Nethermind.DotNetty.Common": "1.0.2.76"
+          "Nethermind.DotNetty.Buffers": "0.8.0.11",
+          "Nethermind.DotNetty.Common": "0.8.0.11"
         }
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.Libp2p": {
         "type": "CentralTransitive",
@@ -1619,18 +1581,24 @@
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
       },
       "Nethermind.Numerics.Int256": {
         "type": "CentralTransitive",
-        "requested": "[1.6.0, )",
-        "resolved": "1.6.0",
-        "contentHash": "QwsEoB/UKDo7g/gbGjqIvOb1ddxOG27O7YEJWxu84V74beSV4mWWhiq9KjdSuCVQeuR1HKLSVrbOH4KsIRe6MQ==",
+        "requested": "[1.9.0, )",
+        "resolved": "1.9.0",
+        "contentHash": "MJyHqfo4yqDb7hX/PqxjRcOxUb8+/Zea34aJ5a2U8OXbnVaMx2TVjQWOH5oTfuHF5TNlA91eKjfECvzU2uB9Vw==",
         "dependencies": {
           "System.IO.Hashing": "10.0.10"
         }
+      },
+      "Nethermind.RocksDbBindings": {
+        "type": "CentralTransitive",
+        "requested": "[11.8.1-preview.92, 11.8.1-preview.92]",
+        "resolved": "11.8.1-preview.92",
+        "contentHash": "jAd4AQird5dkKj0KGyvNxLLeXddQJ6vGYK1fTVLENhAw3iYt7lOrNul4SePCAAlv9xlSw+ljN09RoosZZmvrYA=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
@@ -1680,15 +1648,6 @@
           "prometheus-net": "8.2.1"
         }
       },
-      "RocksDB": {
-        "type": "CentralTransitive",
-        "requested": "[10.10.1.1747, 10.10.1.1747]",
-        "resolved": "10.10.1.1747",
-        "contentHash": "uzwXHMAhfGnfa/iTspRRElvjxzfoUsca/fcRtZvYvBnW4k1CdherPeegz8Fym96V6XdJAAVfj9Xw7HkLq3mAqw==",
-        "dependencies": {
-          "ZstdSharp.Port": "0.8.7"
-        }
-      },
       "SCrypt": {
         "type": "CentralTransitive",
         "requested": "[2.0.0.2, )",
@@ -1703,24 +1662,24 @@
       },
       "System.Configuration.ConfigurationManager": {
         "type": "CentralTransitive",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "vFA8K0xj520MnLp+zkpTmLc3LOGUhkIDxHvhfm8Cr4b+ZVVeAXnfe1+2oixuITbsZfr4ALcU2NrAqQKhooX9yw==",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "6KP/CGB9YymJuhNorm5FS/urQJB40h6t4DIiXN8J1VT/jINZHNgjzcdWRHGYuXGLwO7SCOq5K/OMAnh6oRbeLg==",
         "dependencies": {
-          "System.Security.Cryptography.ProtectedData": "10.0.11"
+          "System.Security.Cryptography.ProtectedData": "10.0.12"
         }
       },
       "System.IO.Hashing": {
         "type": "CentralTransitive",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "OzKDcIRkeNJeC8qAsbn8yJXnfTLP1dtkWILe+T56Gf/z+IkAASi7sMqLqJQat08j5z/mRN5xVtoAwbkMNMoBUQ=="
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "jDix4bBMYnpZdSPcnY+KDV6ik3SRMzpMKby/bZl/XUwIiflwRNAFZ0oOl61R/pSaveIJ8t1gs2BUlrGsPs/bcg=="
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "CentralTransitive",
-        "requested": "[10.0.11, )",
-        "resolved": "10.0.11",
-        "contentHash": "PNoxCTPb+Tlux+GJyq4c89ddYdpioVSqfGx8pqOF6shCSKwUNNctXhQtRkCICjbJmGrJJsW8NY52kVYO/b8mlQ=="
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "wO0W8VDMeRJZakRySOmemAnrBZMwEFRlbfBtATxUiLf2I3IhSRnCp1Vt157NWptdE4IJ7eftd5n8q9LtaKHFTQ=="
       },
       "Testably.Abstractions": {
         "type": "CentralTransitive",
@@ -1755,14 +1714,6 @@
       }
     },
     "net10.0/linux-arm64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -1817,9 +1768,9 @@
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.6.0, )",
-        "resolved": "1.6.0",
-        "contentHash": "KUOJyQ+bGrCgNvmNux4GLXafas7GKq/LK9dNZhWC+PhCwm35wT1CDpI7Q0n7xaSCSiUtiDNeWVRcP1VAoEhTGg=="
+        "requested": "[1.7.0, )",
+        "resolved": "1.7.0",
+        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
@@ -1829,41 +1780,30 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+      },
+      "Nethermind.RocksDbBindings": {
+        "type": "CentralTransitive",
+        "requested": "[11.8.1-preview.92, 11.8.1-preview.92]",
+        "resolved": "11.8.1-preview.92",
+        "contentHash": "jAd4AQird5dkKj0KGyvNxLLeXddQJ6vGYK1fTVLENhAw3iYt7lOrNul4SePCAAlv9xlSw+ljN09RoosZZmvrYA=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
         "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
-      },
-      "RocksDB": {
-        "type": "CentralTransitive",
-        "requested": "[10.10.1.1747, 10.10.1.1747]",
-        "resolved": "10.10.1.1747",
-        "contentHash": "uzwXHMAhfGnfa/iTspRRElvjxzfoUsca/fcRtZvYvBnW4k1CdherPeegz8Fym96V6XdJAAVfj9Xw7HkLq3mAqw==",
-        "dependencies": {
-          "ZstdSharp.Port": "0.8.7"
-        }
       }
     },
     "net10.0/linux-x64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -1918,9 +1858,9 @@
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.6.0, )",
-        "resolved": "1.6.0",
-        "contentHash": "KUOJyQ+bGrCgNvmNux4GLXafas7GKq/LK9dNZhWC+PhCwm35wT1CDpI7Q0n7xaSCSiUtiDNeWVRcP1VAoEhTGg=="
+        "requested": "[1.7.0, )",
+        "resolved": "1.7.0",
+        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
@@ -1930,41 +1870,30 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+      },
+      "Nethermind.RocksDbBindings": {
+        "type": "CentralTransitive",
+        "requested": "[11.8.1-preview.92, 11.8.1-preview.92]",
+        "resolved": "11.8.1-preview.92",
+        "contentHash": "jAd4AQird5dkKj0KGyvNxLLeXddQJ6vGYK1fTVLENhAw3iYt7lOrNul4SePCAAlv9xlSw+ljN09RoosZZmvrYA=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
         "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
-      },
-      "RocksDB": {
-        "type": "CentralTransitive",
-        "requested": "[10.10.1.1747, 10.10.1.1747]",
-        "resolved": "10.10.1.1747",
-        "contentHash": "uzwXHMAhfGnfa/iTspRRElvjxzfoUsca/fcRtZvYvBnW4k1CdherPeegz8Fym96V6XdJAAVfj9Xw7HkLq3mAqw==",
-        "dependencies": {
-          "ZstdSharp.Port": "0.8.7"
-        }
       }
     },
     "net10.0/osx-arm64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -2019,9 +1948,9 @@
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.6.0, )",
-        "resolved": "1.6.0",
-        "contentHash": "KUOJyQ+bGrCgNvmNux4GLXafas7GKq/LK9dNZhWC+PhCwm35wT1CDpI7Q0n7xaSCSiUtiDNeWVRcP1VAoEhTGg=="
+        "requested": "[1.7.0, )",
+        "resolved": "1.7.0",
+        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
@@ -2031,41 +1960,30 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+      },
+      "Nethermind.RocksDbBindings": {
+        "type": "CentralTransitive",
+        "requested": "[11.8.1-preview.92, 11.8.1-preview.92]",
+        "resolved": "11.8.1-preview.92",
+        "contentHash": "jAd4AQird5dkKj0KGyvNxLLeXddQJ6vGYK1fTVLENhAw3iYt7lOrNul4SePCAAlv9xlSw+ljN09RoosZZmvrYA=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
         "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
-      },
-      "RocksDB": {
-        "type": "CentralTransitive",
-        "requested": "[10.10.1.1747, 10.10.1.1747]",
-        "resolved": "10.10.1.1747",
-        "contentHash": "uzwXHMAhfGnfa/iTspRRElvjxzfoUsca/fcRtZvYvBnW4k1CdherPeegz8Fym96V6XdJAAVfj9Xw7HkLq3mAqw==",
-        "dependencies": {
-          "ZstdSharp.Port": "0.8.7"
-        }
       }
     },
     "net10.0/osx-x64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -2120,9 +2038,9 @@
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.6.0, )",
-        "resolved": "1.6.0",
-        "contentHash": "KUOJyQ+bGrCgNvmNux4GLXafas7GKq/LK9dNZhWC+PhCwm35wT1CDpI7Q0n7xaSCSiUtiDNeWVRcP1VAoEhTGg=="
+        "requested": "[1.7.0, )",
+        "resolved": "1.7.0",
+        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
@@ -2132,41 +2050,30 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+      },
+      "Nethermind.RocksDbBindings": {
+        "type": "CentralTransitive",
+        "requested": "[11.8.1-preview.92, 11.8.1-preview.92]",
+        "resolved": "11.8.1-preview.92",
+        "contentHash": "jAd4AQird5dkKj0KGyvNxLLeXddQJ6vGYK1fTVLENhAw3iYt7lOrNul4SePCAAlv9xlSw+ljN09RoosZZmvrYA=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
         "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
-      },
-      "RocksDB": {
-        "type": "CentralTransitive",
-        "requested": "[10.10.1.1747, 10.10.1.1747]",
-        "resolved": "10.10.1.1747",
-        "contentHash": "uzwXHMAhfGnfa/iTspRRElvjxzfoUsca/fcRtZvYvBnW4k1CdherPeegz8Fym96V6XdJAAVfj9Xw7HkLq3mAqw==",
-        "dependencies": {
-          "ZstdSharp.Port": "0.8.7"
-        }
       }
     },
     "net10.0/win-x64": {
-      "Grpc.Core": {
-        "type": "Transitive",
-        "resolved": "2.46.6",
-        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
-        "dependencies": {
-          "Grpc.Core.Api": "2.46.6"
-        }
-      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -2221,9 +2128,9 @@
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.6.0, )",
-        "resolved": "1.6.0",
-        "contentHash": "KUOJyQ+bGrCgNvmNux4GLXafas7GKq/LK9dNZhWC+PhCwm35wT1CDpI7Q0n7xaSCSiUtiDNeWVRcP1VAoEhTGg=="
+        "requested": "[1.7.0, )",
+        "resolved": "1.7.0",
+        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
@@ -2233,30 +2140,27 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "EE12z2k4ku0ugfI01utaQR8EbBoEMLI4QAKKGrfz5Fvbw/YtXTqDDzvKtBTleOB9YBH7oTpH9T9ZFtKgKZMj2g=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.5, )",
-        "resolved": "1.0.5",
-        "contentHash": "GVzsykooi0PAydDuhdWB7ugFyHPYYkwiBFGy5sVMlKeXsqBqUdvOgqnT/29bf74b3Uhm76gfC6fiW9nEW0xA3Q=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+      },
+      "Nethermind.RocksDbBindings": {
+        "type": "CentralTransitive",
+        "requested": "[11.8.1-preview.92, 11.8.1-preview.92]",
+        "resolved": "11.8.1-preview.92",
+        "contentHash": "jAd4AQird5dkKj0KGyvNxLLeXddQJ6vGYK1fTVLENhAw3iYt7lOrNul4SePCAAlv9xlSw+ljN09RoosZZmvrYA=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
         "requested": "[1.0.0, )",
         "resolved": "1.0.0",
         "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
-      },
-      "RocksDB": {
-        "type": "CentralTransitive",
-        "requested": "[10.10.1.1747, 10.10.1.1747]",
-        "resolved": "10.10.1.1747",
-        "contentHash": "uzwXHMAhfGnfa/iTspRRElvjxzfoUsca/fcRtZvYvBnW4k1CdherPeegz8Fym96V6XdJAAVfj9Xw7HkLq3mAqw==",
-        "dependencies": {
-          "ZstdSharp.Port": "0.8.7"
-        }
       }
     }
   }

@@ -12,8 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
@@ -28,48 +26,57 @@ public static class StatelessExecutor
 
         try
         {
+            // Also installs the run's hash seed, which every hash-keyed container below depends on.
             payload = InputDecoder.Decode(data);
         }
         catch (Exception ex)
         {
-            Debug.Fail(ex.Message);
+            Debug.WriteLine(ex.Message);
             return output;
         }
 
-        ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
-        Transaction[] transactions = payload.Block.Transactions;
         StatelessValidationResult result = new()
         {
             NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
             IsSuccess = false,
-            ChainConfig = payload.ChainConfig
+            ChainId = payload.ChainId,
+            SchemaId = payload.SchemaId
         };
         output = StatelessValidationResult.Encode(result);
         bool success = false;
 
+        // Published before block reconstruction, the first step that can throw, so a failure there
+        // still reports the decoded metadata rather than the zero sentinel.
         FailureOutput = output;
 
-        if (transactions.Length == publicKeys.Length)
+        try
         {
-            try
+            Block block = payload.GetBlock();
+            ReadOnlySpan<SszPublicKey> publicKeys = payload.PublicKeys.Span;
+            Transaction[] transactions = block.Transactions;
+
+            if (transactions.Length == publicKeys.Length &&
+                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span) &&
+                HeaderValidator.ValidateHash(block.Header))
             {
-                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig, payload.ProtocolFork, payload.Block.Header);
-                IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
+                ISpecProvider specProvider = payload.SpecProvider;
+                IReleaseSpec spec = specProvider.GetSpec(block.Header);
 #if !ZK_EVM
                 if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
                     KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
                 for (int i = 0; i < transactions.Length; i++)
-                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
+                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].AsSpan()[1..]);
 
                 using Witness witness = payload.Witness.ToWitness();
 
-                success = Execute(payload.Block, witness, specProvider);
+                // Reconstruction derives body roots; the hash check above binds them to the declared block hash.
+                success = Execute(block, witness, specProvider, validateHashes: false);
             }
-            catch (Exception ex)
-            {
-                Debug.Fail(ex.Message);
-            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex.Message);
         }
 
         if (success)
@@ -82,6 +89,9 @@ public static class StatelessExecutor
     }
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
+        => Execute(suggestedBlock, witness, specProvider, validateHashes: true);
+
+    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes)
     {
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
@@ -94,7 +104,7 @@ public static class StatelessExecutor
         }
         else
         {
-            Debug.Fail("Witness is missing the parent header");
+            Debug.WriteLine("Witness is missing the parent header");
             return false;
         }
 
@@ -113,14 +123,14 @@ public static class StatelessExecutor
             NullLogManager.Instance
         );
 
-        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error))
+        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error, validateHashes))
         {
-            Debug.Fail(error);
+            Debug.WriteLine(error);
             return false;
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
-            witness, specProvider, Always.Valid, NullLogManager.Instance);
+            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
 
         using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
 
@@ -134,7 +144,7 @@ public static class StatelessExecutor
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
-            Debug.Fail(error);
+            Debug.WriteLine(error);
             return false;
         }
 
@@ -157,26 +167,31 @@ public static class StatelessExecutor
     {
         NewPayloadRequestRoot = Hash256.Zero,
         IsSuccess = false,
-        ChainConfig = new ChainConfig
-        {
-            ChainId = 0,
-            ActiveFork = new ForkConfig
-            {
-                Activation = new() { BlockNumber = [], Timestamp = [] }
-            }
-        }
+        ChainId = 0,
+        SchemaId = 0
     };
 
-    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig, ProtocolFork protocolFork, BlockHeader header)
+    /// <summary>Returns whether <paramref name="transactions"/> commit to exactly <paramref name="expected"/>, in order.</summary>
+    internal static bool BlobVersionedHashesMatch(Transaction[] transactions, ReadOnlySpan<Hash256> expected)
     {
-        if (!chainConfig.ActiveFork.Activation.IsActive(header))
-            throw new ArgumentException("ChainConfig active fork is not active for the payload.", nameof(chainConfig));
+        int index = 0;
 
-        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider);
+        foreach (Transaction transaction in transactions)
+        {
+            byte[]?[]? hashes = transaction.BlobVersionedHashes;
 
-        // ActiveFork pins the spec by name on any compatible schedule; unknown chains (e.g. devnets) use Mainnet rules.
-        baseProvider ??= MainnetSpecProvider.Instance;
+            if (hashes is null)
+                continue;
 
-        return StatelessSpecProvider.Create(baseProvider, chainConfig.ChainId, chainConfig.ActiveFork, protocolFork);
+            foreach (byte[]? hash in hashes)
+            {
+                if (index == expected.Length || !expected[index].Bytes.SequenceEqual(hash))
+                    return false;
+
+                index++;
+            }
+        }
+
+        return index == expected.Length;
     }
 }

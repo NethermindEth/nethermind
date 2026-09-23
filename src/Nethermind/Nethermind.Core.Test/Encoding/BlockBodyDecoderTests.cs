@@ -11,6 +11,38 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class BlockBodyDecoderTests
 {
+    [Test, NonParallelizable]
+    public void Transaction_pool_use_matches_decoder_ownership(
+        [Values("body", "unwrapped-body", "block")] string format,
+        [Values] bool skipPooledTransactions)
+    {
+        BlockBody body = new([Build.A.Transaction.Signed().TestObject], []);
+        BlockDecoder blockDecoder = new();
+        byte[] bytes = format == "block"
+            ? blockDecoder.Encode(new Block(Build.A.BlockHeader.TestObject, body)).Bytes
+            : BlockBodyDecoder.Instance.Encode(body).Bytes;
+
+        HashSet<Transaction> pooled = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
+        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+
+        RlpReader reader = new(bytes);
+        RlpBehaviors behaviors = skipPooledTransactions ? RlpBehaviors.SkipPooledTransactions : RlpBehaviors.None;
+        if (format == "unwrapped-body") reader.ReadSequenceLength();
+        BlockBody decoded = format switch
+        {
+            "block" => blockDecoder.DecodeGuardNotNull(ref reader, behaviors).Body,
+            "body" => BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader, behaviors),
+            _ => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions: !skipPooledTransactions)
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.EqualTo(body).UsingBlockBodyComparer());
+            Assert.That(pooled.Contains(decoded.Transactions[0]), Is.EqualTo(format is "body" or "unwrapped-body" && !skipPooledTransactions));
+        }
+    }
+
     [TestCaseSource(nameof(ValidBodies))]
     public void Roundtrip(BlockBody body)
     {
@@ -19,19 +51,22 @@ public class BlockBodyDecoderTests
         RlpWriter writer = new(bytes);
         BlockBodyDecoder.Instance.Encode(ref writer, body);
         RlpReader ctx = new(bytes);
-        BlockBody decodedBody = BlockBodyDecoder.Instance.Decode(ref ctx);
+        BlockBody decodedBody = BlockBodyDecoder.Instance.DecodeGuardNotNull(ref ctx);
 
         Assert.That(decodedBody, Is.EqualTo(body).UsingBlockBodyComparer());
     }
 
     // check for RlpLimitException specifically, which should fire before decoding, so 0xC0 placeholders are fine here.
-    [TestCase(60_000, 0, null, TestName = "transactions")]
+    // Tx bound at the default 1 GGas MaxBlockGas:
+    // 1,000,000,000 / GasCostOf.TransactionEip2780 (12,000) + 1 == 83,334 entries.
+    [TestCase(83_335, 0, null, TestName = "transactions")]
     [TestCase(0, 3, null, TestName = "uncles")]
     [TestCase(0, 0, 64_001, TestName = "withdrawals")]
     public void Decode_count_over_limit_throws(int txCount, int uncleCount, int? withdrawalCount) =>
         Assert.Throws<RlpLimitException>(() => DecodeBody(BuildBodyStream(txCount, uncleCount, withdrawalCount)));
 
     // array of 0xC0's (interpreted as null) within the count limit
+    [TestCase(83_334, 0, null, TestName = "transaction at count limit")]
     [TestCase(10, 0, null, TestName = "transaction")]
     [TestCase(0, 1, null, TestName = "uncle")]
     [TestCase(0, 0, 6, TestName = "withdrawal")]
@@ -61,7 +96,7 @@ public class BlockBodyDecoderTests
     private static void DecodeBody(byte[] bytes)
     {
         RlpReader ctx = new(bytes);
-        BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, bytes.Length);
+        BlockBodyDecoder.Instance.DecodeUnwrapped(ref ctx, bytes.Length, usePooledTransactions: false);
     }
 
     private static byte[] BuildBodyStream(int txCount, int uncleCount, int? withdrawalCount)

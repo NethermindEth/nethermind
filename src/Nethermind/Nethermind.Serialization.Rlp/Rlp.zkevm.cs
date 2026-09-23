@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -75,5 +74,6 @@ public partial class Rlp
 
 public readonly partial struct RlpDecoderKey
 {
-    public override int GetHashCode() => (int)BitOperations.Crc32C((uint)_type.GetHashCode(), (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
+    public override int GetHashCode() =>
+        SpanExtensions.CombineHash((uint)_type.GetHashCode(), (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 }

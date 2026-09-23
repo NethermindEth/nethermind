@@ -1,0 +1,281 @@
+name: Release Bootnode
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_latest:
+        description: Also publish Docker latest.
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: bootnode-release
+  cancel-in-progress: false
+
+permissions:
+  deployments: write
+  packages: write
+  contents: write
+
+env:
+  PACKAGE_DIR: bootnode-pkg
+  PACKAGE_RETENTION: 7
+  PUB_DIR: bootnode-pub
+
+jobs:
+  build:
+    name: Build Bootnode packages
+    runs-on: ubuntu-latest
+    outputs:
+      release-tag: ${{ steps.version.outputs.release-tag }}
+      release-name: ${{ steps.version.outputs.release-name }}
+      version: ${{ steps.version.outputs.version }}
+      package-prefix: ${{ steps.version.outputs.package-prefix }}
+      publish-latest: ${{ steps.version.outputs.publish-latest }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Detect version
+        id: version
+        working-directory: tools/Bootnode/Nethermind.Bootnode
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_PUBLISH_LATEST: ${{ inputs.publish_latest }}
+        run: |
+          sudo apt-get update && sudo apt-get install xmlstarlet -y --no-install-recommends
+          version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Nethermind.Bootnode.csproj)
+          version=$version_prefix
+          release_tag=bootnode-$version
+          release_name="Nethermind Bootnode $version"
+          package_prefix=nethermind-bootnode-$version
+
+          if [[ -z "$version_prefix" || ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || ! git check-ref-format --allow-onelevel "refs/tags/$release_tag"; then
+            echo "Bootnode version '$version' must produce valid Docker and Git tags."
+            exit 1
+          fi
+
+          if ! tag_ref=$(git ls-remote --refs origin "refs/tags/$release_tag"); then
+            echo "::error::Could not inspect the Bootnode tag $release_tag."
+            exit 1
+          fi
+
+          if [[ -n "$tag_ref" ]] || release=$(gh release view "$release_tag" --json isDraft,targetCommitish 2>/dev/null); then
+            if [[ -z "$tag_ref" && "$(jq -r '.isDraft' <<< "$release")" == "true" ]]; then
+              release_ref=$(jq -r '.targetCommitish' <<< "$release")
+            else
+              release_ref=refs/tags/$release_tag
+            fi
+
+            if ! release_target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$release_ref" --jq .sha); then
+              echo "::error::Could not resolve the existing Bootnode release $release_tag."
+              exit 1
+            fi
+
+            if [[ "$release_target" != "$GITHUB_SHA" ]]; then
+              echo "::error::Bootnode release $release_tag already targets $release_target, not $GITHUB_SHA. Bump VersionPrefix in tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj to publish a new version, or delete the stale untagged draft before re-cutting this version."
+              exit 1
+            fi
+          fi
+
+          echo "Detected version $version"
+          echo "release-tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release-name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "package-prefix=$package_prefix" >> "$GITHUB_OUTPUT"
+          echo "publish-latest=$INPUT_PUBLISH_LATEST" >> "$GITHUB_OUTPUT"
+          echo "PACKAGE_PREFIX=$package_prefix" >> "$GITHUB_ENV"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build Bootnode solution
+        working-directory: tools
+        run: dotnet build ./Bootnode/Bootnode.slnx -c release -p:SaveDiskSpace=true
+
+      - name: Test Bootnode
+        working-directory: tools
+        run: dotnet test ./Bootnode/Nethermind.Bootnode.Test/Nethermind.Bootnode.Test.csproj -c release -p:SaveDiskSpace=true --no-build
+
+      - name: Build packages
+        run: scripts/build/build-bootnode.sh "$GITHUB_SHA"
+
+      - name: Archive packages
+        run: scripts/build/archive-bootnode.sh
+
+      - name: Sign packages
+        env:
+          GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
+          GPG_SECRET_KEY: ${{ secrets.PPA_GPG_SECRET_KEY }}
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
+
+          for file_name in *.tar.gz *.zip SHA256SUMS; do
+            gpg --no-tty --batch --yes --pinentry-mode loopback \
+              --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+              -o "$file_name.asc" -ab "$file_name"
+          done
+
+      - name: Upload Bootnode packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-packages
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*
+          if-no-files-found: error
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+
+  approval:
+    name: Approve
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: Releases
+      url: https://github.com/NethermindEth/nethermind/releases/tag/${{ needs.build.outputs.release-tag }}
+    steps:
+      - name: Wait for approval
+        run: echo "Waiting for approval..."
+
+  publish-github:
+    name: Publish to GitHub
+    runs-on: ubuntu-latest
+    needs: [approval, build]
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.package-prefix }}-packages
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}
+
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
+          RELEASE_NAME: ${{ needs.build.outputs.release-name }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          relnotes=$(cat <<EOF
+          # Release notes
+
+          Standalone Nethermind Bootnode release, version $RELEASE_VERSION.
+
+          ## Docker image
+
+          \`\`\`bash
+          docker pull nethermind/bootnode:$RELEASE_VERSION
+          \`\`\`
+
+          ## Build signatures
+
+          The packages are signed with the following OpenPGP key: \`AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E\`.
+          EOF
+          )
+
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Drafting release $RELEASE_TAG"
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              -t "$RELEASE_NAME" \
+              -d \
+              -F <(printf '%s' "$relnotes")
+          fi
+
+          if ! release=$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish); then
+            echo "::error::Could not inspect Bootnode release $RELEASE_TAG."
+            exit 1
+          fi
+
+          if ! tag_ref=$(git ls-remote --refs origin "refs/tags/$RELEASE_TAG"); then
+            echo "::error::Could not inspect the Bootnode tag $RELEASE_TAG."
+            exit 1
+          fi
+
+          if [[ -z "$tag_ref" && "$(jq -r '.isDraft' <<< "$release")" == "true" ]]; then
+            commitish=$(jq -r '.targetCommitish' <<< "$release")
+          else
+            commitish=refs/tags/$RELEASE_TAG
+          fi
+
+          if ! release_target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$commitish" --jq .sha); then
+            echo "::error::Could not resolve the commit for Bootnode release $RELEASE_TAG."
+            exit 1
+          fi
+
+          if [[ "$release_target" != "$GITHUB_SHA" ]]; then
+            echo "::error::Bootnode release $RELEASE_TAG resolves to $release_target, but this build targets $GITHUB_SHA. Bump VersionPrefix in tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj to publish a new version, or delete the stale untagged draft before re-cutting it."
+            exit 1
+          fi
+
+          echo "Uploading assets"
+          gh release upload "$RELEASE_TAG" "$PACKAGE_DIR"/* --clobber
+
+          echo "Publishing release $RELEASE_TAG"
+          gh release edit "$RELEASE_TAG" \
+            -t "$RELEASE_NAME" \
+            --draft=false \
+            --latest=false
+
+  publish-docker:
+    name: Publish to Docker Hub
+    runs-on: ubuntu-latest
+    needs: [build, publish-github]
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: Build and push image to Docker Hub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          PUBLISH_LATEST: ${{ needs.build.outputs.publish-latest }}
+        run: |
+          image=nethermind/bootnode
+          tags=(-t "$image:$RELEASE_VERSION")
+          if [[ "$PUBLISH_LATEST" == "true" ]]; then
+            if ! release_versions=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq \
+              '.[] | select(.draft == false and (.tag_name | startswith("bootnode-"))) | .tag_name | sub("^bootnode-"; "")'); then
+              echo "::error::Could not determine the highest published Bootnode version."
+              exit 1
+            fi
+            latest_release_version=$(printf '%s\n' "$release_versions" | sort -V | tail -n 1)
+            if [[ -z "$latest_release_version" ]]; then
+              echo "::warning::Skipping Docker latest: no published Bootnode release was found."
+            elif [[ "$RELEASE_VERSION" != "$latest_release_version" ]]; then
+              echo "::warning::Skipping Docker latest: it tracks the highest published Bootnode version ($latest_release_version), not $RELEASE_VERSION."
+            else
+              tags+=(-t "$image:latest")
+            fi
+          fi
+
+          docker buildx build . \
+            --platform=linux/amd64,linux/arm64 \
+            -f tools/Bootnode/Dockerfile \
+            "${tags[@]}" \
+            --build-arg BUILD_CONFIG=release \
+            --build-arg CI=$CI \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
+            --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
+            --push

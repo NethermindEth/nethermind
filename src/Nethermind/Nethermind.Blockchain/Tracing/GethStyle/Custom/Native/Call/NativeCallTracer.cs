@@ -44,6 +44,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
+        IsTracingStack = false;
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
         _gasLimit = tx!.GasLimit;
         _txHash = tx.Hash;
         _isEip8037Enabled = spec.IsEip8037Enabled;
@@ -57,6 +60,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     }
 
     protected override GethLikeTxTrace CreateTrace() => new(_disposables);
+
+    public override bool IsTracingInstructions => false;
 
     public override GethLikeTxTrace BuildResult()
     {
@@ -130,11 +135,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         callFrame.Logs.Add(callLog);
     }
 
-    public override void ReportOperationRemainingGas(ulong gas)
-    {
-        base.ReportOperationRemainingGas(gas);
-        _remainingGas = gas > 0 ? gas : 0;
-    }
+    public override void ReportActionRemainingGas(ulong gas) => _remainingGas = gas;
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
@@ -208,7 +209,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         if (_error is not null)
         {
             EvmExceptionType errorType = _error.Value;
-            firstCallFrame.Error = errorType.GetEvmExceptionDescription();
+            MarkFrameFailed(firstCallFrame, errorType);
             if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
             {
                 firstCallFrame.RevertReason = ValidateRevertReason(error);
@@ -247,15 +248,25 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
+    /// <summary>Records an EVM halt on a call frame, for the root frame and the nested ones alike.</summary>
+    /// <remarks>
+    /// A CREATE or CREATE2 frame that halted deployed no contract, so its <c>to</c> is dropped —
+    /// the execution-apis <c>CallFrame</c> schema requires it to be omitted there.
+    /// </remarks>
+    private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
+    {
+        callFrame.Error = error.GetEvmExceptionDescription();
+        if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
+        {
+            callFrame.To = null;
+        }
+    }
+
     private static void ProcessOutput(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte>? output, EvmExceptionType? error)
     {
         if (error is not null)
         {
-            callFrame.Error = error.Value.GetEvmExceptionDescription();
-            if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
-            {
-                callFrame.To = null;
-            }
+            MarkFrameFailed(callFrame, error.Value);
 
             if (error == EvmExceptionType.Revert && output?.Length != 0)
             {

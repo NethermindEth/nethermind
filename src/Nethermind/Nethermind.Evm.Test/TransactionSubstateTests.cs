@@ -113,6 +113,19 @@ namespace Nethermind.Evm.Test
             yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, TransactionSubstate.Revert);
         }
 
+        [TestCase(0)]
+        [TestCase(8)]
+        [TestCase(16)]
+        public void Panic_code_high_limbs_are_not_truncated(int byteIndex)
+        {
+            byte[] output = new byte[36];
+            TransactionSubstate.PanicFunctionSelector.CopyTo(output, 0);
+            output[4 + byteIndex] = 1;
+            output[35] = 0x22;
+
+            Assert.That(TransactionSubstate.GetErrorMessage(output), Does.StartWith("unknown panic code"));
+        }
+
         private static IEnumerable<(byte[], string)> PanicFunctionTestCases()
         {
             yield return (

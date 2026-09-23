@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
@@ -13,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -92,9 +94,9 @@ namespace Nethermind.Network
             session.Initialized -= _onSessionInitialized;
             _sessions.TryRemove(session.SessionId, out _);
 
-            if (_logger.IsDebug && session.BestStateReached == SessionState.Initialized)
+            if (_logger.IsTrace && session.BestStateReached == SessionState.Initialized)
             {
-                _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
+                TraceSessionDisconnected(session, e);
             }
 
             if (session.Node is not null
@@ -121,6 +123,10 @@ namespace Nethermind.Network
                 _txPool.RemovePeer(session.Node.Id);
             }
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceSessionDisconnected(ISession session, DisconnectEventArgs e) =>
+            _logger.Trace($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
 
         private void SessionInitialized(object sender, EventArgs e)
         {
@@ -309,12 +315,24 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
 
                 //Add/Update peer to the storage and to sync manager
-                _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation(DateTime.UtcNow)));
+                _peerStorage.UpdateNode(CreatePersistedNode(session.Node));
             }
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
             }
+        }
+
+        private NetworkNode CreatePersistedNode(Node node)
+        {
+            long reputation = _stats.GetOrAdd(node).NewPersistedNodeReputation(DateTime.UtcNow);
+            NodeRecord? record = node.Enr;
+            if (record is not null && node.IsVerifiedEnr(record) && record.EnrSequence >= node.HighestObservedEnrSequence)
+            {
+                return new NetworkNode(record.ToString()) { Reputation = reputation };
+            }
+
+            return new NetworkNode(node.Id, node.Host, node.Port, reputation);
         }
 
         private bool RunBasicChecks(ISession session, string protocolCode, int protocolVersion)

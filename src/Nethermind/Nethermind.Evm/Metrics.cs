@@ -47,18 +47,21 @@ public partial class Metrics
 {
     private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
 
+    // Fires per code lookup, i.e. per call frame: the single shared "other" word made this a
+    // contended cross-core RMW for every concurrent RPC/prewarm thread — striped instead.
     [CounterMetric]
     [Description("Number of Code DB cache reads.")]
-    public static long CodeDbCache => _mainCodeDbCache.Value + _otherCodeDbCache.Value;
+    public static long CodeDbCache => _mainCodeDbCache.Value + _otherCodeDbCache.Sum;
     private static CacheLinePaddedLong _mainCodeDbCache;
-    private static CacheLinePaddedLong _otherCodeDbCache;
+    private static readonly StripedLong _otherCodeDbCache = new();
     [Description("Number of Code DB cache reads on main processing thread.")]
     public static long MainThreadCodeDbCache => _mainCodeDbCache.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementCodeDbCache()
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache.Value : ref _otherCodeDbCache.Value);
+        if (IsBlockProcessingThread) Interlocked.Increment(ref _mainCodeDbCache.Value);
+        else _otherCodeDbCache.Increment();
     }
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]

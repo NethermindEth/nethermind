@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -23,6 +24,25 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
     }
 
+    /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
+    /// <remarks>
+    /// A single reference is self-validating: <see cref="StaticCodeCache"/> assigns <c>CodeHash</c> when it
+    /// stores, so matching against the hash re-read from the world state costs no allocation, and a stale
+    /// read can only miss (a partially-written hash has no keccak preimage), never answer with the wrong
+    /// body. Anything that changes an account's code — including a reverted deployment — produces a
+    /// different hash and misses; there is nothing to invalidate. Under <c>NoopCodeCache</c> (witness
+    /// generation, stateless execution) the hash stays default and the memo never fires, which is exactly
+    /// the every-lookup-through-the-world-state behaviour that mode requires.
+    /// </remarks>
+    private CodeInfo? _lastResolved;
+
+    /// <summary>Memo hits served before one is spent refreshing the shared cache's eviction ticker.</summary>
+    /// <remarks>A memo hit skips the probe that refreshes the ticker, so without this the hottest code
+    /// would age as though untouched and could be evicted out from under its own memo — costing a code-db
+    /// re-read and re-analysis on the next miss.</remarks>
+    private const int MemoHitsPerTickerRefresh = 64;
+    private int _memoHits;
+
     private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
@@ -30,6 +50,15 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             return CodeInfo.Empty;
         }
 
+        CodeInfo? lastResolved = _lastResolved;
+        if (lastResolved is not null && lastResolved.CodeHash == codeHash && ++_memoHits < MemoHitsPerTickerRefresh)
+        {
+            // A memo hit is a cache hit: keep cache.code.hits and the cached-contracts-used stats counting.
+            Metrics.IncrementCodeDbCache();
+            return lastResolved;
+        }
+
+        _memoHits = 0;
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {
@@ -41,6 +70,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             Metrics.IncrementCodeDbCache();
         }
 
+        _lastResolved = cachedCodeInfo;
         return cachedCodeInfo;
     }
 
@@ -49,7 +79,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress) =>
         _inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress) =>
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         _inner.TryGetDelegation(address, spec, out delegatedAddress);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)

@@ -5,25 +5,44 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using System;
+using System.Buffers.Binary;
 using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
+public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
 {
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
-    private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
     private const ulong GasLimit = Eip8037Constants.SystemCallGasLimit;
+
+    // EIP-7002 WITHDRAWAL_REQUEST_QUEUE_STORAGE_OFFSET: the slots below it hold the excess, count, queue head and
+    // queue tail words. EIP-7251 and the EIP-8282 builder contracts are derived from the same queue template.
+    private const ulong QueueStorageOffset = 4;
+
+    // Canonical ABI layout of the EIP-6110 `DepositEvent(bytes,bytes,bytes,bytes,bytes)` log data: five head
+    // words holding the offsets below, each pointing at a length word followed by the right-padded field.
+    // These are the values EIP-6110 `is_valid_deposit_event_data` and EELS `extract_deposit_data` require;
+    // the bytes between fields are deliberately not checked, as neither reference implementation checks them.
+    private const int AbiWordSize = 32;
+    private const int DepositEventDataLength = 576;
+    private const int DepositEventPubkeyOffset = 160;
+    private const int DepositEventWithdrawalCredentialsOffset = 256;
+    private const int DepositEventAmountOffset = 320;
+    private const int DepositEventSignatureOffset = 384;
+    private const int DepositEventIndexOffset = 512;
 
     private readonly ITransactionProcessor _transactionProcessor;
 
@@ -74,6 +93,49 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
         _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
         _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Hints the prewarmer with the fixed queue words that every enabled dequeue system call reads. The addresses are
+    /// taken from the system calls themselves, so the hint cannot drift from the accounts the calls actually target.
+    /// </remarks>
+    AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
+    {
+        if (!spec.RequestsEnabled || block.IsGenesis) return null;
+
+        AccessList.Builder builder = new();
+        bool hasContract = false;
+        if (spec.WithdrawalRequestsEnabled)
+        {
+            AddQueueContract(builder, _withdrawalTransaction);
+            hasContract = true;
+        }
+
+        if (spec.ConsolidationRequestsEnabled)
+        {
+            AddQueueContract(builder, _consolidationTransaction);
+            hasContract = true;
+        }
+
+        if (spec.BuilderRequestsEnabled)
+        {
+            AddQueueContract(builder, _builderDepositTransaction);
+            AddQueueContract(builder, _builderExitTransaction);
+            hasContract = true;
+        }
+
+        return hasContract ? builder.Build() : null;
+
+        static void AddQueueContract(AccessList.Builder builder, SystemCall dequeueCall)
+        {
+            builder.AddAddress(dequeueCall.To!);
+            for (ulong slot = 0; slot < QueueStorageOffset; slot++)
+            {
+                UInt256 index = slot;
+                builder.AddStorage(in index);
+            }
+        }
     }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
@@ -166,51 +228,52 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
             requests.Add(depositRequests.ToArray());
     }
 
-    private void DecodeDepositRequest(Block block, LogEntry log, Span<byte> buffer)
+    private static void DecodeDepositRequest(Block block, LogEntry log, Span<byte> buffer)
     {
-        object[] result;
-        try
-        {
-            result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
-            ValidateLayout(result, block);
-        }
-        catch (AbiException e)
-        {
-            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout(e.Message), e);
-        }
-
+        ValidateDepositEventLayout(block, log.Data);
         int offset = 0;
 
-        foreach (object item in result)
+        CopyDepositEventField(log.Data, DepositEventPubkeyOffset, ExecutionRequestExtensions.PublicKeySize, buffer, ref offset);
+        CopyDepositEventField(log.Data, DepositEventWithdrawalCredentialsOffset, ExecutionRequestExtensions.WithdrawalCredentialsSize, buffer, ref offset);
+        CopyDepositEventField(log.Data, DepositEventAmountOffset, ExecutionRequestExtensions.AmountSize, buffer, ref offset);
+        CopyDepositEventField(log.Data, DepositEventSignatureOffset, ExecutionRequestExtensions.SignatureSize, buffer, ref offset);
+        CopyDepositEventField(log.Data, DepositEventIndexOffset, ExecutionRequestExtensions.IndexSize, buffer, ref offset);
+    }
+
+    private static void ValidateDepositEventLayout(Block block, byte[] data)
+    {
+        if (data.Length != DepositEventDataLength)
         {
-            if (item is byte[] byteArray)
-            {
-                byteArray.CopyTo(buffer.Slice(offset, byteArray.Length));
-                offset += byteArray.Length;
-            }
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Deposit event data length does not match, expected {DepositEventDataLength}, got {data.Length}."));
+        }
+
+        ValidateDepositEventWord(block, data, 0 * AbiWordSize, DepositEventPubkeyOffset, "pubkey offset");
+        ValidateDepositEventWord(block, data, 1 * AbiWordSize, DepositEventWithdrawalCredentialsOffset, "withdrawal credentials offset");
+        ValidateDepositEventWord(block, data, 2 * AbiWordSize, DepositEventAmountOffset, "amount offset");
+        ValidateDepositEventWord(block, data, 3 * AbiWordSize, DepositEventSignatureOffset, "signature offset");
+        ValidateDepositEventWord(block, data, 4 * AbiWordSize, DepositEventIndexOffset, "index offset");
+
+        ValidateDepositEventWord(block, data, DepositEventPubkeyOffset, ExecutionRequestExtensions.PublicKeySize, "pubkey size");
+        ValidateDepositEventWord(block, data, DepositEventWithdrawalCredentialsOffset, ExecutionRequestExtensions.WithdrawalCredentialsSize, "withdrawal credentials size");
+        ValidateDepositEventWord(block, data, DepositEventAmountOffset, ExecutionRequestExtensions.AmountSize, "amount size");
+        ValidateDepositEventWord(block, data, DepositEventSignatureOffset, ExecutionRequestExtensions.SignatureSize, "signature size");
+        ValidateDepositEventWord(block, data, DepositEventIndexOffset, ExecutionRequestExtensions.IndexSize, "index size");
+    }
+
+    private static void ValidateDepositEventWord(Block block, byte[] data, int dataOffset, int expectedValue, string name)
+    {
+        ReadOnlySpan<byte> word = data.AsSpan(dataOffset, AbiWordSize);
+        if (!word.Slice(0, AbiWordSize - sizeof(uint)).IsZero()
+            || BinaryPrimitives.ReadUInt32BigEndian(word.Slice(AbiWordSize - sizeof(uint), sizeof(uint))) != (uint)expectedValue)
+        {
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Deposit event {name} does not match, expected {expectedValue}, got {new UInt256(word, isBigEndian: true)}."));
         }
     }
 
-    private static void ValidateLayout(object[] result, Block block)
+    private static void CopyDepositEventField(byte[] data, int dataOffset, int length, Span<byte> buffer, ref int bufferOffset)
     {
-        Validate(block, result[0], "pubkey", ExecutionRequestExtensions.PublicKeySize);
-        Validate(block, result[1], "withdrawalCredentials", ExecutionRequestExtensions.WithdrawalCredentialsSize);
-        Validate(block, result[2], "amount", ExecutionRequestExtensions.AmountSize);
-        Validate(block, result[3], "signature", ExecutionRequestExtensions.SignatureSize);
-        Validate(block, result[4], "index", ExecutionRequestExtensions.IndexSize);
-
-        static void Validate(Block block, object obj, string name, int expectedSize)
-        {
-            if (obj is not byte[] byteArray)
-            {
-                throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Decoded ABI result contains {name} as non-byte array element."));
-            }
-
-            if (byteArray.Length != expectedSize)
-            {
-                throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Decoded ABI result contains invalid {name} element, size does not match, expected {expectedSize}, got {byteArray.Length}."));
-            }
-        }
+        data.AsSpan(dataOffset + AbiWordSize, length).CopyTo(buffer.Slice(bufferOffset, length));
+        bufferOffset += length;
     }
 
     private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,

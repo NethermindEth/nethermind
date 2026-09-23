@@ -34,6 +34,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         }
 
         public Hash256 RootHash => baseScope.RootHash;
+        public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
 
         public void UpdateRootHash() => baseScope.UpdateRootHash();
 
@@ -54,6 +55,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
             parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             parent._updateMetrics(parent._stateMerkleizationTime);
         }
+
+        public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => baseScope.WriteBackCommittedState(takeSnapshot);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => baseScope.HintBal(bal, sink);

@@ -105,13 +105,8 @@ public class SystemConfigDeriverTests
         Assert.That(actualConfig, Is.EqualTo(expectedConfig));
     }
 
-    [TestCase(1)]
-    [TestCase(8)]
-    [TestCase(10)]
-    [TestCase(12)]
-    [TestCase(20)]
-    [TestCase(23)]
-    public void UpdateSystemConfigFromL1BLock_UpdatedFeeScalars_InvalidEcotone(int indexOfNonZero)
+    [Test]
+    public void UpdateSystemConfigFromL1BLock_UpdatedFeeScalars_InvalidEcotone([Values(1, 8, 10, 12, 20, 23)] int indexOfNonZero)
     {
         byte[] scalarData = new byte[Hash256.Size];
         scalarData[0] = 1;

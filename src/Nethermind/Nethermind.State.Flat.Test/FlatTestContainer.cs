@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.IO;
@@ -14,6 +15,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 
 namespace Nethermind.State.Flat.Test;
@@ -54,7 +56,8 @@ public sealed class FlatTestContainer : IDisposable
         long arenaPageCacheBytes = 0,
         string? baseDbPath = null,
         IDb? catalogDb = null,
-        Action<ContainerBuilder>? configure = null)
+        Action<ContainerBuilder>? configure = null,
+        IFinalizedStateProvider? finalizedStateProvider = null)
     {
         Config = config ?? new FlatDbConfig();
         Config.ArenaFileSizeBytes = arenaFileSizeBytes;
@@ -80,6 +83,8 @@ public sealed class FlatTestContainer : IDisposable
             .AddSingleton<IFlatDbConfig>(Config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = BaseDbPath })
+            .AddSingleton<ISyncConfig>(new SyncConfig())
+            .AddSingleton<IFinalizedStateProvider>(finalizedStateProvider ?? Substitute.For<IFinalizedStateProvider>())
             .AddSingleton<IProcessExitSource>(processExitSource)
             // The production module wires the catalog and metadata to columned RocksDB via IDbFactory,
             // which the test project does not provide; an in-memory db is behavior-equivalent here.
