@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -52,6 +53,12 @@ public static class HexWriter
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => Vector256.Create(HexLookup128, HexLookup128);
+    }
+
+    private static Vector128<byte> ReverseBytes128
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Vector128.Create((byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
     }
 
     // VPMULTISHIFTQB bit offsets of the high then low nibble of each 16-bit word, four words per qword:
@@ -186,6 +193,7 @@ public static class HexWriter
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Encode32Bytes(ref byte dest, ReadOnlySpan<byte> src)
     {
+        Debug.Assert(src.Length == 32);
         ref byte srcRef = ref MemoryMarshal.GetReference(src);
         if (Vector512.IsHardwareAccelerated && Avx512Vbmi.IsSupported)
         {
@@ -426,12 +434,6 @@ public static class HexWriter
             EncodeUlongScalar(ref Unsafe.Add(ref dest, 32), value.u1);
             EncodeUlongScalar(ref Unsafe.Add(ref dest, 48), value.u0);
         }
-    }
-
-    private static Vector128<byte> ReverseBytes128
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => Vector128.Create((byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
     }
 
     // Inline buffers avoid stackalloc GS-cookie overhead on hot hex writers.
