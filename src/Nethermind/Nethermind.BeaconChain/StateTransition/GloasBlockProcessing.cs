@@ -706,6 +706,10 @@ public static class GloasBlockProcessing
         ExecutionPayloadEnvelope envelope = signedEnvelope.Message!;
         ExecutionPayloadGloas payload = envelope.Payload!;
 
+        // The spec's state.builders[envelope.builder_index] fails the envelope for an index outside the registry.
+        if (envelope.BuilderIndex != Presets.BuilderIndexSelfBuild && envelope.BuilderIndex >= (ulong)state.Builders!.Length)
+            throw new BeaconStateException($"Envelope builder index {envelope.BuilderIndex} is not in the builder registry");
+
         if (!VerifyExecutionPayloadEnvelopeSignature(state, signedEnvelope, pubkeys))
             throw new BeaconStateException("Invalid execution payload envelope signature");
 
