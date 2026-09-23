@@ -531,4 +531,27 @@ public class FrameTxValidationTests
         Assert.That(measuredIntrinsic, Is.GreaterThan(unmeasuredIntrinsic),
             "the measured calldata must be priced, not served from the memo taken before it was set");
     }
+    [TestCase(TxFrameSignature.SchemeSecp256k1, 65)]
+    [TestCase(TxFrameSignature.SchemeP256, 128)]
+    public void TryCalculateGasBudget_PlaceholderPricesSignatureBytesWithoutChangingConsensus(byte scheme, int length)
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        Transaction tx = CreateValidFrameTx(t => t.FrameSignatures = [new TxFrameSignature(scheme, null, default, default)]);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong original, out _, out _), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong estimated, out ulong estimatedFloor, out ulong estimatedMax, estimateSignatureBytes: true), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unchanged, out _, out _), Is.True);
+        byte[] bytes = new byte[length];
+        Array.Fill(bytes, (byte)0xff);
+        Transaction signed = CreateValidFrameTx(t => t.FrameSignatures = [new TxFrameSignature(scheme, null, default, bytes)]);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(signed, spec, out ulong actual, out ulong actualFloor, out ulong actualMax), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unchanged, Is.EqualTo(original));
+            Assert.That(estimated, Is.EqualTo(actual));
+            Assert.That(estimatedFloor, Is.EqualTo(actualFloor));
+            Assert.That(estimatedMax, Is.EqualTo(actualMax));
+            Assert.That(estimated, Is.GreaterThan(original));
+        }
+    }
+
 }

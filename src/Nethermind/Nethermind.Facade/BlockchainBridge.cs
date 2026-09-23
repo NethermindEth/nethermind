@@ -223,6 +223,21 @@ namespace Nethermind.Facade
                 ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken)
                 : EstimateGasShareable(header, tx, errorMargin, cancellationToken);
 
+        public Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
+            Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken)
+        {
+            BlockHeader executionHeader = header.Clone();
+            if (HasOverrides(stateOverride, null, blockOverride))
+            {
+                using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(executionHeader, stateOverride, blockOverride);
+                GasEstimator estimator = new(scope.Component.TransactionProcessor, scope.Component.WorldState, specProvider, blocksConfig);
+                return estimator.EstimateFrameGas(tx, executionHeader, fillExecution, fillState, gasCap, errorMargin, cancellationToken);
+            }
+            using IReadOnlyTxProcessingScope shared = shareableTxProcessorSource.Build(executionHeader);
+            GasEstimator sharedEstimator = new(shared.TransactionProcessor, shared.WorldState, specProvider, blocksConfig);
+            return sharedEstimator.EstimateFrameGas(tx, executionHeader, fillExecution, fillState, gasCap, errorMargin, cancellationToken);
+        }
+
         private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
             using IReadOnlyTxProcessingScope scope = shareableTxProcessorSource.Build(header);

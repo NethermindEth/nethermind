@@ -535,9 +535,13 @@ public static class FrameTxValidation
     /// <param name="intrinsicGas">The intrinsic cost, charged before any frame runs.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
     /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit.</param>
+    /// <param name="estimateSignatureBytes">Reserve non-zero bytes for fixed-size empty signatures during simulation only.</param>
     /// <returns><c>false</c>, with all outputs 0, if the transaction carries no frames or the budget overflows <see cref="ulong"/>.</returns>
-    public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
+    public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
     {
+        if (estimateSignatureBytes)
+            return CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas, estimateSignatureBytes: true);
+
         // Read once: re-reading them to stamp the memo would key a value on stats it was not computed from.
         (int ZeroBytes, int NonZeroBytes) referenceCalldata = transaction.ReferenceCalldataStats;
         (int ZeroBytes, int NonZeroBytes) frameCalldata = transaction.FrameCalldataStats;
@@ -596,7 +600,7 @@ public static class FrameTxValidation
         return true;
     }
 
-    private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
+    private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
     {
         intrinsicGas = 0;
         floorGas = 0;
@@ -646,6 +650,17 @@ public static class FrameTxValidation
                 dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
                               + (ulong)signature.Msg.Length
                               + (ulong)signature.Signature.Length;
+                if (estimateSignatureBytes && signature.Signature.IsEmpty)
+                {
+                    ulong length = signature.Scheme switch
+                    {
+                        TxFrameSignature.SchemeSecp256k1 => TxFrameSignature.Secp256k1SignatureLength,
+                        TxFrameSignature.SchemeP256 => TxFrameSignature.P256SignatureLength,
+                        _ => 0,
+                    };
+                    tokens += length * spec.GasCosts.TxDataNonZeroMultiplier;
+                    dataLength += length;
+                }
                 signatureVerificationCost += SignatureVerificationGas(signature.Scheme);
             }
         }
@@ -694,11 +709,11 @@ public static class FrameTxValidation
         Transaction transaction,
         IReleaseSpec spec,
         out ulong executionReservation,
-        out ulong stateReservation)
+        out ulong stateReservation, bool estimateSignatureBytes = false)
     {
         executionReservation = 0;
         stateReservation = 0;
-        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _))
+        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _, estimateSignatureBytes))
         {
             return false;
         }

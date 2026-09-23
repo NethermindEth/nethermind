@@ -493,9 +493,10 @@ public partial class EthRpcModule(
 
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
-            Result frameGasResult = FillFrameGas(frameTx, head);
+            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head);
             if (!frameGasResult)
                 return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, ErrorCodes.InvalidInput);
+            frameTx.Frames = frameGasResult.Data;
         }
 
         if (rpcTx.Gas is null)
@@ -615,8 +616,9 @@ public partial class EthRpcModule(
         {
             SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
             if (search.IsError) return ResultWrapper<UInt256?>.Fail(search);
-            Result result = FillFrameGas(frameTx, search.Object!, stateOverride, blockOverride);
+            Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, stateOverride, blockOverride);
             if (!result) return ResultWrapper<UInt256?>.Fail(result.Error!, ErrorCodes.InvalidInput);
+            frameTx.Frames = result.Data;
         }
         return new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
             .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
