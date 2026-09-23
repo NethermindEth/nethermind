@@ -361,4 +361,25 @@ public partial class DebugRpcModuleTests
             Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
         }
     }
+
+    [Test]
+    public async Task Debug_traceCallMany_with_overrides_enforces_eip8037_total_cap(
+        [Values(0UL, 1_000_000_000_000UL)] ulong gasCap)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Amsterdam.Instance) { AllowTestChainOverride = false });
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
+
+        // State overrides route the request through the simulate path, which takes the gas-less default at face value.
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            ctx.DebugRpcModule.debug_traceCallMany([CreateGasProbeBundle()], BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.Zero, result.Result.Error);
+        GethLikeTxTrace trace = result.Data.First().First();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.False);
+            Assert.That(trace.ReturnValue.ToUInt256(), Is.GreaterThan(UInt256.Zero));
+            Assert.That(trace.ReturnValue.ToUInt256(), Is.LessThanOrEqualTo((UInt256)Eip8037Constants.TxMaxTotalGasLimit));
+        }
+    }
 }

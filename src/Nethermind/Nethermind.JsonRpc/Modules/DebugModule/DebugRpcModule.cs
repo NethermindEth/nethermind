@@ -752,7 +752,11 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
-        ulong? defaultGas = jsonRpcConfig.GasCap.IsGasCapped() ? jsonRpcConfig.GasCap : null;
+        // The fill-in below makes the gas look caller-supplied to SimulateTxExecutor, which then skips both the
+        // gas-less clamps, so cap the default here exactly as the gas-less arm of ToTransaction does.
+        ulong? defaultGas = jsonRpcConfig.GasCap.IsGasCapped()
+            ? Math.Min(jsonRpcConfig.GasCap!.Value, specProvider.GetSpec(header).GetProcessorEnforcedTxGasLimitCap())
+            : null;
         foreach (TransactionBundle bundle in bundles)
         {
             foreach (TransactionForRpc call in bundle.Transactions)
