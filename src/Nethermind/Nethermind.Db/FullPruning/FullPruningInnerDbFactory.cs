@@ -32,12 +32,14 @@ namespace Nethermind.Db.FullPruning
         }
 
         /// <summary>
-        /// Deletes every indexed inner DB directory other than the one the next <see cref="CreateDb"/> opens.
+        /// Deletes every indexed inner DB directory other than the live one on disk.
         /// </summary>
         /// <remarks>
         /// An interrupted full pruning leaves its half-written copy next to the live inner DB, and the next
         /// pruning clears it when it starts. A caller that is discarding the whole state has no next pruning,
-        /// so it reclaims the copy here. Call it before the first <see cref="CreateDb"/>.
+        /// so it reclaims the copy here. The live DB is re-read from disk rather than taken from this factory's
+        /// index, which <see cref="CreateDb"/> and <see cref="GetFullDbPath"/> both advance, so the result does
+        /// not depend on what was called before it and a repeated call deletes nothing more.
         /// </remarks>
         /// <returns>The number of directories deleted.</returns>
         public int DeleteStaleInnerDbs()
@@ -46,7 +48,7 @@ namespace Nethermind.Db.FullPruning
             IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
             if (!directory.Exists) return 0;
 
-            int currentIndex = _index + 1; // GetRocksDbSettings increments before it opens
+            int currentIndex = GetStartingIndex(_path) + 1; // GetRocksDbSettings increments before it opens
             int deleted = 0;
             foreach (IDirectoryInfo subDirectory in directory.EnumerateDirectories())
             {

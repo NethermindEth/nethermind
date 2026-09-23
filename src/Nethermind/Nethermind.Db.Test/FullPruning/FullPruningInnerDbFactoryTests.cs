@@ -75,6 +75,22 @@ namespace Nethermind.Db.Test.FullPruning
         }
 
         [Test]
+        public void keeps_the_live_db_when_the_factory_already_resolved_a_path()
+        {
+            // GetFullDbPath advances the factory's index as a side effect, so the live DB must come from disk.
+            TestContext test = new();
+            test.Directory.Exists.Returns(true);
+            IDirectoryInfo live = Dir("0");
+            IDirectoryInfo leftover = Dir("1");
+            test.Directory.EnumerateDirectories().Returns(new[] { live, leftover });
+            test.TestedDbFactory.GetFullDbPath(test.DbSettings);
+
+            Assert.That(test.TestedDbFactory.DeleteStaleInnerDbs(), Is.EqualTo(1));
+            live.DidNotReceive().Delete(Arg.Any<bool>());
+            leftover.Received(1).Delete(true);
+        }
+
+        [Test]
         public void deletes_every_indexed_db_when_the_main_directory_holds_the_db()
         {
             TestContext test = new();

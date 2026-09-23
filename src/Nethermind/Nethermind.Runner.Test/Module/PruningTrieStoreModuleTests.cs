@@ -139,7 +139,7 @@ public class PruningTrieStoreModuleTests
     [TestCase(Flags.Drop | Flags.Enabled, false)]
     public void State_db_is_opened_with_DeleteOnStart_only_when_dropping(Flags flags, bool expected)
     {
-        // MemDbFactory ignores DeleteOnStart, so the settings handed to the factory are the only evidence.
+        // A MemDb ignores DeleteOnStart, so the settings handed to the factory are the only evidence.
         using TempPath tempPath = TempPath.GetTempDirectory();
         DbSettings stateDbSettings = null;
         IDbFactory dbFactory = DbFactory(tempPath.Path);
@@ -156,9 +156,8 @@ public class PruningTrieStoreModuleTests
         Assert.That(stateDbSettings?.DeleteOnStart, Is.EqualTo(expected));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Dropping_reclaims_the_copy_left_by_an_interrupted_full_pruning(bool drop)
+    [Test]
+    public void Dropping_reclaims_the_copy_left_by_an_interrupted_full_pruning([Values] bool drop)
     {
         // Full pruning copies state/0 into state/1 and clears the loser when it finishes; interrupted, it leaves
         // both. Only the next pruning would clear the copy, and a flat node never runs one.

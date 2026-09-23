@@ -17,9 +17,8 @@ namespace Nethermind.Runner.Test.Module;
 [Parallelizable(ParallelScope.All)]
 public class FlatWorldStateModuleTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Drop_step_is_registered_before_InitializeBlockchain_only_when_flagged(bool drop)
+    [Test]
+    public void Drop_step_is_registered_before_InitializeBlockchain_only_when_flagged([Values] bool drop)
     {
         // The dependent edge is what keeps the deletion inside init rather than under block processing.
         using IContainer container = new ContainerBuilder()

@@ -171,10 +171,21 @@ public class PruningTrieStoreModule : Module
         return true;
     }
 
-    private static bool HasSstFiles(IFileSystem fileSystem, string path) =>
-        fileSystem.Directory.Exists(path)
-        // AllDirectories covers the indexed state/0 layout as well as the legacy main-directory one.
-        && fileSystem.Directory.EnumerateFiles(path, "*.sst", SearchOption.AllDirectories).Any();
+    private static bool HasSstFiles(IFileSystem fileSystem, string path)
+    {
+        try
+        {
+            return fileSystem.Directory.Exists(path)
+                   // AllDirectories covers the indexed state/0 layout as well as the legacy main-directory one.
+                   && fileSystem.Directory.EnumerateFiles(path, "*.sst", SearchOption.AllDirectories).Any();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Only the log level depends on this, so it must not abort startup. Cannot tell: warn rather
+            // than drop a possibly populated store quietly.
+            return true;
+        }
+    }
 
     private static void DeleteStaleInnerDbs(FullPruningInnerDbFactory innerDbFactory, ILogManager logManager)
     {
