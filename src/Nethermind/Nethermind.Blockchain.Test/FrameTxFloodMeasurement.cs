@@ -272,6 +272,8 @@ public class FrameTxFloodMeasurement
     /// <see cref="FloodOutcome.MaxLagUs"/> is a running maximum over every submission-lag sample in the
     /// window, so a single scheduling outlier can fail an otherwise-sustained point and forfeit the rest of
     /// the ramp. One retry absorbs a transient outlier without letting the ramp run past a genuine ceiling.
+    /// This changes acceptance from one successful measurement to at least one of two; the summary reports
+    /// how many retries were used so consumers can reject retried ramps.
     /// </summary>
     private const int MaxRatePointRetries = 1;
 
@@ -723,6 +725,7 @@ public class FrameTxFloodMeasurement
         // still flushed below even if the ramp loop or the after-baseline re-measurement throws, and a
         // throw from the latter can no longer erase a ramp failure already caught below (see `failure`).
         List<string> rowLines = [];
+        int retriesUsed = 0;
 
         Exception? failure = null;
         try
@@ -732,12 +735,9 @@ public class FrameTxFloodMeasurement
                 FloodOutcome outcome = default;
                 bool sustained = false;
 
-                // F-17: MaxLagUs is a running maximum over every submission-lag sample in the window, so
-                // one scheduling outlier can fail an otherwise-sustained point and forfeit the rest of the
-                // ramp. A bounded single retry absorbs that transient class without letting the ramp run
-                // past a genuine ceiling: a point that fails twice still breaks it.
                 for (int attempt = 1; attempt <= MaxRatePointRetries + 1; attempt++)
                 {
+                    if (attempt > 1) retriesUsed++;
                     outcome = measureAtRate(rate);
 
                     double periodUs = 1_000_000.0 / rate;
@@ -746,8 +746,7 @@ public class FrameTxFloodMeasurement
 
                     bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
                     sustained = rateHeld && lagBounded;
-                    // The plan's no-backlog condition, kept separate from `sustained` above: five CI runs and
-                    // every published figure already rest on `sustained`'s current meaning, so it must not change.
+                    // Keep the plan's no-backlog condition separate from the existing sustained metric.
                     bool sustainedNoBacklog = sustained && pendingPoolStable;
                     double w = Percentile(outcome.ProcessMicros, 0.50);
 
@@ -790,17 +789,18 @@ public class FrameTxFloodMeasurement
             failure = ex;
         }
 
-        // Bracketing baseline drift guard, mirroring flood_delay's: these rows decide R_max and previously
-        // carried no drift check at all. Measured in its own try so a throw here cannot discard rowLines or
-        // replace a ramp failure already caught above (finding #1 on #13650's review).
+        // Bracketing baseline drift guard, mirroring flood_delay's. Measured in its own try so a throw here
+        // cannot discard rowLines or replace a ramp failure already caught above.
         string driftFields;
+        double baselineDriftPct = double.NaN;
+        double baselineTailDriftPct = double.NaN;
         try
         {
             List<double> baselineAfter = measureBaselineAfter();
             double w0After = Percentile(baselineAfter, 0.50);
             double w0p99After = Percentile(baselineAfter, 0.99);
-            double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
-            double baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(w0p99After - w0p99) / w0p99 * 100;
+            baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
+            baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(w0p99After - w0p99) / w0p99 * 100;
             bool driftValid = baselineDriftPct < MaxBaselineDriftPercent && baselineTailDriftPct < MaxBaselineTailDriftPercent;
             driftFields = $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
                           + $"valid={(driftValid ? "yes" : "no")}";
@@ -835,10 +835,20 @@ public class FrameTxFloodMeasurement
              + $"capacity_sustained_tx_per_s={lastSustained:F1} capacity_lower={lastSustained:F1} "
              + $"capacity_upper={(censored ? "unbounded" : capacityUpper.ToString("F1"))} "
              + $"censored={(censored ? "yes" : "no")} "
-             + $"basis=bounded_submission_lag note=B_not_fixed {driftFields}");
+             + $"basis=bounded_submission_lag retries_used={retriesUsed} "
+             + $"max_rate_point_retries={MaxRatePointRetries} note=B_not_fixed {driftFields}");
 
-        Assert.That(lastSustained, Is.GreaterThan(0),
-            "the node sustained none of the offered rates, so the ramp's lowest point is already saturated");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baselineDriftPct, Is.LessThan(BrokenBaselineDriftPercent),
+                $"the two idle baselines' medians disagree by {baselineDriftPct:F1}%, so the ramp spans "
+                + "different machine states and its capacity is unusable");
+            Assert.That(baselineTailDriftPct, Is.LessThan(BrokenBaselineTailDriftPercent),
+                $"the two idle baselines' p99s disagree by {baselineTailDriftPct:F1}%, so the ramp spans "
+                + "different machine states and its capacity is unusable");
+            Assert.That(lastSustained, Is.GreaterThan(0),
+                "the node sustained none of the offered rates, so the ramp's lowest point is already saturated");
+        }
     }
 
     private List<double> MeasureBlockProcessing(TimeSpan window, TimeSpan warmup)
