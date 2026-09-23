@@ -47,6 +47,11 @@ public class NibbleTests
         Assert.That(result, Is.EqualTo(expected));
     }
 
+    // [] is a null-reference span, so a write for a zero length faults here instead of corrupting the heap.
+    [Test]
+    public void BytesToNibbleBytes_EmptyInput_ReturnsEmpty() =>
+        Assert.That(Nibbles.BytesToNibbleBytes([]), Is.Empty);
+
     [Test]
     public void BytesToNibbleBytes_Vector128Size_ProducesCorrectOutput()
     {
@@ -70,10 +75,8 @@ public class NibbleTests
     [Test]
     public void BytesToNibbleBytes_LargerThanVector128_ProducesCorrectOutput()
     {
-        // Test with 33 bytes - triggers multiple Vector128 iterations
-        // This would have caught the out-of-bounds bug where second iteration
-        // read from bytes[0] instead of bytes[processed]
-        // Use distinct values in each chunk to detect re-reading
+        // 33 bytes: on the 128-bit path, blocks at 0 and 16, then a final block at 17
+        // Distinct values in each chunk expose a block read from the wrong offset
         byte[] input = new byte[33];
         for (int i = 0; i < input.Length; i++)
         {
@@ -91,7 +94,6 @@ public class NibbleTests
         Assert.That(result.Length, Is.EqualTo(66));
 
         // Verify each byte was correctly split into two nibbles
-        // With the bug, bytes 16-31 would have nibbles from bytes 0-15 instead
         for (int i = 0; i < input.Length; i++)
         {
             byte expectedHigh = (byte)(input[i] >> 4);
@@ -128,10 +130,8 @@ public class NibbleTests
     [Test]
     public void BytesToNibbleBytes_LargerThanVector256_ProducesCorrectOutput()
     {
-        // Test with 65 bytes - triggers multiple Vector256 iterations on AVX2 systems
-        // This would have caught the out-of-bounds bug where second iteration
-        // read from bytes[0] instead of bytes[processed]
-        // Use distinct values in each chunk to detect re-reading
+        // 65 bytes: on AVX2, blocks at 0 and 32, then a final block at 33
+        // Distinct values in each chunk expose a block read from the wrong offset
         byte[] input = new byte[65];
         for (int i = 0; i < input.Length; i++)
         {
@@ -149,7 +149,6 @@ public class NibbleTests
         Assert.That(result.Length, Is.EqualTo(130));
 
         // Verify each byte was correctly split into two nibbles
-        // With the bug, bytes 32-63 would have nibbles from bytes 0-31 instead
         for (int i = 0; i < input.Length; i++)
         {
             byte expectedHigh = (byte)(input[i] >> 4);
@@ -161,12 +160,9 @@ public class NibbleTests
     }
 
     [Test]
-    public void BytesToNibbleBytes_Vector256ThenVector128_ProducesCorrectOutput()
+    public void BytesToNibbleBytes_Vector256OverlappingTail_ProducesCorrectOutput()
     {
-        // Test with 80 bytes - on AVX2 systems this triggers:
-        // - Vector256 processes 64 bytes (2 iterations of 32 bytes)
-        // - Vector128 processes remaining 16 bytes
-        // With the bug, Vector128 would read from bytes[0] instead of bytes[64]
+        // 80 bytes: on AVX2, blocks at 0 and 32, then a final block at 48 that overlaps the second
         byte[] input = new byte[80];
         for (int i = 0; i < input.Length; i++)
         {
@@ -179,7 +175,6 @@ public class NibbleTests
         Assert.That(result.Length, Is.EqualTo(160));
 
         // Verify each byte was correctly split into two nibbles
-        // With the bug, bytes 64-79 would show nibbles from bytes 0-15
         for (int i = 0; i < input.Length; i++)
         {
             byte expectedHigh = (byte)(input[i] >> 4);
@@ -193,8 +188,7 @@ public class NibbleTests
     [Test]
     public void BytesToNibbleBytes_MultipleVector128Iterations_ProducesCorrectOutput()
     {
-        // Test with 48 bytes - triggers 3 Vector128 iterations (16 bytes each)
-        // With the bug, second and third iterations would read from wrong offset
+        // 48 bytes: on the 128-bit path, blocks at 0, 16 and 32
         byte[] input = new byte[48];
         for (int i = 0; i < input.Length; i++)
         {

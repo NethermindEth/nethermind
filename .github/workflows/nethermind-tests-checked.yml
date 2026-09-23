@@ -129,6 +129,15 @@ jobs:
               artifact: release
               avx512: 1
               require-avx512: 1
+          # Hosted runners have AVX2, so no other lane runs the x64 128-bit nibble loops.
+          - project: Nethermind.Trie.Test
+            variant:
+              label: no-avx2
+              dotnet-args: ''
+              hw-intrinsic: ''
+              artifact: release
+              avx2: 0
+              avx512: 0
         exclude:
           - { variant: *no_intrinsics, project: Nethermind.Api.Test }
           - { variant: *no_intrinsics, project: Nethermind.Config.Test }
@@ -156,6 +165,7 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+          DOTNET_EnableAVX2: ${{ matrix.variant.avx2 }}
           DOTNET_EnableAVX512: ${{ matrix.variant.avx512 }}
           NETHERMIND_TEST_REQUIRE_AVX2: ${{ matrix.variant.require-avx2 }}
           NETHERMIND_TEST_REQUIRE_AVX512: ${{ matrix.variant.require-avx512 }}
@@ -198,6 +208,9 @@ jobs:
           test_args=(--no-build --no-restore
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
+          if [[ "${{ matrix.variant.label }}" == "no-avx2" ]]; then
+            test_args+=(-- --filter "FullyQualifiedName~HexPrefixTests|FullyQualifiedName~NibbleTests")
+          fi
 
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
 
