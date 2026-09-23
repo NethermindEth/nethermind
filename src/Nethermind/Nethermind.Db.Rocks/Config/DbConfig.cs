@@ -431,9 +431,6 @@ public class DbConfig : IDbConfig
     public string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
     public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
 
-    public string? PreimageDbRocksDbOptions { get; set; } = "";
-    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
-
     public string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; } = "";
     public string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
 }

@@ -9,7 +9,6 @@ public class FlatDbConfig : IFlatDbConfig
 {
     public bool Enabled { get; set; } = true;
     public FlatDbOnRepair OnRepair { get; set; } = FlatDbOnRepair.Resync;
-    public bool EnablePreimageRecording { get; set; } = false;
     public bool HistoryEnabled { get; set; } = false;
     public HistoryRetentionMode HistoryRetention { get; set; } = HistoryRetentionMode.None;
     public ulong HistoryRetentionBlocks { get; set; } = 0;
@@ -37,6 +36,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int ArchiveProofRecentEpochs { get; set; } = 0;
     public int ArchiveProofFineEpochs { get; set; } = 0;
     public bool ImportFromPruningTrieState { get; set; } = false;
+    public bool DropPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
