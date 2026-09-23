@@ -52,7 +52,11 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             // Block preprocessor steps, injected as an ordered IReadOnlyList<IBlockPreprocessorStep>.
             // Consensus plugins prepend/append their own steps via the same DSL.
-            .AddFirst<IBlockPreprocessorStep, RecoverSignatures>()
+            // Single instance: the engine handler starts a recovery that this step must see in flight.
+            .AddSingleton<RecoverSignatures>()
+            .AddFirst<IBlockPreprocessorStep>(static ctx => ctx.Resolve<RecoverSignatures>())
+            // The prewarmer waits on the recovery this instance has in flight rather than polling the transactions.
+            .Bind<ISenderRecoveryTracker, RecoverSignatures>()
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
@@ -84,7 +88,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()
-            .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))
             .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))

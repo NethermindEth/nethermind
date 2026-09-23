@@ -1,7 +1,7 @@
 # C# Coding Style
 
 - Follow [CONTRIBUTING.md](../../CONTRIBUTING.md) and the `.editorconfig` rules
-- Prefer the latest C# syntax and conventions
+- Prefer the latest C# syntax and conventions allowed by `LangVersion` in [Directory.Build.props](../../Directory.Build.props)
 - Prefer file-scoped namespaces (for existing files, follow their style)
 - Prefer pattern matching and switch expressions over traditional control flow
 - Use `nameof` operator instead of string literals for member references
