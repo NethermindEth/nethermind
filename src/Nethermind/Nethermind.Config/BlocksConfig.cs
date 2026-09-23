@@ -66,7 +66,13 @@ namespace Nethermind.Config
 
         public int PreWarmStateConcurrency { get; set; } = 0;
 
+        public bool DedicatedProcessingThread { get; set; }
+
         public int MempoolPreWarmConcurrency { get; set; } = 0;
+
+        public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
+
+        public bool PreWarmCoreSplit { get; set; } = true;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
 

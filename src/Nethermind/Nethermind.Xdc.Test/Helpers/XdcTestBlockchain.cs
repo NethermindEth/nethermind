@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -477,6 +478,7 @@ public class XdcTestBlockchain : TestBlockchain
         params Transaction[] transactions)
     {
         Block b = await _fromContainer.TestBlockchainUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead | TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, CreateCancellationSource().Token, transactions);
+        await BlockProcessingQueue.WaitForBlockProcessing(CancellationToken);
 
         if (withQC)
             CreateAndCommitQC((XdcBlockHeader)b.Header);

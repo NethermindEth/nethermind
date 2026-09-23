@@ -41,6 +41,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private static readonly TimeSpan SenderArrivalWindow = TimeSpan.FromMilliseconds(1);
 
     private readonly int _concurrencyLevel;
+    // On a CPU with performance and efficiency cores, which workers run where; null elsewhere.
+    private readonly PerformanceCores.PrewarmSplit? _coreSplit;
     // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
     private readonly int _speculativeConcurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
@@ -101,7 +103,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         preBlockCaches,
         logManager,
         blocksConfig.MempoolPreWarmConcurrency,
-        senderRecovery) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        senderRecovery)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        // Under All nothing is pinned, and the near workers are sized around where the processing thread is pinned.
+        _coreSplit = blocksConfig.PreWarmCoreSplit ? PerformanceCores.PrewarmFor(blocksConfig.ProcessingCores) : null;
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IPrewarmerEnv> poolPolicy,
@@ -878,9 +885,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     Math.Clamp(queue.Degree, 1, pending),
                     parallelOptions,
                     queue.RentWorker,
-                    static (_, worker) =>
+                    static (slot, worker) =>
                     {
-                        worker.Drain();
+                        worker.Drain(slot);
                         return worker;
                     },
                     static worker => worker.Park());
@@ -903,6 +910,33 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         ArrayPool<int>.Shared.Return(claimed);
+    }
+
+    /// <summary>
+    /// Claims one of <paramref name="count"/> jobs from the front or the back. <paramref name="taken"/> packs how many
+    /// were taken from each end, so the two ends meet on a single exchange and never hand out the same job.
+    /// </summary>
+    internal static bool TryClaimJob(ref long taken, int count, bool fromBack, out int index)
+    {
+        while (true)
+        {
+            long current = Volatile.Read(ref taken);
+            int front = (int)current;
+            int back = (int)(current >> 32);
+            // Once the jobs are gone every worker asks again on its way to the late runs; nothing changes for that.
+            if (front + back >= count)
+            {
+                index = -1;
+                return false;
+            }
+
+            long next = fromBack ? current + (1L << 32) : current + 1;
+            if (Interlocked.CompareExchange(ref taken, next, current) == current)
+            {
+                index = fromBack ? count - 1 - back : front;
+                return true;
+            }
+        }
     }
 
     private static int CountUnclaimed(ReadOnlySpan<int> claimed)
@@ -1415,7 +1449,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private ISet<Hash256>? _speculativelyWarmed;
         private int[] _claimed = [];
         private int _txCount;
-        private int _nextJob;
+        // Jobs taken from the front in the low half, from the back in the high half; see TryClaimJob.
+        private long _jobsTaken;
         private int _firstUnclaimed;
         private int _waiter;
         private int _active;
@@ -1441,7 +1476,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             _speculativelyWarmed = blockState.SpeculativelyWarmed;
             _claimed = claimed;
             _txCount = txCount;
-            _nextJob = 0;
+            _jobsTaken = 0;
             _firstUnclaimed = 0;
             _waiter = 0;
             _active = 0;
@@ -1463,18 +1498,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Volatile.Write(ref _inUse, 0);
         }
 
-        public bool TryTakeJob(out WarmupJob job)
+        /// <summary>
+        /// Takes the next job from the front - the heavy jobs, then block order, which is what the processing thread
+        /// reaches first - or, for a worker on an efficiency core, from the back, which it reaches last.
+        /// </summary>
+        public bool TryTakeJob(bool fromBack, out WarmupJob job)
         {
             ArrayPoolList<WarmupJob> jobs = _scratch.Jobs;
-            // Once the jobs are gone every worker asks again on its way to the late runs; do not bump the counter for that.
-            if (Volatile.Read(ref _nextJob) < jobs.Count)
+            if (TryClaimJob(ref _jobsTaken, jobs.Count, fromBack, out int index))
             {
-                int index = Interlocked.Increment(ref _nextJob) - 1;
-                if (index < jobs.Count)
-                {
-                    job = jobs[index];
-                    return true;
-                }
+                job = jobs[index];
+                return true;
             }
 
             job = default;
@@ -1775,18 +1809,29 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         public void Park() => _queue.Park(this);
 
-        /// <summary>One of the fan-out's own workers; it counts against the degree from here until it leaves, however it leaves.</summary>
-        public void Drain()
+        /// <summary>
+        /// One of the fan-out's own workers; it counts against the degree from here until it leaves, however it leaves.
+        /// On a CPU with performance and efficiency cores the first workers stay on the performance cores and warm what
+        /// the processing thread reaches next; the rest stay on the efficiency cores, warm the far end of the block
+        /// and leave the late arrivals, which the processing thread reaches soon, to the others.
+        /// </summary>
+        public void Drain(int slot)
         {
             WarmupQueue queue = _queue;
+            BlockCachePreWarmer preWarmer = queue.PreWarmer;
+            PerformanceCores.PrewarmSplit? split = preWarmer._coreSplit;
+            bool far = split is not null && slot >= split.NearWorkers;
+            using PerformanceCores.Scope cores = split is null ? default : far ? split.NarrowFar(preWarmer._logger) : split.NarrowNear(preWarmer._logger);
             queue.Enter();
             try
             {
                 CancellationToken token = queue.Token;
-                while (!token.IsCancellationRequested && queue.TryTakeJob(out WarmupJob job))
+                while (!token.IsCancellationRequested && queue.TryTakeJob(far, out WarmupJob job))
                 {
                     Warm(job.Transactions.AsSpan(), job.LastIndex);
                 }
+
+                if (far) return;
 
                 bool waiter = false;
                 while (!token.IsCancellationRequested)
@@ -1821,6 +1866,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // Dispatched after the block finished: leave without renting an env.
                 if (token.IsCancellationRequested) return;
 
+                BlockCachePreWarmer preWarmer = _queue.PreWarmer;
+                // Late runs are the ones the processing thread reaches soon.
+                using PerformanceCores.Scope cores = preWarmer._coreSplit?.NarrowNear(preWarmer._logger) ?? default;
                 try
                 {
                     Attach();

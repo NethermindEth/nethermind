@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
@@ -64,14 +65,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             SingleReader = true,
         });
 
-    private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(
-        new BoundedChannelOptions(MaxProcessingQueueSize)
-        {
-            // Optimize for single reader concurrency
-            SingleReader = true,
-            // If queues are empty we want the block processing to continue on NewPayload thread and inherit its priority
-            AllowSynchronousContinuations = true,
-        });
+    private readonly Channel<BlockRef> _blockQueue;
+    private readonly object _processingSignal = new(); // Monitor.Wait/Pulse require an object rather than Lock.
+    private bool _processingQueueCompleted;
 
     private bool _recoveryComplete = false;
     private int _queueCount;
@@ -122,6 +118,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _branchProcessor = branchProcessor;
         _specProvider = specProvider;
         _options = options;
+        _blockQueue = Channel.CreateBounded<BlockRef>(new BoundedChannelOptions(MaxProcessingQueueSize)
+        {
+            SingleReader = true,
+            // In non-dedicated mode, an empty queue lets processing continue on the NewPayload thread and inherit its priority.
+            AllowSynchronousContinuations = !options.DedicatedProcessingThread,
+        });
         _branchBuilder = new ProcessingBranchBuilder(blockTree, stateReader, preprocessorSteps, logManager.GetClassLogger<ProcessingBranchBuilder>());
 
         _stats = processingStats;
@@ -382,6 +384,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                         {
                             await _blockQueue.Writer.WriteAsync(blockRef);
                         }
+                        SignalProcessing();
                     }
                 }
                 else
@@ -410,6 +413,19 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
+        ReadOnlySpan<int> processingCpus = _options.DedicatedProcessingThread
+            ? PerformanceCores.DedicatedCpus(_options.ProcessingCores)
+            : PerformanceCores.Cpus(_options.ProcessingCores);
+        if (processingCpus.Length > 0)
+        {
+            if (_logger.IsInfo) _logger.Info($"Block processing runs on {_options.ProcessingCores} cores only: CPUs {string.Join(',', processingCpus.ToArray())}");
+        }
+        else if (_options.ProcessingCores != ProcessingCores.All && _logger.IsDebug)
+        {
+            // The default on every host, and most have one kind of core, so this is no warning.
+            _logger.Debug($"Blocks.ProcessingCores is {_options.ProcessingCores}, but this host gives it nothing to narrow, so block processing runs on every core.");
+        }
+
         _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
@@ -430,6 +446,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public void Resume()
     {
         if (_pauseGate.Resume() && _logger.IsInfo) _logger.Info("Block processing resumed.");
+        SignalProcessing();
     }
 
     public async Task StopAsync(bool processRemainingBlocks = false)
@@ -448,15 +465,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (processRemainingBlocks)
         {
             _pauseGate.Resume();
+            SignalProcessing();
             _recoveryQueue.Writer.TryComplete();
             await (_recoveryTask ?? Task.CompletedTask);
-            _blockQueue.Writer.TryComplete();
+            CompleteProcessingQueue();
         }
         else
         {
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _loopCancellationSource);
+            _loopCancellationSource?.Cancel();
             _recoveryQueue.Writer.TryComplete();
-            _blockQueue.Writer.TryComplete();
+            CompleteProcessingQueue();
         }
 
         try
@@ -465,6 +483,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         finally
         {
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _loopCancellationSource);
             _branchProcessor.BlockExecuted -= OnBlockExecuted;
             // Blocks still queued when the loops ended get no BlockRemoved; whoever waits for them is let go here,
             // whether or not a loop faulted, since a waiter may be holding the engine API's lock.
@@ -519,6 +538,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 try
                 {
                     await _blockQueue.Writer.WriteAsync(blockRef);
+                    SignalProcessing();
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -551,7 +571,20 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         try
         {
-            await RunProcessingLoop();
+            if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
+            FireProcessingQueueEmpty();
+            GCScheduler.Instance.SwitchOnBackgroundGC(0);
+
+            if (_options.DedicatedProcessingThread)
+            {
+                await Task.Factory.StartNew(RunDedicatedProcessingLoop, CancellationToken.None,
+                    TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+            else
+            {
+                await RunProcessingLoop();
+            }
+            if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
             if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
         }
         catch (OperationCanceledException)
@@ -566,40 +599,84 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
 
+    private void RunDedicatedProcessingLoop()
+    {
+        Thread.CurrentThread.Name = "Nethermind Block Processing";
+        using ThreadExtensions.Disposable priority = Thread.CurrentThread.SetHighestPriority();
+        using PerformanceCores.Scope affinity = PerformanceCores.NarrowDedicatedThread(_options.ProcessingCores, background: false, _logger);
+        CancellationToken cancellationToken = CancellationToken;
+        using CancellationTokenRegistration registration = cancellationToken.UnsafeRegister(static state => ((BlockchainProcessor)state!).SignalProcessing(), this);
+        while (WaitForQueuedBlocks(cancellationToken))
+        {
+            ProcessQueuedBlocks();
+        }
+    }
+
+    private bool WaitForQueuedBlocks(CancellationToken cancellationToken)
+    {
+        lock (_processingSignal)
+        {
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!_pauseGate.IsPaused && _blockQueue.Reader.Count != 0) return true;
+                if (_processingQueueCompleted && _blockQueue.Reader.Count == 0) return false;
+                // Check and park under the same lock as notifications so writes and resumes cannot be lost.
+                Monitor.Wait(_processingSignal);
+            }
+        }
+    }
+
+    private void SignalProcessing()
+    {
+        if (!_options.DedicatedProcessingThread) return;
+        lock (_processingSignal) Monitor.PulseAll(_processingSignal);
+    }
+
+    private void CompleteProcessingQueue()
+    {
+        _blockQueue.Writer.TryComplete();
+        lock (_processingSignal)
+        {
+            _processingQueueCompleted = true;
+            Monitor.PulseAll(_processingSignal);
+        }
+    }
+
     private async Task RunProcessingLoop()
     {
-        if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
-
-        FireProcessingQueueEmpty();
-
-        GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
-            // Have block, switch off background GC timer
-            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
-            IsProcessingBlock = true;
-            bool previousMainThread = IsBlockProcessingThread;
-            IsBlockProcessingThread = true;
-            try
-            {
-                ProcessBlocks();
-            }
-            finally
-            {
-                IsBlockProcessingThread = previousMainThread;
-                IsProcessingBlock = false;
-            }
+            // Released within the iteration, before the loop awaits and the thread can go back to the pool.
+            using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores, _logger);
+            ProcessQueuedBlocks();
+        }
+    }
 
-            if (_logger.IsTrace) Trace();
-            FireProcessingQueueEmpty();
-
-            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
+    private void ProcessQueuedBlocks()
+    {
+        // Have block, switch off background GC timer
+        GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
+        IsProcessingBlock = true;
+        bool previousMainThread = IsBlockProcessingThread;
+        IsBlockProcessingThread = true;
+        try
+        {
+            ProcessBlocks();
+        }
+        finally
+        {
+            IsBlockProcessingThread = previousMainThread;
+            IsProcessingBlock = false;
         }
 
-        if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+        if (_logger.IsTrace) Trace();
+        FireProcessingQueueEmpty();
+
+        GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace() => _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
@@ -910,6 +987,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         public bool StoreReceiptsByDefault { get; set; } = true;
 
+        /// <summary>Whether queued blocks use a dedicated thread with topology-based affinity. Defaults to false.</summary>
+        public bool DedicatedProcessingThread { get; set; }
+
         public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
+
+        /// <summary>The logical processors block processing runs on, on an Intel hybrid CPU; see <see cref="PerformanceCores"/>.</summary>
+        public ProcessingCores ProcessingCores { get; set; }
     }
 }
