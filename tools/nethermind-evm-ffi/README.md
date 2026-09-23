@@ -3,6 +3,9 @@
 Nethermind's EVM as a **redistributable native package** with a C ABI and Rust bindings, so a
 Rust program — rbuilder in particular — can execute transactions with it.
 
+**Setting this up for the first time? Follow [GUIDE.md](GUIDE.md)** — prerequisites, clone, build,
+verify, consume from your own crate, and benchmark, in order. This README is the reference.
+
 The package splits in two, and the split is the point:
 
 | built here, needs the repo and a .NET SDK | consumed anywhere, needs neither |
