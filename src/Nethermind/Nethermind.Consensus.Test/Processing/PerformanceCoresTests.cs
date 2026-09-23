@@ -98,7 +98,7 @@ public class PerformanceCoresTests
         // 1 inherited the narrowed mask, 2 was pinned elsewhere, 3 exited before the scan read it.
         Dictionary<int, PerformanceCores.CpuMask> threads = new() { [1] = narrowed, [2] = other };
 
-        int widened = PerformanceCores.WidenInheritors([1, 2, 3], [narrowed], target, static _ => false,
+        int widened = PerformanceCores.WidenInheritors([1, 2, 3], [narrowed], target, NotScoped,
             (int tid, out PerformanceCores.CpuMask mask) => threads.TryGetValue(tid, out mask) ? 0 : -1,
             (int tid, ref PerformanceCores.CpuMask mask) =>
             {
@@ -125,7 +125,12 @@ public class PerformanceCoresTests
         // mask from a worker and is in no scope.
         Dictionary<int, PerformanceCores.CpuMask> threads = new() { [1] = performance, [2] = efficiency, [3] = efficiency };
 
-        int widened = PerformanceCores.WidenInheritors([1, 2, 3], [performance, efficiency], target, static tid => tid is 1 or 2,
+        int widened = PerformanceCores.WidenInheritors([1, 2, 3], [performance, efficiency], target,
+            (int tid, out PerformanceCores.CpuMask wanted) =>
+            {
+                wanted = tid == 1 ? performance : efficiency;
+                return tid is 1 or 2 ? PerformanceCores.ScopeState.Narrowed : PerformanceCores.ScopeState.None;
+            },
             (int tid, out PerformanceCores.CpuMask mask) => threads.TryGetValue(tid, out mask) ? 0 : -1,
             (int tid, ref PerformanceCores.CpuMask mask) =>
             {
@@ -179,6 +184,66 @@ public class PerformanceCoresTests
             Assert.That(PerformanceCores.RestoreTarget(pinnedByOperator, narrowed, allowed).SequenceEqual(pinnedByOperator), Is.True,
                 "a mask of the thread's own is restored as it was");
         }
+    }
+
+    [Test]
+    public void WidenInheritors_ThreadEnteringItsScopeMidScan_KeepsItsScopesMask()
+    {
+        PerformanceCores.CpuMask performance = Mask(Enumerable.Range(0, 12).ToArray());
+        PerformanceCores.CpuMask target = Mask(Enumerable.Range(0, 20).ToArray());
+        // The processing loop resumes on an inheritor: outside any scope when the scan checks it, inside its scope,
+        // narrowed, by the time the scan has written the target.
+        Dictionary<int, PerformanceCores.CpuMask> threads = new() { [1] = performance };
+        int checks = 0;
+
+        int widened = PerformanceCores.WidenInheritors([1], [performance], target,
+            (int tid, out PerformanceCores.CpuMask wanted) =>
+            {
+                wanted = performance;
+                return checks++ == 0 ? PerformanceCores.ScopeState.None : PerformanceCores.ScopeState.Narrowed;
+            },
+            (int tid, out PerformanceCores.CpuMask mask) => threads.TryGetValue(tid, out mask) ? 0 : -1,
+            (int tid, ref PerformanceCores.CpuMask mask) =>
+            {
+                threads[tid] = mask;
+                return 0;
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(threads[1].SequenceEqual(performance), Is.True, "a block must not run unpinned because a scan raced its scope");
+            Assert.That(widened, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void WidenInheritors_ThreadStillEnteringItsScope_IsLeftToNarrowItself()
+    {
+        PerformanceCores.CpuMask performance = Mask(Enumerable.Range(0, 12).ToArray());
+        PerformanceCores.CpuMask target = Mask(Enumerable.Range(0, 20).ToArray());
+        Dictionary<int, PerformanceCores.CpuMask> threads = new() { [1] = performance };
+        int writes = 0;
+
+        PerformanceCores.WidenInheritors([1], [performance], target,
+            (int tid, out PerformanceCores.CpuMask wanted) =>
+            {
+                wanted = default;
+                return PerformanceCores.ScopeState.Entering;
+            },
+            (int tid, out PerformanceCores.CpuMask mask) => threads.TryGetValue(tid, out mask) ? 0 : -1,
+            (int tid, ref PerformanceCores.CpuMask mask) =>
+            {
+                writes++;
+                return 0;
+            });
+
+        Assert.That(writes, Is.Zero, "a thread publishing its scope narrows itself next, so the scan must not touch it");
+    }
+
+    private static PerformanceCores.ScopeState NotScoped(int tid, out PerformanceCores.CpuMask wanted)
+    {
+        wanted = default;
+        return PerformanceCores.ScopeState.None;
     }
 
     private static PerformanceCores.CpuMask Mask(params int[] cpus)

@@ -36,10 +36,19 @@ internal static partial class PerformanceCores
     private static int _scanRunning;
     private static int _restoreRefused;
 
-    // The threads a scope holds narrowed right now, by kernel thread id; the scan leaves them alone. A slot is taken
-    // before the thread is narrowed and freed after it is restored, so no narrowed thread is ever missing from here.
+    // The threads a scope holds narrowed right now, by kernel thread id, and the mask each wants. A slot holds the
+    // negated id while its mask is written and the id once it is published, and it is published before the thread
+    // narrows itself; it is freed before the thread is restored. The scan leaves these threads alone, and puts back
+    // the mask of one that entered its scope while the scan was widening it.
     private const int MaxScopes = 128;
     private static readonly int[] _scoped = new int[MaxScopes];
+    private static readonly CpuMask[] _scopedMasks = new CpuMask[MaxScopes];
+    // Bumped on every publish, so a scan copying a mask sees if the slot was freed and taken again meanwhile.
+    private static readonly int[] _scopedVersions = new int[MaxScopes];
+
+    internal enum ScopeState { None, Entering, Narrowed }
+
+    internal delegate ScopeState ScopeOf(int tid, out CpuMask wanted);
 
     internal delegate int GetAffinity(int tid, out CpuMask mask);
     internal delegate int SetAffinity(int tid, ref CpuMask mask);
@@ -79,15 +88,6 @@ internal static partial class PerformanceCores
         Selected(cores) is { } selection ? Narrow(selection, logger, widenOnDispose: true) : default;
 
     /// <summary>
-    /// Asks for a scan that puts back the threads which inherited a narrowed mask. The prewarm scopes do not ask on
-    /// their own disposal, which falls inside the block; the prewarm asks once its workers have joined.
-    /// </summary>
-    public static void ScheduleWidening()
-    {
-        if (OperatingSystem.IsLinux() && Host.Narrowed.Length > 0) RequestWidening();
-    }
-
-    /// <summary>
     /// How prewarm divides its workers between the core types: the first <see cref="PrewarmSplit.NearWorkers"/> run
     /// on the performance cores and warm what the processing thread reaches next, the rest on the efficiency cores and
     /// warm the far end of the block. Null on a CPU with one kind of core, or a cpuset holding only one kind.
@@ -112,23 +112,28 @@ internal static partial class PerformanceCores
         // pid 0 is the calling thread.
         if (sched_getaffinity(0, CpuMaskSize, out CpuMask previous) != 0) return default;
         previous = RestoreTarget(previous, Host.Narrowed, Host.Allowed);
-        if (!TryTakeSlot(out int slot)) return default;
-
         CpuMask mask = selection.Mask;
+        if (!TryTakeSlot(mask, out int slot)) return default;
+
         if (sched_setaffinity(0, CpuMaskSize, ref mask) == 0) return new Scope(slot, previous, logger, widenOnDispose);
 
         Volatile.Write(ref _scoped[slot], 0);
         return default;
     }
 
-    private static bool TryTakeSlot(out int slot)
+    private static bool TryTakeSlot(in CpuMask mask, out int slot)
     {
         int tid = CurrentThreadId();
         if (tid > 0)
         {
             for (slot = 0; slot < MaxScopes; slot++)
             {
-                if (Volatile.Read(ref _scoped[slot]) == 0 && Interlocked.CompareExchange(ref _scoped[slot], tid, 0) == 0) return true;
+                if (Volatile.Read(ref _scoped[slot]) != 0 || Interlocked.CompareExchange(ref _scoped[slot], -tid, 0) != 0) continue;
+
+                _scopedMasks[slot] = mask;
+                Interlocked.Increment(ref _scopedVersions[slot]);
+                Volatile.Write(ref _scoped[slot], tid);
+                return true;
             }
         }
 
@@ -158,6 +163,8 @@ internal static partial class PerformanceCores
         {
             if (_slot == 0) return;
 
+            // Freed first: a scan that finds the thread still narrowed after this widens it, which is where it is going.
+            Volatile.Write(ref _scoped[_slot - 1], 0);
             CpuMask restored = _previous;
             if (sched_setaffinity(0, CpuMaskSize, ref restored) != 0)
             {
@@ -168,7 +175,6 @@ internal static partial class PerformanceCores
                     _logger.Warn("A block processing thread could not restore its CPU affinity, so it was widened to every CPU the cpuset allows instead.");
             }
 
-            Volatile.Write(ref _scoped[_slot - 1], 0);
             if (_widenOnDispose) RequestWidening();
         }
     }
@@ -202,7 +208,7 @@ internal static partial class PerformanceCores
                 {
                     // Once the kernel has refused a restore the recorded allowed set is stale; every CPU is narrowed to the cpuset.
                     CpuMask target = Volatile.Read(ref _restoreRefused) == 0 ? Host.Allowed : CpuMask.Every();
-                    WidenInheritors(EnumerateThreads(), Host.Narrowed, target, IsScoped, sched_getaffinity, sched_setaffinity);
+                    WidenInheritors(EnumerateThreads(), Host.Narrowed, target, ScopeOfThread, sched_getaffinity, sched_setaffinity);
                 }
                 // An unforeseen failure leaves a thread narrowed, which the next scope's scan retries; the pool thread survives.
                 catch (Exception)
@@ -241,7 +247,8 @@ internal static partial class PerformanceCores
             try
             {
                 string? performanceCpus = ReadOrNull("/sys/devices/cpu_core/cpus");
-                if (performanceCpus is null || !TryReadAffinity(out CpuMask allowedMask)) return;
+                // Without a thread id the scan could not tell a scope's thread from an inheritor, so nothing narrows.
+                if (performanceCpus is null || CurrentThreadId() <= 0 || !TryReadAffinity(out CpuMask allowedMask)) return;
                 Allowed = allowedMask;
 
                 HashSet<int> allowed = [];
@@ -391,7 +398,7 @@ internal static partial class PerformanceCores
     /// scope back on <paramref name="target"/>.
     /// </summary>
     /// <returns>How many threads it put back.</returns>
-    internal static int WidenInheritors(IEnumerable<int> tids, CpuMask[] narrowed, CpuMask target, Func<int, bool> isScoped, GetAffinity getAffinity, SetAffinity setAffinity)
+    internal static int WidenInheritors(IEnumerable<int> tids, CpuMask[] narrowed, CpuMask target, ScopeOf scopeOf, GetAffinity getAffinity, SetAffinity setAffinity)
     {
         if (narrowed.Length == 0) return 0;
 
@@ -399,9 +406,14 @@ internal static partial class PerformanceCores
         foreach (int tid in tids)
         {
             // A thread that exited meanwhile fails the calls and is skipped.
-            if (isScoped(tid) || getAffinity(tid, out CpuMask current) != 0 || !IsAnyOf(current, narrowed)) continue;
-            // Checked again after the read: a scope opened in between must keep its mask.
-            if (!isScoped(tid) && setAffinity(tid, ref target) == 0) widened++;
+            if (scopeOf(tid, out _) != ScopeState.None || getAffinity(tid, out CpuMask current) != 0 || !IsAnyOf(current, narrowed)) continue;
+            CpuMask widenTo = target;
+            if (setAffinity(tid, ref widenTo) != 0) continue;
+
+            // The thread entered a scope after it was checked, and may have narrowed itself before the write above; its
+            // scope's mask goes back. One still entering narrows itself after publishing, so it overrides this write.
+            if (scopeOf(tid, out CpuMask wanted) == ScopeState.Narrowed) setAffinity(tid, ref wanted);
+            else widened++;
         }
 
         return widened;
@@ -424,27 +436,38 @@ internal static partial class PerformanceCores
         return false;
     }
 
-    private static bool IsScoped(int tid)
+    private static ScopeState ScopeOfThread(int tid, out CpuMask wanted)
     {
         for (int slot = 0; slot < MaxScopes; slot++)
         {
-            if (Volatile.Read(ref _scoped[slot]) == tid) return true;
+            int scoped = Volatile.Read(ref _scoped[slot]);
+            if (scoped == -tid)
+            {
+                wanted = default;
+                return ScopeState.Entering;
+            }
+
+            if (scoped != tid) continue;
+            int version = Volatile.Read(ref _scopedVersions[slot]);
+            wanted = _scopedMasks[slot];
+            // Freed or taken again while the mask was copied: the copy may mix two masks, so it is not used.
+            if (Volatile.Read(ref _scoped[slot]) == tid && Volatile.Read(ref _scopedVersions[slot]) == version) return ScopeState.Narrowed;
         }
 
-        return false;
+        wanted = default;
+        return ScopeState.None;
     }
 
-    private static int CurrentThreadId()
+    /// <summary>
+    /// The calling thread's kernel id, 0 where it cannot be had. Through <c>syscall</c> rather than <c>gettid</c>, which
+    /// glibc exports only from 2.30.
+    /// </summary>
+    private static int CurrentThreadId() => RuntimeInformation.ProcessArchitecture switch
     {
-        try
-        {
-            return gettid();
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return 0;
-        }
-    }
+        Architecture.X64 => (int)syscall(186),
+        Architecture.Arm64 => (int)syscall(178),
+        _ => 0,
+    };
 
     private static IEnumerable<int> EnumerateThreads()
     {
@@ -505,7 +528,7 @@ internal static partial class PerformanceCores
     private static int sched_setaffinity(int tid, ref CpuMask mask) => sched_setaffinity(tid, CpuMaskSize, ref mask);
 
     [DllImport("libc")]
-    private static extern int gettid();
+    private static extern long syscall(long number);
 
     [DllImport("libc")]
     private static extern int sched_getaffinity(int pid, nint cpusetsize, out CpuMask mask);
