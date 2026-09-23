@@ -14,4 +14,10 @@ public enum ProcessingCores
 
     /// <summary>One hyperthread of every performance core.</summary>
     PerformancePhysical,
+
+    /// <summary>
+    /// The fastest performance core, which prewarm then keeps clear of; the performance cores when they all report the
+    /// same top speed.
+    /// </summary>
+    Fastest,
 }

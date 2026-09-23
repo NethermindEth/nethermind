@@ -106,8 +106,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         senderRecovery)
     {
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
-        // Under All nothing is pinned, and the near workers are sized around a pinned processing thread.
-        _coreSplit = blocksConfig.PreWarmCoreSplit && blocksConfig.ProcessingCores != ProcessingCores.All ? PerformanceCores.Prewarm : null;
+        // Under All nothing is pinned, and the near workers are sized around where the processing thread is pinned.
+        _coreSplit = blocksConfig.PreWarmCoreSplit ? PerformanceCores.PrewarmFor(blocksConfig.ProcessingCores) : null;
     }
 
     internal BlockCachePreWarmer(

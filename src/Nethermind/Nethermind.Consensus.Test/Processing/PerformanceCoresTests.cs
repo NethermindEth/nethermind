@@ -240,6 +240,56 @@ public class PerformanceCoresTests
         Assert.That(writes, Is.Zero, "a thread publishing its scope narrows itself next, so the scan must not touch it");
     }
 
+    // Favored cores: 4-5 report the highest CPPC level, the other performance cores less, the efficiency cores least.
+    private static long? FavoredCore(int cpu) => cpu is 4 or 5 ? 72 : cpu < 12 ? 68 : 40;
+
+    [Test]
+    public void TryBuildMask_Fastest_FavoredCore_BothHyperthreadsOfThatCore()
+    {
+        bool narrows = PerformanceCores.TryBuildMask(ProcessingCores.Fastest, PerformanceCpus, Allowed("0-19"), Siblings, out PerformanceCores.CpuMask mask, out int[] cpus, FavoredCore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(narrows, Is.True);
+            Assert.That(cpus, Is.EqualTo(new[] { 4, 5 }));
+            Assert.That(Enumerable.Range(0, PerformanceCores.MaxCpus).Where(mask.Contains), Is.EqualTo(new[] { 4, 5 }));
+        }
+    }
+
+    [TestCase(true, TestName = "TryBuildMask_Fastest_EqualSpeeds_EveryPerformanceCore")]
+    [TestCase(false, TestName = "TryBuildMask_Fastest_UnknownSpeeds_EveryPerformanceCore")]
+    public void TryBuildMask_Fastest_NoFavoredCore_KeepsThePerformanceCores(bool known)
+    {
+        Func<int, long?> speeds = known ? static cpu => cpu < 12 ? 68 : 40 : static _ => null;
+
+        PerformanceCores.TryBuildMask(ProcessingCores.Fastest, PerformanceCpus, Allowed("0-19"), Siblings, out _, out int[] cpus, speeds);
+
+        Assert.That(cpus, Is.EqualTo(Enumerable.Range(0, 12).ToArray()), "without a faster core it narrows as Performance does");
+    }
+
+    [Test]
+    public void TryBuildMask_Fastest_FavoredCoreOutsideTheCpuset_FastestAllowedCore()
+    {
+        PerformanceCores.TryBuildMask(ProcessingCores.Fastest, PerformanceCpus, Allowed("0-3,6-19"), Siblings, out _, out int[] cpus,
+            static cpu => cpu is 4 or 5 ? 72 : cpu is 8 or 9 ? 70 : cpu < 12 ? 68 : 40);
+
+        Assert.That(cpus, Is.EqualTo(new[] { 8, 9 }));
+    }
+
+    [Test]
+    public void TryExclude_LeavesTheFastestCoreToTheProcessingThread()
+    {
+        bool built = PerformanceCores.TryExclude(Enumerable.Range(0, 12).ToArray(), [4, 5], out PerformanceCores.CpuMask mask, out int[] rest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(rest, Is.EqualTo(new[] { 0, 1, 2, 3, 6, 7, 8, 9, 10, 11 }), "the near prewarm workers take every other performance core");
+            Assert.That(mask.Contains(4) || mask.Contains(5), Is.False);
+            Assert.That(PerformanceCores.TryExclude([0, 1], [0, 1], out _, out _), Is.False, "nothing left means no separate near set");
+        }
+    }
+
     private static PerformanceCores.ScopeState NotScoped(int tid, out PerformanceCores.CpuMask wanted)
     {
         wanted = default;

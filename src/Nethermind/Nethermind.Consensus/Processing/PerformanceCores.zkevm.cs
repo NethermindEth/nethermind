@@ -16,7 +16,7 @@ internal static partial class PerformanceCores
 
     public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger) => default;
 
-    public static PrewarmSplit? Prewarm => null;
+    public static PrewarmSplit? PrewarmFor(ProcessingCores cores) => null;
 
     internal sealed class PrewarmSplit
     {
