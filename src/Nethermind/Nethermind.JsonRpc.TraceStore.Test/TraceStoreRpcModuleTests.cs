@@ -33,7 +33,7 @@ public class TraceStoreRpcModuleTests
     private static readonly EthereumJsonSerializer Serializer = new();
 
     [Test]
-    public void Trace_get_disposes_inner_stream_after_materialization([Values] bool fail)
+    public void trace_get_disposes_inner_stream_after_materialization([Values] bool fail)
     {
         TestContext test = new();
         using CancellationTokenSource timeout = new();
@@ -61,7 +61,7 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
-    public void Trace_get_preserves_inner_error([Values(ErrorCodes.ResourceNotFound, ErrorCodes.ResourceUnavailable)] int errorCode)
+    public void trace_get_preserves_inner_error([Values(ErrorCodes.ResourceNotFound, ErrorCodes.ResourceUnavailable)] int errorCode)
     {
         TestContext test = new();
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> error =
