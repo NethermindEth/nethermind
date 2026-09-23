@@ -170,7 +170,7 @@ public sealed class FlatStateActivationPolicy(
                 // Only a fresh datadir can fall back to patricia: the SST probe above refuses Enabled=false on any other.
                 string remedy = wipe && flatHasData && !wipedForSync
                     ? "The flat DB needs a resync after a RocksDB auto-repair. Set Sync.SnapSync=true, or FlatDb.OnRepair=Ignore to keep the repaired data."
-                    : wipe || wipedForSync
+                    : wipe || wipedForSync || HasSstFile(fileSystem, DbNames.Flat.GetApplicationResourcePath(initConfig.BaseDbPath))
                         ? "The flat DB holds no state to keep and needs a state sync. Set Sync.SnapSync=true."
                         : "Set Sync.SnapSync=true, or FlatDb.Enabled=false to stay on patricia (fresh datadir only).";
                 throw new InvalidConfigurationException(

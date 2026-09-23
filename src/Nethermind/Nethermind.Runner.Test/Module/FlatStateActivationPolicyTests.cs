@@ -202,6 +202,17 @@ public class FlatStateActivationPolicyTests
         }
     }
 
+    [Test]
+    public void Ignored_repair_that_dropped_the_state_pointer_is_not_offered_disabling_flat()
+    {
+        // OnRepair=Ignore keeps the repaired SST files, so the probe would refuse Enabled=false on the next start.
+        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreateSetup(
+            Flags.Enabled | Flags.Repaired | Flags.FlatDataKeys | Flags.FastSync, FlatLayout.Flat, 32.GiB, LimboLogs.Instance,
+            onRepair: FlatDbOnRepair.Ignore, sstFiles: ["000001.sst"]))!;
+
+        Assert.That(ex.Message, Does.Contain("holds no state").And.Not.Contain("FlatDb.Enabled"));
+    }
+
     // The DB layer roots a relative BaseDbPath at the executing directory; the probe must resolve it the same way.
     [TestCase("/data")]
     [TestCase("nethermind_db/mainnet")]
@@ -317,7 +328,7 @@ public class FlatStateActivationPolicyTests
     }
 
     /// <summary>Copies the wipe marker from a wiped scratch DB, so it lands without the wipe dropping the state pointer.</summary>
-    private static void MarkWipedForSync(IColumnsDb<FlatDbColumns> flatDb)
+    internal static void MarkWipedForSync(IColumnsDb<FlatDbColumns> flatDb)
     {
         MemColumnsDb<FlatDbColumns> scratch = new();
         BasePersistence.ClearAllColumns(scratch);
