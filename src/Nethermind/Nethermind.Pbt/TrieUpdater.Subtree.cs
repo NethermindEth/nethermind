@@ -243,14 +243,23 @@ internal static partial class TrieUpdater<TKey, TPath>
                 PbtBitPrefix.CopyBits(Node.Prefix.Bytes, prefixStart - AnchorDepth, end - prefixStart, destination, prefixStart - start);
         }
 
+        /// <summary>Detaches this view for a caller that addresses it at <paramref name="anchorDepth"/>.</summary>
+        /// <remarks>
+        /// A branch within the group at <paramref name="anchorDepth"/> is anchored there, so its whole position fits the
+        /// group path a caller already holds as its cursor. A deeper branch keeps its own group as its anchor.
+        /// </remarks>
         [SkipLocalsInit]
-        internal readonly OwnedSubtree Materialize()
+        internal readonly OwnedSubtree Materialize(int anchorDepth)
         {
+            Debug.Assert(anchorDepth % PbtFourLevelGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
             if (IsEmpty) return default;
             if (IsLeaf) return new(default, Node);
 
             int splitDepth = BranchDepth;
-            int groupDepth = splitDepth / 4 * 4;
+            Debug.Assert(splitDepth >= anchorDepth, "A result branches at or below the cursor that addresses it.");
+            int groupDepth = splitDepth - anchorDepth <= PbtFourLevelGroupGeometry.LevelsPerGroup
+                ? anchorDepth
+                : splitDepth / 4 * 4;
             int localLength = splitDepth - groupDepth;
             Span<byte> branchBytes = stackalloc byte[PbtBitPrefix.ByteCount(splitDepth)];
             branchBytes.Clear();

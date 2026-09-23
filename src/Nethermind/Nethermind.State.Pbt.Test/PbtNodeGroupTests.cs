@@ -940,7 +940,7 @@ public class PbtNodeGroupTests
             Assert.That(node.Path, Is.EqualTo(PbtFourLevelGroupGeometry.LocalPathOf(position)));
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree source = new(groupPath,
                 TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree.Move(ref node));
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree materialized = source.Materialize();
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree materialized = source.Materialize(groupKey.BitDepth);
             TrieUpdater<PbtTreeKey, PbtNodePath>.OwnedSubtree converted = TrieUpdater<PbtTreeKey, PbtNodePath>.OwnedSubtree.TakeFrom(ref materialized);
             TrieUpdater<PbtTreeKey, PbtNodePath>.TraversalSubtree convertedView = converted.Borrow(stackalloc byte[32]);
             byte[] actual = new byte[convertedView.EncodedLength(path.BitDepth)];
@@ -978,7 +978,7 @@ public class PbtNodeGroupTests
         {
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree borrowed = new(groupPath,
                 reader.Acquire(groupPath, PbtFourLevelGroupGeometry.RootPosition));
-            materialized = borrowed.Materialize();
+            materialized = borrowed.Materialize(groupKey.BitDepth);
             Assert.That(store.ReleasedGroupDepths, Is.Empty);
         }
         Assert.That(store.ReleasedGroupDepths, Is.EqualTo(new[] { 0 }));
@@ -1020,17 +1020,19 @@ public class PbtNodeGroupTests
         NodeGroupPath localPath = new(localLength == 0 ? 0 : 10, localLength);
         TrieUpdater<TKey, TPath>.Subtree node = original ? new(encoding, localPath, default) : new(localPath, left, right, default);
         TrieUpdater<TKey, TPath>.TraversalSubtree view = new(cursor, node);
-        TrieUpdater<TKey, TPath>.OwnedSubtree owned = view.Materialize();
+        TrieUpdater<TKey, TPath>.OwnedSubtree owned = view.Materialize(groupDepth);
         int[] depths = [groupDepth - 4, anchorDepth, splitDepth];
         foreach (int depth in depths) AssertContextualEncoding(view, key, depth, splitDepth, left, right);
         cursor.Truncate(0);
         cursor.AppendKey(new byte[key.Length], splitDepth);
         encoding.AsSpan().Fill(0xDD);
         TrieUpdater<TKey, TPath>.TraversalSubtree detached = owned.Borrow(stackalloc byte[TPath.MaxBitDepth / 8]);
+        // A branch within the requested group is anchored there; a deeper one keeps its own group.
+        bool inGroup = splitDepth - groupDepth <= PbtFourLevelGroupGeometry.LevelsPerGroup;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(owned.GroupPath.BitDepth, Is.EqualTo(splitDepth / 4 * 4));
-            Assert.That(owned.Node.Path.Length, Is.EqualTo(splitDepth % 4));
+            Assert.That(owned.GroupPath.BitDepth, Is.EqualTo(inGroup ? groupDepth : splitDepth / 4 * 4));
+            Assert.That(owned.Node.Path.Length, Is.EqualTo(inGroup ? splitDepth - groupDepth : splitDepth % 4));
             Assert.That(owned.Node.Encoding.IsEmpty, Is.True);
             Assert.That(detached.BranchDepth, Is.EqualTo(splitDepth));
         }

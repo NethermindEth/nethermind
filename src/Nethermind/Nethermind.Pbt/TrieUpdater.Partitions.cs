@@ -126,7 +126,7 @@ public static partial class TrieUpdater
                         // Workers fold on other threads, so the shared frame's size is handed over here; the frame is
                         // resolved whenever the boundary is a branch, which is the only case that inherits it.
                         if (IsAbsentGroupBelow(workerBoundary, 8)) worker.InheritedDescendantBytes = sharedReader.DescendantBytes(worker.Zone & 15);
-                        worker.Current = workerBoundary.Materialize();
+                        worker.Current = workerBoundary.Materialize(8);
                     }
 
                     int nextWorker = 0;
@@ -250,7 +250,7 @@ public static partial class TrieUpdater
                 TrieUpdater<TKey, TPath>.ResolveAbsentGroup(ref reader, current, InheritedDescendantBytes);
                 // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                 result = TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, writer, current,
-                    operations.AsSpan(), ref path, 8, new(table.AsSpan(), 8, false));
+                    operations.AsSpan(), ref path, 8, 4, new(table.AsSpan(), 8, false));
                 ValueHash256 groupHash = result.Borrow(sourceBuffer).Hash(8, Metrics);
                 result.SizeDelta = TrieUpdater<TKey, TPath>.PublishGroup(store, ref reader, writer, path, groupHash);
                 Result = OwnedSubtree.TakeFrom<TKey, TPath>(ref result);
@@ -279,10 +279,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         Span<PbtWriteOperation<TKey>> operations,
         ref PbtTraversalPath path,
         int bitDepth,
+        int resultDepth,
         BucketPlan plan)
     {
         Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
         PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, context.Metrics);
-        return FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, partition);
+        return FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, resultDepth, partition);
     }
 }
