@@ -202,7 +202,11 @@ public class RocksDbPersistence : IPersistence, IDisposable
             // Their contents are already synced by SstFileWriter.Finish, but the directory entries naming them are
             // not: without this a power loss could drop a file the marker lists, and the reopen would advance the
             // pointer over rows nothing ever wrote.
-            if (stagedFiles.Count > 0) DirectorySync.Fsync(_stagingDir!);
+            if (stagedFiles.Count > 0)
+            {
+                DirectorySync.Fsync(_stagingDir!);
+                DirectorySync.Fsync(Path.GetDirectoryName(_stagingDir)!);
+            }
 
             // Redo marker: durable before the first ingest so a crash anywhere below rolls forward to `to`
             // on reopen; the pointer therefore never claims a state some column lacks.

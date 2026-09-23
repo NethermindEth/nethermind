@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -19,6 +21,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -68,8 +71,8 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(100));
         }
 
-        ColumnDb storageColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Storage);
-        storageColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+        FaultingColumnsDb faulting = WrapWithFaults();
+        faulting.FailIngest(FlatDbColumns.Storage, static _ => throw new IOException("injected SST ingest failure"));
 
         Assert.That(() =>
         {
@@ -78,7 +81,7 @@ public class SstIngestionTests
             batch.SetStorage(Addr, Slot2, Slot(0x22));
         }, Throws.InstanceOf<IOException>());
 
-        storageColumn._testIngestFailureHook = null;
+        faulting.FailIngest(FlatDbColumns.Storage, null);
 
         using (Assert.EnterMultipleScope())
         {
@@ -102,8 +105,8 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(100));
         }
 
-        ColumnDb storageColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Storage);
-        storageColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+        FaultingColumnsDb faulting = WrapWithFaults();
+        faulting.FailIngest(FlatDbColumns.Storage, static _ => throw new IOException("injected SST ingest failure"));
 
         Assert.That(() =>
         {
@@ -112,7 +115,7 @@ public class SstIngestionTests
             batch.SetStorage(Addr, Slot2, Slot(0x22));
         }, Throws.InstanceOf<IOException>());
 
-        storageColumn._testIngestFailureHook = null;
+        faulting.FailIngest(FlatDbColumns.Storage, null);
 
         (StateId To, string[] Files)? pending = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata));
         Assert.That(pending, Is.Not.Null);
@@ -156,8 +159,8 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(100));
         }
 
-        ColumnDb storageColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Storage);
-        storageColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+        FaultingColumnsDb faulting = WrapWithFaults();
+        faulting.FailIngest(FlatDbColumns.Storage, static _ => throw new IOException("injected SST ingest failure"));
 
         Assert.That(() =>
         {
@@ -166,7 +169,7 @@ public class SstIngestionTests
             batch.SetStorage(Addr, Slot2, Slot(0x22));
         }, Throws.InstanceOf<IOException>());
 
-        storageColumn._testIngestFailureHook = null;
+        faulting.FailIngest(FlatDbColumns.Storage, null);
 
         // The shape Importer and FlatTreeSyncStore use: a write-free batch purely to advance the pointer. Without
         // the pending-marker check it would clear the marker and advance having written nothing, stranding the
@@ -197,7 +200,7 @@ public class SstIngestionTests
 
         // The marker batch commits on Dispose and only then reports a failure, so the marker is durable even
         // though the persist threw: the rollback must clear it, not delete the files it still references.
-        WrapWithWriteBatchFaults().FailWriteBatchAfter(0, commitBeforeFailing: true);
+        WrapWithFaults().FailWriteBatchAfter(0, commitBeforeFailing: true);
 
         Assert.That(() =>
         {
@@ -235,7 +238,7 @@ public class SstIngestionTests
 
         // Every column goes live at s2 and only the pointer write fails. Releasing the gate there would publish a
         // base ahead of its pointer, so the commit must be rolled forward inline instead.
-        WrapWithWriteBatchFaults().FailWriteBatchAfter(1);
+        WrapWithFaults().FailWriteBatchAfter(1);
 
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None))
         {
@@ -266,12 +269,12 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(100));
         }
 
-        ColumnDb accountColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Account);
-        accountColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+        FaultingColumnsDb faulting = WrapWithFaults();
+        faulting.FailIngest(FlatDbColumns.Account, static _ => throw new IOException("injected SST ingest failure"));
 
         // Nothing is ingested, so the rollback owns the marker - but its clearing batch fails too. The marker then
         // outlives the persist and every later one refuses to start, so the node must stop instead of stalling.
-        WrapWithWriteBatchFaults().FailWriteBatchAfter(1);
+        faulting.FailWriteBatchAfter(1);
 
         Assert.That(() =>
         {
@@ -279,7 +282,7 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(200));
         }, Throws.InstanceOf<IOException>());
 
-        accountColumn._testIngestFailureHook = null;
+        faulting.FailIngest(FlatDbColumns.Account, null);
 
         using (Assert.EnterMultipleScope())
         {
@@ -299,28 +302,40 @@ public class SstIngestionTests
     }
 
     /// <summary>Observes the fatal-exit decision instead of taking it, which a test process cannot survive.</summary>
-    private sealed class ObservablePersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig config)
-        : RocksDbPersistence(db, logManager, config)
+    private sealed class ObservablePersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig config, IProcessExitSource? exitSource = null)
+        : RocksDbPersistence(db, logManager, config, exitSource)
     {
         public int FatalShutdownCount { get; private set; }
 
         protected override void FatalShutdown() => FatalShutdownCount++;
     }
 
-    /// <summary>Re-points <see cref="_persistence"/> at the same DB through a write-batch fault injector.</summary>
-    private WriteBatchFaultingColumnsDb WrapWithWriteBatchFaults()
+    /// <summary>Re-points <see cref="_persistence"/> at the same DB through a fault injector.</summary>
+    private FaultingColumnsDb WrapWithFaults(IProcessExitSource? exitSource = null)
     {
-        WriteBatchFaultingColumnsDb faulting = new(_db);
-        _persistence = new ObservablePersistence(faulting, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
+        FaultingColumnsDb faulting = new(_db);
+        _persistence.Dispose();
+        _persistence = new ObservablePersistence(faulting, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true }, exitSource);
         return faulting;
     }
 
-    /// <summary>Fails one chosen write batch of the real DB, optionally after it has already committed.</summary>
+    /// <summary>Fails one chosen write batch or column ingest of the real DB, and records the headroom waits.</summary>
     /// <remarks>Forwards only what the SST-ingest persist path uses.</remarks>
-    private sealed class WriteBatchFaultingColumnsDb(IColumnsDb<FlatDbColumns> inner) : IColumnsDb<FlatDbColumns>
+    private sealed class FaultingColumnsDb(IColumnsDb<FlatDbColumns> inner) : IColumnsDb<FlatDbColumns>
     {
+        private readonly ConcurrentDictionary<FlatDbColumns, Action<IReadOnlyList<string>>> _ingestFaults = [];
         private int _skipBatches = -1;
         private bool _commitBeforeFailing;
+
+        public ConcurrentQueue<CancellationToken> HeadroomWaitTokens { get; } = [];
+
+        /// <summary>Runs <paramref name="fault"/> with the staged files before every ingest into <paramref name="column"/>;
+        /// <c>null</c> removes it.</summary>
+        public void FailIngest(FlatDbColumns column, Action<IReadOnlyList<string>>? fault)
+        {
+            if (fault is null) _ingestFaults.TryRemove(column, out _);
+            else _ingestFaults[column] = fault;
+        }
 
         /// <summary>Fails the write batch started after <paramref name="skip"/> further ones, once.</summary>
         /// <param name="commitBeforeFailing">Whether the failing batch commits before throwing, the shape a
@@ -345,7 +360,7 @@ public class SstIngestionTests
             return new FaultingWriteBatch(batch, _commitBeforeFailing);
         }
 
-        public IDb GetColumnDb(FlatDbColumns key) => inner.GetColumnDb(key);
+        public IDb GetColumnDb(FlatDbColumns key) => new FaultingColumn(this, key, inner.GetColumnDb(key));
         public IEnumerable<FlatDbColumns> ColumnKeys => inner.ColumnKeys;
         public IColumnDbSnapshot<FlatDbColumns> CreateSnapshot() => inner.CreateSnapshot();
         public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
@@ -364,6 +379,70 @@ public class SstIngestionTests
                 if (!commitBeforeFailing) inner.Clear();
                 inner.Dispose();
                 throw new IOException("injected write batch failure");
+            }
+        }
+
+        private sealed class FaultingColumn(FaultingColumnsDb owner, FlatDbColumns column, IDb inner) : IDb, ISortedKeyValueStore, ISstIngestible
+        {
+            private ISortedKeyValueStore Sorted => (ISortedKeyValueStore)inner;
+            private ISstIngestible Ingestible => (ISstIngestible)inner;
+
+            public string IngestStagingDir => Ingestible.IngestStagingDir;
+
+            public ISstIngestWriteBatch StartSstIngestBatch() => new FaultingIngestBatch(this, Ingestible.StartSstIngestBatch());
+
+            public void IngestStagedFiles(IReadOnlyList<string> files)
+            {
+                RunFault(files);
+                Ingestible.IngestStagedFiles(files);
+            }
+
+            public void WaitForIngestCompactionHeadroom(CancellationToken cancellationToken)
+            {
+                owner.HeadroomWaitTokens.Enqueue(cancellationToken);
+                Ingestible.WaitForIngestCompactionHeadroom(cancellationToken);
+            }
+
+            private void RunFault(IReadOnlyList<string> files)
+            {
+                if (owner._ingestFaults.TryGetValue(column, out Action<IReadOnlyList<string>>? fault)) fault(files);
+            }
+
+            public byte[]? FirstKey => Sorted.FirstKey;
+            public byte[]? LastKey => Sorted.LastKey;
+
+            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
+                Sorted.GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags);
+
+            public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
+            public string Name => inner.Name;
+            public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
+            public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
+            public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
+            public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);
+            public IWriteBatch StartWriteBatch() => inner.StartWriteBatch();
+            public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+            public void SetWriteBuffer(long sizeBytes) => inner.SetWriteBuffer(sizeBytes);
+            public void Dispose() { }
+
+            private sealed class FaultingIngestBatch(FaultingColumn column, ISstIngestWriteBatch inner) : ISstIngestWriteBatch
+            {
+                private IReadOnlyList<string> _stagedFiles = [];
+
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
+                public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => inner.PutSpan(key, value, flags);
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => inner.Merge(key, value, flags);
+                public void Clear() => inner.Clear();
+                public IReadOnlyList<string> SealToStagedFiles() => _stagedFiles = inner.SealToStagedFiles();
+                public void DeleteStagedFiles() => inner.DeleteStagedFiles();
+                public void Dispose() => inner.Dispose();
+
+                public void IngestStagedFiles()
+                {
+                    if (_stagedFiles.Count > 0) column.RunFault(_stagedFiles);
+                    inner.IngestStagedFiles();
+                }
             }
         }
     }
@@ -533,8 +612,8 @@ public class SstIngestionTests
             batch.SetStorage(Addr, Slot1, v1);
         }
 
-        ColumnDb accountColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Account);
-        accountColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+        FaultingColumnsDb faulting = WrapWithFaults();
+        faulting.FailIngest(FlatDbColumns.Account, static _ => throw new IOException("injected SST ingest failure"));
 
         Assert.That(() =>
         {
@@ -543,7 +622,7 @@ public class SstIngestionTests
             batch.SetStorage(Addr, Slot2, v2);
         }, Throws.InstanceOf<IOException>());
 
-        accountColumn._testIngestFailureHook = null;
+        faulting.FailIngest(FlatDbColumns.Account, null);
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         {
@@ -572,8 +651,8 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(100));
         }
 
-        ColumnDb storageColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Storage);
-        storageColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+        FaultingColumnsDb faulting = WrapWithFaults();
+        faulting.FailIngest(FlatDbColumns.Storage, static _ => throw new IOException("injected SST ingest failure"));
 
         Assert.That(() =>
         {
@@ -586,7 +665,7 @@ public class SstIngestionTests
             batch.SetStorageTrieNode(storageAccount, storagePath, payload);
         }, Throws.InstanceOf<IOException>());
 
-        storageColumn._testIngestFailureHook = null;
+        faulting.FailIngest(FlatDbColumns.Storage, null);
 
         (StateId To, string[] Files)? marker = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata));
         Assert.That(marker, Is.Not.Null);
@@ -631,13 +710,11 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(100));
         }
 
-        ColumnDb storageColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Storage);
-        // Fail the storage ingest once, then clear the hook so the inline roll-forward's retry succeeds.
-        storageColumn._testIngestFailureHook = () =>
+        int storageIngestAttempts = 0;
+        WrapWithFaults().FailIngest(FlatDbColumns.Storage, _ =>
         {
-            storageColumn._testIngestFailureHook = null;
-            throw new IOException("injected transient SST ingest failure");
-        };
+            if (++storageIngestAttempts == 1) throw new IOException("injected transient SST ingest failure");
+        });
 
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None))
         {
@@ -649,7 +726,7 @@ public class SstIngestionTests
             batch.SetStorageTrieNode(storageAccount, storagePath, payload);
         }
 
-        Assert.That(storageColumn._testIngestFailureHook, Is.Null, "the injected failure should have fired exactly once");
+        Assert.That(storageIngestAttempts, Is.EqualTo(2), "the injected failure should have fired once and the inline roll-forward retried it");
         Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null, "the marker is cleared by the inline completion");
         Assert.That(StagedSstFiles(), Is.Empty);
 
@@ -664,7 +741,7 @@ public class SstIngestionTests
     }
 
     [Test]
-    public void Crash_between_column_ingests_rolls_forward_on_reopen()
+    public void Crash_between_column_ingests_rolls_forward_on_reopen([Values] bool persistViaSstIngestion)
     {
         StateId s1 = State(1, 1);
         StateId s2 = State(2, 2);
@@ -697,7 +774,7 @@ public class SstIngestionTests
             storageBatch.Dispose();
         }
 
-        Reopen();
+        Reopen(persistViaSstIngestion);
 
         Assert.That(_db.GetColumnDb(FlatDbColumns.Account).Get(accountKey), Is.EqualTo(new byte[] { 0xa2 }));
         Assert.That(_db.GetColumnDb(FlatDbColumns.Storage).Get(storageKey), Is.EqualTo(new byte[] { 0xb2 }));
@@ -874,48 +951,65 @@ public class SstIngestionTests
     }
 
     [Test]
-    public void Interrupted_ingest_rolls_forward_on_reopen_even_with_sst_ingestion_disabled()
+    public void Write_batch_started_inside_an_ingest_commit_sees_the_committed_state()
     {
         StateId s1 = State(1, 1);
         StateId s2 = State(2, 2);
+        StateId s3 = State(3, 3);
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
         {
             batch.SetAccount(Addr, new Account(100));
         }
 
-        byte[] accountKey = ValueKeccak.Compute("flagoff-account"u8).ToByteArray();
-        byte[] storageKey = ValueKeccak.Compute("flagoff-storage"u8).ToByteArray();
-
-        ISstIngestWriteBatch accountBatch = ((ISstIngestible)_db.GetColumnDb(FlatDbColumns.Account)).StartSstIngestBatch();
-        ISstIngestWriteBatch storageBatch = ((ISstIngestible)_db.GetColumnDb(FlatDbColumns.Storage)).StartSstIngestBatch();
-        try
+        using ManualResetEventSlim ingesting = new();
+        using ManualResetEventSlim release = new();
+        WrapWithFaults().FailIngest(FlatDbColumns.Storage, _ =>
         {
-            accountBatch.Set(accountKey, [0xa2]);
-            storageBatch.Set(storageKey, [0xb2]);
-            List<string> stagedFiles = [.. accountBatch.SealToStagedFiles(), .. storageBatch.SealToStagedFiles()];
+            ingesting.Set();
+            release.Wait();
+        });
 
-            using (IColumnsWriteBatch<FlatDbColumns> markerBatch = _db.StartWriteBatch())
-                BasePersistence.SetIngestMarker(markerBatch.GetColumnBatch(FlatDbColumns.Metadata), s2, stagedFiles);
-            _db.Flush(onlyWal: true);
-
-            accountBatch.IngestStagedFiles();
-        }
-        finally
+        Task commit = Task.Run(() =>
         {
-            accountBatch.Dispose();
-            storageBatch.Dispose();
-        }
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+            batch.SetStorage(Addr, Slot1, Slot(0x11));
+        });
+        Assert.That(ingesting.Wait(TimeSpan.FromSeconds(30)), Is.True);
 
-        Reopen(persistViaSstIngestion: false);
+        Task<IPersistence.IWriteBatch> next = Task.Run(() => _persistence.CreateWriteBatch(s2, s3, WriteFlags.None));
+        Assert.That(next.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
 
-        Assert.That(_db.GetColumnDb(FlatDbColumns.Account).Get(accountKey), Is.EqualTo(new byte[] { 0xa2 }));
-        Assert.That(_db.GetColumnDb(FlatDbColumns.Storage).Get(storageKey), Is.EqualTo(new byte[] { 0xb2 }));
-        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        release.Set();
+        commit.Wait();
+        using (IPersistence.IWriteBatch batch = next.Result)
         {
-            Assert.That(reader.CurrentState, Is.EqualTo(s2));
+            batch.SetStorage(Addr, Slot2, Slot(0x22));
         }
-        Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
-        Assert.That(StagedSstFiles(), Is.Empty);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(s3));
+            AssertSlot(reader, Slot1, Slot(0x11));
+            AssertSlot(reader, Slot2, Slot(0x22));
+        }
+    }
+
+    [Test]
+    public void Process_exit_cancels_the_post_commit_headroom_wait()
+    {
+        IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
+        exitSource.Token.Returns(new CancellationToken(canceled: true));
+        FaultingColumnsDb faulting = WrapWithFaults(exitSource);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, State(1, 1), WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        Assert.That(faulting.HeadroomWaitTokens, Is.Not.Empty);
+        Assert.That(faulting.HeadroomWaitTokens.All(static t => t.IsCancellationRequested), Is.True);
     }
 
     [Test]
@@ -931,7 +1025,12 @@ public class SstIngestionTests
             LimboLogs.Instance,
             Enum.GetValues<FlatDbColumns>());
         _db = observable;
+        _persistence.Dispose();
         _persistence = new ObservablePersistence(_db, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
+        _db.GetColumnDb(FlatDbColumns.Account).Set(ValueKeccak.Compute("db-generated"u8).ToByteArray(), [0x01]);
+        _db.Flush();
+        string dbGeneratedSst = Path.Combine(_dbPath, "db-generated-sst-copy");
+        File.Copy(Directory.GetFiles(_dbPath, "*.sst")[0], dbGeneratedSst);
 
         StateId s1 = State(1, 1);
         StateId s2 = State(2, 2);
@@ -940,11 +1039,14 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(100));
         }
 
-        ColumnDb accountColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Account);
-        accountColumn._testIngestFailureHook = () => throw new RocksDbException(
-            corruptionNamesStagedFile
-                ? $"Corruption: injected external SST corruption in {StagedFileName(FlatDbColumns.Account)}"
-                : "Corruption: injected corruption of the live DB");
+        WrapWithFaults().FailIngest(FlatDbColumns.Account, files =>
+        {
+            foreach (string file in files)
+            {
+                if (corruptionNamesStagedFile) File.WriteAllBytes(file, [1, 2, 3]);
+                else File.Copy(dbGeneratedSst, file, overwrite: true);
+            }
+        });
 
         Assert.That(() =>
         {
@@ -952,8 +1054,6 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(200));
             batch.SetStorage(Addr, Slot1, Slot(0x11));
         }, Throws.InstanceOf<RocksDbException>());
-
-        accountColumn._testIngestFailureHook = null;
 
         using (Assert.EnterMultipleScope())
         {
@@ -964,17 +1064,6 @@ public class SstIngestionTests
                 Directory.GetFiles(_dbPath, "corrupt.marker", SearchOption.AllDirectories),
                 corruptionNamesStagedFile ? Is.Empty : Is.Not.Empty);
         }
-    }
-
-    private string StagedFileName(FlatDbColumns column)
-    {
-        foreach (string path in StagedSstFiles())
-        {
-            string name = Path.GetFileName(path);
-            if (name.StartsWith($"{column}_", StringComparison.Ordinal)) return name;
-        }
-
-        throw new InvalidOperationException($"No staged SST file for column {column}");
     }
 
     private sealed class ObservableColumnsDb(

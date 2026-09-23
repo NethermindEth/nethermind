@@ -27,8 +27,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
     internal readonly IColumnFamilyHandle _columnFamily;
-    // Test-only injection point: invoked before the native ingest so tests can simulate a mid-commit failure.
-    internal Action? _testIngestFailureHook;
 
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager>? _iteratorManager;
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager> _seekIteratorManager;
@@ -167,7 +165,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         if (files.Count == 0) return;
         try
         {
-            _testIngestFailureHook?.Invoke();
             _rocksDb.IngestExternalFiles([.. files], _ingestOptions, _columnFamily);
         }
         catch (RocksDbException x)
@@ -204,7 +201,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         if (logger.IsWarn) logger.Warn($"L0 of {_mainDb.Name} column {Name} did not drain below {MaxL0FilesBeforeThrottle} files within {L0DrainMaxPolls * L0DrainPollMs / 1000}s; continuing SST ingestion without compaction headroom");
     }
 
-    private sealed class SstIngestWriteBatch : ISstIngestWriteBatch
+    private sealed class SstIngestWriteBatch(ColumnDb columnDb) : ISstIngestWriteBatch
     {
         private const long MaxBufferedBytes = 128L * 1024 * 1024;
         private const int SlabSize = 1 << 20;
@@ -218,8 +215,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         private static readonly ArrayPool<byte[]> _slabListPool = ArrayPool<byte[]>.Create(1024, 6);
         private static readonly EnvOptions _envOptions = new();
 
-        private readonly ColumnDb _columnDb;
-        private readonly EntryComparer _comparer;
+        private readonly ColumnDb _columnDb = columnDb;
         private readonly ArrayPoolList<byte[]> _slabs = new(_slabListPool, 16);
         private readonly ArrayPoolList<string> _stagedFiles = new(4);
         private Entry[] _index = _entryPool.Rent(1 << 16);
@@ -227,12 +223,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         private int _slabIndex = -1;
         private int _slabOffset;
         private long _bufferedBytes;
-
-        public SstIngestWriteBatch(ColumnDb columnDb)
-        {
-            _columnDb = columnDb;
-            _comparer = new EntryComparer(this);
-        }
 
         private struct Entry
         {
@@ -337,18 +327,18 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             _bufferedBytes = 0;
         }
 
-        private ReadOnlySpan<byte> KeySpan(in Entry e) => _slabs[e.Slab].AsSpan(e.Offset, e.KeyLen);
-
-        private bool IsSameKey(in Entry x, in Entry y) =>
-            x.KeyPrefix == y.KeyPrefix && x.KeyLen == y.KeyLen && KeySpan(in x).SequenceEqual(KeySpan(in y));
-
-        private sealed class EntryComparer(SstIngestWriteBatch batch) : IComparer<Entry>
+        private readonly struct EntryComparer(byte[][] slabs) : IComparer<Entry>
         {
+            private ReadOnlySpan<byte> KeySpan(in Entry e) => slabs[e.Slab].AsSpan(e.Offset, e.KeyLen);
+
+            public bool IsSameKey(in Entry x, in Entry y) =>
+                x.KeyPrefix == y.KeyPrefix && x.KeyLen == y.KeyLen && KeySpan(in x).SequenceEqual(KeySpan(in y));
+
             public int Compare(Entry x, Entry y)
             {
                 int c = x.KeyPrefix.CompareTo(y.KeyPrefix);
                 if (c != 0) return c;
-                c = batch.KeySpan(in x).SequenceCompareTo(batch.KeySpan(in y));
+                c = KeySpan(in x).SequenceCompareTo(KeySpan(in y));
                 return c != 0 ? c : x.Seq.CompareTo(y.Seq);
             }
         }
@@ -357,7 +347,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         {
             if (_count == 0) return;
 
-            Array.Sort(_index, 0, _count, _comparer);
+            EntryComparer comparer = new(_slabs.UnsafeGetInternalArray());
+            _index.AsSpan(0, _count).Sort(comparer);
 
             Directory.CreateDirectory(_columnDb.IngestStagingDir);
             string file = Path.Combine(_columnDb.IngestStagingDir, $"{_columnDb.Name}_{Interlocked.Increment(ref _sstIngestSeq)}.sst");
@@ -373,7 +364,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                 {
                     ref Entry e = ref _index[i];
                     // Equal keys sort by ascending Seq; only the last of each run (the latest write) is emitted.
-                    if (i + 1 < _count && IsSameKey(in e, in _index[i + 1])) continue;
+                    if (i + 1 < _count && comparer.IsSameKey(in e, in _index[i + 1])) continue;
                     // Safety: Reserve wrote KeyLen (+ ValLen for puts) contiguous bytes at [Offset, Offset + length)
                     // inside _slabs[Slab], so data, data + KeyLen and data + KeyLen + ValLen all stay within the pinned
                     // slab; the native put/delete therefore cannot read or write past the slab's bounds.
