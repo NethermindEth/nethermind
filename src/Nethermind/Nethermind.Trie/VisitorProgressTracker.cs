@@ -23,14 +23,15 @@ public class VisitorProgressTracker
     private int _seenCount; // Count of level-3 nodes seen (or estimated from shallow leaves)
 
     private long _nodeCount;
-    private ulong _lastReportedProgress;
+    private long _lastReportedProgress; // Guarded by _reportLock
+    private readonly Lock _reportLock = new();
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
     private readonly DateTime _startTime;
     private readonly ProgressLogger _logger;
     private readonly string _operationName;
     private readonly int _reportingInterval;
     private readonly bool _printNodes;
-    private readonly ulong _reportStep;
+    private readonly long _reportStep;
 
     public VisitorProgressTracker(
         string operationName,
@@ -42,11 +43,14 @@ public class VisitorProgressTracker
     {
         ArgumentNullException.ThrowIfNull(logManager);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(reportEveryPercent);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(reportEveryPercent, 100);
 
         _operationName = operationName;
         _printNodes = printNodes;
         // The line count is bounded by ProgressScale / _reportStep, so 1% gives ~100 lines per run
-        _reportStep = Math.Max(1, (ulong)Math.Round(reportEveryPercent / 100 * ProgressScale));
+        _reportStep = Math.Max(1, (long)Math.Round(reportEveryPercent / 100 * ProgressScale));
+        // One step below zero, so the first call past the start-up guard reports even at 0.00 %
+        _lastReportedProgress = -_reportStep;
         _logger = new ProgressLogger(operationName, logManager, logLevel: logLevel);
         _logger.Reset(0, ProgressScale);
         _logger.SetFormat(FormatProgress);
@@ -129,21 +133,22 @@ public class VisitorProgressTracker
             return;
         }
 
-        ulong progressValue = (ulong)(progress * ProgressScale);
-        _logger.Update(progressValue);
+        long progressValue = (long)(progress * ProgressScale);
 
-        // Emit only once per _reportStep of progress; the CAS makes concurrent visitors agree on
-        // who crossed the step so the line is not duplicated
-        ulong lastReported = Volatile.Read(ref _lastReportedProgress);
-        while (progressValue >= lastReported + _reportStep)
+        // Emit only once per _reportStep of progress. ProgressLogger is not thread-safe, so the
+        // update and the write happen together under the lock: a concurrent visitor holding an
+        // older, lower value can neither duplicate a step nor overwrite the value being written.
+        // Reached at most once per level-3 node or _reportingInterval nodes, so contention is negligible.
+        lock (_reportLock)
         {
-            if (Interlocked.CompareExchange(ref _lastReportedProgress, progressValue, lastReported) == lastReported)
+            if (progressValue < _lastReportedProgress + _reportStep)
             {
-                _logger.LogProgress();
                 return;
             }
 
-            lastReported = Volatile.Read(ref _lastReportedProgress);
+            _lastReportedProgress = progressValue;
+            _logger.Update((ulong)progressValue);
+            _logger.LogProgress();
         }
     }
 
@@ -152,9 +157,12 @@ public class VisitorProgressTracker
     /// </summary>
     public void Finish()
     {
-        _logger.Update(ProgressScale);
-        _logger.MarkEnd();
-        _logger.LogProgress();
+        lock (_reportLock)
+        {
+            _logger.Update(ProgressScale);
+            _logger.MarkEnd();
+            _logger.LogProgress();
+        }
     }
 
     /// <summary>

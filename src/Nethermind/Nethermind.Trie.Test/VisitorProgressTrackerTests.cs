@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -159,11 +160,8 @@ public class VisitorProgressTrackerTests
         InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
         innerLogger.IsInfo.Returns(true);
         innerLogger.IsDebug.Returns(isDebugEnabled);
-        ILogger logger = new(innerLogger);
-        ILogManager logManager = Substitute.For<ILogManager>();
-        logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
-        VisitorProgressTracker tracker = new("Test", logManager, logLevel: logLevel);
+        VisitorProgressTracker tracker = new("Test", CreateLogManager(innerLogger), logLevel: logLevel);
 
         // Act - a leaf at depth 1 covers 16^3 level-3 nodes, which clears the 1% threshold
         // that otherwise suppresses reporting during the first 5 seconds
@@ -176,24 +174,39 @@ public class VisitorProgressTrackerTests
 
     [TestCase(0.01, 2)]
     [TestCase(1, 1)]
+    [TestCase(10, 1)]
     public void OnNodeVisited_ReportsOncePerRequestedProgressStep(double reportEveryPercent, int expectedReports)
     {
         // Arrange
         InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
         innerLogger.IsDebug.Returns(true);
-        ILogger logger = new(innerLogger);
-        ILogManager logManager = Substitute.For<ILogManager>();
-        logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
-        VisitorProgressTracker tracker = new("Test", logManager, reportEveryPercent: reportEveryPercent);
+        VisitorProgressTracker tracker = new("Test", CreateLogManager(innerLogger), reportEveryPercent: reportEveryPercent);
 
         // Act - a leaf at depth 1 is 6.25%, a leaf at depth 2 adds 0.39%: the second one
-        // crosses a 0.01% step but not a 1% step
+        // crosses a 0.01% step but not a 1% step. The first one is reported even when it is
+        // below the step (10%), so a run always shows a line as soon as reporting starts.
         tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 0 }), isStorage: false, isLeaf: true);
         tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 1, 0 }), isStorage: false, isLeaf: true);
 
         // Assert - the step throttles how often a line is written, not the precision of the line
         innerLogger.Received(expectedReports).Debug(Arg.Any<string>());
         innerLogger.Received(1).Debug(Arg.Is<string>(line => line.Contains("6.25 %")));
+    }
+
+    [TestCase(0)]
+    [TestCase(-1)]
+    [TestCase(100.01)]
+    public void Constructor_RejectsReportStepOutsideOfPercentRange(double reportEveryPercent) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = new VisitorProgressTracker("Test", LimboLogs.Instance, reportEveryPercent: reportEveryPercent));
+
+    private static ILogManager CreateLogManager(InterfaceLogger innerLogger)
+    {
+        // Built before Returns(), otherwise NSubstitute sees the ILogger constructor's reads of
+        // innerLogger as the call being configured
+        ILogger logger = new(innerLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<ProgressLogger>().Returns(logger);
+        return logManager;
     }
 }
