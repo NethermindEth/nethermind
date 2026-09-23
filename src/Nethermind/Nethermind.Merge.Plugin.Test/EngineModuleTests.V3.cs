@@ -304,6 +304,30 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV3_should_reject_null_or_missing_required_fields(
+        [Values("withdrawals", "blobGasUsed", "excessBlobGas")] string field,
+        [Values] bool omit)
+    {
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
+            = await PreparePayloadRequestEnv();
+
+        JsonObject payload = serializer.Deserialize<JsonObject>(serializer.Serialize(executionPayload))!;
+        if (omit)
+            payload.Remove(field);
+        else
+            payload[field] = null;
+
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(
+            nameof(IEngineRpcModule.engine_newPayloadV3),
+            serializer.Serialize(payload),
+            serializer.Serialize(Array.Empty<byte[]>()),
+            TestItem.KeccakA.ToString());
+
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
+    [Test]
     public async Task NewPayloadV3_should_decline_empty_fields()
     {
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
