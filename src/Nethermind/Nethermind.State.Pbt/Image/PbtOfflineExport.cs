@@ -15,8 +15,11 @@ namespace Nethermind.State.Pbt.Image;
 /// anchor is still the one the chain agrees on, since verification takes long enough for a reorg to land.</remarks>
 internal static class PbtOfflineExport
 {
+    /// <param name="sortBufferBytes">Sort budget per scan worker, split between the leaf and preimage spools.</param>
+    /// <param name="workerCount">Scan workers; zero uses the processor count.</param>
     public static void Export(FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore code, PbtImageAnchor anchor,
-        string outputPath, string scratchDirectory, Func<bool> isAnchorCurrent, ILogManager logManager, CancellationToken cancellationToken)
+        string outputPath, string scratchDirectory, Func<bool> isAnchorCurrent, int sortBufferBytes, int workerCount,
+        ILogManager logManager, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ILogger logger = logManager.GetClassLogger(typeof(PbtOfflineExport));
@@ -35,7 +38,7 @@ internal static class PbtOfflineExport
             {
                 if (!isAnchorCurrent()) throw new InvalidOperationException("Export anchor is no longer current.");
                 PbtArtifactWriter.PbtArtifactDigests digests = PbtOfflineSource.WriteArtifacts(source, code, anchor,
-                    temporary, snapshot, preimages, logManager, cancellationToken: cancellationToken);
+                    temporary, snapshot, preimages, logManager, sortBufferBytes, workerCount, cancellationToken);
                 snapshot.Position = 0;
                 preimages.Position = 0;
                 using PbtVerifiedImage verified = PbtImageVerifier.Verify(snapshot, preimages, anchor, temporary, logManager, cancellationToken);

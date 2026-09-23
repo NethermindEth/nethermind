@@ -48,6 +48,19 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Distance from the export anchor, in blocks, within which flat persistence stops batching by FlatDb.CompactSize and persists one block at a time so that it lands exactly on the anchor. 0 uses FlatDb.CompactSize.", DefaultValue = "0", HiddenFromDocs = true)]
     int ExportStepDistance { get; set; }
 
+    /// <summary>Address ranges scanned in parallel when writing the EIP-8347 artifacts. Defaults to 0.</summary>
+    /// <remarks>The scan derives a tree key per leaf and hashes every account's code, so it is CPU-bound; the
+    /// spools restore the total order the partitioned walk does not have.</remarks>
+    [ConfigItem(Description = "Number of parallel workers scanning address ranges of the source state while exporting the EIP-8347 artifacts. 0 uses the processor count.", DefaultValue = "0", HiddenFromDocs = true)]
+    int ExportConcurrency { get; set; }
+
+    /// <summary>Export sort budget per scan worker, in bytes, split between the two spools. Defaults to 256 MiB.</summary>
+    /// <remarks>Resident sort memory is this times ExportConcurrency, plus up to half as many spare buffers again,
+    /// which absorb the sort of a filled buffer while its worker fills the next one. Larger buffers spill fewer,
+    /// longer runs and so leave less to merge.</remarks>
+    [ConfigItem(Description = "Bytes buffered per export scan worker before the records are sorted and spilled to a temporary run, split between the leaf and preimage spools. Resident sort memory is roughly this times the worker count.", DefaultValue = "268435456", HiddenFromDocs = true)]
+    int ExportSortBufferBytes { get; set; }
+
     /// <summary>Whether to report the known child header's state root instead of the computed PBT root. Defaults to false.</summary>
     [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root. Does not affect flat mirror mode.", DefaultValue = "false")]
     bool FakeMatchingStateRoot { get; set; }

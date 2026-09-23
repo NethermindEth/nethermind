@@ -86,13 +86,15 @@ internal static class PbtImageVerifier
                 Leaves(leafPath, "PBT verify hash", count, logManager, cancellationToken), cancellationToken);
             if (root != claimedRoot) throw new InvalidDataException("PBT snapshot root mismatch.");
 
-            using PbtSortedSpool results = new(directory, SortBufferBytes, logManager, cancellationToken);
+            using PbtSortedSpool results = new(directory, SortBufferBytes, writerCount: 1, logManager, cancellationToken);
             string residualPath = Path.Combine(directory, "residual");
             long residualCount;
-            using (PbtSortedSpool requests = new(directory, SortBufferBytes, logManager, cancellationToken))
+            using (PbtSortedSpool requests = new(directory, SortBufferBytes, writerCount: 1, logManager, cancellationToken))
+            // The result writer closes with the request spool, before the results are read back below.
+            using (PbtSortedSpool.Writer resultWriter = results.CreateWriter())
             {
                 EmitRequests(preimages, requests, logManager, cancellationToken);
-                residualCount = Join(leafPath, requests, results, residualPath, logManager, cancellationToken);
+                residualCount = Join(leafPath, requests, resultWriter, residualPath, logManager, cancellationToken);
             }
 
             string logicalPath = Path.Combine(directory, "logical");
@@ -153,9 +155,10 @@ internal static class PbtImageVerifier
     /// <summary>Emit one request per leaf the preimage walk will need, keyed by its PBT key.</summary>
     /// <remarks>The request carries the walk position so the join's results replay in preimage order,
     /// and the account request also carries the address and slot count the fold cannot otherwise recover.</remarks>
-    private static void EmitRequests(Stream preimages, PbtSortedSpool requests, ILogManager logManager,
+    private static void EmitRequests(Stream preimages, PbtSortedSpool spool, ILogManager logManager,
         CancellationToken cancellationToken)
     {
+        using PbtSortedSpool.Writer requests = spool.CreateWriter();
         PbtPreimageReader reader = new(preimages);
         // Sized for the largest payload, a slot key; an account's address and slot count are shorter.
         Span<byte> value = stackalloc byte[SequenceLength + 1 + LeafLength];
@@ -194,7 +197,7 @@ internal static class PbtImageVerifier
 
     /// <summary>Merge-join the requests against the snapshot, spilling unclaimed leaves to the residual.</summary>
     /// <returns>The residual leaf count, which the code reads must consume exactly.</returns>
-    private static long Join(string leafPath, PbtSortedSpool requests, PbtSortedSpool results, string residualPath,
+    private static long Join(string leafPath, PbtSortedSpool requests, PbtSortedSpool.Writer results, string residualPath,
         ILogManager logManager, CancellationToken cancellationToken)
     {
         long residualCount = 0;

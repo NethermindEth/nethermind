@@ -17,6 +17,8 @@ public class PbtConfig : IPbtConfig
     public bool MigrationGenesisBootstrap { get; set; }
     public string? MigrationExportPath { get; set; }
     public int ExportStepDistance { get; set; }
+    public int ExportConcurrency { get; set; }
+    public int ExportSortBufferBytes { get; set; } = (int)256UL.MiB;
     public bool FakeMatchingStateRoot { get; set; }
     public ulong AccountTrieNodeCacheSizeBudget { get; set; } = 128UL.MiB;
     public ulong CodeTrieNodeCacheSizeBudget { get; set; } = 32UL.MiB;

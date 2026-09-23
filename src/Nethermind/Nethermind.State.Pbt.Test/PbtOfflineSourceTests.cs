@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -26,7 +27,7 @@ public class PbtOfflineSourceTests
 {
     [Test]
     public void Exports_pinned_source_as_identical_canonical_fixture_with_bounded_sort(
-        [Values("anchor", "a5")] string name, [Values(1024, 65536)] int bufferBytes)
+        [Values("anchor", "a5")] string name, [Values(1024, 65536)] int bufferBytes, [Values(1, 4)] int workerCount)
     {
         string directory = Directory.CreateTempSubdirectory("pbt-offline-").FullName;
         try
@@ -55,7 +56,8 @@ public class PbtOfflineSourceTests
                 }, (address, slot, value) => batch.SetStorage(address, slot, new UInt256(value.Bytes, true)));
             using IPersistence.IPersistenceReader reader = persistence.CreateReader();
             using MemoryStream snapshot = new(), preimages = new();
-            PbtOfflineSource.WriteArtifacts(reader, codes, anchor, directory, snapshot, preimages, LimboLogs.Instance, bufferBytes);
+            PbtOfflineSource.WriteArtifacts(reader, codes, anchor, directory, snapshot, preimages, LimboLogs.Instance,
+                bufferBytes, workerCount, CancellationToken.None);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(snapshot.ToArray(), Is.EqualTo(expectedSnapshot));
@@ -69,8 +71,10 @@ public class PbtOfflineSourceTests
         finally { Directory.Delete(directory, recursive: true); }
     }
 
+    /// <remarks>Only the last address range can reach it, and only by an explicit lookup, so a partitioned scan
+    /// must still emit it exactly once however many workers share the walk.</remarks>
     [Test]
-    public void Includes_maximum_address_excluded_by_flat_iterator_upper_bound()
+    public void Includes_maximum_address_excluded_by_flat_iterator_upper_bound([Values(1, 4)] int workerCount)
     {
         string directory = Directory.CreateTempSubdirectory("pbt-offline-").FullName;
         try
@@ -87,7 +91,7 @@ public class PbtOfflineSourceTests
             using MemoryStream snapshot = new(), preimages = new();
             TestLogger log = new();
             PbtOfflineSource.WriteArtifacts(reader, codes, anchor, directory, snapshot, preimages,
-                new OneLoggerLogManager(new ILogger(log)), 1024);
+                new OneLoggerLogManager(new ILogger(log)), 1024, workerCount, CancellationToken.None);
             preimages.Position = 0;
             PbtPreimageReader output = new(preimages);
             Assert.That(output.ReadAccount(out Address? actual, out uint slots), Is.True);
@@ -113,28 +117,41 @@ public class PbtOfflineSourceTests
         PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue, 24576);
         using MemoryStream snapshot = new(), preimages = new();
         Assert.That(() => PbtOfflineSource.WriteArtifacts(reader, codes, anchor, ".", snapshot, preimages, LimboLogs.Instance,
-            cancellationToken: new CancellationToken(cancel)), cancel ? Throws.TypeOf<OperationCanceledException>() : Throws.TypeOf<InvalidDataException>());
+            sortBufferBytes: 1024, workerCount: 0, new CancellationToken(cancel)),
+            cancel ? Throws.TypeOf<OperationCanceledException>() : Throws.TypeOf<InvalidDataException>());
         Assert.That(snapshot.Length + preimages.Length, Is.Zero);
     }
 
-    /// <summary>A fan-in below the run count forces intermediate merge rounds before the final merge.</summary>
+    /// <summary>A fan-in or pre-merge threshold below the run count forces intermediate merge rounds.</summary>
+    /// <remarks>The writer count exercises the concurrent path: every key must still surface exactly once,
+    /// however the partitioned producers happened to spread it across runs.</remarks>
     [Test]
-    public void Spool_merges_runs_in_key_order_collapsing_duplicates([Values(2, 3, 128)] int maxFanIn)
+    public void Spool_merges_runs_in_key_order_collapsing_duplicates(
+        [Values(2, 3, 128)] int maxFanIn, [Values(2, 64)] int preMergeThreshold, [Values(1, 4)] int writerCount)
     {
         string directory = Directory.CreateTempSubdirectory("pbt-spool-").FullName;
         try
         {
             // A buffer of a few records per run, so a few hundred records spill into many runs.
-            using PbtSortedSpool spool = new(directory, 512, LimboLogs.Instance, CancellationToken.None) { MaxFanIn = maxFanIn };
+            using PbtSortedSpool spool = new(directory, 512, writerCount, LimboLogs.Instance, CancellationToken.None)
+            { MaxFanIn = maxFanIn, PreMergeThreshold = preMergeThreshold };
             SortedDictionary<ValueHash256, byte[]> expected = [];
             for (int index = 0; index < 400; index++)
             {
                 ValueHash256 key = ValueKeccak.Compute(BitConverter.GetBytes(index % 250));
-                byte[] value = ValueKeccak.Compute(key.Bytes).Bytes.ToArray();
-                expected[key] = value;
-                // Every key past 250 repeats an earlier one with the same value, so it must collapse.
-                spool.Add(key.Bytes, value);
+                expected[key] = ValueKeccak.Compute(key.Bytes).Bytes.ToArray();
             }
+
+            // Every key past 250 repeats an earlier one with the same value, so it must collapse.
+            Parallel.For(0, writerCount, new ParallelOptions { MaxDegreeOfParallelism = writerCount }, worker =>
+            {
+                using PbtSortedSpool.Writer writer = spool.CreateWriter();
+                for (int index = worker; index < 400; index += writerCount)
+                {
+                    ValueHash256 key = ValueKeccak.Compute(BitConverter.GetBytes(index % 250));
+                    writer.Add(key.Bytes, ValueKeccak.Compute(key.Bytes).Bytes);
+                }
+            });
 
             // Read twice: the runs outlive the merge, so a second cursor must replay the same sequence.
             for (int pass = 0; pass < 2; pass++)
@@ -156,18 +173,30 @@ public class PbtOfflineSourceTests
         finally { Directory.Delete(directory, recursive: true); }
     }
 
+    /// <remarks>"separateWriters" is the partitioned-scan shape: neither run alone is inconsistent, so only the
+    /// cross-run collapse can catch it.</remarks>
     [Test]
-    public void Spool_rejects_one_key_carrying_two_values([Values(true, false)] bool sameRun)
+    public void Spool_rejects_one_key_carrying_two_values([Values("sameRun", "separateRuns", "separateWriters")] string layout)
     {
         string directory = Directory.CreateTempSubdirectory("pbt-spool-").FullName;
         try
         {
             // A 512-byte buffer holds both records; padding the first run apart puts them in separate runs.
-            using PbtSortedSpool spool = new(directory, 512, LimboLogs.Instance, CancellationToken.None) { MaxFanIn = 2 };
+            using PbtSortedSpool spool = new(directory, 512, writerCount: 2, LimboLogs.Instance, CancellationToken.None) { MaxFanIn = 2 };
             byte[] key = ValueKeccak.Compute("key"u8).Bytes.ToArray();
-            spool.Add(key, [1]);
-            if (!sameRun) for (int index = 0; index < 16; index++) spool.Add(ValueKeccak.Compute(BitConverter.GetBytes(index)).Bytes, [2]);
-            spool.Add(key, [3]);
+            using (PbtSortedSpool.Writer writer = spool.CreateWriter())
+            {
+                writer.Add(key, [1]);
+                if (layout == "separateRuns")
+                    for (int index = 0; index < 16; index++) writer.Add(ValueKeccak.Compute(BitConverter.GetBytes(index)).Bytes, [2]);
+                if (layout != "separateWriters") writer.Add(key, [3]);
+            }
+            if (layout == "separateWriters")
+            {
+                using PbtSortedSpool.Writer other = spool.CreateWriter();
+                other.Add(key, [3]);
+            }
+
             Assert.That(() => { using PbtSortedSpool.Cursor cursor = spool.Read(); while (cursor.MoveNext()) { } },
                 Throws.TypeOf<InvalidDataException>().With.Message.Contains("Conflicting"));
         }

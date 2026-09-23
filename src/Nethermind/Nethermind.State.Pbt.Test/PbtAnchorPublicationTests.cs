@@ -202,7 +202,8 @@ public class PbtAnchorPublicationTests
         if (mode == "existing") Directory.CreateDirectory(output);
         if (mode == "corrupt") harness.Anchor = harness.WithStateRoot(Hash256.Zero);
         void Export() => PbtOfflineExport.Export(lease.OfflineSource!, lease.OfflineCode!, harness.Anchor,
-            output, harness.Scratch.Path, harness.IsAnchorCurrent, LimboLogs.Instance, CancellationToken.None);
+            output, harness.Scratch.Path, harness.IsAnchorCurrent, sortBufferBytes: 65536, workerCount: 2,
+            LimboLogs.Instance, CancellationToken.None);
         if (mode == "existing") Assert.Throws<IOException>(Export);
         else if (mode == "corrupt")
         {
@@ -231,7 +232,8 @@ public class PbtAnchorPublicationTests
         Directory.CreateDirectory(directory);
         await using FileStream exportedSnapshot = new(Path.Combine(directory, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         await using FileStream exportedPreimages = new(Path.Combine(directory, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-        PbtOfflineSource.WriteArtifacts(lease.OfflineSource!, lease.OfflineCode!, lease.Anchor, directory, exportedSnapshot, exportedPreimages, LimboLogs.Instance);
+        PbtOfflineSource.WriteArtifacts(lease.OfflineSource!, lease.OfflineCode!, lease.Anchor, directory,
+            exportedSnapshot, exportedPreimages, LimboLogs.Instance, sortBufferBytes: 65536, workerCount: 2, CancellationToken.None);
         exportedSnapshot.Position = 0;
         exportedPreimages.Position = 0;
 
