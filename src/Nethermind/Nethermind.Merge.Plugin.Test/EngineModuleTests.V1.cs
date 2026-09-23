@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -1593,10 +1594,14 @@ public partial class EngineModuleTests
     }
 
     /// <summary>Hides the state of selected blocks, standing in for a state backend whose reorg window has moved past them.</summary>
-    private sealed class PrunedStateReader(IStateReader inner, HashSet<Hash256> pruned) : IStateReader
+    /// <remarks>
+    /// <paramref name="pruned"/> is read on the engine-RPC and block-processing threads while the test thread and
+    /// <see cref="IBranchProcessor.BlockProcessed"/> write to it, so it must tolerate concurrent access.
+    /// </remarks>
+    private sealed class PrunedStateReader(IStateReader inner, ConcurrentDictionary<Hash256, byte> pruned) : IStateReader
     {
         public bool HasStateForBlock(BlockHeader? baseBlock) =>
-            (baseBlock?.Hash is null || !pruned.Contains(baseBlock.Hash)) && inner.HasStateForBlock(baseBlock);
+            (baseBlock?.Hash is null || !pruned.ContainsKey(baseBlock.Hash)) && inner.HasStateForBlock(baseBlock);
 
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) =>
             inner.TryGetAccount(baseBlock, address, out account);
@@ -1613,6 +1618,33 @@ public partial class EngineModuleTests
             inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
     }
 
+    /// <summary>Builds a node whose state for selected blocks can be hidden on demand.</summary>
+    /// <param name="pruned">Hashes whose state <see cref="IStateReader"/> should pretend not to have.</param>
+    private async Task<MergeTestBlockchain> CreateBlockchainWithPrunableState(ConcurrentDictionary<Hash256, byte> pruned)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned)));
+        // Executing a block re-creates the state that was pruned, so stop hiding it once that happens.
+        chain.BranchProcessor.BlockProcessed += (_, e) => pruned.TryRemove(e.Block.Hash!, out byte _);
+        return chain;
+    }
+
+    /// <summary>Produces a four-block canonical branch and moves the head to its tip.</summary>
+    /// <param name="finalizedIndex">
+    /// Index into the produced blocks to report finalized, or -1 to report none. Without a finalized block,
+    /// moving the head back down is not short-circuited as behind-finalized.
+    /// </param>
+    private async Task<IReadOnlyList<ExecutionPayload>> ProduceCanonicalBranchV1(MergeTestBlockchain chain, int finalizedIndex = -1)
+    {
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(chain.EngineRpcModule, chain, 4,
+            CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
+        Hash256 finalized = finalizedIndex < 0 ? Keccak.Zero : blocks[finalizedIndex].BlockHash;
+        ForkchoiceStateV1 toTip = new(blocks[^1].BlockHash, finalized, finalized);
+        Assert.That((await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(toTip)).Data.PayloadStatus.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+        return blocks;
+    }
+
     /// <summary>
     /// A resubmitted block whose post-state has been pruned must be re-executed rather than answered from a
     /// previous verdict, so that the payload that builds on it is executed instead of answered SYNCING.
@@ -1624,18 +1656,12 @@ public partial class EngineModuleTests
     [Test]
     public async Task newPayloadV1_reexecutes_a_resubmitted_block_whose_state_was_pruned([Values] bool headAtGenesis)
     {
-        HashSet<Hash256> pruned = [];
-        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder.AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned)));
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        // Executing a block re-creates the state that was pruned, so stop hiding it once that happens.
-        chain.BranchProcessor.BlockProcessed += (_, e) => pruned.Remove(e.Block.Hash!);
 
         Hash256 genesisHash = chain.BlockTree.HeadHash!;
-        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
-        // Nothing is finalized, so moving the head back down is not short-circuited as behind-finalized.
-        ForkchoiceStateV1 toTip = new(blocks[^1].BlockHash, Keccak.Zero, Keccak.Zero);
-        Assert.That((await rpc.engine_forkchoiceUpdatedV1(toTip)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
 
         ExecutionPayload resubmitted = blocks[0];
         // Built while the state is still readable; only its submission happens after pruning.
@@ -1647,7 +1673,7 @@ public partial class EngineModuleTests
             Assert.That((await rpc.engine_forkchoiceUpdatedV1(toGenesis)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         }
 
-        pruned.Add(resubmitted.BlockHash);
+        pruned[resubmitted.BlockHash] = 0;
 
         Assert.That((await rpc.engine_newPayloadV1(resubmitted)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
@@ -1672,9 +1698,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: false);
-        ForkchoiceStateV1 toTip = new(blocks[^1].BlockHash, Keccak.Zero, Keccak.Zero);
-        Assert.That((await rpc.engine_forkchoiceUpdatedV1(toTip)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
 
         // A sibling of blocks[1] carrying a state root no execution of it could produce.
         Block sibling = chain.BlockTree.FindBlock(blocks[1].BlockHash, BlockTreeLookupOptions.None)!;
@@ -1692,6 +1716,60 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(ExecutionPayload.Create(tampered));
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid),
             "an unexecuted block must not be reported valid just because its level marker points at it");
+    }
+
+    /// <summary>
+    /// A canonical block whose own and whose parent's state are both gone cannot be re-executed, because
+    /// <c>ShouldProcessBlock</c> gates on the parent. The answer then depends on whether the block could still
+    /// become the head: below the finalized block it cannot, so the earlier verdict stands.
+    /// </summary>
+    [Test]
+    public async Task newPayloadV1_answers_a_canonical_block_below_the_state_window([Values] bool finalizedAbove)
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain, finalizedAbove ? 2 : -1);
+
+        ExecutionPayload resubmitted = blocks[1];
+        pruned[blocks[0].BlockHash] = 0;
+        pruned[resubmitted.BlockHash] = 0;
+
+        ResultWrapper<PayloadStatusV1> result = await chain.EngineRpcModule.engine_newPayloadV1(resubmitted);
+        Assert.That(result.Data.Status, Is.EqualTo(finalizedAbove ? PayloadStatus.Valid : PayloadStatus.Syncing),
+            "a block below finalized can never become the head, so its verdict stays usable without state");
+    }
+
+    /// <summary>
+    /// A payload for a block the chain level already points at must not be staged as a beacon block: on a node
+    /// that has finished syncing that arms the beacon pivot behind the head.
+    /// </summary>
+    [Test]
+    public async Task newPayloadV1_does_not_arm_the_beacon_pivot_for_a_canonical_header_only_block()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+
+        // The shape the pre-pivot header backfill leaves behind: on the main chain, never executed, body absent.
+        Block known = chain.BlockTree.FindBlock(blocks[1].BlockHash, BlockTreeLookupOptions.None)!;
+        BlockHeader headerOnly = known.Header.Clone();
+        headerOnly.ExtraData = [1, 2, 3];
+        headerOnly.Hash = headerOnly.CalculateHash();
+        chain.BlockTree.Insert(headerOnly, BlockTreeInsertHeaderOptions.None);
+
+        // Hiding the parent's state is what makes the handler decline to process and reach the insert path.
+        pruned[blocks[0].BlockHash] = 0;
+
+        ResultWrapper<PayloadStatusV1> result =
+            await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(new Block(headerOnly, known.Body)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(chain.BeaconPivot.BeaconPivotExists(), Is.False,
+                "a block already on the main chain must not become the beacon pivot");
+            Assert.That(chain.BlockTree.LowestInsertedBeaconHeader, Is.Null);
+        }
     }
 
     // Y-shape: block1 -> {block2A (sibling), block2B -> block3B}, with head advanced to block1 via FCU.
