@@ -421,6 +421,54 @@ namespace Nethermind.Core.Test
             }
         }
 
+        // 0-99 reaches every block size and overlapping tail; the rest run the block loops at both parities.
+        private static IEnumerable<int> HexLengths => Enumerable.Range(0, 100).Concat([127, 128, 129, 255, 256, 257, 1000, 1001]);
+
+        [Test]
+        public void OutputBytesToByteHex_matches_reference([ValueSource(nameof(HexLengths))] int length, [Values] bool extraNibble)
+        {
+            if (length == 0 && extraNibble) return;
+            byte[] input = new byte[length];
+            for (int i = 0; i < length; i++) input[i] = (byte)(i * 37 + length);
+            string expected = Convert.ToHexStringLower(input)[(extraNibble ? 1 : 0)..];
+            byte[] hex = new byte[expected.Length];
+
+            Bytes.OutputBytesToByteHex(input, hex, extraNibble);
+
+            Assert.That(System.Text.Encoding.ASCII.GetString(hex), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void FromUtf8HexString_matches_reference([ValueSource(nameof(HexLengths))] int hexLength)
+        {
+            const string digits = "0123456789abcdefABCDEF";
+            byte[] hex = new byte[hexLength];
+            for (int i = 0; i < hexLength; i++) hex[i] = (byte)digits[(i * 7 + hexLength) % digits.Length];
+            string text = System.Text.Encoding.ASCII.GetString(hex);
+
+            byte[] actual = Bytes.FromUtf8HexString(hex);
+
+            Assert.That(actual, Is.EqualTo(Convert.FromHexString(hexLength % 2 == 0 ? text : "0" + text)));
+        }
+
+        [Test]
+        public void FromUtf8HexString_rejects_every_non_hex_byte([ValueSource(nameof(HexLengths))] int hexLength)
+        {
+            if (hexLength == 0) return;
+            byte[] hex = new byte[hexLength];
+            hex.AsSpan().Fill((byte)'a');
+            foreach (int position in new[] { 0, hexLength / 2, hexLength - 1 })
+            {
+                for (int value = 0; value < 256; value++)
+                {
+                    if (Uri.IsHexDigit((char)value)) continue;
+                    hex[position] = (byte)value;
+                    Assert.Throws<FormatException>(() => Bytes.FromUtf8HexString(hex), $"byte 0x{value:x2} at {position}");
+                }
+                hex[position] = (byte)'a';
+            }
+        }
+
         [TestCase("0x", 0L)]
         [TestCase("0x00", 0L)]
         [TestCase("0x0000", 0L)]

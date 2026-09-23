@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
@@ -36,8 +39,7 @@ public static class NumericConverterHelper
 
         if (s.StartsWith("0x"u8))
         {
-            s = s[2..];
-            if (T.TryParse(s, NumberStyles.AllowHexSpecifier, null, out T value))
+            if (TryParseHex(s[2..], out T value))
             {
                 return value;
             }
@@ -49,6 +51,37 @@ public static class NumericConverterHelper
 
         ThrowHexConversion(typeof(T).Name);
         return default;
+    }
+
+    /// <remarks>
+    /// Integers that fit their width decode straight into a big-endian buffer; longer digit strings (leading zeros)
+    /// and other number types keep the runtime's parser, and with it its overflow rules.
+    /// </remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryParseHex<T>(ReadOnlySpan<byte> digits, out T value) where T : struct, INumberBase<T>
+    {
+        // The runtime parser ignores trailing NULs; match it so acceptance does not depend on the digit count.
+        if (!digits.IsEmpty && digits[^1] == 0)
+        {
+            digits = digits.TrimEnd((byte)0);
+        }
+
+        bool isPrimitiveInteger = typeof(T) == typeof(long) || typeof(T) == typeof(ulong) || typeof(T) == typeof(int) || typeof(T) == typeof(uint);
+        if (isPrimitiveInteger && (uint)(digits.Length - 1) < (uint)(Unsafe.SizeOf<T>() * 2))
+        {
+            ulong bigEndian = 0;
+            Span<byte> buffer = MemoryMarshal.AsBytes(new Span<ulong>(ref bigEndian));
+            if (!HexConverter.TryDecodeFromUtf8(digits, buffer[(8 - ((digits.Length + 1) >> 1))..]))
+            {
+                value = default;
+                return false;
+            }
+            value = T.CreateTruncating(BinaryPrimitives.ReverseEndianness(bigEndian));
+            return true;
+        }
+
+        return T.TryParse(digits, NumberStyles.AllowHexSpecifier, null, out value);
     }
 
     /// <summary>

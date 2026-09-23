@@ -21,7 +21,7 @@ public static class VectorIsaExpectations
     /// <summary>Fails the run when the pinned instruction set is not the one in force.</summary>
     public static void AssertPinnedInstructionSet()
     {
-        TestContext.Progress.WriteLine($"AVX2={Avx2.IsSupported}; AVX512F={Avx512F.IsSupported}");
+        TestContext.Progress.WriteLine($"AVX2={Avx2.IsSupported}; AVX512F={Avx512F.IsSupported}; AVX512VBMI={Avx512Vbmi.IsSupported}");
         if (Environment.GetEnvironmentVariable("NETHERMIND_TEST_REQUIRE_AVX512") == "1")
         {
             using (Assert.EnterMultipleScope())

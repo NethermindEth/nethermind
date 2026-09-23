@@ -129,15 +129,17 @@ jobs:
               artifact: release
               avx512: 1
               require-avx512: 1
-          # Hosted runners have AVX2, so no other lane runs the x64 128-bit nibble loops.
+          # Hosted runners have AVX2, so no other lane runs the x64 128-bit nibble and hex loops.
           - project: Nethermind.Trie.Test
-            variant:
+            variant: &no_avx2
               label: no-avx2
               dotnet-args: ''
               hw-intrinsic: ''
               artifact: release
               avx2: 0
               avx512: 0
+          - project: Nethermind.Core.Test
+            variant: *no_avx2
         exclude:
           - { variant: *no_intrinsics, project: Nethermind.Api.Test }
           - { variant: *no_intrinsics, project: Nethermind.Config.Test }
@@ -178,10 +180,13 @@ jobs:
                 exit 0
               fi
             done
+            if ! grep -qw avx512vbmi /proc/cpuinfo; then
+              echo "::warning::This hosted runner lacks avx512vbmi, so the VBMI hex kernels are not covered on this run."
+            fi
           fi
           if [[ "${{ matrix.variant.label }}" == "avx2" || "${{ matrix.variant.label }}" == "avx512" ]]; then
             for target in \
-              'Nethermind.Core.Test:KeccakTests|KeccakCacheTests' \
+              'Nethermind.Core.Test:KeccakTests|KeccakCacheTests|BytesTests|Nethermind.Core.Test.Json.' \
               'Nethermind.Evm.Test:KeyedNonceManagerTests' \
               'Ethereum.Trie.Test:StorageTrieTests' \
               'Nethermind.State.Flat.History.Test:NodeViewsTests' \
@@ -209,7 +214,7 @@ jobs:
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
           if [[ "${{ matrix.variant.label }}" == "no-avx2" ]]; then
-            test_args+=(-- --filter "FullyQualifiedName~HexPrefixTests|FullyQualifiedName~NibbleTests")
+            test_args+=(-- --filter "FullyQualifiedName~HexPrefixTests|FullyQualifiedName~NibbleTests|FullyQualifiedName~BytesTests|FullyQualifiedName~Nethermind.Core.Test.Json.")
           fi
 
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
