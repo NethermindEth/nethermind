@@ -287,16 +287,13 @@ public class ForkChoiceRunnerTests
             ? () => runner.OnAttesterSlashing(new AttesterSlashing { Attestation1 = ToFuluIndexed(attestation1), Attestation2 = ToFuluIndexed(attestation2) })
             : () => runner.OnAttesterSlashing(new AttesterSlashingGloas { Attestation1 = attestation1, Attestation2 = attestation2 });
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chain.Committee32, Has.Length.EqualTo((int)CommitteeSize), "fixture bug");
-            Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
-            if (forged)
-                Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("attestation 2 is invalid"));
-            else
-                Assert.That(slash, Throws.Nothing);
-            Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(forged ? weightBefore : weightBefore - SharedSigners * EffectiveBalance));
-        }
+        Assert.That(chain.Committee32, Has.Length.EqualTo((int)CommitteeSize), "fixture bug");
+        Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
+        if (forged)
+            Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("attestation 2 is invalid"));
+        else
+            Assert.That(slash, Throws.Nothing);
+        Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(forged ? weightBefore : weightBefore - SharedSigners * EffectiveBalance));
     }
 
     /// <summary>
@@ -324,15 +321,12 @@ public class ForkChoiceRunnerTests
             Attestation2 = SignedUnder(domain, GloasTestFixtures.Vote(GloasTestFixtures.BoundarySlot, 0, ForkCrossingChain.ForkEpoch, 0x41), signers),
         };
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.AnchorRoot)), "fixture bug");
-            Assert.That(blockStateDomain, Is.Not.EqualTo(checkpointStateDomain), "fixture bug: the two states must sign under different fork versions");
-            if (signedUnderBlockStateFork)
-                Assert.That(() => runner.OnAttesterSlashing(slashing), Throws.Nothing);
-            else
-                Assert.That(() => runner.OnAttesterSlashing(slashing), Throws.TypeOf<ForkChoiceException>().With.Message.Contains("attestation 1 is invalid"));
-        }
+        Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.AnchorRoot)), "fixture bug");
+        Assert.That(blockStateDomain, Is.Not.EqualTo(checkpointStateDomain), "fixture bug: the two states must sign under different fork versions");
+        if (signedUnderBlockStateFork)
+            Assert.That(() => runner.OnAttesterSlashing(slashing), Throws.Nothing);
+        else
+            Assert.That(() => runner.OnAttesterSlashing(slashing), Throws.TypeOf<ForkChoiceException>().With.Message.Contains("attestation 1 is invalid"));
     }
 
     /// <summary>
@@ -358,14 +352,11 @@ public class ForkChoiceRunnerTests
             ? () => runner.OnAttestation(GloasTestFixtures.ToFuluAttestation(attestation))
             : () => runner.OnAttestation(attestation);
 
-        using (Assert.EnterMultipleScope())
-        {
-            if (forged)
-                Assert.That(vote, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("signature"));
-            else
-                Assert.That(vote, Throws.Nothing);
-            Assert.That(Weight(runner, target), Is.EqualTo(forged ? 0 : CommitteeSize * EffectiveBalance));
-        }
+        if (forged)
+            Assert.That(vote, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("signature"));
+        else
+            Assert.That(vote, Throws.Nothing);
+        Assert.That(Weight(runner, target), Is.EqualTo(forged ? 0 : CommitteeSize * EffectiveBalance));
     }
 
     /// <summary>
@@ -432,12 +423,9 @@ public class ForkChoiceRunnerTests
                 Attestation2 = new IndexedAttestationGloas { AttestingIndices = invalid, Data = vote2 },
             }, verifySignatures: false);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
-            Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("invalid"));
-            Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(weightBefore), "a refused slashing discounts nobody");
-        }
+        Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
+        Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("invalid"));
+        Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(weightBefore), "a refused slashing discounts nobody");
     }
 
     /// <summary>
