@@ -23,6 +23,7 @@ namespace Nethermind.Evm.Test.Tracing
             CancellationTxTracer tracer = new(Substitute.For<ITxTracer>(), cancellationTokenSource.Token) { IsTracingActions = true };
 
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionError(EvmExceptionType.None));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportActionRemainingGas(1));
         }
 
         [Test]

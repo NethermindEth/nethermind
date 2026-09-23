@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.Intrinsics.X86;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -13,6 +14,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -216,7 +218,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     }
                     StorageCell cell = new(address, in slot);
                     if (!sink.StillNeeded(in cell)) continue;
-                    sink.OnStorageRead(in cell, storageTree.Get(in slot));
+                    storageTree.Get(in slot, out UInt256 value);
+                    sink.OnStorageRead(in cell, in value);
                 }
             }
             catch (MissingTrieNodeException) { }
@@ -335,8 +338,13 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
             OnAccountUpdated = null;
 
-            using (StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
+            if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
             {
+                scope._backingStateTree.SetAccounts(_dirtyAccounts);
+            }
+            else
+            {
+                using StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count);
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                 {
                     stateSetter.Set(kv.Key, kv.Value);
@@ -371,18 +379,50 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 : null;
 
         private ValueHash256 _keyBuff = new();
+        private PendingHashes? _pendingHashes;
 
-        public void Set(in UInt256 index, byte[] value)
+        private sealed class PendingHashes
         {
+            internal KeyHashBatch Batch;
+            internal PendingHashes() => Batch.Initialize(Hash256.Size);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void AddUnhashedEntry(ReadOnlySpan<byte> preimage, ReadOnlySpan<byte> encoded, bool isZero)
+        {
+            PendingHashes pending = _pendingHashes ??= new();
+            int index = _bulkWrite!.Count;
+            _bulkWrite.Add(StorageTree.CreateBulkSetEntry(default, encoded, isZero));
+            pending.Batch.AddMissing(preimage, index);
+            if (pending.Batch.IsFull) pending.Batch.Flush(_bulkWrite.AsSpan());
+        }
+
+        [SkipLocalsInit]
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            Unsafe.SkipInit(out EvmWord word);
+            bool isZero = value.IsZero;
+            ReadOnlySpan<byte> encoded = isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word);
             _wasSetCalled = true;
             if (_bulkWrite is null)
             {
-                storageTree.Set(index, value);
+                storageTree.Set(index, encoded, isZero);
             }
             else
             {
-                StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
-                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
+                if (Avx2.IsSupported)
+                {
+                    if (!StorageTree.TryGetCachedKey(index, out _keyBuff, out ValueHash256 preimage))
+                    {
+                        AddUnhashedEntry(preimage.BytesAsSpan, encoded, isZero);
+                        return;
+                    }
+                }
+                else
+                {
+                    StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
+                }
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, encoded, isZero));
             }
         }
 
@@ -408,6 +448,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     storageTree.RootHash = Keccak.EmptyTreeHash;
                 }
 
+                _pendingHashes?.Batch.Flush(_bulkWrite.AsSpan());
+                _pendingHashes = null;
                 bulkCount = _bulkWrite.Count;
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
                 storageTree.BulkSet(asRef);

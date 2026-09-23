@@ -13,10 +13,14 @@ namespace Nethermind.Network.Discovery.Kademlia;
 public abstract class KademliaAdapterBase(
     string protocolName,
     IIPResolver ipResolver,
-    ILogger logger)
+    ILogger logger,
+    NetworkListenerState listenerState)
 {
+    protected IIPResolver.NethermindIp ResolvedIp { get; } = ipResolver.Resolve().GetAwaiter().GetResult();
+    protected NetworkListenerState ListenerState { get; } = listenerState;
+
     protected ILogger Logger { get; } = logger;
-    protected IPAddress LocalIp { get; } = ipResolver.Resolve().GetAwaiter().GetResult().LocalIp;
+    protected IPAddress LocalIp => ListenerState.DiscoveryAddress ?? ListenerState.PreferredAddress;
 
     protected abstract ValueTask<NodeRecord?> RequestRemoteRecord(
         Node node,
@@ -54,6 +58,12 @@ public abstract class KademliaAdapterBase(
         {
             while (true)
             {
+                if (token.IsCancellationRequested)
+                {
+                    node.TryClearEnrRequest(node.RequestingEnrSequence);
+                    return;
+                }
+
                 ulong requestedSequence = node.RequestingEnrSequence;
                 if (requestedSequence == 0)
                 {

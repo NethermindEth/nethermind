@@ -153,6 +153,9 @@ public class BlockHeader
     public virtual BlockHeader CreateSimulatedChild(ulong timestamp)
     {
         Hash256? requestsHash = RequestsHash;
+        // EIP-7843: the EL cannot know the CL-assigned slot of a block that does not exist yet, so the
+        // simulated child takes the earliest one it could occupy. Stays unset for a pre-fork parent.
+        ulong? slotNumber = SlotNumber + 1;
         return new BlockHeader(
             Hash!,
             Keccak.OfAnEmptySequenceRlp,
@@ -162,7 +165,8 @@ public class BlockHeader
             GasLimit,
             timestamp,
             [],
-            requestsHash: requestsHash)
+            requestsHash: requestsHash,
+            slotNumber: slotNumber)
         {
             MixHash = Hash256.Zero,
         };

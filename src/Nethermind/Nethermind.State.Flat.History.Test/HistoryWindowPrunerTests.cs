@@ -11,6 +11,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.History.Changesets;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -424,13 +425,14 @@ public class HistoryWindowPrunerTests
         };
         configure?.Invoke(config);
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return new HistoryWindowPruner(
             _writer, _historyColumns, config,
             scopeGate ?? new HistoryScopeGate(),
             availability, rowFormat,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            new TransactionChangesetIndex(_historyColumns, config));
     }
 
     private sealed class CountdownBudget(int rowsBeforeExhaustion) : IPruneBudget

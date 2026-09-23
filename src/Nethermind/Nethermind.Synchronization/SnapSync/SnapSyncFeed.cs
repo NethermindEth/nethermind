@@ -295,6 +295,8 @@ namespace Nethermind.Synchronization.SnapSync
                                     {
                                         PublicKey? peerNodeId = peer.SyncPeer?.Node?.Id;
                                         bool repeatOffender = peerNodeId is not null && peerNodeId.Equals(_stalePivotUpdateTrigger);
+                                        // Armed on the request, not on the move: a pivot that declines to move is the
+                                        // case this guard is for, and the peer still has to be punished for it.
                                         _stalePivotUpdateTrigger = peerNodeId;
                                         _snapProvider.UpdatePivot();
 

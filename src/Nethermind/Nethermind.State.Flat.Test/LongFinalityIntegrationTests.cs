@@ -90,7 +90,7 @@ public class LongFinalityIntegrationTests
         {
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(500).TestObject;
             byte[] slotVal = new byte[32]; slotVal[31] = 0xFF;
-            c.Storages[(TestItem.AddressA, (UInt256)42)] = new SlotValue(slotVal);
+            c.Storages[(TestItem.AddressA, (UInt256)42)] = new UInt256(slotVal, isBigEndian: true);
             c.SelfDestructedStorageAddresses[TestItem.AddressB] = false;
             c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, stateRlp);
             c.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Branch, storageRlp);
@@ -394,7 +394,7 @@ public class LongFinalityIntegrationTests
 
     // A real PersistenceManager over the container's real repository, so DetermineSnapshotAction runs its
     // actual persist/convert decision logic against on-disk-backed state.
-    private static PersistenceManager BuildManager(FlatTestContainer tier, IFinalizedStateProvider finalized, StateId persistedState)
+    private static PersistenceManager BuildManager(FlatTestContainer tier, StateId persistedState)
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.CurrentState.Returns(persistedState);
@@ -404,7 +404,7 @@ public class LongFinalityIntegrationTests
         return new PersistenceManager(
             tier.Config,
             ScheduleHelper.CreateWithOffset(tier.Config, 0),
-            finalized,
+            tier.Resolve<IFinalizedStateProvider>(),
             persistence,
             tier.Repository,
             NullStatePersistenceBarrier.Instance,
@@ -437,10 +437,10 @@ public class LongFinalityIntegrationTests
             LongFinalityMaxReorgDepth = 90000,
             EnableLongFinality = true
         };
-        using FlatTestContainer tier = new(config: config);
-        StateId block0 = new(0, Keccak.EmptyTreeHash);
         SettableFinalizedProvider finalized = new(); // genesis → Phase-1 finalized trigger never fires
-        using PersistenceManager pm = BuildManager(tier, finalized, block0);
+        using FlatTestContainer tier = new(config: config, finalizedStateProvider: finalized);
+        StateId block0 = new(0, Keccak.EmptyTreeHash);
+        using PersistenceManager pm = BuildManager(tier, block0);
 
         StateId prev = block0;
         for (ulong b = 1; b <= 4; b++) prev = AddInMemoryBase(tier, prev, b);
@@ -467,11 +467,11 @@ public class LongFinalityIntegrationTests
             LongFinalityMaxReorgDepth = 100,
             EnableLongFinality = true
         };
-        using FlatTestContainer tier = new(config: config);
+        SettableFinalizedProvider finalized = new(); // genesis → Phase-1 finalized trigger never fires
+        using FlatTestContainer tier = new(config: config, finalizedStateProvider: finalized);
         StateId block0 = new(0, Keccak.EmptyTreeHash);
         AddInMemoryBase(tier, block0, 1);
-        SettableFinalizedProvider finalized = new(); // genesis → Phase-1 finalized trigger never fires
-        using PersistenceManager pm = BuildManager(tier, finalized, block0);
+        using PersistenceManager pm = BuildManager(tier, block0);
 
         (_, Snapshot? atBackstop, _) = pm.DetermineSnapshotAction(new StateId(100, Keccak.Compute("h100")));
         atBackstop?.Dispose();
@@ -491,12 +491,15 @@ public class LongFinalityIntegrationTests
         FlatDbConfig config = new()
         {
             CompactSize = 4,
-            MinReorgDepth = 2,
+            // Not a subject here: a non-zero floor would hold the fold until the head is that far above
+            // the boundary, which is exercised in PersistenceManagerTests instead.
+            MinReorgDepth = 0,
             MaxInMemoryBaseSnapshotCount = 100000,
             LongFinalityMaxReorgDepth = 90000,
             EnableLongFinality = true
         };
-        using FlatTestContainer tier = new(config: config);
+        SettableFinalizedProvider finalized = new() { FinalizedBlockNumber = 4 };
+        using FlatTestContainer tier = new(config: config, finalizedStateProvider: finalized);
         StateId block0 = new(0, Keccak.EmptyTreeHash);
 
         StateId prev = block0;
@@ -507,9 +510,8 @@ public class LongFinalityIntegrationTests
             if (b == 4) at4 = prev;
         }
 
-        SettableFinalizedProvider finalized = new() { FinalizedBlockNumber = 4 };
         finalized.SetRoot(4, new Hash256(at4.StateRoot.Bytes));
-        using PersistenceManager pm = BuildManager(tier, finalized, block0);
+        using PersistenceManager pm = BuildManager(tier, block0);
 
         // Depth 4 is far inside LongFinalityMaxReorgDepth (90000); the finalized boundary at block 4 still
         // triggers Phase-1 persistence starting from the persisted base.
@@ -517,6 +519,15 @@ public class LongFinalityIntegrationTests
         Assert.That(toPersist, Is.Not.Null, "finalized boundary within the long-finality window must still persist");
         Assert.That(toPersist!.From, Is.EqualTo(block0));
         toPersist.Dispose();
+
+        StateId orphan = new(4, Keccak.Compute("finalized-fork"));
+        using Snapshot fork = tier.ResourcePool.CreateSnapshot(block0, orphan, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        fork.Content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
+        tier.ConvertToPersistedBase(fork).Dispose();
+        tier.Repository.SetLastCommittedStateId(prev);
+        tier.Repository.RemoveFinalizedPersistedForks(block0);
+        Assert.That(tier.Repository.HasBasePersistedSnapshot(orphan), Is.False,
+            "the repository must use the same finalized boundary as the manager");
     }
 
     [Test]

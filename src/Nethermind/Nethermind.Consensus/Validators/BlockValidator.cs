@@ -40,6 +40,9 @@ public class BlockValidator(
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
 
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error, bool validateHash) =>
+        _headerValidator.Validate(header, parent, isUncle, out error, validateHash);
+
     public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
         _headerValidator.ValidateOrphaned(header, out error);
     /// <summary>
@@ -60,7 +63,20 @@ public class BlockValidator(
     /// <param name="block">A block to validate</param>
     /// <param name="parent">Parent of the block</param>
     /// <param name="errorMessage">Message detailing a validation failure.</param>
-    /// <param name="validateHashes"></param>
+    /// <param name="validateHashes">
+    /// <c>false</c> to skip four keccaks: the header hash, which binds <see cref="BlockHeader.Hash"/> to the header
+    /// contents, and the uncles hash, transactions root and withdrawals root, which bind the body to the header.
+    /// Everything else still runs, the EIP-4895 withdrawals presence rules included. Validators overriding
+    /// <see cref="ValidateWithdrawals(Block, IReleaseSpec, bool, ref string)"/> (Optimism's does) apply their own
+    /// withdrawals rules regardless of this flag.
+    /// <para>
+    /// Only pass <c>false</c> after deriving those three roots from the block's own body and verifying the header
+    /// hash against the header contents (see <see cref="HeaderValidator.ValidateHash(BlockHeader)"/>). A payload
+    /// type that takes the roots off the wire instead - Taiko's is one - hashes consistently while leaving them
+    /// unchecked, so the skip is unsound for it. Without the hash check, a block whose hash does not match its
+    /// contents is accepted, and that hash is what the block tree and the consensus layer see.
+    /// </para>
+    /// </param>
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
@@ -74,7 +90,7 @@ public class BlockValidator(
 
         return ValidateBlockSize(block, spec, ref errorMessage) &&
                ValidateTransactions(block, spec, ref errorMessage) &&
-               ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
+               ValidateHeader<TOrphaned>(block, parent, validateHashes, ref errorMessage) &&
                ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
                ValidateEip4844Fields(block, spec, ref errorMessage) &&
@@ -82,11 +98,11 @@ public class BlockValidator(
                ValidateBlockLevelAccessList(block, spec, ref errorMessage);
     }
 
-    private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, ref string? errorMessage)
+    private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, bool validateHashes, ref string? errorMessage)
         where TOrphaned : struct, IFlag
     {
         bool blockHeaderValid = typeof(TOrphaned) == typeof(OffFlag)
-            ? parent is not null && _headerValidator.Validate(block.Header, parent, false, out errorMessage)
+            ? parent is not null && _headerValidator.Validate(block.Header, parent, false, out errorMessage, validateHashes)
             : parent is null && _headerValidator.ValidateOrphaned(block.Header, out errorMessage);
 
         if (_logger.IsDebug && !blockHeaderValid) _logger.Debug($"{Invalid(block)} Invalid header: {errorMessage}");
@@ -276,33 +292,32 @@ public class BlockValidator(
         return ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), true, ref error);
     }
 
+    /// <remarks>
+    /// The EIP-4895 presence rules run regardless of <paramref name="validateHashes"/>: a verified header hash says
+    /// nothing about whether the body carries the withdrawals the fork requires, only that the root field is the one
+    /// that was hashed.
+    /// </remarks>
     protected virtual bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error)
     {
-        if (validateHashes)
+        if (spec.WithdrawalsEnabled && block.Withdrawals is null)
         {
-            if (spec.WithdrawalsEnabled && block.Withdrawals is null)
-            {
-                error = BlockErrorMessages.MissingWithdrawals;
-                if (_logger.IsWarn) _logger.Warn($"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.");
-                return false;
-            }
+            error = BlockErrorMessages.MissingWithdrawals;
+            if (_logger.IsWarn) _logger.Warn($"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.");
+            return false;
+        }
 
-            if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
-            {
-                error = BlockErrorMessages.WithdrawalsNotEnabled;
-                if (_logger.IsWarn) _logger.Warn($"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.");
-                return false;
-            }
+        if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
+        {
+            error = BlockErrorMessages.WithdrawalsNotEnabled;
+            if (_logger.IsWarn) _logger.Warn($"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.");
+            return false;
+        }
 
-            if (block.Withdrawals is not null)
-            {
-                if (!ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
-                {
-                    error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
-                    if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
-                    return false;
-                }
-            }
+        if (validateHashes && block.Withdrawals is not null && !ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
+        {
+            error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
+            if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
+            return false;
         }
 
         return true;
@@ -550,7 +565,7 @@ public class BlockValidator(
             return header.WithdrawalsRoot is null;
         }
 
-        return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+        return (withdrawalsRoot = WithdrawalTrie.CalculateRoot(body.Withdrawals)) == header.WithdrawalsRoot;
     }
 
     public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)
