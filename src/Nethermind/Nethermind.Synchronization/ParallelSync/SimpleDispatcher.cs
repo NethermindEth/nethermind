@@ -29,9 +29,9 @@ namespace Nethermind.Synchronization.ParallelSync;
 /// (<see cref="ISyncPeerPool.Allocate"/>); response processing
 /// (<see cref="ISimpleSyncFeed{T}.HandleResponse"/>) is bounded by
 /// <see cref="ISyncConfig.MaxProcessingThreads"/> plus one — a failed allocation is handled on
-/// the loop thread without taking a slot. A dispatch holds its in-flight slot until its
-/// response is handled and its peer allocation until a processing slot is acquired, so
-/// transient response memory is capped at roughly the in-flight bound × max response size.
+/// the loop thread without taking a slot. A dispatch frees its peer once the download finishes
+/// but holds its in-flight slot until its response is handled, so transient response memory is
+/// capped at roughly the in-flight bound × max response size.
 /// <see cref="Run"/> returns only after every
 /// in-flight dispatch has completed — including when cancelled — because callers treat that
 /// return as the sole barrier before resetting or finalizing feed state.
@@ -190,13 +190,11 @@ public class SimpleDispatcher<T>(
             }
             Metrics.SyncDispatcherDispatchTimeMicros.Observe(
                 Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));
-
-            if (token.IsCancellationRequested) return;
-
-            // Hold the peer until processing has room, bounding downloaded responses even when disk writes stall.
-            await processingSemaphore.WaitAsync(CancellationToken.None);
         }
 
+        if (token.IsCancellationRequested) return;
+
+        await processingSemaphore.WaitAsync(CancellationToken.None);
         try
         {
             if (!token.IsCancellationRequested) HandleResponse(request, peer);
