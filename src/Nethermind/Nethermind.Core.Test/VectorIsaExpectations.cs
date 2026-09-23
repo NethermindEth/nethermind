@@ -38,6 +38,15 @@ public static class VectorIsaExpectations
                 "The AVX-512 job requires AVX-512 VBMI with 512-bit vectors enabled.");
         }
 
+        if (Environment.GetEnvironmentVariable("NETHERMIND_TEST_REQUIRE_NO_AVX2") == "1")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Avx2.IsSupported, Is.False, "The no-AVX2 job must disable AVX2.");
+                Assert.That(Ssse3.IsSupported, Is.True, "The no-AVX2 job requires SSSE3 hardware.");
+            }
+        }
+
         if (Environment.GetEnvironmentVariable("NETHERMIND_TEST_REQUIRE_AVX2") == "1")
         {
             using (Assert.EnterMultipleScope())

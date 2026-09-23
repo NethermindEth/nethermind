@@ -31,8 +31,6 @@ internal static class HexDecoder
     private static Vector256<sbyte> PairWeights256 => Vector256.Create((short)0x0110).AsSByte();
     private static Vector512<sbyte> PairWeights512 => Vector512.Create((short)0x0110).AsSByte();
 
-    // ---------- AVX-512 VBMI ----------
-
     // 64 chars -> 32 bytes. VPERMI2B reads index bits 0-6, so idx >= 0x80 aliases; it is caught by bit 7 of idx in bad.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector512<byte> Vbmi64(ref byte dest, Vector512<byte> chars, Vector512<byte> tableLo, Vector512<byte> tableHi)
@@ -89,8 +87,6 @@ internal static class HexDecoder
         }
         return (check & Vector256.Create((byte)0xC0)) == Vector256<byte>.Zero;
     }
-
-    // ---------- AVX2, SSSE3, AdvSimd ----------
 
     // Geoff Langdale and Wojciech Mula's parse: a byte is a hex char exactly when its result is at most 15.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -8,25 +8,26 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
 
 /// <summary>Lowercase hex encoding kernels shared by the byte and JSON hex writers.</summary>
 internal static class HexEncoder
 {
-    internal static Vector128<byte> HexLookup128
+    private static Vector128<byte> HexLookup128
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => Vector128.Create("0123456789abcdef"u8);
     }
 
-    internal static Vector256<byte> HexLookup256
+    private static Vector256<byte> HexLookup256
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => Vector256.Create("0123456789abcdef0123456789abcdef"u8);
     }
 
-    internal static Vector128<byte> ReverseBytes128
+    private static Vector128<byte> ReverseBytes128
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => Vector128.Create((byte)15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
@@ -34,8 +35,8 @@ internal static class HexEncoder
 
     // VPMULTISHIFTQB bit offsets of the high then low nibble of each 16-bit word, four words per qword:
     // for a zero-extended byte they sit at bits 4 and 0, for a byte duplicated into both halves at bits 4 and 8.
-    internal const ulong ZeroExtendedByteNibbleShifts = 0x3034_2024_1014_0004;
-    internal const ulong DuplicatedByteNibbleShifts = 0x3834_2824_1814_0804;
+    private const ulong ZeroExtendedByteNibbleShifts = 0x3034_2024_1014_0004;
+    private const ulong DuplicatedByteNibbleShifts = 0x3834_2824_1814_0804;
 
     /// <summary>Writes the 64 hex chars of 32 bytes, byte <c>i</c> held in 16-bit word <c>i</c> of <paramref name="spread"/>.</summary>
     /// <remarks>
@@ -44,7 +45,7 @@ internal static class HexEncoder
     /// every 16 bytes, so bits 4-5 do not matter either and no mask is needed.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Avx512VbmiEncode64Nibbles(ref byte dest, Vector512<byte> spread, ulong nibbleShifts)
+    private static void Avx512VbmiEncode64Nibbles(ref byte dest, Vector512<byte> spread, ulong nibbleShifts)
     {
         Vector512<byte> nibbles = Avx512Vbmi.MultiShift(Vector512.Create(nibbleShifts).AsByte(), spread.AsUInt64());
         Avx512Vbmi.PermuteVar64x8(Vector512.Create("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"u8), nibbles).StoreUnsafe(ref dest);
@@ -53,7 +54,7 @@ internal static class HexEncoder
     /// <summary>Writes 64 hex chars for 32 bytes whose 64-bit lanes are ordered 0, 2, 1, 3.</summary>
     /// <remarks>The unpacks work within 128-bit lanes, so that order makes them emit bytes 0-15, then bytes 16-31.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Avx2Encode32Bytes(ref byte dest, Vector256<byte> laneOrdered)
+    private static void Avx2Encode32Bytes(ref byte dest, Vector256<byte> laneOrdered)
     {
         Vector256<byte> mask = Vector256.Create((byte)0x0F);
         Vector256<byte> hi = Avx2.ShiftRightLogical(laneOrdered.AsUInt16(), 4).AsByte() & mask;
@@ -64,7 +65,7 @@ internal static class HexEncoder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Ssse3Encode8Bytes(ref byte dest, Vector128<byte> input)
+    private static void Ssse3Encode8Bytes(ref byte dest, Vector128<byte> input)
     {
         Vector128<byte> mask = Vector128.Create((byte)0x0F);
         Vector128<byte> hi = Sse2.ShiftRightLogical(input.AsUInt16(), 4).AsByte() & mask;
@@ -73,7 +74,7 @@ internal static class HexEncoder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Ssse3Encode16Bytes(ref byte dest, Vector128<byte> input)
+    private static void Ssse3Encode16Bytes(ref byte dest, Vector128<byte> input)
     {
         Vector128<byte> hexLookup = HexLookup128;
         Vector128<byte> mask = Vector128.Create((byte)0x0F);
@@ -84,7 +85,7 @@ internal static class HexEncoder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void AdvSimdEncode8Bytes(ref byte dest, Vector128<byte> input)
+    private static void AdvSimdEncode8Bytes(ref byte dest, Vector128<byte> input)
     {
         Vector128<byte> nibbles = AdvSimd.Arm64.ZipLow(AdvSimd.ShiftRightLogical(input, 4), input & Vector128.Create((byte)0x0F));
         AdvSimd.Arm64.VectorTableLookup(HexLookup128, nibbles).StoreUnsafe(ref dest);
@@ -92,7 +93,7 @@ internal static class HexEncoder
 
     // The arm64 JIT does not CSE the table load across inlined calls, so callers hoist it.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void AdvSimdEncode16Bytes(ref byte dest, Vector128<byte> input, Vector128<byte> hexLookup)
+    private static void AdvSimdEncode16Bytes(ref byte dest, Vector128<byte> input, Vector128<byte> hexLookup)
     {
         Vector128<byte> hi = AdvSimd.Arm64.VectorTableLookup(hexLookup, AdvSimd.ShiftRightLogical(input, 4));
         Vector128<byte> lo = AdvSimd.Arm64.VectorTableLookup(hexLookup, input & Vector128.Create((byte)0x0F));
@@ -120,13 +121,13 @@ internal static class HexEncoder
         "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"u8;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void EncodeByte(ref byte dest, byte value) =>
+    private static void EncodeByte(ref byte dest, byte value) =>
         Unsafe.WriteUnaligned(ref dest, Unsafe.Add(ref Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(HexByteLookup)), value));
 
     /// <summary>Writes the 8 hex chars of the 4 bytes at <paramref name="src"/>.</summary>
     /// <remarks>The per-byte table beat SWAR arithmetic on both x64 and arm64 without vector instructions.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Encode4BytesScalar(ref byte dest, ref byte src)
+    private static void Encode4BytesScalar(ref byte dest, ref byte src)
     {
         EncodeByte(ref dest, src);
         EncodeByte(ref Unsafe.Add(ref dest, 2), Unsafe.Add(ref src, 1));
@@ -135,7 +136,7 @@ internal static class HexEncoder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void EncodeUlongScalar(ref byte dest, ulong value)
+    private static void EncodeUlongScalar(ref byte dest, ulong value)
     {
         for (int i = 0; i < 8; i++)
         {
@@ -172,7 +173,7 @@ internal static class HexEncoder
 
     /// <summary>Writes the 16 hex chars of the 8 bytes at <paramref name="src"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Encode8Bytes(ref byte dest, ref byte src)
+    private static void Encode8Bytes(ref byte dest, ref byte src)
     {
         if (Avx512Vbmi.VL.IsSupported)
         {
@@ -197,7 +198,7 @@ internal static class HexEncoder
 
     /// <summary>Writes the 32 hex chars of the 16 bytes at <paramref name="src"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Encode16Bytes(ref byte dest, ref byte src)
+    private static void Encode16Bytes(ref byte dest, ref byte src)
     {
         if (Avx512Vbmi.VL.IsSupported)
         {
@@ -251,6 +252,54 @@ internal static class HexEncoder
             {
                 Encode4BytesScalar(ref Unsafe.Add(ref dest, i * 2), ref Unsafe.Add(ref src, i));
             }
+        }
+    }
+
+    /// <summary>Writes the 64 hex chars of <paramref name="value"/>, most significant nibble first.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void EncodeUInt256(ref byte dest, UInt256 value)
+    {
+        ref byte limbs = ref Unsafe.As<UInt256, byte>(ref value);
+        if (Vector512.IsHardwareAccelerated && Avx512Vbmi.IsSupported)
+        {
+            // Word i = byte 31 - i in both halves.
+            Vector512<byte> spread = Avx512Vbmi.PermuteVar64x8(Vector256.LoadUnsafe(ref limbs).ToVector512Unsafe(),
+                Vector512.Create(
+                    (byte)31, 31, 30, 30, 29, 29, 28, 28, 27, 27, 26, 26, 25, 25, 24, 24,
+                    23, 23, 22, 22, 21, 21, 20, 20, 19, 19, 18, 18, 17, 17, 16, 16,
+                    15, 15, 14, 14, 13, 13, 12, 12, 11, 11, 10, 10, 9, 9, 8, 8,
+                    7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 0, 0));
+            Avx512VbmiEncode64Nibbles(ref dest, spread, DuplicatedByteNibbleShifts);
+        }
+        else if (Avx2.IsSupported)
+        {
+            // Limbs to u3, u1, u2, u0, then byte-reverse each limb.
+            Vector256<byte> laneOrdered = Avx2.Shuffle(
+                Avx2.Permute4x64(Vector256.LoadUnsafe(ref limbs).AsUInt64(), 0b00_10_01_11).AsByte(),
+                Vector256.Create(
+                    (byte)7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8,
+                    7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8));
+            Avx2Encode32Bytes(ref dest, laneOrdered);
+        }
+        else if (Ssse3.IsSupported)
+        {
+            Vector128<byte> reverse = ReverseBytes128;
+            Ssse3Encode16Bytes(ref dest, Ssse3.Shuffle(Vector128.LoadUnsafe(ref limbs, 16), reverse));
+            Ssse3Encode16Bytes(ref Unsafe.Add(ref dest, 32), Ssse3.Shuffle(Vector128.LoadUnsafe(ref limbs), reverse));
+        }
+        else if (AdvSimd.Arm64.IsSupported)
+        {
+            Vector128<byte> reverse = ReverseBytes128;
+            Vector128<byte> hexLookup = HexLookup128;
+            AdvSimdEncode16Bytes(ref dest, AdvSimd.Arm64.VectorTableLookup(Vector128.LoadUnsafe(ref limbs, 16), reverse), hexLookup);
+            AdvSimdEncode16Bytes(ref Unsafe.Add(ref dest, 32), AdvSimd.Arm64.VectorTableLookup(Vector128.LoadUnsafe(ref limbs), reverse), hexLookup);
+        }
+        else
+        {
+            EncodeUlongScalar(ref dest, value.u3);
+            EncodeUlongScalar(ref Unsafe.Add(ref dest, 16), value.u2);
+            EncodeUlongScalar(ref Unsafe.Add(ref dest, 32), value.u1);
+            EncodeUlongScalar(ref Unsafe.Add(ref dest, 48), value.u0);
         }
     }
 

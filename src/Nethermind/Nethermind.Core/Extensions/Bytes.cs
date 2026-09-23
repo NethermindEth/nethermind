@@ -605,7 +605,7 @@ namespace Nethermind.Core.Extensions
             if (extraNibble)
             {
                 // Odd number of hex chars: the first byte contributes only its low nibble.
-                hex[0] = (byte)"0123456789abcdef"u8[bytes[0] & 0xF];
+                hex[0] = "0123456789abcdef"u8[bytes[0] & 0xF];
                 bytes = bytes[1..];
                 hex = hex[1..];
             }

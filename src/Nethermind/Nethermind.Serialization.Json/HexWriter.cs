@@ -7,9 +7,6 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.Arm;
-using System.Runtime.Intrinsics.X86;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -136,14 +133,14 @@ public static class HexWriter
     }
 
     // Buffer layout (logical): [opening "?][0x?][64 hex chars][closing "?].
-    // EncodeUInt256Hex always writes 64 chars at `hexOffset`; the trimmed significant
+    // HexEncoder.EncodeUInt256 always writes 64 chars at `hexOffset`; the trimmed significant
     // nibbles end up at the tail, so `spanStart = 64 - nibbleCount` regardless of
     // which optional prefixes are present.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void BuildUInt256Hex(ref byte buffer, UInt256 value, bool includeQuotes, bool zeroPadded, bool addHexPrefix, out nint spanStart, out int spanLength)
     {
         nint hexOffset = (includeQuotes ? 1 : 0) + (addHexPrefix ? 2 : 0);
-        EncodeUInt256Hex(ref Unsafe.Add(ref buffer, hexOffset), value);
+        HexEncoder.EncodeUInt256(ref Unsafe.Add(ref buffer, hexOffset), value);
 
         int nibbleCount = zeroPadded ? 64 : GetSignificantNibbleCount(value);
         spanStart = 64 - nibbleCount;
@@ -190,53 +187,6 @@ public static class HexWriter
 
         int nibbleCount = (259 - leadingZeroBits) >> 2;
         return nibbleCount == 0 ? 1 : nibbleCount;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void EncodeUInt256Hex(ref byte dest, UInt256 value)
-    {
-        ref byte limbs = ref Unsafe.As<UInt256, byte>(ref value);
-        if (Vector512.IsHardwareAccelerated && Avx512Vbmi.IsSupported)
-        {
-            // Word i = byte 31 - i in both halves.
-            Vector512<byte> spread = Avx512Vbmi.PermuteVar64x8(Vector256.LoadUnsafe(ref limbs).ToVector512Unsafe(),
-                Vector512.Create(
-                    (byte)31, 31, 30, 30, 29, 29, 28, 28, 27, 27, 26, 26, 25, 25, 24, 24,
-                    23, 23, 22, 22, 21, 21, 20, 20, 19, 19, 18, 18, 17, 17, 16, 16,
-                    15, 15, 14, 14, 13, 13, 12, 12, 11, 11, 10, 10, 9, 9, 8, 8,
-                    7, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 0, 0));
-            HexEncoder.Avx512VbmiEncode64Nibbles(ref dest, spread, HexEncoder.DuplicatedByteNibbleShifts);
-        }
-        else if (Avx2.IsSupported)
-        {
-            // Limbs to u3, u1, u2, u0, then byte-reverse each limb.
-            Vector256<byte> laneOrdered = Avx2.Shuffle(
-                Avx2.Permute4x64(Vector256.LoadUnsafe(ref limbs).AsUInt64(), 0b00_10_01_11).AsByte(),
-                Vector256.Create(
-                    (byte)7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8,
-                    7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8));
-            HexEncoder.Avx2Encode32Bytes(ref dest, laneOrdered);
-        }
-        else if (Ssse3.IsSupported)
-        {
-            Vector128<byte> reverse = HexEncoder.ReverseBytes128;
-            HexEncoder.Ssse3Encode16Bytes(ref dest, Ssse3.Shuffle(Vector128.LoadUnsafe(ref limbs, 16), reverse));
-            HexEncoder.Ssse3Encode16Bytes(ref Unsafe.Add(ref dest, 32), Ssse3.Shuffle(Vector128.LoadUnsafe(ref limbs), reverse));
-        }
-        else if (AdvSimd.Arm64.IsSupported)
-        {
-            Vector128<byte> reverse = HexEncoder.ReverseBytes128;
-            Vector128<byte> hexLookup = HexEncoder.HexLookup128;
-            HexEncoder.AdvSimdEncode16Bytes(ref dest, AdvSimd.Arm64.VectorTableLookup(Vector128.LoadUnsafe(ref limbs, 16), reverse), hexLookup);
-            HexEncoder.AdvSimdEncode16Bytes(ref Unsafe.Add(ref dest, 32), AdvSimd.Arm64.VectorTableLookup(Vector128.LoadUnsafe(ref limbs), reverse), hexLookup);
-        }
-        else
-        {
-            HexEncoder.EncodeUlongScalar(ref dest, value.u3);
-            HexEncoder.EncodeUlongScalar(ref Unsafe.Add(ref dest, 16), value.u2);
-            HexEncoder.EncodeUlongScalar(ref Unsafe.Add(ref dest, 32), value.u1);
-            HexEncoder.EncodeUlongScalar(ref Unsafe.Add(ref dest, 48), value.u0);
-        }
     }
 
     // Inline buffers avoid stackalloc GS-cookie overhead on hot hex writers.

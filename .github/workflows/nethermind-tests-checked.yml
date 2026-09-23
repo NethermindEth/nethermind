@@ -138,6 +138,7 @@ jobs:
               artifact: release
               avx2: 0
               avx512: 0
+              require-no-avx2: 1
           - project: Nethermind.Core.Test
             variant: *no_avx2
         exclude:
@@ -171,6 +172,7 @@ jobs:
           DOTNET_EnableAVX512: ${{ matrix.variant.avx512 }}
           NETHERMIND_TEST_REQUIRE_AVX2: ${{ matrix.variant.require-avx2 }}
           NETHERMIND_TEST_REQUIRE_AVX512: ${{ matrix.variant.require-avx512 }}
+          NETHERMIND_TEST_REQUIRE_NO_AVX2: ${{ matrix.variant.require-no-avx2 }}
         run: |
           core_tests='KeccakTests|KeccakCacheTests|BytesTests|Nethermind.Core.Test.Json.'
           if [[ "${{ matrix.variant.label }}" == "avx512" ]]; then

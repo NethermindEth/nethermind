@@ -133,8 +133,12 @@ public class LongConverterTests : ConverterTestBase<long>
     public void Parse_hex_ignores_trailing_nuls_like_the_runtime_parser(string digits) =>
         Assert.That(Parse<ulong>(digits), Is.EqualTo(ulong.Parse(digits, NumberStyles.AllowHexSpecifier)));
 
+    [TestCase("")]
+    [TestCase("\0")]
     [TestCase("g")]
     [TestCase("12345g78")]
+    [TestCase("12345678g")]
+    [TestCase("123456789abcde:")]
     [TestCase("1234567 ")]
     [TestCase("123456789abcdef:")]
     [TestCase("10000000000000000")]
