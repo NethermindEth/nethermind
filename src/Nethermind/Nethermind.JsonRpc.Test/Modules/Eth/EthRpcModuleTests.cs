@@ -29,6 +29,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Json;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
@@ -36,6 +37,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -2105,12 +2107,87 @@ public partial class EthRpcModuleTests
         string rawTxHex, string? timeoutMs, int expectedCode, string expectedMessageFragment)
     {
         using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.RpcTxSyncMaxConcurrentRequests = 1;
         string serialized = timeoutMs is null
             ? await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex)
             : await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex, timeoutMs);
 
-        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
-        Assert.That(serialized, Does.Contain(expectedMessageFragment));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
+            Assert.That(serialized, Does.Contain(expectedMessageFragment));
+        }
+
+        string retry = await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", "c0");
+        Assert.That(retry, Does.Contain("Invalid RLP"));
+    }
+
+    [Test]
+    public async Task EthSendRawTransactionSync_UsesSeparateLimitFromExclusiveCalls(
+        [Values(0, 1, 2)] int limit, [Values] bool receiptLookupFails)
+    {
+        JsonRpcConfig config = new()
+        {
+            EthModuleConcurrentInstances = 1,
+            Timeout = 0,
+            RpcTxSyncMaxConcurrentRequests = limit
+        };
+        TaskCompletionSource<(Hash256 Hash, AcceptTxResult? AddTxResult)> submission = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ITxSender sender = Substitute.For<ITxSender>();
+        sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(_ => new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>(submission.Task));
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Throws(new InvalidOperationException("Receipt lookup failed."));
+        IBlockchainBridgeFactory bridgeFactory = Substitute.For<IBlockchainBridgeFactory>();
+        bridgeFactory.CreateBlockchainBridge().Returns(bridge);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton(sender)
+            .AddSingleton(bridgeFactory)
+            .Build();
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        int pendingCount = limit == 0 ? 3 : limit;
+        List<Task<JsonRpcResponse>> pending = [];
+        try
+        {
+            for (int i = 0; i < pendingCount; i++)
+            {
+                Task<JsonRpcResponse> request = service.SendRequestAsync(
+                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context).AsTask();
+                pending.Add(request);
+                Assert.That(request.IsCompleted, Is.False);
+            }
+
+            using JsonRpcResponse filterResponse = await service.SendRequestAsync(
+                RpcTest.BuildJsonRequest("eth_newBlockFilter"), context);
+            RpcTest.AssertSuccess(filterResponse);
+
+            if (limit > 0)
+            {
+                using JsonRpcResponse refused = await service.SendRequestAsync(
+                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context);
+                Assert.That(RpcTest.AssertError(refused).Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+            }
+            Assert.That(sender.ReceivedCalls().Count(), Is.EqualTo(pendingCount));
+        }
+        finally
+        {
+            submission.TrySetResult((tx.Hash!, receiptLookupFails ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            foreach (JsonRpcResponse response in await Task.WhenAll(pending)) response.Dispose();
+        }
+
+        using JsonRpcResponse retry = await service.SendRequestAsync(
+            RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(retry).Code,
+                Is.EqualTo(receiptLookupFails ? ErrorCodes.InternalError : ErrorCodes.TransactionRejected));
+            Assert.That(sender.ReceivedCalls().Count(), Is.EqualTo(pendingCount + 1));
+            bridge.Received(receiptLookupFails ? pendingCount + 1 : 0).GetTxReceiptInfo(tx.Hash!);
+        }
     }
 
     private static IEnumerable<TestCaseData> SendRawTransactionSyncFailureCases()
@@ -2154,14 +2231,20 @@ public partial class EthRpcModuleTests
         bridge.GetTxReceiptInfo(txHash)
             .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { RpcTxSyncMaxConcurrentRequests = 1 })
             .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
 
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
-
-        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
-        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+        for (int i = 0; i < 2; i++)
+        {
+            string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
+                Assert.That(serialized, Does.Not.Contain("\"error\":"));
+            }
+        }
     }
 
     [Test]

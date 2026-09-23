@@ -95,15 +95,22 @@ namespace Nethermind.JsonRpc.Modules
 
         private async Task<T> SlowPath()
         {
-            RpcLimits.AcquireQueuedSlot();
-
-            if (!await _semaphore.WaitAsync(_timeout))
+            if (!_semaphore.Wait(0))
             {
-                RpcLimits.DecrementQueuedCalls();
-                throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
+                RpcLimits.AcquireQueuedSlot();
+                try
+                {
+                    if (!await _semaphore.WaitAsync(_timeout))
+                    {
+                        throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
+                    }
+                }
+                finally
+                {
+                    RpcLimits.DecrementQueuedCalls();
+                }
             }
 
-            RpcLimits.DecrementQueuedCalls();
             _pool.TryDequeue(out T result);
             return result;
         }

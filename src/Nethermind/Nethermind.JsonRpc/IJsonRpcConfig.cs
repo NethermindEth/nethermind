@@ -242,6 +242,12 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Maximum server-side wait, in milliseconds, that eth_sendRawTransactionSync will accept; client-supplied timeouts above this are clamped down.", DefaultValue = "60000")]
     int RpcTxSyncMaxTimeoutMs { get; set; }
 
+    /// <summary>
+    /// Maximum number of concurrent eth_sendRawTransactionSync calls. Defaults to 128; 0 disables this limit.
+    /// </summary>
+    [ConfigItem(Description = "Maximum number of concurrent eth_sendRawTransactionSync calls, independent of EthModuleConcurrentInstances. Excess calls are rejected before submitting the transaction. 0 disables this limit.", DefaultValue = "128")]
+    int RpcTxSyncMaxConcurrentRequests { get; set; }
+
     [ConfigItem(
         Description = """
             Additional CIDR networks treated as trusted local sources for the JSON-RPC fast lane.

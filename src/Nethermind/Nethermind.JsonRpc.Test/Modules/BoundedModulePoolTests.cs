@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -28,7 +29,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
-[Parallelizable(ParallelScope.Self)]
+[NonParallelizable]
 [TestFixture]
 public class BoundedModulePoolTests
 {
@@ -81,6 +82,58 @@ public class BoundedModulePoolTests
     {
         await _modulePool.GetModule(false);
         Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => _modulePool.GetModule(false));
+    }
+
+    [Test]
+    public async Task Can_rent_available_module_when_another_pool_queue_is_full()
+    {
+        RpcLimits.Init(1, 0);
+        BoundedModulePool<IEthRpcModule> busyPool = new(_modulePool.Factory, 1, -1);
+        BoundedModulePool<IEthRpcModule> availablePool = new(_modulePool.Factory, 1, 0);
+        try
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                IEthRpcModule active = await busyPool.GetModule(false);
+                Task<IEthRpcModule> queued = busyPool.GetModule(false);
+                try
+                {
+                    Assert.That(queued.IsCompleted, Is.False);
+                    Assert.ThrowsAsync<LimitExceededException>(() => busyPool.GetModule(false));
+
+                    IEthRpcModule available = await availablePool.GetModule(false);
+                    availablePool.ReturnModule(available);
+                }
+                finally
+                {
+                    busyPool.ReturnModule(active);
+                    busyPool.ReturnModule(await queued);
+                }
+            }
+        }
+        finally
+        {
+            RpcLimits.Init(0, 0);
+        }
+    }
+
+    [Test]
+    public void Queue_slot_is_released_after_rental_failure([Values(0, -2)] int timeout)
+    {
+        RpcLimits.Init(1, 0);
+        BoundedModulePool<IEthRpcModule> emptyPool = new(_modulePool.Factory, 0, timeout);
+        Type exceptionType = timeout == 0 ? typeof(ModuleRentalTimeoutException) : typeof(ArgumentOutOfRangeException);
+        try
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                Assert.ThrowsAsync(exceptionType, () => emptyPool.GetModule(false));
+            }
+        }
+        finally
+        {
+            RpcLimits.Init(0, 0);
+        }
     }
 
     [Test]
