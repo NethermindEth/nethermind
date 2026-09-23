@@ -149,11 +149,11 @@ namespace Nethermind.Facade.Filters
         internal int FilterCount => _filters.Count;
 
         /// <summary>
-        /// Reports whether the queued results have reached <see cref="MaxQueuedItems"/>.
+        /// Reports whether the installed filters and their queued results have reached <see cref="MaxQueuedItems"/>.
         /// </summary>
         /// <remarks>
         /// Set once by <see cref="FilterManager"/>, which owns the queues. This limits filter admission only;
-        /// <see cref="FilterManager"/> bounds the queues of installed filters by evicting the largest ones.
+        /// <see cref="FilterManager"/> bounds the queues of installed filters by evicting the least recently polled ones.
         /// </remarks>
         internal Func<bool>? IsQueuedItemBudgetExhausted
         {
