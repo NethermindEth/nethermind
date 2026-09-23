@@ -148,7 +148,7 @@ public class PbtResourcePool : IPbtResourcePool
         private readonly ConcurrentStackPool<PbtWriteBatchBuilder<PbtStoragePath>> _storageWriteBatchPool = new(writableBundlePoolSize);
         private readonly PooledResourceLabel _writeBatchLabel = new(usage.ToString(), "PbtWriteBatchBuilder");
         private readonly ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
-        private PbtTransientResource.Size _lastCachedResourceSize = new(1024, 1024);
+        private PbtTransientResource.Size _lastCachedResourceSize = new(PbtTransientResource.DefaultPrewarmCapacity, 1024);
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
 

@@ -14,8 +14,11 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Pbt;
 
 /// <summary>Per-block scratch state that is never committed into a snapshot: prewarm deduplication and the node groups staged for the shared trie cache.</summary>
-public sealed class PbtTransientResource(long prewarmCapacity = 1024, int nodeGroupCapacity = 1024) : IDisposable, IResettable
+public sealed class PbtTransientResource(long prewarmCapacity = PbtTransientResource.DefaultPrewarmCapacity, int nodeGroupCapacity = 1024) : IDisposable, IResettable
 {
+    /// <summary>Initial dedup-filter capacity; sized to hold a block's account and slot hints without the false-positive rate climbing before the first grow.</summary>
+    public const long DefaultPrewarmCapacity = 128 * 1024;
+
     /// <summary>Capacities the pool remembers so a replacement resource starts where the last one grew to.</summary>
     public sealed record Size(long PrewarmCapacity, int NodeGroupCapacity);
 

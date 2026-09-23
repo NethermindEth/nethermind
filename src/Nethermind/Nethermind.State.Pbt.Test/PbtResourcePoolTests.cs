@@ -282,7 +282,9 @@ public class PbtResourcePoolTests
         PbtTransientResource.Size originalSize = resource.GetSize();
         try
         {
-            for (int slot = 0; slot < 2048; slot++) resource.ShouldPrewarm(TestItem.AddressA, (UInt256)slot);
+            // Reset grows the filter once more hints were admitted than it was sized for, whatever that size
+            // defaults to. Overshoot it, since its own false positives turn some of these hints away.
+            for (long slot = 0; slot < originalSize.PrewarmCapacity * 2; slot++) resource.ShouldPrewarm(TestItem.AddressA, (UInt256)slot);
             if (growNodeGroups)
                 for (int first = 0; first < 32; first++)
                     for (int second = 0; second < 256; second++)
