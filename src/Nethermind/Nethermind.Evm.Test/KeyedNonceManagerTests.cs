@@ -85,10 +85,27 @@ public class KeyedNonceManagerTests
         }
     }
 
+    // The batch and the scalar tail are interchangeable by design, so whichever the gate picks must derive
+    // the same slot. Only the fixed vectors above pin StorageSlot itself, so this closes the gap for
+    // arbitrary keys — the property FirstUseCount's batch gate rests on.
+    [Test]
+    public void Batched_storage_indices_match_the_scalar_slots([Range(2, Eip8250Constants.MaxNonceKeys)] int count)
+    {
+        UInt256[] keys = StrictlyIncreasing(count, wide: true);
+        UInt256[] indices = new UInt256[count];
+
+        KeyedNonceManager.StorageIndices(TestItem.AddressA, keys, indices);
+
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(indices[i], Is.EqualTo(KeyedNonceManager.StorageSlot(TestItem.AddressA, keys[i]).Index));
+        }
+    }
+
     // Gas estimation reaches payment approval with nonce validation skipped, so a set part fresh and part
     // used is observable and the count is not just "all or nothing" on the shared sequence.
     [Test]
-    public void FirstUseCount_counts_only_the_unused_keys([Values(2, 8, Eip8250Constants.MaxNonceKeys)] int count)
+    public void FirstUseCount_counts_only_the_unused_keys([Range(2, Eip8250Constants.MaxNonceKeys)] int count)
     {
         UInt256[] keys = StrictlyIncreasing(count);
         int used = count / 2;
@@ -259,12 +276,16 @@ public class KeyedNonceManagerTests
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue - 1), Is.True);
     }
 
-    private static UInt256[] StrictlyIncreasing(int count)
+    /// <param name="wide">Fills the upper words too, so the batch lanes carry a full 32-byte key rather than
+    /// one whose high bytes a cleared buffer would supply anyway.</param>
+    private static UInt256[] StrictlyIncreasing(int count, bool wide = false)
     {
         UInt256[] keys = new UInt256[count];
         for (int i = 0; i < count; i++)
         {
-            keys[i] = (UInt256)(i + 1);
+            keys[i] = wide
+                ? new UInt256((ulong)(i + 1), 0x0f1e2d3c4b5a6978UL, 0x8796a5b4c3d2e1f0UL, 0x0102030405060708UL)
+                : (UInt256)(i + 1);
         }
         return keys;
     }

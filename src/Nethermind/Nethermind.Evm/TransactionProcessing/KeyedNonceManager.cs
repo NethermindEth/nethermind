@@ -68,7 +68,7 @@ public static class KeyedNonceManager
     {
         int firstUseCount = 0;
         // A well-formed multi-key set cannot contain key 0, so every key reads a storage slot.
-        if (Avx512F.IsSupported && nonceKeys.Length is >= HashBatchSize and <= Eip8250Constants.MaxNonceKeys)
+        if (Avx512F.IsSupported && nonceKeys.Length is >= MinHashBatchSize and <= Eip8250Constants.MaxNonceKeys)
         {
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
             StorageIndices(sender, nonceKeys, indices);
