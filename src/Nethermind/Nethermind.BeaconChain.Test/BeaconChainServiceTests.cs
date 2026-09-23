@@ -9,8 +9,10 @@ using Autofac;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
@@ -26,13 +28,13 @@ namespace Nethermind.BeaconChain.Test;
 
 public class BeaconChainServiceTests
 {
-    private static IContainer BuildContainer(ILogManager? logManager = null)
+    private static IContainer BuildContainer(ILogManager? logManager = null, ulong chainId = BlockchainIds.Mainnet)
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>(); // registered by NetworkModule in production
         ipResolver.Resolve(Arg.Any<CancellationToken>())
             .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>(); // registered by NethermindModule in production
-        specProvider.ChainId.Returns(BlockchainIds.Mainnet);
+        specProvider.ChainId.Returns(chainId);
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new BeaconChainModule())
             .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig())
@@ -83,6 +85,21 @@ public class BeaconChainServiceTests
 
             Assert.DoesNotThrowAsync(async () => await Task.WhenAll(stopTask, disposeTask));
         }
+    }
+
+    // A store resolved without the spec would silently keep the Fulu-only shape and refuse every Gloas block.
+    [Test]
+    public void The_resolved_store_stores_blocks_in_the_shape_of_the_network_fork_schedule()
+    {
+        using IContainer container = BuildContainer(chainId: BlockchainIds.Sepolia);
+        BeaconChainSpec spec = container.Resolve<BeaconChainSpec>();
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        ulong firstGloasSlot = spec.GloasForkEpoch * spec.SlotsPerEpoch;
+
+        store.PutForkedBlock(TestItem.KeccakA, new ForkedSignedBeaconBlock.OfGloas(SignedBeaconBlockBuilders.CreateMinimalGloasBlock(firstGloasSlot)));
+
+        Assert.That(store.TryGetForkedBlock(TestItem.KeccakA, out ForkedSignedBeaconBlock? block), Is.True);
+        Assert.That(block, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
     }
 
     [Test]
