@@ -147,6 +147,7 @@ public class BackgroundTaskSchedulerBenchmarks
     {
         public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
         public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
+        public event EventHandler<BlockExecutedEventArgs>? BlockExecuted { add { } remove { } }
         public event EventHandler<BlockProcessedEventArgs>? BlockProcessed { add { } remove { } }
         public event EventHandler<BlockEventArgs>? BlockProcessing { add { } remove { } }
 
