@@ -743,7 +743,8 @@ public partial class EngineModuleTests
             }
 
             Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid), $"iteration {iteration}");
-
+            // VALID precedes the commit, and a forkchoice update on an uncommitted head can answer SYNCING and build nothing.
+            await chain.WaitForCommitted(getPayloadResult.BlockHash);
 
             // starting building on block X
             await rpc.engine_forkchoiceUpdatedV1(
@@ -755,13 +756,14 @@ public partial class EngineModuleTests
 
             // starting building on block X + 1
             Task secondImprovementTask = chain.WaitForImprovedBlock(getPayloadResult.BlockHash);
-            string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
-                    new ForkchoiceStateV1(getPayloadResult.BlockHash!, Keccak.Zero, getPayloadResult.BlockHash!),
-                    new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
-                .Result.Data.PayloadId!;
+            ResultWrapper<ForkchoiceUpdatedV1Result> secondForkchoice = await rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(getPayloadResult.BlockHash!, Keccak.Zero, getPayloadResult.BlockHash!),
+                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
+            Assert.That(secondForkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid), $"iteration {iteration}");
+            string secondNewPayload = secondForkchoice.Data.PayloadId!;
             await secondImprovementTask;
 
-            ExecutionPayload? getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload!))).Data;
+            ExecutionPayload? getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data;
             Assert.That(getSecondBlockPayload, Is.Not.Null, $"iteration {iteration}");
 
             Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV1(getSecondBlockPayload!);
