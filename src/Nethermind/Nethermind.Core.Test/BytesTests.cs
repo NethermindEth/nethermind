@@ -21,6 +21,9 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class BytesTests
     {
+        [OneTimeSetUp]
+        public void Check_instruction_set_expectations() => VectorIsaExpectations.AssertPinnedInstructionSet();
+
         private static string CreateHexString(int byteLength)
         {
             char[] chars = new char[byteLength * 2];
@@ -429,7 +432,8 @@ namespace Nethermind.Core.Test
         {
             if (length == 0 && extraNibble) return;
             byte[] input = new byte[length];
-            for (int i = 0; i < length; i++) input[i] = (byte)(i * 37 + length);
+            // Adjacent bytes, and bytes 16 apart, differ in both nibbles.
+            for (int i = 0; i < length; i++) input[i] = (byte)(i * 37 + (i >> 4) + length);
             string expected = Convert.ToHexStringLower(input)[(extraNibble ? 1 : 0)..];
             byte[] hex = new byte[expected.Length];
 

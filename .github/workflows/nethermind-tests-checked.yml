@@ -172,6 +172,7 @@ jobs:
           NETHERMIND_TEST_REQUIRE_AVX2: ${{ matrix.variant.require-avx2 }}
           NETHERMIND_TEST_REQUIRE_AVX512: ${{ matrix.variant.require-avx512 }}
         run: |
+          core_tests='KeccakTests|KeccakCacheTests|BytesTests|Nethermind.Core.Test.Json.'
           if [[ "${{ matrix.variant.label }}" == "avx512" ]]; then
             for flag in avx512f avx512cd avx512bw avx512dq avx512vl; do
               if ! grep -qw "$flag" /proc/cpuinfo; then
@@ -180,13 +181,18 @@ jobs:
                 exit 0
               fi
             done
-            if ! grep -qw avx512vbmi /proc/cpuinfo; then
+            # Without VBMI the hex tests would pass down the AVX2 fallback while reporting AVX-512 coverage.
+            # With it, the instruction set checks in those fixtures assert that VBMI is in force.
+            if grep -qw avx512vbmi /proc/cpuinfo; then
+              export NETHERMIND_TEST_REQUIRE_AVX512VBMI=1
+            else
               echo "::warning::This hosted runner lacks avx512vbmi, so the VBMI hex kernels are not covered on this run."
+              core_tests='KeccakTests|KeccakCacheTests'
             fi
           fi
           if [[ "${{ matrix.variant.label }}" == "avx2" || "${{ matrix.variant.label }}" == "avx512" ]]; then
             for target in \
-              'Nethermind.Core.Test:KeccakTests|KeccakCacheTests|BytesTests|Nethermind.Core.Test.Json.' \
+              "Nethermind.Core.Test:$core_tests" \
               'Nethermind.Evm.Test:KeyedNonceManagerTests' \
               'Ethereum.Trie.Test:StorageTrieTests' \
               'Nethermind.State.Flat.History.Test:NodeViewsTests' \

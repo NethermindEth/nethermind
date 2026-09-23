@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using NUnit.Framework;
 
@@ -29,6 +30,12 @@ public static class VectorIsaExpectations
                 Assert.That(Avx512F.IsSupported, Is.True, "The AVX-512 job requires AVX-512F hardware.");
                 Assert.That(Avx512F.VL.IsSupported, Is.True, "The AVX-512 job requires AVX-512VL hardware.");
             }
+        }
+
+        if (Environment.GetEnvironmentVariable("NETHERMIND_TEST_REQUIRE_AVX512VBMI") == "1")
+        {
+            Assert.That(Avx512Vbmi.IsSupported && Vector512.IsHardwareAccelerated, Is.True,
+                "The AVX-512 job requires AVX-512 VBMI with 512-bit vectors enabled.");
         }
 
         if (Environment.GetEnvironmentVariable("NETHERMIND_TEST_REQUIRE_AVX2") == "1")

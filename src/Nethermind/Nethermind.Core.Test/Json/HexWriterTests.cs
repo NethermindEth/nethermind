@@ -16,6 +16,9 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class HexWriterTests
 {
+    [OneTimeSetUp]
+    public void Check_instruction_set_expectations() => VectorIsaExpectations.AssertPinnedInstructionSet();
+
     private const string ZeroWord = "0000000000000000000000000000000000000000000000000000000000000000";
     private const string PatternWord = "00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9";
     private const string OnesWord = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
@@ -114,6 +117,27 @@ public class HexWriterTests
         Assert.That(actual, Is.EqualTo("\"" + expectedBody + "\""));
     }
 
+    // Leading zero nibbles put the first significant one in u3 (1), u2 (16, 17), u1 (32, 35) or u0 (49), odd and even.
+    [Test]
+    public void WriteUInt256_trimmed_multi_limb_all_writers([Values(0, 1, 16, 17, 32, 35, 49)] int zeroNibbles, [Values] bool addPrefix)
+    {
+        UInt256 value = UInt256FromHex(new string('0', zeroNibbles) + DistinctHalvesWord[zeroNibbles..]);
+        string body = (addPrefix ? "0x" : "") + DistinctHalvesWord[zeroNibbles..].TrimStart('0');
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(WriteToString(w => HexWriter.WriteUInt256HexRawValue(w, value, zeroPadded: false, addPrefix)), Is.EqualTo("\"" + body + "\""));
+            Assert.That(WriteToString((ArrayBufferWriter<byte> w) => HexWriter.WriteUInt256HexString(w, value, zeroPadded: false, addPrefix)), Is.EqualTo("\"" + body + "\""));
+            Assert.That(WriteToString(w =>
+            {
+                w.WriteStartObject();
+                HexWriter.WriteUInt256HexPropertyName(w, value, zeroPadded: false, addPrefix);
+                w.WriteNumberValue(1);
+                w.WriteEndObject();
+            }), Is.EqualTo("{\"" + body + "\":1}"));
+        }
+    }
+
     [TestCase(0UL)]
     [TestCase(1UL)]
     [TestCase(0x0123456789abcdefUL)]
@@ -136,7 +160,8 @@ public class HexWriterTests
     public void WriteHexStringValue_EveryBlockAndTailLength([ValueSource(nameof(HexLengths))] int length)
     {
         byte[] data = new byte[length];
-        for (int i = 0; i < length; i++) data[i] = (byte)(i * 37 + length);
+        // Adjacent bytes, and bytes 16 apart, differ in both nibbles.
+        for (int i = 0; i < length; i++) data[i] = (byte)(i * 37 + (i >> 4) + length);
 
         string actual = WriteToString(w => HexWriter.WriteHexStringValue(w, data));
         Assert.That(actual, Is.EqualTo("\"0x" + Convert.ToHexStringLower(data) + "\""));
