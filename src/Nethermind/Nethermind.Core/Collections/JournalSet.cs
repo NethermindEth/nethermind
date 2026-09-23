@@ -77,6 +77,16 @@ namespace Nethermind.Core.Collections
         /// </summary>
         /// <remarks>The caller must ensure the set is not empty.</remarks>
         public T First => _items[0];
+
+        /// <summary>
+        /// Gets the items in the order they were first added, without the ones dropped by <see cref="Restore"/>.
+        /// </summary>
+        /// <remarks>
+        /// Unlike enumerating the set, this order is defined, so callers whose output depends on it stay
+        /// deterministic. <see cref="Add"/>, <see cref="Restore"/> and <see cref="Clear"/> invalidate the
+        /// returned span, so the caller must not mutate the set while reading it.
+        /// </remarks>
+        public ReadOnlySpan<T> AsSpan() => CollectionsMarshal.AsSpan(_items);
         public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
     }
 }

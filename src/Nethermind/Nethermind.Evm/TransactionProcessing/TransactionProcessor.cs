@@ -396,37 +396,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 JournalSet<Address>? destroyList = substate.DestroyList;
                 if (destroyList is not null)
                 {
-                    int count = destroyList.Count;
                     bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                     bool tracingRefunds = tracer.IsTracingRefunds;
                     bool tracingLogs = tracer.IsTracingLogs;
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
-                    // Only the Burn log is order-observable, so specs that emit none skip the sort.
-                    if (!removeSelfdestructBurn && count > 1)
+                    // Same ordering rule as the inline path: the Burn log feeds the receipts root, so
+                    // emit in destroy order rather than in hash-slot order.
+                    foreach (Address toBeDestroyed in destroyList.AsSpan())
                     {
-                        Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
-                        try
-                        {
-                            destroyList.CopyTo(buffer, 0);
-                            buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
-                            for (int i = 0; i < count; i++)
-                            {
-                                FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn, tracer, tracingLogs);
-                                if (tracingRefunds) tracer.ReportRefund(destroyRefund);
-                            }
-                        }
-                        finally
-                        {
-                            SafeArrayPool<Address>.Shared.Return(buffer);
-                        }
-                    }
-                    else
-                    {
-                        foreach (Address toBeDestroyed in destroyList)
-                        {
-                            FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit, removeSelfdestructBurn, tracer, tracingLogs);
-                            if (tracingRefunds) tracer.ReportRefund(destroyRefund);
-                        }
+                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit, removeSelfdestructBurn, tracer, tracingLogs);
+                        if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
 
@@ -1461,33 +1440,11 @@ namespace Nethermind.Evm.TransactionProcessing
                         JournalCollection<LogEntry> logs = substate.Logs;
 
                         // The finalization log below is the only order-observable effect here, and it feeds
-                        // the receipts root, so emit by ascending address rather than in hash-slot order —
-                        // the same order the deferred path already applies, rather than a second convention.
-                        // Specs that emit no such log keep iterating the set directly.
-                        int destroyCount = destroyList.Count;
-                        if (eip7708Enabled && !removeSelfdestructBurn && destroyCount > 1)
+                        // the receipts root, so emit in the order the accounts were destroyed: the set records
+                        // it already and reverted frames drop out of it, whereas hash-slot order is arbitrary.
+                        foreach (Address toBeDestroyed in destroyList.AsSpan())
                         {
-                            Address[] buffer = SafeArrayPool<Address>.Shared.Rent(destroyCount);
-                            try
-                            {
-                                destroyList.CopyTo(buffer, 0);
-                                buffer.AsSpan(0, destroyCount).Sort(default(AddressByBytesComparer));
-                                for (int i = 0; i < destroyCount; i++)
-                                {
-                                    FinalizeDestroyedAccountInline(buffer[i]);
-                                }
-                            }
-                            finally
-                            {
-                                SafeArrayPool<Address>.Shared.Return(buffer);
-                            }
-                        }
-                        else
-                        {
-                            foreach (Address toBeDestroyed in destroyList)
-                            {
-                                FinalizeDestroyedAccountInline(toBeDestroyed);
-                            }
+                            FinalizeDestroyedAccountInline(toBeDestroyed);
                         }
 
                         void FinalizeDestroyedAccountInline(Address toBeDestroyed)
@@ -1917,16 +1874,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
-
-        // Devirtualised wrapper over Address.CompareTo (sealed -> already devirt'd inside) so the EIP-7708
-        // destroy-list sort goes through Sort<TComparer> instead of Comparer<Address>.Default's virtual call.
-        // The IComparer<Address> contract declares nullable parameters; the destroy-list source
-        // (JournalSet<Address>) never contains null entries, so the `!` dereference is safe here.
-        private readonly struct AddressByBytesComparer : IComparer<Address>
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public int Compare(Address? x, Address? y) => x!.CompareTo(y);
-        }
     }
 
     /// <summary>

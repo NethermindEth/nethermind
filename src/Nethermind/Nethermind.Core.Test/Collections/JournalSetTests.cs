@@ -64,5 +64,27 @@ namespace Nethermind.Core.Test.Collections
 
             Assert.That(journalSet.First, Is.EqualTo(3));
         }
+
+        /// <remarks>
+        /// Items added after a restore reuse the slots the restore freed, which is the one case where set
+        /// order stops matching insertion order — so the case discriminates between the two orders.
+        /// </remarks>
+        [Test]
+        public void AsSpan_keeps_insertion_order_when_restored_slots_are_reused()
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            journalSet.AddRange([1, 2, 3]);
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange([4, 5, 6]);
+            journalSet.Restore(snapshot);
+            journalSet.AddRange([7, 8, 9]);
+
+            int[] insertionOrder = [1, 2, 3, 7, 8, 9];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet.AsSpan().ToArray(), Is.EqualTo(insertionOrder), "span must follow insertion order, with restored items dropped");
+                Assert.That(journalSet, Is.Not.EqualTo(insertionOrder), "set order must differ here, or this case does not discriminate the two orders");
+            }
+        }
     }
 }

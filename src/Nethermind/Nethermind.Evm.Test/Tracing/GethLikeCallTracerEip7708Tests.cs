@@ -159,8 +159,8 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
     // One position per sub-frame recorded before finalization: three CREATEs and six CALLs.
     private const ulong MultiDestroyFinalizationPosition = 9UL;
 
-    [Test(Description = "Multiple finalization logs must be reported in ascending address order")]
-    public void FinalizationSelfDestructLogs_WithLog_AreSortedByAddress()
+    [Test(Description = "Multiple finalization logs must be reported in the order the accounts were destroyed")]
+    public void FinalizationSelfDestructLogs_WithLog_FollowDestroyOrder()
     {
         Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
 
@@ -171,14 +171,14 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
-        NativeCallTracerLogEntry[] expected = Array.ConvertAll(scenario.ByAddress, static destroyed =>
+        NativeCallTracerLogEntry[] expected = Array.ConvertAll(scenario.InDestroyOrder, static destroyed =>
             ExpectedSelfDestructLog(destroyed.Account, destroyed.Funds, MultiDestroyFinalizationPosition));
 
-        Assert.That(topFrame.Logs, Is.EqualTo(expected).UsingPropertiesComparer(), "finalization logs must be reported in ascending address order");
+        Assert.That(topFrame.Logs, Is.EqualTo(expected).UsingPropertiesComparer(), "finalization logs must be reported in destroy order");
     }
 
-    [Test(Description = "The receipt logs, not just the tracer stream, must carry finalization logs in ascending address order")]
-    public void FinalizationSelfDestructLogs_AreSortedByAddressInReceipt()
+    [Test(Description = "The receipt logs, not just the tracer stream, must carry finalization logs in destroy order")]
+    public void FinalizationSelfDestructLogs_FollowDestroyOrderInReceipt()
     {
         Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
 
@@ -190,6 +190,14 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         tracer.EndTxTrace();
         tracer.EndBlockTrace();
+
+        // The log order is the only order-observable effect: finalizing the same accounts in any order
+        // leaves the same state. Asserted before the log order so that it is still checked when the
+        // ordering assertion below fails.
+        foreach ((Address account, byte _) in scenario.InDestroyOrder)
+        {
+            Assert.That(TestState.AccountExists(account), Is.False, $"destroyed account {account} must be gone regardless of finalization order");
+        }
 
         Eip7708SelfDestructScenario.AssertReceiptFinalizationOrder(tracer.TxReceipts[0], TransferLog.SelfDestructSignature, scenario);
     }
@@ -244,8 +252,8 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
         Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
     }
 
-    [Test(Description = "The deferred path must order its Burn logs by address like the inline path")]
-    public void FinalizationBurnLogs_AreSortedByAddressInReceipt()
+    [Test(Description = "The deferred path must order its Burn logs by destroy order like the inline path")]
+    public void FinalizationBurnLogs_FollowDestroyOrderInReceipt()
     {
         Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
 
@@ -294,46 +302,48 @@ file static class Eip7708SelfDestructScenario
         .Done;
 
     /// <param name="FactoryCode">Factory creating, destroying and then re-funding three contracts.</param>
-    /// <param name="ByAddress">The destroyed accounts and their residual balances, in ascending address order.</param>
-    public readonly record struct MultiDestroy(byte[] FactoryCode, (Address Account, byte Funds)[] ByAddress);
+    /// <param name="InDestroyOrder">The destroyed accounts and their residual balances, in the order they were destroyed.</param>
+    public readonly record struct MultiDestroy(byte[] FactoryCode, (Address Account, byte Funds)[] InDestroyOrder);
 
     /// <summary>Builds a transaction that leaves three destroyed accounts, each with a distinct residual balance.</summary>
     /// <remarks>
-    /// Creation order, funding order and address order are all different, so both the order of the
-    /// finalization logs and their account-to-amount pairing identify the order the client emitted them in.
+    /// The contracts are destroyed in descending address order, so destroy order is the exact reverse of
+    /// ascending address order and expectations written against one cannot be satisfied by the other.
+    /// Creation and funding order differ from both, so the account-to-amount pairing identifies the order too.
     /// </remarks>
     public static MultiDestroy BuildMultiDestroy(Address creator, Address inheritor)
     {
         byte[] funds = [11, 22, 33];
         Address[] created = [ContractAddress.From(creator, 0), ContractAddress.From(creator, 1), ContractAddress.From(creator, 2)];
-        Address[] ascending = [.. created];
-        Array.Sort(ascending);
-        Assert.That(created, Is.Not.EqualTo(ascending), "scenario must have creation order differ from address order to discriminate the ordering");
+        Address[] descending = [.. created];
+        Array.Sort(descending);
+        Array.Reverse(descending);
+        Assert.That(created, Is.Not.EqualTo(descending), "scenario must have creation order differ from destroy order to discriminate the ordering");
 
         byte[] initCode = InitCode(inheritor);
         Prepare factory = Prepare.EvmCode;
         foreach (Address _ in created) factory = factory.Create(initCode, InitBalance);
-        foreach (Address account in created) factory = factory.Call(account, CallGas);
+        foreach (Address account in descending) factory = factory.Call(account, CallGas);
+        // Fund in creation order, so funding order matches neither destroy nor address order.
+        for (int i = 0; i < created.Length; i++) factory = factory.CallWithValue(created[i], CallGas, funds[i]);
 
-        (Address Account, byte Funds)[] byAddress = new (Address, byte)[ascending.Length];
-        for (int i = 0; i < ascending.Length; i++)
+        (Address Account, byte Funds)[] inDestroyOrder = new (Address, byte)[descending.Length];
+        for (int i = 0; i < descending.Length; i++)
         {
-            // Fund in descending address order, so funding order matches neither creation nor address order.
-            factory = factory.CallWithValue(ascending[^(i + 1)], CallGas, funds[i]);
-            byAddress[i] = (ascending[i], funds[^(i + 1)]);
+            inDestroyOrder[i] = (descending[i], funds[Array.IndexOf(created, descending[i])]);
         }
 
-        return new MultiDestroy(factory.STOP().Done, byAddress);
+        return new MultiDestroy(factory.STOP().Done, inDestroyOrder);
     }
 
-    /// <summary>Asserts that the receipt's finalization logs carrying <paramref name="signature"/> follow ascending address order.</summary>
+    /// <summary>Asserts that the receipt's finalization logs carrying <paramref name="signature"/> follow destroy order.</summary>
     public static void AssertReceiptFinalizationOrder(TxReceipt receipt, Hash256 signature, MultiDestroy scenario)
     {
         LogEntry[] finalizationLogs = Array.FindAll(receipt.Logs!, log => log.Topics[0] == signature);
-        LogEntry[] expected = Array.ConvertAll(scenario.ByAddress, destroyed => new LogEntry(
+        LogEntry[] expected = Array.ConvertAll(scenario.InDestroyOrder, destroyed => new LogEntry(
             TransferLog.Sender, Hash256.FromBytesWithPadding([destroyed.Funds]).BytesToArray(),
             [signature, destroyed.Account.ToHash().ToHash256()]));
 
-        Assert.That(finalizationLogs, Is.EqualTo(expected).UsingPropertiesComparer(), "receipt log order must follow ascending address order");
+        Assert.That(finalizationLogs, Is.EqualTo(expected).UsingPropertiesComparer(), "receipt log order must follow destroy order");
     }
 }
