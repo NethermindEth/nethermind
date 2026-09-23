@@ -672,6 +672,29 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
+    /// The proto-array accepts an execution block hash exactly when execution is enabled. A block that breaks
+    /// this is refused before the store moves, or a timely one would keep the proposer boost it was refused with.
+    /// </summary>
+    [Test]
+    public void Timely_block_with_an_inconsistent_execution_status_is_refused_before_any_store_update()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        TickToSlot(runner, 1);
+        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xc1);
+        int nodesBefore = runner.Snapshot().Nodes.Count;
+        Assert.That(block.Block.Message!.Body!.ExecutionPayload!.BlockHash, Is.Not.Null, "fixture bug: the block must carry a payload hash");
+
+        Assert.That(() => runner.OnBlock(block.Block, block.PostState, ExecutionStatus.Irrelevant, (IReadOnlyList<DataColumnSidecar>?)null),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains("execution block hash"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
+            Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
+        }
+    }
+
+    /// <summary>
     /// Votes are verified against the pubkey cache, so the runner must extend it from every registry it
     /// validates against: a Gloas block's post-state, and a checkpoint state that epoch transitions produced.
     /// The cache starts empty, as it lags a registry that deposits grew, and slot 32's committee signs for
