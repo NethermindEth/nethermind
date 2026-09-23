@@ -15,6 +15,8 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : IDisposable
 {
+    private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(5);
+
     private readonly ILogger _logger = logManager.GetClassLogger<GcPacer>();
     private readonly CancellationTokenSource _cancellation = new();
 
@@ -31,15 +33,11 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
         long intervalMs = flatConfig.GcPaceIntervalMs;
         long gen0IntervalMs = flatConfig.GcPaceGen0IntervalMs;
 
-        // gen1 and gen0 pacing start independently: a gen0-only config (gen1 interval left at 0) must
-        // still start the gen0 fission thread.
         if (intervalMs <= 0 && gen0IntervalMs <= 0) return false;
         if (Interlocked.CompareExchange(ref _started, 1, 0) != 0) return false;
 
         CancellationToken token = _cancellation.Token;
 
-        // The timed wait rejects millisecond values above int.MaxValue, so clamp each sleep-driving
-        // interval so an out-of-range setting can't turn a paced loop into a busy exception-retry loop.
         if (intervalMs > 0)
         {
             long gen1Interval = Math.Clamp(intervalMs, 1, int.MaxValue);
@@ -47,7 +45,6 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
             long gen2IntervalMs = flatConfig.GcPaceGen2IntervalMs;
             _gen1Thread = new(() => Run(gen1Interval, warmupMs, gen2IntervalMs, token))
             {
-                // Must stay at normal priority: below-normal starves under saturated block processing.
                 IsBackground = true,
                 Name = "GC Pacer",
             };
@@ -73,19 +70,11 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
         if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0) return;
 
         _cancellation.Cancel();
-        _gen1Thread?.Join();
-        _gen0Thread?.Join();
-        _cancellation.Dispose();
+        bool gen1Stopped = _gen1Thread?.Join(StopTimeout) ?? true;
+        bool gen0Stopped = _gen0Thread?.Join(StopTimeout) ?? true;
+        if (gen1Stopped && gen0Stopped) _cancellation.Dispose();
     }
 
-    // Induces a paced collection unless a real no-GC region is active. Guards on GCSettings.LatencyMode
-    // (the runtime's authoritative no-GC-region flag) rather than the GCScheduler gate: GCKeeper holds
-    // that gate for the whole engine_newPayload even when no real region starts, so gating on it would
-    // suppress gen0 fission exactly when a gigagas payload needs it; and GCScheduler.GCCollect also runs
-    // a native MallocTrim that at a subsecond gen0 cadence stalls RocksDB. The check is best-effort: a
-    // region opened between this read and GC.Collect is ended by the tick, but that is benign because
-    // GCKeeper.NoGCRegion.Dispose re-checks LatencyMode and swallows the resulting InvalidOperationException.
-    // Returns whether it ran.
     private static bool PacedCollect(int generation)
     {
         if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion) return false;
@@ -104,8 +93,6 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
 
                 if (GC.CollectionCount(0) == lastGen0Count)
                 {
-                    // gen0 fission must run during payload processing (its whole point is to split a
-                    // gigagas payload's survivors), so it is guarded only against a real no-GC region.
                     PacedCollect(0);
                 }
 
@@ -113,7 +100,6 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
             }
             catch (Exception e)
             {
-                // Never let an unhandled throw silently kill this daemon thread; keep pacing.
                 if (_logger.IsError) _logger.Error("GC pacer gen0 loop threw; continuing.", e);
             }
         }
@@ -137,8 +123,6 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
 
                 if (GC.CollectionCount(1) == lastGen1Count)
                 {
-                    // Must stay blocking:false: a blocking induced collection waits behind an
-                    // in-flight background gen2 and wedges this thread.
                     PacedCollect(1);
                 }
 
@@ -146,9 +130,6 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
 
                 if (gen2IntervalMs > 0)
                 {
-                    // GC.Collect(2) waits behind an in-flight background collection even with
-                    // blocking:false; GCKind.Background's Index counts COMPLETED collections, so fire
-                    // only once the previously fired one has completed (or the request went stale).
                     GCMemoryInfo background = GC.GetGCMemoryInfo(GCKind.Background);
                     if (pendingBgcSinceIndex >= 0 &&
                         (background.Index > pendingBgcSinceIndex || uptime.ElapsedMilliseconds - pendingBgcAtMs >= 180_000))
@@ -173,11 +154,6 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
                             lastGen2Count = gen2After;
                             lastGen2AtMs = uptime.ElapsedMilliseconds;
 
-                            // A blocking:false request can still run as a full blocking gen2 (e.g. concurrent
-                            // GC disabled): it completes inline and advances CollectionCount(2) synchronously
-                            // while the background index never moves for it. Only latch on the background index
-                            // when a real background collection was actually scheduled, otherwise pacing stays
-                            // suppressed until the 180s stale timeout.
                             if (gen2After == gen2Before)
                             {
                                 pendingBgcSinceIndex = bgIndexBefore;
@@ -189,7 +165,6 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
             }
             catch (Exception e)
             {
-                // Never let an unhandled throw silently kill this daemon thread; keep pacing.
                 if (_logger.IsError) _logger.Error("GC pacer loop threw; continuing.", e);
             }
         }

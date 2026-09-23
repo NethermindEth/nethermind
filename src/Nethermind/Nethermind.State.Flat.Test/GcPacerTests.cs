@@ -12,7 +12,6 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class GcPacerTests
 {
-    // A cadence long enough that the started daemon threads never induce a collection during the run.
     private const long IdleIntervalMs = 600_000;
 
     [TestCase(0L, 0L, false, TestName = "TryStart_PacingDisabled_DoesNotStart")]
@@ -45,10 +44,9 @@ public class GcPacerTests
             LimboLogs.Instance);
         Assert.That(pacer.TryStart(), Is.True);
 
-        // Dispose joins the pacer threads; it only returns if cancellation interrupts their idle wait.
         Task disposed = Task.Run(pacer.Dispose);
 
-        Assert.That(disposed.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(disposed.Wait(TimeSpan.FromSeconds(2)), Is.True);
     }
 
     [Test]

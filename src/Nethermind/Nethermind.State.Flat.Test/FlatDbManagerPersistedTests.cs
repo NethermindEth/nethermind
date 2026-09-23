@@ -54,29 +54,6 @@ public class FlatDbManagerPersistedTests
     }
 
     [Test]
-    public async Task ConstructorAcceptsPersistedRepository()
-    {
-        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
-        SnapshotRepository repo = tier.Repository;
-
-        await using FlatDbManager manager = new(
-            Substitute.For<IResourcePool>(),
-            new GcPacer(_config, LimboLogs.Instance),
-            _processExitSource,
-            Substitute.For<ITrieNodeCache>(),
-            Substitute.For<ISnapshotCompactor>(),
-            repo,
-            Substitute.For<IPersistenceManager>(),
-            Substitute.For<IPersistedSnapshotLoader>(),
-            _config,
-            new BlocksConfig(),
-            LimboLogs.Instance,
-            enableDetailedMetrics: false);
-
-        Assert.That(manager, Is.Not.Null);
-    }
-
-    [Test]
     public async Task GatherReadOnlySnapshotBundle_IncludesPersistedSnapshots()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);

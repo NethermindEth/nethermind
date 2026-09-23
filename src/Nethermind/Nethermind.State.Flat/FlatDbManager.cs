@@ -567,7 +567,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 while (_populateTrieNodeCacheJobs.Reader.TryRead(out TransientResource? cachedResource))
                     cachedResource.ReleaseLease();
-                _gcPacer.Dispose();
                 _cancelTokenSource.Dispose();
             }
         }
