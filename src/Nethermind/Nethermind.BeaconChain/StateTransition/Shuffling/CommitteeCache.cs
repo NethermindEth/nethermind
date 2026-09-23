@@ -99,6 +99,8 @@ public sealed class CommitteeCache
 /// Not thread-safe: each owner (e.g. a state-transition context) should hold its own instance.
 /// Only epochs whose decision root is reachable from the state (previous/current/next epoch)
 /// can be cached; see <see cref="BeaconStateAccessors.GetShufflingDecisionRoot"/>.
+/// The fork is not part of the key: Gloas leaves every committee accessor unmodified
+/// (<c>specs/gloas/beacon-chain.md</c>), so a Fulu entry is valid for the Gloas state upgraded from it.
 /// </remarks>
 public sealed class CommitteeCacheLru(int capacity = CommitteeCacheLru.DefaultCapacity)
 {

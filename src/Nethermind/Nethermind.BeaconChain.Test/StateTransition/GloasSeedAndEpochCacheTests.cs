@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -19,7 +21,8 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// <see cref="EpochCache"/>'s two memos must be keyed by exactly what each cached value depends on:
 /// the committee shuffling by the shuffling decision root, the total active balance by the epoch
 /// boundary root. Sibling states inside one epoch legitimately share both; states that diverged
-/// inside the previous epoch share the first and must not share the second.
+/// inside the previous epoch share the first and must not share the second. The committee memo is
+/// shared across the Gloas upgrade, so both forks must compute identical committees.
 /// </summary>
 public class GloasSeedAndEpochCacheTests
 {
@@ -152,6 +155,165 @@ public class GloasSeedAndEpochCacheTests
 
         Assert.That(cache.GetCommitteeCache(branchB, epoch), Is.SameAs(committeesA), "a shuffling is fixed by the decision root; branches diverging after it share it");
         Assert.That(cache.GetCommitteeCache(otherShuffling, epoch), Is.Not.SameAs(committeesA), "a branch that diverged before the decision slot has its own shuffling");
+    }
+
+    [Test]
+    public void GetCommitteeCache_keeps_adjacent_epochs_apart_when_they_share_a_decision_root([Values(0UL, 5UL)] ulong currentEpoch)
+    {
+        // Epochs 0 and 1 both resolve to the genesis root; later, an epoch with only skipped slots
+        // leaves the next epoch on the same root. get_seed still mixes in the epoch, so the shufflings differ.
+        BeaconStateGloas state = CreateGloasState(currentEpoch, validatorCount: 8);
+        ulong nextEpoch = currentEpoch + 1;
+        Assert.That(state.GetShufflingDecisionRoot(nextEpoch), Is.EqualTo(state.GetShufflingDecisionRoot(currentEpoch)), "fixture bug: the epochs must share the decision root");
+
+        EpochCache cache = new();
+        CommitteeCache current = cache.GetCommitteeCache(state, currentEpoch);
+        CommitteeCache next = cache.GetCommitteeCache(state, nextEpoch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next, Is.Not.SameAs(current), "a decision-root match alone must not serve another epoch's committees");
+            Assert.That(next.Epoch, Is.EqualTo(nextEpoch));
+        }
+    }
+
+    // ---- One committee LRU across the Fulu -> Gloas upgrade ----
+
+    [Test]
+    public void Committees_of_a_fulu_state_and_the_gloas_state_upgraded_from_it_are_identical_so_the_shared_cache_may_serve_either([Values(-1, 0, 1)] int epochOffset)
+    {
+        // Sound only while specs/gloas/beacon-chain.md leaves every committee accessor unmodified and
+        // upgrade_to_gloas (specs/gloas/fork.md) copies validators, randao_mixes and block_roots.
+        BeaconStateFulu fulu = CreateUpgradableFuluState();
+        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(fulu, GloasTestFixtures.SyntheticSpec(UpgradeEpoch));
+        ulong epoch = (ulong)((long)UpgradeEpoch + epochOffset);
+        int[][] expected = ExpectedCommittees(epoch);
+
+        Hash256 expectedDecisionRoot = SlotRoot(DecisionSlot(epoch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fulu.GetShufflingDecisionRoot(epoch), Is.EqualTo(expectedDecisionRoot), "fulu decision root");
+            Assert.That(gloas.GetShufflingDecisionRoot(epoch), Is.EqualTo(expectedDecisionRoot), "gloas decision root");
+            AssertCommittees(CommitteeCache.Build(fulu, epoch), epoch, expected, "fulu");
+            AssertCommittees(CommitteeCache.Build(gloas, epoch), epoch, expected, "gloas");
+        }
+
+        EpochCache cache = new();
+        CommitteeCache builtFromFulu = cache.GetCommitteeCache(fulu, epoch);
+        Assert.That(cache.GetCommitteeCache(gloas, epoch), Is.SameAs(builtFromFulu),
+            "a lineage that crosses the fork keeps its EpochCache, so the post-fork lookup must hit the pre-fork entry");
+    }
+
+    private const ulong UpgradeEpoch = 10;
+
+    // Active-set bands around UpgradeEpoch: the band boundaries make each epoch's active set
+    // different, so an accessor that reads the wrong epoch cannot produce the expected committees.
+    private const int AlwaysActive = 8192;
+    private const int ExitAtUpgrade = 64;
+    private const int ActivateAfterUpgrade = 64;
+    private const int ExitAfterUpgrade = 64;
+    private const int ExitTwoAfterUpgrade = 64;
+
+    /// <summary>
+    /// A Fulu state at the first slot of <see cref="UpgradeEpoch"/> with a distinct block root per
+    /// slot, a distinct RANDAO mix per epoch, and validators in the bands above. Built by hand
+    /// rather than through slot processing: only the fields committees read need to be real.
+    /// </summary>
+    private static BeaconStateFulu CreateUpgradableFuluState()
+    {
+        BeaconStateFulu state = GloasTestFixtures.CreateFuluState(AlwaysActive + ExitAtUpgrade + ActivateAfterUpgrade + ExitAfterUpgrade + ExitTwoAfterUpgrade);
+        state.Slot = BeaconStateAccessors.ComputeStartSlotAtEpoch(UpgradeEpoch);
+        for (ulong slot = 0; slot < state.Slot; slot++)
+            state.BlockRoots![(int)(slot % Presets.SlotsPerHistoricalRoot)] = SlotRoot(slot);
+        for (ulong mixEpoch = 0; mixEpoch <= UpgradeEpoch; mixEpoch++)
+            state.RandaoMixes![(int)(mixEpoch % Presets.EpochsPerHistoricalVector)] = EpochMix(mixEpoch);
+
+        Validator[] validators = state.Validators!;
+        int band = AlwaysActive;
+        for (int i = 0; i < ExitAtUpgrade; i++)
+            validators[band + i].ExitEpoch = UpgradeEpoch;
+        band += ExitAtUpgrade;
+        for (int i = 0; i < ActivateAfterUpgrade; i++)
+            validators[band + i].ActivationEpoch = UpgradeEpoch + 1;
+        band += ActivateAfterUpgrade;
+        for (int i = 0; i < ExitAfterUpgrade; i++)
+            validators[band + i].ExitEpoch = UpgradeEpoch + 1;
+        band += ExitAfterUpgrade;
+        for (int i = 0; i < ExitTwoAfterUpgrade; i++)
+            validators[band + i].ExitEpoch = UpgradeEpoch + 2;
+        return state;
+    }
+
+    /// <summary>
+    /// Spec <c>get_beacon_committee</c> for every (slot, index) of <paramref name="epoch"/>, from the
+    /// fixture's bands and mixes via the per-index <c>compute_shuffled_index</c> and
+    /// <c>compute_committee</c>, never through <see cref="CommitteeCache"/>.
+    /// </summary>
+    private static int[][] ExpectedCommittees(ulong epoch)
+    {
+        List<int> active = [];
+        int band = 0;
+        active.AddRange(Enumerable.Range(band, AlwaysActive));
+        band += AlwaysActive;
+        if (epoch < UpgradeEpoch)
+            active.AddRange(Enumerable.Range(band, ExitAtUpgrade));
+        band += ExitAtUpgrade;
+        if (epoch > UpgradeEpoch)
+            active.AddRange(Enumerable.Range(band, ActivateAfterUpgrade));
+        band += ActivateAfterUpgrade;
+        if (epoch <= UpgradeEpoch)
+            active.AddRange(Enumerable.Range(band, ExitAfterUpgrade));
+        band += ExitAfterUpgrade;
+        if (epoch <= UpgradeEpoch + 1)
+            active.AddRange(Enumerable.Range(band, ExitTwoAfterUpgrade));
+
+        // get_seed: sha256(DOMAIN_BEACON_ATTESTER + uint_to_bytes(epoch) + mix of epoch - MIN_SEED_LOOKAHEAD - 1).
+        byte[] preimage = new byte[4 + 8 + 32];
+        preimage[0] = 0x01;
+        BinaryPrimitives.WriteUInt64LittleEndian(preimage.AsSpan(4), epoch);
+        EpochMix(epoch - Presets.MinSeedLookahead - 1).Bytes.CopyTo(preimage.AsSpan(12));
+        byte[] seed = SHA256.HashData(preimage);
+
+        int committeesPerSlot = Math.Clamp(active.Count / (int)Presets.SlotsPerEpoch / Presets.TargetCommitteeSize, 1, Presets.MaxCommitteesPerSlot);
+        int count = committeesPerSlot * (int)Presets.SlotsPerEpoch;
+        int[][] committees = new int[count][];
+        for (int index = 0; index < count; index++)
+        {
+            int start = (int)((long)active.Count * index / count);
+            int end = (int)((long)active.Count * (index + 1) / count);
+            committees[index] = [.. Enumerable.Range(start, end - start).Select(i => active[SwapOrNotShuffle.ComputeShuffledIndex(i, active.Count, seed)])];
+        }
+        return committees;
+    }
+
+    private static void AssertCommittees(CommitteeCache actual, ulong epoch, int[][] expected, string fork)
+    {
+        int committeesPerSlot = expected.Length / (int)Presets.SlotsPerEpoch;
+        Assert.That(actual.CommitteesPerSlot, Is.EqualTo(committeesPerSlot), $"{fork} committees per slot");
+        if (actual.CommitteesPerSlot != committeesPerSlot)
+            return;
+
+        ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
+        for (int slotOffset = 0; slotOffset < (int)Presets.SlotsPerEpoch; slotOffset++)
+        {
+            for (int index = 0; index < committeesPerSlot; index++)
+            {
+                Assert.That(actual.GetBeaconCommittee(startSlot + (ulong)slotOffset, index).ToArray(), Is.EqualTo(expected[slotOffset * committeesPerSlot + index]),
+                    $"{fork} committee {index} at slot {startSlot + (ulong)slotOffset}");
+            }
+        }
+    }
+
+    private static Hash256 SlotRoot(ulong slot) => Tagged(0xB0, slot);
+
+    private static Hash256 EpochMix(ulong epoch) => Tagged(0xA0, epoch);
+
+    private static Hash256 Tagged(byte tag, ulong value)
+    {
+        byte[] bytes = new byte[32];
+        bytes[0] = tag;
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(1), value);
+        return new Hash256(bytes);
     }
 
     // ---- Fixtures ----
