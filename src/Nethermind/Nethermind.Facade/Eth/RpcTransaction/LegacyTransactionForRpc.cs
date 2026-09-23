@@ -96,7 +96,7 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        if (validateUserInput && Type != Core.TxType.FrameTx && To is null && Input is null or { Length: 0 })
+        if (validateUserInput && Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
             return RpcTransactionErrors.ContractCreationWithoutData;
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
