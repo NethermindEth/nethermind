@@ -15,7 +15,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     where TPath : struct, IPbtNodePath<TPath>
 {
     private readonly IPbtStore _store;
-    private readonly ValueHash256 _groupHash;
+    private ValueHash256 _groupHash;
     private readonly TrieUpdaterMetrics? _metrics;
     private RefCountingMemory? _lease;
     private DescendantBuffer _descendantBytes;
@@ -24,15 +24,26 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     private LengthBuffer _lengths;
     private HashBuffer _hashes;
     private uint _hashed;
+    private uint _stored;
     internal uint Taken;
 
     internal GroupFrameReader(IPbtStore store, int bitDepth, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
+        : this(store, bitDepth, metrics) => _groupHash = groupHash;
+
+    /// <summary>Opens a frame whose group key is only established once the group turns out to exist.</summary>
+    internal GroupFrameReader(IPbtStore store, int bitDepth, TrieUpdaterMetrics? metrics)
     {
         BitDepth = bitDepth;
-        _groupHash = groupHash;
         _store = store;
         _metrics = metrics;
         metrics?.IncrementGroupFrameResolutions();
+    }
+
+    /// <summary>Keys this frame's group, which only an unresolved frame still needs.</summary>
+    internal void SetGroupHash(in ValueHash256 hash)
+    {
+        Debug.Assert(!_loaded, "A resolved frame never loads its group.");
+        _groupHash = hash;
     }
 
     private void EnsureLoaded(scoped in PbtTraversalPath path)
@@ -54,6 +65,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
                 if (!reader.TryGetNodeRange(position, out int offset, out int length)) continue;
                 _offsets[position] = offset;
                 _lengths[position] = length;
+                _stored |= 1u << position;
             }
         }
         catch
@@ -140,6 +152,49 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     {
         _hashes[position] = hash;
         _hashed |= 1u << position;
+    }
+
+    /// <summary>Whether the hash of the node at <paramref name="position"/> is already known.</summary>
+    internal readonly bool IsHashSeeded(int position) => (_hashed & (1u << position)) != 0;
+
+    /// <summary>The positions this frame stores an encoding at, loading it if it has not been read yet.</summary>
+    internal uint StoredPositions(scoped in PbtTraversalPath path)
+    {
+        EnsureLoaded(path);
+        return _stored;
+    }
+
+    /// <summary>Takes the group's own root, whose hash is this frame's identity.</summary>
+    internal TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot(scoped in PbtTraversalPath path)
+    {
+        ReadOnlyMemory<byte> encoding = GetEncoding(path, PbtFourLevelGroupGeometry.RootPosition);
+        Taken |= 1U << PbtFourLevelGroupGeometry.RootPosition;
+        if (encoding.IsEmpty) return default;
+        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
+        return node.IsLeaf
+            ? new TrieUpdater<TKey, TPath>.BoundaryNode(TKey.Create(node.Key), _groupHash)
+            : new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, BitDepth, _groupHash);
+    }
+
+    /// <summary>Takes the boundary node stored at <paramref name="position"/>, whose hash decomposition already knows.</summary>
+    /// <remarks>The hash is the seeded link hash where a link named this node, and otherwise the one hash its encoding needs.</remarks>
+    internal TrieUpdater<TKey, TPath>.BoundaryNode TakeBoundaryNode(scoped in PbtTraversalPath path, int position)
+    {
+        ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
+        if (encoding.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
+        Taken |= 1U << position;
+        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
+        if (node.IsLeaf) return new(TKey.Create(node.Key), _groupHash);
+        return new(encoding, BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, GetHash(path, position));
+    }
+
+    /// <summary>Takes the leaf inlined in the branch at <paramref name="position"/>, which stores no node of its own.</summary>
+    internal TrieUpdater<TKey, TPath>.BoundaryNode TakeInlineLeaf(scoped in PbtTraversalPath path, int position, bool right)
+    {
+        PbtNodeReader node = PbtNodeReader.FromValidated(GetEncoding(path, position).Span);
+        return right
+            ? new TrieUpdater<TKey, TPath>.BoundaryNode(TKey.Create(node.RightKey), node.RightHash)
+            : new TrieUpdater<TKey, TPath>.BoundaryNode(TKey.Create(node.LeftKey), node.LeftHash);
     }
 
     private ValueHash256 GetHash(scoped in PbtTraversalPath path, int position)
@@ -237,13 +292,13 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         private int _element;
     }
 
-    internal TrieUpdater<TKey, TPath>.Subtree Take(scoped in PbtTraversalPath path, PbtNodeGroupWriter<TPath> writer, int position, bool allowAbsent = false)
+    internal TrieUpdater<TKey, TPath>.Subtree Take(scoped in PbtTraversalPath path, PbtNodeGroupWriter<TPath> writer, int position)
     {
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
         TrieUpdater<TKey, TPath>.Subtree node = (Taken & (1U << position)) == 0
             ? Acquire(path, position)
             : default;
-        if (node.IsEmpty && !allowAbsent) throw new InvalidDataException("A referenced PBT node is missing.");
+        if (node.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
         Taken |= 1U << position;
         return node;
     }

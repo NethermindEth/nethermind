@@ -286,8 +286,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             CopyBranchBits(anchorDepth, bitCount, prefix.AsSpan(sizeof(ushort)));
             return prefix;
         }
-
-        internal static TraversalSubtree Move(ref TraversalSubtree source) => new(source.GroupPath, Subtree.Move(ref source.Node));
     }
 
     /// <summary>A detached result, read against the cursor of the caller it was materialized for.</summary>
@@ -327,21 +325,25 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    /// <summary>A borrowed frontier node or group position for deferred acquisition.</summary>
+    /// <summary>A composed node held for composition, or the place the frame reads a decomposed one from.</summary>
+    /// <remarks>
+    /// Decomposition never carries a node here: it records where the node is, so an untouched subtree is left in its
+    /// frame until composition claims it, and a boundary node is sliced out only by the fold that consumes it.
+    /// </remarks>
     internal struct DecompositionEntry
     {
         internal Subtree Node;
-        private readonly byte _sourcePositionPlusOne;
-        internal readonly int SourcePosition => _sourcePositionPlusOne - 1;
-        internal readonly bool IsEmpty => _sourcePositionPlusOne == 0 && Node.IsEmpty;
-        internal DecompositionEntry(ValueHash256 hash, int position) => _sourcePositionPlusOne = hash == default ? (byte)0 : (byte)(position + 1);
-        internal DecompositionEntry(ref Subtree subtree) => Node = Subtree.Move(ref subtree);
+        private readonly byte _source;
 
-        internal Subtree TakeSubtree(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path)
+        internal DecompositionEntry(ref Subtree subtree) => Node = Subtree.Move(ref subtree);
+        internal DecompositionEntry(EntrySource source, int sourcePosition)
         {
-            Subtree subtree = _sourcePositionPlusOne != 0 ? reader.Take(path, writer, SourcePosition) : Subtree.Move(ref Node);
-            this = default;
-            return subtree;
+            Debug.Assert(source != EntrySource.Node, "A decomposed entry names where its node is read from.");
+            _source = (byte)((sourcePosition << 2) | (int)source);
         }
+
+        internal readonly EntrySource Source => (EntrySource)(_source & 3);
+        internal readonly int SourcePosition => _source >> 2;
+        internal readonly bool IsEmpty => _source == 0 && Node.IsEmpty;
     }
 }

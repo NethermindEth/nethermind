@@ -78,6 +78,12 @@ public static class PbtFourLevelGroupGeometry
         return new(PositionNibbles[position] << (4 - length), length);
     }
 
+    /// <summary>The position holding the node one level above <paramref name="position"/>, or -1 for the group root.</summary>
+    internal static int ParentOf(int position) => ParentPositions[position];
+
+    private static ReadOnlySpan<sbyte> ParentPositions =>
+        [2, 2, 6, 5, 5, 6, 14, 9, 9, 13, 12, 12, 13, 14, 30, 17, 17, 21, 20, 20, 21, 29, 24, 24, 28, 27, 27, 28, 29, 30, -1];
+
     internal static int WidthOf(int position) => position switch
     {
         2 or 5 or 9 or 12 or 17 or 20 or 24 or 27 => 2,

@@ -107,8 +107,8 @@ public static partial class TrieUpdater
                         touchedRootMask |= 1 << (worker.Zone >> 4);
                         touchedZoneMasks[worker.Zone >> 4] |= 1 << (worker.Zone & 15);
                     }
-                    TraversalSubtree root = new(rootPath, rootReader.Take(rootPath, rootWriter, PbtFourLevelGroupGeometry.RootPosition, allowAbsent: true));
-                    Decompose(ref rootReader, rootWriter, rootPath, ref root, 0, ref rootFrontier, touchedRootMask);
+                    BoundaryNode root = rootReader.TakeRoot(rootPath);
+                    Decompose(ref rootReader, rootPath, ref root, 0, ref rootFrontier, touchedRootMask);
                     foreach (PartitionFold worker in workers)
                     {
                         int slot = worker.Zone >> 4;
@@ -117,18 +117,20 @@ public static partial class TrieUpdater
                         ref GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                         if (sharedWriters[slot] is not { } sharedWriter)
                         {
-                            TraversalSubtree boundary = TakeBoundary(ref rootReader, rootWriter, rootPath, ref rootFrontier, slot);
-                            sharedReader = new(store, 4, boundary.Hash(4, metrics), metrics);
+                            BoundaryNode boundary = TakeBoundary(ref rootReader, rootPath, ref rootFrontier, slot);
+                            sharedReader = new(store, 4, metrics);
                             sharedWriter = new(4, memoryProvider, prefixlessBranchOmission);
                             sharedWriters[slot] = sharedWriter;
                             ResolveAbsentGroup(ref sharedReader, in rootReader, sharedPath, boundary);
-                            Decompose(ref sharedReader, sharedWriter, sharedPath, ref boundary, 4, ref zoneFrontiers.AsSpan()[slot], touchedZoneMasks[slot]);
+                            // A group that cannot exist is never keyed, so a spanning branch is not re-anchored to hash it.
+                            if (!sharedReader.IsResolved) sharedReader.SetGroupHash(boundary.HashAt(sharedPath, 4, metrics));
+                            Decompose(ref sharedReader, sharedPath, ref boundary, 4, ref zoneFrontiers.AsSpan()[slot], touchedZoneMasks[slot]);
                         }
-                        TraversalSubtree workerBoundary = TakeBoundary(ref sharedReader, sharedWriter, sharedPath, ref zoneFrontiers.AsSpan()[slot], worker.Zone & 15);
+                        BoundaryNode workerBoundary = TakeBoundary(ref sharedReader, sharedPath, ref zoneFrontiers.AsSpan()[slot], worker.Zone & 15);
                         // Workers fold on other threads, so the shared frame's size is handed over here; the frame is
                         // resolved whenever the boundary is a branch, which is the only case that inherits it.
                         if (IsAbsentGroupBelow(workerBoundary, 8)) worker.InheritedDescendantBytes = sharedReader.DescendantBytes(worker.Zone & 15);
-                        worker.Current = workerBoundary.Materialize(8);
+                        worker.Current = workerBoundary.Owned();
                     }
 
                     int nextWorker = 0;
@@ -216,7 +218,7 @@ public static partial class TrieUpdater
     {
         internal byte Zone { get; } = zone;
         internal TrieUpdaterMetrics? Metrics { get; } = collectMetrics ? new() : null;
-        internal OwnedSubtree Current;
+        internal BoundaryNode Current;
         internal OwnedSubtree Result;
         /// <summary>The shared frame's size below this worker's slot, when <see cref="Current"/> spans past the worker's group.</summary>
         internal long InheritedDescendantBytes;
@@ -242,16 +244,17 @@ public static partial class TrieUpdater
             path.AppendMut(Zone >> 4);
             path.AppendMut(Zone & 15);
             Span<byte> sourceBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
-            GroupFrameReader<TKey, TPath> reader = new(store, 8, Current.Borrow(path).Hash(8, Metrics), Metrics);
+            GroupFrameReader<TKey, TPath> reader = new(store, 8, Metrics);
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
             {
                 using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider, prefixlessBranchOmission);
-                TrieUpdater<TKey, TPath>.OwnedSubtree ownedCurrent = TrieUpdater<TKey, TPath>.OwnedSubtree.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(ref Current);
-                TrieUpdater<TKey, TPath>.TraversalSubtree current = ownedCurrent.Borrow(path);
+                TrieUpdater<TKey, TPath>.BoundaryNode current = TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(ref Current);
                 TrieUpdater<TKey, TPath>.OwnedSubtree result = default;
                 TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, Metrics,
                     foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
-                TrieUpdater<TKey, TPath>.ResolveAbsentGroup(ref reader, current, InheritedDescendantBytes);
+                TrieUpdater<TKey, TPath>.ResolveAbsentGroup(ref reader, current, path, InheritedDescendantBytes);
+                // A group that cannot exist is never keyed, so a spanning branch is not re-anchored to hash it.
+                if (!reader.IsResolved) reader.SetGroupHash(current.HashAt(path, 8, Metrics));
                 // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                 result = TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, writer, current,
                     operations.AsSpan(), ref path, 8, 4, new(table.AsSpan(), 8, false));
@@ -280,7 +283,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         FoldContext context,
         ref GroupFrameReader<TKey, TPath> reader,
         PbtNodeGroupWriter<TPath> writer,
-        scoped TraversalSubtree current,
+        BoundaryNode current,
         Span<PbtWriteOperation<TKey>> operations,
         ref PbtTraversalPath path,
         int bitDepth,
