@@ -940,9 +940,9 @@ public class PbtNodeGroupTests
             Assert.That(node.Path, Is.EqualTo(PbtFourLevelGroupGeometry.LocalPathOf(position)));
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree source = new(groupPath,
                 TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree.Move(ref node));
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree materialized = source.Materialize();
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree materialized = source.Materialize(groupKey.BitDepth);
             TrieUpdater<PbtTreeKey, PbtNodePath>.OwnedSubtree converted = TrieUpdater<PbtTreeKey, PbtNodePath>.OwnedSubtree.TakeFrom(ref materialized);
-            TrieUpdater<PbtTreeKey, PbtNodePath>.TraversalSubtree convertedView = converted.Borrow(stackalloc byte[32]);
+            TrieUpdater<PbtTreeKey, PbtNodePath>.TraversalSubtree convertedView = converted.Borrow(groupPath);
             byte[] actual = new byte[convertedView.EncodedLength(path.BitDepth)];
             convertedView.Encode(actual, path.BitDepth, null);
             using (Assert.EnterMultipleScope())
@@ -978,12 +978,14 @@ public class PbtNodeGroupTests
         {
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree borrowed = new(groupPath,
                 reader.Acquire(groupPath, PbtFourLevelGroupGeometry.RootPosition));
-            materialized = borrowed.Materialize();
+            materialized = borrowed.Materialize(groupKey.BitDepth);
             Assert.That(store.ReleasedGroupDepths, Is.Empty);
         }
         Assert.That(store.ReleasedGroupDepths, Is.EqualTo(new[] { 0 }));
+        // The result is read against a cursor of its own, so the one it was materialized from may move on.
         groupPath.AppendKey(Bytes.FromHexString("FFFFFF"), 24);
-        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree materializedView = materialized.Borrow(stackalloc byte[66]);
+        PbtTraversalPath rootCursor = new(stackalloc byte[66]);
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree materializedView = materialized.Borrow(rootCursor);
         byte[] actual = new byte[materializedView.EncodedLength(0)];
         ValueHash256 hash = materializedView.Encode(actual, 0, null);
         using (Assert.EnterMultipleScope())
@@ -1020,18 +1022,21 @@ public class PbtNodeGroupTests
         NodeGroupPath localPath = new(localLength == 0 ? 0 : 10, localLength);
         TrieUpdater<TKey, TPath>.Subtree node = original ? new(encoding, localPath, default) : new(localPath, left, right, default);
         TrieUpdater<TKey, TPath>.TraversalSubtree view = new(cursor, node);
-        TrieUpdater<TKey, TPath>.OwnedSubtree owned = view.Materialize();
+        TrieUpdater<TKey, TPath>.OwnedSubtree owned = view.Materialize(groupDepth);
         int[] depths = [groupDepth - 4, anchorDepth, splitDepth];
         foreach (int depth in depths) AssertContextualEncoding(view, key, depth, splitDepth, left, right);
         cursor.Truncate(0);
         cursor.AppendKey(new byte[key.Length], splitDepth);
         encoding.AsSpan().Fill(0xDD);
-        TrieUpdater<TKey, TPath>.TraversalSubtree detached = owned.Borrow(stackalloc byte[TPath.MaxBitDepth / 8]);
+        PbtTraversalPath anchorCursor = PbtTraversalPath.FromPath(stackalloc byte[TPath.MaxBitDepth / 8], groupKey);
+        TrieUpdater<TKey, TPath>.TraversalSubtree detached = owned.Borrow(anchorCursor);
+        // The node is anchored at the requested group; what reaches past its four levels becomes an owned prefix.
+        int anchoredLength = Math.Min(splitDepth - groupDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(owned.GroupPath.BitDepth, Is.EqualTo(splitDepth / 4 * 4));
-            Assert.That(owned.Node.Path.Length, Is.EqualTo(splitDepth % 4));
-            Assert.That(owned.Node.Encoding.IsEmpty, Is.True);
+            Assert.That(owned.Node.Path.Length, Is.EqualTo(anchoredLength));
+            Assert.That(owned.Node.Encoding.IsEmpty, Is.EqualTo(splitDepth - groupDepth == anchoredLength));
+            Assert.That(detached.AnchorDepth, Is.EqualTo(groupDepth + anchoredLength));
             Assert.That(detached.BranchDepth, Is.EqualTo(splitDepth));
         }
         foreach (int depth in depths) AssertContextualEncoding(detached, key, depth, splitDepth, left, right);
@@ -1057,42 +1062,42 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Frontier_preserves_foreign_ancestor_anchor_after_descendant_fills_its_tail([Values] bool storage)
+    public void Branches_anchored_above_the_cursor_are_reanchored_onto_it([Values] bool storage)
     {
-        if (storage) AssertFrontierAncestor<PbtStorageTreeKey, PbtStorageNodePath>();
-        else AssertFrontierAncestor<PbtPath, PbtNodePath>();
+        if (storage) AssertForeignAncestorAnchor<PbtStorageTreeKey, PbtStorageNodePath>();
+        else AssertForeignAncestorAnchor<PbtPath, PbtNodePath>();
     }
 
-    private static void AssertFrontierAncestor<TKey, TPath>()
+    private static void AssertForeignAncestorAnchor<TKey, TPath>()
         where TKey : struct, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = new(stackalloc byte[TPath.MaxBitDepth / 8]);
-        cursor.AppendMut(10);
-        TrieUpdater<TKey, TPath>.TraversalSubtree ancestor = new(cursor, new(new NodeGroupPath(8, 1), new ValueHash256(Value(1)), new ValueHash256(Value(2)), default));
-        cursor.AppendMut(15);
-        TrieUpdater<TKey, TPath>.Frontier frontier = default;
-        frontier.Set(cursor, 0, ref ancestor);
-        cursor.Truncate(0);
-        cursor.AppendMut(0);
-        cursor.AppendMut(0);
-        using PbtNodeGroupStore store = new();
-        GroupFrameReader<TKey, TPath> reader = new(store, 8, default, null);
-        using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
+        const int cursorDepth = 8;
+        const int splitDepth = 24;
+        byte[] key = Bytes.FromHexString(new string('A', TPath.MaxBitDepth / 4));
+        byte[] prefix = new byte[PbtBitPrefix.ByteCount(splitDepth - cursorDepth)];
+        PbtBitPrefix.CopyBits(key, cursorDepth, splitDepth - cursorDepth, prefix, 0);
+        ValueHash256 left = new(Value(1));
+        ValueHash256 right = new(Value(2));
+        byte[] encoding = PbtNodeCodec.EncodeBranch(prefix, splitDepth - cursorDepth, left, right);
+        // A node read from the group above, whose branch is three groups below the cursor that places it.
+        PbtTraversalPath source = PbtTraversalPath.FromPath(stackalloc byte[TPath.MaxBitDepth / 8],
+            PbtNodePathOperations.FromKey<TPath>(key, cursorDepth - PbtFourLevelGroupGeometry.LevelsPerGroup));
+        TrieUpdater<TKey, TPath>.TraversalSubtree view = new(source, new(encoding, new NodeGroupPath(0xA, 4), default));
+
+        TrieUpdater<TKey, TPath>.OwnedSubtree owned = view.Materialize(cursorDepth);
+        encoding.AsSpan().Fill(0xDD);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[TPath.MaxBitDepth / 8], PbtNodePathOperations.FromKey<TPath>(key, cursorDepth));
+        TrieUpdater<TKey, TPath>.TraversalSubtree reanchored = owned.Borrow(cursor);
+        byte[] actual = new byte[reanchored.EncodedLength(cursorDepth)];
+        reanchored.Encode(actual, cursorDepth, null);
+        using (Assert.EnterMultipleScope())
         {
-            using PbtNodeGroupWriter<TPath> writer = new(8, PooledRefCountingMemoryProvider.Instance, PbtPrefixlessBranchOmission.Interior);
-            TrieUpdater<TKey, TPath>.TraversalSubtree taken = frontier.Take(ref reader, writer, cursor, 0, stackalloc byte[TPath.MaxBitDepth / 8]);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(ancestor.IsEmpty, Is.True);
-                Assert.That(taken.GroupPath.ToPath<TPath>().ToEncodedArray(), Is.EqualTo(new PbtNodePath(Bytes.FromHexString("A0"), 4).ToEncodedArray()));
-                Assert.That(taken.AnchorDepth, Is.EqualTo(5));
-                Assert.That(taken.PrefixBit(4), Is.EqualTo(1));
-            }
-            scoped TrieUpdater<TKey, TPath>.TraversalSubtree empty = default;
-            frontier.Set(cursor, 0, ref empty);
-            TrieUpdater<TKey, TPath>.TraversalSubtree second = frontier.Take(ref reader, writer, cursor, 0, stackalloc byte[TPath.MaxBitDepth / 8]);
-            Assert.That(second.IsEmpty, Is.True);
+            Assert.That(reanchored.AnchorDepth, Is.EqualTo(cursorDepth + PbtFourLevelGroupGeometry.LevelsPerGroup));
+            Assert.That(reanchored.BranchDepth, Is.EqualTo(splitDepth));
+            for (int bit = cursorDepth; bit < splitDepth; bit++)
+                Assert.That(reanchored.PrefixBit(bit), Is.EqualTo((key[bit >> 3] >> (7 - (bit & 7))) & 1), $"bit {bit}");
+            Assert.That(actual, Is.EqualTo(PbtNodeCodec.EncodeBranch(prefix, splitDepth - cursorDepth, left, right)));
         }
     }
 
@@ -1244,7 +1249,6 @@ public class PbtNodeGroupTests
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, rootPath.BitDepth, store.GetGroupHash(rootPath), null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath.BitDepth, new TrackingMemoryProvider(), PbtPrefixlessBranchOmission.Interior);
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier frontier = default;
-        Span<byte> sourceBuffer = stackalloc byte[66];
         scoped TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree root = default;
         scoped TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree result = default;
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
@@ -1274,7 +1278,7 @@ public class PbtNodeGroupTests
                 Assert.That(actualFrontier, Is.EqualTo(expectedFrontier), "untouched siblings stay at their internal positions");
                 Assert.That(actualReferences, Is.EqualTo(deferredTaken & ~expectedTaken), "only unacquired nodes retain source references");
             }
-            result = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, sourceBuffer);
+            result = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
             ValueHash256 hash = writer.Write(groupPath, 30, 0, ref result, null);
             Span<long> descendantBytes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
             for (int slot = 0; slot < descendantBytes.Length; slot++) descendantBytes[slot] = reader.DescendantBytes(slot);
@@ -1325,23 +1329,22 @@ public class PbtNodeGroupTests
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, rootPath.BitDepth, store.GetGroupHash(rootPath), null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath.BitDepth, new TrackingMemoryProvider(), PbtPrefixlessBranchOmission.Interior);
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier frontier = default;
-        Span<byte> sourceBuffer = stackalloc byte[66];
         scoped TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree subtree = default;
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Decompose(ref reader, writer, groupPath, ref subtree, 0, ref frontier, 1 << slot);
             Assert.That(frontier.Mask, Is.Zero);
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, sourceBuffer);
+            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
             Assert.That(subtree.IsEmpty, Is.True);
 
             subtree = new(groupPath, new(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1))));
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(groupPath, ref frontier, slot, ref subtree);
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref subtree);
             Assert.That(frontier.Mask, Is.EqualTo(1u << TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(slot)));
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeBoundary(ref reader, writer, groupPath, ref frontier, slot, sourceBuffer);
+            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeBoundary(ref reader, writer, groupPath, ref frontier, slot);
             Assert.That(frontier.Mask, Is.Zero);
             subtree = default;
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(groupPath, ref frontier, slot, ref subtree);
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, sourceBuffer);
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref subtree);
+            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(frontier.Mask, Is.Zero);
@@ -1349,8 +1352,8 @@ public class PbtNodeGroupTests
             }
 
             subtree = new(groupPath, new(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1))));
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(groupPath, ref frontier, slot, ref subtree);
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, sourceBuffer);
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref subtree);
+            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
             Assert.That(writer.Write(groupPath, 30, 0, ref subtree, null), Is.EqualTo(expected.ApplyBatch([(key, Value(1))])));
         }
     }
