@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -17,6 +18,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -36,6 +38,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -1920,6 +1923,69 @@ public partial class EngineModuleTests
             Assert.That(chain.BeaconPivot.BeaconPivotExists(), Is.False,
                 "a block already on the main chain must not become the beacon pivot");
             Assert.That(chain.BlockTree.LowestInsertedBeaconHeader, Is.Null);
+        }
+    }
+
+    /// <summary>Rejects selected headers, standing in for a validation rule tightened after they were accepted.</summary>
+    private sealed class TightenedHeaderValidator(IHeaderValidator inner, ConcurrentDictionary<Hash256, byte> rejected) : IHeaderValidator
+    {
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
+            !IsRejected(header, out error) && inner.Validate(header, parent, isUncle, out error);
+
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error, bool validateHash) =>
+            !IsRejected(header, out error) && inner.Validate(header, parent, isUncle, out error, validateHash);
+
+        public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) => inner.ValidateOrphaned(header, out error);
+
+        private bool IsRejected(BlockHeader header, [NotNullWhen(true)] out string? error)
+        {
+            bool isRejected = header.Hash is not null && rejected.ContainsKey(header.Hash);
+            error = isRejected ? "rule tightened since acceptance" : null;
+            return isRejected;
+        }
+    }
+
+    /// <summary>
+    /// A block already on this node's own chain can fail a rule it passed when it was accepted, for instance after
+    /// the rule is tightened. Revisiting it must not record the failure against the chain: every block that
+    /// descends from it, the head included, would then be answered INVALID.
+    /// </summary>
+    /// <param name="parentHasState">Whether the block can be re-executed, or only answered.</param>
+    /// <param name="executed">Whether this node ran the block, or sync placed it on the chain without running it.</param>
+    /// <param name="expected">The answer for the revisited block itself.</param>
+    [TestCase(false, true, PayloadStatus.Syncing)]
+    [TestCase(false, false, PayloadStatus.Syncing)]
+    [TestCase(true, true, PayloadStatus.Valid)]
+    public async Task newPayloadV1_does_not_mark_its_own_chain_invalid_when_a_revisited_block_fails_validation(
+        bool parentHasState, bool executed, string expected)
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        ConcurrentDictionary<Hash256, byte> rejected = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder
+                .AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned))
+                .AddDecorator<IHeaderValidator>((_, inner) => new TightenedHeaderValidator(inner, rejected)));
+        chain.BranchProcessor.BlockProcessed += (_, e) => pruned.TryRemove(e.Block.Hash!, out byte _);
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+        Hash256 head = chain.BlockTree.HeadHash!;
+
+        ExecutionPayload revisited = blocks[1];
+        if (!parentHasState) pruned[blocks[0].BlockHash] = 0;
+        pruned[revisited.BlockHash] = 0;
+        // What the pre-pivot header backfill leaves behind: on the main chain, never run by this node.
+        if (!executed) chain.BlockTree.GetInfo(revisited.BlockNumber, revisited.BlockHash).Info!.WasProcessed = false;
+        rejected[revisited.BlockHash] = 0;
+
+        ResultWrapper<PayloadStatusV1> result = await chain.EngineRpcModule.engine_newPayloadV1(revisited);
+        ResultWrapper<ForkchoiceUpdatedV1Result> toHead =
+            await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(head, Keccak.Zero, Keccak.Zero));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(expected));
+            Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(head, out _), Is.False,
+                "the head descends from the revisited block and must not be marked invalid");
+            Assert.That(toHead.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         }
     }
 

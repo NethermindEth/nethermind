@@ -215,12 +215,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // An IL is a per-call parameter not bound to block.Hash, so never short-circuit when one is supplied.
         // The canonical marker on its own is too weak to answer from: forward sync and the fast-headers backfill
         // both mark blocks canonical without executing them, and the state a block committed may since have been
-        // pruned. Fall through in either case so the block is re-executed rather than answered from the marker.
+        // pruned. Either way the block falls through: it is re-executed if its parent still has a state, and
+        // answered SYNCING if not, because ShouldProcessBlock gates on the parent and the retained-state window is
+        // contiguous. That holds for an inclusion-list payload too, whose answer below reads the state root and so
+        // cannot tell the state this block committed from one it merely shares a root with.
         bool isCanonicalBehindHead = _blockTree.IsOnMainChainBehindOrEqualHead(block.Header);
-        if (isCanonicalBehindHead
-            && (HasInclusionList(block) || CanAnswerFromPreviousExecution(block)))
+        bool executedOnOwnChain = isCanonicalBehindHead && WasExecuted(block);
+        bool hasInclusionList = HasInclusionList(block);
+        if (executedOnOwnChain && (hasInclusionList || IsVerdictServiceable(block)))
         {
-            if (!HasInclusionList(block))
+            if (!hasInclusionList)
             {
                 if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
                 return NewPayloadV1Result.Valid(block.Hash);
@@ -256,6 +260,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
+            // A block our own chain level already points at is not something to sync towards: inserting it as a
+            // beacon block would arm the beacon pivot behind the head, and the lookup below misses the backfilled
+            // headers whose bodies were never stored. Nor is it validated first - that would only decide the insert,
+            // and a failure is recorded against the chain, so every block descending from it, the head included,
+            // would then be answered INVALID.
+            if (isCanonicalBehindHead)
+            {
+                if (_logger.IsInfo) _logger.Info($"Syncing... Block already known in blockTree {block}.");
+                return NewPayloadV1Result.Syncing;
+            }
+
             if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out string? error, validateHashes: false))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
@@ -265,11 +280,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
 
-            // A block our own chain level already points at is not something to sync towards. Inserting it as a
-            // beacon block would arm the beacon pivot behind the head, and the body is absent for the backfilled
-            // headers that reach here, so the lookup below cannot catch them on its own.
-            if (isCanonicalBehindHead
-                || (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null))
+            if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Syncing... Block already known in blockTree {block}.");
                 return NewPayloadV1Result.Syncing;
@@ -310,7 +321,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, executedOnOwnChain);
 
         switch (result)
         {
@@ -347,16 +358,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private static bool HasInclusionList(Block block) => block.InclusionListTransactions is { Length: > 0 };
 
-    /// <summary>Whether a VALID verdict established by an earlier execution of <paramref name="block"/> is still usable.</summary>
-    /// <remarks>
-    /// A VALID answer invites the consensus client to make the block head and build on it, so it holds only while
-    /// this node executed the block and the verdict is still serviceable in the sense of
-    /// <see cref="IsVerdictServiceable"/>. When either is missing the caller falls through: the block is re-executed
-    /// if its parent still has a state, and answered SYNCING if it does not, because
-    /// <see cref="ShouldProcessBlock"/> gates on the parent and the retained-state window is contiguous.
-    /// </remarks>
-    private bool CanAnswerFromPreviousExecution(Block block) => WasExecuted(block) && IsVerdictServiceable(block);
-
     /// <summary>Whether this node ran <paramref name="block"/> itself, as opposed to only downloading it.</summary>
     /// <remarks>
     /// The canonical marker is not evidence of execution on its own: the fast-headers backfill, forward sync and
@@ -367,8 +368,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     /// <summary>Whether a VALID verdict for <paramref name="block"/> still describes something this node can act on.</summary>
     /// <remarks>
-    /// Either the state the block committed is still readable, so the node can build the next payload on it, or
-    /// the block sits below the latest known finalized block, where the MAY-skip clause of
+    /// A VALID answer invites the consensus client to make the block head and build on it. Either the state the
+    /// block committed is still readable, so the node can build the next payload on it, or the block sits below
+    /// the latest known finalized block, where the MAY-skip clause of
     /// <see href="https://github.com/ethereum/execution-apis/pull/786">execution-apis#786</see> lets
     /// <c>engine_forkchoiceUpdated</c> answer without moving the head - so it can never become the base for the
     /// next payload and the missing state cannot strand block production.
@@ -564,7 +566,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, bool executedOnOwnChain)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
@@ -587,7 +589,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ValidationResult terminalResult = ValidationResult.Syncing;
 
         // If duplicate, reuse results. Invalidity is permanent, but a cached VALID (or unsatisfied-IL) verdict
-        // describes a state this node may no longer hold, so it is only reused while it stays serviceable.
+        // describes a state this node may no longer hold, so it is only reused while it stays serviceable. An
+        // unsatisfied-IL verdict that falls through is re-judged on re-execution, to the same answer.
         if (_latestBlocks is not null
             && _latestBlocks.TryGet(block.Hash!, out CachedPayloadResult cachedResult)
             && cachedResult.InclusionListDigest == ilDigest
@@ -600,8 +603,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (cachedResult.Result, cachedResult.Message);
         }
 
-        // Validate
-        if (!ValidateWithBlockValidator(block, parent, out validationMessage))
+        // Validate. A block this node already validated and ran onto its own chain is only being run again for the
+        // state it committed: checking it anew can only contradict that earlier verdict, and a contradiction is
+        // recorded against every block that descends from it, the head included.
+        if (!executedOnOwnChain && !ValidateWithBlockValidator(block, parent, out validationMessage))
         {
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
