@@ -22,7 +22,6 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -47,7 +46,6 @@ public class ForkchoiceUpdatedHandler(
     IPeerRefresher peerRefresher,
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
-    IStateReader stateReader,
     IMergeConfig mergeConfig,
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
@@ -61,7 +59,6 @@ public class ForkchoiceUpdatedHandler(
     private static readonly TimeSpan CommitWait = TimeSpan.FromSeconds(1);
 
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-    private readonly IStateReader _stateReader = stateReader;
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
@@ -281,16 +278,6 @@ public class ForkchoiceUpdatedHandler(
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead;
-
-        // The head is what the next payload is built on, and ShouldProcessBlock requires its state. Pointing the
-        // head at a block whose state has since been pruned leaves every payload that follows answered SYNCING,
-        // so keep the head where it is and report syncing rather than move to a state this node cannot serve.
-        if (shouldUpdateHead && !_stateReader.HasStateForBlock(newHeadHeader))
-        {
-            if (_logger.IsInfo) _logger.Info($"Syncing... New head has no state, keeping {_blockTree.Head.ToString(Block.Format.Short)}. Request: {requestStr}.");
-            return ForkchoiceUpdatedV1Result.Syncing;
-        }
-
         // TryUpdateMainChain walks back to the current main chain itself, loading blocks one at a time, and
         // returns false (without mutating) if a predecessor is missing - the same gate the old TryGetBranch gave.
         if (shouldUpdateHead && !_blockTree.TryUpdateMainChain(newHeadHeader, wereProcessed: true, forceUpdateHeadBlock: true))

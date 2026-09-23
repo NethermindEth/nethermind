@@ -15,7 +15,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using Nethermind.Core.Test.Builders;
@@ -38,9 +37,6 @@ public class TaikoEngineApiTests
 
         AddBlock(blockTree, genesisBlock);
 
-        IStateReader stateReader = Substitute.For<IStateReader>();
-        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
-
         TaikoForkchoiceUpdatedHandler forkchoiceUpdatedHandler = new(
             blockTree,
             Substitute.For<IPoSSwitcher>(),
@@ -53,7 +49,6 @@ public class TaikoEngineApiTests
             Substitute.For<IPeerRefresher>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
-            stateReader,
             new MergeConfig(),
             Substitute.For<ILogManager>()
         );
@@ -90,9 +85,6 @@ public class TaikoEngineApiTests
         blockTree.HeadHash.Returns(headBlock.Hash!);
         blockTree.IsMainChain(headBlock.Header).Returns(true);
 
-        IStateReader stateReader = Substitute.For<IStateReader>();
-        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
-
         TaikoForkchoiceUpdatedHandler handler = new(
             blockTree,
             Substitute.For<IPoSSwitcher>(),
@@ -105,7 +97,6 @@ public class TaikoEngineApiTests
             Substitute.For<IPeerRefresher>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
-            stateReader,
             new MergeConfig(),
             Substitute.For<ILogManager>()
         );

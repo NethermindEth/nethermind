@@ -17,7 +17,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Taiko.Rpc;
@@ -34,7 +33,6 @@ internal class TaikoForkchoiceUpdatedHandler(
     IPeerRefresher peerRefresher,
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
-    IStateReader stateReader,
     IMergeConfig mergeConfig,
     ILogManager logManager) : ForkchoiceUpdatedHandler(
     blockTree,
@@ -48,7 +46,6 @@ internal class TaikoForkchoiceUpdatedHandler(
     peerRefresher,
     specProvider,
     syncPeerPool,
-    stateReader,
     mergeConfig,
     logManager)
 {
