@@ -399,6 +399,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     int count = destroyList.Count;
                     bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                     bool tracingRefunds = tracer.IsTracingRefunds;
+                    bool tracingLogs = tracer.IsTracingLogs;
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
                     if (count > 1)
                     {
@@ -407,19 +408,19 @@ namespace Nethermind.Evm.TransactionProcessing
                         buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
                         for (int i = 0; i < count; i++)
                         {
-                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn, tracer);
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn, tracer, tracingLogs);
                             if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                         }
                         SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                     else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, commit, removeSelfdestructBurn, tracer);
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, commit, removeSelfdestructBurn, tracer, tracingLogs);
                         if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
 
-                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool commit, bool removeSelfdestructBurn, ITxTracer tracer)
+                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool commit, bool removeSelfdestructBurn, ITxTracer tracer, bool tracingLogs)
                 {
                     UInt256 balance = worldState.GetBalance(toBeDestroyed);
                     // Post-fee path: the burn covers the whole balance incl. priority fees, hence a
@@ -428,7 +429,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         LogEntry burnLog = TransferLog.CreateBurn(toBeDestroyed, balance);
                         substate.Logs.Add(burnLog);
-                        if (tracer.IsTracingLogs) tracer.ReportLog(burnLog);
+                        if (tracingLogs) tracer.ReportLog(burnLog);
                     }
 
                     DestroyAccount(worldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
@@ -1446,7 +1447,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
-                        bool tracingLogs = eip7708Enabled && tracer.IsTracingLogs;
+                        bool tracingLogs = tracer.IsTracingLogs;
                         JournalCollection<LogEntry> logs = substate.Logs;
                         int destroyCount = destroyList.Count;
                         if (destroyCount > 1)
