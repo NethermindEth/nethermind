@@ -99,12 +99,10 @@ public class FlatStateActivationPolicyTests
         builder.RegisterInstance(Substitute.For<IStateBoundary>()).As<IStateBoundary>();
         using IContainer container = builder.Build();
 
-        DependencyResolutionException exception = Assert.Throws<DependencyResolutionException>(() => container.Resolve<ValidateFlatState>())!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(exception.GetBaseException(), Is.TypeOf<InvalidConfigurationException>());
-            Assert.That(exception.ToString(), Does.Contain("FlatDb.Enabled=false is no longer supported."));
-        }
+        ValidateFlatState step = null!;
+        Assert.DoesNotThrow(() => step = container.Resolve<ValidateFlatState>());
+        InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() => step.Execute(default))!;
+        Assert.That(exception.Message, Does.Contain("FlatDb.Enabled=false is no longer supported."));
     }
 
     [Test]
@@ -114,7 +112,7 @@ public class FlatStateActivationPolicyTests
         builder.AddModule(new BuiltInStepsModule());
         using IContainer container = builder.Build();
 
-        Assert.DoesNotThrow(() => container.Resolve<ValidateFlatState>());
+        Assert.DoesNotThrow(() => container.Resolve<ValidateFlatState>().Execute(default));
         IEnumerable<StepInfo> steps = container.Resolve<IEnumerable<StepInfo>>();
         StepInfo validateFlatState = steps.Single(s => s.StepType == typeof(ValidateFlatState));
         StepInfo initializeBlockTree = steps.Single(s => s.StepType == typeof(InitializeBlockTree));
