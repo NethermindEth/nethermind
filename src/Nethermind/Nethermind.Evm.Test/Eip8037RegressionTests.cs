@@ -580,14 +580,18 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Address authority = TestItem.AddressF;
         AuthorizationTuple authorization = ecdsa.Sign(TestItem.PrivateKeyF, SpecProvider.ChainId, TestItem.AddressC, 0);
 
-        Transaction template = Build.A.Transaction
-            .WithType(TxType.SetCode)
-            .WithTo(Recipient)
-            .WithGasPrice(1)
-            .WithAuthorizationCode(authorization)
-            .SignedAndResolved(ecdsa, SenderKey, true)
-            .TestObject;
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(template, Spec);
+        Transaction SignSetCode(ulong? gasLimit = null)
+        {
+            TransactionBuilder<Transaction> builder = Build.A.Transaction
+                .WithType(TxType.SetCode)
+                .WithTo(Recipient)
+                .WithGasPrice(1)
+                .WithAuthorizationCode(authorization);
+            if (gasLimit is not null) builder = builder.WithGasLimit(gasLimit.Value);
+            return builder.SignedAndResolved(ecdsa, SenderKey, true).TestObject;
+        }
+
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(SignSetCode(), Spec);
         // One gas short of the NEW_ACCOUNT state charge for the non-existent authority, so ProcessDelegations
         // fails on its first state charge.
         ulong gasLimit = intrinsicGas.Standard.Value
@@ -595,14 +599,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             + (ulong)GasCostOf.NewAccountState
             - 1;
 
-        Transaction transaction = Build.A.Transaction
-            .WithType(TxType.SetCode)
-            .WithTo(Recipient)
-            .WithGasLimit(gasLimit)
-            .WithGasPrice(1)
-            .WithAuthorizationCode(authorization)
-            .SignedAndResolved(ecdsa, SenderKey, true)
-            .TestObject;
+        Transaction transaction = SignSetCode(gasLimit);
         (Block block, _) = PrepareTx(
             Activation,
             gasLimit,

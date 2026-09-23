@@ -166,15 +166,11 @@ public class SimpleTransferFastPathDifferentialTests
             Assert.That(fast.Receipt?.Status, Is.EqualTo(expectedStatus), "fast status");
             Assert.That(slow.Receipt?.Status, Is.EqualTo(expectedStatus), "EVM status");
             Assert.That(fast.Receipt, Is.EqualTo(slow.Receipt), "receipt");
-            Assert.That(fast.Receipt?.GasConsumed.OperationGas, Is.EqualTo(slow.Receipt?.GasConsumed.OperationGas), "execution gas");
-            Assert.That(fast.Receipt?.GasConsumed.EffectiveBlockGas, Is.EqualTo(slow.Receipt?.GasConsumed.EffectiveBlockGas), "block execution gas");
-            Assert.That(fast.Receipt?.GasConsumed.BlockStateGas, Is.EqualTo(slow.Receipt?.GasConsumed.BlockStateGas), "block state gas");
             Assert.That(fast.HeaderGasUsed, Is.EqualTo(slow.HeaderGasUsed), "header GasUsed");
             Assert.That(fast.StateRoot, Is.EqualTo(slow.StateRoot), "state root");
             Assert.That(fast.SenderBalance, Is.EqualTo(slow.SenderBalance), "sender balance");
             Assert.That(fast.RecipientBalance, Is.EqualTo(slow.RecipientBalance), "recipient balance");
             Assert.That(fast.Refunds, Is.EqualTo(slow.Refunds), "refund reports");
-            Assert.That(fast.Receipt?.GasConsumed.GasRefund, Is.EqualTo(slow.Receipt?.GasConsumed.GasRefund), "gas refund");
             Assert.That(fast.AccessReports, Is.EqualTo(expectedAccessReports), "fast access reports");
             Assert.That(slow.AccessReports, Is.EqualTo(expectedAccessReports), "EVM access reports");
             Assert.That(fast.FastPathEngaged, Is.EqualTo(1), "fast path engaged");
