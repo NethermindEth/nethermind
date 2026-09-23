@@ -26,8 +26,9 @@ namespace Nethermind.Facade.Filters
     /// filters of that kind, every filter holds only a cursor into it, and its results are matched when it is polled.
     /// Memory is therefore independent of the number of filters and of how many results they match: a log keeps what
     /// the least recently polled filter has not read yet, and a filter that stops polling is removed by the
-    /// <see cref="FilterStore"/> timeout. Log filters keep only the logs of each block, not its receipts, and an idle
-    /// one keeps the logs of every block processed within that timeout.
+    /// <see cref="FilterStore"/> timeout. Only log filters keep receipts alive; the receipts cache already holds those of
+    /// recent blocks, so an idle log filter adds only the older blocks processed within that timeout.
+    /// Results are returned as pooled lists that the caller disposes.
     /// </remarks>
     public sealed class FilterManager
     {
@@ -105,7 +106,7 @@ namespace Nethermind.Facade.Filters
             _blockHashes.Append(blockHash);
             if (_blocks.IsTracking)
             {
-                AppendLogs(block.Timestamp, block.Header.Bloom, e.TxReceipts, removed: false);
+                _blocks.Append(new BlockEvent(block.Timestamp, block.Header.Bloom, e.TxReceipts, Removed: false));
             }
         }
 
@@ -116,36 +117,7 @@ namespace Nethermind.Facade.Filters
                 return;
             }
 
-            AppendLogs(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, removed: true);
-        }
-
-        /// <summary>
-        /// Appends the logs of a block for log filters, keeping per transaction only what a <see cref="FilterLog"/> needs.
-        /// </summary>
-        private void AppendLogs(ulong timestamp, Bloom? bloom, TxReceipt[] receipts, bool removed)
-        {
-            int count = 0;
-            foreach (TxReceipt receipt in receipts)
-            {
-                if (receipt.Logs?.Length > 0) count++;
-            }
-
-            if (count == 0)
-            {
-                return;
-            }
-
-            TransactionLogs[] transactions = new TransactionLogs[count];
-            int index = 0;
-            foreach (TxReceipt receipt in receipts)
-            {
-                if (receipt.Logs is { Length: > 0 } logs)
-                {
-                    transactions[index++] = new TransactionLogs(receipt.BlockNumber, receipt.BlockHash!, receipt.Index, receipt.TxHash!, logs);
-                }
-            }
-
-            _blocks.Append(new BlockEvent(timestamp, bloom, transactions, removed));
+            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, Removed: true));
         }
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
@@ -156,31 +128,31 @@ namespace Nethermind.Facade.Filters
             }
         }
 
-        public FilterLog[] GetLogs(int filterId) => GetLogs(filterId, advance: false);
+        public ArrayPoolList<FilterLog> GetLogs(int filterId) => GetLogs(filterId, advance: false);
 
-        public Hash256[] GetBlocksHashes(int filterId) =>
-            _blockHashes.Read(filterId, advance: false, out _) is { } blockHashes ? ToArray(blockHashes) : [];
+        public ArrayPoolList<Hash256> GetBlocksHashes(int filterId) =>
+            _blockHashes.Read(filterId, advance: false, out _) is { } blockHashes ? ToList(blockHashes) : ArrayPoolList<Hash256>.Empty();
 
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
-        public Hash256[] PollBlockHashes(int filterId)
+        public ArrayPoolList<Hash256> PollBlockHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
             if (_blockHashes.Read(filterId, advance: true, out bool noEventSinceTracked) is not { } blockHashes || noEventSinceTracked)
             {
                 if (_lastBlockHash is not null)
                 {
-                    Hash256[] hackedResult = { _lastBlockHash }; // truffle hack
+                    ArrayPoolList<Hash256> hackedResult = new(1) { _lastBlockHash }; // truffle hack
                     _lastBlockHash = null;
                     return hackedResult;
                 }
 
-                return [];
+                return ArrayPoolList<Hash256>.Empty();
             }
 
-            return ToArray(blockHashes);
+            return ToList(blockHashes);
         }
 
-        public FilterLog[] PollLogs(int filterId)
+        public ArrayPoolList<FilterLog> PollLogs(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
             return GetLogs(filterId, advance: true);
@@ -190,13 +162,13 @@ namespace Nethermind.Facade.Filters
         /// Reports only the transactions that are still in the pool, so ones included, replaced or evicted since they
         /// arrived are skipped.
         /// </remarks>
-        public Hash256[] PollPendingTransactionHashes(int filterId)
+        public ArrayPoolList<Hash256> PollPendingTransactionHashes(int filterId)
         {
             _filterStore.RefreshFilter(filterId);
             if (_pendingTransactions.Read(filterId, advance: true, out _) is not { } transactions)
-                return [];
+                return ArrayPoolList<Hash256>.Empty();
 
-            using ArrayPoolListRef<Hash256> result = new(transactions.Count);
+            ArrayPoolList<Hash256> result = new(transactions.Count);
             foreach (PendingTransaction transaction in transactions)
             {
                 if (_txPool.ContainsTx(transaction.Hash, transaction.Type))
@@ -204,28 +176,28 @@ namespace Nethermind.Facade.Filters
                     result.Add(transaction.Hash);
                 }
             }
-            return result.ToArray();
+            return result;
         }
 
-        private static Hash256[] ToArray(FilterEventLog<Hash256>.Events blockHashes)
+        private static ArrayPoolList<Hash256> ToList(FilterEventLog<Hash256>.Events blockHashes)
         {
-            using ArrayPoolListRef<Hash256> result = new(blockHashes.Count);
+            ArrayPoolList<Hash256> result = new(blockHashes.Count);
             foreach (Hash256 blockHash in blockHashes)
             {
                 result.Add(blockHash);
             }
-            return result.ToArray();
+            return result;
         }
 
-        private FilterLog[] GetLogs(int filterId, bool advance)
+        private ArrayPoolList<FilterLog> GetLogs(int filterId, bool advance)
         {
             if (_filterStore.GetFilter<LogFilter>(filterId) is not { } filter
                 || _blocks.Read(filterId, advance, out _) is not { } events)
             {
-                return [];
+                return ArrayPoolList<FilterLog>.Empty();
             }
 
-            using ArrayPoolListRef<FilterLog> result = new(0);
+            ArrayPoolList<FilterLog> result = new(0);
             foreach (BlockEvent blockEvent in events)
             {
                 if (blockEvent.Bloom is not null && !filter.Matches(blockEvent.Bloom))
@@ -234,12 +206,17 @@ namespace Nethermind.Facade.Filters
                 }
 
                 long logIndex = 0;
-                foreach (TransactionLogs transaction in blockEvent.Transactions)
+                foreach (TxReceipt receipt in blockEvent.Receipts)
                 {
-                    LogEntry[] entries = transaction.Logs;
+                    LogEntry[]? entries = receipt.Logs;
+                    if (entries is null)
+                    {
+                        continue;
+                    }
+
                     for (int i = 0; i < entries.Length; i++)
                     {
-                        FilterLog? filterLog = CreateLog(filter, transaction, entries[i], logIndex++, blockEvent.Timestamp, blockEvent.Removed);
+                        FilterLog? filterLog = CreateLog(filter, receipt, entries[i], logIndex++, blockEvent.Timestamp, blockEvent.Removed);
                         if (filterLog is not null)
                         {
                             result.Add(filterLog);
@@ -247,18 +224,18 @@ namespace Nethermind.Facade.Filters
                     }
                 }
             }
-            return result.ToArray();
+            return result;
         }
 
-        private static FilterLog? CreateLog(LogFilter logFilter, in TransactionLogs transaction, LogEntry logEntry, long index, ulong blockTimestamp, bool removed = false)
+        private static FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, ulong blockTimestamp, bool removed = false)
         {
             if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
-                logFilter.FromBlock.BlockNumber > transaction.BlockNumber)
+                logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)
             {
                 return null;
             }
 
-            if (logFilter.ToBlock.Type == BlockParameterType.BlockNumber && logFilter.ToBlock.BlockNumber < transaction.BlockNumber)
+            if (logFilter.ToBlock.Type == BlockParameterType.BlockNumber && logFilter.ToBlock.BlockNumber < txReceipt.BlockNumber)
             {
                 return null;
             }
@@ -273,25 +250,19 @@ namespace Nethermind.Facade.Filters
                 || logFilter.ToBlock.Type == BlockParameterType.Earliest
                 || logFilter.ToBlock.Type == BlockParameterType.Pending)
             {
-                return NewLog(transaction, logEntry, index, blockTimestamp, removed);
+                return new FilterLog(index, txReceipt, logEntry, blockTimestamp, removed);
             }
 
             if (logFilter.FromBlock.Type == BlockParameterType.Latest || logFilter.ToBlock.Type == BlockParameterType.Latest)
             {
                 //TODO: check if is last mined block
-                return NewLog(transaction, logEntry, index, blockTimestamp, removed);
+                return new FilterLog(index, txReceipt, logEntry, blockTimestamp, removed);
             }
 
-            return NewLog(transaction, logEntry, index, blockTimestamp, removed);
+            return new FilterLog(index, txReceipt, logEntry, blockTimestamp, removed);
         }
 
-        private static FilterLog NewLog(in TransactionLogs transaction, LogEntry logEntry, long index, ulong blockTimestamp, bool removed) =>
-            new(index, transaction.BlockNumber, blockTimestamp, transaction.BlockHash, transaction.Index, transaction.TxHash,
-                logEntry.Address, logEntry.Data, logEntry.Topics, removed);
-
-        private sealed record BlockEvent(ulong Timestamp, Bloom? Bloom, TransactionLogs[] Transactions, bool Removed);
-
-        private readonly record struct TransactionLogs(ulong BlockNumber, Hash256 BlockHash, int Index, Hash256 TxHash, LogEntry[] Logs);
+        private sealed record BlockEvent(ulong Timestamp, Bloom? Bloom, TxReceipt[] Receipts, bool Removed);
 
         private readonly record struct PendingTransaction(Hash256 Hash, TxType Type);
 

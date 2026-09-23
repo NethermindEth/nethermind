@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -324,9 +325,9 @@ public class FilterManagerTests
             while (totalPolled < blockCount)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Hash256[] polled = _filterManager.PollBlockHashes(blockFilter.Id);
-                totalPolled += polled.Length;
-                if (polled.Length == 0) await Task.Yield();
+                using ArrayPoolList<Hash256> polled = _filterManager.PollBlockHashes(blockFilter.Id);
+                totalPolled += polled.Count;
+                if (polled.Count == 0) await Task.Yield();
             }
         }, cancellationToken);
 
@@ -355,7 +356,7 @@ public class FilterManagerTests
 
         _receiptMonitor.ReceiptsInserted += Raise.EventWith(_receiptMonitor, new ReceiptsEventArgs(block.Header, [receipt], wasRemoved: true));
 
-        FilterLog[] logs = _filterManager.PollLogs(filter.Id);
+        using ArrayPoolList<FilterLog> logs = _filterManager.PollLogs(filter.Id);
         Assert.That(logs.Select(static l => (l.Removed, l.LogIndex, l.BlockNumber)),
             Is.EqualTo(new[] { (false, 0L, 2UL), (true, 0L, 2UL) }));
     }
@@ -437,7 +438,7 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void block_logs_are_released_once_every_log_filter_has_read_them_and_receipts_are_never_kept()
+    public void block_receipts_are_released_once_every_log_filter_has_read_them()
     {
         LogFilter polled = BuildFilter(static _ => { });
         LogFilter lagging = BuildFilter(static _ => { });
@@ -445,16 +446,12 @@ public class FilterManagerTests
         _filterStore.SaveFilter(lagging);
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
-        (WeakReference receipt, WeakReference logs) = RaiseBlockProcessedWithUnreferencedReceipt();
-        _filterManager.PollLogs(polled.Id);
-        Assert.Multiple(() =>
-        {
-            Assert.That(IsCollected(receipt), Is.True);
-            Assert.That(IsCollected(logs), Is.False, "the lagging filter has not read the block yet");
-        });
+        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
+        _filterManager.PollLogs(polled.Id).Dispose();
+        Assert.That(IsCollected(receipt), Is.False, "the lagging filter has not read the block yet");
 
         _filterStore.RemoveFilter(lagging.Id);
-        Assert.That(IsCollected(logs), Is.True);
+        Assert.That(IsCollected(receipt), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -464,12 +461,12 @@ public class FilterManagerTests
         _filterStore.SaveFilter(blockFilter);
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
-        (WeakReference receipt, _) = RaiseBlockProcessedWithUnreferencedReceipt();
+        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
 
         Assert.Multiple(() =>
         {
             Assert.That(IsCollected(receipt), Is.True);
-            Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Has.Length.EqualTo(1));
+            Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Has.Count.EqualTo(1));
         });
     }
 
@@ -538,12 +535,12 @@ public class FilterManagerTests
         {
             foreach (LogFilter filter in filters.OfType<LogFilter>())
             {
-                FilterLog[] logs = _filterManager.GetLogs(filter.Id);
+                using ArrayPoolList<FilterLog> logs = _filterManager.GetLogs(filter.Id);
                 logsAssertion(logs);
             }
 
-            Hash256[] hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
-            Assert.That(hashes.Length, Is.EqualTo(1));
+            using ArrayPoolList<Hash256> hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
+            Assert.That(hashes.Count, Is.EqualTo(1));
         });
     }
 
@@ -564,11 +561,11 @@ public class FilterManagerTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private (WeakReference Receipt, WeakReference Logs) RaiseBlockProcessedWithUnreferencedReceipt()
+    private WeakReference RaiseBlockProcessedWithUnreferencedReceipt()
     {
         TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(1L));
         RaiseBlockProcessed(receipt);
-        return (new WeakReference(receipt), new WeakReference(receipt.Logs));
+        return new WeakReference(receipt);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
