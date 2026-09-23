@@ -2142,13 +2142,17 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
     }
 
-    [TestCase(2000ul, 0ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
-    [TestCase(1999ul, 0ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
-    [TestCase(2000ul, 2001ul, true, TestName = "BAL_read_budget_exhaustion_does_not_underflow")]
-    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool shouldThrow)
+    [TestCase(2000ul, 0ul, true, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999ul, 0ul, true, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    [TestCase(2000ul, 2001ul, true, true, TestName = "BAL_read_budget_exhaustion_does_not_underflow")]
+    // EIP-7928: non-canonical request code may read storage in a post-execution call that spends no block gas.
+    [TestCase(0ul, 0ul, false, false, TestName = "BAL_read_budget_allows_reads_by_noncanonical_request_contract")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool canonicalRequestContracts, bool shouldThrow)
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        DeployRequestPredeploys(stateProvider, Amsterdam.Instance, canonicalRequestContracts);
         BlockAccessListManager balManager = new(
             stateProvider,
             LimboLogs.Instance,
@@ -2932,6 +2936,21 @@ public class BlockProcessorTests
     private static GasValidationResult
         GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null) =>
         new(blockGasUsed, blockStateGasUsed, exception);
+
+    private static void DeployRequestPredeploys(IWorldState state, IReleaseSpec spec, bool canonical)
+    {
+        Deploy(Eip7002Constants.WithdrawalRequestPredeployAddress, canonical ? Eip7002TestConstants.Code : [0x00]);
+        Deploy(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.Code);
+        Deploy(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.Code);
+        Deploy(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.Code);
+        state.Commit(spec);
+
+        void Deploy(Address address, byte[] code)
+        {
+            state.CreateAccount(address, 0, 1);
+            state.InsertCode(address, ValueKeccak.Compute(code), code, spec);
+        }
+    }
 
     private static void PrepareSetup(BlockAccessListManager balManager, Block block, IReleaseSpec spec, ProcessingOptions options = ProcessingOptions.None)
     {
