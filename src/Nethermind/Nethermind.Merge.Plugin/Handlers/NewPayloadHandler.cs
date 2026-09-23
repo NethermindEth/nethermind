@@ -559,7 +559,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                await _processingQueue.Enqueue(block, processingOptions);
+                // Off this thread: with the queue empty the processor runs the block inside Enqueue, on the caller's
+                // thread, and the answer would wait for the rest of the loop iteration after BlockRemoved.
+                _ = Task.Run(async () => await _processingQueue.Enqueue(block, processingOptions));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
