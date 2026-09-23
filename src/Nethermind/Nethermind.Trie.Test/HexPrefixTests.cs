@@ -129,7 +129,7 @@ public class HexPrefixTests
     /// <remarks>Expanding picks its path by length, so the lengths sit on and next to each path boundary.</remarks>
     [Test]
     public void Decode_matches_the_scalar_reference_over_every_length(
-        [Values(3, 4, 5, 6, 8, 9, 10, 16, 17, 18, 32, 33, 34, 49, 65)] int byteCount,
+        [Values(3, 4, 5, 6, 7, 8, 9, 10, 16, 17, 18, 32, 33, 34, 49, 65)] int byteCount,
         [Values] bool isOdd,
         [Values] bool isLeaf)
     {

@@ -38,13 +38,10 @@ public class NibbleTests
         }
     }
 
-    [Test]
-    public void BytesToNibbleBytes_SmallInput_ProducesCorrectOutput()
+    [TestCase(new byte[] { 0x9C }, new byte[] { 0x09, 0x0C })]
+    [TestCase(new byte[] { 0x12, 0x34, 0x56, 0x78 }, new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 })]
+    public void BytesToNibbleBytes_SmallInput_ProducesCorrectOutput(byte[] input, byte[] expected)
     {
-        // Test with small input that doesn't trigger vector paths
-        byte[] input = [0x12, 0x34, 0x56, 0x78];
-        byte[] expected = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
-
         byte[] result = Nibbles.BytesToNibbleBytes(input);
 
         Assert.That(result, Is.EqualTo(expected));

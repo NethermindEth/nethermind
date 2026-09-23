@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
@@ -15,10 +16,11 @@ namespace Nethermind.Trie
         /// <remarks>Caller guarantees <paramref name="nibbles"/> holds <c>2 * count</c> bytes and does not overlap <paramref name="bytes"/>.</remarks>
         internal static void ExpandNibbles(ref byte bytes, ref byte nibbles, int count)
         {
+            Debug.Assert(count >= 0);
             nuint length = (uint)count;
             if (length >= sizeof(uint))
             {
-                if (Vector128.IsHardwareAccelerated)
+                if (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported)
                 {
                     ExpandVectors(ref bytes, ref nibbles, length);
                 }
@@ -48,10 +50,11 @@ namespace Nethermind.Trie
         /// and that <paramref name="bytes"/> has room for <paramref name="count"/> and does not overlap <paramref name="nibbles"/>.</remarks>
         internal static void PackNibbles(ref byte nibbles, ref byte bytes, int count)
         {
+            Debug.Assert(count >= 0);
             nuint length = (uint)count;
             if (length >= sizeof(uint))
             {
-                if (Vector128.IsHardwareAccelerated)
+                if (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported)
                 {
                     PackVectors(ref nibbles, ref bytes, length);
                 }
@@ -86,7 +89,7 @@ namespace Nethermind.Trie
         private static void ExpandVectors(ref byte bytes, ref byte nibbles, nuint length)
         {
             nuint last;
-            if (Vector256.IsHardwareAccelerated && length >= (nuint)Vector256<byte>.Count)
+            if (Avx2.IsSupported && length >= (nuint)Vector256<byte>.Count)
             {
                 last = length - (nuint)Vector256<byte>.Count;
                 for (nuint i = 0; i < last; i += (nuint)Vector256<byte>.Count)
@@ -148,7 +151,7 @@ namespace Nethermind.Trie
         private static void PackVectors(ref byte nibbles, ref byte bytes, nuint length)
         {
             nuint last;
-            if (Vector256.IsHardwareAccelerated && length >= (nuint)Vector256<byte>.Count)
+            if (Avx2.IsSupported && length >= (nuint)Vector256<byte>.Count)
             {
                 last = length - (nuint)Vector256<byte>.Count;
                 for (nuint i = 0; i < last; i += (nuint)Vector256<byte>.Count)
@@ -233,29 +236,13 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Expand256(ref byte bytes, ref byte nibbles, nuint index)
         {
-            Vector256<byte> value = Vector256.LoadUnsafe(ref bytes, index);
-            Vector256<byte> lower;
-            Vector256<byte> upper;
-            if (Avx2.IsSupported)
-            {
-                // Unpack works per 128-bit lane; quadword order 0, 2, 1, 3 makes the results contiguous.
-                value = Avx2.Permute4x64(value.AsUInt64(), 0b11_01_10_00).AsByte();
-                Vector256<byte> high = Vector256.ShiftRightLogical(value, 4);
-                Vector256<byte> low = value & Vector256.Create((byte)0x0F);
-                lower = Avx2.UnpackLow(high, low);
-                upper = Avx2.UnpackHigh(high, low);
-            }
-            else
-            {
-                (Vector256<ushort> highLower, Vector256<ushort> highUpper) = Vector256.Widen(Vector256.ShiftRightLogical(value, 4));
-                (Vector256<ushort> lowLower, Vector256<ushort> lowUpper) = Vector256.Widen(value & Vector256.Create((byte)0x0F));
-                lower = (highLower | (lowLower << 8)).AsByte();
-                upper = (highUpper | (lowUpper << 8)).AsByte();
-            }
-
+            // Unpack works per 128-bit lane; quadword order 0, 2, 1, 3 makes the results contiguous.
+            Vector256<byte> value = Avx2.Permute4x64(Vector256.LoadUnsafe(ref bytes, index).AsUInt64(), 0b11_01_10_00).AsByte();
+            Vector256<byte> high = Vector256.ShiftRightLogical(value, 4);
+            Vector256<byte> low = value & Vector256.Create((byte)0x0F);
             ref byte destination = ref Unsafe.Add(ref nibbles, index * 2);
-            lower.StoreUnsafe(ref destination);
-            upper.StoreUnsafe(ref destination, (nuint)Vector256<byte>.Count);
+            Avx2.UnpackLow(high, low).StoreUnsafe(ref destination);
+            Avx2.UnpackHigh(high, low).StoreUnsafe(ref destination, (nuint)Vector256<byte>.Count);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -270,57 +257,23 @@ namespace Nethermind.Trie
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Vector128<byte> InterleaveLower(Vector128<byte> high, Vector128<byte> low)
-        {
-            if (Sse2.IsSupported)
-            {
-                return Sse2.UnpackLow(high, low);
-            }
-
-            if (AdvSimd.Arm64.IsSupported)
-            {
-                return AdvSimd.Arm64.ZipLow(high, low);
-            }
-
-            return (Vector128.WidenLower(high) | (Vector128.WidenLower(low) << 8)).AsByte();
-        }
+        private static Vector128<byte> InterleaveLower(Vector128<byte> high, Vector128<byte> low) =>
+            Sse2.IsSupported ? Sse2.UnpackLow(high, low) : AdvSimd.Arm64.ZipLow(high, low);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Vector128<byte> InterleaveUpper(Vector128<byte> high, Vector128<byte> low)
-        {
-            if (Sse2.IsSupported)
-            {
-                return Sse2.UnpackHigh(high, low);
-            }
-
-            if (AdvSimd.Arm64.IsSupported)
-            {
-                return AdvSimd.Arm64.ZipHigh(high, low);
-            }
-
-            return (Vector128.WidenUpper(high) | (Vector128.WidenUpper(low) << 8)).AsByte();
-        }
+        private static Vector128<byte> InterleaveUpper(Vector128<byte> high, Vector128<byte> low) =>
+            Sse2.IsSupported ? Sse2.UnpackHigh(high, low) : AdvSimd.Arm64.ZipHigh(high, low);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Pack256(ref byte nibbles, ref byte bytes, nuint index)
         {
             ref byte source = ref Unsafe.Add(ref nibbles, index * 2);
-            Vector256<byte> first = Vector256.LoadUnsafe(ref source);
-            Vector256<byte> second = Vector256.LoadUnsafe(ref source, (nuint)Vector256<byte>.Count);
-            Vector256<byte> packed;
-            if (Avx2.IsSupported)
-            {
-                Vector256<sbyte> weights = Vector256.Create((ushort)0x0110).AsSByte();
-                packed = Avx2.PackUnsignedSaturate(Avx2.MultiplyAddAdjacent(first, weights), Avx2.MultiplyAddAdjacent(second, weights));
-                // Pack works per 128-bit lane; quadword order 0, 2, 1, 3 makes the result contiguous.
-                packed = Avx2.Permute4x64(packed.AsUInt64(), 0b11_01_10_00).AsByte();
-            }
-            else
-            {
-                packed = Vector256.Narrow(PairToByte(first.AsUInt16()), PairToByte(second.AsUInt16()));
-            }
-
-            packed.StoreUnsafe(ref bytes, index);
+            Vector256<sbyte> weights = Vector256.Create((ushort)0x0110).AsSByte();
+            Vector256<byte> packed = Avx2.PackUnsignedSaturate(
+                Avx2.MultiplyAddAdjacent(Vector256.LoadUnsafe(ref source), weights),
+                Avx2.MultiplyAddAdjacent(Vector256.LoadUnsafe(ref source, (nuint)Vector256<byte>.Count), weights));
+            // Pack works per 128-bit lane; quadword order 0, 2, 1, 3 makes the result contiguous.
+            Avx2.Permute4x64(packed.AsUInt64(), 0b11_01_10_00).AsByte().StoreUnsafe(ref bytes, index);
         }
 
         /// <summary>Packs 32 nibble bytes, 16 from each argument, into 16 bytes.</summary>
@@ -333,19 +286,8 @@ namespace Nethermind.Trie
                 return Sse2.PackUnsignedSaturate(Ssse3.MultiplyAddAdjacent(first, weights), Ssse3.MultiplyAddAdjacent(second, weights));
             }
 
-            if (AdvSimd.Arm64.IsSupported)
-            {
-                return AdvSimd.ShiftLeftAndInsert(AdvSimd.Arm64.UnzipOdd(first, second), AdvSimd.Arm64.UnzipEven(first, second), 4);
-            }
-
-            return Vector128.Narrow(PairToByte(first.AsUInt16()), PairToByte(second.AsUInt16()));
+            return AdvSimd.ShiftLeftAndInsert(AdvSimd.Arm64.UnzipOdd(first, second), AdvSimd.Arm64.UnzipEven(first, second), 4);
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Vector128<ushort> PairToByte(Vector128<ushort> pairs) => (pairs << 4) | (pairs >> 8);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Vector256<ushort> PairToByte(Vector256<ushort> pairs) => (pairs << 4) | (pairs >> 8);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandLong(ref byte bytes, ref byte nibbles, nuint index)
