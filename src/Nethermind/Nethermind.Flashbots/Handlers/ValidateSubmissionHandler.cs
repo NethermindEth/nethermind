@@ -34,8 +34,12 @@ public class ValidateSubmissionHandler(
     ILogManager logManager,
     ISpecProvider specProvider,
     IFlashbotsConfig flashbotsConfig,
-    IEthereumEcdsa ethereumEcdsa)
+    IEthereumEcdsa ethereumEcdsa,
+    IBlockProcessingQueue processingQueue)
 {
+    /// <summary>How long a bid waits for its parent's commit when the parent was answered VALID a moment ago.</summary>
+    private static readonly TimeSpan ParentCommitWait = TimeSpan.FromSeconds(1);
+
     // NoValidation on purpose: the shared block validator is the merge plugin's InvalidBlockInterceptor, which
     // records into the process-wide InvalidChainTracker, so a node-local divergence on this RPC path could make
     // the Engine API reject the block. The header is compared with the execution outcome here instead.
@@ -54,7 +58,7 @@ public class ValidateSubmissionHandler(
     private readonly IEthereumEcdsa _ethereumEcdsa = ethereumEcdsa;
     private readonly IOverridableEnv<ProcessingEnv> _blockProcessorEnv = blockProcessorEnv;
 
-    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
+    public async Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
         ExecutionPayloadV3 payload = request.ExecutionPayload.ToExecutionPayloadV3();
 
@@ -79,6 +83,10 @@ public class ValidateSubmissionHandler(
             return FlashbotsResult.Invalid($"Block {payload} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+
+        // A bid on a block answered VALID a moment ago can arrive while that block is still committing, and the
+        // validation below replays on its state; a parent that is not committing returns at once.
+        await processingQueue.WaitForExecutedCopyAsync(block.ParentHash!, ParentCommitWait);
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
 
