@@ -27,9 +27,11 @@ inputs:
     required: false
     default: SPOT
   spot_fallback_to_standard:
-    description: Retry as STANDARD when no SPOT capacity exists in any zone.
+    description: >-
+      Opt-in retry as STANDARD when no SPOT capacity exists in any zone. STANDARD bills at
+      on-demand rates (3-5x SPOT), so by default an exhausted SPOT request fails instead.
     required: false
-    default: "true"
+    default: "false"
   boot_disk_size:
     description: Boot disk size in GB. Chain data lives on Local SSD, not here.
     required: false
@@ -128,7 +130,7 @@ outputs:
     description: JIT runner id, to pass to the destroy step.
     value: ${{ steps.create.outputs.runner_id }}
   provisioning_model_used:
-    description: SPOT or STANDARD, which may differ from the request after fallback.
+    description: SPOT or STANDARD; differs from the request only when spot_fallback_to_standard was set.
     value: ${{ steps.create.outputs.provisioning_model_used }}
   preempted:
     description: Whether the VM was reclaimed by GCE rather than deleted by this action.

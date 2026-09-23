@@ -129,8 +129,8 @@ jobs:
                   provisioning_model: (
                     if $model == "Spot" then "SPOT"
                     elif $model == "Standard" then "STANDARD"
-                    elif $config.spot then "SPOT"
-                    else "STANDARD"
+                    elif $config.spot == false then "STANDARD"
+                    else "SPOT"
                     end
                   ),
                   timeout: (

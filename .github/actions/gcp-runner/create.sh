@@ -196,13 +196,21 @@ if [ -z "$CHOSEN_ZONE" ]; then
   if [ -n "$QUOTA_SEEN" ]; then
     echo "::error title=GCP runner::regions at quota:${QUOTA_SEEN}"
   fi
+  if [ "${#MODELS[@]}" -eq 1 ] && [ "$PROVISIONING_MODEL" = SPOT ]; then
+    echo "::error title=GCP runner::no SPOT capacity in any zone and STANDARD was not requested; re-run later, or re-dispatch with an explicit STANDARD provisioning model if on-demand cost is acceptable"
+  fi
   cleanup_failed
   exit 1
 fi
 
-if [ "$MODEL_USED" != "$PROVISIONING_MODEL" ]; then
-  echo "::warning title=GCP runner::fell back to ${MODEL_USED} (no ${PROVISIONING_MODEL} capacity)"
+if [ "$MODEL_USED" = STANDARD ]; then
+  if [ "$PROVISIONING_MODEL" = STANDARD ]; then
+    echo "::warning title=GCP runner::${RUNNER_LABEL} runs on STANDARD (requested explicitly), billed at on-demand rates"
+  else
+    echo "::warning title=GCP runner::${RUNNER_LABEL} fell back to STANDARD (no ${PROVISIONING_MODEL} capacity), billed at on-demand rates"
+  fi
 fi
+echo "\`${RUNNER_LABEL}\` → ${MODEL_USED} in ${CHOSEN_ZONE} (${MACHINE_TYPE})" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 INSTANCE_IP=$(jq -r '(if type == "array" then .[0] else . end)
   | .networkInterfaces[0].accessConfigs[0].natIP // empty' <<<"$INSTANCE_JSON")
