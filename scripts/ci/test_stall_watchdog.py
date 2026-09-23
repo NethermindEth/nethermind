@@ -128,7 +128,7 @@ class WatchdogTests(unittest.TestCase):
         # do that at any point, so a vanished entry is the same success, not a missing file.
         try:
             stat = Path(f"/proc/{pid}/stat").read_text()
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):
             stat = None
         # The state field follows comm, which is parenthesised and may itself contain spaces.
         self.assertTrue(stat is None or stat.rpartition(")")[2].split()[0] == "Z", "child survived cleanup")

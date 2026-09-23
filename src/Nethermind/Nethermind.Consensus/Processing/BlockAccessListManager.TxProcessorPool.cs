@@ -295,7 +295,7 @@ public partial class BlockAccessListManager
             DefaultObjectPoolProvider provider = new() { MaximumRetained = ProcessorPoolSize };
             if (prewarmerEnvFactory is not null && preBlockCaches is not null)
             {
-                return provider.Create(new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(prewarmerEnvFactory, preBlockCaches));
+                return provider.Create(new PrewarmerEnvPooledObjectPolicy(prewarmerEnvFactory, preBlockCaches));
             }
 
             return readOnlyTxProcessingEnvFactory is not null
@@ -471,6 +471,14 @@ public partial class BlockAccessListManager
         IReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
         public IReadOnlyTxProcessorSource Create() => envFactory.Create();
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+    }
+
+    /// <remarks>The parent reader only reads state, so the env's access-list hints are of no use here.</remarks>
+    private sealed class PrewarmerEnvPooledObjectPolicy(
+        PrewarmerEnvFactory envFactory, PreBlockCaches preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create(preBlockCaches);
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 }

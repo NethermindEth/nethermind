@@ -89,6 +89,8 @@ public partial class BlockProcessor(
         {
             receipts = ProcessBlock(block, blockTracer, options, spec, token);
             processed = true;
+            ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+            _blockTransactionsExecutor.PublishTransactionProcessedEvents();
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
         {
@@ -102,9 +104,10 @@ public partial class BlockProcessor(
         }
         finally
         {
+            _blockTransactionsExecutor.ClearTransactionProcessedEvents();
             if (!processed) block.DisposeAccountChanges();
         }
-        ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);
@@ -296,7 +299,7 @@ public partial class BlockProcessor(
         return blockBloom;
     }
 
-    private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
+    protected virtual Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
     {
         using MetricsTimer<ReceiptsRootTimeSink> _ = new();
         return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);

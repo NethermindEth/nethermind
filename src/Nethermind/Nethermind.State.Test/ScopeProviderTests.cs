@@ -7,6 +7,7 @@ using System.Threading;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -14,6 +15,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -62,17 +65,26 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_CanSaveToState()
+    public void Test_CanSaveToState([Values(1, 4, 8, 9)] int count)
     {
         using Context ctx = new(useFlat);
+        Address[] addresses = new Address[count];
+        addresses[0] = TestItem.AddressA;
+        Random random = new(2941 + count);
+        for (int i = 1; i < count; i++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            random.NextBytes(bytes);
+            addresses[i] = new Address(bytes);
+        }
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
             Assert.That(scope.Get(TestItem.AddressA), Is.EqualTo(null));
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(count))
             {
-                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                for (int i = 0; i < count; i++) writeBatch.Set(addresses[i], new Account(100, (UInt256)(100 + i)));
             }
 
             scope.Commit(1);
@@ -80,12 +92,53 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         Assert.That(stateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
-        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(1));
+        if (!useFlat && count == 1) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(1));
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
-            Assert.That(scope.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
+            for (int i = 0; i < count; i++) Assert.That(scope.Get(addresses[i]).Balance, Is.EqualTo((UInt256)(100 + i)));
         }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Account_write_batch_preserves_hashes_and_balances([Values(3, 4, 7, 8, 9)] int count, [Values] bool warm)
+    {
+        ConfigProvider config = new();
+        config.GetConfig<IFlatDbConfig>().Enabled = useFlat;
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
+        IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().GlobalWorldState;
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null);
+        Address[] addresses = new Address[count];
+        StateTree expected = new();
+        Random random = new(9213);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            do
+            {
+                random.NextBytes(bytes);
+            } while (KeccakCache.TryGet(bytes, out _));
+            addresses[i] = new Address(bytes);
+            if (warm) KeccakCache.ComputeTo(bytes, out _);
+            expected.Set(ValueKeccak.Compute(bytes), new Account(1, (UInt256)(i + 1)));
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(count))
+        {
+            for (int i = 0; i < count; i++) write.Set(addresses[i], new Account(1, (UInt256)(i + 1)));
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(scope.Get(addresses[i]).Balance, Is.EqualTo((UInt256)(i + 1)));
+        }
+
+        // The root is the oracle for the batched key hashes: a wrong hash files an account under a
+        // different path. Cache residency is not, because a write only stores on an uncontended slot.
+        expected.UpdateRootHash();
+        scope.Commit(1);
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
     }
 
     [Test]
@@ -133,6 +186,62 @@ public class ScopeProviderTests(bool useFlat)
             storage.Get(index, out UInt256 slotRead124);
             Assert.That(slotRead124.ToMinimalBigEndian(), Is.EqualTo(expected));
             if (delete) Assert.That(storage.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Batched_storage_keys_match_scalar_hashes(
+        [Values(4, 5, 7, 8, 9, 16, 17, 33)] int count, [Values] bool includeLookupSlots)
+    {
+        using Context ctx = new(useFlat);
+        using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
+        UInt256[] indices = new UInt256[count];
+        Random random = new(6513 + count);
+        byte[] bytes = new byte[Hash256.Size];
+        for (int i = 0; i < count; i++)
+        {
+            do
+            {
+                random.NextBytes(bytes);
+            } while (KeccakCache.TryGet(bytes, out _));
+            indices[i] = includeLookupSlots && i % 3 == 0 ? (UInt256)i : new UInt256(bytes, isBigEndian: true);
+        }
+        for (int round = 0; round < 2; round++)
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(2))
+            {
+                if (round == 0)
+                {
+                    write.Set(TestItem.AddressA, new Account(100, 100));
+                    write.Set(TestItem.AddressB, new Account(100, 100));
+                }
+
+                // The same slots down both paths: over MIN_ENTRIES_TO_BATCH the write batch hashes the
+                // keys in a batch, at one entry it hashes each on its own.
+                using IWorldStateScopeProvider.IStorageWriteBatch batched = write.CreateStorageWriteBatch(TestItem.AddressA, Math.Max(17, count));
+                using IWorldStateScopeProvider.IStorageWriteBatch scalar = write.CreateStorageWriteBatch(TestItem.AddressB, 1);
+                for (int i = 0; i < count; i++)
+                {
+                    UInt256 value = round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1);
+                    // Batched first: the scalar Set caches the hash, and a cached key skips the batch.
+                    // Round 0 warms every key, so only round 0 reaches the batch kernel.
+                    batched.Set(indices[i], value);
+                    scalar.Set(indices[i], value);
+                }
+            }
+
+            // A storage trie is keyed by slot hash alone, so the two addresses hold the same root only
+            // if every batched key hash matches the scalar one.
+            Assert.That(scope.CreateStorageTree(TestItem.AddressA).RootHash,
+                Is.EqualTo(scope.CreateStorageTree(TestItem.AddressB).RootHash), "storage root");
+
+            IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(TestItem.AddressA);
+            for (int i = 0; i < count; i++)
+            {
+                tree.Get(indices[i], out UInt256 value);
+                Assert.That(value, Is.EqualTo(round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1)), "slot value");
+            }
         }
     }
 
@@ -691,8 +800,6 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
 
-        // A selfdestruct that reverts within its transaction: the clear leaves a conservative mark, so the caches end up
-        // holding nothing of the slot rather than the value it had before the block.
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
         {
             ws.Get(in SlotA1, out _);
@@ -708,7 +815,8 @@ public class ScopeProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(carried, Is.True);
-            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False, "asserted before the read below caches it again");
+            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }));
             consumer.Get(in SlotA1, out UInt256 storageValue2);
             Assert.That(storageValue2.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 7 }));
             Assert.That(CachedAccount(caches, TestItem.AddressA).StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash), "the account keeps its storage");
