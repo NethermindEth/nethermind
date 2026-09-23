@@ -29,11 +29,13 @@ public class FrameForRpc
     public Address? Target { get; set; }
 
     /// <summary>EIP-8141 <c>limits.execution</c>: the frame's execution-gas budget, in gas.</summary>
-    public ulong ExecutionGasLimit { get; set; }
+    /// <remarks>Omit in eth_fillTransaction or eth_estimateGas to estimate this budget. An explicit zero is preserved.</remarks>
+    public ulong? ExecutionGasLimit { get; set; }
 
     /// <summary>EIP-8141 <c>limits.state</c>: the frame's EIP-8037 state-gas budget, in gas.</summary>
-    /// <remarks>The payer reserves the two budgets summed; neither is spendable as the other.</remarks>
-    public ulong StateGasLimit { get; set; }
+    /// <remarks>The payer reserves the two budgets summed; neither is spendable as the other.
+    /// Omit in eth_fillTransaction or eth_estimateGas to estimate this budget. An explicit zero is preserved.</remarks>
+    public ulong? StateGasLimit { get; set; }
 
     /// <summary>Wei the frame moves from its caller to <see cref="Target"/>.</summary>
     public UInt256 Value { get; set; }
@@ -58,7 +60,7 @@ public class FrameForRpc
     /// <summary>Widens the request's raw <c>mode</c>/<c>flags</c> into the domain type.</summary>
     /// <remarks>Unchecked, as the RLP decoder is: a value outside the defined set is rejected by
     /// <see cref="FrameTxValidation.IsWellFormed"/> rather than here.</remarks>
-    public TxFrame ToFrame() => new((FrameMode)Mode, (FrameFlags)Flags, Target, ExecutionGasLimit, StateGasLimit, Value, Data);
+    public TxFrame ToFrame() => new((FrameMode)Mode, (FrameFlags)Flags, Target, ExecutionGasLimit ?? 0, StateGasLimit ?? 0, Value, Data);
 
     public static FrameForRpc[]? FromFrames(TxFrame[]? frames)
     {

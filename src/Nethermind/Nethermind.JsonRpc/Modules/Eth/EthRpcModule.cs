@@ -499,6 +499,13 @@ public partial class EthRpcModule(
         if (!fillResult)
             return ResultWrapper<FillTransactionResult>.Fail(fillResult.Error!, ErrorCodes.InvalidInput);
 
+        if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
+        {
+            Result frameGasResult = FillFrameGas(frameTx, head);
+            if (!frameGasResult)
+                return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, ErrorCodes.InvalidInput);
+        }
+
         if (rpcTx.Gas is null)
         {
             ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(rpcTx, BlockParameter.Latest);
@@ -630,9 +637,18 @@ public partial class EthRpcModule(
         new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
             .Execute(payload, blockParameter);
 
-    public virtual ResultWrapper<UInt256?> eth_estimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
-        new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
+    public virtual ResultWrapper<UInt256?> eth_estimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+    {
+        if (transactionCall is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
+        {
+            SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
+            if (search.IsError) return ResultWrapper<UInt256?>.Fail(search);
+            Result result = FillFrameGas(frameTx, search.Object!, stateOverride, blockOverride);
+            if (!result) return ResultWrapper<UInt256?>.Fail(result.Error!, ErrorCodes.InvalidInput);
+        }
+        return new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
             .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
+    }
 
     public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true) =>
         new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, optimize)
