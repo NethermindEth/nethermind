@@ -54,8 +54,8 @@ public static class NumericConverterHelper
     }
 
     /// <remarks>
-    /// Integers that fit their width decode straight into a big-endian buffer; longer digit strings (leading zeros)
-    /// and other number types keep the runtime's parser, and with it its overflow rules.
+    /// Up to 8 digits take a per-char table, integers up to their width decode into a big-endian buffer, and longer digit
+    /// strings (leading zeros) or other number types keep the runtime's parser with its overflow rules.
     /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

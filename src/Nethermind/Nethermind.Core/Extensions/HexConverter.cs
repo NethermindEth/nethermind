@@ -213,6 +213,7 @@ namespace Nethermind.Core.Extensions
 
         public static bool TryDecodeFromUtf8(ReadOnlySpan<byte> hexString, Span<byte> result)
         {
+            Debug.Assert((hexString.Length / 2) + (hexString.Length % 2) == result.Length, "Target buffer not right-sized for provided characters");
             if (hexString.Length % 2 == 0 && hexString.Length >= HexDecoder.MinVectorLength && HexDecoder.IsVectorized)
             {
                 return HexDecoder.TryDecodeVector(ref MemoryMarshal.GetReference(hexString), (nuint)hexString.Length, ref MemoryMarshal.GetReference(result));
