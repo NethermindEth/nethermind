@@ -512,13 +512,18 @@ jobs:
             FIXTURE_DIR="$SCOPED_DIR"
           fi
 
-          # Fixtures whose expectations are knowingly not met, excluded by exact test id so the lane
-          # still gates on the rest. An explicit `filter` input overrides this.
+          # Fixtures whose expectations are knowingly not met, excluded so the lane still gates on the
+          # rest. Patterns match the test id with everything up to `.py::` stripped, so they scope by
+          # fork and parameterisation but cannot tell apart two fixture files that define the same
+          # test. An explicit `filter` input overrides this.
           KNOWN_FAILURES=(
             # These ported_static fixtures give the block a synthetic gas limit above 2^32 and a
             # transaction that spends all of it, so EIP-8037 rule 1 (tx.gas <= TX_MAX_TOTAL_GAS_LIMIT)
-            # rejects a transaction they expect to be accepted. The rule is not in the execution-specs
-            # reference yet, so no release carries fixtures for it; drop when it lands.
+            # rejects a transaction they expect to be accepted. Merged upstream as
+            # ethereum/execution-specs#3582; drop once a fixture release carries it (v8.1.4 predates it).
+            # Only --g2 diverges, but stCallCreateCallCodeTest and stDelegatecallTestHomestead share the
+            # test name, so its passing sibling goes with it. ecrecover_short_buff has one
+            # parameterisation per fork and format, so the fork prefix already pins it exactly.
             'test_callcode_lose_gas_oog\[fork_(Amsterdam|Bogota)-[^]]*--g2\]'
             'test_ecrecover_short_buff\[fork_(Amsterdam|Bogota)-'
           )
