@@ -130,35 +130,17 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
     [Test(Description = "Destroy-list finalization log must reach log tracers, not just receipts")]
     public void FinalizationSelfDestructLog_WithLog_AppearsInTopFrame()
     {
-        const byte initBalance = 5;
-        const byte fundedAfter = 7;
+        const byte initBalance = Eip7708SelfDestructScenario.InitBalance;
+        const byte fundedAfter = Eip7708SelfDestructScenario.FundedAfter;
         Address inheritor = TestItem.AddressC;
 
-        byte[] contractACode = Prepare.EvmCode
-            .CALLVALUE()
-            .Op(Instruction.ISZERO)
-            .PushData(6)
-            .JUMPI()
-            .STOP()
-            .JUMPDEST()
-            .SELFDESTRUCT(inheritor)
-            .Done;
-        byte[] initCodeA = Prepare.EvmCode
-            .ForInitOf(contractACode)
-            .Done;
-
         Address contractA = ContractAddress.From(Recipient, 0);
+        byte[] factoryCode = Eip7708SelfDestructScenario.DestroyThenFundFactoryCode(inheritor, contractA);
 
-        byte[] factoryCode = Prepare.EvmCode
-            .Create(initCodeA, initBalance)
-            .Call(contractA, 100_000)
-            .CallWithValue(contractA, 100_000, fundedAfter)
-            .STOP()
-            .Done;
-
-        (Block block, Transaction tx) = PrepareTx(Activation, 2_000_000UL, factoryCode, value: 0);
-        using NativeCallTracer tracer = new(tx, Amsterdam.Instance, GetGethTraceOptions(WithLog));
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, factoryCode, value: 0);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using NativeCallTracer tracer = new(tx, spec, GetGethTraceOptions(WithLog));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
@@ -209,11 +191,32 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
     [Test(Description = "Deferred Burn finalization log must reach log tracers, not just receipts")]
     public void FinalizationBurnLog_WithLog_AppearsInTopFrame()
     {
-        const byte initBalance = 5;
-        const byte fundedAfter = 7;
-        Address inheritor = TestItem.AddressC;
+        Address contractA = ContractAddress.From(Recipient, 0);
+        byte[] factoryCode = Eip7708SelfDestructScenario.DestroyThenFundFactoryCode(TestItem.AddressC, contractA);
 
-        byte[] contractACode = Prepare.EvmCode
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, factoryCode, value: 0);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using NativeCallTracer tracer = new(tx, spec, GetGethTraceOptions(WithLog));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
+    }
+}
+
+file static class Eip7708SelfDestructScenario
+{
+    public const byte InitBalance = 5;
+    public const byte FundedAfter = 7;
+
+    // EIP-8037 charges state gas on top of execution gas, so the deferred fixture needs more
+    // forwarded gas than the inline one: at 100_000 it halts before the SELFDESTRUCT.
+    private const long CallGas = 500_000;
+
+    /// <summary>Init code deploying a contract that self-destructs to <paramref name="inheritor"/> unless it is called with value.</summary>
+    public static byte[] InitCode(Address inheritor) => Prepare.EvmCode
+        .ForInitOf(Prepare.EvmCode
             .CALLVALUE()
             .Op(Instruction.ISZERO)
             .PushData(6)
@@ -221,27 +224,15 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
             .STOP()
             .JUMPDEST()
             .SELFDESTRUCT(inheritor)
-            .Done;
-        byte[] initCodeA = Prepare.EvmCode
-            .ForInitOf(contractACode)
-            .Done;
+            .Done)
+        .Done;
 
-        Address contractA = ContractAddress.From(Recipient, 0);
-
-        byte[] factoryCode = Prepare.EvmCode
-            .Create(initCodeA, initBalance)
-            .Call(contractA, 500_000)
-            .CallWithValue(contractA, 500_000, fundedAfter)
-            .STOP()
-            .Done;
-
-        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, factoryCode, value: 0);
-        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
-        using NativeCallTracer tracer = new(tx, spec, GethLikeCallTracerTests.GetGethTraceOptions(GethLikeCallTracerTests.WithLog));
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
-        using GethLikeTxTrace trace = tracer.BuildResult();
-        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
-
-        Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, fundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
-    }
+    /// <summary>Factory that endows a fresh contract, destroys it, then re-funds the destroyed address.</summary>
+    /// <remarks>The residual balance left by the last call is what the finalization log reports.</remarks>
+    public static byte[] DestroyThenFundFactoryCode(Address inheritor, Address contract) => Prepare.EvmCode
+        .Create(InitCode(inheritor), InitBalance)
+        .Call(contract, CallGas)
+        .CallWithValue(contract, CallGas, FundedAfter)
+        .STOP()
+        .Done;
 }
