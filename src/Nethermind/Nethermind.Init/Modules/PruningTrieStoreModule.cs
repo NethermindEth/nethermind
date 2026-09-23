@@ -140,15 +140,15 @@ public class PruningTrieStoreModule : Module
     /// deletion stays unconditional so that a deletion interrupted by a crash completes on the next start.</param>
     internal static bool ShouldDropPruningTrieState(IFlatDbConfig? flatDbConfig, Func<IPersistence> flatPersistence, Func<ILogManager> logManager, Func<bool> hasTrieData)
     {
-        // Null when nothing registered the flat config: the state DB must still resolve, and
-        // nothing else here may be resolved before the drop is known to apply.
+        // Null when nothing registered the flat config: the state DB must still resolve, so nothing
+        // beyond the flag may be resolved until the flag is known to be set.
         if (flatDbConfig is not { DropPruningTrieState: true }) return false;
 
         // The flag is opt-in, so every decline says why.
         ILogger logger = logManager().GetClassLogger<PruningTrieStoreModule>();
         if (!flatDbConfig.Enabled)
         {
-            if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB is disabled, so the node runs on it.");
+            if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB is disabled, so the node runs on the patricia backend.");
             return false;
         }
 

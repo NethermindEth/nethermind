@@ -49,12 +49,12 @@ public class PruningTrieStoreModuleTests
     }
 
     [Test]
-    public void Keeps_the_trie_when_nothing_registered_the_flat_config()
+    public void Declines_before_touching_anything_unless_the_flag_is_set([Values] bool configRegistered)
     {
-        // The state DB is registered in containers that know nothing about the flat backend.
-        // Resolving IFlatDbConfig there is not merely useless, it breaks the registration.
+        // The state DB is registered in containers that know nothing about the flat backend, so a hard Resolve
+        // of IFlatDbConfig would break them, and nothing beyond the flag may be resolved until it is known to be set.
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
-            null,
+            configRegistered ? Config(Flags.Enabled | Flags.FlatHasData) : null,
             () => throw new AssertionException("the flat persistence must not be resolved"),
             () => throw new AssertionException("the log manager must not be resolved"),
             () => throw new AssertionException("the disk must not be touched"));
@@ -62,8 +62,8 @@ public class PruningTrieStoreModuleTests
         Assert.That(dropped, Is.False);
     }
 
-    [TestCase(true, Description = "Trie data on disk -> warn, that is what gets lost")]
-    [TestCase(false, Description = "Already empty (a repeat start, or a deletion cut short) -> nothing to lose, stay quiet")]
+    [TestCase(true, Description = "Trie data on disk (a first drop, or one cut short) -> warn, that is what gets lost")]
+    [TestCase(false, Description = "Already empty (every start after a completed drop) -> nothing to lose, stay quiet")]
     public void Warns_only_when_there_is_trie_data_to_lose(bool hasTrieData)
     {
         // TestLogger flattens every level into one list, so the level itself needs a substitute.
@@ -99,20 +99,6 @@ public class PruningTrieStoreModuleTests
 
         logger.DidNotReceive().Warn(Arg.Any<string>());
         logger.Received(1).Info(Arg.Any<string>());
-    }
-
-    [Test]
-    public void Does_not_touch_the_flat_store_when_the_flag_is_off()
-    {
-        bool resolved = false;
-
-        PruningTrieStoreModule.ShouldDropPruningTrieState(
-            Config(Flags.Enabled | Flags.FlatHasData),
-            () => { resolved = true; return Persistence(true); },
-            () => LimboLogs.Instance,
-            () => true);
-
-        Assert.That(resolved, Is.False, "the flat persistence must not be resolved unless the drop is actually requested");
     }
 
     [Test]
@@ -176,8 +162,11 @@ public class PruningTrieStoreModuleTests
         container.ResolveKeyed<IDb>(DbNames.State);
 
         // The live inner DB is RocksDB's to delete through DeleteOnStart, which the substituted factory never does.
-        Assert.That(Directory.Exists(live), Is.True);
-        Assert.That(Directory.Exists(leftover), Is.EqualTo(!drop));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Directory.Exists(live), Is.True);
+            Assert.That(Directory.Exists(leftover), Is.EqualTo(!drop));
+        }
     }
 
     private static IContainer Container(Flags flags, IDbFactory dbFactory) => new ContainerBuilder()

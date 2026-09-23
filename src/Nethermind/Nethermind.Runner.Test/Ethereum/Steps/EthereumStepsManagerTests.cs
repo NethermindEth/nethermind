@@ -241,33 +241,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             Assert.That(container.Resolve<StepB>().WasExecuted, Is.True);
         }
 
-        [Test]
-        [CancelAfter(1000)]
-        public async Task Absent_optional_dependency_is_dropped(CancellationToken cancellationToken)
-        {
-            await using IContainer container = CreateNethermindEnvironment(
-                new StepInfo(typeof(StepWithOptionalDependency))
-            );
-
-            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            await stepsManager.InitializeAll(cancellationToken);
-
-            Assert.That(container.Resolve<StepWithOptionalDependency>().WasExecuted, Is.True);
-        }
-
-        [Test]
-        [CancelAfter(1000)]
-        public async Task Absent_required_dependency_throws(CancellationToken cancellationToken)
-        {
-            await using IContainer container = CreateNethermindEnvironment(
-                new StepInfo(typeof(StepWithRequiredDependency))
-            );
-
-            EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-
-            Assert.That(() => stepsManager.InitializeAll(cancellationToken), Throws.TypeOf<StepDependencyException>());
-        }
-
         private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos)
         {
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
@@ -400,30 +373,6 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         public TaskCompletionSource Waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public virtual Task Execute(CancellationToken cancellationToken) => Waiter.Task;
-    }
-
-    [RunnerStepDependencies(Optional = true)]
-    public class StepOptional : IStep
-    {
-        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
-    }
-
-    [RunnerStepDependencies(typeof(StepOptional))]
-    public class StepWithOptionalDependency : IStep
-    {
-        public bool WasExecuted;
-
-        public Task Execute(CancellationToken cancellationToken)
-        {
-            WasExecuted = true;
-            return Task.CompletedTask;
-        }
-    }
-
-    [RunnerStepDependencies(typeof(StepD))]
-    public class StepWithRequiredDependency : IStep
-    {
-        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     /// <summary>

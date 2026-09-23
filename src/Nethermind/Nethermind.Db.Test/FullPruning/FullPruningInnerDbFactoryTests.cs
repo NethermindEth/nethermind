@@ -108,6 +108,8 @@ namespace Nethermind.Db.Test.FullPruning
         {
             TestContext test = new();
             test.Directory.Exists.Returns(false);
+            // What a real file system does when a missing directory is enumerated.
+            test.Directory.EnumerateDirectories().Returns(_ => throw new DirectoryNotFoundException());
 
             Assert.That(test.TestedDbFactory.DeleteStaleInnerDbs(), Is.EqualTo(0));
         }

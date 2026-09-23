@@ -30,8 +30,11 @@ public class FlatWorldStateModuleTests
         Assert.That(step is not null, Is.EqualTo(drop));
         if (drop)
         {
-            Assert.That(step.Dependencies, Does.Contain(typeof(InitializeBlockTree)));
-            Assert.That(step.Dependents, Does.Contain(typeof(InitializeBlockchain)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(step.Dependencies, Does.Contain(typeof(InitializeBlockTree)));
+                Assert.That(step.Dependents, Does.Contain(typeof(InitializeBlockchain)));
+            }
         }
     }
 }
