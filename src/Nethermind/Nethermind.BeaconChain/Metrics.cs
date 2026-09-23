@@ -91,7 +91,7 @@ public class Metrics
     public static ConcurrentDictionary<ReqRespFailureKey, long> BeaconChainReqRespFailures { get; } = new();
 
     [KeyIsLabel("operation")]
-    [Description("Attestations, attester slashings and execution payload envelopes refused by fork choice after the state transition or gossip validation accepted them, by source: block body operations (tolerated, the block still imports) and received messages (dropped).")]
+    [Description("Operations refused by fork choice, by source: attestations and attester slashings the state transition or gossip validation accepted, from block bodies (tolerated, the block still imports) or gossip (dropped); and execution payload envelopes that failed verification or that the execution layer found invalid.")]
     public static ConcurrentDictionary<StringLabel, long> BeaconChainForkChoiceRejections { get; } = new();
 
     [CounterMetric]
