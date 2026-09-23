@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -39,10 +40,14 @@ public class ValidateSubmissionHandler(
     /// <summary>How long a bid waits for its parent's commit when the parent was answered VALID a moment ago.</summary>
     private static readonly TimeSpan ParentCommitWait = TimeSpan.FromSeconds(1);
 
-    private ProcessingOptions ValidateSubmissionProcessingOptions = ProcessingOptions.ReadOnlyChain
+    // NoValidation on purpose: the shared block validator is the merge plugin's InvalidBlockInterceptor, which
+    // records into the process-wide InvalidChainTracker, so a node-local divergence on this RPC path could make
+    // the Engine API reject the block. The header is compared with the execution outcome here instead.
+    private const ProcessingOptions ValidateSubmissionProcessingOptions = ProcessingOptions.ReadOnlyChain
          | ProcessingOptions.IgnoreParentNotOnMainChain
          | ProcessingOptions.ForceProcessing
-         | ProcessingOptions.StoreReceipts;
+         | ProcessingOptions.StoreReceipts
+         | ProcessingOptions.NoValidation;
 
     private readonly IBlockTree _blockTree = blockTree;
     private readonly IHeaderValidator _headerValidator = headerValidator;
@@ -215,18 +220,19 @@ public class ValidateSubmissionHandler(
 
         BlockReceiptsTracer blockReceiptsTracer = new();
 
+        Block processedBlock;
         try
         {
-            if (!_flashbotsConfig.EnableValidation)
-            {
-                ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
-            }
-
-            _ = blockProcessor.ProcessOne(block, ValidateSubmissionProcessingOptions, blockReceiptsTracer, releaseSpec, CancellationToken.None);
+            (processedBlock, _) = blockProcessor.ProcessOne(block, ValidateSubmissionProcessingOptions, blockReceiptsTracer, releaseSpec, CancellationToken.None);
         }
         catch (Exception e)
         {
             error = $"Block processing failed: {e.Message}";
+            return false;
+        }
+
+        if (_flashbotsConfig.EnableValidation && !ExecutionMatchesHeader(block, processedBlock, out error))
+        {
             return false;
         }
 
@@ -259,6 +265,28 @@ public class ValidateSubmissionHandler(
 
         error = null;
         return true;
+    }
+
+    /// <summary>
+    /// Checks the submitted header against the execution outcome, the way the block validator does for a processed
+    /// block, without going through the shared validator.
+    /// </summary>
+    private static bool ExecutionMatchesHeader(Block submitted, Block processed, out string? error)
+    {
+        BlockHeader expected = submitted.Header;
+        BlockHeader actual = processed.Header;
+        if (actual.Hash == expected.Hash)
+        {
+            error = null;
+            return true;
+        }
+
+        error = expected.GasUsed != actual.GasUsed ? BlockErrorMessages.HeaderGasUsedMismatch(expected.GasUsed, actual.GasUsed)
+            : expected.Bloom != actual.Bloom ? BlockErrorMessages.InvalidLogsBloom(expected.Bloom!, actual.Bloom!)
+            : expected.ReceiptsRoot != actual.ReceiptsRoot ? BlockErrorMessages.InvalidReceiptsRoot(expected.ReceiptsRoot!, actual.ReceiptsRoot!)
+            : expected.StateRoot != actual.StateRoot ? BlockErrorMessages.InvalidStateRoot(expected.StateRoot!, actual.StateRoot!)
+            : $"Processed block hash {actual.Hash} does not match the submitted {expected.Hash}";
+        return false;
     }
 
     private bool RecoverSenderAddress(Block block, IReleaseSpec spec, out string? error)

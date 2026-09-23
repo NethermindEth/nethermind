@@ -3008,6 +3008,13 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
+        public static async Task<Context> CreateWithOsakaEnabled()
+        {
+            OverridableReleaseSpec releaseSpec = new(Osaka.Instance);
+            TestSpecProvider specProvider = new(releaseSpec);
+            return await Create(specProvider);
+        }
+
         public static async Task<Context> CreateWithAmsterdamEnabled()
         {
             OverridableReleaseSpec releaseSpec = new(Amsterdam.Instance);
