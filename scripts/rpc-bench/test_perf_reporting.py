@@ -1471,7 +1471,6 @@ printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
 
         start_node = START_NODE.read_text(encoding="utf-8")
         self.assertIn("/data/*/*-*", start_node)
-        self.assertIn("<none found under /mnt or /data>", start_node)
 
         reclaim = workflow_step_script(rpc_workflow, "benchmark", "Reclaim root disk before pulling")
         fake_bin = self.directory / "headroom-bin"
@@ -1576,6 +1575,50 @@ fi
         same_root = run_reclaim()
         self.assertNotEqual(same_root.returncode, 0, f"{same_root.stdout}\n{same_root.stderr}")
         self.assertIn("Not enough free space", same_root.stdout)
+
+    def test_start_node_lists_snapshot_candidates_or_says_there_are_none(self) -> None:
+        fake_bin = self.directory / "candidates-bin"
+        fake_bin.mkdir()
+        # A real ls exits 2 whenever any pattern is unmatched, whether or not others matched.
+        self.write_executable(
+            "candidates-bin/ls",
+            "#!/usr/bin/env bash\n"
+            '[[ -n "${FAKE_LS_OUTPUT:-}" ]] && printf \'%s\\n\' "$FAKE_LS_OUTPUT"\n'
+            "exit 2\n",
+        )
+
+        def run_start_node(listing: str) -> subprocess.CompletedProcess[str]:
+            environment = os.environ.copy()
+            environment.update(
+                FAKE_BIN=fake_bin.as_posix(),
+                FAKE_LS_OUTPUT=listing,
+                DB_SOURCE=(self.directory / "absent-snapshot").as_posix(),
+                SCRATCH_ROOT=(self.directory / "scratch").as_posix(),
+                STATE_DIR=(self.directory / "state").as_posix(),
+                NODE_IMAGE="nethermindeth/nethermind:test",
+            )
+            launcher = (
+                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+                'export PATH="$(to_posix "$FAKE_BIN"):$PATH"; exec bash "$1"'
+            )
+            return subprocess.run(
+                [BASH, "-c", launcher, "bash", START_NODE.as_posix()],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+                env=environment,
+            )
+
+        none_found = run_start_node("")
+        self.assertNotEqual(none_found.returncode, 0, f"{none_found.stdout}\n{none_found.stderr}")
+        self.assertIn("<none found under /mnt or /data>", none_found.stdout)
+        self.assertIn("set node_config.db_source to a valid snapshot path", none_found.stderr)
+
+        found = run_start_node("/data/reth/reth-25490000")
+        self.assertNotEqual(found.returncode, 0, f"{found.stdout}\n{found.stderr}")
+        self.assertIn("  /data/reth/reth-25490000", found.stdout)
+        self.assertNotIn("<none found", found.stdout)
 
     def test_prepare_paths_reject_symlinked_output_escape_before_mkdir(self) -> None:
         rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
