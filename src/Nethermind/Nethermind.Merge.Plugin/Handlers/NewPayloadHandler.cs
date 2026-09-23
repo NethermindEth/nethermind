@@ -503,7 +503,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Hash256 parentHash = parent.GetOrCalculateHash();
         if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
 
-        Task removed = _processingQueue.WaitUntilRemovedAsync(parentHash, executedOnly: true).AsTask();
+        Task removed = _processingQueue.WaitUntilExecutedCopyRemovedAsync(parentHash).AsTask();
         if (removed.IsCompleted) return true;
 
         using CancellationTokenSource bound = new();

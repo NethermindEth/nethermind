@@ -81,7 +81,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         try
         {
-            Task removed = _processingQueue.WaitUntilRemovedAsync(blockHash, executedOnly: true).AsTask();
+            Task removed = _processingQueue.WaitUntilExecutedCopyRemovedAsync(blockHash).AsTask();
             if (!removed.IsCompleted)
             {
                 using CancellationTokenSource bound = new();

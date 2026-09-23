@@ -155,6 +155,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             ? new ValueTask(inFlight.Removed)
             : ValueTask.CompletedTask;
 
+    /// <inheritdoc/>
+    public ValueTask WaitUntilExecutedCopyRemovedAsync(Hash256 blockHash)
+        => _inFlight.TryGetValue(blockHash, out InFlightBlock? inFlight)
+            ? new ValueTask(inFlight.ExecutedCopyRemoved)
+            : ValueTask.CompletedTask;
+
     private void TrackInFlight(Hash256 blockHash)
     {
         // An entry whose last copy has just left refuses the copy while its removal is still under way, a matter of
@@ -199,6 +205,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         private static readonly TaskCompletionSource Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _copies;
         private TaskCompletionSource? _removed;
+        private TaskCompletionSource? _executedCopyRemoved;
         private volatile bool _executed;
 
         static InFlightBlock() => Done.SetResult();
@@ -220,6 +227,24 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
 
                 return removed.Task;
+            }
+        }
+
+        /// <summary>Completes when the copy that has had its verdict is removed; done at once when no copy has had one.</summary>
+        public Task ExecutedCopyRemoved
+        {
+            get
+            {
+                TaskCompletionSource? removed = Volatile.Read(ref _executedCopyRemoved);
+                if (removed is null)
+                {
+                    TaskCompletionSource created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    removed = Interlocked.CompareExchange(ref _executedCopyRemoved, created, null) ?? created;
+                }
+
+                // Read after the source is published: a removal that cleared the flag before then took no source to
+                // release, so this one would never complete.
+                return _executed ? removed.Task : Task.CompletedTask;
             }
         }
 
@@ -245,15 +270,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         /// </remarks>
         public bool RemoveCopy()
         {
-            int copies = Interlocked.Decrement(ref _copies);
-            if (copies > 0)
+            // Copies are processed in order, so none of the ones left has had its verdict. The next one sets the flag
+            // again when its own lands; until then an executed-only wait must not take the entry for a block that is
+            // committing. The flag is cleared before the source is taken, which is the order ExecutedCopyRemoved
+            // relies on.
+            if (_executed)
             {
-                // Copies are processed in order, so none of the ones left has had its verdict. The next one sets
-                // this again when its own lands; until then an executed-only wait must not take the entry for a
-                // block that is committing.
                 _executed = false;
-                return false;
+                Interlocked.Exchange(ref _executedCopyRemoved, null)?.TrySetResult();
             }
+
+            int copies = Interlocked.Decrement(ref _copies);
+            if (copies > 0) return false;
             // Taken below zero by a removal that overlapped the last one: that one owns the release either way.
             if (copies < 0) return false;
             // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
@@ -262,7 +290,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             return true;
         }
 
-        public void Release() => Interlocked.Exchange(ref _removed, Done)?.TrySetResult();
+        public void Release()
+        {
+            Interlocked.Exchange(ref _executedCopyRemoved, Done)?.TrySetResult();
+            Interlocked.Exchange(ref _removed, Done)?.TrySetResult();
+        }
     }
 
     private void Preprocess(Block block) => _branchBuilder.PreprocessQueued(block);

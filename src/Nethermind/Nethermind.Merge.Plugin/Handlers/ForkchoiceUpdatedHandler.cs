@@ -53,9 +53,11 @@ public class ForkchoiceUpdatedHandler(
     /// <remarks>
     /// The newPayload budget: before newPayload answered ahead of the commit, it held the engine API's lock through that
     /// same commit for up to this long, so waiting here holds it no longer than it was held then. A shorter bound turns
-    /// a slow commit into a SYNCING the CL never got before, which leaves it on an optimistic head.
+    /// a slow commit into a SYNCING the CL never got before, which leaves it on an optimistic head. Per block the worst
+    /// case is now two budgets rather than one - newPayload's for the execution, this one for the commit - but only a
+    /// commit that is itself that slow spends the second.
     /// </remarks>
-    private readonly TimeSpan _commitWait = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
+    private readonly TimeSpan _commitWait = TimeSpan.FromMilliseconds(Math.Max(0, mergeConfig.NewPayloadBlockProcessingTimeout));
 
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
@@ -393,15 +395,15 @@ public class ForkchoiceUpdatedHandler(
     /// newPayload answers VALID once the block is executed, before it is committed and marked processed, and the CL's
     /// forkchoice follows at once: a head that has its verdict and is still committing gets its moment here rather than
     /// the SYNCING that would make the CL retry. A head that is merely queued has no verdict, so the wait completes at
-    /// once and it gets the SYNCING it always got; blocks queued behind a committing head do not delay its commit, so
-    /// they do not stop the wait either.
+    /// once and it gets the SYNCING it always got; blocks queued behind a committing head, another copy of it included,
+    /// do not delay its commit, so the wait is for that copy alone.
     /// </summary>
     private async Task WaitForHeadCommitAsync(BlockHeader newHeadHeader)
     {
         Hash256 hash = newHeadHeader.GetOrCalculateHash();
         if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { WasProcessed: false }) return;
 
-        Task removed = processingQueue.WaitUntilRemovedAsync(hash, executedOnly: true).AsTask();
+        Task removed = processingQueue.WaitUntilExecutedCopyRemovedAsync(hash).AsTask();
         if (removed.IsCompleted) return;
 
         using CancellationTokenSource bound = new();

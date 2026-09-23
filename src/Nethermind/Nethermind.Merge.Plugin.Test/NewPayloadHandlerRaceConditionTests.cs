@@ -451,7 +451,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         TaskCompletionSource parentRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.ParentHash!, true).Returns(_ =>
+        processingQueue.WaitUntilExecutedCopyRemovedAsync(block.ParentHash!).Returns(_ =>
         {
             parentWaitRequested.TrySetResult();
             return new ValueTask(parentRemoved.Task);

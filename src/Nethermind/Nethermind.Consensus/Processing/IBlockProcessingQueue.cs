@@ -76,6 +76,15 @@ namespace Nethermind.Consensus.Processing
         ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false) => ValueTask.CompletedTask;
 
         /// <summary>
+        /// Completes when the copy of the block that has had its verdict leaves the queue, committed or not - at once
+        /// when no copy has had one. Unlike <see cref="WaitUntilRemovedAsync"/> it does not wait for further copies of
+        /// the same hash queued behind that one: they do not delay its commit, and one behind a backlog would hold the
+        /// caller for as long as the backlog takes.
+        /// </summary>
+        /// <remarks>Defaulted to the executed-only removal wait, which is what callers took before this existed.</remarks>
+        ValueTask WaitUntilExecutedCopyRemovedAsync(Hash256 blockHash) => WaitUntilRemovedAsync(blockHash, executedOnly: true);
+
+        /// <summary>
         /// Fired when processing of a block failed and the block was marked invalid.
         /// </summary>
         event EventHandler<InvalidBlockEventArgs> InvalidBlock;

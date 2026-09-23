@@ -977,14 +977,16 @@ public partial class EngineModuleTests
 
     /// <summary>
     /// The wait is only for a head that has its verdict and is committing. A head queued behind another block has
-    /// none yet, so the forkchoice answers SYNCING, as it did before the wait existed.
+    /// none yet, so the forkchoice answers SYNCING at once, as it did before the wait existed, rather than after the
+    /// block ahead of it and its own processing.
     /// </summary>
     [Test, NonParallelizable]
     public async Task forkChoiceUpdatedV1_does_not_wait_for_a_head_behind_a_backlog()
     {
+        // Far above the throttle, so only the head having no verdict can produce a prompt SYNCING.
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig
         {
-            NewPayloadBlockProcessingTimeout = 100
+            NewPayloadBlockProcessingTimeout = 30_000
         });
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -996,26 +998,30 @@ public partial class EngineModuleTests
         ManualResetEventSlim processingStarted = new(false);
         ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingStarted = processingStarted;
 
-        // Occupies the processor so the head the forkchoice names is not a moment from landing.
+        // Occupies the processor so the head the forkchoice names is queued behind it without a verdict.
         Block occupyBlock = Build.A.Block.WithNumber(head.Number + 1).WithParent(head)
-            .WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+            .WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).WithExtraData([1]).TestObject;
         occupyBlock.Header.TotalDifficulty = head.TotalDifficulty;
         _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
             occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
         processingStarted.Wait(TimeSpan.FromSeconds(5));
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(block, ProcessingOptions.None));
+        Assert.That(() => chain.BlockProcessingQueue.Count, Is.GreaterThan(1).After(5000, 10), "precondition: the head is queued behind the occupying block");
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> result =
-            await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice =
+            rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
 
-        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(forkchoice.Wait(TimeSpan.FromMilliseconds(500)), Is.True, "answered before the block ahead of the head is done");
+        Assert.That((await forkchoice).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
     }
 
     /// <summary>
     /// newPayload answers VALID once the block is executed, before it is committed and marked processed. The
-    /// forkchoiceUpdated that follows at once must wait for that commit rather than answer SYNCING.
+    /// forkchoiceUpdated that follows at once must wait for that commit rather than answer SYNCING - also for a commit
+    /// slower than a second, which before newPayload answered ahead of the commit was answered VALID.
     /// </summary>
     [Test, NonParallelizable]
-    public async Task forkChoiceUpdatedV1_waits_for_the_commit_of_a_block_answered_valid_before_it()
+    public async Task forkChoiceUpdatedV1_waits_for_the_commit_of_a_block_answered_valid_before_it([Values(0, 1500)] int commitHeldMs)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -1025,11 +1031,12 @@ public partial class EngineModuleTests
         // Parks the processing thread between the verdict and the commit; the engine handler has already been told.
         using ManualResetEventSlim verdictGiven = new(false);
         using ManualResetEventSlim commitReleased = new(false);
-        chain.BranchProcessor.BlockExecuted += (_, _) =>
+        EventHandler<BlockExecutedEventArgs> parkCommit = (_, _) =>
         {
             verdictGiven.Set();
             commitReleased.Wait(TimeSpan.FromSeconds(10));
         };
+        chain.BranchProcessor.BlockExecuted += parkCommit;
 
         try
         {
@@ -1041,9 +1048,12 @@ public partial class EngineModuleTests
             Assert.That(verdictGiven.Wait(TimeSpan.FromSeconds(5)), Is.True);
             Assert.That(chain.BlockTree.WasProcessed(block.Number, block.Hash!), Is.False, "precondition: the block is answered but not committed yet");
 
-            // Sent while the commit is still parked; the outcome once it is released is what this asserts.
+            // The call runs synchronously up to its wait for the commit - the engine API's lock is free - so by the
+            // time it returns the task it is parked there.
             Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
+            Assert.That(forkchoice.IsCompleted, Is.False, "precondition: the forkchoice waits for the commit");
 
+            await Task.Delay(commitHeldMs);
             commitReleased.Set();
             ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
 
@@ -1056,17 +1066,22 @@ public partial class EngineModuleTests
         finally
         {
             commitReleased.Set();
+            chain.BranchProcessor.BlockExecuted -= parkCommit;
         }
     }
 
     /// <summary>
-    /// A block queued behind the committing head does not delay that commit, so it must not turn the VALID head into
-    /// SYNCING, which leaves the CL on an optimistic head.
+    /// The wait is for the copy of the head that is committing, not for every block queued behind it: neither an
+    /// unrelated block nor another copy of the head, which sync can queue, delays that commit. Waiting for the last
+    /// copy instead would hold the engine API's lock for as long as the blocks ahead of that copy take.
     /// </summary>
     [Test, NonParallelizable]
-    public async Task forkChoiceUpdatedV1_waits_for_the_commit_of_a_head_with_a_block_queued_behind_it()
+    public async Task forkChoiceUpdatedV1_waits_only_for_the_committing_copy_of_the_head()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig
+        {
+            NewPayloadBlockProcessingTimeout = 30_000
+        });
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block head = chain.BlockTree.Head!;
         Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
@@ -1074,14 +1089,26 @@ public partial class EngineModuleTests
             .WithExtraData([1]).TestObject;
         sibling.Header.TotalDifficulty = head.TotalDifficulty;
 
+        // The head parks between its verdict and its commit; the sibling queued behind it then parks in turn, which
+        // keeps the second copy of the head queued behind the sibling.
         using ManualResetEventSlim verdictGiven = new(false);
         using ManualResetEventSlim commitReleased = new(false);
-        chain.BranchProcessor.BlockExecuted += (_, args) =>
+        using ManualResetEventSlim siblingExecuted = new(false);
+        using ManualResetEventSlim siblingReleased = new(false);
+        EventHandler<BlockExecutedEventArgs> park = (_, args) =>
         {
-            if (args.Block.Hash != block.Hash) return;
-            verdictGiven.Set();
-            commitReleased.Wait(TimeSpan.FromSeconds(10));
+            if (args.Block.Hash == block.Hash && !verdictGiven.IsSet)
+            {
+                verdictGiven.Set();
+                commitReleased.Wait(TimeSpan.FromSeconds(10));
+            }
+            else if (args.Block.Hash == sibling.Hash)
+            {
+                siblingExecuted.Set();
+                siblingReleased.Wait(TimeSpan.FromSeconds(10));
+            }
         };
+        chain.BranchProcessor.BlockExecuted += park;
 
         try
         {
@@ -1090,13 +1117,18 @@ public partial class EngineModuleTests
             Assert.That(verdictGiven.Wait(TimeSpan.FromSeconds(5)), Is.True);
 
             _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(sibling, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
-            Assert.That(() => chain.BlockProcessingQueue.Count, Is.GreaterThan(1).After(5000, 10), "precondition: a block is queued behind the committing head");
+            Assert.That(() => chain.BlockProcessingQueue.Count, Is.GreaterThan(1).After(5000, 10), "precondition: the sibling is queued behind the head");
+            _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(block, ProcessingOptions.None));
+            Assert.That(() => chain.BlockProcessingQueue.Count, Is.GreaterThan(2).After(5000, 10), "precondition: a second copy of the head is queued behind the sibling");
 
             Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
+            Assert.That(forkchoice.IsCompleted, Is.False, "precondition: the forkchoice waits for the commit");
 
             commitReleased.Set();
-            ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
+            Assert.That(siblingExecuted.Wait(TimeSpan.FromSeconds(5)), Is.True, "precondition: the sibling holds the second copy of the head back");
 
+            Assert.That(forkchoice.Wait(TimeSpan.FromSeconds(5)), Is.True, "answered once the committing copy is done, with the second copy still queued");
+            ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -1106,50 +1138,8 @@ public partial class EngineModuleTests
         finally
         {
             commitReleased.Set();
-        }
-    }
-
-    /// <summary>
-    /// A commit slower than a second is rare but not wrong, and before newPayload answered ahead of the commit the CL
-    /// got VALID for it. The forkchoice waits for it within the newPayload budget rather than answering SYNCING.
-    /// </summary>
-    [Test, NonParallelizable]
-    public async Task forkChoiceUpdatedV1_waits_for_a_commit_slower_than_a_second()
-    {
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block head = chain.BlockTree.Head!;
-        Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
-
-        using ManualResetEventSlim verdictGiven = new(false);
-        using ManualResetEventSlim commitReleased = new(false);
-        chain.BranchProcessor.BlockExecuted += (_, _) =>
-        {
-            verdictGiven.Set();
-            commitReleased.Wait(TimeSpan.FromSeconds(10));
-        };
-
-        try
-        {
-            ResultWrapper<PayloadStatusV1> newPayload = await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
-            Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the verdict is answered before the commit");
-            Assert.That(verdictGiven.Wait(TimeSpan.FromSeconds(5)), Is.True);
-
-            Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
-
-            await Task.Delay(TimeSpan.FromMilliseconds(1500));
-            commitReleased.Set();
-            ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-                Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(block.Hash));
-            }
-        }
-        finally
-        {
-            commitReleased.Set();
+            siblingReleased.Set();
+            chain.BranchProcessor.BlockExecuted -= park;
         }
     }
 
