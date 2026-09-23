@@ -316,12 +316,15 @@ public sealed class ForkChoiceRunner
             block.Body!.SignedExecutionPayloadBid!.Message!.BlockHash!);
     }
 
-    /// <summary>The fork-independent <c>on_block</c> assertions: a known parent, not from the future, after the finalized slot and descending from the finalized checkpoint.</summary>
+    /// <summary>The fork-independent <c>on_block</c> assertions: a known parent whose payload is not invalid, not from the future, after the finalized slot and descending from the finalized checkpoint.</summary>
     private void ValidateOnBlock(ulong slot, Hash256 parentRoot)
     {
         CheckpointRef finalized = _store.FinalizedCheckpoint;
         if (!_protoArray.ContainsBlock(parentRoot))
             throw new ForkChoiceException($"Parent {parentRoot} of the block at slot {slot} is unknown to fork choice");
+        // specs/bellatrix/optimistic-sync.md: the parent of the block MUST NOT have an INVALIDATED execution payload.
+        if (_protoArray.GetBlockExecutionStatus(parentRoot) == ExecutionStatus.Invalid)
+            throw new ForkChoiceException($"Parent {parentRoot} of the block at slot {slot} has an invalid execution payload");
         if (slot > _store.CurrentSlot)
             throw new ForkChoiceException($"Block at slot {slot} is from the future (current slot {_store.CurrentSlot})");
         ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
@@ -399,13 +402,14 @@ public sealed class ForkChoiceRunner
     /// <exception cref="ForkChoiceException">The attestation violates a <c>validate_on_attestation</c> rule or its signature is invalid.</exception>
     /// <exception cref="BeaconStateException">The attestation's bitfields are inconsistent with the target state's committees.</exception>
     public void OnAttestation(Attestation attestation, bool isFromBlock = false, bool verifySignature = true) =>
-        OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock, verifySignature);
+        OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock, verifySignature, gloasContainer: false);
 
     /// <inheritdoc cref="OnAttestation(Attestation, bool, bool)"/>
+    /// <remarks>The Gloas <c>is_valid_indexed_attestation</c> bound on the attesting indices applies before any signature is aggregated, even against a Fulu target state.</remarks>
     public void OnAttestation(AttestationGloas attestation, bool isFromBlock = false, bool verifySignature = true) =>
-        OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock, verifySignature);
+        OnAttestation(attestation.Data!, attestation.AggregationBits!, attestation.CommitteeBits!, attestation.Signature, isFromBlock, verifySignature, gloasContainer: true);
 
-    private void OnAttestation(AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, bool isFromBlock, bool verifySignature)
+    private void OnAttestation(AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, bool isFromBlock, bool verifySignature, bool gloasContainer)
     {
         CheckpointRef target = CheckpointRef.From(data.Target!);
         Hash256 beaconBlockRoot = data.BeaconBlockRoot!;
@@ -444,6 +448,8 @@ public sealed class ForkChoiceRunner
                 _committees.GetCommitteeCache(gloas.State, target.Epoch)),
             _ => throw new NotSupportedException($"Unhandled checkpoint state {targetState.GetType().Name}"),
         };
+        if (gloasContainer)
+            ThrowIfOverGloasIndexedAttestationBound(attestingIndices, "Attestation");
         if (!IsValidIndexedAttestation(targetState, new IndexedVote(attestingIndices, data, signature), verifySignature))
             throw new ForkChoiceException("Attestation indices or aggregate signature are invalid");
 
@@ -477,10 +483,17 @@ public sealed class ForkChoiceRunner
     }
 
     /// <inheritdoc cref="OnAttesterSlashing(AttesterSlashing, bool)"/>
+    /// <remarks>
+    /// The Gloas <c>is_valid_indexed_attestation</c> bound on the attesting indices, which the container's
+    /// progressive list no longer carries, is enforced for both attestations before any signature is
+    /// aggregated, whichever fork the justified state is; the signature domain stays that state's own.
+    /// </remarks>
     public void OnAttesterSlashing(AttesterSlashingGloas slashing, bool verifySignatures = true)
     {
         IndexedAttestationGloas attestation1 = slashing.Attestation1!;
         IndexedAttestationGloas attestation2 = slashing.Attestation2!;
+        ThrowIfOverGloasIndexedAttestationBound(attestation1.AttestingIndices, "Attester slashing attestation 1");
+        ThrowIfOverGloasIndexedAttestationBound(attestation2.AttestingIndices, "Attester slashing attestation 2");
         OnAttesterSlashing(
             new IndexedVote(attestation1.AttestingIndices!, attestation1.Data!, attestation1.Signature),
             new IndexedVote(attestation2.AttestingIndices!, attestation2.Data!, attestation2.Signature),
@@ -504,6 +517,15 @@ public sealed class ForkChoiceRunner
             if (indices2.Contains(index))
                 _equivocatingIndices.Add(index);
         }
+    }
+
+    /// <summary>The Gloas <c>is_valid_indexed_attestation</c> length bound (specs/gloas/beacon-chain.md, EIP-7688): at most <c>MAX_VALIDATORS_PER_COMMITTEE * MAX_COMMITTEES_PER_SLOT</c> attesting indices.</summary>
+    private static void ThrowIfOverGloasIndexedAttestationBound(ulong[]? attestingIndices, string what)
+    {
+        const int MaxAttestingIndices = Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot;
+        int count = attestingIndices?.Length ?? 0;
+        if (count > MaxAttestingIndices)
+            throw new ForkChoiceException($"{what} has {count} attesting indices, over the bound of {MaxAttestingIndices}");
     }
 
     /// <summary>The spec's <c>is_valid_indexed_attestation</c> of <paramref name="state"/>'s fork, over the vote in that fork's container.</summary>

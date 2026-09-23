@@ -429,6 +429,41 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
+    /// The Gloas <c>is_valid_indexed_attestation</c> caps attesting indices at <c>MAX_VALIDATORS_PER_COMMITTEE *
+    /// MAX_COMMITTEES_PER_SLOT</c> (specs/gloas/beacon-chain.md, EIP-7688), since the progressive list has no SSZ
+    /// limit. A Gloas slashing is held to it against a Fulu justified state too, and before any signature is
+    /// aggregated, whichever attestation is oversized: the other carries a forged signature, and reaching
+    /// verification refuses attestation 1 as invalid, which an at-bound slashing does and a one-over one must not.
+    /// </summary>
+    [Test]
+    public void Gloas_attester_slashing_is_bounded_before_any_signature_is_verified(
+        [Values] bool gloasJustified, [Values] bool overBound, [Values] bool oversizedFirst)
+    {
+        const int Bound = Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot;
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkChoiceRunner runner = gloasJustified ? JustifiedOnFirstGloasBlock(chain) : chain.CreateRunner();
+        Hash256 domain = chain.First.PostState.GetDomain(DomainType.BeaconAttester, ForkCrossingChain.ForkEpoch);
+        AttestationData vote1 = GloasTestFixtures.Vote(GloasTestFixtures.BoundarySlot, 0, ForkCrossingChain.ForkEpoch, 0x31);
+        AttestationData vote2 = GloasTestFixtures.Vote(GloasTestFixtures.BoundarySlot, 0, ForkCrossingChain.ForkEpoch, 0x41);
+        ulong[] signers = chain.Committee32[..8];
+        IndexedAttestationGloas forged = SignedUnder(domain, vote1, signers);
+        forged.Signature = SignedUnder(domain, vote2, signers).Signature;
+        IndexedAttestationGloas oversized = new()
+        {
+            AttestingIndices = [.. Enumerable.Range(0, overBound ? Bound + 1 : Bound).Select(static i => (ulong)i)],
+            Data = vote2,
+        };
+
+        Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(gloasJustified ? chain.First.Root : chain.AnchorRoot), "fixture bug");
+        AttesterSlashingGloas slashing = oversizedFirst
+            ? new AttesterSlashingGloas { Attestation1 = oversized, Attestation2 = forged }
+            : new AttesterSlashingGloas { Attestation1 = forged, Attestation2 = oversized };
+        string oversizedName = oversizedFirst ? "attestation 1" : "attestation 2";
+        Assert.That(() => runner.OnAttesterSlashing(slashing),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains(overBound ? $"{oversizedName} has {Bound + 1} attesting indices" : "attestation 1 is invalid"));
+    }
+
+    /// <summary>
     /// <c>get_weight</c> counts the validators active at the justified state's own epoch, so one exiting
     /// the epoch after still carries weight; measured here through the proposer boost, which is a
     /// committee fraction of the justified balance: 16 validators x 32 ETH / 32 slots x 40% = 6.4 ETH.
@@ -604,6 +639,39 @@ public class ForkChoiceRunnerTests
     }
 
     /// <summary>
+    /// specs/bellatrix/optimistic-sync.md: the parent of an imported block MUST NOT have an INVALIDATED payload.
+    /// The child is timely and its post-state is doctored to justify and finalize a later epoch, so a refusal
+    /// that came after the store updates would leave the proposer boost and the realized and unrealized
+    /// checkpoints behind; the unrealized ones only show once the next epoch pulls them up.
+    /// </summary>
+    [Test]
+    public void Timely_child_of_an_execution_invalid_parent_is_refused_before_any_store_update([Values] bool gloas)
+    {
+        (ForkChoiceRunner runner, Action importChild, ulong doctoredEpoch) = gloas ? TimelyChildOfInvalidGloasParent() : TimelyChildOfInvalidFuluParent();
+        CheckpointRef justifiedBefore = runner.JustifiedCheckpoint;
+        CheckpointRef finalizedBefore = runner.FinalizedCheckpoint;
+        int nodesBefore = runner.Snapshot().Nodes.Count;
+        Assert.That(doctoredEpoch, Is.GreaterThan(Math.Max(justifiedBefore.Epoch, finalizedBefore.Epoch)), "fixture bug: the doctored checkpoints must be adoptable");
+
+        Exception refusal = Assert.Catch(() => importChild());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal, Is.TypeOf<ForkChoiceException>().With.Message.Contains("invalid execution payload"));
+            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
+            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(justifiedBefore));
+            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(finalizedBefore));
+            Assert.That(runner.Snapshot().Nodes, Has.Count.EqualTo(nodesBefore));
+        }
+
+        TickToSlot(runner, (runner.CurrentSlot / Presets.SlotsPerEpoch + 1) * Presets.SlotsPerEpoch);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(justifiedBefore), "no unrealized justification was recorded");
+            Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(finalizedBefore), "no unrealized finalization was recorded");
+        }
+    }
+
+    /// <summary>
     /// Votes are verified against the pubkey cache, so the runner must extend it from every registry it
     /// validates against: a Gloas block's post-state, and a checkpoint state that epoch transitions produced.
     /// The cache starts empty, as it lags a registry that deposits grew, and slot 32's committee signs for
@@ -658,6 +726,41 @@ public class ForkChoiceRunnerTests
 
         TickToSlot(runner, 3 * Presets.SlotsPerEpoch);
         return runner;
+    }
+
+    /// <summary>A runner at slot 2 holding an execution-invalidated slot-1 block, and the import of its slot-2 child with a post-state doctored to justify and finalize epoch 1.</summary>
+    private static (ForkChoiceRunner Runner, Action ImportChild, ulong DoctoredEpoch) TimelyChildOfInvalidFuluParent()
+    {
+        const ulong DoctoredEpoch = 1;
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, chain, chain.Anchor.Pubkeys);
+        TickToSlot(runner, 2);
+        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xc1);
+        runner.OnBlock(parent.Block, parent.PostState, ExecutionStatus.Optimistic, (IReadOnlyList<DataColumnSidecar>?)null);
+        runner.OnInvalidExecutionPayload(parent.Root);
+
+        UnsignedChain.ChainBlock child = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0xc2);
+        BeaconStateFulu doctored = child.PostState.Clone();
+        doctored.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = DoctoredEpoch, Root = parent.Root };
+        doctored.FinalizedCheckpoint = new Checkpoint { Epoch = DoctoredEpoch, Root = parent.Root };
+        return (runner, () => runner.OnBlock(child.Block, doctored, ExecutionStatus.Optimistic, (IReadOnlyList<DataColumnSidecar>?)null), DoctoredEpoch);
+    }
+
+    /// <summary>A runner at slot 64 holding the execution-invalidated first Gloas block, and the import of its slot-64 child with a post-state doctored to justify and finalize the fork epoch.</summary>
+    private static (ForkChoiceRunner Runner, Action ImportChild, ulong DoctoredEpoch) TimelyChildOfInvalidGloasParent()
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkChoiceRunner runner = chain.CreateRunner();
+        TickToSlot(runner, 2 * Presets.SlotsPerEpoch);
+        runner.OnBlock(chain.First.Block, chain.First.PostState);
+        runner.OnInvalidExecutionPayload(chain.First.Root);
+
+        ForkCrossingChain.ChainBlock child = chain.Voting[0];
+        BeaconStateGloas doctored = child.PostState.Clone();
+        doctored.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = chain.First.Root };
+        doctored.FinalizedCheckpoint = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = chain.First.Root };
+        Assert.That(child.Block.Message!.Slot, Is.EqualTo(runner.CurrentSlot), "fixture bug: the child must be timely");
+        return (runner, () => runner.OnBlock(child.Block, doctored), ForkCrossingChain.ForkEpoch);
     }
 
     /// <summary>The Gloas caller-side contract: the block, then its body votes with signatures already trusted.</summary>
