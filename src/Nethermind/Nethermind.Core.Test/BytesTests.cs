@@ -455,6 +455,24 @@ namespace Nethermind.Core.Test
             Assert.That(actual, Is.EqualTo(Convert.FromHexString(hexLength % 2 == 0 ? text : "0" + text)));
         }
 
+        // Validity is merged across lanes, halves and tail blocks, so every position must be able to fail the call:
+        // 'g', bit 7 set, just below '0', ':' just above '9', and 0x70 (an index past the 64-entry table).
+        [Test]
+        public void FromUtf8HexString_rejects_a_bad_byte_at_every_position([ValueSource(nameof(HexLengths))] int hexLength)
+        {
+            byte[] hex = new byte[hexLength];
+            hex.AsSpan().Fill((byte)'a');
+            for (int position = 0; position < hexLength; position++)
+            {
+                foreach (byte bad in new byte[] { (byte)'g', 0x80, (byte)'/', (byte)':', 0x70 })
+                {
+                    hex[position] = bad;
+                    Assert.Throws<FormatException>(() => Bytes.FromUtf8HexString(hex), $"byte 0x{bad:x2} at {position}");
+                }
+                hex[position] = (byte)'a';
+            }
+        }
+
         [Test]
         public void FromUtf8HexString_rejects_every_non_hex_byte([ValueSource(nameof(HexLengths))] int hexLength)
         {
