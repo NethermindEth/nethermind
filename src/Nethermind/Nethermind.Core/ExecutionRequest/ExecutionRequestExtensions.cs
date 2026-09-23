@@ -45,7 +45,6 @@ public static class ExecutionRequestExtensions
         using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
         {
-            if (requests.Length <= 1) continue;
             concatenatedHashes.AddRange(SHA256.HashData(requests));
         }
 

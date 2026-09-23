@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -180,6 +181,27 @@ public class ExecutionRequestExtensionsTests
                 [(byte)ExecutionRequestType.WithdrawalRequest],
                 [(byte)ExecutionRequestType.Deposit]
             ]));
+
+    [Test]
+    public void CalculateHashFromFlatEncodedRequests_does_not_silently_drop_short_entries()
+    {
+        byte[][] requestsWithShortEntry = [[0x00, 0x01], [0x01]];
+        byte[][] requestsWithoutShortEntry = [[0x00, 0x01]];
+
+        Hash256 hashWithShort = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(requestsWithShortEntry);
+        Hash256 hashWithoutShort = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(requestsWithoutShortEntry);
+
+        Assert.That(hashWithShort, Is.Not.EqualTo(hashWithoutShort));
+    }
+
+    [Test]
+    public void CalculateHashFromFlatEncodedRequests_hashes_empty_array_consistently()
+    {
+        Hash256 emptyHash1 = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests([]);
+        Hash256 emptyHash2 = ExecutionRequestExtensions.EmptyRequestsHash;
+
+        Assert.That(emptyHash1, Is.EqualTo(emptyHash2));
+    }
 
     private static void AssertFlatEncodedRequests(byte[] encodedRequests, ExecutionRequestType expectedType, CoreExecutionRequest[] expectedRequests, int requestDataSize)
     {
