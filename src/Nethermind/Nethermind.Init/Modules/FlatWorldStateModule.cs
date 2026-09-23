@@ -107,8 +107,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatInTriePersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
-            .AddDatabase(DbNames.Preimage)
-
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {
                 IPersistence persistence = flatDbConfig.Layout switch
@@ -119,12 +117,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                         new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
-
-                if (flatDbConfig.EnablePreimageRecording)
-                {
-                    IDb preimageDb = ctx.ResolveKeyed<IDb>(DbNames.Preimage);
-                    persistence = new PreimageRecordingPersistence(persistence, preimageDb);
-                }
 
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
                 return new CarryForwardCachingPersistence(cachedReader);
