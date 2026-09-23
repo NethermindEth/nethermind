@@ -5,6 +5,7 @@
 
 using Nethermind.Core.Extensions;
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -69,35 +70,73 @@ public class BlockAccessListBasedWorldStateTests
         return (bws, scope);
     }
 
-    [Test]
+    /// <summary>Shape of the pre-block account backing a <see cref="PhysicalCreationCases"/> row.</summary>
+    public enum ParentAccount { Missing, Empty, Balance, Nonce, Code }
+
+    private const uint ParentBalance = 7;
+    private const uint BalanceCredit = 5;
+
+    /// <summary>
+    /// Rows for <see cref="AddToBalanceAndCreateIfNotExists_returns_physical_creation"/>, each carrying its own
+    /// expectations rather than re-deriving them from the condition the implementation uses.
+    /// </summary>
+    /// <remarks>
+    /// Every non-<see cref="ParentAccount.Missing"/> shape is declared in the suggested BAL with its change at
+    /// index 1, so index 1 answers from the parent while index 2 reads through the change and sees an account
+    /// EIP-161 has emptied — hence physically recreated.
+    /// </remarks>
+    private static IEnumerable<TestCaseData> PhysicalCreationCases()
+    {
+        (ParentAccount Parent, uint Index, bool Created, uint OldBalance, bool Exists)[] rows =
+        [
+            (ParentAccount.Missing, 1, true, 0, false),
+            (ParentAccount.Missing, 2, true, 0, false),
+            (ParentAccount.Empty, 1, false, 0, false),
+            (ParentAccount.Empty, 2, false, 0, false),
+            (ParentAccount.Balance, 1, false, ParentBalance, true),
+            (ParentAccount.Balance, 2, true, 0, false),
+            (ParentAccount.Nonce, 1, false, 0, true),
+            (ParentAccount.Nonce, 2, true, 0, false),
+            (ParentAccount.Code, 1, false, 0, true),
+            (ParentAccount.Code, 2, true, 0, false),
+        ];
+
+        foreach ((ParentAccount parent, uint index, bool created, uint oldBalance, bool exists) in rows)
+        {
+            // The decorated parent exercises the IWorldState fallback arms; the direct one the WorldState fast paths.
+            foreach (bool decorate in (bool[])[false, true])
+            {
+                yield return new TestCaseData(parent, index, decorate, created, oldBalance, exists)
+                    .SetName($"{{m}}({parent}, index {index}, {(decorate ? "decorated" : "direct")} parent)");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(PhysicalCreationCases))]
     public void AddToBalanceAndCreateIfNotExists_returns_physical_creation(
-        [Values("missing", "empty", "balance", "nonce", "code")] string parentState,
-        [Values(1u, 2u)] uint index,
-        [Values(0u, 5u)] uint balanceChange,
-        [Values] bool decorate)
+        ParentAccount parentState, uint index, bool decorate, bool expectedCreated, uint expectedOldBalance, bool expectedExists)
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(parentState == "balance" ? [new BalanceChange(1, 0)] : [])
-                .WithNonceChanges(parentState == "nonce" ? [new NonceChange(1, 0)] : [])
-                .WithCodeChanges(parentState == "code" ? [new CodeChange(1, [])] : [])
+                .WithBalanceChanges(parentState == ParentAccount.Balance ? [new BalanceChange(1, 0)] : [])
+                .WithNonceChanges(parentState == ParentAccount.Nonce ? [new NonceChange(1, 0)] : [])
+                .WithCodeChanges(parentState == ParentAccount.Code ? [new CodeChange(1, [])] : [])
                 .TestObject).TestObject;
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(index, bal,
             ws =>
             {
-                if (parentState == "missing") return;
-                ws.CreateAccount(TestItem.AddressA, parentState == "balance" ? 7u : 0u, parentState == "nonce" ? 1UL : 0UL);
-                if (parentState == "code") ws.InsertCode(TestItem.AddressA, new byte[] { 0x00 }, Spec);
+                if (parentState == ParentAccount.Missing) return;
+                ws.CreateAccount(TestItem.AddressA, parentState == ParentAccount.Balance ? ParentBalance : 0u, parentState == ParentAccount.Nonce ? 1UL : 0UL);
+                if (parentState == ParentAccount.Code) ws.InsertCode(TestItem.AddressA, new byte[] { 0x00 }, Spec);
             }, ws => decorate ? new ParentDecorator(ws) : ws);
         using (scope)
         {
-            bool created = bws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out UInt256 oldBalance);
-            bool deleted = index == 2 && parentState is "balance" or "nonce" or "code";
+            bool created = bws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, BalanceCredit, Spec, out UInt256 oldBalance);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(created, Is.EqualTo(parentState == "missing" || deleted));
-                Assert.That(oldBalance, Is.EqualTo(new UInt256(parentState == "balance" && !deleted ? 7u : 0u)));
-                Assert.That(bws.AccountExists(TestItem.AddressA), Is.EqualTo(parentState is "balance" or "nonce" or "code" && !deleted));
+                Assert.That(created, Is.EqualTo(expectedCreated));
+                Assert.That(oldBalance, Is.EqualTo(new UInt256(expectedOldBalance)));
+                Assert.That(bws.AccountExists(TestItem.AddressA), Is.EqualTo(expectedExists));
             }
         }
     }
