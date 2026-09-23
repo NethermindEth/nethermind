@@ -526,7 +526,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             for (int i = 0; i < _pushItems.Count; i++)
             {
                 (byte[] buf, int len) = _pushItems[i];
-                WriteHexBytes(buf.AsSpan(0, len));
+                ByteArrayConverter.Convert(_writer, buf.AsSpan(0, len), skipLeadingZeros: true);
             }
             _writer.WriteEndArray();
         }
@@ -586,7 +586,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             for (int i = 0; i < _pushItems.Count; i++)
             {
                 (byte[] buf, int len) = _pushItems[i];
-                WriteHexBytes(buf.AsSpan(0, len));
+                ByteArrayConverter.Convert(_writer, buf.AsSpan(0, len), skipLeadingZeros: true);
             }
             _writer.WriteEndArray();
         }
