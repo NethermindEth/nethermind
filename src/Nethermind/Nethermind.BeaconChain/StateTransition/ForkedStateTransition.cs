@@ -149,7 +149,7 @@ public static class ForkedStateTransition
     /// (via the existing, unmodified <see cref="SlotProcessing.ProcessSlots"/>) to exactly the fork
     /// boundary slot and upgrades it. A no-op otherwise.
     /// </summary>
-    private static ForkedBeaconState CrossBoundaryIfNeeded(ForkedBeaconState state, BeaconFork targetFork, BeaconChainSpec spec, EpochCache cache)
+    internal static ForkedBeaconState CrossBoundaryIfNeeded(ForkedBeaconState state, BeaconFork targetFork, BeaconChainSpec spec, EpochCache cache)
     {
         if (state is not ForkedBeaconState.OfFulu { State: var fulu } || targetFork != BeaconFork.Gloas)
             return state;

@@ -56,11 +56,24 @@ public static class GloasEpochProcessing
     }
 
     /// <summary>Altair <c>process_justification_and_finalization</c>, unmodified in Gloas.</summary>
-    public static void ProcessJustificationAndFinalization(BeaconStateGloas state, EpochCache cache)
+    public static void ProcessJustificationAndFinalization(BeaconStateGloas state, EpochCache cache) =>
+        ComputeJustificationAndFinalization(state, cache).ApplyTo(state);
+
+    /// <summary>
+    /// Runs the justification/finalization weighing of <c>process_justification_and_finalization</c>
+    /// without mutating <paramref name="state"/>; the Gloas twin of <see cref="EpochProcessing.ComputeJustificationAndFinalization"/>.
+    /// </summary>
+    /// <remarks>
+    /// Fork choice uses this on a Gloas block's post-state to compute its unrealized checkpoints (the
+    /// spec's <c>compute_pulled_up_tip</c>) without cloning the state.
+    /// </remarks>
+    public static JustificationAndFinalizationState ComputeJustificationAndFinalization(BeaconStateGloas state, EpochCache cache)
     {
+        JustificationAndFinalizationState result = new(state);
+
         // Skip FFG updates in the first two epochs so the 0x00 root stubs are never touched.
         if (state.GetCurrentEpoch() <= Presets.GenesisEpoch + 1)
-            return;
+            return result;
 
         ulong previousEpoch = state.GetPreviousEpoch();
         ulong currentEpoch = state.GetCurrentEpoch();
@@ -82,21 +95,22 @@ public static class GloasEpochProcessing
 
         WeighJustificationAndFinalization(
             state,
+            result,
             state.GetTotalActiveBalance(cache),
             Math.Max(Presets.EffectiveBalanceIncrement, previousTargetBalance),
             Math.Max(Presets.EffectiveBalanceIncrement, currentTargetBalance));
+        return result;
     }
 
-    private static void WeighJustificationAndFinalization(BeaconStateGloas state, ulong totalActiveBalance, ulong previousTargetBalance, ulong currentTargetBalance)
+    private static void WeighJustificationAndFinalization(BeaconStateGloas state, JustificationAndFinalizationState result, ulong totalActiveBalance, ulong previousTargetBalance, ulong currentTargetBalance)
     {
         ulong previousEpoch = state.GetPreviousEpoch();
         ulong currentEpoch = state.GetCurrentEpoch();
-        Checkpoint oldPreviousJustifiedCheckpoint = state.PreviousJustifiedCheckpoint!;
-        Checkpoint oldCurrentJustifiedCheckpoint = state.CurrentJustifiedCheckpoint!;
+        Checkpoint oldPreviousJustifiedCheckpoint = result.PreviousJustifiedCheckpoint;
+        Checkpoint oldCurrentJustifiedCheckpoint = result.CurrentJustifiedCheckpoint;
 
-        // A fresh BitArray: the upgrade shares the bits with the Fulu pre-state, which must stay intact.
-        BitArray bits = new(state.JustificationBits!);
-        state.PreviousJustifiedCheckpoint = state.CurrentJustifiedCheckpoint;
+        result.PreviousJustifiedCheckpoint = result.CurrentJustifiedCheckpoint;
+        BitArray bits = result.JustificationBits;
         for (int i = bits.Length - 1; i >= 1; i--)
         {
             bits[i] = bits[i - 1];
@@ -104,24 +118,23 @@ public static class GloasEpochProcessing
         bits[0] = false;
         if (previousTargetBalance * 3 >= totalActiveBalance * 2)
         {
-            state.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = previousEpoch, Root = state.GetBlockRoot(previousEpoch) };
+            result.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = previousEpoch, Root = state.GetBlockRoot(previousEpoch) };
             bits[1] = true;
         }
         if (currentTargetBalance * 3 >= totalActiveBalance * 2)
         {
-            state.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = currentEpoch, Root = state.GetBlockRoot(currentEpoch) };
+            result.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = currentEpoch, Root = state.GetBlockRoot(currentEpoch) };
             bits[0] = true;
         }
-        state.JustificationBits = bits;
 
         if (bits[1] && bits[2] && bits[3] && oldPreviousJustifiedCheckpoint.Epoch + 3 == currentEpoch)
-            state.FinalizedCheckpoint = oldPreviousJustifiedCheckpoint;
+            result.FinalizedCheckpoint = oldPreviousJustifiedCheckpoint;
         if (bits[1] && bits[2] && oldPreviousJustifiedCheckpoint.Epoch + 2 == currentEpoch)
-            state.FinalizedCheckpoint = oldPreviousJustifiedCheckpoint;
+            result.FinalizedCheckpoint = oldPreviousJustifiedCheckpoint;
         if (bits[0] && bits[1] && bits[2] && oldCurrentJustifiedCheckpoint.Epoch + 2 == currentEpoch)
-            state.FinalizedCheckpoint = oldCurrentJustifiedCheckpoint;
+            result.FinalizedCheckpoint = oldCurrentJustifiedCheckpoint;
         if (bits[0] && bits[1] && oldCurrentJustifiedCheckpoint.Epoch + 1 == currentEpoch)
-            state.FinalizedCheckpoint = oldCurrentJustifiedCheckpoint;
+            result.FinalizedCheckpoint = oldCurrentJustifiedCheckpoint;
     }
 
     /// <summary>Altair <c>process_inactivity_updates</c>, unmodified in Gloas.</summary>
