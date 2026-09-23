@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 
@@ -54,10 +55,13 @@ public sealed class HistoricalFlatDbManager(
         }
     }
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
+        GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
+
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags)
     {
         HistoricalReadMode mode = Classify(baseBlock);
-        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherReadOnlySnapshotBundle(baseBlock);
+        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherReadOnlySnapshotBundle(baseBlock, readerFlags);
         if (mode == HistoricalReadMode.Unavailable) ThrowUnavailable(baseBlock);
         return BuildHistoricalBundle(baseBlock, mode);
     }
@@ -93,7 +97,7 @@ public sealed class HistoricalFlatDbManager(
     }
 
     private static void ThrowUnavailable(in StateId baseBlock) =>
-        throw new StateUnavailableException(
+        throw new StateNotRetainedException(
             $"Historical state for block {baseBlock.BlockNumber} is below the flat history retention floor.");
 
     // Trie-less bundle: empty snapshot list over a history-backed reader. The reader serves account/storage values

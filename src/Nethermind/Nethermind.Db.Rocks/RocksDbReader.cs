@@ -40,6 +40,8 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     private readonly bool _ownsReadOptions;
     private int _disposed;
 
+    internal DisposableLazy<DbOnTheRocks.IteratorManager>? IteratorManager => _iteratorManager;
+
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,

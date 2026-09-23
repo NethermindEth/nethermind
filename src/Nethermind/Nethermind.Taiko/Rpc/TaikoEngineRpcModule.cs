@@ -11,6 +11,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -61,6 +62,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IBlobCustodyTracker blobCustodyTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
+        IBlockProcessingQueue processingQueue,
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
@@ -94,6 +96,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 blobCustodyTracker,
                 specProvider,
                 gcKeeper,
+                processingQueue,
                 logManager), ITaikoEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
@@ -124,6 +127,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
+        IBlockProcessingQueue processingQueue,
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
@@ -158,6 +162,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             new BlobCustodyTracker(),
             specProvider,
             gcKeeper,
+            processingQueue,
             logManager,
             txPool,
             blockFinder,

@@ -765,7 +765,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
         Iterator iterator = wrapper.Iterator;
 
-        if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
+        if (iterator.Valid() && TryCloseReadAhead(iterator, key, iteratorManager.SequentialKeys, out byte[]? closeRes))
         {
             return closeRes;
         }
@@ -840,16 +840,23 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// <param name="key"></param>
     /// <param name="result"></param>
     /// <returns></returns>
-    private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, out byte[]? result)
+    private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out byte[]? result)
     {
         // Probably hash db. Can't really do this with hashdb. Even with batched trie visitor, its going to skip a lot.
-        if (key.Length <= 32)
+        if (!sequentialKeys && key.Length <= 32)
         {
             result = null;
             return false;
         }
 
         iterator.Next();
+        // Next() can exhaust the iterator; key()/Next() on an invalid iterator is undefined per the RocksDB API.
+        if (!iterator.Valid())
+        {
+            result = null;
+            return false;
+        }
+
         ReadOnlySpan<byte> currentKey = iterator.GetKeySpan();
         int compareResult = currentKey.SequenceCompareTo(key);
         if (compareResult == 0)
@@ -868,17 +875,25 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // This is only useful for state as storage have way too different different address range between different
         // contract. That said, there isn't any real good threshold. Threshold is for some reasonably high value
         // above the average distance.
-        ulong currentKeyInt = BinaryPrimitives.ReadUInt64BigEndian(currentKey);
-        ulong requestedKeyInt = BinaryPrimitives.ReadUInt64BigEndian(key);
-        ulong distance = requestedKeyInt - currentKeyInt;
-        if (distance > 1_000_000_000)
+        // Skipped for short keys (e.g. 3-byte StateTopNodes keys): the bounded probe below is enough there.
+        if (currentKey.Length >= sizeof(ulong) && key.Length >= sizeof(ulong))
         {
-            return false;
+            ulong currentKeyInt = BinaryPrimitives.ReadUInt64BigEndian(currentKey);
+            ulong requestedKeyInt = BinaryPrimitives.ReadUInt64BigEndian(key);
+            ulong distance = requestedKeyInt - currentKeyInt;
+            if (distance > 1_000_000_000)
+            {
+                return false;
+            }
         }
 
         for (int i = 0; i < 5 && compareResult < 0; i++)
         {
             iterator.Next();
+            if (!iterator.Valid())
+            {
+                return false;
+            }
             compareResult = iterator.GetKeySpan().SequenceCompareTo(key);
         }
 
@@ -1971,6 +1986,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         // This is about once every two second maybe at max throughput.
         private const int IteratorUsageLimit = 1000000;
+
+        /// <summary>Enables forward probes for short, sequential flat trie keys.</summary>
+        internal bool SequentialKeys { get; init; }
 
         public IteratorManager(RocksDb rocksDb, IColumnFamilyHandle? cf, ReadOptions readOptions)
         {
