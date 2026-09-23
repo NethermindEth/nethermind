@@ -269,6 +269,7 @@ public class TxPoolContentListsTests
             Substitute.For<IBlobCustodyTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,
+            Substitute.For<Nethermind.Consensus.Processing.IBlockProcessingQueue>(),
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,
