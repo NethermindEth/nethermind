@@ -4,6 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -45,6 +47,34 @@ public class KeccakMemoTests
             Assert.That(KeccakCache.TryReadMemo(input, out ValueHash256 read), Is.True);
             Assert.That(read, Is.EqualTo(digest));
         }
+    }
+
+    [Test]
+    public void Cache_forwarders_reject_unsupported_lengths([Values(0, 1, 7, 65, 128, 192)] int length)
+    {
+        byte[] input = Pattern(length, seed: 79);
+        ValueHash256 digest = Digest(length);
+        ulong[] memo = (ulong[])typeof(KeccakCache).GetField("Memo", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+        byte[] before = SHA256.HashData(MemoryMarshal.AsBytes(memo.AsSpan()));
+
+        Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+        KeccakCache.Store(input, digest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+            Assert.That(SHA256.HashData(MemoryMarshal.AsBytes(memo.AsSpan())), Is.EqualTo(before), "unsupported stores must not modify any memo slot");
+        }
+    }
+
+    [Test]
+    public void Cache_forwarders_preserve_supported_lengths([Values(8, 20, 32, 64)] int length)
+    {
+        byte[] input = Pattern(length, seed: 83);
+        ValueHash256 digest = Digest(length);
+        KeccakCache.Store(input, digest);
+        Assert.That(KeccakCache.TryGet(input, out ValueHash256 actual), Is.True);
+        Assert.That(actual, Is.EqualTo(digest));
     }
 
     public static IEnumerable<TestCaseData> PadAlikePairs()
