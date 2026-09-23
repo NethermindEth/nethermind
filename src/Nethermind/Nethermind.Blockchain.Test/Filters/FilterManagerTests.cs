@@ -356,11 +356,41 @@ public class FilterManagerTests
         _receiptMonitor.ReceiptsInserted += Raise.EventWith(_receiptMonitor, new ReceiptsEventArgs(block.Header, [receipt], wasRemoved: true));
 
         FilterLog[] logs = _filterManager.PollLogs(filter.Id);
+        Assert.That(logs.Select(static l => (l.Removed, l.LogIndex, l.BlockNumber)),
+            Is.EqualTo(new[] { (false, 0L, 2UL), (true, 0L, 2UL) }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void block_whose_bloom_excludes_the_filter_is_skipped()
+    {
+        LogFilter filter = BuildFilter(static f => f.WithAddress(TestItem.AddressA));
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        // The log matches the filter, so only the bloom check can drop it.
+        TxReceipt receipt = BuildReceipt(static r => r.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject));
+        Block block = Build.A.Block.WithBloom(new Bloom()).TestObject;
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, [receipt]));
+
+        Assert.That(_filterManager.PollLogs(filter.Id), Is.Empty);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void block_filter_polled_before_any_new_block_returns_the_last_processed_block_once()
+    {
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+        Block processedBeforeInstall = RaiseBlockProcessed();
+        BlockFilter blockFilter = new(_currentFilterId++);
+        _filterStore.SaveFilter(blockFilter);
+
         Assert.Multiple(() =>
         {
-            Assert.That(logs.Any(static l => l.Removed), Is.True);
-            Assert.That(logs.Any(static l => !l.Removed), Is.True);
+            Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Is.EqualTo(new[] { processedBeforeInstall.Hash }));
+            Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Is.Empty);
         });
+
+        Block next = RaiseBlockProcessed();
+        Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Is.EqualTo(new[] { next.Hash }));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -407,7 +437,7 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void block_receipts_are_released_once_every_log_filter_has_read_them()
+    public void block_logs_are_released_once_every_log_filter_has_read_them_and_receipts_are_never_kept()
     {
         LogFilter polled = BuildFilter(static _ => { });
         LogFilter lagging = BuildFilter(static _ => { });
@@ -415,14 +445,16 @@ public class FilterManagerTests
         _filterStore.SaveFilter(lagging);
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
-        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
+        (WeakReference receipt, WeakReference logs) = RaiseBlockProcessedWithUnreferencedReceipt();
         _filterManager.PollLogs(polled.Id);
-        RaiseBlockProcessed();
-        Assert.That(IsCollected(receipt), Is.False, "the lagging filter has not read the block yet");
+        Assert.Multiple(() =>
+        {
+            Assert.That(IsCollected(receipt), Is.True);
+            Assert.That(IsCollected(logs), Is.False, "the lagging filter has not read the block yet");
+        });
 
         _filterStore.RemoveFilter(lagging.Id);
-        RaiseBlockProcessed();
-        Assert.That(IsCollected(receipt), Is.True);
+        Assert.That(IsCollected(logs), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -432,7 +464,7 @@ public class FilterManagerTests
         _filterStore.SaveFilter(blockFilter);
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
-        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
+        (WeakReference receipt, _) = RaiseBlockProcessedWithUnreferencedReceipt();
 
         Assert.Multiple(() =>
         {
@@ -532,11 +564,11 @@ public class FilterManagerTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private WeakReference RaiseBlockProcessedWithUnreferencedReceipt()
+    private (WeakReference Receipt, WeakReference Logs) RaiseBlockProcessedWithUnreferencedReceipt()
     {
         TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(1L));
         RaiseBlockProcessed(receipt);
-        return new WeakReference(receipt);
+        return (new WeakReference(receipt), new WeakReference(receipt.Logs));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
