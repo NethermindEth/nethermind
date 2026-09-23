@@ -21,7 +21,7 @@ public class PerformanceCoresTests
     [TestCase("5", 1, TestName = "ParseCpuList_SingleCpu_ListsOne")]
     [TestCase("", 0, TestName = "ParseCpuList_Empty_ListsNone")]
     [TestCase("4-2,x,-1", 0, TestName = "ParseCpuList_Malformed_ListsNone")]
-    [TestCase("0-3,1020-1100,2000", 4, TestName = "ParseCpuList_BeyondTheMask_SkipsWhatTheMaskCannotHold")]
+    [TestCase("0-3,1020-1100,2000", 8, TestName = "ParseCpuList_BeyondTheMask_KeepsWhatTheMaskHolds")]
     public void ParseCpuList_ParsesLinuxCpuLists(string cpuList, int expected) =>
         Assert.That(PerformanceCores.ParseCpuList(cpuList), Has.Count.EqualTo(expected), "the number of CPUs the list names");
 
@@ -42,6 +42,24 @@ public class PerformanceCoresTests
             Assert.That(narrows, Is.True);
             Assert.That(cpus, Is.EqualTo(expected));
             Assert.That(Enumerable.Range(0, PerformanceCores.MaxCpus).Where(mask.Contains), Is.EqualTo(expected), "the mask holds exactly the listed CPUs");
+        }
+    }
+
+    [TestCase("1234 (dotnet) S 1 1234 1234 0 -1 4194560 100 0 0 0 5 3 0 0 20 0 57 0 100 1000 200", 57, TestName = "ParseThreadCount_PlainCommand_ReadsTheTwentiethField")]
+    [TestCase("1234 (a b) c) S 1 1234 1234 0 -1 4194560 100 0 0 0 5 3 0 0 20 0 9 0 100 1000 200", 9, TestName = "ParseThreadCount_CommandWithSpacesAndParentheses_CountsFromTheLastOne")]
+    [TestCase("garbage", -1, TestName = "ParseThreadCount_Malformed_IsUnknown")]
+    public void ParseThreadCount_ReadsProcSelfStat(string stat, int expected) =>
+        Assert.That(PerformanceCores.ParseThreadCount(stat), Is.EqualTo(expected));
+
+    [Test]
+    public void Undefined_mode_narrows_nothing()
+    {
+        ProcessingCores undefined = (ProcessingCores)9;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PerformanceCores.Cpus(undefined).ToArray(), Is.Empty, "a number the config binder accepts must not index past the modes");
+            Assert.DoesNotThrow(() => PerformanceCores.NarrowCurrentThread(undefined).Dispose());
         }
     }
 
