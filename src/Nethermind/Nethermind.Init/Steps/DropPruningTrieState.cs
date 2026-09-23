@@ -15,10 +15,9 @@ namespace Nethermind.Init.Steps;
 /// </summary>
 /// <remarks>
 /// Nothing orders this after <see cref="ImportFlatDb"/>, and nothing needs to: the drop happens when the state DB
-/// is first opened, which ImportFlatDb's own constructor dependencies do before either step runs, and the gate in
-/// PruningTrieStoreModule is what protects a running import. It refuses while the flat store is empty, and a
-/// populated flat store means the import has already finished. Resolving the same singleton concurrently with
-/// ImportFlatDb is harmless.
+/// is first opened, by whichever component opens it, so the gate in PruningTrieStoreModule is what protects a
+/// running import. It refuses while the flat store is empty, and the importer advances the flat state only after
+/// its data is flushed, so a populated flat store means the import has finished.
 /// </remarks>
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockTree)],

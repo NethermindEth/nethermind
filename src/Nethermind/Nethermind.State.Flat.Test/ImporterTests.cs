@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -85,6 +86,22 @@ public class ImporterTests
     }
 
     [Test]
+    public async Task Copy_FlushesDataBeforeAdvancingTheStatePointer()
+    {
+        // The ingest batches skip the WAL; a pointer that became durable first would survive a crash the data did not.
+        SeedTree(3);
+        List<string> log = [];
+        Importer importer = new(new NodeStorage(_trieDb), new OrderRecordingPersistence(_persistence, log), LimboLogs.Instance);
+
+        await importer.Copy(new StateId(42, _stateTree.RootHash));
+
+        int firstFlush = log.IndexOf("flush");
+        int advance = log.IndexOf("advance-pointer");
+        Assert.That(firstFlush, Is.GreaterThanOrEqualTo(0), "data must be flushed during the copy");
+        Assert.That(advance, Is.GreaterThan(firstFlush), "the state pointer must advance only after the data flush");
+    }
+
+    [Test]
     public async Task Copy_PropagatesCancellation()
     {
         SeedTree(3);
@@ -93,5 +110,25 @@ public class ImporterTests
 
         await Assert.ThatAsync(async () => await _importer.Copy(new StateId(0, _stateTree.RootHash), cts.Token),
             Throws.InstanceOf<System.OperationCanceledException>());
+    }
+
+    private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log) : IPersistence
+    {
+        public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
+
+        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
+        {
+            // Ingest batches write from the initial state to itself; only the final batch moves the pointer.
+            if (from != to) log.Add("advance-pointer");
+            return inner.CreateWriteBatch(from, to, flags);
+        }
+
+        public void Flush()
+        {
+            log.Add("flush");
+            inner.Flush();
+        }
+
+        public void Clear() => inner.Clear();
     }
 }
