@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Core;
@@ -155,71 +156,47 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         }
     }
 
-    [Test(Description = "Multiple finalization logs must be reported in lexicographic address order")]
+    // One position per sub-frame recorded before finalization: three CREATEs and six CALLs.
+    private const ulong MultiDestroyFinalizationPosition = 9UL;
+
+    [Test(Description = "Multiple finalization logs must be reported in ascending address order")]
     public void FinalizationSelfDestructLogs_WithLog_AreSortedByAddress()
     {
-        const byte initBalance = 5;
-        Address inheritor = TestItem.AddressC;
-        byte[] funds = [11, 22, 33];
+        Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
 
-        byte[] contractACode = Prepare.EvmCode
-            .CALLVALUE()
-            .Op(Instruction.ISZERO)
-            .PushData(6)
-            .JUMPI()
-            .STOP()
-            .JUMPDEST()
-            .SELFDESTRUCT(inheritor)
-            .Done;
-        byte[] initCodeA = Prepare.EvmCode
-            .ForInitOf(contractACode)
-            .Done;
-
-        Address[] created =
-        [
-            ContractAddress.From(Recipient, 0),
-            ContractAddress.From(Recipient, 1),
-            ContractAddress.From(Recipient, 2),
-        ];
-        Address[] sorted = [.. created];
-        Array.Sort(sorted, (a, b) => a.Bytes.SequenceCompareTo(b.Bytes));
-        Assert.That(created, Is.Not.EqualTo(sorted), "test requires hash order to differ from sorted order to discriminate the sort");
-        Address[] reverseSorted = [.. sorted];
-        Array.Reverse(reverseSorted);
-
-        byte[] factoryCode = Prepare.EvmCode
-            .Create(initCodeA, initBalance)
-            .Create(initCodeA, initBalance)
-            .Create(initCodeA, initBalance)
-            .Call(created[0], 100_000)
-            .Call(created[1], 100_000)
-            .Call(created[2], 100_000)
-            .CallWithValue(reverseSorted[0], 100_000, funds[0])
-            .CallWithValue(reverseSorted[1], 100_000, funds[1])
-            .CallWithValue(reverseSorted[2], 100_000, funds[2])
-            .STOP()
-            .Done;
-
-        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, factoryCode, value: 0);
-        using NativeCallTracer tracer = new(tx, Amsterdam.Instance, GetGethTraceOptions(WithLog));
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, scenario.FactoryCode, value: 0);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using NativeCallTracer tracer = new(tx, spec, GetGethTraceOptions(WithLog));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
-        Dictionary<Address, byte> funded = new()
-        {
-            [reverseSorted[0]] = funds[0],
-            [reverseSorted[1]] = funds[1],
-            [reverseSorted[2]] = funds[2],
-        };
-        NativeCallTracerLogEntry[] expected =
-        [
-            ExpectedSelfDestructLog(sorted[0], funded[sorted[0]], 9UL),
-            ExpectedSelfDestructLog(sorted[1], funded[sorted[1]], 9UL),
-            ExpectedSelfDestructLog(sorted[2], funded[sorted[2]], 9UL),
-        ];
+        NativeCallTracerLogEntry[] expected = Array.ConvertAll(scenario.ByAddress, static destroyed =>
+            ExpectedSelfDestructLog(destroyed.Account, destroyed.Funds, MultiDestroyFinalizationPosition));
 
-        Assert.That(topFrame.Logs, Is.EqualTo(expected).UsingPropertiesComparer(), "finalization logs must be reported in lexicographic address order");
+        Assert.That(topFrame.Logs, Is.EqualTo(expected).UsingPropertiesComparer(), "finalization logs must be reported in ascending address order");
+    }
+
+    [Test(Description = "The receipt logs, not just the tracer stream, must carry finalization logs in ascending address order")]
+    public void FinalizationSelfDestructLogs_AreSortedByAddressInReceipt()
+    {
+        Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
+
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, scenario.FactoryCode, value: 0);
+        block.Header.GasUsed = 0;
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+        tracer.StartNewTxTrace(tx);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+
+        LogEntry[] finalizationLogs = Array.FindAll(tracer.TxReceipts[0].Logs!, static log => log.Topics[0] == TransferLog.SelfDestructSignature);
+        LogEntry[] expected = Array.ConvertAll(scenario.ByAddress, static destroyed => new LogEntry(
+            TransferLog.Sender, Hash256.FromBytesWithPadding([destroyed.Funds]).BytesToArray(),
+            [TransferLog.SelfDestructSignature, destroyed.Account.ToHash().ToHash256()]));
+
+        Assert.That(finalizationLogs, Is.EqualTo(expected).UsingPropertiesComparer(), "receipt log order must follow ascending address order");
     }
 
     private static IEnumerable<TestCaseData> TransferLogCases()
@@ -303,4 +280,37 @@ file static class Eip7708SelfDestructScenario
         .CallWithValue(contract, CallGas, FundedAfter)
         .STOP()
         .Done;
+
+    /// <param name="FactoryCode">Factory creating, destroying and then re-funding three contracts.</param>
+    /// <param name="ByAddress">The destroyed accounts and their residual balances, in ascending address order.</param>
+    public readonly record struct MultiDestroy(byte[] FactoryCode, (Address Account, byte Funds)[] ByAddress);
+
+    /// <summary>Builds a transaction that leaves three destroyed accounts, each with a distinct residual balance.</summary>
+    /// <remarks>
+    /// Creation order, funding order and address order are all different, so both the order of the
+    /// finalization logs and their account-to-amount pairing identify the order the client emitted them in.
+    /// </remarks>
+    public static MultiDestroy BuildMultiDestroy(Address creator, Address inheritor)
+    {
+        byte[] funds = [11, 22, 33];
+        Address[] created = [ContractAddress.From(creator, 0), ContractAddress.From(creator, 1), ContractAddress.From(creator, 2)];
+        Address[] ascending = [.. created];
+        Array.Sort(ascending);
+        Assert.That(created, Is.Not.EqualTo(ascending), "scenario must have creation order differ from address order to discriminate the ordering");
+
+        byte[] initCode = InitCode(inheritor);
+        Prepare factory = Prepare.EvmCode;
+        foreach (Address _ in created) factory = factory.Create(initCode, InitBalance);
+        foreach (Address account in created) factory = factory.Call(account, CallGas);
+
+        (Address Account, byte Funds)[] byAddress = new (Address, byte)[ascending.Length];
+        for (int i = 0; i < ascending.Length; i++)
+        {
+            // Fund in descending address order, so funding order matches neither creation nor address order.
+            factory = factory.CallWithValue(ascending[^(i + 1)], CallGas, funds[i]);
+            byAddress[i] = (ascending[i], funds[^(i + 1)]);
+        }
+
+        return new MultiDestroy(factory.STOP().Done, byAddress);
+    }
 }

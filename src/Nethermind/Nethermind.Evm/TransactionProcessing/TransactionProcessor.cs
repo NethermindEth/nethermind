@@ -404,14 +404,20 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (count > 1)
                     {
                         Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
-                        destroyList.CopyTo(buffer, 0);
-                        buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
-                        for (int i = 0; i < count; i++)
+                        try
                         {
-                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn, tracer, tracingLogs);
-                            if (tracingRefunds) tracer.ReportRefund(destroyRefund);
+                            destroyList.CopyTo(buffer, 0);
+                            buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
+                            for (int i = 0; i < count; i++)
+                            {
+                                FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn, tracer, tracingLogs);
+                                if (tracingRefunds) tracer.ReportRefund(destroyRefund);
+                            }
                         }
-                        SafeArrayPool<Address>.Shared.Return(buffer);
+                        finally
+                        {
+                            SafeArrayPool<Address>.Shared.Return(buffer);
+                        }
                     }
                     else if (count == 1)
                     {
@@ -1449,21 +1455,34 @@ namespace Nethermind.Evm.TransactionProcessing
                         bool tracingRefunds = tracer.IsTracingRefunds;
                         bool tracingLogs = tracer.IsTracingLogs;
                         JournalCollection<LogEntry> logs = substate.Logs;
+
+                        // The finalization log below is the only order-observable effect here, and it feeds
+                        // the receipt, so emit by ascending address rather than in hash-slot order. Specs
+                        // that emit no such log keep iterating the set directly.
                         int destroyCount = destroyList.Count;
-                        if (destroyCount > 1)
+                        if (eip7708Enabled && !removeSelfdestructBurn && destroyCount > 1)
                         {
                             Address[] buffer = SafeArrayPool<Address>.Shared.Rent(destroyCount);
-                            destroyList.CopyTo(buffer, 0);
-                            buffer.AsSpan(0, destroyCount).Sort(default(AddressByBytesComparer));
-                            for (int i = 0; i < destroyCount; i++)
+                            try
                             {
-                                FinalizeDestroyedAccountInline(buffer[i]);
+                                destroyList.CopyTo(buffer, 0);
+                                buffer.AsSpan(0, destroyCount).Sort(default(AddressByBytesComparer));
+                                for (int i = 0; i < destroyCount; i++)
+                                {
+                                    FinalizeDestroyedAccountInline(buffer[i]);
+                                }
                             }
-                            SafeArrayPool<Address>.Shared.Return(buffer);
+                            finally
+                            {
+                                SafeArrayPool<Address>.Shared.Return(buffer);
+                            }
                         }
                         else
                         {
-                            FinalizeDestroyedAccountInline(destroyList.First);
+                            foreach (Address toBeDestroyed in destroyList)
+                            {
+                                FinalizeDestroyedAccountInline(toBeDestroyed);
+                            }
                         }
 
                         void FinalizeDestroyedAccountInline(Address toBeDestroyed)
