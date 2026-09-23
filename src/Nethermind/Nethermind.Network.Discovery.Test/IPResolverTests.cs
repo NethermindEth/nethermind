@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -268,18 +269,26 @@ public class IPResolverTests
     }
 
     [Test]
-    public async Task V5_record_refreshes_without_new_heads_or_resolver_reads()
+    public async Task V5_record_refreshes_without_new_heads_or_resolver_reads([Values] bool initiallyUnresolved)
     {
+        const int startupAttempts = 5;
         ManualTimeProvider timeProvider = new();
-        Queue<(bool Success, IPAddress Ip)> results = new(
-        [
-            (true, IPAddress.Parse("8.8.8.8")),
-            (true, IPAddress.Parse("8.8.4.4")),
-            (true, IPAddress.Parse("1.1.1.1"))
-        ]);
+        Queue<(bool Success, IPAddress Ip)> results = new(initiallyUnresolved
+            ? Enumerable.Repeat((false, IPAddress.None), startupAttempts)
+            : [(true, IPAddress.Parse("8.8.8.8"))]);
+        results.Enqueue((true, IPAddress.Parse("8.8.4.4")));
+        results.Enqueue((true, IPAddress.Parse("1.1.1.1")));
         IIPSource source = new StubIpSource(() => Task.FromResult(results.Dequeue()));
         await using IPResolver ipResolver = CreateResolver(new NetworkConfig(),
             family => family == AddressFamily.InterNetwork ? [source] : [], timeProvider: timeProvider);
+        // Container activation reads the address synchronously, so startup has to finish first.
+        Task<IIPResolver.NethermindIp> startup = ipResolver.Resolve().AsTask();
+        for (int attempt = 1; initiallyUnresolved && attempt < startupAttempts; attempt++)
+        {
+            timeProvider.Advance(TimeSpan.FromSeconds(2));
+        }
+
+        await startup.WaitAsync(TimeSpan.FromSeconds(5));
         await using IContainer container = CreateContainer(ipResolver);
         container.Resolve<IBlockTree>().SuggestBlock(Build.A.Block.Genesis.TestObject);
         NetworkListenerState listeners = container.Resolve<NetworkListenerState>();
@@ -295,7 +304,8 @@ public class IPResolverTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(initial.GetObj<IPAddress>(EnrContentKey.Ip), Is.EqualTo(IPAddress.Parse("8.8.8.8")));
+            Assert.That(initial.GetObj<IPAddress>(EnrContentKey.Ip),
+                Is.EqualTo(initiallyUnresolved ? null : IPAddress.Parse("8.8.8.8")));
             Assert.That(recovered.GetObj<IPAddress>(EnrContentKey.Ip), Is.EqualTo(IPAddress.Parse("8.8.4.4")));
             Assert.That(rotated.GetObj<IPAddress>(EnrContentKey.Ip), Is.EqualTo(IPAddress.Parse("1.1.1.1")));
             Assert.That(recovered.EnrSequence, Is.GreaterThan(initial.EnrSequence));

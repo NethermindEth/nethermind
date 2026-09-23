@@ -670,8 +670,9 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    [Test]
-    public async Task ConnectAsync_AttemptsEachFamilyAtMostOnce()
+    [TestCase("127.0.0.1", "::1", 2, TestName = "ConnectAsync attempts each family at most once")]
+    [TestCase("8.8.8.8", "fc00::1", 1, TestName = "ConnectAsync does not fall back from a public primary to a private alternate")]
+    public async Task ConnectAsync_AttemptsEachFamilyAtMostOnce(string primary, string alternate, int expectedDials)
     {
         if (!Socket.OSSupportsIPv6)
         {
@@ -690,36 +691,16 @@ public class RlpxHostIntegrationTests
         {
             await host.Init();
 
-            Assert.That(await host.ConnectAsync(CreateDualStackNode(30303, 30304)), Is.False);
-            Assert.That(channelFactory.CreatedClientChannels, Is.EqualTo(2));
-        }
-        finally
-        {
-            await host.Shutdown();
-        }
-    }
+            bool connected = await host.ConnectAsync(CreateDualStackNode(
+                IPAddress.Parse(primary), 30303,
+                IPAddress.Parse(alternate), 30304,
+                verified: true));
 
-    [Test]
-    public async Task ConnectAsync_PublicPrimaryDoesNotFallBackToPrivateAlternate()
-    {
-        FailingClientChannelFactory channelFactory = new();
-        await using IContainer container = CreateListenerContainer(
-            "127.0.0.1",
-            IPAddress.Loopback,
-            GetAvailablePort(),
-            channelFactory: channelFactory);
-        RlpxHost host = container.Resolve<RlpxHost>();
-
-        try
-        {
-            await host.Init();
-
-            Assert.That(await host.ConnectAsync(CreateDualStackNode(
-                IPAddress.Parse("8.8.8.8"), 30303,
-                IPAddress.Parse("fc00::1"), 30304,
-                verified: true)), Is.False);
-            Assert.That(channelFactory.CreatedClientChannels, Is.EqualTo(1),
-                "a public peer must not steer the fallback dial into a private network");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(connected, Is.False);
+                Assert.That(channelFactory.CreatedClientChannels, Is.EqualTo(expectedDials));
+            }
         }
         finally
         {
