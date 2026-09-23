@@ -31,8 +31,7 @@ public partial class EthRpcModuleTests
 {
     [Test]
     public async Task FrameRpc_UnsignedTransaction_Succeeds(
-        [Values("eth_call", "eth_estimateGas", "eth_fillTransaction")] string method,
-        [Values] bool placeholder)
+        [Values("eth_call", "eth_estimateGas", "eth_fillTransaction", "eth_simulateV1")] string method)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc transaction = new()
@@ -46,21 +45,25 @@ public partial class EthRpcModuleTests
                 new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = 50_000 },
                 new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGasLimit = 50_000 },
             ],
-            Signatures = placeholder ? [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }] : [],
+            Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
         };
 
-        string response = await ctx.Test.TestEthRpc(method, transaction);
+        object request = method == "eth_simulateV1"
+            ? new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation = false }
+            : transaction;
+        string response = await ctx.Test.TestEthRpc(method, request);
 
         JToken parsed = JToken.Parse(response);
         Assert.That(parsed["error"], Is.Null, response);
         Assert.That(parsed["result"], Is.Not.Null);
         if (method == "eth_call") Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"));
+        if (method == "eth_simulateV1") Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"));
         if (method == "eth_fillTransaction")
         {
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((JArray)parsed["result"]!["tx"]!["frames"]!, Has.Count.EqualTo(2));
-                Assert.That((JArray)parsed["result"]!["tx"]!["signatures"]!, Has.Count.EqualTo(placeholder ? 1 : 0));
+                Assert.That((JArray)parsed["result"]!["tx"]!["signatures"]!, Has.Count.EqualTo(1));
             }
         }
     }
