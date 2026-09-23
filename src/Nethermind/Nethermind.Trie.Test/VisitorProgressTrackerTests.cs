@@ -174,9 +174,9 @@ public class VisitorProgressTrackerTests
         innerLogger.Received(expectedDebugReports).Debug(Arg.Any<string>());
     }
 
-    [TestCase(10_000, "6.25 %")]
-    [TestCase(100, "6 %")]
-    public void OnNodeVisited_FormatsPercentageToScaleResolution(int progressScale, string expectedPercentage)
+    [TestCase(0.01, 2)]
+    [TestCase(1, 1)]
+    public void OnNodeVisited_ReportsOncePerRequestedProgressStep(double reportEveryPercent, int expectedReports)
     {
         // Arrange
         InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
@@ -185,12 +185,15 @@ public class VisitorProgressTrackerTests
         ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
-        VisitorProgressTracker tracker = new("Test", logManager, progressScale: progressScale);
+        VisitorProgressTracker tracker = new("Test", logManager, reportEveryPercent: reportEveryPercent);
 
-        // Act - a leaf at depth 1 is 4096 / 65536 = 6.25%
+        // Act - a leaf at depth 1 is 6.25%, a leaf at depth 2 adds 0.39%: the second one
+        // crosses a 0.01% step but not a 1% step
         tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 0 }), isStorage: false, isLeaf: true);
+        tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 1, 0 }), isStorage: false, isLeaf: true);
 
-        // Assert
-        innerLogger.Received(1).Debug(Arg.Is<string>(line => line.Contains(expectedPercentage)));
+        // Assert - the step throttles how often a line is written, not the precision of the line
+        innerLogger.Received(expectedReports).Debug(Arg.Any<string>());
+        innerLogger.Received(1).Debug(Arg.Is<string>(line => line.Contains("6.25 %")));
     }
 }

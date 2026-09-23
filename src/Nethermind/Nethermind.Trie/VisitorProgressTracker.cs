@@ -18,19 +18,19 @@ public class VisitorProgressTracker
 {
     public const int Level3Depth = 4; // 4 nibbles
     private const int MaxNodes = 65536; // 16^4 possible 4-nibble prefixes
-    private const int DefaultProgressScale = 10_000; // 0.01% granularity
+    private const int ProgressScale = 10_000; // 0.01% precision of the reported percentage
 
     private int _seenCount; // Count of level-3 nodes seen (or estimated from shallow leaves)
 
     private long _nodeCount;
+    private ulong _lastReportedProgress;
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
     private readonly DateTime _startTime;
     private readonly ProgressLogger _logger;
     private readonly string _operationName;
     private readonly int _reportingInterval;
     private readonly bool _printNodes;
-    private readonly int _progressScale;
-    private readonly string _percentageFormat;
+    private readonly ulong _reportStep;
 
     public VisitorProgressTracker(
         string operationName,
@@ -38,18 +38,17 @@ public class VisitorProgressTracker
         int reportingInterval = 100_000,
         bool printNodes = true,
         LogLevel logLevel = LogLevel.Debug,
-        int progressScale = DefaultProgressScale)
+        double reportEveryPercent = 0.01)
     {
         ArgumentNullException.ThrowIfNull(logManager);
-        ArgumentOutOfRangeException.ThrowIfLessThan(progressScale, 1);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(reportEveryPercent);
 
         _operationName = operationName;
         _printNodes = printNodes;
-        _progressScale = progressScale;
-        // Show only the digits the scale can resolve: 10_000 -> "P2" (12.34 %), 100 -> "P0" (12 %)
-        _percentageFormat = $"P{Math.Max(0, (int)Math.Log10(progressScale) - 2)}";
+        // The line count is bounded by ProgressScale / _reportStep, so 1% gives ~100 lines per run
+        _reportStep = Math.Max(1, (ulong)Math.Round(reportEveryPercent / 100 * ProgressScale));
         _logger = new ProgressLogger(operationName, logManager, logLevel: logLevel);
-        _logger.Reset(0, (ulong)progressScale);
+        _logger.Reset(0, ProgressScale);
         _logger.SetFormat(FormatProgress);
         _reportingInterval = reportingInterval;
         _startTime = DateTime.UtcNow;
@@ -57,12 +56,12 @@ public class VisitorProgressTracker
 
     private string FormatProgress(ProgressLogger logger)
     {
-        float percentage = Math.Clamp(logger.CurrentValue / (float)_progressScale, 0, 1);
+        float percentage = Math.Clamp(logger.CurrentValue / (float)ProgressScale, 0, 1);
         long work = Interlocked.Read(ref _totalWorkDone);
         string workStr = work >= 1_000_000 ? $"{work / 1_000_000.0:F1}M" : $"{work:N0}";
         return _printNodes
-            ? $"{_operationName,-25} {percentage.ToString(_percentageFormat, CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} nodes: {workStr,8}"
-            : $"{_operationName,-25} {percentage.ToString(_percentageFormat, CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)}";
+            ? $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} nodes: {workStr,8}"
+            : $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)}";
     }
 
     /// <summary>
@@ -130,10 +129,22 @@ public class VisitorProgressTracker
             return;
         }
 
-        ulong progressValue = (ulong)(progress * _progressScale);
-
+        ulong progressValue = (ulong)(progress * ProgressScale);
         _logger.Update(progressValue);
-        _logger.LogProgress();
+
+        // Emit only once per _reportStep of progress; the CAS makes concurrent visitors agree on
+        // who crossed the step so the line is not duplicated
+        ulong lastReported = Volatile.Read(ref _lastReportedProgress);
+        while (progressValue >= lastReported + _reportStep)
+        {
+            if (Interlocked.CompareExchange(ref _lastReportedProgress, progressValue, lastReported) == lastReported)
+            {
+                _logger.LogProgress();
+                return;
+            }
+
+            lastReported = Volatile.Read(ref _lastReportedProgress);
+        }
     }
 
     /// <summary>
@@ -141,7 +152,7 @@ public class VisitorProgressTracker
     /// </summary>
     public void Finish()
     {
-        _logger.Update((ulong)_progressScale);
+        _logger.Update(ProgressScale);
         _logger.MarkEnd();
         _logger.LogProgress();
     }
