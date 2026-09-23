@@ -383,25 +383,25 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void filter_not_polled_within_retained_blocks_is_removed()
+    public void pending_transaction_filters_skip_removed_transactions_and_drain_on_poll()
     {
-        BlockFilter unpolled = new(_currentFilterId++);
-        BlockFilter polled = new(_currentFilterId++);
-        _filterStore.SaveFilter(unpolled);
-        _filterStore.SaveFilter(polled);
+        PendingTransactionFilter first = new(_currentFilterId++);
+        PendingTransactionFilter second = new(_currentFilterId++);
+        _filterStore.SaveFilter(first);
+        _filterStore.SaveFilter(second);
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
 
-        const int maxRetainedBlocks = 1024;
-        for (int i = 0; i <= maxRetainedBlocks; i++)
-        {
-            RaiseBlockProcessed();
-            _filterManager.PollBlockHashes(polled.Id);
-        }
+        Transaction removed = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
+        Transaction kept = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(removed));
+        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(kept));
+        _txPool.RemovedPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(removed));
 
         Assert.Multiple(() =>
         {
-            Assert.That(_filterStore.FilterExists(unpolled.Id), Is.False);
-            Assert.That(_filterStore.FilterExists(polled.Id), Is.True);
+            Assert.That(_filterManager.PollPendingTransactionHashes(first.Id), Is.EqualTo(new[] { kept.Hash }));
+            Assert.That(_filterManager.PollPendingTransactionHashes(first.Id), Is.Empty);
+            Assert.That(_filterManager.PollPendingTransactionHashes(second.Id), Is.EqualTo(new[] { kept.Hash }));
         });
     }
 
