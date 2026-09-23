@@ -128,10 +128,6 @@ public static class HexWriter
         "e0e1e2e3e4e5e6e7e8e9eaebecedeeef"u8 +
         "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"u8;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void EncodeByte(ref byte dest, int byteVal) => Unsafe.WriteUnaligned(ref dest,
-            Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref MemoryMarshal.GetReference(HexByteLookup), byteVal * 2)));
-
     /// <summary>Returns the 8 hex chars of 4 bytes, the byte in bits 0-7 first.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong Encode4BytesSwar(uint bytes)

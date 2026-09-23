@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -117,9 +119,11 @@ public class HexWriterTests
         Assert.That(actual, Is.EqualTo($"\"0x{value:x}\""));
     }
 
-    // 0..97 bytes covers every mix of 32-byte blocks, the 16-byte block and the scalar tail.
+    // 0..97 bytes covers every mix of 32-byte blocks, the 16-byte block and the scalar tail; 300 takes the pooled buffer.
+    private static IEnumerable<int> HexLengths => Enumerable.Range(0, 98).Append(300);
+
     [Test]
-    public void WriteHexStringValue_EveryBlockAndTailLength([Range(0, 97)] int length)
+    public void WriteHexStringValue_EveryBlockAndTailLength([ValueSource(nameof(HexLengths))] int length)
     {
         byte[] data = new byte[length];
         for (int i = 0; i < length; i++) data[i] = (byte)(i * 37 + length);
