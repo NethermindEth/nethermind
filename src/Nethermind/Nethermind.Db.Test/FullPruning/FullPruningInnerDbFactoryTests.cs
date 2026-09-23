@@ -54,6 +54,55 @@ namespace Nethermind.Db.Test.FullPruning
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 11)));
         }
 
+        [Test]
+        public void deletes_indexed_dbs_other_than_the_one_it_opens_next()
+        {
+            TestContext test = new();
+            test.Directory.Exists.Returns(true);
+            IDirectoryInfo current = Dir("3");
+            IDirectoryInfo leftover = Dir("4");
+            IDirectoryInfo unrelated = Dir("tmp");
+            test.Directory.EnumerateDirectories().Returns(new[] { leftover, current, unrelated });
+
+            int deleted = test.TestedDbFactory.DeleteStaleInnerDbs();
+
+            Assert.That(deleted, Is.EqualTo(1));
+            leftover.Received(1).Delete(true);
+            current.DidNotReceive().Delete(Arg.Any<bool>());
+            unrelated.DidNotReceive().Delete(Arg.Any<bool>());
+            test.TestedDbFactory.CreateDb(test.DbSettings);
+            test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 3)));
+        }
+
+        [Test]
+        public void deletes_every_indexed_db_when_the_main_directory_holds_the_db()
+        {
+            TestContext test = new();
+            test.Directory.Exists.Returns(true);
+            test.Directory.EnumerateFiles().Returns(new[] { Substitute.For<IFileInfo>() });
+            IDirectoryInfo leftover = Dir("0");
+            test.Directory.EnumerateDirectories().Returns(new[] { leftover });
+
+            Assert.That(test.TestedDbFactory.DeleteStaleInnerDbs(), Is.EqualTo(1));
+            leftover.Received(1).Delete(true);
+        }
+
+        [Test]
+        public void deletes_nothing_when_no_db_present()
+        {
+            TestContext test = new();
+            test.Directory.Exists.Returns(false);
+
+            Assert.That(test.TestedDbFactory.DeleteStaleInnerDbs(), Is.EqualTo(0));
+        }
+
+        private static IDirectoryInfo Dir(string name)
+        {
+            IDirectoryInfo directory = Substitute.For<IDirectoryInfo>();
+            directory.Name.Returns(name);
+            return directory;
+        }
+
         private static Expression<Predicate<DbSettings>> MatchSettings(TestContext test, int? index = null)
         {
             string dbName = test.DbSettings.DbName + index;

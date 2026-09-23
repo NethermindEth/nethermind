@@ -36,7 +36,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int ArchiveProofRecentEpochs { get; set; } = 0;
     public int ArchiveProofFineEpochs { get; set; } = 0;
     public bool ImportFromPruningTrieState { get; set; } = false;
-    public bool DropPruningTrieState { get; set; } = true;
+    public bool DropPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
