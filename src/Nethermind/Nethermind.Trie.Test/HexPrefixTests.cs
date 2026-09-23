@@ -88,10 +88,12 @@ public class HexPrefixTests
         Assert.That(bytes, Is.EqualTo(result).AsCollection);
     }
 
+    private static readonly int[] EncodeNibbleCounts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 16, 17, 18, 19, 30, 31, 32, 33, 34, 35, 62, 63, 64, 65, 66, 67, 97, 128, 129];
+
     /// <remarks>Packing picks its path by length, so the lengths sit on and next to each path boundary.</remarks>
     [Test]
     public void Encode_matches_the_scalar_reference_over_every_length(
-        [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 16, 17, 18, 19, 30, 31, 32, 33, 34, 35, 62, 63, 64, 65, 66, 67, 97, 128, 129)] int nibbleCount,
+        [ValueSource(nameof(EncodeNibbleCounts))] int nibbleCount,
         [Values(false, true)] bool isLeaf)
     {
         byte[] nibbles = NibblePath(nibbleCount);
@@ -112,9 +114,11 @@ public class HexPrefixTests
         Assert.That(HexPrefix.ToBytes(nibbles, isLeaf), Is.EqualTo(expected).AsCollection);
     }
 
+    private static readonly int[] NibblesToBytesCounts = [0, 1, 2, 4, 6, 8, 9, 10, 14, 16, 18, 30, 32, 33, 34, 62, 64, 66, 96, 128];
+
     [Test]
     public void Nibbles_to_bytes_matches_the_scalar_reference(
-        [Values(0, 1, 2, 4, 6, 8, 9, 10, 14, 16, 18, 30, 32, 33, 34, 62, 64, 66, 96, 128)] int nibbleCount)
+        [ValueSource(nameof(NibblesToBytesCounts))] int nibbleCount)
     {
         byte[] nibbles = NibblePath(nibbleCount);
         byte[] expected = new byte[nibbleCount / 2];
@@ -126,10 +130,12 @@ public class HexPrefixTests
         Assert.That(Nibbles.ToBytes(nibbles), Is.EqualTo(expected).AsCollection);
     }
 
+    private static readonly int[] DecodeByteCounts = [3, 4, 5, 6, 7, 8, 9, 10, 16, 17, 18, 32, 33, 34, 49, 65];
+
     /// <remarks>Expanding picks its path by length, so the lengths sit on and next to each path boundary.</remarks>
     [Test]
     public void Decode_matches_the_scalar_reference_over_every_length(
-        [Values(3, 4, 5, 6, 7, 8, 9, 10, 16, 17, 18, 32, 33, 34, 49, 65)] int byteCount,
+        [ValueSource(nameof(DecodeByteCounts))] int byteCount,
         [Values] bool isOdd,
         [Values] bool isLeaf)
     {
