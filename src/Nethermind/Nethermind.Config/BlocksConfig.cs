@@ -68,7 +68,7 @@ namespace Nethermind.Config
 
         public int MempoolPreWarmConcurrency { get; set; } = 0;
 
-        public bool PreferPerformanceCores { get; set; } = true;
+        public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.All;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
 

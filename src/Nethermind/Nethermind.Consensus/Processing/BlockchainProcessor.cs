@@ -20,6 +20,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Config;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -356,8 +357,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
-        if (_options.PreferPerformanceCores && PerformanceCores.Cpus.Length > 0 && _logger.IsInfo)
-            _logger.Info($"Block processing runs on the performance cores only: CPUs {string.Join(',', PerformanceCores.Cpus.ToArray())}");
+        ReadOnlySpan<int> processingCpus = PerformanceCores.Cpus(_options.ProcessingCores);
+        if (processingCpus.Length > 0 && _logger.IsInfo)
+            _logger.Info($"Block processing runs on {_options.ProcessingCores} cores only: CPUs {string.Join(',', processingCpus.ToArray())}");
 
         _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
@@ -528,7 +530,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             // Released within the iteration, before the loop awaits and the thread can go back to the pool.
-            using PerformanceCores.Scope performanceCores = _options.PreferPerformanceCores ? PerformanceCores.NarrowCurrentThread() : default;
+            using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores);
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
@@ -863,7 +865,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
 
-        /// <summary>Keeps block processing on the performance cores of a hybrid CPU; see <see cref="PerformanceCores"/>.</summary>
-        public bool PreferPerformanceCores { get; set; }
+        /// <summary>The logical processors block processing runs on, on an Intel hybrid CPU; see <see cref="PerformanceCores"/>.</summary>
+        public ProcessingCores ProcessingCores { get; set; }
     }
 }

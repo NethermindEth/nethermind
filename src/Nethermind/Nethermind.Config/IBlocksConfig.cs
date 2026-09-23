@@ -51,8 +51,8 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
-    [ConfigItem(Description = "On a CPU with performance and efficiency cores, run block processing on the performance cores only. No effect on a CPU with one kind of core.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool PreferPerformanceCores { get; set; }
+    [ConfigItem(Description = "On an Intel hybrid CPU, pin block processing to: `All` logical processors, both hyperthreads of every `Performance` core, or one hyperthread of every performance core (`PerformancePhysical`). No effect on other CPUs.", DefaultValue = "All", HiddenFromDocs = true)]
+    ProcessingCores ProcessingCores { get; set; }
 
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
     int MempoolPreWarmConcurrency { get; set; }

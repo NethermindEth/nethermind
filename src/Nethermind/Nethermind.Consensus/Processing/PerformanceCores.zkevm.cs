@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Config;
 
-namespace Nethermind.Core.Threading;
+namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// Nothing to narrow for the zkVM guest, which is single-threaded and has no core types - see the std counterpart.
 /// </summary>
-public static partial class PerformanceCores
+internal static partial class PerformanceCores
 {
-    public static ReadOnlySpan<int> Cpus => [];
+    public static ReadOnlySpan<int> Cpus(ProcessingCores cores) => [];
 
-    public static Scope NarrowCurrentThread() => default;
+    public static Scope NarrowCurrentThread(ProcessingCores cores) => default;
 
     public readonly struct Scope : IDisposable
     {

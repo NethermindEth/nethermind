@@ -3,20 +3,23 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Config;
 
-namespace Nethermind.Core.Threading;
+namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// The performance cores of a hybrid CPU, and a scope that keeps the calling thread on them.
+/// The performance cores of an Intel hybrid CPU, and a scope that keeps the calling thread on them.
 /// </summary>
 /// <remarks>
-/// On a CPU with performance and efficiency cores the scheduler is free to run block processing on an efficiency
-/// core, or beside a prewarming thread on the same performance core, and either costs every block a large share of
-/// its speed. The processing thread is narrowed to the performance cores for the time it processes blocks; the other
-/// pools keep every core.
+/// The processing loop continues on whichever thread-pool thread resumes it, and on a CPU with performance and
+/// efficiency cores the scheduler can start that thread on an efficiency core for a block that lasts tens of
+/// milliseconds. The core types come from Linux's Intel hybrid PMU listing (<c>/sys/devices/cpu_core/cpus</c>);
+/// other hybrid designs do not publish it, and there this is a no-op. The allowed CPUs are read once, so a cpuset
+/// changed at runtime is not seen; the kernel then refuses a mask outside it and the scope does nothing.
 /// </remarks>
-public static partial class PerformanceCores
+internal static partial class PerformanceCores
 {
     /// <summary>The CPUs a Linux <c>cpu_set_t</c> holds.</summary>
     internal const int MaxCpus = MaskWords * 64;
@@ -33,37 +36,47 @@ public static partial class PerformanceCores
     }
 
     /// <summary>
-    /// The performance cores' logical processors among the ones the process may run on, when that narrows anything.
+    /// The logical processors <paramref name="cores"/> selects among the performance cores the process may run on,
+    /// when that narrows anything.
     /// </summary>
+    /// <param name="cores">Which of the performance cores' logical processors to run on.</param>
     /// <param name="performanceCpus">Linux's list of the performance cores' logical processors, null on a CPU without one.</param>
     /// <param name="allowedCpus">The CPUs the process may run on, null when unknown.</param>
-    /// <param name="mask">The performance cores to run on.</param>
+    /// <param name="siblingsOf">A logical processor's hyperthread siblings as a Linux CPU list, null when unknown.</param>
+    /// <param name="mask">The logical processors to run on.</param>
     /// <param name="cpus">The same, as a sorted list.</param>
     /// <returns>
-    /// <c>false</c> on a CPU with one kind of core, and where the process may run on no performance core or on
-    /// performance cores only, since there is then nothing to narrow.
+    /// <c>false</c> for <see cref="ProcessingCores.All"/>, on a CPU with one kind of core, and where the selection
+    /// holds every CPU the process may run on or none of them, since there is then nothing to narrow.
     /// </returns>
-    internal static bool TryBuildMask(string? performanceCpus, string? allowedCpus, out CpuMask mask, out int[] cpus)
+    internal static bool TryBuildMask(ProcessingCores cores, string? performanceCpus, string? allowedCpus, Func<int, string?> siblingsOf, out CpuMask mask, out int[] cpus)
     {
         mask = default;
         cpus = [];
-        if (performanceCpus is null) return false;
+        if (cores == ProcessingCores.All || performanceCpus is null) return false;
 
-        HashSet<int> performance = ParseCpuList(performanceCpus);
+        HashSet<int> selected = ParseCpuList(performanceCpus);
         int allowedCount = int.MaxValue;
         if (allowedCpus is not null)
         {
             HashSet<int> allowed = ParseCpuList(allowedCpus);
             if (allowed.Count > 0)
             {
-                performance.IntersectWith(allowed);
+                selected.IntersectWith(allowed);
                 allowedCount = allowed.Count;
             }
         }
 
-        if (performance.Count == 0 || performance.Count == allowedCount) return false;
+        if (cores == ProcessingCores.PerformancePhysical)
+        {
+            // The lowest selected hyperthread of each core stands for the core.
+            HashSet<int> performance = [.. selected];
+            selected.RemoveWhere(cpu => siblingsOf(cpu) is { } siblings && ParseCpuList(siblings).Any(sibling => sibling < cpu && performance.Contains(sibling)));
+        }
 
-        cpus = [.. performance];
+        if (selected.Count == 0 || selected.Count == allowedCount) return false;
+
+        cpus = [.. selected];
         Array.Sort(cpus);
         foreach (int cpu in cpus) mask.Add(cpu);
         return true;
