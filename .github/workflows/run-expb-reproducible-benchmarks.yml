@@ -1597,13 +1597,24 @@ jobs:
             compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_file}"
             paired_count=$(wc -l < "${client_ms}")
             paired_count="${paired_count//[[:space:]]/}"
-            emit_mgas_s "" "${client_ms}" "${paired_count}"
-            emit_mgas_s "TTFB_" "${ttfb_ms}" "${paired_count}"
-            # Time outside processing per payload, from the same pairing.
-            outside_ms="${RUNNER_TEMP}/expb-outside-ms.txt"
-            awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
-            if [[ -s "${outside_ms}" ]]; then
-              compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_file}"
+            request_count=$(wc -l < "${ttfb_ms}")
+            request_count="${request_count//[[:space:]]/}"
+            # The prefix pairing holds only while the feed is complete or lacks just its last record; any
+            # other gap sits mid-run and would shear every value after it. Same rule as collect_metrics in
+            # scripts/expb/sequential_driver.py.
+            if (( paired_count == request_count || paired_count == request_count - 1 )); then
+              emit_mgas_s "" "${client_ms}" "${paired_count}"
+              emit_mgas_s "TTFB_" "${ttfb_ms}" "${paired_count}"
+              # Time outside processing per payload, from the same pairing.
+              outside_ms="${RUNNER_TEMP}/expb-outside-ms.txt"
+              awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
+              if [[ -s "${outside_ms}" ]]; then
+                compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_file}"
+              fi
+            else
+              echo "::warning::${paired_count} feed records for ${request_count} k6 rows cannot be paired; processing MGas/s and request minus processing are n/a"
+              # The request series pairs gas and time within each k6 row, so it keeps a throughput of its own.
+              emit_mgas_s "TTFB_" "${ttfb_ms}"
             fi
           elif [[ -s "${ttfb_ms}" ]]; then
             # Without the client feed the unprefixed keys hold the k6 request table, and so does their
@@ -1635,9 +1646,13 @@ jobs:
             echo "-----------------------------------------"
             echo "  Request minus processing"
             echo "-----------------------------------------"
-            grep "^OUTSIDE_" "${metrics_file}" | while IFS='=' read -r key val; do
-              printf "  %-10s %s ms\n" "${key#OUTSIDE_}" "${val}"
-            done
+            if grep -q "^OUTSIDE_" "${metrics_file}"; then
+              grep "^OUTSIDE_" "${metrics_file}" | while IFS='=' read -r key val; do
+                printf "  %-10s %s ms\n" "${key#OUTSIDE_}" "${val}"
+              done
+            else
+              echo "  n/a (the feed and the k6 table could not be paired)"
+            fi
           fi
           echo "========================================="
           echo ""

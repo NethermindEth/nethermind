@@ -180,10 +180,12 @@ def collect_metrics(log_path: Path | str, use_sse: bool = True) -> tuple[dict, d
 
     processing_values = [value for _, value in sse] if sse else [value for _, _, value in rows]
     request_values = [value for _, _, value in rows]
-    # k6 rows and feed records share no key, so they pair by position only when every payload has both;
-    # with one record missing, a positional pairing shears every value after the gap.
-    paired = bool(sse) and len(sse) == len(rows)
-    outside_values = [request - processing for (_, _, request), (_, processing) in zip(rows, sse)] if paired else []
+    # One pairing rule, shared with `Analyze benchmark output` in run-expb-reproducible-benchmarks.yml: row i
+    # of the k6 table is feed record i, and the feed can lack only the last record, because expb's payload
+    # server logs block N's record when payload N+1 is fetched. So the feed pairs as a prefix of the rows
+    # when it is complete or one short; any other gap sits mid-run, where position no longer names the payload.
+    paired = len(sse) if sse and len(sse) in (len(rows), len(rows) - 1) else 0
+    outside_values = [request - processing for (_, _, request), (_, processing) in zip(rows[:paired], sse)] if paired else []
     primary = metric_stats(processing_values)
     processing = metric_stats([value for _, value in sse])
     request = metric_stats(request_values)
@@ -195,7 +197,7 @@ def collect_metrics(log_path: Path | str, use_sse: bool = True) -> tuple[dict, d
     if paired:
         processing_total = sum(value for _, value in sse)
         if processing_total > 0:
-            mgas_s = total_gas / (processing_total / 1_000)
+            mgas_s = sum(gas for _, gas, _ in rows[:paired]) / 1_000_000 / (processing_total / 1_000)
     request_total = sum(request_values)
     if request_total > 0:
         request_mgas_s = total_gas / (request_total / 1_000)
@@ -393,7 +395,16 @@ def main() -> int:
     try:
         save_campaign(root, started, images, run_count, samples, failure_reasons)
     except Exception as error:
-        (root / "campaign.json").write_text(json.dumps({"status": "failed", "failure_reasons": [*failure_reasons, f"campaign record could not be written: {error}"]}, indent=2) + "\n", encoding="utf-8")
+        # The record saved after the last sample already holds every sample; mark that one failed rather
+        # than replacing it, and fall back to a bare record only when it cannot be read back.
+        record_path = root / "campaign.json"
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except Exception:
+            record = {}
+        if not isinstance(record, dict): record = {}
+        record.update({"status": "failed", "failure_reasons": [*failure_reasons, f"campaign record could not be written: {error}"]})
+        record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
         return 1
     return 0 if not cancelled and not failure_reasons and len(samples) == len(images) * run_count and all(x["status"] == "success" for x in samples) else 1
 if __name__ == "__main__":

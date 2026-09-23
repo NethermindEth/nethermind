@@ -317,7 +317,7 @@ fi
         for index, image_id in enumerate(ids, start=1):
             self.assertRegex(image_id, r"^image-{}-[0-9a-f]{{12}}$".format(index))
 
-    def run_analyzer(self, body, log_text, **overrides):
+    def run_analyzer(self, body, log_text, metrics_name="expb-metrics-latest-0-run1/metrics.env", **overrides):
         """Run one `Analyze benchmark output` body over a synthetic expb run log."""
         with tempfile.TemporaryDirectory(prefix="expb-analyze-test-") as temp_dir:
             temp_path = Path(temp_dir)
@@ -351,7 +351,7 @@ fi
                 capture_output=True,
                 text=True,
             )
-            metrics = temp_path / "expb-metrics-latest-0-run1" / "metrics.env"
+            metrics = temp_path / metrics_name
             return proc, metrics.read_text(encoding="utf-8") if metrics.is_file() else ""
 
     @staticmethod
@@ -378,6 +378,27 @@ fi
                 # common Engine API timing source.
                 auto, _ = self.run_analyzer(analyzer, self.k6_table(2), MEASUREMENT_SOURCE="auto")
                 self.assertEqual(0, auto.returncode, auto.stdout + auto.stderr)
+
+    def test_the_feed_pairs_with_the_k6_rows_only_when_complete_or_one_short(self):
+        # Same rule as collect_metrics in scripts/expb/sequential_driver.py: the feed can lack only its last
+        # record, so a larger gap sits mid-run and the paired figures must not be computed from it.
+        for analyzer in self.analyzers:
+            for records, paired in ((3, True), (2, True), (1, False)):
+                with self.subTest(records=records):
+                    feed = "".join(
+                        "[payload-server] client_metric block_number={} processing_ms=20\n".format(100 + index)
+                        for index in range(records)
+                    )
+                    proc, metrics = self.run_analyzer(
+                        analyzer, feed + self.k6_table(3), metrics_name="expb-metrics.env", MEASUREMENT_SOURCE="auto",
+                        # grep -P, which reads the feed, refuses a non-UTF-8 locale such as a bare Git Bash.
+                        LC_ALL="C.UTF-8",
+                    )
+                    self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                    self.assertIn("SOURCE=sse", metrics)
+                    self.assertEqual(paired, "\nMGAS_S=" in "\n" + metrics)
+                    self.assertEqual(paired, "OUTSIDE_AVG=" in metrics)
+                    self.assertIn("TTFB_MGAS_S=", metrics)
 
     def test_an_unusable_amount_disables_the_gate_but_says_so(self):
         # `expected_amount` is `.amount // ""` from the rendered config, so it can arrive empty - and

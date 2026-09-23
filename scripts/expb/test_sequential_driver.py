@@ -158,21 +158,39 @@ class CollectMetricsTests(unittest.TestCase):
         self.assertTrue(parsed["shutdown"] and parsed["cleanup"])
         self.assertEqual(diagnostics, {"exceptions": [], "invalid": [], "severe": []})
 
-    def test_a_missing_feed_record_leaves_the_paired_figures_unavailable(self) -> None:
-        # Nothing says which payload lacks its record, so pairing by position would shear every value after
-        # the gap; the gate still accepts one missing record, so the paired figures must decline instead.
-        log = self.write_log(
-            "[payload-server] client_metric block_number=100 processing_ms=20\n"
-            "| 1 | 30000000 | 25.0 |\n"
-            "| 2 | 30000000 | 35.0 |\n"
+    def feed_log(self, rows: int, records: int) -> Path:
+        # Payload i takes 20 ms to process and 25 ms to request; the feed carries the first `records` of them.
+        return self.write_log(
+            "".join(f"[payload-server] client_metric block_number={100 + index} processing_ms=20\n" for index in range(records))
+            + "".join(f"| {index} | 30000000 | 25.0 |\n" for index in range(1, rows + 1))
         )
-        parsed, _ = driver.collect_metrics(log)
-        self.assertEqual((parsed["source"], parsed["delivered"], parsed["sse_count"]), ("SSE", 2, 1))
+
+    def test_a_feed_that_lacks_only_its_last_record_pairs_as_a_prefix(self) -> None:
+        # expb logs block N's record when payload N+1 is fetched, so the last one is the record a normal run
+        # lacks; the same rule as `Analyze benchmark output` pairs the rest by position.
+        parsed, _ = driver.collect_metrics(self.feed_log(1000, 999))
+        self.assertEqual((parsed["source"], parsed["delivered"], parsed["sse_count"]), ("SSE", 1000, 999))
+        self.assertEqual(parsed["processing"]["avg"], 20.0)
+        self.assertEqual(parsed["outside"]["avg"], 5.0)
+        # Gas over the 999 paired payloads, not all 1000, against their processing time.
+        self.assertAlmostEqual(parsed["mgas_s"], (999 * 30) / (999 * 20 / 1000))
+        # The request series pairs gas and time within the same k6 row, so it covers every payload.
+        self.assertAlmostEqual(parsed["request_mgas_s"], (1000 * 30) / (1000 * 25 / 1000))
+
+    def test_a_larger_feed_gap_leaves_the_paired_figures_unavailable(self) -> None:
+        # Two or more missing records means one went missing mid-run, and a positional pairing would shear
+        # every value after it, so the paired figures decline instead.
+        parsed, _ = driver.collect_metrics(self.feed_log(1000, 998))
+        self.assertEqual((parsed["delivered"], parsed["sse_count"]), (1000, 998))
         self.assertEqual(parsed["processing"]["avg"], 20.0)
         self.assertIsNone(parsed["outside"]["avg"])
         self.assertIsNone(parsed["mgas_s"])
-        # The request series pairs gas and time within the same k6 row, so it covers every payload.
-        self.assertAlmostEqual(parsed["request_mgas_s"], 60 / (60 / 1000))
+        self.assertAlmostEqual(parsed["request_mgas_s"], (1000 * 30) / (1000 * 25 / 1000))
+
+    def test_a_complete_feed_pairs_every_payload(self) -> None:
+        parsed, _ = driver.collect_metrics(self.feed_log(1000, 1000))
+        self.assertEqual(parsed["outside"]["avg"], 5.0)
+        self.assertAlmostEqual(parsed["mgas_s"], (1000 * 30) / (1000 * 20 / 1000))
 
     def test_without_sse_the_request_timings_stand_in_and_outside_is_empty(self) -> None:
         parsed, _ = driver.collect_metrics(self.write_log("| 1 | 30000000 | 25.0 |\n"))
@@ -374,6 +392,24 @@ class CampaignScopeTests(unittest.TestCase):
         campaign = json.loads((self.directory / "campaign" / "campaign.json").read_text(encoding="utf-8"))
         self.assertEqual([sample["sample_id"] for sample in campaign["samples"]], attempted)
         self.assertIn("summary could not be written", campaign["failure_reasons"][0])
+
+    def test_a_final_record_that_cannot_be_written_keeps_the_samples_already_saved(self) -> None:
+        # The record saved after the last sample holds every sample; the fallback must not replace it with a stub.
+        original = driver.save_campaign
+
+        def failing_final_save(*args) -> None:
+            if len(args) > 5:
+                raise TypeError("not JSON serializable")
+            original(*args)
+
+        driver.save_campaign = failing_final_save
+        self.addCleanup(setattr, driver, "save_campaign", original)
+        code, attempted = self.run_campaign(set(), RUN_COUNT="1")
+        self.assertEqual(code, 1)
+        campaign = json.loads((self.directory / "campaign" / "campaign.json").read_text(encoding="utf-8"))
+        self.assertEqual([sample["sample_id"] for sample in campaign["samples"]], attempted)
+        self.assertEqual(campaign["status"], "failed")
+        self.assertIn("campaign record could not be written", campaign["failure_reasons"][-1])
 
     def test_a_clean_campaign_runs_every_sample_and_succeeds(self) -> None:
         code, attempted = self.run_campaign(set(), RUN_COUNT="1")
