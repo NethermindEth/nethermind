@@ -47,8 +47,23 @@ public class FrameTransactionForRpcTests
     {
         Transaction tx = new() { Type = type };
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+        if (rpc is EIP1559TransactionForRpc feeMarket) feeMarket.GasPrice = null;
+        if (rpc is BlobTransactionForRpc blob)
+        {
+            byte[] hash = new byte[32];
+            hash[0] = 1;
+            blob.BlobVersionedHashes = [hash];
+        }
 
-        Assert.That(rpc.ToTransaction(validateUserInput: true).IsError, Is.True);
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error, Is.EqualTo(type == TxType.Blob
+                ? RpcTransactionErrors.MissingToInBlobTx
+                : RpcTransactionErrors.ContractCreationWithoutData));
+        }
     }
 
     [Test]
