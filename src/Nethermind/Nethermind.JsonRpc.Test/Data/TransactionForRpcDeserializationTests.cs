@@ -47,6 +47,9 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""");
             yield return Make(TxType.Blob, """{"gasPrice":"0x1","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blobVersionedHashes":["0x01f1872d656b7a820d763e6001728b9b883f829b922089ec6ad7f5f1665470dc"]}""");
             yield return Make(TxType.SetCode, """{"gasPrice":"0x1","authorizationList":[]}""");
+            yield return Make(TxType.Legacy, """{"gasPrice":"0x1","accessList":null}""");
+            yield return Make(TxType.Legacy, """{"accessList":null,"gasPrice":"0x1","blobVersionedHashes":null,"authorizationList":null}""");
+            yield return Make(TxType.EIP1559, """{"gasPrice":"0x1","accessList":null,"maxFeePerGas":"0x1"}""");
 
             yield return Make(TxType.AccessList, """{"type":null,"accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[]}""");

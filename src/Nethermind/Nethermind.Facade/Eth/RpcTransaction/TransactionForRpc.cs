@@ -211,6 +211,8 @@ public abstract class TransactionForRpc
             bool hasGasPrice = false;
             // Bit i set ⇒ discriminator for _txTypes[i] seen; lowest bit wins (registration order).
             ulong discriminated = 0;
+            // Explicit-null discriminators still select a type, but not over gasPrice (geth keys on non-nil).
+            ulong nullDiscriminated = 0;
 
             if (reader.TokenType == JsonTokenType.StartObject)
             {
@@ -225,6 +227,7 @@ public abstract class TransactionForRpc
                         continue;
                     }
 
+                    ulong matched = 0;
                     if (!hasGasPrice && NameEqualsIgnoreCase(ref reader, GasPriceFieldUtf8))
                     {
                         hasGasPrice = true;
@@ -238,7 +241,7 @@ public abstract class TransactionForRpc
                             {
                                 if (NameEqualsIgnoreCase(ref reader, discriminator))
                                 {
-                                    discriminated |= 1UL << i;
+                                    matched |= 1UL << i;
                                     break;
                                 }
                             }
@@ -246,8 +249,22 @@ public abstract class TransactionForRpc
                     }
 
                     reader.Read();
+                    if (reader.TokenType == JsonTokenType.Null)
+                    {
+                        nullDiscriminated |= matched;
+                    }
+                    else
+                    {
+                        discriminated |= matched;
+                    }
+
                     if (!reader.TrySkip()) break;
                 }
+            }
+
+            if (discriminated == 0 && !hasGasPrice)
+            {
+                discriminated = nullDiscriminated;
             }
 
             Type? viaDiscriminator = null;

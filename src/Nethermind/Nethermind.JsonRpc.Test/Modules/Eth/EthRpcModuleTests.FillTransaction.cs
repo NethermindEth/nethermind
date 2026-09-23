@@ -120,7 +120,18 @@ public partial class EthRpcModuleTests
                 GasPrice = 1,
                 MaxFeePerGas = 2,
             },
-            RpcTransactionErrors.GasPriceInEip1559).SetName("GasPriceWithDynamicFeeField");
+            RpcTransactionErrors.GasPriceInEip1559).SetName("GasPriceWithMaxFeePerGas");
+
+        yield return new TestCaseData(
+            (TransactionForRpc)new EIP1559TransactionForRpc
+            {
+                From = TestItem.AddressC,
+                To = TestItem.AddressB,
+                Value = 1,
+                GasPrice = 1,
+                MaxPriorityFeePerGas = 2,
+            },
+            RpcTransactionErrors.GasPriceInEip1559).SetName("GasPriceWithMaxPriorityFeePerGas");
 
         yield return new TestCaseData(
             (TransactionForRpc)new EIP1559TransactionForRpc { From = TestItem.AddressC, To = null, Value = 1 },
