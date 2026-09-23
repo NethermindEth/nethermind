@@ -41,10 +41,14 @@ public class OptimismProofRpcModuleTests
     /// Without the receipt the deposit nonce is unknown, and serving it as zero would be indistinguishable from a real one.
     /// </remarks>
     [Test]
-    public void Deposit_transaction_without_a_receipt_returns_null_result()
+    public void Deposit_transaction_without_a_receipt_returns_null_result([Values] bool storedReceiptIsNotOptimism)
     {
         DepositTransactionForRpc deposit = new() { BlockHash = BlockHash };
-        IReceiptFinder receiptFinder = ReceiptFinderReturning(new OptimismTxReceipt { TxHash = TestItem.KeccakC });
+        // Either no receipt for this transaction, or one with the right hash that carries no deposit fields.
+        TxReceipt stored = storedReceiptIsNotOptimism
+            ? new TxReceipt { TxHash = TxHash }
+            : new OptimismTxReceipt { TxHash = TestItem.KeccakC };
+        IReceiptFinder receiptFinder = ReceiptFinderReturning(stored);
 
         ResultWrapper<TransactionForRpcWithProof?> result = CreateModule(deposit, receiptFinder).proof_getTransactionByHash(TxHash, false);
 
