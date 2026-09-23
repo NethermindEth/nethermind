@@ -43,13 +43,8 @@ public partial class DebugRpcModuleTests
         BlockHeader parent = chain.BlockTree.Head!.Header;
         UInt256 initial = chain.WorldStateManager.GlobalStateReader.GetBalance(parent, TestItem.AddressC);
         UInt256 senderBalance = chain.WorldStateManager.GlobalStateReader.GetBalance(parent, TestItem.AddressB);
-        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
-        Transaction[] transactions = new Transaction[3];
-        for (int i = 0; i < transactions.Length; i++)
-            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
-                .WithValue(1).WithGasPrice(1_000_000_000).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        Block block = await chain.AddBlock(transactions);
-        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        Block block = await AddTraceCallPrefixTransfers(chain, 3);
+        Transaction[] transactions = block.Transactions;
         string canonicalHeader = Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString();
         int prefixLength = index < 0 ? 3 : index;
         for (int i = 0; i < prefixLength; i++)
@@ -83,6 +78,44 @@ public partial class DebugRpcModuleTests
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString(), Is.EqualTo(canonicalHeader));
             Assert.That(chain.WorldStateManager.GlobalStateReader.GetBalance(block.Header, TestItem.AddressC), Is.EqualTo(initial + 3));
         }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_txIndex_javascript_context_uses_call_overrides(
+        [Values(-1, 0, 1)] int index, [Values] bool blockAccessLists)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { AllowTestChainOverride = false }));
+        await AddTraceCallPrefixTransfers(chain, 2);
+        const string tracer = "{step:function(){},fault:function(){},result:function(ctx){return {block:ctx.block,gasPrice:ctx.gasPrice.toString(10)};}}";
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x186a0" }, "latest",
+            new
+            {
+                txIndex = index < 0 ? null : $"0x{index:x}",
+                tracer,
+                blockOverrides = new { number = "0x4d2" },
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { code = "0x00" } }
+            });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["result"]!["block"], Is.EqualTo(1234), response);
+            Assert.That((string?)json["result"]!["gasPrice"], Is.EqualTo("0"), response);
+        }
+    }
+
+    private static async Task<Block> AddTraceCallPrefixTransfers(TestRpcBlockchain chain, int count)
+    {
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[count];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasPrice(1_000_000_000).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(count));
+        return block;
     }
 
     [TestCase("0x3", -32000)]
