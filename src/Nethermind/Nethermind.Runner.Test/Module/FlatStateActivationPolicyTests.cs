@@ -136,6 +136,22 @@ public class FlatStateActivationPolicyTests
         }
     }
 
+    [TestCase(true, HistoryRetentionMode.Rolling, FlatDbOnRepair.Resync, true)]
+    [TestCase(true, HistoryRetentionMode.SinceBlock, FlatDbOnRepair.Resync, true)]
+    [TestCase(true, HistoryRetentionMode.None, FlatDbOnRepair.Resync, false)]
+    [TestCase(false, HistoryRetentionMode.Rolling, FlatDbOnRepair.Resync, false)]
+    [TestCase(true, HistoryRetentionMode.Rolling, FlatDbOnRepair.Ignore, false)]
+    public void Wipe_warns_to_wipe_flat_history_only_when_windowed(bool historyEnabled, HistoryRetentionMode retention, FlatDbOnRepair onRepair, bool expectWarn)
+    {
+        TestLogger testLogger = new();
+        PolicySetup setup = CreateSetup(Flags.Enabled | Flags.Repaired | Flags.FlatHasData, FlatLayout.Flat, 32.GiB,
+            new OneLoggerLogManager(new ILogger(testLogger)), onRepair, historyEnabled, retention);
+
+        setup.Policy.ShouldTurnOnFlatDb();
+
+        Assert.That(testLogger.LogList.Count(static l => l.Contains("flatHistory DB was not wiped")), Is.EqualTo(expectWarn ? 1 : 0));
+    }
+
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
         FlatLayout layout, long availableMemoryBytes, ILogManager logManager, bool wipedForSync = false)
@@ -151,10 +167,12 @@ public class FlatStateActivationPolicyTests
     private readonly record struct PolicySetup(FlatStateActivationPolicy Policy, SpyFlatColumnsDb FlatDb);
 
     private static PolicySetup CreateSetup(Flags flags, FlatLayout layout, long availableMemoryBytes, ILogManager logManager,
-        FlatDbOnRepair onRepair = FlatDbOnRepair.Resync)
+        FlatDbOnRepair onRepair = FlatDbOnRepair.Resync, bool historyEnabled = false, HistoryRetentionMode historyRetention = HistoryRetentionMode.None)
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(flags.HasFlag(Flags.Enabled));
+        flatDbConfig.HistoryEnabled.Returns(historyEnabled);
+        flatDbConfig.HistoryRetention.Returns(historyRetention);
         flatDbConfig.ImportFromPruningTrieState.Returns(flags.HasFlag(Flags.ImportFromPruningTrieState));
         flatDbConfig.Layout.Returns(layout);
         flatDbConfig.OnRepair.Returns(onRepair);

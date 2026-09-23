@@ -70,7 +70,7 @@ public sealed class FlatStateActivationPolicy(
                 logger.Warn(db.WasRepairedOnOpen
                     ? "An interrupted flat DB wipe was detected after a RocksDB auto-repair; redoing it before the state sync."
                     : "An interrupted flat DB wipe was detected; redoing it before the state sync.");
-            WipeForResync(db, logger);
+            WipeForResync(db, flatDbConfig, logger);
             return true;
         }
 
@@ -86,7 +86,7 @@ public sealed class FlatStateActivationPolicy(
             {
                 if (logger.IsError)
                     logger.Error("Flat DB was auto-repaired by RocksDB; wiping flat state and re-entering state sync (FlatDb.OnRepair=Resync).");
-                WipeForResync(db, logger);
+                WipeForResync(db, flatDbConfig, logger);
                 return true;
             }
 
@@ -131,12 +131,16 @@ public sealed class FlatStateActivationPolicy(
     /// (<c>Sync.SnapSync=false</c>) never wipes and would skip every subtree whose surviving root node still hashes.
     /// The repair is acknowledged only after the wipe is flushed, so a crash in between redoes the wipe.
     /// </remarks>
-    private static void WipeForResync(IColumnsDb<FlatDbColumns> db, ILogger logger)
+    private static void WipeForResync(IColumnsDb<FlatDbColumns> db, IFlatDbConfig flatDbConfig, ILogger logger)
     {
         BasePersistence.ClearAllColumns(db);
         db.Flush();
         db.AcknowledgeRepair();
         if (logger.IsInfo) logger.Info("Flat DB wiped; the state sync refills it.");
+        // A windowed history keeps its watermark across this wipe, so the sync's pivot lands inside the captured window
+        // and HistoryWriter.SeedPivot refuses it at FinalizeSync, which cannot be retried in-process.
+        if (flatDbConfig.HistoryEnabled && flatDbConfig.IsHistoryWindowed() && logger.IsWarn)
+            logger.Warn("The flatHistory DB was not wiped. Stop the node and wipe it too, or the state sync cannot finish.");
     }
 
     private static bool HasAnyDataKey(IColumnsDb<FlatDbColumns> db)
