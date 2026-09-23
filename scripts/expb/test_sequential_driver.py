@@ -279,17 +279,59 @@ class CampaignScopeTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(attempted, ["image-1-run1", "image-2-run1", "image-3-run1"])
 
-    def test_a_malformed_image_list_fails_before_any_runner_time_is_spent(self) -> None:
-        for rejected in ("[]", '[{"id":"..","image":"repo:tag"}]', '[{"id":"a b","image":"repo:tag"}]'):
-            with self.subTest(rejected=rejected):
+    def test_malformed_dispatch_input_fails_before_any_runner_time_is_spent(self) -> None:
+        valid_images = '[{"id":"image-1","image":"repo:tag"}]'
+        for images, values in (
+            ("[]", {}),
+            ('[{"id":"..","image":"repo:tag"}]', {}),
+            ('[{"id":"a b","image":"repo:tag"}]', {}),
+            (valid_images, {"CLIENT_ENV": "FOO"}),
+            (valid_images, {"EXPB_ENV_PASSTHROUGH": "bad-key=1"}),
+            (valid_images, {"AMOUNT": "0"}),
+            (valid_images, {"MEASUREMENT_MODE": "compute-warm", "ADDITIONAL_EXTRA_FLAGS": "--JsonRpc.GasCap=100"}),
+        ):
+            with self.subTest(images=images, **values):
                 driver.run_sample = lambda *_args: self.fail("no sample may run")
                 with environment(
                     EXPB_CAMPAIGN_DIR=str(self.directory / "rejected"),
-                    EXPB_IMAGES_JSON=rejected,
+                    EXPB_IMAGES_JSON=images,
+                    **values,
                 ):
                     self.assertEqual(driver.main(), 1)
                 campaign = json.loads((self.directory / "rejected" / "campaign.json").read_text(encoding="utf-8"))
                 self.assertEqual(campaign["status"], "failed")
+
+
+class SummaryTests(unittest.TestCase):
+    def test_averages_are_formatted_and_missing_ones_render_as_unavailable(self) -> None:
+        def sample(sample_id: str, status: str, avg: float | None) -> dict:
+            return {
+                "sample_id": sample_id,
+                "image_id": "image-1",
+                "status": status,
+                "metrics": {
+                    "source": "SSE",
+                    "count": 1,
+                    "avg": avg,
+                    "delivered": 1,
+                    "ids": [1],
+                    "request": {"avg": avg},
+                    "outside": {"avg": None},
+                    "mgas_s": None,
+                },
+                "sse_block_ids": [1],
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            images = [{"id": "image-1", "image": "repo:tag"}]
+            driver.write_summary(root, images, 2, [sample("image-1-run1", "success", 23.007412345678901), sample("image-1-run2", "failed", None)])
+            summary = (root / "summary.md").read_text(encoding="utf-8")
+
+        self.assertIn("| image-1-run1 | success | SSE | 1 | 23.0074 | 23.0074 | n/a | n/a |", summary)
+        self.assertIn("| image-1-run2 | failed | SSE | 1 | n/a | n/a | n/a | n/a |", summary)
+        self.assertIn("Image image-1: mean AVG=23.0074 ms;", summary)
+        self.assertNotIn("None", summary)
 
 
 if __name__ == "__main__":

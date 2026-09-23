@@ -292,6 +292,9 @@ def comparison_delta(baseline: list[dict], candidate: list[dict], run_count: int
         return None
     return (candidate_mean - baseline_mean) / baseline_mean * 100
 
+def format_ms(value: float | None) -> str:
+    return f"{value:.4f}" if value is not None else "n/a"
+
 def write_summary(root: Path, images: list[dict], run_count: int, samples: list[dict]) -> None:
     successful = {image["id"]: [sample for sample in samples if sample["status"] == "success" and sample["image_id"] == image["id"]] for image in images}
     baseline_id = images[0]["id"]
@@ -301,8 +304,9 @@ def write_summary(root: Path, images: list[dict], run_count: int, samples: list[
     for sample in samples:
         metrics = sample["metrics"]
         source = metrics.get("source", "n/a")
-        processing_avg = metrics.get("avg", "n/a") if source == "SSE" else "n/a"
-        rows.append(f"| {sample['sample_id']} | {sample['status']} | {source} | {metrics.get('count', 0)} | {processing_avg} | {metrics.get('request', {}).get('avg', 'n/a')} | {metrics.get('outside', {}).get('avg', 'n/a')} | {metrics.get('mgas_s', 'n/a')} |")
+        processing_avg = format_ms(metrics.get("avg")) if source == "SSE" else "n/a"
+        mgas_s = metrics.get("mgas_s")
+        rows.append(f"| {sample['sample_id']} | {sample['status']} | {source} | {metrics.get('count', 0)} | {processing_avg} | {format_ms(metrics.get('request', {}).get('avg'))} | {format_ms(metrics.get('outside', {}).get('avg'))} | {f'{mgas_s:.2f}' if mgas_s is not None else 'n/a'} |")
     lines += rows
     lines.append("")
     for image in images:
@@ -313,7 +317,7 @@ def write_summary(root: Path, images: list[dict], run_count: int, samples: list[
             delta_value = comparison_delta(successful[baseline_id], successful[image_id], run_count)
             if delta_value is not None:
                 delta = f"{delta_value:+.2f}%"
-        lines.append(f"Image {image_id}: mean AVG={mean if mean is not None else 'n/a'} ms; CV={f'{cv:.2f}%' if cv is not None else 'unavailable'}; delta vs {baseline_id}={delta}")
+        lines.append(f"Image {image_id}: mean AVG={format_ms(mean)} ms; CV={f'{cv:.2f}%' if cv is not None else 'unavailable'}; delta vs {baseline_id}={delta}")
     (root / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 def main() -> int:
@@ -329,6 +333,9 @@ def main() -> int:
         if len({x["id"] for x in images}) != len(images) or any(x["id"] in {".", ".."} or not re.fullmatch(r"[A-Za-z0-9_.-]+", x["id"]) for x in images): raise ValueError("image IDs must be unique and shell-safe")
         run_count = int(get("RUN_COUNT", "1"))
         if run_count < 1: raise ValueError("RUN_COUNT must be positive")
+        # Dispatch input is the same for every sample, so a malformed value fails the campaign here rather than as a sample.
+        render(base, images[0], 1)
+        parse_pairs(get("EXPB_ENV_PASSTHROUGH"))
         verify_clean(base)
     except Exception as error:
         (root / "campaign.json").write_text(json.dumps({"status": "failed", "failure_reasons": [str(error)]}, indent=2) + "\n", encoding="utf-8")
