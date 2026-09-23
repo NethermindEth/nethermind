@@ -115,7 +115,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         ISenderRecoveryTracker? senderRecovery = null)
     {
         _senderRecovery = senderRecovery;
-        _concurrencyLevel = concurrency == 0 ? Math.Max(1, Core.Cpu.RuntimeInformation.PerformanceProcessorCount - 1) : concurrency;
+        _concurrencyLevel = concurrency == 0 ? Core.Cpu.RuntimeInformation.PerformanceProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         // minPoolSize is a floor: the address warmer, transaction warmup, and storage discovery rent

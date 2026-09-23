@@ -35,15 +35,21 @@ public class RuntimeInformationTests
     public void Single_processor_flag_follows_the_count()
         => Assert.That(RuntimeInformation.IsSingleProcessor, Is.EqualTo(RuntimeInformation.ProcessorCount <= 1));
 
-    [TestCase("0-11", 12, TestName = "CountCpuList_SingleRange_CountsEveryCpu")]
-    [TestCase("0-3,8,10-11\n", 7, TestName = "CountCpuList_RangesAndSingles_CountsEach")]
-    [TestCase("5", 1, TestName = "CountCpuList_SingleCpu_CountsOne")]
-    [TestCase("", 0, TestName = "CountCpuList_Empty_CountsNone")]
-    [TestCase("4-2,x", 0, TestName = "CountCpuList_Malformed_CountsNone")]
-    public void CountCpuList_ParsesLinuxCpuLists(string cpuList, int expected) =>
-        Assert.That(RuntimeInformation.CountCpuList(cpuList), Is.EqualTo(expected), "the number of CPUs the list names");
+    [TestCase("0-11", 12, TestName = "ParseCpuList_SingleRange_ListsEveryCpu")]
+    [TestCase("0-3,8,10-11\n", 7, TestName = "ParseCpuList_RangesAndSingles_ListsEach")]
+    [TestCase("5", 1, TestName = "ParseCpuList_SingleCpu_ListsOne")]
+    [TestCase("", 0, TestName = "ParseCpuList_Empty_ListsNone")]
+    [TestCase("4-2,x,-1", 0, TestName = "ParseCpuList_Malformed_ListsNone")]
+    public void ParseCpuList_ParsesLinuxCpuLists(string cpuList, int expected) =>
+        Assert.That(RuntimeInformation.ParseCpuList(cpuList), Has.Count.EqualTo(expected), "the number of CPUs the list names");
 
-    [Test]
-    public void PerformanceProcessorCount_NeverExceedsTheLogicalCount() =>
-        Assert.That(RuntimeInformation.PerformanceProcessorCount, Is.InRange(1, RuntimeInformation.ProcessorCount), "performance cores are a subset of the logical processors");
+    [TestCase("0-11", "0-19", 20, 12, TestName = "PerformanceCountFrom_UnpinnedHybrid_CountsPerformanceCores")]
+    [TestCase("0-11", "0-3,12-19", 12, 4, TestName = "PerformanceCountFrom_PinnedToMixedCpus_CountsAllowedPerformanceCores")]
+    [TestCase("0-11", "12-19", 8, 8, TestName = "PerformanceCountFrom_PinnedToEfficiencyCores_FallsBackToLogicalCount")]
+    [TestCase(null, "0-15", 16, 16, TestName = "PerformanceCountFrom_NoCoreTypes_FallsBackToLogicalCount")]
+    [TestCase("0-11", null, 20, 12, TestName = "PerformanceCountFrom_AllowedCpusUnknown_CountsPerformanceCores")]
+    [TestCase("0-11", "0-19", 1, 1, TestName = "PerformanceCountFrom_FewerLogicalProcessors_ClampsToLogicalCount")]
+    public void PerformanceCountFrom_CountsAllowedPerformanceCores(string? performanceCpus, string? allowedCpus, int processorCount, int expected) =>
+        Assert.That(RuntimeInformation.PerformanceCountFrom(performanceCpus, allowedCpus, processorCount), Is.EqualTo(expected),
+            "performance cores the process may run on, never more than its logical processors");
 }

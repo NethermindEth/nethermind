@@ -5,6 +5,7 @@
 // Licensed under the MIT License
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 
@@ -54,8 +55,8 @@ public static class RuntimeInformation
     public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? ProcessorCount;
 
     /// <summary>
-    /// The logical processors on performance cores: on a hybrid CPU, whose core types Linux lists separately, the
-    /// efficiency cores are left out; everywhere else it is <see cref="ProcessorCount"/>.
+    /// The logical processors this process may run on that sit on performance cores: on a hybrid CPU, whose core types
+    /// Linux lists separately, the efficiency cores are left out; everywhere else it is <see cref="ProcessorCount"/>.
     /// </summary>
     /// <remarks>
     /// Size CPU-bound work that runs alongside block processing by this. Counting efficiency cores as equal oversubscribes
@@ -69,41 +70,82 @@ public static class RuntimeInformation
 #if !ZK_EVM
         if (IsLinux())
         {
-            try
-            {
-                const string performanceCores = "/sys/devices/cpu_core/cpus";
-                if (File.Exists(performanceCores))
-                {
-                    int count = CountCpuList(File.ReadAllText(performanceCores));
-                    if (count > 0) return Math.Min(count, ProcessorCount);
-                }
-            }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            return PerformanceCountFrom(ReadOrNull("/sys/devices/cpu_core/cpus"), ReadAllowedCpus(), ProcessorCount);
         }
 #endif
         return ProcessorCount;
     }
 
-    /// <summary>Counts the CPUs in a Linux CPU list such as <c>0-11,14</c>.</summary>
-    internal static int CountCpuList(string cpuList)
+    /// <summary>
+    /// The performance cores' logical processors among the ones the process may run on, or <paramref name="processorCount"/>
+    /// when the CPU lists no performance cores or the process may run on none of them.
+    /// </summary>
+    /// <param name="performanceCpus">Linux's list of the performance cores' logical processors, null on a CPU without one.</param>
+    /// <param name="allowedCpus">The CPUs the process may run on, null when unknown.</param>
+    /// <param name="processorCount">The logical processors available to the process.</param>
+    internal static int PerformanceCountFrom(string? performanceCpus, string? allowedCpus, int processorCount)
     {
-        int count = 0;
+        if (performanceCpus is null) return processorCount;
+
+        HashSet<int> performance = ParseCpuList(performanceCpus);
+        if (allowedCpus is not null) performance.IntersectWith(ParseCpuList(allowedCpus));
+        return performance.Count > 0 ? Math.Min(performance.Count, processorCount) : processorCount;
+    }
+
+    /// <summary>Parses a Linux CPU list such as <c>0-11,14</c>, skipping malformed entries.</summary>
+    internal static HashSet<int> ParseCpuList(string cpuList)
+    {
+        const int maxRange = 1 << 16;
+        HashSet<int> cpus = [];
         foreach (string range in cpuList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             int dash = range.IndexOf('-');
             if (dash < 0)
             {
-                if (int.TryParse(range, out _)) count++;
+                if (int.TryParse(range, out int cpu) && cpu >= 0) cpus.Add(cpu);
             }
-            else if (int.TryParse(range.AsSpan(0, dash), out int first) && int.TryParse(range.AsSpan(dash + 1), out int last) && last >= first)
+            else if (int.TryParse(range.AsSpan(0, dash), out int first) && int.TryParse(range.AsSpan(dash + 1), out int last)
+                     && first >= 0 && last >= first && last - first < maxRange)
             {
-                count += last - first + 1;
+                for (int cpu = first; cpu <= last; cpu++) cpus.Add(cpu);
             }
         }
 
-        return count;
+        return cpus;
     }
+
+    private static string? ReadOrNull(string path)
+    {
+        try
+        {
+            return File.ReadAllText(path);
+        }
+        // Absent or unreadable: as far as this process can tell the CPU lists no core types, so the logical count stands.
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    // The CPUs the process may run on, which a cpuset or an affinity mask narrows below the host's.
+    private static string? ReadAllowedCpus()
+    {
+        const string prefix = "Cpus_allowed_list:";
+        string? status = ReadOrNull("/proc/self/status");
+        if (status is null) return null;
+
+        foreach (string line in status.Split('\n'))
+        {
+            if (line.StartsWith(prefix, StringComparison.Ordinal)) return line[prefix.Length..];
+        }
+
+        return null;
+    }
+
     public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = ProcessorCount };
     public static bool Is64BitPlatform() => IntPtr.Size == 8;
 }

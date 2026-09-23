@@ -48,7 +48,7 @@ public interface IBlocksConfig : IConfig
     )]
     int PrecompileCacheMaxKilobytes { get; set; }
 
-    [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Specify pre-warm state concurrency. Default is the logical processors on performance cores - 1, which on a CPU without efficiency cores is all logical processors - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
