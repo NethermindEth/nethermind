@@ -16,6 +16,20 @@ namespace Nethermind.Evm.Test.Tracing
     public class CancellationTracerTests
     {
         [Test]
+        public void Forwards_frame_receipts_and_failures()
+        {
+            ITxTracer inner = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+            using CancellationTxTracer tracer = new(inner);
+            TxFrameReceipt[] receipts = [new(TxFrameReceipt.StatusSuccess, 100, 0, [])];
+
+            tracer.ReportFrameEnd(1, EvmExceptionType.OutOfGas);
+            tracer.ReportFrameTxReceipt(TestItem.AddressA, receipts);
+
+            ((IFrameTxReceiptTracer)inner).Received().ReportFrameEnd(1, EvmExceptionType.OutOfGas);
+            ((IFrameTxReceiptTracer)inner).Received().ReportFrameTxReceipt(TestItem.AddressA, receipts);
+        }
+
+        [Test]
         public void Throws_operation_canceled_when_token_is_cancelled()
         {
             using CancellationTokenSource cancellationTokenSource = new();
@@ -24,6 +38,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionError(EvmExceptionType.None));
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionRemainingGas(1));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportFrameEnd(0, null));
         }
 
         [Test]

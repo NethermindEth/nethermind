@@ -176,18 +176,33 @@ namespace Nethermind.Facade
 
         private CallOutput RunCall(IWorldState nonceSource, ITransactionProcessor txProcessor, BlockHeader header, Transaction tx, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            CallOutputTracer tracer = new();
+            FrameCallOutputTracer tracer = new();
             TransactionResult result = TryCallAndRestore(nonceSource, txProcessor, header, tx, treatBlockHeaderAsParentBlock: false,
                 blobBaseFeeOverride, tracer.WithCancellation(cancellationToken));
 
             return new CallOutput
             {
+                FailedFrameIndex = tracer.FailedFrameIndex,
+                FrameReceipts = tracer.FrameReceipts,
                 Error = result.GetErrorMessage(tracer.Error),
                 GasSpent = tracer.GasSpent,
                 OutputData = tracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
                 ExecutionReverted = result.EvmExceptionType == EvmExceptionType.Revert,
             };
+        }
+
+        private sealed class FrameCallOutputTracer : CallOutputTracer, IFrameTxReceiptTracer
+        {
+            public int? FailedFrameIndex { get; private set; }
+            public TxFrameReceipt[]? FrameReceipts { get; private set; }
+
+            public void ReportFrameEnd(int frameIndex, EvmExceptionType? error)
+            {
+                if (error is not null) FailedFrameIndex ??= frameIndex;
+            }
+
+            public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) => FrameReceipts = frameReceipts;
         }
 
         // Empty dict coalesces to no override: the exclusive env path is a free DoS vector for a no-op overlay.
