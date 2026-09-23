@@ -215,19 +215,26 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // An IL is a per-call parameter not bound to block.Hash, so never short-circuit when one is supplied.
         // The canonical marker on its own is too weak to answer from: forward sync and the fast-headers backfill
         // both mark blocks canonical without executing them, and the state a block committed may since have been
-        // pruned. Either way the block falls through: it is re-executed if its parent still has a state, and
-        // answered SYNCING if not, because ShouldProcessBlock gates on the parent and the retained-state window is
-        // contiguous. That holds for an inclusion-list payload too, whose answer below reads the state root and so
-        // cannot tell the state this block committed from one it merely shares a root with.
+        // pruned. A block sync placed there without running it falls through to processing - an inclusion-list
+        // payload too, whose answer below reads the state root and so cannot tell the state this block committed
+        // from one it merely shares a root with.
         bool isCanonicalBehindHead = _blockTree.IsOnMainChainBehindOrEqualHead(block.Header);
-        bool executedOnOwnChain = isCanonicalBehindHead && WasExecuted(block);
         bool hasInclusionList = HasInclusionList(block);
-        if (executedOnOwnChain && (hasInclusionList || IsVerdictServiceable(block)))
+        if (isCanonicalBehindHead && WasExecuted(block))
         {
             if (!hasInclusionList)
             {
-                if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
-                return NewPayloadV1Result.Valid(block.Hash);
+                if (IsVerdictServiceable(block))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                    return NewPayloadV1Result.Valid(block.Hash);
+                }
+
+                // Not re-executed: a second run failing a check tightened since acceptance would be handled like any
+                // invalid block, deleting this block and every block after it up to the head. The cost is that the
+                // head cannot move back here until the state returns.
+                if (_logger.IsInfo) _logger.Info($"Syncing... A new payload found in main chain whose state is gone. Block {block.ToString(Block.Format.Short)}.");
+                return NewPayloadV1Result.Syncing;
             }
 
             // Reuse the cached result for this exact (block, IL) so re-validating a known-canonical block
@@ -321,7 +328,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, executedOnOwnChain);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline);
 
         switch (result)
         {
@@ -566,7 +573,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, bool executedOnOwnChain)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline)
     {
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
@@ -603,10 +610,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (cachedResult.Result, cachedResult.Message);
         }
 
-        // Validate. A block this node already validated and ran onto its own chain is only being run again for the
-        // state it committed: checking it anew can only contradict that earlier verdict, and a contradiction is
-        // recorded against every block that descends from it, the head included.
-        if (!executedOnOwnChain && !ValidateWithBlockValidator(block, parent, out validationMessage))
+        // Validate
+        if (!ValidateWithBlockValidator(block, parent, out validationMessage))
         {
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }

@@ -1781,15 +1781,16 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
-    /// A resubmitted block whose post-state has been pruned must be re-executed rather than answered from a
-    /// previous verdict, so that the payload that builds on it is executed instead of answered SYNCING.
+    /// A resubmitted block above the head whose post-state has been pruned must be re-executed rather than answered
+    /// from a previous verdict, so that the payload that builds on it is executed instead of answered SYNCING.
     /// </summary>
-    /// <param name="headAtGenesis">
-    /// Whether the resubmission arrives above the head (the shortcuts in <c>ValidateBlockAndProcess</c>) or at or
-    /// below it (the canonical-chain shortcut).
-    /// </param>
+    /// <remarks>
+    /// The Hive <c>consume-enginex</c> shape: the head is moved back to genesis between tests and a byte-identical
+    /// block 1 is sent again. A block at or below the head is covered by
+    /// <see cref="newPayloadV1_leaves_its_own_chain_intact_when_a_pruned_canonical_block_is_resubmitted"/>.
+    /// </remarks>
     [Test]
-    public async Task newPayloadV1_reexecutes_a_resubmitted_block_whose_state_was_pruned([Values] bool headAtGenesis)
+    public async Task newPayloadV1_reexecutes_a_resubmitted_block_whose_state_was_pruned()
     {
         ConcurrentDictionary<Hash256, byte> pruned = new();
         using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
@@ -1802,11 +1803,8 @@ public partial class EngineModuleTests
         // Built while the state is still readable; only its submission happens after pruning.
         ExecutionPayload child = CreateBlockRequest(chain, resubmitted, TestItem.AddressD);
 
-        if (headAtGenesis)
-        {
-            ForkchoiceStateV1 toGenesis = new(genesisHash, Keccak.Zero, Keccak.Zero);
-            Assert.That((await rpc.engine_forkchoiceUpdatedV1(toGenesis)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        }
+        ForkchoiceStateV1 toGenesis = new(genesisHash, Keccak.Zero, Keccak.Zero);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(toGenesis)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
         pruned[resubmitted.BlockHash] = 0;
 
@@ -1945,47 +1943,103 @@ public partial class EngineModuleTests
         }
     }
 
+    /// <summary>Rejects the processed form of selected blocks, standing in for a processing check tightened after they were accepted.</summary>
+    private sealed class TightenedProcessingValidator(IBlockValidator inner, ConcurrentDictionary<Hash256, byte> rejected) : IBlockValidator
+    {
+        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
+        {
+            if (suggestedBlock.Hash is not null && rejected.ContainsKey(suggestedBlock.Hash))
+            {
+                error = "processing check tightened since acceptance";
+                return false;
+            }
+
+            return inner.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error);
+        }
+
+        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) =>
+            ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
+
+        public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => inner.ValidateOrphanedBlock(block, out error);
+
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
+            inner.Validate(header, parent, isUncle, out error);
+
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error, bool validateHash) =>
+            inner.Validate(header, parent, isUncle, out error, validateHash);
+
+        public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) => inner.ValidateOrphaned(header, out error);
+
+        public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true) =>
+            inner.ValidateSuggestedBlock(block, parent, out error, validateHashes);
+
+        public bool ValidateWithdrawals(Block block, out string? error) => inner.ValidateWithdrawals(block, out error);
+
+        public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
+            inner.ValidateBodyAgainstHeader(header, toBeValidated, out error);
+    }
+
+    /// <summary>Which check, if any, rejects the resubmitted block although it passed when the block was accepted.</summary>
+    public enum TightenedCheck { None, Header, Processing }
+
     /// <summary>
-    /// A block already on this node's own chain can fail a rule it passed when it was accepted, for instance after
-    /// the rule is tightened. Revisiting it must not record the failure against the chain: every block that
-    /// descends from it, the head included, would then be answered INVALID.
+    /// A canonical block at or below the head whose state has been pruned is answered SYNCING and not run again. A
+    /// second run could fail a check the block passed when it was accepted, and the failure would be handled like any
+    /// invalid block: the head marked invalid, and the block and every block after it up to the head deleted from
+    /// the block tree.
     /// </summary>
-    /// <param name="parentHasState">Whether the block can be re-executed, or only answered.</param>
+    /// <param name="parentHasState">Whether the block could be re-executed at all, or only answered.</param>
     /// <param name="executed">Whether this node ran the block, or sync placed it on the chain without running it.</param>
-    /// <param name="expected">The answer for the revisited block itself.</param>
-    [TestCase(false, true, PayloadStatus.Syncing)]
-    [TestCase(false, false, PayloadStatus.Syncing)]
-    [TestCase(true, true, PayloadStatus.Valid)]
-    public async Task newPayloadV1_does_not_mark_its_own_chain_invalid_when_a_revisited_block_fails_validation(
-        bool parentHasState, bool executed, string expected)
+    /// <param name="tightened">The check that would reject the block now.</param>
+    [TestCase(false, true, TightenedCheck.Header)]
+    [TestCase(false, false, TightenedCheck.Header)]
+    [TestCase(true, true, TightenedCheck.None)]
+    [TestCase(true, true, TightenedCheck.Header)]
+    [TestCase(true, true, TightenedCheck.Processing)]
+    public async Task newPayloadV1_leaves_its_own_chain_intact_when_a_pruned_canonical_block_is_resubmitted(
+        bool parentHasState, bool executed, TightenedCheck tightened)
     {
         ConcurrentDictionary<Hash256, byte> pruned = new();
-        ConcurrentDictionary<Hash256, byte> rejected = new();
+        ConcurrentDictionary<Hash256, byte> headerRejected = new();
+        ConcurrentDictionary<Hash256, byte> processingRejected = new();
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder => builder
                 .AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned))
-                .AddDecorator<IHeaderValidator>((_, inner) => new TightenedHeaderValidator(inner, rejected)));
+                .AddDecorator<IHeaderValidator>((_, inner) => new TightenedHeaderValidator(inner, headerRejected))
+                .AddDecorator<IBlockValidator>((_, inner) => new TightenedProcessingValidator(inner, processingRejected)));
         chain.BranchProcessor.BlockProcessed += (_, e) => pruned.TryRemove(e.Block.Hash!, out byte _);
         IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
         Hash256 head = chain.BlockTree.HeadHash!;
+        ulong bestKnown = chain.BlockTree.BestKnownNumber;
 
-        ExecutionPayload revisited = blocks[1];
+        ExecutionPayload resubmitted = blocks[1];
         if (!parentHasState) pruned[blocks[0].BlockHash] = 0;
-        pruned[revisited.BlockHash] = 0;
+        pruned[resubmitted.BlockHash] = 0;
         // What the pre-pivot header backfill leaves behind: on the main chain, never run by this node.
-        if (!executed) chain.BlockTree.GetInfo(revisited.BlockNumber, revisited.BlockHash).Info!.WasProcessed = false;
-        rejected[revisited.BlockHash] = 0;
+        if (!executed) chain.BlockTree.GetInfo(resubmitted.BlockNumber, resubmitted.BlockHash).Info!.WasProcessed = false;
+        if (tightened == TightenedCheck.Header) headerRejected[resubmitted.BlockHash] = 0;
+        if (tightened == TightenedCheck.Processing) processingRejected[resubmitted.BlockHash] = 0;
 
-        ResultWrapper<PayloadStatusV1> result = await chain.EngineRpcModule.engine_newPayloadV1(revisited);
+        int processed = 0;
+        chain.BranchProcessor.BlockProcessing += (_, _) => Interlocked.Increment(ref processed);
+        ResultWrapper<PayloadStatusV1> result = await chain.EngineRpcModule.engine_newPayloadV1(resubmitted);
         ResultWrapper<ForkchoiceUpdatedV1Result> toHead =
             await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(head, Keccak.Zero, Keccak.Zero));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Data.Status, Is.EqualTo(expected));
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(processed, Is.Zero, "a block on the node's own chain must not be run again");
             Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(head, out _), Is.False,
-                "the head descends from the revisited block and must not be marked invalid");
+                "the head descends from the resubmitted block and must not be marked invalid");
             Assert.That(toHead.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.BestKnownNumber, Is.EqualTo(bestKnown));
+            foreach (ExecutionPayload block in blocks)
+            {
+                Assert.That(chain.BlockTree.FindHeader(block.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null, $"header {block.BlockNumber}");
+                Assert.That(chain.BlockTree.FindBlock(block.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null, $"body {block.BlockNumber}");
+                Assert.That(chain.BlockTree.FindLevel(block.BlockNumber), Is.Not.Null, $"level {block.BlockNumber}");
+            }
         }
     }
 
