@@ -59,21 +59,14 @@
     <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.1.0" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.7.0" />
     <PackageVersion Include="Nethermind.Crypto.SecP256r1" Version="1.1.0" />
-    <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.2.76" />
-    <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.2.76" />
-    <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.2.76" />
+    <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="0.8.0.11" />
+    <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="0.8.0.11" />
+    <PackageVersion Include="Nethermind.DotNetty.Transport" Version="0.8.0.11" />
     <PackageVersion Include="Nethermind.GmpBindings" Version="2.0.0" />
     <PackageVersion Include="Nethermind.Libp2p" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.MclBindings" Version="2.0.0" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.9.0" />
-    <!-- The four zkVM packages are pinned exactly, as RocksDbBindings is: each
-         carries a native half whose ABI the guest is compiled against (syscall
-         numbers, accelerator ordering, the public-values protocol), so a
-         higher resolved version is a silently different contract, not a
-         compatible upgrade. They also come from NuGet's staging gallery, where
-         a version can be replaced or purged, and nuget.config audits only
-         nuget.org. -->
     <PackageVersion Include="Nethermind.OpenVM.Runtime" Version="[1.0.0-preview.1]" />
     <PackageVersion Include="Nethermind.RocksDbBindings" Version="[11.8.1-preview.92]" />
     <PackageVersion Include="Nethermind.Sp1.Runtime" Version="[1.0.0-preview.1]" />

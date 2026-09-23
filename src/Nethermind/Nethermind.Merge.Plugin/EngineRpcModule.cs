@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
@@ -45,6 +46,7 @@ public partial class EngineRpcModule(
     IBlobCustodyTracker blobCustodyTracker,
     ISpecProvider specProvider,
     GCKeeper gcKeeper,
+    IBlockProcessingQueue processingQueue,
     ILogManager logManager) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
@@ -75,6 +77,7 @@ public partial class EngineRpcModule(
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
+        IBlockProcessingQueue processingQueue,
         ILogManager logManager)
         : this(
             getPayloadHandlerV1,
@@ -103,6 +106,7 @@ public partial class EngineRpcModule(
             new BlobCustodyTracker(),
             specProvider,
             gcKeeper,
+            processingQueue,
             logManager)
     {
     }
