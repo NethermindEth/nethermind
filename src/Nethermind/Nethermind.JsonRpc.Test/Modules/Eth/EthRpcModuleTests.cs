@@ -2122,13 +2122,17 @@ public partial class EthRpcModuleTests
         Assert.That(retry, Does.Contain("Invalid RLP"));
     }
 
-    [Test]
-    public async Task EthSendRawTransactionSync_UsesSeparateLimitFromExclusiveCalls(
-        [Values(0, 1, 2)] int limit, [Values] bool receiptLookupFails)
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    [TestCase(1, true)]
+    [TestCase(2, true)]
+    public async Task EthSendRawTransactionSync_UsesSeparateLimitFromExclusiveCalls(int limit, bool submissionAccepted)
     {
         JsonRpcConfig config = new()
         {
             EthModuleConcurrentInstances = 1,
+            // Exclusive rentals fail at once instead of queueing, so eth_newBlockFilter below fails
+            // if a pending sync call holds the only exclusive instance.
             Timeout = 0,
             RpcTxSyncMaxConcurrentRequests = limit
         };
@@ -2167,15 +2171,26 @@ public partial class EthRpcModuleTests
 
             if (limit > 0)
             {
-                using JsonRpcResponse refused = await service.SendRequestAsync(
-                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context);
-                Assert.That(RpcTest.AssertError(refused).Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+                // A refusal completes synchronously. A call let through would wait forever on the submission,
+                // which only the finally releases, so leave it to the finally instead of awaiting it here.
+                Task<JsonRpcResponse> refusedTask = service.SendRequestAsync(
+                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context).AsTask();
+                if (!refusedTask.IsCompleted) pending.Add(refusedTask);
+                Assert.That(refusedTask.IsCompleted, Is.True);
+
+                using JsonRpcResponse refused = await refusedTask;
+                Error error = RpcTest.AssertError(refused);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(error.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+                    Assert.That(error.SuppressWarning, Is.True, "refusal must be counted in JsonRpcOverloadRejections");
+                }
             }
             Assert.That(sender.ReceivedCalls().Count(), Is.EqualTo(pendingCount));
         }
         finally
         {
-            submission.TrySetResult((tx.Hash!, receiptLookupFails ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            submission.TrySetResult((tx.Hash!, submissionAccepted ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
             foreach (JsonRpcResponse response in await Task.WhenAll(pending)) response.Dispose();
         }
 
@@ -2184,9 +2199,9 @@ public partial class EthRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(RpcTest.AssertError(retry).Code,
-                Is.EqualTo(receiptLookupFails ? ErrorCodes.InternalError : ErrorCodes.TransactionRejected));
+                Is.EqualTo(submissionAccepted ? ErrorCodes.InternalError : ErrorCodes.TransactionRejected));
             Assert.That(sender.ReceivedCalls().Count(), Is.EqualTo(pendingCount + 1));
-            bridge.Received(receiptLookupFails ? pendingCount + 1 : 0).GetTxReceiptInfo(tx.Hash!);
+            bridge.Received(submissionAccepted ? pendingCount + 1 : 0).GetTxReceiptInfo(tx.Hash!);
         }
     }
 

@@ -12,22 +12,27 @@ namespace Nethermind.JsonRpc.Modules
     //   _queuedCalls: SlowPath waiters, bounded by RequestQueueLimit.
     //   _sharedCalls: SharedPath in-flight, bounded by MaxConcurrentSharedRequests — caps memory
     //                 for heavy sharable methods (eth_call / eth_estimateGas / eth_createAccessList).
-    public static class RpcLimits
+    public sealed class RpcLimits(int queuedLimit = 0, int sharedLimit = 0)
     {
+        /// <summary>
+        /// The node-wide limits, used by every <see cref="BoundedModulePool{T}"/> that is not given its own instance.
+        /// </summary>
+        public static RpcLimits Default { get; } = new();
+
         public static void Init(int queuedLimit, int sharedLimit)
         {
-            QueuedLimit = queuedLimit;
-            SharedLimit = sharedLimit;
+            Default.QueuedLimit = queuedLimit;
+            Default.SharedLimit = sharedLimit;
         }
 
-        private static int QueuedLimit { get; set; }
-        private static int SharedLimit { get; set; }
-        private static bool QueuedLimitEnabled => QueuedLimit > 0;
-        private static bool SharedLimitEnabled => SharedLimit > 0;
-        private static int _queuedCalls;
-        private static int _sharedCalls;
+        private int QueuedLimit { get; set; } = queuedLimit;
+        private int SharedLimit { get; set; } = sharedLimit;
+        private bool QueuedLimitEnabled => QueuedLimit > 0;
+        private bool SharedLimitEnabled => SharedLimit > 0;
+        private int _queuedCalls;
+        private int _sharedCalls;
 
-        public static void AcquireQueuedSlot()
+        public void AcquireQueuedSlot()
         {
             if (!QueuedLimitEnabled) return;
             int after = Interlocked.Increment(ref _queuedCalls);
@@ -38,13 +43,13 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public static void DecrementQueuedCalls()
+        public void DecrementQueuedCalls()
         {
             if (QueuedLimitEnabled)
                 Interlocked.Decrement(ref _queuedCalls);
         }
 
-        public static void AcquireSharedSlot()
+        public void AcquireSharedSlot()
         {
             if (!SharedLimitEnabled) return;
             int after = Interlocked.Increment(ref _sharedCalls);
@@ -55,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public static void DecrementSharedCalls()
+        public void DecrementSharedCalls()
         {
             if (SharedLimitEnabled)
                 Interlocked.Decrement(ref _sharedCalls);
@@ -69,10 +74,17 @@ namespace Nethermind.JsonRpc.Modules
         private readonly Task<T> _sharedAsTask;
         private readonly ConcurrentQueue<T> _pool = new();
         private readonly SemaphoreSlim _semaphore;
+        private readonly RpcLimits _limits;
 
         public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout)
+            : this(factory, exclusiveCapacity, timeout, RpcLimits.Default)
+        {
+        }
+
+        internal BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout, RpcLimits limits)
         {
             _timeout = timeout;
+            _limits = limits;
             Factory = factory;
 
             _semaphore = new SemaphoreSlim(exclusiveCapacity);
@@ -89,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules
 
         private Task<T> SharedPath()
         {
-            RpcLimits.AcquireSharedSlot();
+            _limits.AcquireSharedSlot();
             return _sharedAsTask;
         }
 
@@ -97,7 +109,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (!_semaphore.Wait(0))
             {
-                RpcLimits.AcquireQueuedSlot();
+                _limits.AcquireQueuedSlot();
                 try
                 {
                     if (!await _semaphore.WaitAsync(_timeout))
@@ -107,7 +119,7 @@ namespace Nethermind.JsonRpc.Modules
                 }
                 finally
                 {
-                    RpcLimits.DecrementQueuedCalls();
+                    _limits.DecrementQueuedCalls();
                 }
             }
 
@@ -119,7 +131,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (ReferenceEquals(module, _shared))
             {
-                RpcLimits.DecrementSharedCalls();
+                _limits.DecrementSharedCalls();
                 return;
             }
 

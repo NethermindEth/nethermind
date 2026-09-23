@@ -98,7 +98,14 @@ public partial class EthRpcModule(
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
+
+    /// <summary>In-flight <c>eth_sendRawTransactionSync</c> calls on this instance.</summary>
+    /// <remarks>
+    /// Counts node-wide only because the method is sharable: the module pool runs every such call on its single
+    /// shared instance.
+    /// </remarks>
     private int _syncRequests;
+
     private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
@@ -533,46 +540,51 @@ public partial class EthRpcModule(
 
         try
         {
-            int waitMs = ResolveSyncTimeoutMs(timeoutMs);
-            using CancellationTokenSource cts = new(waitMs);
-
-            // Submit via the virtual eth_sendRawTransaction so subclass overrides
-            // propagate without needing a separate sync override.
-            ResultWrapper<Hash256> sendResult = await eth_sendRawTransaction(transaction);
-            if (sendResult.Result.ResultType != ResultType.Success)
-            {
-                return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode);
-            }
-            Hash256 hash = sendResult.Data;
-
-            while (true)
-            {
-                // Snapshot the next-head Task BEFORE the receipt check: if a head arrives between
-                // the check and the await, the snapshot is already completed and the loop re-checks
-                // immediately. Snapshotting after the check would miss that signal.
-                Task nextHead = _headBlockSignal.NextHeadTask;
-
-                ResultWrapper<ReceiptForRpc?> receiptResult = eth_getTransactionReceipt(hash);
-                if (receiptResult.Data is not null)
-                {
-                    return receiptResult;
-                }
-
-                try
-                {
-                    await nextHead.WaitAsync(cts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    return ResultWrapper<ReceiptForRpc?>.Fail(
-                        $"Transaction {hash} was added to the pool but not included within {waitMs}ms.",
-                        ErrorCodes.Timeout);
-                }
-            }
+            return await SendRawTransactionAndWaitForReceipt(transaction, timeoutMs);
         }
         finally
         {
             Interlocked.Decrement(ref _syncRequests);
+        }
+    }
+
+    private async Task<ResultWrapper<ReceiptForRpc?>> SendRawTransactionAndWaitForReceipt(byte[] transaction, ulong? timeoutMs)
+    {
+        int waitMs = ResolveSyncTimeoutMs(timeoutMs);
+        using CancellationTokenSource cts = new(waitMs);
+
+        // Submit via the virtual eth_sendRawTransaction so subclass overrides
+        // propagate without needing a separate sync override.
+        ResultWrapper<Hash256> sendResult = await eth_sendRawTransaction(transaction);
+        if (sendResult.Result.ResultType != ResultType.Success)
+        {
+            return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode);
+        }
+        Hash256 hash = sendResult.Data;
+
+        while (true)
+        {
+            // Snapshot the next-head Task BEFORE the receipt check: if a head arrives between
+            // the check and the await, the snapshot is already completed and the loop re-checks
+            // immediately. Snapshotting after the check would miss that signal.
+            Task nextHead = _headBlockSignal.NextHeadTask;
+
+            ResultWrapper<ReceiptForRpc?> receiptResult = eth_getTransactionReceipt(hash);
+            if (receiptResult.Data is not null)
+            {
+                return receiptResult;
+            }
+
+            try
+            {
+                await nextHead.WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return ResultWrapper<ReceiptForRpc?>.Fail(
+                    $"Transaction {hash} was added to the pool but not included within {waitMs}ms.",
+                    ErrorCodes.Timeout);
+            }
         }
     }
 

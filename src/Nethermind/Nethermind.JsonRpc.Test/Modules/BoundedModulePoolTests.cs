@@ -29,7 +29,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
-[NonParallelizable]
+[Parallelizable(ParallelScope.Self)]
 [TestFixture]
 public class BoundedModulePoolTests
 {
@@ -87,52 +87,37 @@ public class BoundedModulePoolTests
     [Test]
     public async Task Can_rent_available_module_when_another_pool_queue_is_full()
     {
-        RpcLimits.Init(1, 0);
-        BoundedModulePool<IEthRpcModule> busyPool = new(_modulePool.Factory, 1, -1);
-        BoundedModulePool<IEthRpcModule> availablePool = new(_modulePool.Factory, 1, 0);
-        try
+        RpcLimits limits = new(queuedLimit: 1);
+        BoundedModulePool<IEthRpcModule> busyPool = new(_modulePool.Factory, 1, 10_000, limits);
+        BoundedModulePool<IEthRpcModule> availablePool = new(_modulePool.Factory, 1, 0, limits);
+        for (int i = 0; i < 2; i++)
         {
-            for (int i = 0; i < 2; i++)
+            IEthRpcModule active = await busyPool.GetModule(false);
+            Task<IEthRpcModule> queued = busyPool.GetModule(false);
+            try
             {
-                IEthRpcModule active = await busyPool.GetModule(false);
-                Task<IEthRpcModule> queued = busyPool.GetModule(false);
-                try
-                {
-                    Assert.That(queued.IsCompleted, Is.False);
-                    Assert.ThrowsAsync<LimitExceededException>(() => busyPool.GetModule(false));
+                Assert.That(queued.IsCompleted, Is.False);
+                Assert.ThrowsAsync<LimitExceededException>(() => busyPool.GetModule(false));
 
-                    IEthRpcModule available = await availablePool.GetModule(false);
-                    availablePool.ReturnModule(available);
-                }
-                finally
-                {
-                    busyPool.ReturnModule(active);
-                    busyPool.ReturnModule(await queued);
-                }
+                IEthRpcModule available = await availablePool.GetModule(false);
+                availablePool.ReturnModule(available);
             }
-        }
-        finally
-        {
-            RpcLimits.Init(0, 0);
+            finally
+            {
+                busyPool.ReturnModule(active);
+                busyPool.ReturnModule(await queued);
+            }
         }
     }
 
-    [Test]
-    public void Queue_slot_is_released_after_rental_failure([Values(0, -2)] int timeout)
+    [TestCase(0, typeof(ModuleRentalTimeoutException))]
+    [TestCase(-2, typeof(ArgumentOutOfRangeException))] // not a valid timeout: makes the wait itself throw
+    public void Queue_slot_is_released_after_rental_failure(int timeout, Type expectedException)
     {
-        RpcLimits.Init(1, 0);
-        BoundedModulePool<IEthRpcModule> emptyPool = new(_modulePool.Factory, 0, timeout);
-        Type exceptionType = timeout == 0 ? typeof(ModuleRentalTimeoutException) : typeof(ArgumentOutOfRangeException);
-        try
+        BoundedModulePool<IEthRpcModule> emptyPool = new(_modulePool.Factory, 0, timeout, new RpcLimits(queuedLimit: 1));
+        for (int i = 0; i < 2; i++)
         {
-            for (int i = 0; i < 2; i++)
-            {
-                Assert.ThrowsAsync(exceptionType, () => emptyPool.GetModule(false));
-            }
-        }
-        finally
-        {
-            RpcLimits.Init(0, 0);
+            Assert.ThrowsAsync(expectedException, () => emptyPool.GetModule(false));
         }
     }
 
