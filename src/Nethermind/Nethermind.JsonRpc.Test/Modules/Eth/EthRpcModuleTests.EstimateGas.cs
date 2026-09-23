@@ -30,6 +30,42 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 public partial class EthRpcModuleTests
 {
     [Test]
+    public async Task FrameRpc_UnsignedTransaction_Succeeds(
+        [Values("eth_call", "eth_estimateGas", "eth_fillTransaction")] string method,
+        [Values] bool placeholder)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = new()
+        {
+            From = TestItem.AddressC,
+            To = TestItem.AddressC,
+            MaxFeePerGas = 0,
+            MaxPriorityFeePerGas = 0,
+            Frames =
+            [
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = 50_000 },
+                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGasLimit = 50_000 },
+            ],
+            Signatures = placeholder ? [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }] : [],
+        };
+
+        string response = await ctx.Test.TestEthRpc(method, transaction);
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        Assert.That(parsed["result"], Is.Not.Null);
+        if (method == "eth_call") Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"));
+        if (method == "eth_fillTransaction")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((JArray)parsed["result"]!["tx"]!["frames"]!, Has.Count.EqualTo(2));
+                Assert.That((JArray)parsed["result"]!["tx"]!["signatures"]!, Has.Count.EqualTo(placeholder ? 1 : 0));
+            }
+        }
+    }
+
+    [Test]
     public async Task Eth_estimateGas_web3_should_return_insufficient_balance_error()
     {
         using Context ctx = await Context.Create();

@@ -133,10 +133,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
+        // RPC simulation runs before signing. Keep signature validation enabled for block execution and mempool admission.
+        bool skipSignatureValidation = opts == ExecutionOptions.CommitAndRestore;
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         // EIP-7928: a tx that never takes the P256 branch never accesses the precompile, so no BAL entry.
         IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
-        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
+        if (!skipSignatureValidation && !FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
         {
             WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
@@ -297,7 +299,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             int frameLogStart = accessTracker.Logs.Count;
             int frameStartJournal = frameContext.FrameJournalCheckpoint;
             bool payerWasSet = frameContext.Payer is not null;
-            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas, skipSignatureValidation);
             // Transient storage is discarded between frames (EIP-8141 § Cross-frame interactions). Discarded
             // here rather than before the next frame: the batch and prefix-end snapshots straddle frames, and
             // a discard after either was taken truncates the journal it indexes into.
@@ -776,7 +778,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         && FrameTxValidation.IsDeployFrame(frames[i])
         && frames[i + 1].Mode == FrameMode.Verify;
 
-    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
+    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed, bool skipSignatureValidation = false)
     {
         stateGasUsed = 0;
         UInt256 value = frame.Value;
@@ -816,7 +818,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             && _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null
             && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            TransactionSubstate defaultCode = ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, spec, in accessTracker, tracer, entryExecution, out gasUsed, out stateGasUsed);
+            TransactionSubstate defaultCode = ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, spec, in accessTracker, tracer, entryExecution, out gasUsed, out stateGasUsed, skipSignatureValidation);
             // The entry charge warms the target on this path too; a failing default-code frame is a failing
             // VERIFY frame, which invalidates the transaction, so there is nothing to unwind.
             if (spec.UseHotAndColdStorage && !defaultCode.IsError && !defaultCode.ShouldRevert)
@@ -942,7 +944,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// Execution gas the frame already owes for its target's access, charged before dispatch and known to
     /// fit within <see cref="TxFrame.ExecutionGasLimit"/>.
     /// </param>
-    private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, IReleaseSpec spec, in StackAccessTracker accessTracker, ITxTracer tracer, ulong entryExecution, out ulong gasUsed, out long stateGasUsed)
+    private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, IReleaseSpec spec, in StackAccessTracker accessTracker, ITxTracer tracer, ulong entryExecution, out ulong gasUsed, out long stateGasUsed, bool skipSignatureValidation)
     {
         gasUsed = entryExecution;
         stateGasUsed = 0;
@@ -955,10 +957,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         int sigIndex = (allowedScope & FrameFlags.ApproveExecution) != 0 ? 0 : 1;
         TxFrameSignature[] signatures = frameContext.Signatures;
-        if (signatures.Length <= sigIndex
+        if (!skipSignatureValidation && (signatures.Length <= sigIndex
             || signatures[sigIndex].Scheme != TxFrameSignature.SchemeSecp256k1
             || !signatures[sigIndex].Msg.IsEmpty
-            || frameContext.ResolvedSigner(sigIndex) != resolvedTarget)
+            || frameContext.ResolvedSigner(sigIndex) != resolvedTarget))
         {
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }

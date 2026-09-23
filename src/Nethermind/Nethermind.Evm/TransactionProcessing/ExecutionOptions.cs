@@ -45,8 +45,8 @@ public enum ExecutionOptions
 
     /// <summary>
     /// Asserts the caller has already verified this transaction's frame signatures against the same spec.
-    /// Read only under <see cref="FrameValidationPrefixOnly"/>; signature verification everywhere else is
-    /// unconditional. Some paths compare these options by exact equality, so do not OR it into another mode.
+    /// Read only under <see cref="FrameValidationPrefixOnly"/>. RPC simulation independently skips signature validation.
+    /// Some paths compare these options by exact equality, so do not OR it into another mode.
     /// </summary>
     FrameSignaturesPreValidated = 64,
 

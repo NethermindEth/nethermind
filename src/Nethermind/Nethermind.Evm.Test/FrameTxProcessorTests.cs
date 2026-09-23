@@ -109,6 +109,47 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void UnsignedFrameTransaction_SucceedsOnlyInCallAndRestore(
+        [Values] bool placeholder,
+        [Values(ExecutionOptions.CommitAndRestore, ExecutionOptions.None, ExecutionOptions.SkipValidationAndCommit, ExecutionOptions.FrameValidationPrefixOnly)] ExecutionOptions options)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 5));
+        tx.FrameSignatures = placeholder
+            ? [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)]
+            : [];
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(options == ExecutionOptions.CommitAndRestore));
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo((UInt256)1.Ether));
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void CallAndRestore_UnsignedCustomVerifier_StillExecutes([Values] bool reverts)
+    {
+        DeploySmartSender(reverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, default)];
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(!reverts));
+        if (reverts) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
     public void Execute_InvalidProtocolSignature_ReturnsMalformedTransaction()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
