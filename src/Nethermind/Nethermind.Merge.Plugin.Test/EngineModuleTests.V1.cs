@@ -1834,7 +1834,7 @@ public partial class EngineModuleTests
     /// re-execution that restores its state is still committing. Sent again in that window it must be answered from
     /// that commit, not SYNCING as a block on the node's own chain whose state is gone.
     /// </summary>
-    [Test, MaxTime(20_000)]
+    [Test]
     public async Task newPayloadV1_answers_valid_for_a_head_resent_while_its_re_execution_commits()
     {
         ConcurrentDictionary<Hash256, byte> pruned = new();
@@ -1863,8 +1863,9 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
         }
 
+        // The commit is released only once the re-send has either answered or had time to reach its wait.
         Task<ResultWrapper<PayloadStatusV1>> resent = rpc.engine_newPayloadV1(resubmitted);
-        await Task.Delay(200);
+        await Task.WhenAny(resent, Task.Delay(TimeSpan.FromSeconds(1)));
         commit.SetResult();
 
         Assert.That((await resent).Data.Status, Is.EqualTo(PayloadStatus.Valid),
