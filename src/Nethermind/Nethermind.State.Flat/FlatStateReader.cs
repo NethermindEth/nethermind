@@ -21,10 +21,7 @@ public class FlatStateReader(
     ILogManager logManager
 ) : IStateReader
 {
-    // Content-addressed (node hash -> RLP): entries are immutable, so no invalidation is needed.
-    private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = new(flatDbConfig.TrieNodeRlpCacheCapacity >= 0
-        ? flatDbConfig.TrieNodeRlpCacheCapacity
-        : throw new ArgumentOutOfRangeException(nameof(IFlatDbConfig.TrieNodeRlpCacheCapacity), flatDbConfig.TrieNodeRlpCacheCapacity, "must be >= 0 (0 disables the cache)"));
+    private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = CreateTrieNodeRlpCache(flatDbConfig.TrieNodeRlpCacheCapacity);
 
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
@@ -78,6 +75,12 @@ public class FlatStateReader(
             PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
             patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         }
+    }
+
+    private static ClockCache<ValueHash256, byte[]> CreateTrieNodeRlpCache(int capacity)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(capacity, nameof(IFlatDbConfig.TrieNodeRlpCacheCapacity));
+        return new(capacity);
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
