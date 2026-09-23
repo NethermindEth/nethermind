@@ -2,11 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -365,7 +370,34 @@ public class SnapStateServerTests
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
-        Assert.That(result.Count, Is.LessThan(requestCount));
+        // Below the lookup cap too, so this asserts the byte limit rather than that cap.
+        Assert.That(result.Count, Is.LessThan(ISnapStateServer.MaxTrieNodeLookups));
+    }
+
+    [Test]
+    public void TestGetTrieNodes_BoundsLookupsForPathsThatResolveToNothing()
+    {
+        using ISnapServerContext context = CreateContext();
+        FillAccountWithDefaultStorage(context);
+
+        // Nibbles a,b,c,d in compact form. The storage trie is only two levels deep, so every one
+        // of these resolves to no node at all and contributes nothing to the response size.
+        byte[] absentStoragePath = [0x00, 0xab, 0xcd];
+
+        const int requestCount = 5000;
+        byte[][] group = new byte[requestCount + 1][];
+        group[0] = TestItem.Tree.AccountAddress0.BytesToArray();
+        for (int i = 1; i <= requestCount; i++) group[i] = absentStoragePath;
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = group }]);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The account lookup takes the first of the budget, the storage lookups the rest.
+            Assert.That(result.Count, Is.EqualTo(ISnapStateServer.MaxTrieNodeLookups - 1));
+            Assert.That(result[0].Length, Is.Zero);
+        }
     }
 
     [Test]
@@ -711,5 +743,34 @@ public class SnapStateServerTests
 
         slots.DisposeRecursive();
         proofs?.Dispose();
+    }
+
+    [Test]
+    public async Task TestGetAccountRange_AtSnapServingDepthBoundary_IsServable()
+    {
+        const int chainLength = 200;
+
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = true })
+            .AddSingleton<ISyncConfig>(new SyncConfig { SnapServingEnabled = true }));
+
+        await chain.BuildSomeBlocks(chainLength);
+
+        ISyncConfig syncConfig = chain.Container.Resolve<ISyncConfig>();
+        ISnapStateServer server = chain.WorldStateManager.SnapStateServer!;
+
+        ulong depth = syncConfig.SnapServingMaxDepth - 1;
+        ulong boundaryNumber = chain.BlockTree.Head!.Number - depth;
+        BlockHeader boundary = chain.BlockTree.FindHeader(boundaryNumber, BlockTreeLookupOptions.None)!;
+
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = server.GetAccountRanges(
+            boundary.StateRoot!, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
+
+        using (accounts)
+        using (proofs)
+        {
+            Assert.That(accounts, Is.Not.Empty,
+                $"state root of block {boundaryNumber} (head-{depth}) was not servable");
+        }
     }
 }
