@@ -14,14 +14,11 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
-
-[assembly: InternalsVisibleTo("Nethermind.Facade.Test")]
 
 namespace Nethermind.Facade.Simulate;
 
