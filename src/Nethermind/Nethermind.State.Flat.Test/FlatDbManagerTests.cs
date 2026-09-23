@@ -468,7 +468,25 @@ public class FlatDbManagerTests
         HistoricalFlatDbManager manager = WrapHistory(inner);
 
         Assert.That(() => manager.GatherReadOnlySnapshotBundle(CreateStateId(5, rootByte: 5)),
-            Throws.TypeOf<StateUnavailableException>());
+            Throws.TypeOf<StateNotRetainedException>());
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_orphaned_state_throws_state_not_retained()
+    {
+        StateId orphaned = CreateStateId(10, rootByte: 10);
+        StateId readerState = CreateStateId(20, rootByte: 20);
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(readerState);
+        _persistenceManager.LeaseReader().Returns(reader);
+        _snapshotRepository.AssembleSnapshots(orphaned, readerState, Arg.Any<int>())
+            .Returns(new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
+        _snapshotRepository.HasState(orphaned).Returns(false);
+
+        await using FlatDbManager manager = CreateManager();
+
+        Assert.That(() => manager.GatherReadOnlySnapshotBundle(orphaned),
+            Throws.TypeOf<StateNotRetainedException>().With.Message.StartsWith("No state available for block 10"));
     }
 
     [Test]
