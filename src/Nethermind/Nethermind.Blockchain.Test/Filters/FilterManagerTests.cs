@@ -323,27 +323,62 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void filter_with_most_unpolled_results_is_removed_once_queued_item_budget_is_exceeded()
+    public void installed_filters_count_towards_queued_item_budget()
     {
-        const int maxQueuedItems = 3;
+        const int maxQueuedItems = 2;
         using FilterStore filterStore = new(new TimerFactory(), maxQueuedItems: maxQueuedItems);
         _filterManager = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
-        BlockFilter unpolled = new(_currentFilterId++);
-        BlockFilter polled = new(_currentFilterId++);
-        filterStore.SaveFilter(unpolled);
-        filterStore.SaveFilter(polled);
 
         for (int i = 0; i < maxQueuedItems; i++)
         {
-            RaiseBlockProcessed((ulong)i);
-            _filterManager.PollBlockHashes(polled.Id);
+            filterStore.SaveFilter(new BlockFilter(_currentFilterId++));
         }
+
+        Assert.Throws<ConcurrencyLimitReachedException>(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void least_recently_polled_filter_is_removed_once_queued_item_budget_is_exceeded()
+    {
+        const int maxQueuedItems = 4;
+        using FilterStore filterStore = new(new TimerFactory(), maxQueuedItems: maxQueuedItems);
+        _filterManager = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+        BlockFilter stale = new(_currentFilterId++) { LastUsed = DateTimeOffset.UtcNow.AddMinutes(-2) };
+        BlockFilter recent = new(_currentFilterId++) { LastUsed = DateTimeOffset.UtcNow.AddMinutes(-1) };
+        LogFilter polled = BuildFilter(static _ => { });
+        filterStore.SaveFilter(stale);
+        filterStore.SaveFilter(recent);
+        filterStore.SaveFilter(polled);
+
+        // The polled filter holds the largest queue, so evicting by size would remove it instead.
+        Block block = Build.A.Block.TestObject;
+        TxReceipt receipt = BuildReceipt(static r => r.WithLogs(Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject));
+        _mainProcessingContext.RaiseTransactionProcessed(new TxProcessedEventArgs(0, Build.A.Transaction.TestObject, block.Header, receipt));
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
 
         Assert.Multiple(() =>
         {
-            Assert.That(filterStore.FilterExists(unpolled.Id), Is.False);
+            Assert.That(filterStore.FilterExists(stale.Id), Is.False);
+            Assert.That(filterStore.FilterExists(recent.Id), Is.True);
             Assert.That(filterStore.FilterExists(polled.Id), Is.True);
         });
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void saving_filter_under_budget_requires_filter_manager()
+    {
+        using FilterStore filterStore = new(new TimerFactory(), maxQueuedItems: 1);
+
+        Assert.Throws<InvalidOperationException>(() => filterStore.SaveFilter(new BlockFilter(_currentFilterId++)));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void second_filter_manager_cannot_track_the_same_store()
+    {
+        using FilterStore filterStore = new(new TimerFactory(), maxQueuedItems: 1);
+        _filterManager = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        Assert.Throws<InvalidOperationException>(() => _ = new FilterManager(filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

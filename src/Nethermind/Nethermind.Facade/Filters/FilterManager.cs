@@ -63,36 +63,37 @@ namespace Nethermind.Facade.Filters
         }
 
         /// <summary>
-        /// Whether the results queued across all live filters have reached <see cref="FilterStore.MaxQueuedItems"/>.
+        /// Whether the installed filters and the results queued for them have reached <see cref="FilterStore.MaxQueuedItems"/>.
         /// </summary>
+        /// <remarks>
+        /// Each filter counts as one item, so empty filters cannot be installed without limit and then all be
+        /// filled by the next block before <see cref="EvictFiltersOverBudget"/> runs.
+        /// </remarks>
         private bool IsQueuedItemBudgetExhausted()
         {
-            int maxQueuedItems = _filterStore.MaxQueuedItems;
-            return CountQueuedItems(maxQueuedItems) >= maxQueuedItems;
+            long limit = (long)_filterStore.MaxQueuedItems - _filterStore.FilterCount;
+            return limit <= 0 || CountQueuedItems(limit) >= limit;
         }
 
         /// <summary>
-        /// Removes the filters with the largest queues until the queued results fit <see cref="FilterStore.MaxQueuedItems"/>.
+        /// Removes the least recently polled filters until the queued results fit <see cref="FilterStore.MaxQueuedItems"/>.
         /// </summary>
         /// <remarks>
-        /// Run once per processed block, so memory stays bounded by the budget plus one block of results, and
-        /// the cost lands on the filters that are not being polled rather than on callers creating new ones.
+        /// Run once per processed block, so the cost lands on callers that stopped polling rather than on callers
+        /// creating new filters. Results can exceed the budget until the next block by one block's worth per
+        /// filter, and admission caps the filter count at the budget. Pending-transaction results also arrive
+        /// between blocks, so while no blocks are processed their queues are bounded only by the filter timeout.
         /// </remarks>
         private void EvictFiltersOverBudget()
         {
             int maxQueuedItems = _filterStore.MaxQueuedItems;
-            if (maxQueuedItems == 0) return;
+            if (maxQueuedItems == 0 || CountQueuedItems(maxQueuedItems + 1L) <= maxQueuedItems) return;
 
-            long total = CountQueuedItems(long.MaxValue);
-            if (total <= maxQueuedItems) return;
+            using ArrayPoolList<(int Id, int Count, DateTimeOffset LastUsed)> queues = new(_filterStore.FilterCount);
+            long total = AddQueueSizes(_logs, queues) + AddQueueSizes(_blockHashes, queues) + AddQueueSizes(_pendingTransactions, queues);
+            queues.AsSpan().Sort(static (a, b) => a.LastUsed.CompareTo(b.LastUsed));
 
-            using ArrayPoolList<(int Id, int Count)> queues = new(_logs.Count + _blockHashes.Count + _pendingTransactions.Count);
-            AddQueueSizes(_logs, queues);
-            AddQueueSizes(_blockHashes, queues);
-            AddQueueSizes(_pendingTransactions, queues);
-            queues.AsSpan().Sort(static (a, b) => b.Count.CompareTo(a.Count));
-
-            foreach ((int id, int count) in queues.AsSpan())
+            foreach ((int id, int count, _) in queues.AsSpan())
             {
                 if (total <= maxQueuedItems) break;
                 _filterStore.RemoveFilter(id);
@@ -135,13 +136,20 @@ namespace Nethermind.Facade.Filters
             return total;
         }
 
-        private static void AddQueueSizes<T>(ConcurrentDictionary<int, ConcurrentQueue<T>> queues, ArrayPoolList<(int Id, int Count)> sizes)
+        private long AddQueueSizes<T>(ConcurrentDictionary<int, ConcurrentQueue<T>> queues, ArrayPoolList<(int Id, int Count, DateTimeOffset LastUsed)> sizes)
         {
+            long total = 0;
             foreach (KeyValuePair<int, ConcurrentQueue<T>> entry in queues)
             {
                 int count = entry.Value.Count;
-                if (count > 0) sizes.Add((entry.Key, count));
+                if (count > 0 && _filterStore.GetFilter<FilterBase>(entry.Key) is { } filter)
+                {
+                    sizes.Add((entry.Key, count, filter.LastUsed));
+                    total += count;
+                }
             }
+
+            return total;
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)

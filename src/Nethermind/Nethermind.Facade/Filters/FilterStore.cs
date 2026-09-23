@@ -146,6 +146,8 @@ namespace Nethermind.Facade.Filters
         /// </summary>
         internal int MaxQueuedItems => _maxQueuedItems;
 
+        internal int FilterCount => _filters.Count;
+
         /// <summary>
         /// Reports whether the queued results have reached <see cref="MaxQueuedItems"/>.
         /// </summary>
