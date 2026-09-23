@@ -42,7 +42,7 @@ public class Engine : IDisposable
     }
 
     /// <summary>
-    /// Creates an engine in the block trace's runtime, which outlives the engine and is released by its owner.
+    /// Creates an engine in its block tracer's runtime, which outlives the engine and is released by its owner.
     /// </summary>
     internal Engine(IReleaseSpec spec, TracerRuntime runtime) : this(spec, runtime, ownsRuntime: false)
     {
@@ -85,8 +85,11 @@ public class Engine : IDisposable
         Interlocked.CompareExchange(ref _currentEngine, this, null);
     }
 
-    /// <inheritdoc cref="TracerRuntime.IsKnownTracer"/>
-    public static bool IsKnownTracer(string tracer) => TracerRuntime.IsKnownTracer(tracer);
+    /// <summary>
+    /// Reports whether <paramref name="tracer"/> is inline tracer code or names a tracer shipped under
+    /// <c>Data/JSTracers</c>, so a request naming anything else can be refused before an engine is created.
+    /// </summary>
+    public static bool IsKnownTracer(string? tracer) => TracerRuntime.IsKnownTracer(tracer);
 
     /// <summary>
     /// Registers the host functions and evaluates the built-in scripts into the script engine.

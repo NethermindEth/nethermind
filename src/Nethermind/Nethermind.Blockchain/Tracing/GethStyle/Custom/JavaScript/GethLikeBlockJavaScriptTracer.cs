@@ -32,10 +32,15 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     }
 
     /// <summary>
-    /// Starts a transaction trace in its own engine inside the block's runtime, so script globals never outlive a
-    /// transaction while the runtime, and the scripts compiled in it, serve every transaction of the block. The
-    /// engine is released as soon as the transaction's result is built, the runtime when the block trace ends.
+    /// Starts a transaction trace in its own engine inside the tracer's runtime, so script globals never outlive a
+    /// transaction while the runtime, and the scripts compiled in it, serve every transaction the tracer traces.
+    /// The engine is released as soon as the transaction's result is built, the runtime when the tracer is disposed.
     /// </summary>
+    /// <remarks>
+    /// The runtime outlives <see cref="EndBlockTrace"/> so that a tracer reused across blocks, as
+    /// <c>debug_simulateV1</c> does for every block state call, builds one V8 isolate per request rather than one
+    /// per block. The tracer's owner must therefore dispose it on every path.
+    /// </remarks>
     protected override GethLikeJavaScriptTxTracer OnStart(Transaction? tx)
     {
         SetTransactionCtx(tx);
@@ -76,12 +81,6 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         GethLikeTxTrace trace = txTracer.BuildResult();
         _currentTxTracer = null;
         return trace;
-    }
-
-    public override void EndBlockTrace()
-    {
-        base.EndBlockTrace();
-        Dispose();
     }
 
     public void Dispose()
