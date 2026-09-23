@@ -1816,8 +1816,27 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
         }
 
+        await WaitForReadableState(chain, resubmitted.BlockHash);
+
         Assert.That((await rpc.engine_newPayloadV1(child)).Data.Status, Is.EqualTo(PayloadStatus.Valid),
             "the child of a block the node just accepted must be executed, not answered SYNCING");
+    }
+
+    /// <summary>Waits, briefly and without asserting, for the state a block committed to become readable.</summary>
+    /// <remarks>
+    /// <c>engine_newPayload</c> answers once the block is executed, so the state its child needs can arrive after
+    /// the answer. A block that is never re-executed never gains one, and the caller's own assertion says so.
+    /// </remarks>
+    private static async Task WaitForReadableState(MergeTestBlockchain chain, Hash256 blockHash)
+    {
+        BlockHeader? header = chain.BlockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        if (header is null) return;
+
+        long deadline = Environment.TickCount64 + 5_000;
+        while (!chain.StateReader.HasStateForBlock(header) && Environment.TickCount64 < deadline)
+        {
+            await Task.Delay(10);
+        }
     }
 
     /// <summary>
