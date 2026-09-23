@@ -384,7 +384,7 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void pending_transaction_filters_skip_removed_transactions_and_drain_on_poll()
+    public void pending_transaction_filters_report_only_transactions_still_pending_and_drain_on_poll()
     {
         PendingTransactionFilter first = new(_currentFilterId++);
         PendingTransactionFilter second = new(_currentFilterId++);
@@ -396,7 +396,7 @@ public class FilterManagerTests
         Transaction kept = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
         _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(removed));
         _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(kept));
-        _txPool.RemovedPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(removed));
+        _txPool.ContainsTx(kept.Hash!, kept.Type).Returns(true);
 
         Assert.Multiple(() =>
         {
