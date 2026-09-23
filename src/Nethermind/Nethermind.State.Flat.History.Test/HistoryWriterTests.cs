@@ -266,7 +266,7 @@ public class HistoryWriterTests
     {
         SeedGenesisFloor();
         Account account = new(7, 4242);
-        SlotValue slot = Slot(0xde, 0xad, 0xbe, 0xef);
+        UInt256 slot = Slot(0xde, 0xad, 0xbe, 0xef);
         CommitBlock(0, 1, accountChanges: [(AddrB, account)], storageChanges: [(AddrB, Slot2, slot)]);
 
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -281,7 +281,7 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accountBytes, Is.EqualTo(EncodedAccount(account)));
-            Assert.That(slotBytes, Is.EqualTo(EncodedSlot(slot.AsReadOnlySpan)));
+            Assert.That(slotBytes, Is.EqualTo(EncodedSlot(slot.ToBigEndian().AsSpan())));
         }
     }
 
@@ -565,6 +565,8 @@ public class HistoryWriterTests
     [Test]
     public void Reorged_capture_at_the_connect_point_refuses_to_advance_the_watermark()
     {
+        int disabled = 0;
+        _writer.CaptureDisabled += () => disabled++;
         SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 11))]);
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -586,6 +588,47 @@ public class HistoryWriterTests
             Assert.That(_writer.LastCapturedBlock, Is.EqualTo(1UL), "the watermark must not advance over a reorged capture");
             Assert.That(_reader.HasHistoryForBlock(2), Is.False);
             Assert.That(_writer.CaptureHealthy, Is.False, "capture must self-disable so dependants stop relying on it");
+            Assert.That(disabled, Is.EqualTo(1), "a reorg refusal must not report an unconnected walk a second time");
+        }
+    }
+
+    [Test]
+    public void CaptureUpTo_WhenSnapshotIsMissing_ReportsObservedGap()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryWriter>().Returns(wrappedLogger);
+        FlatDbConfig config = new() { HistoryEnabled = true };
+        HistoryWriter writer = new(_db, _historyColumns, config, _availability, _rowFormat, logManager, commitments: null);
+        SeedGenesisFloor();
+
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        logger.Received(1).Error(Arg.Is<string>(message =>
+            message.Contains("a required per-block snapshot was unavailable")
+            && !message.Contains("pruned before history was enabled")), Arg.Any<Exception?>());
+        Assert.That(writer.CaptureHealthy, Is.False);
+    }
+
+    [Test]
+    public void CaptureUpTo_WhenTierDiagnosticsThrow_DisablesCaptureOnce()
+    {
+        SeedGenesisFloor();
+        ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+        repository.GetStatesAtBlockNumber(Arg.Any<ulong>()).Throws(new ObjectDisposedException("repository"));
+        int disabled = 0;
+        _writer.CaptureDisabled += () => disabled++;
+
+        _writer.CaptureUpTo(StateAt(2), repository, CancellationToken.None);
+        _writer.CaptureUpTo(StateAt(2), repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disabled, Is.EqualTo(1), "diagnostic failures must not prevent one-shot degradation");
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL), "the incomplete walk must not advance history");
+            Assert.That(_writer.CaptureHealthy, Is.False, "a missing ancestry must disable capture");
         }
     }
 
@@ -910,7 +953,7 @@ public class HistoryWriterTests
 
         _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(5, 500)));
         Span<byte> slotValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        int slotValueLength = BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero([0xAA]), RlpWrapSlots, slotValueBuffer);
+        int slotValueLength = BaseFlatPersistence.EncodeSlotValue(BaseFlatPersistence.DecodeSlotValue([0xAA]), RlpWrapSlots, slotValueBuffer);
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), slotValueBuffer[..slotValueLength]);
 
         StateId pivot = StateAt(100);
@@ -918,7 +961,7 @@ public class HistoryWriterTests
         windowedWriter.SeedPivot(100, pivot.StateRoot);
 
         bool foundAccount = windowedReader.TryGetAccount(100, AddrA, out AccountStruct account);
-        bool foundStorage = windowedReader.TryGetStorage(100, AddrA, Slot1, out SlotValue slot);
+        bool foundStorage = windowedReader.TryGetStorage(100, AddrA, Slot1, out UInt256 slot);
 
         using (Assert.EnterMultipleScope())
         {
@@ -926,7 +969,7 @@ public class HistoryWriterTests
             Assert.That(foundAccount, Is.True, "the persisted-flat fallback must resolve the account with no captured row");
             Assert.That(account.Balance, Is.EqualTo((UInt256)500));
             Assert.That(foundStorage, Is.True, "the persisted-flat fallback must resolve the slot with no captured row");
-            Assert.That(slot.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
+            Assert.That(slot.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
             Assert.That(windowedReader.IsAvailable(pivot), Is.True, "the pivot's own state root must be immediately available");
             Assert.That(windowedReader.IsPrunedBelowFloor(99), Is.True, "the floor publishes at the pivot, so anything below it reports pruned rather than absent");
         }
@@ -1011,7 +1054,7 @@ public class HistoryWriterTests
         CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
         windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        bool foundBelow = windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue belowDestruct);
+        bool foundBelow = windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 belowDestruct);
 
         _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot1));
 
@@ -1020,7 +1063,7 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(foundBelow, Is.True, "the slot's pre-destruct value must be readable strictly below the destruct block");
-            Assert.That(belowDestruct.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(belowDestruct.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
             Assert.That(foundAt, Is.False, "the slot must read empty at/after the destruct once the persist has caught up");
         }
     }
@@ -1045,8 +1088,8 @@ public class HistoryWriterTests
         windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         bool foundAccountBelow = windowedReader.TryGetAccount(1, AddrA, out AccountStruct accountBelow);
-        bool foundSlot1Below = windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue slot1Below);
-        bool foundSlot2Below = windowedReader.TryGetStorage(1, AddrA, Slot2, out SlotValue slot2Below);
+        bool foundSlot1Below = windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 slot1Below);
+        bool foundSlot2Below = windowedReader.TryGetStorage(1, AddrA, Slot2, out UInt256 slot2Below);
 
         _db.GetColumnDb(FlatDbColumns.Account).Remove(FlatAccountKey(AddrA));
         _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot1));
@@ -1061,9 +1104,9 @@ public class HistoryWriterTests
             Assert.That(foundAccountBelow, Is.True);
             Assert.That(accountBelow.Balance, Is.EqualTo((UInt256)100));
             Assert.That(foundSlot1Below, Is.True);
-            Assert.That(slot1Below.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(slot1Below.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
             Assert.That(foundSlot2Below, Is.True);
-            Assert.That(slot2Below.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0b }));
+            Assert.That(slot2Below.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0b }));
 
             Assert.That(foundAccountAt, Is.False, "the account must be a tombstone at/after its own destruct block");
             Assert.That(foundSlot1At, Is.False, "every persisted slot must be dead at/after the destruct, not just the one explicitly touched");
@@ -1085,19 +1128,19 @@ public class HistoryWriterTests
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
         windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        bool foundBelow = windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue belowDestruct);
+        bool foundBelow = windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 belowDestruct);
 
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0b));
 
-        bool foundAt = windowedReader.TryGetStorage(2, AddrA, Slot1, out SlotValue atResurrection);
+        bool foundAt = windowedReader.TryGetStorage(2, AddrA, Slot1, out UInt256 atResurrection);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(foundBelow, Is.True);
-            Assert.That(belowDestruct.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }),
+            Assert.That(belowDestruct.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }),
                 "the pre-destruct value must still be readable strictly below the combined destruct+rewrite block");
             Assert.That(foundAt, Is.True);
-            Assert.That(atResurrection.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0b }),
+            Assert.That(atResurrection.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0b }),
                 "as of the combined block, the resurrected value must win, not the destruct's wipe");
         }
     }
@@ -1118,15 +1161,15 @@ public class HistoryWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out SlotValue at0), Is.True);
-            Assert.That(at0.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out UInt256 at0), Is.True);
+            Assert.That(at0.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
 
-            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue at1), Is.True,
+            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 at1), Is.True,
                 "the resurrected value must be readable as of the combined destruct+rewrite block");
-            Assert.That(at1.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0b }));
+            Assert.That(at1.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0b }));
 
-            Assert.That(windowedReader.TryGetStorage(2, AddrA, Slot1, out SlotValue at2), Is.True);
-            Assert.That(at2.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0c }));
+            Assert.That(windowedReader.TryGetStorage(2, AddrA, Slot1, out UInt256 at2), Is.True);
+            Assert.That(at2.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0c }));
         }
     }
 
@@ -1149,13 +1192,13 @@ public class HistoryWriterTests
         {
             Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out _), Is.False,
                 "the slot did not exist before the block that first wrote it");
-            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue between), Is.True,
+            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 between), Is.True,
                 "the destruct one block up never enumerated this slot - it was not persisted yet - so its value has to be spliced in from the walk itself");
-            Assert.That(between.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(between.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
             Assert.That(windowedReader.TryGetStorage(2, AddrA, Slot1, out _), Is.False,
                 "the destruct block itself must read empty");
-            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot2, out SlotValue persisted), Is.True);
-            Assert.That(persisted.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0b }),
+            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot2, out UInt256 persisted), Is.True);
+            Assert.That(persisted.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0b }),
                 "the persisted slot's own pre-destruct value must survive the splice unchanged");
         }
     }
@@ -1199,12 +1242,12 @@ public class HistoryWriterTests
         CommitBlock(2, 3, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
         windowedWriter.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
 
-        bool found = windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue belowDestruct);
+        bool found = windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 belowDestruct);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(found, Is.True, "a recorded pre-value row is authoritative below the destruct - the poison only covers reads that would fall through to live state");
-            Assert.That(belowDestruct.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(belowDestruct.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
             Assert.That(() => windowedReader.TryGetStorage(1, AddrA, 999999, out _),
                 Throws.InstanceOf<InvalidOperationException>(),
                 "a slot with no recorded row below an over-cap destruct must still fail closed - absent is indistinguishable from missed by the cap");
@@ -1263,7 +1306,7 @@ public class HistoryWriterTests
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
         int slotCount = HistoryWriter.DestructSlotEnumerationCap + 1;
-        (Address Address, UInt256 Slot, SlotValue? Value)[] rewrites = new (Address, UInt256, SlotValue?)[slotCount];
+        (Address Address, UInt256 Slot, UInt256? Value)[] rewrites = new (Address, UInt256, UInt256?)[slotCount];
         for (int i = 0; i < slotCount; i++)
         {
             UInt256 slot = (UInt256)(i + 1);
@@ -1282,9 +1325,9 @@ public class HistoryWriterTests
                 UInt256 slot = (UInt256)(i + 1);
                 Assert.That(windowedReader.TryGetStorage(1, AddrA, slot, out _), Is.False,
                     $"slot {slot} was destroyed at block 1 and rewritten at block 2 in the same walk - between them it is unset, not the resurrected pre-destruct value");
-                Assert.That(windowedReader.TryGetStorage(0, AddrA, slot, out SlotValue beforeDestruct), Is.True,
+                Assert.That(windowedReader.TryGetStorage(0, AddrA, slot, out UInt256 beforeDestruct), Is.True,
                     $"slot {slot} held its persisted value below the destruct");
-                Assert.That(beforeDestruct.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x01 }));
+                Assert.That(beforeDestruct.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x01 }));
             }
         }
     }
@@ -1359,7 +1402,8 @@ public class HistoryWriterTests
         using (ReadOnlySnapshotBundle tip = TipBundle(blockCount, blockCount))
         {
             tipAccount = tip.GetAccount(AddrA);
-            tipSlot = tip.GetSlot(AddrA, Slot1, tip.DetermineSelfDestructSnapshotIdx(AddrA));
+            tip.GetSlot(AddrA, Slot1, tip.DetermineSelfDestructSnapshotIdx(AddrA), out UInt256? stored);
+            tipSlot = stored is { } slotValue ? slotValue.ToMinimalBigEndian() : null;
         }
 
         bool historyHasMidpoint = _reader.TryGetAccount(blockCount / 2, AddrA, out AccountStruct midpoint);
@@ -1411,9 +1455,9 @@ public class HistoryWriterTests
                 Assert.That(account.Nonce, Is.EqualTo((ulong)block), $"Account at block {block} resolved to the wrong (earlier-boundary) value.");
                 Assert.That(account.Balance, Is.EqualTo((UInt256)block), $"Account balance at block {block} resolved to the wrong value.");
 
-                bool foundSlot = _reader.TryGetStorage(block, AddrA, Slot1, out SlotValue slot);
+                bool foundSlot = _reader.TryGetStorage(block, AddrA, Slot1, out UInt256 slot);
                 Assert.That(foundSlot, Is.True, $"Storage missing at block {block} (capture gap).");
-                Assert.That(slot.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(CompactionSlotBytes(block)), $"Storage at block {block} resolved to the wrong value.");
+                Assert.That(slot.ToMinimalBigEndian(), Is.EqualTo(CompactionSlotBytes(block)), $"Storage at block {block} resolved to the wrong value.");
             }
         }
     }
@@ -1427,7 +1471,7 @@ public class HistoryWriterTests
 
     private void AssertStorageAt(ulong readBlock, UInt256 slot, string? expectedHex)
     {
-        bool found = _reader.TryGetStorage(readBlock, AddrA, slot, out SlotValue value);
+        bool found = _reader.TryGetStorage(readBlock, AddrA, slot, out UInt256 value);
 
         if (expectedHex is null)
         {
@@ -1436,18 +1480,18 @@ public class HistoryWriterTests
         else
         {
             Assert.That(found, Is.True, $"slot {slot} must be present at block {readBlock}");
-            Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)),
+            Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(Convert.FromHexString(expectedHex)),
                 $"slot {slot} resolved to the wrong value at block {readBlock}");
         }
     }
 
     private static byte[] RegressionSlotBytes(ulong block) => [0xAB, (byte)block];
 
-    private static SlotValue RegressionSlotFor(ulong block) => SlotValue.FromSpanWithoutLeadingZero(RegressionSlotBytes(block));
+    private static UInt256 RegressionSlotFor(ulong block) => BaseFlatPersistence.DecodeSlotValue(RegressionSlotBytes(block));
 
     private static byte[] CompactionSlotBytes(ulong block) => [0xAB, (byte)(block >> 8), (byte)block];
 
-    private static SlotValue CompactionSlotFor(ulong block) => SlotValue.FromSpanWithoutLeadingZero(CompactionSlotBytes(block));
+    private static UInt256 CompactionSlotFor(ulong block) => BaseFlatPersistence.DecodeSlotValue(CompactionSlotBytes(block));
 
     [Test]
     public void Accounts_read_back_at_a_height_reproduce_that_height_state_root()
@@ -1489,7 +1533,7 @@ public class HistoryWriterTests
         ulong fromBlock,
         ulong toBlock,
         (Address Address, Account? Account)[]? accountChanges = null,
-        (Address Address, UInt256 Slot, SlotValue? Value)[]? storageChanges = null,
+        (Address Address, UInt256 Slot, UInt256? Value)[]? storageChanges = null,
         (Address Address, bool IsNewAccount)[]? selfDestructs = null)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(StateAt(fromBlock), StateAt(toBlock), ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -1499,7 +1543,7 @@ public class HistoryWriterTests
                 snapshot.Content.Accounts[address] = account;
 
         if (storageChanges is not null)
-            foreach ((Address address, UInt256 slot, SlotValue? value) in storageChanges)
+            foreach ((Address address, UInt256 slot, UInt256? value) in storageChanges)
                 snapshot.Content.Storages[(address, slot)] = value;
 
         if (selfDestructs is not null)
@@ -1512,7 +1556,7 @@ public class HistoryWriterTests
 
     private void CommitGenesis(
         (Address Address, Account? Account)[]? accountChanges = null,
-        (Address Address, UInt256 Slot, SlotValue? Value)[]? storageChanges = null)
+        (Address Address, UInt256 Slot, UInt256? Value)[]? storageChanges = null)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
 
@@ -1521,7 +1565,7 @@ public class HistoryWriterTests
                 snapshot.Content.Accounts[address] = account;
 
         if (storageChanges is not null)
-            foreach ((Address address, UInt256 slot, SlotValue? value) in storageChanges)
+            foreach ((Address address, UInt256 slot, UInt256? value) in storageChanges)
                 snapshot.Content.Storages[(address, slot)] = value;
 
         Assert.That(_repository.TryAdd(snapshot, SnapshotTier.InMemoryBase), Is.True);
@@ -1607,13 +1651,13 @@ public class HistoryWriterTests
     private static byte[] EncodedSlot(ReadOnlySpan<byte> rawSlotBytes)
     {
         Span<byte> buffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        int written = BaseFlatPersistence.EncodeSlotValue(new SlotValue(rawSlotBytes), RlpWrapSlots, buffer);
+        int written = BaseFlatPersistence.EncodeSlotValue(new UInt256(rawSlotBytes, isBigEndian: true) << ((32 - rawSlotBytes.Length) * 8), RlpWrapSlots, buffer);
         return buffer[..written].ToArray();
     }
 
-    private static SlotValue Slot(params byte[] bytes) => new(bytes);
+    private static UInt256 Slot(params byte[] bytes) => new UInt256(bytes, isBigEndian: true) << ((32 - bytes.Length) * 8);
 
-    private static SlotValue HistorySlot(params byte[] bytes) => SlotValue.FromSpanWithoutLeadingZero(bytes);
+    private static UInt256 HistorySlot(params byte[] bytes) => BaseFlatPersistence.DecodeSlotValue(bytes);
 
     private static byte[] EncodedHistorySlot(params byte[] bytes)
     {

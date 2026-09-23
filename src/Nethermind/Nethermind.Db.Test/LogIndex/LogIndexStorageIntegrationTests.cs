@@ -154,6 +154,20 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData);
         }
 
+        [Test]
+        public async Task ABackwardBatchOfOneBlock_ExtendsTheIndexDownwards()
+        {
+            await using ILogIndexStorage logIndexStorage = CreateLogIndexStorage();
+
+            BlockReceipts[] blocks = testData.Batches.SelectMany(static batch => batch).ToArray();
+            await logIndexStorage.AddReceiptsAsync(blocks[1..], isBackwardSync: false);
+
+            await logIndexStorage.AddReceiptsAsync([blocks[0]], isBackwardSync: true);
+
+            Assert.That(logIndexStorage.MinBlockNumber, Is.EqualTo(blocks[0].BlockNumber),
+                "a batch of one block has the same first and last number, so the direction cannot be read back from them");
+        }
+
         [Combinatorial]
         public async Task SetIntersecting_Get_Test(
             [Values(100, 200, int.MaxValue)] int compactionDistance,

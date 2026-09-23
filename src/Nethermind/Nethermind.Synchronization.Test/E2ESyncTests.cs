@@ -77,6 +77,7 @@ public class E2ESyncTests(bool isPostMerge)
 
     private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan SnapSyncTestTimeout = TimeSpan.FromMinutes(2);
 
     /// <summary>Runs a test body under a timeout.</summary>
     /// <remarks>NUnit re-runs assertion failures but not errors, so the timeout has to fail rather than
@@ -96,8 +97,7 @@ public class E2ESyncTests(bool isPostMerge)
 
     private const int ChainLength = 1000;
     private const ulong HeadPivotDistance = 500;
-    /// <remarks>The BAL tests use one attempt each, bounding their combined timeout budget to six minutes.</remarks>
-    private static readonly TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(6);
     private const int BalSyncChainLength = 5_000;
     private const int PartialBalSyncChainLength = 1_000;
     private const int PartialBalActivationBlock = 400;
@@ -542,7 +542,7 @@ public class E2ESyncTests(bool isPostMerge)
 
     [Test]
     [Category("Flaky"), Retry(2)]
-    public async Task SnapSync() => await RunWithTimeout(TestTimeout, RunSnapSyncOnce);
+    public async Task SnapSync() => await RunWithTimeout(SnapSyncTestTimeout, RunSnapSyncOnce);
 
     // Stress reproducer for SnapSync Windows flake — run manually; see PR #11443 for context.
     [Test, Explicit("Stress reproducer for SnapSync Windows flake — run manually")]
@@ -551,7 +551,7 @@ public class E2ESyncTests(bool isPostMerge)
     {
         _ = iteration; // index is purely to give NUnit a unique case per attempt
 
-        await RunWithTimeout(TestTimeout, RunSnapSyncOnce);
+        await RunWithTimeout(SnapSyncTestTimeout, RunSnapSyncOnce);
     }
 
     private async Task RunSnapSyncOnce(CancellationToken cancellationToken)

@@ -37,6 +37,8 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
 
     public IDisposable BeginScope(BlockHeader? baseBlock)
     {
+        // A single bundle slot: a nested scope would overwrite the outer one, leaking its lease and pulling the adapter from under it.
+        if (_bundle is not null) throw new InvalidOperationException("Scope already open");
         _bundle = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock))
             ?? throw new InvalidOperationException($"State at {baseBlock} not found");
         _adapter = new ReadOnlyStateTrieStoreAdapter(_bundle);

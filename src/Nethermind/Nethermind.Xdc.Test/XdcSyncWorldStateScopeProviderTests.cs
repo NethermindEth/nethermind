@@ -37,7 +37,8 @@ internal class XdcSyncWorldStateScopeProviderTests
             using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(header, new LocalMetrics()))
             {
                 Assert.That(scope.Get(address)!.Balance, Is.EqualTo((UInt256)1));
-                Assert.That(scope.CreateStorageTree(address).Get(UInt256.One), Is.EqualTo(new byte[] { 0x42 }));
+                scope.CreateStorageTree(address).Get(UInt256.One, out UInt256 storageValue);
+                Assert.That(storageValue, Is.EqualTo((UInt256)0x42));
 
                 ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
                 using IWorldStateScopeProvider.ICodeSetter codeSetter = scope.CodeDb.BeginCodeWrite();

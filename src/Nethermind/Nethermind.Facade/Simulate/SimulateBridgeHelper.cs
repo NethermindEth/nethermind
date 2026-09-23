@@ -27,7 +27,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
         | ProcessingOptions.IgnoreParentNotOnMainChain
-        | ProcessingOptions.MarkAsProcessed
         | ProcessingOptions.StoreReceipts;
 
     private void PrepareState(

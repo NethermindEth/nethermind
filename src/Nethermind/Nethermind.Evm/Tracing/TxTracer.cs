@@ -54,6 +54,9 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportAccountRead(Address address) { }
     public virtual void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
     public virtual void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
+    public virtual void ReportStorageClear(Address address) { }
+
+    public virtual void ReportStorageRestore(in StorageCell storageCell, byte[] value) { }
     public virtual void ReportStorageRead(in StorageCell storageCell) { }
     public virtual void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
     public virtual void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) { }

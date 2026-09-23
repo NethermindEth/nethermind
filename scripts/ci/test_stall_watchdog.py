@@ -124,9 +124,14 @@ class WatchdogTests(unittest.TestCase):
         result = self.run_watchdog(sys.executable, "-c", parent)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         pid = int((self.diag / "child.pid").read_text())
-        status = Path(f"/proc/{pid}/stat")
-        # An orphaned zombie is dead but can remain until the container's init reaps it.
-        self.assertTrue(not status.exists() or status.read_text().split()[2] == "Z", "child survived cleanup")
+        # An orphaned zombie is dead but can remain until the container's init reaps it - and init can
+        # do that at any point, so a vanished entry is the same success, not a missing file.
+        try:
+            stat = Path(f"/proc/{pid}/stat").read_text()
+        except (FileNotFoundError, ProcessLookupError):
+            stat = None
+        # The state field follows comm, which is parenthesised and may itself contain spaces.
+        self.assertTrue(stat is None or stat.rpartition(")")[2].split()[0] == "Z", "child survived cleanup")
 
 
 @unittest.skipUnless(shutil.which("dotnet"), ".NET SDK required")

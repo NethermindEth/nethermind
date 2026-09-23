@@ -230,7 +230,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
         else
         {
-            ReportUnconnectedWalk(current, hasWatermark, watermark);
+            ReportUnconnectedWalk(current, hasWatermark, watermark, persistedHead, snapshotRepository);
         }
 
         return connected;
@@ -377,11 +377,56 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         return current == StateId.PreGenesis;
     }
 
-    /// <summary>Only reachable when history was enabled mid-life, so it is permanent.</summary>
-    private void ReportUnconnectedWalk(in StateId current, bool hasWatermark, ulong watermark) =>
+    /// <summary>Disables capture until restart when a required per-block source is missing. Continuing would publish
+    /// coverage across a gap whose missing history cannot be reconstructed from compacted state alone.</summary>
+    private void ReportUnconnectedWalk(in StateId current, bool hasWatermark, ulong watermark, in StateId persistedHead, ISnapshotRepository snapshotRepository)
+    {
+        // The walk reports a refusal it did not cause when capture is already off: a reorged capture disables it from
+        // inside the walk, and a second Error would name a different, wrong cause and run the one-shot handlers twice.
+        if (_permanentGapDetected) return;
+
         DisableCapture($"History capture stopped at {current} without connecting to the captured range - " +
-            $"the blocks below were pruned before history was enabled. The watermark stays at " +
-            $"{(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it report no history, and capture is disabled until restart.");
+            $"a required per-block snapshot was unavailable. The walk started at the persisted head " +
+            $"{persistedHead}; at the stop {DescribeTiers(current, snapshotRepository)}. The watermark stays at " +
+            $"{(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it report no history, and capture " +
+            "is disabled until restart.");
+    }
+
+    /// <summary>Diagnostics only, and they run on the way into a degradation: leases and the repository's own locks
+    /// can throw against a concurrent teardown, and letting that out would abort the persist instead of disabling
+    /// capture once, leaving the walk to fail the same way on every round.</summary>
+    private static string DescribeTiers(in StateId stateId, ISnapshotRepository snapshotRepository)
+    {
+        try
+        {
+            return DescribeTiersCore(stateId, snapshotRepository);
+        }
+        catch (Exception e)
+        {
+            return $"the snapshot tiers could not be read ({e.Message})";
+        }
+    }
+
+    private static string DescribeTiersCore(in StateId stateId, ISnapshotRepository snapshotRepository)
+    {
+        bool inMemoryBase = snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? baseSnapshot);
+        using Snapshot? baseLease = baseSnapshot;
+        string baseSpan = inMemoryBase ? $"{baseSnapshot!.From.BlockNumber}->{baseSnapshot.To.BlockNumber}" : "none";
+
+        bool inMemoryCompacted = snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryCompacted, out Snapshot? compacted);
+        using Snapshot? compactedLease = compacted;
+        string compactedSpan = inMemoryCompacted ? $"{compacted!.From.BlockNumber}->{compacted.To.BlockNumber}" : "none";
+
+        bool persistedBase = snapshotRepository.TryLeaseBasePersistedSnapshot(stateId, out PersistedSnapshot? persisted);
+        using PersistedSnapshot? persistedLease = persisted;
+        string persistedSpan = persistedBase ? $"{persisted!.From.BlockNumber}->{persisted.To.BlockNumber}" : "none";
+
+        int statesAtBlock;
+        using (ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(stateId.BlockNumber)) statesAtBlock = states.Count;
+
+        return $"the snapshot tiers held [in-memory base {baseSpan}, in-memory compacted {compactedSpan}, " +
+            $"persisted base {persistedSpan}] and the block carried {statesAtBlock} state(s)";
+    }
 
     /// <summary>Permanently stops capture for this process, notifying dependants so they can persist retained data
     /// before the pending persist prunes the blocks above the watermark.</summary>
@@ -481,6 +526,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
 
         _availability.PublishWatermark(pivotBlock, _formatVersion);
+        Metrics.FlatHistoryWatermark = (long)pivotBlock;
         if (!hasFloor || pivotBlock >= currentFloor)
         {
             // Slices first, so no read ever sees a general floor above a slice floor.
@@ -530,7 +576,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         Span<byte> storageValue = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> change in snapshot.Storages)
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> change in snapshot.Storages)
         {
             (Address addr, UInt256 slot) = change.Key.Key;
             if (_isV3)
@@ -617,7 +663,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _accountHistory!.RecordChange(block, flatKey, value, columns.AccountHistory);
     }
 
-    private void RecordStorage(ulong block, in ValueHash256 addrHash, in UInt256 slot, in SlotValue? value, Span<byte> keyBuffer, Span<byte> valueBuffer, scoped in HistoryColumnBatches columns)
+    private void RecordStorage(ulong block, in ValueHash256 addrHash, in UInt256 slot, in UInt256? value, Span<byte> keyBuffer, Span<byte> valueBuffer, scoped in HistoryColumnBatches columns)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
@@ -625,7 +671,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         // A removed slot, or one stripped to empty (zero), is a tombstone — matching the flat column,
         // which removes / stores an empty value in the same cases.
-        int written = value is SlotValue slotValue
+        int written = value is UInt256 slotValue
             ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
             : 0;
         _storageHistory!.RecordChange(block, flatKey, valueBuffer[..written], columns.StorageHistory);
@@ -644,12 +690,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         pending.TrackAccount(addrHash, block, rlp, accountBatch, _accountHistoryV3!);
     }
 
-    private void RecordStorageV3(ulong block, in ValueHash256 addrHash, in UInt256 slot, in SlotValue? value, Span<byte> keyBuffer, Span<byte> valueBuffer, PendingV3Writes pending, IWriteBatch storageBatch)
+    private void RecordStorageV3(ulong block, in ValueHash256 addrHash, in UInt256 slot, in UInt256? value, Span<byte> keyBuffer, Span<byte> valueBuffer, PendingV3Writes pending, IWriteBatch storageBatch)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
 
-        int written = value is SlotValue slotValue
+        int written = value is UInt256 slotValue
             ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
             : 0;
         pending.TrackStorage(addrHash, slotHash, block, valueBuffer[..written], keyBuffer, storageBatch, _storageHistoryV3!);

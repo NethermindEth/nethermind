@@ -3,6 +3,8 @@
 
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -11,6 +13,8 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+
+[assembly: InternalsVisibleTo("Nethermind.State.Flat")]
 
 namespace Nethermind.State
 {
@@ -76,6 +80,24 @@ namespace Nethermind.State
         {
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account));
+        }
+
+        [SkipLocalsInit]
+        internal void SetAccounts(Dictionary<AddressAsKey, Account?> accounts)
+        {
+            using ArrayPoolListRef<BulkSetEntry> entries = new(accounts.Count);
+            Unsafe.SkipInit(out KeyHashBatch batch);
+            batch.Initialize(Address.Size);
+            foreach (KeyValuePair<AddressAsKey, Account?> entry in accounts)
+            {
+                batch.Add(entry.Key.Value.Bytes, entries.Count, out ValueHash256 hash);
+                Account? account = entry.Value;
+                byte[]? encoded = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account);
+                entries.Add(new(in hash, encoded));
+                if (batch.IsFull) batch.Flush(entries.AsSpan());
+            }
+            batch.Flush(entries.AsSpan());
+            BulkSet(entries);
         }
 
         public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);

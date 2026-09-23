@@ -19,7 +19,7 @@ public class PreBlockCaches
 {
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
+    private readonly SeqlockCache<StorageCell, UInt256> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache;
     private readonly PrecompileCaches _precompileCaches;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
@@ -41,7 +41,7 @@ public class PreBlockCaches
 
     public PreBlockCaches(PreBlockCachesConfig config, PrecompileCaches precompileCaches)
     {
-        _storageCache = new SeqlockCache<StorageCell, byte[]>(config.StorageCacheSetsBits);
+        _storageCache = new SeqlockCache<StorageCell, UInt256>(config.StorageCacheSetsBits);
         _stateCache = new SeqlockCache<AddressAsKey, Account>(config.StateCacheSetsBits);
         _precompileCaches = precompileCaches;
         _clearCaches =
@@ -53,7 +53,7 @@ public class PreBlockCaches
         _writeBack = new WriteBackBatch(this);
     }
 
-    public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
+    public SeqlockCache<StorageCell, UInt256> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
 
     /// <summary>
@@ -352,7 +352,7 @@ public class PreBlockCaches
 
             if (_writeBack.Contended)
             {
-                // Another writer got in, so the caches describe neither the base nor the committed state.
+                // A partial write-back cannot serve the committed state.
                 ClearStateCachesCore();
                 if (logger.IsInfo) ReportCachesCleared(logger);
             }
@@ -366,7 +366,7 @@ public class PreBlockCaches
     /// <remarks>Out of line because it must be rare.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ReportCachesCleared(ILogger logger) =>
-        logger.Info("Pre-block caches cleared by a writer that overlapped the write-back");
+        logger.Info("Pre-block caches cleared because write-back could not complete");
 
     private sealed class WriteBackBatch(PreBlockCaches caches) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
@@ -407,19 +407,19 @@ public class PreBlockCaches
         public void Dispose() { }
     }
 
-    private sealed class StorageWriteBackBatch(SeqlockCache<StorageCell, byte[]> storageCache) : IWorldStateScopeProvider.IStorageWriteBatch
+    private sealed class StorageWriteBackBatch(SeqlockCache<StorageCell, UInt256> storageCache) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public Address Address { get; set; } = null!;
         public bool Contended { get; set; }
         public ILogger Logger { get; set; }
         public bool Cleared { get; set; }
 
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, in UInt256 value)
         {
             if (Contended) return;
 
             StorageCell cell = new(Address, in index);
-            if (!storageCache.TrySetExclusive(in cell, value)) Contended = true;
+            if (!storageCache.TrySetExclusive(in cell, in value)) Contended = true;
         }
 
         public void Clear()
@@ -516,7 +516,7 @@ public sealed record PreBlockCachesConfig
     /// </summary>
     /// <remarks>
     /// Above the ~140K-slot working set of a single 300M-gas block, with room for the blocks before it. An entry is
-    /// 56 bytes of array, the slot index being most of it, and keeps its value alive on top of that.
+    /// 80 bytes, including the slot index and numeric value, with no separate value allocation.
     /// </remarks>
     public int StorageCacheSetsBits { get; init; } = 18;
 
