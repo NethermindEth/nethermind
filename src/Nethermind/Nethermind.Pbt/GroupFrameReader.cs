@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -56,16 +58,33 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         try
         {
             _metrics?.IncrementGroupParses();
-            PbtNodeGroupReader reader = PbtNodeGroupReader.FromValidated(path, _lease.GetSpan());
-            for (int slot = 0; slot < PbtNodeGroupCodec.DescendantSlots; slot++) _descendantBytes[slot] = reader.DescendantBytes(slot);
-            for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
+            // The store validated the payload, so the footer is walked by its set bits alone, which a small group has few of.
+            ReadOnlySpan<byte> payload = _lease.GetSpan();
+            ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
+            ReadOnlySpan<byte> field = payload[^(PbtNodeGroupCodec.DescendantMaskLength + BitOperations.PopCount(descendantMask) * PbtNodeGroupCodec.DescendantBytesLength)..];
+            for (uint remaining = descendantMask; remaining != 0; remaining &= remaining - 1)
             {
-                if (position == PbtFourLevelGroupGeometry.RootPosition && BitDepth != 0) continue;
-                if (!reader.TryGetNodeRange(position, out int offset, out int length)) continue;
-                _offsets[position] = offset;
-                _lengths[position] = length;
-                _stored |= 1u << position;
+                _descendantBytes[BitOperations.TrailingZeroCount(remaining)] =
+                    BinaryPrimitives.ReadUInt32LittleEndian(field) | ((long)BinaryPrimitives.ReadUInt16LittleEndian(field[sizeof(uint)..]) << 32);
+                field = field[PbtNodeGroupCodec.DescendantBytesLength..];
             }
+
+            ReadOnlySpan<byte> entries = payload[PbtNodeGroupCodec.HeaderLength..];
+            uint availability = PbtNodeGroupCodec.ReadAvailability(entries);
+            Debug.Assert(BitDepth == 0 || (availability & (1u << PbtFourLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
+            int entriesEnd = PbtNodeGroupCodec.HeaderLength + entries.Length - PbtNodeGroupCodec.GetTrailerLength(availability, descendantMask);
+            ReadOnlySpan<byte> offsets = payload[entriesEnd..];
+            int previous = -1;
+            for (uint remaining = availability; remaining != 0; remaining &= remaining - 1)
+            {
+                int position = BitOperations.TrailingZeroCount(remaining);
+                _offsets[position] = PbtNodeGroupCodec.HeaderLength + BinaryPrimitives.ReadUInt16LittleEndian(offsets);
+                offsets = offsets[sizeof(ushort)..];
+                if (previous >= 0) _lengths[previous] = _offsets[position] - _offsets[previous];
+                previous = position;
+            }
+            if (previous >= 0) _lengths[previous] = entriesEnd - _offsets[previous];
+            _stored = availability;
         }
         catch
         {

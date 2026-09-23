@@ -891,8 +891,8 @@ public class Eip8297CanonicalTreeTests
             Assert.That(branch.RightKey.ToArray(), Is.EqualTo(second));
             Assert.That(branch.LeftHash, Is.EqualTo(PbtNodeCodec.HashLeaf(first, Value(2))), "the split reuses the stored leaf hash");
             Assert.That(branch.RightHash, Is.EqualTo(PbtNodeCodec.HashLeaf(second, Value(3))));
-            // The new leaf, the branch at its own depth and the branch promoted to the root; the old leaf is not rehashed.
-            Assert.That(split.NodeHashes, Is.EqualTo(3));
+            // The new leaf and the branch, built at the root directly; the old leaf is not rehashed.
+            Assert.That(split.NodeHashes, Is.EqualTo(2));
         }
 
         tree.ApplyBatch([(first, null)]);
@@ -2149,7 +2149,7 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1), "only the root group; the left boundary's group is never entered");
             Assert.That(metrics.GroupParses, Is.EqualTo(1), "the left boundary's leaves are inline, so its group is absent");
-            Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(2), "one frame resolution per entered physical group");
+            Assert.That(metrics.GroupFrameResolutions, Is.EqualTo(1), "only the root group; the left boundary inlines both leaves, so a write to one is folded without a frame");
             Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
             Assert.That(store.GroupReads.ContainsKey(absentGroup), Is.False, "the changed left boundary inlines its leaves, so its group is absent and never fetched");
             Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False, "the untouched right group is not fetched");
@@ -2415,6 +2415,8 @@ public class Eip8297CanonicalTreeTests
         (byte[] Key, byte[]? Value)[] changes =
         [
             (ZoneKey("00000000"), Value(1)), (ZoneKey("00800000"), Value(2)),
+            // Branches below the zone boundary, so the zone's group at depth eight is stored and published.
+            (ZoneKey("00400000"), Value(7)),
             (ZoneKey("01000000"), Value(3)), (ZoneKey("01800000"), Value(4)),
             (ZoneKey("ff000000"), Value(5)), (ZoneKey("ff800000"), Value(6)),
         ];

@@ -16,11 +16,14 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// replace its touched slots, then taken back by <see cref="Compose"/> as it rebuilds. A decomposed entry names
     /// where its node is read from rather than holding it, so only the folds' own results are carried here. A stored
     /// node no touched slot lies under has no entry, since composition copies it without consulting the frontier.
+    /// <see cref="Mask"/> alone says which entries are live, so a taken entry is left in place rather than cleared.
     /// </remarks>
     internal struct Frontier
     {
         internal EntryBuffer Entries;
         internal uint Mask;
+        /// <summary>The stored positions with no touched slot under them, which <see cref="Compose"/> copies straight from the frame.</summary>
+        internal uint Copies;
         /// <summary>The input node, for the slots that resolve to the group's own root instead of a node inside it.</summary>
         internal BoundaryNode Root;
 
@@ -34,8 +37,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <summary>Takes the boundary node at <paramref name="slot"/>, resolving it against the frame it was read from.</summary>
         internal BoundaryNode TakeBoundaryNode(scoped ref GroupFrameReader<TKey, TPath> reader, scoped in PbtTraversalPath path, int slot)
         {
-            DecompositionEntry entry = Entries[slot];
-            Entries[slot] = default;
+            ref readonly DecompositionEntry entry = ref Entries[slot];
             bool fromRoot = entry.SourcePosition == RootSource;
             switch (entry.Source)
             {
@@ -58,15 +60,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// </returns>
         internal TraversalSubtree Take(scoped ref GroupFrameReader<TKey, TPath> reader, PbtTraversalPath path, int slot, out BoundaryNode boundary)
         {
-            DecompositionEntry entry = Entries[slot];
+            ref readonly DecompositionEntry entry = ref Entries[slot];
             switch (entry.Source)
             {
                 case EntrySource.Node:
-                    Entries[slot] = default;
                     boundary = default;
-                    return new TraversalSubtree(path, Subtree.Move(ref entry.Node));
+                    return new TraversalSubtree(path, entry.Node);
                 case EntrySource.AtPosition when entry.SourcePosition != RootSource:
-                    Entries[slot] = default;
                     boundary = default;
                     return new TraversalSubtree(path, reader.TakeDirectCopy(path, entry.SourcePosition));
                 default:

@@ -223,7 +223,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (operations.Length == 1)
             {
                 PbtWriteOperation<TKey> operation = operations[0];
-                if (operation.Key.Equals(current.LeafKey))
+                TKey leafKey = current.LeafKey;
+                if (operation.Key.Equals(leafKey))
                 {
                     if (operation.Value == default) return default;
                     // The stored leaf has no value; an unchanged value shows as an unchanged hash.
@@ -231,7 +232,28 @@ internal static partial class TrieUpdater<TKey, TPath>
                     return leaf.LeafHash == current.Hash ? current.ToFoldResult(path, resultDepth) : new FoldResult(leaf);
                 }
                 if (operation.Value == default) return current.ToFoldResult(path, resultDepth);
+                // An insert beside a leaf is a branch over the two, which owns no group, so no frame is opened for it.
+                int divergenceDepth = leafKey.FirstDifferingBit(operation.Key, bitDepth);
+                if (divergenceDepth < Math.Min(leafKey.BitLength, operation.Key.BitLength))
+                    return TwoLeafBranch(new Subtree(leafKey, current.Hash), CreateLeaf(operation, metrics), divergenceDepth, resultDepth);
             }
+        }
+        else if (operations.Length == 1 && current.LeafChildrenMask == (Subtree.LeftLeaf | Subtree.RightLeaf))
+        {
+            // A branch over two inlined leaves is its whole subtree, so a write to either leaf rewrites it in place.
+            PbtWriteOperation<TKey> operation = operations[0];
+            bool right = operation.Key.Equals(current.RightLeafKey);
+            if (right || operation.Key.Equals(current.LeftLeafKey))
+            {
+                if (operation.Value == default)
+                    return new FoldResult(right ? new Subtree(current.LeftLeafKey, current.LeftHash) : new Subtree(current.RightLeafKey, current.RightHash));
+                Subtree leaf = CreateLeaf(operation, metrics);
+                if (leaf.LeafHash == (right ? current.RightHash : current.LeftHash)) return current.ToFoldResult(path, resultDepth);
+                Subtree branch = current.ToFoldResult(path, resultDepth).Node;
+                return new FoldResult(new Subtree(branch.Path, right ? branch.LeftHash : leaf.LeafHash, right ? leaf.LeafHash : branch.RightHash,
+                    branch.LeftLeafKey, branch.RightLeafKey, branch.LeafChildrenMask, branch.Encoding));
+            }
+            if (operation.Value == default) return current.ToFoldResult(path, resultDepth);
         }
 
         // Keys are logically variable-length despite each full-key type using a fixed-size inline buffer;
@@ -345,7 +367,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>Publishes a frame's group and returns the size change of the group and everything folded below it.</summary>
     /// <remarks>
     /// Each stored descendant size is the loaded (or inherited) size of its slot adjusted by the change folded below that
-    /// slot. A group that stays absent stores nothing, so only the folded change survives.
+    /// slot. A group that stays absent stores nothing, so only the folded change survives, and the store is not told
+    /// to delete a group it never held.
     /// </remarks>
     internal static long PublishGroup(IPbtStore store, ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
         scoped in PbtTraversalPath path, in ValueHash256 hash)
@@ -353,7 +376,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         Span<long> descendantBytes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
         for (int slot = 0; slot < descendantBytes.Length; slot++) descendantBytes[slot] = reader.DescendantBytes(slot) + writer.DescendantDelta(slot);
         using RefCountingMemory? payload = writer.Detach(descendantBytes);
-        store.SetNodeGroup(path, hash, payload);
+        Debug.Assert(reader.IsResolved, "A frame is loaded or declared absent before it publishes, so an empty payload length means no stored group.");
+        if (payload is not null || reader.PayloadLength != 0) store.SetNodeGroup(path, hash, payload);
         return (payload?.GetSpan().Length ?? 0) - reader.PayloadLength + writer.DescendantDelta();
     }
 
@@ -432,7 +456,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (!foldedInParallel)
             FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition);
 
-        return Compose(ref reader, writer, path, context.Metrics, ref frontier, partition.UsedMask).Materialize(resultDepth);
+        return Compose(ref reader, writer, path, context.Metrics, ref frontier).Materialize(resultDepth);
     }
 
     private static void FoldBuckets(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
@@ -471,6 +495,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth,
         scoped PartitionOutcome partition)
     {
+        // Two runs each hold at least the smaller minimum, so a frame with fewer operations never splits.
+        FoldFanOut fanOut = context.FanOut;
+        if (operations.Length < 2 * Math.Min(fanOut.MinOperationsPerWorker, fanOut.LargeSubtreeMinOperationsPerWorker)) return false;
+
         // Read before the boundaries are taken: the planner may refuse to split, which must leave the frontier alone.
         Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
         int touched = 0;
@@ -478,7 +506,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             descendantBytes[touched++] = reader.DescendantBytes(BitOperations.TrailingZeroCount(mask));
 
         Span<int> runEnds = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        int runCount = PlanBucketRuns(partition.Counts, descendantBytes[..touched], context.FanOut, runEnds);
+        int runCount = PlanBucketRuns(partition.Counts, descendantBytes[..touched], fanOut, runEnds);
         if (runCount < 2) return false;
 
         BucketFold[] buckets = ArrayPool<BucketFold>.Shared.Rent(partition.Counts.Length);
@@ -606,6 +634,29 @@ internal static partial class TrieUpdater<TKey, TPath>
         return new(key, PbtNodeCodec.HashLeaf(key.Bytes, value.Bytes));
     }
 
+    /// <summary>The branch over two leaves whose keys first differ at <paramref name="branchDepth"/>, read against the cursor at <paramref name="anchorDepth"/>.</summary>
+    private static FoldResult TwoLeafBranch(in Subtree first, in Subtree second, int branchDepth, int anchorDepth)
+    {
+        TKey key = first.LeafKey;
+        bool firstIsLeft = key.GetBit(branchDepth) == 0;
+        ref readonly Subtree left = ref firstIsLeft ? ref first : ref second;
+        ref readonly Subtree right = ref firstIsLeft ? ref second : ref first;
+        int localLength = Math.Min(branchDepth - anchorDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
+        int slot = 0;
+        for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | key.GetBit(bit);
+        int prefixBitCount = branchDepth - anchorDepth - localLength;
+        ReadOnlyMemory<byte> prefix = default;
+        if (prefixBitCount != 0)
+        {
+            byte[] owned = new byte[sizeof(ushort) + PbtBitPrefix.ByteCount(prefixBitCount)];
+            BinaryPrimitives.WriteUInt16BigEndian(owned, (ushort)prefixBitCount);
+            PbtBitPrefix.CopyBits(key.Bytes, anchorDepth + localLength, prefixBitCount, owned.AsSpan(sizeof(ushort)), 0);
+            prefix = owned;
+        }
+        return new FoldResult(new Subtree(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
+            left.LeafHash, right.LeafHash, left.LeafKey, right.LeafKey, Subtree.LeftLeaf | Subtree.RightLeaf, prefix));
+    }
+
     /// <summary>Takes the boundary node a fold is about to descend into, leaving its slot free for the result.</summary>
     internal static BoundaryNode TakeBoundary(scoped ref GroupFrameReader<TKey, TPath> reader, scoped in PbtTraversalPath path,
         scoped ref Frontier frontier, int slot)
@@ -631,11 +682,27 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (((frontier.Mask | copies) & bit) == 0) return default;
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
         if ((copies & bit) != 0) return new TraversalSubtree(path, reader.TakeDirectCopy(path, position));
+        return TakeFrontierSubtree(ref reader, path, ref frontier, position);
+    }
+
+    /// <summary>The frontier's part of <see cref="TakeSubtree"/>.</summary>
+    /// <remarks>
+    /// Kept out of line: its node temporaries hold references, so the JIT zeroes their stack space on entry, which
+    /// inlined would be paid by every position composition probes, empty or not.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static TraversalSubtree TakeFrontierSubtree(scoped ref GroupFrameReader<TKey, TPath> reader, PbtTraversalPath path, scoped ref Frontier frontier, int position)
+    {
         TraversalSubtree taken = frontier.Take(ref reader, path, PbtFourLevelGroupGeometry.LocalPathOf(position).Slot, out BoundaryNode boundary);
-        frontier.Mask &= ~bit;
-        if (!boundary.IsEmpty) return new TraversalSubtree(path, boundary.ToFoldResult(path, path.BitDepth).Node);
+        frontier.Mask &= ~(1u << position);
+        if (!boundary.IsEmpty) return BoundarySubtree(path, boundary);
         return taken.IsEmpty ? ImplicitBranch(ref reader, path, position) : taken;
     }
+
+    /// <summary>A boundary node placed against the cursor, out of line for the same reason as <see cref="TakeFrontierSubtree"/>.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static TraversalSubtree BoundarySubtree(PbtTraversalPath path, scoped in BoundaryNode boundary) =>
+        new(path, boundary.ToFoldResult(path, path.BitDepth).Node);
 
     /// <summary>The branch at <paramref name="position"/> that the group leaves implicit, rebuilt from the children it stores.</summary>
     /// <remarks>
@@ -664,10 +731,10 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     [SkipLocalsInit]
     internal static TraversalSubtree Compose(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, TrieUpdaterMetrics? metrics,
-        scoped ref Frontier frontier, int touchedMask)
+        scoped ref Frontier frontier)
     {
-        // A frame decomposition never read holds a leaf or a spanning branch, so its group stores nothing to copy.
-        uint copies = reader.IsResolved ? DirectCopyPositions(reader.StoredPositions(path), touchedMask) : 0;
+        uint copies = frontier.Copies;
+        writer.ReserveFirstBuffer(reader.PayloadLength);
         ComposeFrameBuffer frames = default;
         // A left child's preimage waits here, one slice per frame, until its sibling is written and both can be hashed at once.
         Span<byte> pendingPreimages = stackalloc byte[(PbtFourLevelGroupGeometry.LevelsPerGroup + 1) * PbtNodeCodec.MaxBranchPreimageLength];
@@ -819,6 +886,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         // The root is held by the frontier, not by the group, so its position never answers the climb.
         uint stored = reader.StoredPositions(path) & ~(1u << PbtFourLevelGroupGeometry.RootPosition);
         uint copies = DirectCopyPositions(stored, touchedMask);
+        frontier.Copies = copies;
         for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots;)
         {
             // A touched slot is resolved on its own; everything else in the widest aligned untouched block it starts.

@@ -124,8 +124,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// The source prefix and encoding must remain valid until the view is consumed or materialized. The node is either
     /// one a fold composed or a <see cref="DirectCopySubtree"/> still borrowed from the frame it was read from; only
-    /// the cursor that addresses that one at its own anchor keeps it a copy, so every other member reads it through
-    /// <see cref="Resolved"/>.
+    /// the cursor that addresses that one at its own anchor keeps it a copy, so every other placement rebuilds it as a
+    /// composed branch through <see cref="DirectCopySubtree.ToBranch"/>.
     /// </remarks>
     internal ref struct TraversalSubtree(PbtTraversalPath groupPath, Subtree node)
     {
@@ -141,8 +141,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly int AnchorDepth => GroupPath.BitDepth + LocalPath.Length;
         internal readonly int BranchDepth => AnchorDepth + LocalPrefix.BitCount;
 
-        /// <summary>This node as a composed branch, which is what every placement but a copy at its own anchor needs.</summary>
-        private readonly Subtree Resolved => Copy.IsEmpty ? Node : Copy.ToBranch();
         private readonly NodeGroupPath LocalPath => Copy.IsEmpty ? Node.Path : Copy.Path;
         private readonly CompressedPrefix LocalPrefix => Copy.IsEmpty ? Node.Prefix : Copy.Prefix;
 
@@ -184,9 +182,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly int EncodedLength(int depth)
         {
             if (IsLeaf) return PbtNodeCodec.LeafLength(Node.LeafKey.Length);
-            if (!Copy.IsEmpty && depth == AnchorDepth) return Copy.Length;
-            Subtree branch = Resolved;
-            return PbtNodeCodec.BranchLength(BranchDepth - depth, branch.LeftLeafKeyLength, branch.RightLeafKeyLength);
+            if (Copy.IsEmpty) return PbtNodeCodec.BranchLength(BranchDepth - depth, Node.LeftLeafKeyLength, Node.RightLeafKeyLength);
+            if (depth == AnchorDepth) return Copy.Length;
+            PbtNodeReader stored = Copy.Reader;
+            return PbtNodeCodec.BranchLength(BranchDepth - depth, stored.LeftKey.Length, stored.RightKey.Length);
         }
 
         // Encode writes every byte of the encoding it is given.
@@ -227,9 +226,25 @@ internal static partial class TrieUpdater<TKey, TPath>
                 return Copy.Hash(metrics);
             }
 
-            // Promotion absorbs the source anchor's skipped bits into the relative compressed prefix.
-            Subtree branch = Resolved;
             int bitCount = BranchDepth - depth;
+            return Copy.IsEmpty
+                ? EncodeBranch(in Node, encoding, depth, bitCount, out preimageLength)
+                : EncodeReanchoredCopy(encoding, depth, bitCount, out preimageLength);
+        }
+
+        /// <summary>An untouched stored branch addressed away from its own anchor, rebuilt as a composed branch to encode.</summary>
+        /// <remarks>Kept out of line, so the branch it rebuilds is not zeroed on every encoding of a composed node.</remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private readonly ValueHash256 EncodeReanchoredCopy(Span<byte> encoding, int depth, int bitCount, out int preimageLength)
+        {
+            Subtree branch = Copy.ToBranch();
+            return EncodeBranch(in branch, encoding, depth, bitCount, out preimageLength);
+        }
+
+        private readonly ValueHash256 EncodeBranch(in Subtree branch, Span<byte> encoding, int depth, int bitCount, out int preimageLength)
+        {
+            preimageLength = 0;
+            // Promotion absorbs the source anchor's skipped bits into the relative compressed prefix.
             PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, branch.LeftHash, branch.RightHash);
             CopyBranchBits(depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
             int branchPreimageLength = PbtNodeCodec.BranchPreimageLength(bitCount);
@@ -271,9 +286,14 @@ internal static partial class TrieUpdater<TKey, TPath>
             int localLength = Math.Min(splitDepth - anchorDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
             int slot = 0;
             for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | PrefixBit(bit);
-            return new(Resolved.CopyBranch(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
-                OwnedPrefix(anchorDepth + localLength, splitDepth)));
+            NodeGroupPath path = new(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength);
+            ReadOnlyMemory<byte> prefix = OwnedPrefix(anchorDepth + localLength, splitDepth);
+            return new(Copy.IsEmpty ? Node.CopyBranch(path, prefix) : ReanchoredCopy(path, prefix));
         }
+
+        /// <summary>The untouched stored branch as a composed branch at <paramref name="path"/>, out of line for the same reason as <see cref="EncodeReanchoredCopy"/>.</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private readonly Subtree ReanchoredCopy(NodeGroupPath path, ReadOnlyMemory<byte> prefix) => Copy.ToBranch().CopyBranch(path, prefix);
 
         /// <summary>The bits from <paramref name="anchorDepth"/> to <paramref name="splitDepth"/> as a standalone compressed prefix.</summary>
         private readonly ReadOnlyMemory<byte> OwnedPrefix(int anchorDepth, int splitDepth)

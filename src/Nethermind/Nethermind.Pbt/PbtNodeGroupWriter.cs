@@ -67,7 +67,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         if (encodingLength <= 0 || encodingLength > MaxEntriesLength - _written)
             throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit or have an invalid length.");
 
-        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + encodingLength + PbtNodeGroupCodec.MaxTrailerLength);
+        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + encodingLength);
         _pendingPosition = position;
         _pendingLength = encodingLength;
         return _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, encodingLength);
@@ -174,7 +174,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         ValidatePositionOrder(firstPosition);
         if (entries.Length > MaxEntriesLength - _written)
             throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
-        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + entries.Length + PbtNodeGroupCodec.MaxTrailerLength);
+        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + entries.Length);
         entries.CopyTo(_memory!.GetSpan()[(PbtNodeGroupCodec.HeaderLength + _written)..]);
         int offsetAdjustment = _written - offsets[firstPosition];
         int copiedNodes = 0;
@@ -202,10 +202,11 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
             return null;
         }
 
-        PbtNodeGroupCodec.Header.CopyTo(_memory!.GetSpan());
         int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability, PbtNodeGroupCodec.DescendantMask(descendantBytes));
-        Span<byte> footer = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength);
         int length = PbtNodeGroupCodec.HeaderLength + _written + trailerLength;
+        EnsureCapacity(length);
+        PbtNodeGroupCodec.Header.CopyTo(_memory!.GetSpan());
+        Span<byte> footer = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength);
         PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability, descendantBytes);
         RefCountingMemory memory = _memory;
         // The snapshot retains the detached buffer's whole capacity until the segment is persisted, so
@@ -258,6 +259,16 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     {
         PbtNodeCodec.ValidateExact(encoding);
         PbtNodeGroupReader.ValidateLeafPath(path, _pendingPosition, encoding);
+    }
+
+    /// <summary>Sizes the first payload buffer for a group expected to be about <paramref name="length"/> bytes.</summary>
+    /// <remarks>
+    /// The group's previous size is the estimate, so a rewrite of similar size fills one buffer that detaching keeps
+    /// rather than compacts, where the default first buffer would be compacted for every small group.
+    /// </remarks>
+    internal void ReserveFirstBuffer(int length)
+    {
+        if (_memory is null && length > 0) _memory = _memoryProvider.Rent(Math.Min(MaxCapacity, length));
     }
 
     private void EnsureCapacity(int required)

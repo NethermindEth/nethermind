@@ -177,18 +177,16 @@ public static class PbtNodeGroupCodec
     {
         ushort descendantMask = DescendantMask(descendantBytes);
         int offsetIndex = 0;
-        for (int position = 0; position < PositionCount; position++)
+        for (uint remaining = availability; remaining != 0; remaining &= remaining - 1)
         {
-            if ((availability & (1u << position)) == 0) continue;
-            BinaryPrimitives.WriteUInt16LittleEndian(footer[offsetIndex..], offsets[position]);
+            BinaryPrimitives.WriteUInt16LittleEndian(footer[offsetIndex..], offsets[BitOperations.TrailingZeroCount(remaining)]);
             offsetIndex += sizeof(ushort);
         }
         BinaryPrimitives.WriteUInt32LittleEndian(footer[offsetIndex..], availability);
         Span<byte> field = footer[(offsetIndex + sizeof(uint))..];
-        for (int slot = 0; slot < DescendantSlots; slot++)
+        for (uint remaining = descendantMask; remaining != 0; remaining &= remaining - 1)
         {
-            if ((descendantMask & (1 << slot)) == 0) continue;
-            long slotBytes = descendantBytes[slot];
+            long slotBytes = descendantBytes[BitOperations.TrailingZeroCount(remaining)];
             BinaryPrimitives.WriteUInt32LittleEndian(field, (uint)slotBytes);
             BinaryPrimitives.WriteUInt16LittleEndian(field[sizeof(uint)..], (ushort)(slotBytes >> 32));
             field = field[DescendantBytesLength..];
@@ -293,15 +291,6 @@ public readonly ref struct PbtNodeGroupReader
         ValidatePosition(position);
         if ((_availability & (1u << position)) == 0) { encoding = default; return false; }
         encoding = _payload.Slice(_offsets[position], _lengths[position]);
-        return true;
-    }
-
-    internal bool TryGetNodeRange(int position, out int offset, out int length)
-    {
-        ValidatePosition(position);
-        if ((_availability & (1u << position)) == 0) { offset = 0; length = 0; return false; }
-        offset = _offsets[position] + PbtNodeGroupCodec.HeaderLength;
-        length = _lengths[position];
         return true;
     }
 

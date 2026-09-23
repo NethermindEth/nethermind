@@ -1398,6 +1398,10 @@ public class PbtSnapshotBundleTests
         bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
         bundle.SetAccount(TestItem.AddressA, account);
         bundle.SetSlot(TestItem.AddressA, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
+        // Slots of other accounts store a group below the storage zone boundary, so the failing zone publishes one.
+        bundle.SetSlot(TestItem.AddressA, 2000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
+        bundle.SetSlot(TestItem.AddressC, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
+        bundle.SetSlot(TestItem.AddressD, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
         ValueHash256 root = Fold(bundle, default);
         using PbtSnapshot original = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
 
