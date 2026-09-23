@@ -1755,10 +1755,16 @@ public partial class EngineModuleTests
 
     /// <summary>Builds a node whose state for selected blocks can be hidden on demand.</summary>
     /// <param name="pruned">Hashes whose state <see cref="IStateReader"/> should pretend not to have.</param>
-    private async Task<MergeTestBlockchain> CreateBlockchainWithPrunableState(ConcurrentDictionary<Hash256, byte> pruned)
+    /// <param name="configure">Further registrations for the node, applied after the state decorator.</param>
+    private async Task<MergeTestBlockchain> CreateBlockchainWithPrunableState(
+        ConcurrentDictionary<Hash256, byte> pruned, Action<ContainerBuilder>? configure = null)
     {
         MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder.AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned)));
+            configurer: builder =>
+            {
+                builder.AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned));
+                configure?.Invoke(builder);
+            });
         // Executing a block re-creates the state that was pruned, so stop hiding it once that happens.
         chain.BranchProcessor.BlockProcessed += (_, e) => pruned.TryRemove(e.Block.Hash!, out byte _);
         return chain;
@@ -1821,6 +1827,48 @@ public partial class EngineModuleTests
 
         Assert.That((await rpc.engine_newPayloadV1(child)).Data.Status, Is.EqualTo(PayloadStatus.Valid),
             "the child of a block the node just accepted must be executed, not answered SYNCING");
+    }
+
+    /// <summary>
+    /// A block being re-executed is already marked processed from its first run, so it can be made head while the
+    /// re-execution that restores its state is still committing. Sent again in that window it must be answered from
+    /// that commit, not SYNCING as a block on the node's own chain whose state is gone.
+    /// </summary>
+    [Test, MaxTime(20_000)]
+    public async Task newPayloadV1_answers_valid_for_a_head_resent_while_its_re_execution_commits()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        Hash256 genesisHash = chain.BlockTree.HeadHash!;
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+        ExecutionPayload resubmitted = blocks[0];
+        ForkchoiceStateV1 toGenesis = new(genesisHash, Keccak.Zero, Keccak.Zero);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(toGenesis)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        pruned[resubmitted.BlockHash] = 0;
+
+        // Holds the processing thread between the re-execution's verdict and its commit.
+        TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
+        {
+            if (e.BlockHash == resubmitted.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(10));
+        };
+
+        Assert.That((await rpc.engine_newPayloadV1(resubmitted)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        ForkchoiceStateV1 toResubmitted = new(resubmitted.BlockHash, Keccak.Zero, Keccak.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await rpc.engine_forkchoiceUpdatedV1(toResubmitted)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
+        }
+
+        Task<ResultWrapper<PayloadStatusV1>> resent = rpc.engine_newPayloadV1(resubmitted);
+        await Task.Delay(200);
+        commit.SetResult();
+
+        Assert.That((await resent).Data.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the head's own re-execution is committing, so its state is about to be readable");
     }
 
     /// <summary>Waits, briefly and without asserting, for the state a block committed to become readable.</summary>
@@ -1996,18 +2044,16 @@ public partial class EngineModuleTests
     [TestCase(true, true, TightenedCheck.None)]
     [TestCase(true, true, TightenedCheck.Header)]
     [TestCase(true, true, TightenedCheck.Processing)]
+    [TestCase(true, false, TightenedCheck.Processing)]
     public async Task newPayloadV1_leaves_its_own_chain_intact_when_a_pruned_canonical_block_is_resubmitted(
         bool parentHasState, bool executed, TightenedCheck tightened)
     {
         ConcurrentDictionary<Hash256, byte> pruned = new();
         ConcurrentDictionary<Hash256, byte> headerRejected = new();
         ConcurrentDictionary<Hash256, byte> processingRejected = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder
-                .AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned))
-                .AddDecorator<IHeaderValidator>((_, inner) => new TightenedHeaderValidator(inner, headerRejected))
-                .AddDecorator<IBlockValidator>((_, inner) => new TightenedProcessingValidator(inner, processingRejected)));
-        chain.BranchProcessor.BlockProcessed += (_, e) => pruned.TryRemove(e.Block.Hash!, out byte _);
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned, builder => builder
+            .AddDecorator<IHeaderValidator>((_, inner) => new TightenedHeaderValidator(inner, headerRejected))
+            .AddDecorator<IBlockValidator>((_, inner) => new TightenedProcessingValidator(inner, processingRejected)));
         IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
         Hash256 head = chain.BlockTree.HeadHash!;
         ulong bestKnown = chain.BlockTree.BestKnownNumber;

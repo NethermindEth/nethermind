@@ -649,7 +649,8 @@ public partial class EngineModuleTests
     // bogota.md newPayloadV6 (2.1): a VALID response must carry a compliance answer. Appendability is
     // judged against the state the block committed, so a canonical block is answerable without the
     // re-execution that would replay the whole pruning window on every resend - but only one this node ran:
-    // the state root alone cannot tell the state a block committed from one it merely shares a root with.
+    // the state root alone cannot tell the state a block committed from one it merely shares a root with. One the
+    // head descends from but this node never ran is answered SYNCING, neither from that root nor re-executed.
     [Test]
     public async Task NewPayloadV6_answers_an_inclusion_list_behind_head_from_its_state_only_when_run_here([Values] bool runHere)
     {
@@ -673,10 +674,10 @@ public partial class EngineModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(resend.Data.InclusionListSatisfied, Is.False);
-            Assert.That(processed, runHere ? Is.Zero : Is.Positive,
-                runHere ? "a block this node ran is answered from its state" : "a block never run here is executed, not answered from a state root");
+            Assert.That(resend.Data.Status, Is.EqualTo(runHere ? PayloadStatus.Valid : PayloadStatus.Syncing),
+                runHere ? "a block this node ran is answered from its state" : "a block never run here is not answered from a state root");
+            if (runHere) Assert.That(resend.Data.InclusionListSatisfied, Is.False);
+            Assert.That(processed, Is.Zero, "a block on the node's own chain is not re-executed");
         }
     }
 

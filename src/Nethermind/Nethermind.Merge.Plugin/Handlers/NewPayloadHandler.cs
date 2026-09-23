@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -224,7 +225,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             if (!hasInclusionList)
             {
-                if (IsVerdictServiceable(block))
+                // A block being re-executed is already marked processed from its first run, so it can be made head
+                // while that re-execution is still committing the state it restores. Its own commit is waited for,
+                // as the parent's is below, before the state is read a second time.
+                if (IsVerdictServiceable(block)
+                    || (await WaitForCommitInFlightAsync(block.Hash!, deadline) == true && IsVerdictServiceable(block)))
                 {
                     if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
                     return NewPayloadV1Result.Valid(block.Hash);
@@ -306,6 +311,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Syncing;
         }
 
+        // A canonical block this node never ran reaches here when its parent has state. If the head descends from it,
+        // a processing failure would be recorded against the head and delete everything from it up to the head, so
+        // it is answered like a block ran onto the node's own chain. Only a stale marker - one the head does not
+        // descend from - is processed and, if invalid, recorded.
+        if (isCanonicalBehindHead && IsAncestorOfHead(block.Header))
+        {
+            if (_logger.IsInfo) _logger.Info($"Syncing... A new payload found in main chain that this node never ran. Block {block.ToString(Block.Format.Short)}.");
+            return NewPayloadV1Result.Syncing;
+        }
+
         if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty())
         {
             const string errorMessage = "Misconfigured terminal total difficulty.";
@@ -372,6 +387,23 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </remarks>
     private bool WasExecuted(Block block) =>
         _blockTree.GetInfo(block.Number, block.Hash!).Info is { WasProcessed: true };
+
+    /// <summary>Whether the current head descends from <paramref name="header"/>.</summary>
+    /// <remarks>
+    /// The chain-level marker cannot answer this: sync moves it without moving the head, leaving stale markers the
+    /// head does not descend from. Walks the head's ancestry down to the header's height, which the only caller
+    /// bounds by requiring the header's parent to still have state.
+    /// </remarks>
+    private bool IsAncestorOfHead(BlockHeader header)
+    {
+        BlockHeader? current = _blockTree.Head?.Header;
+        while (current is not null && current.Number > header.Number)
+        {
+            current = _blockTree.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        }
+
+        return current?.Hash == header.Hash;
+    }
 
     /// <summary>Whether a VALID verdict for <paramref name="block"/> still describes something this node can act on.</summary>
     /// <remarks>
@@ -552,13 +584,24 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Hash256 parentHash = parent.GetOrCalculateHash();
         if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
 
-        Task removed = _processingQueue.WaitUntilRemovedAsync(parentHash, executedOnly: true).AsTask();
-        if (removed.IsCompleted) return true;
+        bool? committed = await WaitForCommitInFlightAsync(parentHash, deadline);
+        if (committed == false && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
+        return committed != false;
+    }
+
+    /// <summary>
+    /// Waits, within the request's budget, for a copy of the block that already has its verdict to leave the
+    /// processing queue, and with it to commit.
+    /// </summary>
+    /// <returns><c>null</c> when no such copy is in flight, otherwise whether it left in time.</returns>
+    private async Task<bool?> WaitForCommitInFlightAsync(Hash256 blockHash, long deadline)
+    {
+        Task removed = _processingQueue.WaitUntilRemovedAsync(blockHash, executedOnly: true).AsTask();
+        if (removed.IsCompleted) return null;
 
         using CancellationTokenSource bound = new();
         bool inTime = await Task.WhenAny(removed, Task.Delay(RemainingBudget(deadline), bound.Token)) == removed;
         if (inTime) bound.Cancel();
-        else if (_logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
         return inTime;
     }
 
