@@ -81,9 +81,11 @@ public class BlockAccessListBasedWorldStateTests
     /// expectations rather than re-deriving them from the condition the implementation uses.
     /// </summary>
     /// <remarks>
-    /// Every non-<see cref="ParentAccount.Missing"/> shape is declared in the suggested BAL with its change at
-    /// index 1, so index 1 answers from the parent while index 2 reads through the change and sees an account
-    /// EIP-161 has emptied — hence physically recreated.
+    /// Every shape other than <see cref="ParentAccount.Missing"/> and <see cref="ParentAccount.Empty"/> is declared
+    /// in the suggested BAL with its change at index 1, so index 1 answers from the parent while index 2 reads
+    /// through the change and sees an account EIP-161 has emptied — hence physically recreated.
+    /// <see cref="ParentAccount.Empty"/> declares no change at all, so both indices fall through to the parent and
+    /// find the account physically present, however empty — no recreation at either index.
     /// </remarks>
     private static IEnumerable<TestCaseData> PhysicalCreationCases()
     {
