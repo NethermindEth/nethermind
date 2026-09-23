@@ -120,7 +120,7 @@ public class ProofRpcModuleTests
     }
 
     [Test]
-    public async Task When_getting_non_existing_tx_null_result_is_returned([Values] ProofMethod method, [Values] bool withHeader)
+    public async Task When_transaction_is_unknown_null_result_is_returned([Values] ProofMethod method, [Values] bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
         Assert.That(Invoke(method, txHash, withHeader).Data, Is.Null);
