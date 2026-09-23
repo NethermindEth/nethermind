@@ -5,6 +5,7 @@
 // Licensed under the MIT License
 
 using System;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.Cpu;
@@ -51,6 +52,58 @@ public static class RuntimeInformation
     /// </remarks>
     public static bool IsSingleProcessor => ProcessorCount <= 1;
     public static int PhysicalCoreCount { get; } = GetCpuInfo()?.PhysicalCoreCount ?? ProcessorCount;
+
+    /// <summary>
+    /// The logical processors on performance cores: on a hybrid CPU, whose core types Linux lists separately, the
+    /// efficiency cores are left out; everywhere else it is <see cref="ProcessorCount"/>.
+    /// </summary>
+    /// <remarks>
+    /// Size CPU-bound work that runs alongside block processing by this. Counting efficiency cores as equal oversubscribes
+    /// the performance cores, which shares them with the processing thread and, on a power-limited part, lowers the clock
+    /// of every core.
+    /// </remarks>
+    public static int PerformanceProcessorCount { get; } = GetPerformanceProcessorCount();
+
+    private static int GetPerformanceProcessorCount()
+    {
+#if !ZK_EVM
+        if (IsLinux())
+        {
+            try
+            {
+                const string performanceCores = "/sys/devices/cpu_core/cpus";
+                if (File.Exists(performanceCores))
+                {
+                    int count = CountCpuList(File.ReadAllText(performanceCores));
+                    if (count > 0) return Math.Min(count, ProcessorCount);
+                }
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+#endif
+        return ProcessorCount;
+    }
+
+    /// <summary>Counts the CPUs in a Linux CPU list such as <c>0-11,14</c>.</summary>
+    internal static int CountCpuList(string cpuList)
+    {
+        int count = 0;
+        foreach (string range in cpuList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            int dash = range.IndexOf('-');
+            if (dash < 0)
+            {
+                if (int.TryParse(range, out _)) count++;
+            }
+            else if (int.TryParse(range.AsSpan(0, dash), out int first) && int.TryParse(range.AsSpan(dash + 1), out int last) && last >= first)
+            {
+                count += last - first + 1;
+            }
+        }
+
+        return count;
+    }
     public static ParallelOptions ParallelOptionsLogicalCores { get; } = new() { MaxDegreeOfParallelism = ProcessorCount };
     public static bool Is64BitPlatform() => IntPtr.Size == 8;
 }

@@ -34,4 +34,16 @@ public class RuntimeInformationTests
     [Test]
     public void Single_processor_flag_follows_the_count()
         => Assert.That(RuntimeInformation.IsSingleProcessor, Is.EqualTo(RuntimeInformation.ProcessorCount <= 1));
+
+    [TestCase("0-11", 12, TestName = "CountCpuList_SingleRange_CountsEveryCpu")]
+    [TestCase("0-3,8,10-11\n", 7, TestName = "CountCpuList_RangesAndSingles_CountsEach")]
+    [TestCase("5", 1, TestName = "CountCpuList_SingleCpu_CountsOne")]
+    [TestCase("", 0, TestName = "CountCpuList_Empty_CountsNone")]
+    [TestCase("4-2,x", 0, TestName = "CountCpuList_Malformed_CountsNone")]
+    public void CountCpuList_ParsesLinuxCpuLists(string cpuList, int expected) =>
+        Assert.That(RuntimeInformation.CountCpuList(cpuList), Is.EqualTo(expected), "the number of CPUs the list names");
+
+    [Test]
+    public void PerformanceProcessorCount_NeverExceedsTheLogicalCount() =>
+        Assert.That(RuntimeInformation.PerformanceProcessorCount, Is.InRange(1, RuntimeInformation.ProcessorCount), "performance cores are a subset of the logical processors");
 }
