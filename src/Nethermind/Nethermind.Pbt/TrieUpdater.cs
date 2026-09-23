@@ -22,6 +22,19 @@ public static partial class TrieUpdater
 
     internal enum NodeKind : byte { Empty, Original, Leaf, Branch }
 
+    /// <summary>Where a boundary node's complete key is read from, which is also whether it is a leaf at all.</summary>
+    internal enum LeafSource : byte
+    {
+        /// <summary>Not a leaf: the encoding is the node's own branch, or there is none.</summary>
+        None,
+        /// <summary>The left child of the branch the encoding holds.</summary>
+        ParentLeft,
+        /// <summary>The right child of the branch the encoding holds.</summary>
+        ParentRight,
+        /// <summary>The encoding is this leaf's own, which only a single-leaf tree's root is stored as.</summary>
+        Stored,
+    }
+
     /// <summary>The touched buckets and range knowledge established by partitioning.</summary>
     internal readonly ref struct PartitionOutcome(int usedMask, ReadOnlySpan<int> counts, BucketPlan plan)
     {
@@ -760,7 +773,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         // A leaf, or a branch reaching past this group, is the whole subtree under one slot and needs no group read.
         if (frontier.Root.IsLeaf)
         {
-            int leafSlot = BoundarySlot(frontier.Root.LeafKey.Bytes, bitDepth);
+            // The key is decoded once: a span taken straight off the property would point at an unnamed temporary.
+            TKey rootLeafKey = frontier.Root.LeafKey;
+            int leafSlot = BoundarySlot(rootLeafKey.Bytes, bitDepth);
             frontier.Place(leafSlot, BoundaryPosition(leafSlot), EntrySource.AtPosition, RootSource);
             return;
         }

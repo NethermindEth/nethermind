@@ -996,6 +996,42 @@ public class PbtNodeGroupTests
     }
 
     [Test]
+    public void Inlined_leaf_boundary_nodes_detach_from_the_branch_that_held_them([Values] bool right, [Values] bool stored)
+    {
+        byte[] key = Bytes.FromHexString("1234");
+        ValueHash256 leafHash = PbtNodeCodec.HashLeaf(key, Value(1));
+        ValueHash256 siblingHash = new(Value(2));
+        byte[] encoding = stored
+            ? PbtNodeCodec.EncodeLeaf(new PbtStorageTreeKey(key))
+            : right
+                ? PbtNodeCodec.EncodeBranch([], 0, siblingHash, leafHash, [], key)
+                : PbtNodeCodec.EncodeBranch([], 0, leafHash, siblingHash, key, []);
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode borrowed = stored
+            ? new(encoding, leafHash)
+            : new(encoding, right);
+        PbtStorageTreeKey borrowedKey = borrowed.LeafKey;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(borrowed.IsLeaf, Is.True);
+            Assert.That(borrowed.IsEmpty, Is.False);
+            Assert.That(borrowedKey.Bytes.ToArray(), Is.EqualTo(key));
+            Assert.That(borrowed.Hash, Is.EqualTo(leafHash), "an inlined leaf's hash is the one its branch holds");
+        }
+
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode owned = borrowed.Owned();
+        // Whatever the node was read from is gone once it has been detached, as it is when it crosses a thread.
+        encoding.AsSpan().Fill(0xDD);
+        PbtStorageTreeKey ownedKey = owned.LeafKey;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(owned.IsLeaf, Is.True);
+            Assert.That(ownedKey.Bytes.ToArray(), Is.EqualTo(key));
+            Assert.That(owned.Hash, Is.EqualTo(leafHash));
+            Assert.That(owned.Source, Is.EqualTo(TrieUpdater.LeafSource.Stored), "a detached leaf keeps its own key, not the branch it was read from");
+        }
+    }
+
+    [Test]
     public void Contextual_branches_preserve_encoding_after_owned_escape(
         [Values] bool storage, [Values] bool original, [Values(4, 252)] int groupDepth,
         [Values(0, 4)] int localLength, [Range(0, 3)] int remainder)
@@ -1111,9 +1147,14 @@ public class PbtNodeGroupTests
             Assert.That(Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.DecompositionEntry>(), Is.LessThan(224));
             Assert.That(Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree>(), Is.LessThan(312));
             Assert.That(Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DecompositionEntry>(), Is.LessThan(320));
+            // A boundary node reads its key out of the encoding it points at, so its size does not follow the key type
+            // and stays under the 72 bytes a storage key alone used to take inside it.
+            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode>(),
+                Is.EqualTo(Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.BoundaryNode>()));
+            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode>(), Is.LessThan(72));
         }
-        TestContext.Out.WriteLine($"Small subtree/entry/owned/frontier: {Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.OwnedSubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Frontier>()}");
-        TestContext.Out.WriteLine($"Storage subtree/entry/owned/frontier: {Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier>()}");
+        TestContext.Out.WriteLine($"Small subtree/entry/owned/boundary/frontier: {Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.OwnedSubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.BoundaryNode>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Frontier>()}");
+        TestContext.Out.WriteLine($"Storage subtree/entry/owned/boundary/frontier: {Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier>()}");
     }
 
     [Test]

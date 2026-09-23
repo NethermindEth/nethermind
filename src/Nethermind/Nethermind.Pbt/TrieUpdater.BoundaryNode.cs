@@ -14,28 +14,48 @@ internal static partial class TrieUpdater<TKey, TPath>
 {
     /// <summary>The node at one boundary slot of a group, read against the traversal cursor that reached it.</summary>
     /// <remarks>
-    /// A boundary node keeps its encoding exactly as the group stores it, together with the absolute depth that
-    /// encoding is anchored at, so addressing it from another depth is a comparison rather than a rewrite.
-    /// <see cref="Hash"/> is always the hash of that encoding, because decomposition reads it from the parent's child
-    /// link; a boundary node is therefore never hashed again to be opened, moved or handed to another thread.
-    /// It is a leaf, a branch stored at the boundary, or a branch anchored above the boundary whose compressed prefix
-    /// spans past it. An omitted prefixless branch is never one, since omission only applies to a group's interior
+    /// A boundary node is a branch stored at the boundary, a branch anchored above it whose compressed prefix spans
+    /// past it, or a leaf. A branch keeps its encoding exactly as the group stores it, together with the absolute
+    /// depth that encoding is anchored at, so addressing it from another depth is a comparison rather than a rewrite.
+    /// A leaf has no node of its own: it points at the branch that inlines it, which already holds its complete key in
+    /// its trailer and its hash in its preimage, and <see cref="LeafSource"/> says which of the two children it is.
+    /// The one leaf stored as a node, a single-leaf tree's root, points at that encoding instead.
+    /// <see cref="Hash"/> is always known, because decomposition reads it from the parent's child link; a boundary
+    /// node is therefore never hashed again to be opened, moved or handed to another thread. An omitted prefixless
+    /// branch is never one, since omission only applies to a group's interior
     /// (<see cref="PbtNodeGroupCodec.ShouldOmit"/>) and a spanning branch always carries a prefix.
     /// </remarks>
     internal readonly struct BoundaryNode
     {
         private readonly ReadOnlyMemory<byte> _encoding;
         private readonly ValueHash256 _hash;
-        private readonly TKey _leafKey;
         private readonly ushort _anchorDepth;
-        private readonly bool _isLeaf;
+        private readonly LeafSource _source;
 
-        /// <summary>Creates the leaf a parent branch inlines, or the leaf a single-leaf tree stores as its root.</summary>
-        internal BoundaryNode(TKey key, in ValueHash256 hash)
+        /// <summary>Creates the leaf <paramref name="parent"/> inlines on the given side.</summary>
+        /// <remarks>
+        /// The hash is taken from the same branch that holds the key, so the two cannot disagree. The fold compares it
+        /// to detect a write that changes nothing, and the branch composed above takes it straight back into its
+        /// preimage while the key goes to its trailer, so neither is ever recomputed.
+        /// </remarks>
+        internal BoundaryNode(ReadOnlyMemory<byte> parent, bool right)
         {
-            _leafKey = key;
+            PbtNodeReader branch = PbtNodeReader.FromValidated(parent.Span);
+            Debug.Assert(!(right ? branch.RightKey : branch.LeftKey).IsEmpty, "An inlined leaf's branch holds its key.");
+            _encoding = parent;
+            _source = right ? LeafSource.ParentRight : LeafSource.ParentLeft;
+            _hash = right ? branch.RightHash : branch.LeftHash;
+        }
+
+        /// <summary>Creates the leaf a single-leaf tree stores as its root, whose hash is its group's identity.</summary>
+        /// <remarks>A leaf encoding holds no hash, so this is the one leaf whose hash comes from outside it.</remarks>
+        internal BoundaryNode(ReadOnlyMemory<byte> encoding, in ValueHash256 hash)
+        {
+            Debug.Assert(PbtNodeReader.FromValidated(encoding.Span).IsLeaf, "A stored leaf carries a leaf encoding.");
+            Debug.Assert(hash != default, "A boundary node knows its hash.");
+            _encoding = encoding;
             _hash = hash;
-            _isLeaf = true;
+            _source = LeafSource.Stored;
         }
 
         /// <param name="anchorDepth">The absolute bit depth <paramref name="encoding"/>'s compressed prefix starts at.</param>
@@ -49,12 +69,35 @@ internal static partial class TrieUpdater<TKey, TPath>
             _hash = hash;
         }
 
-        internal readonly bool IsEmpty => !_isLeaf && _encoding.IsEmpty;
-        /// <summary>The branch encoding exactly as its group stores it.</summary>
+        private BoundaryNode(ReadOnlyMemory<byte> encoding, int anchorDepth, in ValueHash256 hash, LeafSource source)
+        {
+            _encoding = encoding;
+            _anchorDepth = (ushort)anchorDepth;
+            _hash = hash;
+            _source = source;
+        }
+
+        internal readonly bool IsEmpty => _encoding.IsEmpty;
+        /// <summary>The encoding this node is read from: its own, or the branch that inlines it.</summary>
         internal readonly ReadOnlyMemory<byte> Encoding => _encoding;
-        internal readonly bool IsLeaf => _isLeaf;
-        /// <summary>A leaf's complete key.</summary>
-        internal readonly TKey LeafKey => _leafKey;
+        internal readonly bool IsLeaf => _source != LeafSource.None;
+        /// <summary>Where this leaf's key is read from, or <see cref="LeafSource.None"/> for a branch.</summary>
+        internal readonly LeafSource Source => _source;
+        /// <summary>A leaf's complete key, read from the branch that inlines it or from its own encoding.</summary>
+        internal readonly TKey LeafKey
+        {
+            get
+            {
+                Debug.Assert(IsLeaf, "Only a leaf has a complete key.");
+                PbtNodeReader node = Reader;
+                return TKey.Create(_source switch
+                {
+                    LeafSource.ParentLeft => node.LeftKey,
+                    LeafSource.ParentRight => node.RightKey,
+                    _ => node.Key,
+                });
+            }
+        }
         /// <summary>The hash of this node as it is stored, which its parent's link already held.</summary>
         internal readonly ValueHash256 Hash => _hash;
         /// <summary>The absolute depth this node's encoding is anchored at, never deeper than its boundary slot.</summary>
@@ -99,14 +142,19 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>The leaf this branch inlines on one side, which stores no node of its own.</summary>
-        internal readonly BoundaryNode InlineLeaf(bool right)
-        {
-            PbtNodeReader node = Reader;
-            return right ? new(TKey.Create(node.RightKey), node.RightHash) : new(TKey.Create(node.LeftKey), node.LeftHash);
-        }
+        internal readonly BoundaryNode InlineLeaf(bool right) => new(_encoding, right);
 
         /// <summary>This node with its encoding copied out of the frame it was read from, so it outlives that frame.</summary>
-        internal readonly BoundaryNode Owned() => _encoding.IsEmpty ? this : new(_encoding.ToArray(), _anchorDepth, _hash);
+        /// <remarks>
+        /// An inlined leaf is detached as the leaf it is, which copies its own key rather than the branch it was read
+        /// from, together with that branch's sibling. Nothing here may keep pointing into the frame: a detached node
+        /// is what crosses a thread, where the frame it came from is not even open.
+        /// </remarks>
+        internal readonly BoundaryNode Owned() => _source switch
+        {
+            LeafSource.ParentLeft or LeafSource.ParentRight => new BoundaryNode(PbtNodeCodec.EncodeLeaf(LeafKey), _hash),
+            _ => _encoding.IsEmpty ? this : new BoundaryNode(_encoding.ToArray(), _anchorDepth, _hash, _source),
+        };
 
         internal static BoundaryNode Move(ref BoundaryNode source)
         {
@@ -116,16 +164,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>Takes a node read under a wider key type, which a fold below the zone nibble continues under its own.</summary>
-        /// <remarks>The encoding and the hash are the stored ones either way; only the leaf key changes representation.</remarks>
+        /// <remarks>Nothing is decoded: the encoding is the stored one either way, and only reading a key off it is typed.</remarks>
         internal static BoundaryNode TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.BoundaryNode source)
             where TSourceKey : struct, IPbtKey<TSourceKey>
             where TSourcePath : struct, IPbtNodePath<TSourcePath>
         {
-            BoundaryNode result = source.IsEmpty
-                ? default
-                : source.IsLeaf
-                    ? new BoundaryNode(TKey.Create(source.LeafKey.Bytes), source.Hash)
-                    : new BoundaryNode(source.Encoding, source.AnchorDepth, source.Hash);
+            BoundaryNode result = new(source.Encoding, source.AnchorDepth, source.Hash, source.Source);
             source = default;
             return result;
         }
@@ -151,7 +195,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             Debug.Assert(anchorDepth % PbtFourLevelGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
             if (IsEmpty) return default;
-            if (IsLeaf) return new OwnedSubtree(new Subtree(_leafKey, _hash));
+            if (IsLeaf) return new OwnedSubtree(new Subtree(LeafKey, _hash));
 
             int splitDepth = BranchDepth;
             Debug.Assert(splitDepth >= anchorDepth, "A result branches at or below the cursor that addresses it.");

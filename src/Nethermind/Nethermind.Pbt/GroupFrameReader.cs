@@ -130,6 +130,13 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return writer.CopyRange(entries, _offsets, _lengths, startPosition, lastPosition);
     }
 
+    /// <summary>Reads the node at <paramref name="position"/>, or an empty subtree when the group holds none there.</summary>
+    /// <remarks>
+    /// A position the group leaves implicit is rebuilt from its children, which is why composition claims an untouched
+    /// entry through <see cref="Take"/> rather than reading its encoding. Acquiring neither consumes the position nor
+    /// insists that it is occupied, so it is the read behind both <see cref="Take"/> and the tests that pin those two
+    /// distinctions.
+    /// </remarks>
     internal TrieUpdater<TKey, TPath>.Subtree Acquire(scoped in PbtTraversalPath path, int position)
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
@@ -170,9 +177,8 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         ReadOnlyMemory<byte> encoding = GetEncoding(path, PbtFourLevelGroupGeometry.RootPosition);
         Taken |= 1U << PbtFourLevelGroupGeometry.RootPosition;
         if (encoding.IsEmpty) return default;
-        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
-        return node.IsLeaf
-            ? new TrieUpdater<TKey, TPath>.BoundaryNode(TKey.Create(node.Key), _groupHash)
+        return PbtNodeReader.FromValidated(encoding.Span).IsLeaf
+            ? new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, _groupHash)
             : new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, BitDepth, _groupHash);
     }
 
@@ -183,19 +189,13 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
         if (encoding.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
         Taken |= 1U << position;
-        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
-        if (node.IsLeaf) return new(TKey.Create(node.Key), _groupHash);
+        if (PbtNodeReader.FromValidated(encoding.Span).IsLeaf) return new(encoding, _groupHash);
         return new(encoding, BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, GetHash(path, position));
     }
 
     /// <summary>Takes the leaf inlined in the branch at <paramref name="position"/>, which stores no node of its own.</summary>
-    internal TrieUpdater<TKey, TPath>.BoundaryNode TakeInlineLeaf(scoped in PbtTraversalPath path, int position, bool right)
-    {
-        PbtNodeReader node = PbtNodeReader.FromValidated(GetEncoding(path, position).Span);
-        return right
-            ? new TrieUpdater<TKey, TPath>.BoundaryNode(TKey.Create(node.RightKey), node.RightHash)
-            : new TrieUpdater<TKey, TPath>.BoundaryNode(TKey.Create(node.LeftKey), node.LeftHash);
-    }
+    internal TrieUpdater<TKey, TPath>.BoundaryNode TakeInlineLeaf(scoped in PbtTraversalPath path, int position, bool right) =>
+        new(GetEncoding(path, position), right);
 
     private ValueHash256 GetHash(scoped in PbtTraversalPath path, int position)
     {
