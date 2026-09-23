@@ -4,7 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO.Abstractions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -154,11 +157,16 @@ public class SeedFlatHistoryGenesisTests
         if (flatActive)
             BasePersistence.SetCurrentState(flatDb.GetColumnDb(FlatDbColumns.Metadata), new StateId(1, Keccak.Zero));
 
+        IInitConfig initConfig = Substitute.For<IInitConfig>();
+        initConfig.BaseDbPath.Returns("/data");
         return new FlatStateActivationPolicy(
             flatDbConfig,
             new TestHardwareInfo(32L * 1024 * 1024 * 1024),
             new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb),
             new Lazy<IDb>(() => new MemDb()),
+            Substitute.For<ISyncConfig>(),
+            initConfig,
+            Substitute.For<IFileSystem>(),
             LimboLogs.Instance);
     }
 }

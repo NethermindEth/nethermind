@@ -2,8 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.IO.Abstractions;
+using System.Linq;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -21,17 +27,20 @@ public sealed class FlatStateActivationPolicy(
     IHardwareInfo hardwareInfo,
     Lazy<IColumnsDb<FlatDbColumns>> flatDb,
     [KeyFilter(DbNames.State)] Lazy<IDb> patriciaStateDb,
+    ISyncConfig syncConfig,
+    IInitConfig initConfig,
+    IFileSystem fileSystem,
     ILogManager logManager)
 {
     private static readonly long LowMemoryLayoutThreshold = 16.GiB;
 
-    private readonly bool _result = Compute(flatDbConfig, hardwareInfo, flatDb, patriciaStateDb, logManager.GetClassLogger<FlatStateActivationPolicy>());
+    private readonly bool _result = Compute(flatDbConfig, hardwareInfo, flatDb, patriciaStateDb, syncConfig, initConfig, fileSystem, logManager.GetClassLogger<FlatStateActivationPolicy>());
 
     public bool ShouldTurnOnFlatDb() => _result;
 
-    private static bool Compute(IFlatDbConfig flatDbConfig, IHardwareInfo hardwareInfo, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ILogger logger)
+    private static bool Compute(IFlatDbConfig flatDbConfig, IHardwareInfo hardwareInfo, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ISyncConfig syncConfig, IInitConfig initConfig, IFileSystem fileSystem, ILogger logger)
     {
-        bool activateFlat = DecideBackend(flatDbConfig, flatDb, patriciaStateDb, logger);
+        bool activateFlat = DecideBackend(flatDbConfig, flatDb, patriciaStateDb, syncConfig, initConfig, fileSystem, logger);
         if (activateFlat) AdviseLayoutForMemory(flatDbConfig, hardwareInfo, logger);
         return activateFlat;
     }
@@ -48,10 +57,21 @@ public sealed class FlatStateActivationPolicy(
             $"Set '--FlatDb.Layout {nameof(FlatLayout.FlatInTrie)}' to switch (requires a fresh flat DB sync).");
     }
 
-    private static bool DecideBackend(IFlatDbConfig flatDbConfig, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ILogger logger)
+    private static bool DecideBackend(IFlatDbConfig flatDbConfig, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ISyncConfig syncConfig, IInitConfig initConfig, IFileSystem fileSystem, ILogger logger)
     {
         if (!flatDbConfig.Enabled)
         {
+            // Do not open the flat RocksDB here: resolving IPersistence creates column families
+            // on patricia-only nodes and can throw on a stale layout. RocksDB writes CURRENT
+            // as soon as the DB is opened, including an empty one, so the signal for state
+            // worth keeping is an SST file.
+            if (HasSstFile(fileSystem, DbNames.Flat.GetApplicationResourcePath(initConfig.BaseDbPath)))
+            {
+                throw new InvalidConfigurationException(
+                    $"Refusing --FlatDb.Enabled=false on an existing flat DB: that would discard the complete flat state and full-resync. Keep FlatDb.Enabled=true, or delete the '{DbNames.Flat}', '{DbNames.FlatHistory}' and 'persistedSnapshot' directories under '{initConfig.BaseDbPath}' to start over on patricia.",
+                    -1);
+            }
+
             if (logger.IsInfo) logger.Info("State backend: patricia (flat DB disabled).");
             return false;
         }
@@ -64,18 +84,17 @@ public sealed class FlatStateActivationPolicy(
         // A DB wiped for a resync holds no state pointer until the sync completes; it is still the active backend.
         bool wipedForSync = BasePersistence.ReadWipedForSync(metadata);
 
+        bool wipe = false;
+        bool? patriciaHasData = null;
         if (flatHasData && wipedForSync)
         {
             if (logger.IsWarn)
                 logger.Warn(db.WasRepairedOnOpen
                     ? "An interrupted flat DB wipe was detected after a RocksDB auto-repair; redoing it before the state sync."
                     : "An interrupted flat DB wipe was detected; redoing it before the state sync.");
-            WipeForResync(db, flatDbConfig, logger);
-            return true;
+            wipe = true;
         }
-
-        bool? patriciaHasData = null;
-        if (db.WasRepairedOnOpen)
+        else if (db.WasRepairedOnOpen)
         {
             // Only resync when flat was the active backend. An unused empty flat DB that RocksDB
             // repaired must not flip a healthy patricia node onto Flat. The data columns are checked too,
@@ -86,44 +105,89 @@ public sealed class FlatStateActivationPolicy(
             {
                 if (logger.IsError)
                     logger.Error("Flat DB was auto-repaired by RocksDB; wiping flat state and re-entering state sync (FlatDb.OnRepair=Resync).");
-                WipeForResync(db, flatDbConfig, logger);
-                return true;
+                wipe = true;
             }
-
-            if (flatWasActive)
+            else
             {
-                if (logger.IsError)
-                    logger.Error("Flat DB was auto-repaired by RocksDB; keeping repaired data (FlatDb.OnRepair=Ignore). This node may diverge.");
+                if (flatWasActive)
+                {
+                    if (logger.IsError)
+                        logger.Error("Flat DB was auto-repaired by RocksDB; keeping repaired data (FlatDb.OnRepair=Ignore). This node may diverge.");
+                }
+                else if (logger.IsWarn)
+                {
+                    logger.Warn("Flat DB was auto-repaired by RocksDB but holds no state; the patricia backend stays active and the repair is acknowledged.");
+                }
+                db.AcknowledgeRepair();
             }
-            else if (logger.IsWarn)
-            {
-                logger.Warn("Flat DB was auto-repaired by RocksDB but holds no state; the patricia backend stays active and the repair is acknowledged.");
-            }
-            db.AcknowledgeRepair();
         }
 
-        if (flatHasData)
+        bool existingFlat = flatHasData && !wipe;
+        bool activateFlat;
+        if (wipe)
+        {
+            activateFlat = true;
+        }
+        else if (existingFlat)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (existing flat DB detected).");
-            return true;
+            activateFlat = true;
         }
-        if (wipedForSync)
+        else if (wipedForSync)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (resuming the state sync after a flat DB wipe).");
-            return true;
+            activateFlat = true;
         }
-        if (flatDbConfig.ImportFromPruningTrieState)
+        else if (flatDbConfig.ImportFromPruningTrieState)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (importing from patricia trie state).");
-            return true;
+            activateFlat = true;
         }
-        if (patriciaHasData ?? HasAnyKey(patriciaStateDb.Value))
+        else if (patriciaHasData ??= HasAnyKey(patriciaStateDb.Value))
         {
             if (logger.IsInfo) logger.Info("State backend: patricia (existing patricia state detected).");
+            activateFlat = false;
+        }
+        else
+        {
+            if (logger.IsInfo) logger.Info("State backend: flat (fresh node, flat DB enabled).");
+            activateFlat = true;
+        }
+
+        if (activateFlat
+            && syncConfig.FastSync
+            && !syncConfig.SnapSync
+            && !(flatDbConfig.ImportFromPruningTrieState && (patriciaHasData ??= HasAnyKey(patriciaStateDb.Value))))
+        {
+            // TreeSync holes only form during state sync. An already-synced flat node can keep serving.
+            if (existingFlat)
+            {
+                if (logger.IsWarn)
+                    logger.Warn("FlatDb with FastSync and SnapSync=false is unsupported for new state sync. This node already has flat state and will keep it. Set Sync.SnapSync=true.");
+            }
+            else
+            {
+                throw new InvalidConfigurationException(
+                    "FlatDb with FastSync requires SnapSync. Legacy TreeSync on Flat leaves permanent holes (HeaderGasUsedMismatch). Set Sync.SnapSync=true, or FlatDb.Enabled=false to stay on patricia (fresh datadir only).",
+                    -1);
+            }
+        }
+
+        // Refused before the wipe, so a node whose config is fixed wipes on its next start rather than losing its state first.
+        if (wipe) WipeForResync(db, flatDbConfig, logger);
+        return activateFlat;
+    }
+
+    private static bool HasSstFile(IFileSystem fileSystem, string directory)
+    {
+        try
+        {
+            return fileSystem.Directory.EnumerateFiles(directory, "*.sst").Any();
+        }
+        catch (DirectoryNotFoundException)
+        {
             return false;
         }
-        if (logger.IsInfo) logger.Info("State backend: flat (fresh node, flat DB enabled).");
-        return true;
     }
 
     /// <remarks>

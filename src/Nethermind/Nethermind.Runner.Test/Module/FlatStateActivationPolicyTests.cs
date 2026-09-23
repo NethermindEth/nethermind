@@ -3,12 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
+using Nethermind.Api;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
@@ -32,7 +38,9 @@ public class FlatStateActivationPolicyTests
         PatriciaHasData = 8,
         WipedForSync = 16,
         Repaired = 32,
-        FlatDataKeys = 64
+        FlatDataKeys = 64,
+        FastSync = 128,
+        SnapSync = 256
     }
 
     public enum RepairOutcome
@@ -42,19 +50,21 @@ public class FlatStateActivationPolicyTests
         Wiped
     }
 
-    // Branch 1: Enabled=false → false, regardless of db content
+    // Branch 1: Enabled=false, no flat directory → false
     // Branch 2: Enabled=true, flat persistence has committed state → true
     // Branch 3: Enabled=true, no committed state, flat was wiped for a state sync → true
     // Branch 4: Enabled=true, no committed state, ImportFromPruningTrieState=true → true
     // Branch 5: Enabled=true, no committed state, ImportFromPruningTrieState=false, patricia has data → false
     // Branch 6: Enabled=true, no committed state, ImportFromPruningTrieState=false, no patricia data → true
-    [TestCase(Flags.None, false, Description = "Disabled → always false")]
+    [TestCase(Flags.None, false, Description = "Disabled, no flat directory → false")]
     [TestCase(Flags.Enabled | Flags.FlatHasData, true, Description = "Flat has committed state → true")]
     [TestCase(Flags.Enabled | Flags.WipedForSync | Flags.PatriciaHasData, true, Description = "Restart during the resync on a migrated node stays flat")]
     [TestCase(Flags.Enabled | Flags.WipedForSync, true, Description = "Wiped for sync, no patricia state → true")]
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState=true → true")]
     [TestCase(Flags.Enabled | Flags.PatriciaHasData, false, Description = "Patricia has data → false")]
     [TestCase(Flags.Enabled, true, Description = "Fresh node, flat enabled → true")]
+    [TestCase(Flags.Enabled | Flags.FastSync | Flags.SnapSync, true, Description = "Fresh, fast + snap → true")]
+    [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState | Flags.PatriciaHasData | Flags.FastSync, true, Description = "Import from patricia, fast without snap → true")]
     public void ShouldTurnOnFlatDb_ReturnsExpected(Flags flags, bool expected)
     {
         FlatStateActivationPolicy policy = CreatePolicy(
@@ -65,7 +75,9 @@ public class FlatStateActivationPolicyTests
             layout: FlatLayout.Flat,
             availableMemoryBytes: 32.GiB,
             logManager: LimboLogs.Instance,
-            wipedForSync: flags.HasFlag(Flags.WipedForSync));
+            wipedForSync: flags.HasFlag(Flags.WipedForSync),
+            fastSync: flags.HasFlag(Flags.FastSync),
+            snapSync: flags.HasFlag(Flags.SnapSync));
 
         Assert.That(policy.ShouldTurnOnFlatDb(), Is.EqualTo(expected));
     }
@@ -152,22 +164,104 @@ public class FlatStateActivationPolicyTests
         Assert.That(testLogger.LogList.Count(static l => l.Contains("flatHistory DB was not wiped")), Is.EqualTo(expectWarn ? 1 : 0));
     }
 
+    // ImportFlatDb skips when patricia holds no state, so the import flag alone must not exempt a fresh node.
+    [TestCase(false, Description = "Fresh node")]
+    [TestCase(true, Description = "Import flag set, but patricia is empty")]
+    public void Fresh_flat_with_fast_sync_and_no_snap_is_refused(bool importFromPruning)
+    {
+        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreatePolicy(
+            enabled: true,
+            importFromPruning: importFromPruning,
+            flatHasData: false,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            fastSync: true,
+            snapSync: false))!;
+
+        Assert.That(ex.Message, Does.Contain("SnapSync").And.Contain("FlatDb.Enabled"));
+    }
+
+    // A wipe leaves nothing to keep serving, so the refusal must come first or the node loses its state and still cannot sync.
+    [TestCase(Flags.Repaired | Flags.FlatHasData, Description = "Repaired flat")]
+    [TestCase(Flags.FlatHasData | Flags.WipedForSync, Description = "Interrupted wipe")]
+    [TestCase(Flags.WipedForSync, Description = "Resync in progress")]
+    public void Resync_with_fast_sync_and_no_snap_is_refused_before_the_wipe(Flags flags)
+    {
+        SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<InvalidConfigurationException>(() => CreateSetup(flags | Flags.Enabled | Flags.FastSync, FlatLayout.Flat, 32.GiB, LimboLogs.Instance, flatDb: flatDb));
+            Assert.That(flatDb.Events, Is.Empty);
+        }
+    }
+
+    // The DB layer roots a relative BaseDbPath at the executing directory; the probe must resolve it the same way.
+    [TestCase("/data")]
+    [TestCase("nethermind_db/mainnet")]
+    public void Disabling_flat_on_an_existing_flat_db_is_refused(string baseDbPath)
+    {
+        InvalidConfigurationException ex = Assert.Throws<InvalidConfigurationException>(() => CreatePolicy(
+            enabled: false,
+            importFromPruning: false,
+            flatHasData: false,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            sstFiles: ["state.sst"],
+            baseDbPath: baseDbPath))!;
+
+        Assert.That(ex.Message, Does.Contain("FlatDb.Enabled").And.Contain("existing"));
+    }
+
+    // RocksDB writes CURRENT when opening an empty DB, so a flat directory without SST files holds no state.
+    [Test]
+    public void Disabling_flat_with_an_empty_flat_directory_stays_on_patricia() =>
+        Assert.That(CreatePolicy(enabled: false, importFromPruning: false, flatHasData: false, patriciaHasData: false,
+            layout: FlatLayout.Flat, availableMemoryBytes: 32.GiB, logManager: LimboLogs.Instance, sstFiles: []).ShouldTurnOnFlatDb(), Is.False);
+
+    [Test]
+    public void Existing_flat_with_fast_sync_and_no_snap_keeps_serving()
+    {
+        TestLogger testLogger = new();
+        FlatStateActivationPolicy policy = CreatePolicy(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: true,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: new OneLoggerLogManager(new ILogger(testLogger)),
+            fastSync: true,
+            snapSync: false);
+
+        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+        Assert.That(testLogger.LogList.Any(static l => l.Contains("SnapSync=false") && l.Contains("already has flat state")), Is.True);
+    }
+
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
-        FlatLayout layout, long availableMemoryBytes, ILogManager logManager, bool wipedForSync = false)
+        FlatLayout layout, long availableMemoryBytes, ILogManager logManager, bool wipedForSync = false,
+        bool fastSync = false, bool snapSync = false, string[] sstFiles = null, string baseDbPath = "/data")
     {
         Flags flags = (enabled ? Flags.Enabled : Flags.None)
             | (importFromPruning ? Flags.ImportFromPruningTrieState : Flags.None)
             | (flatHasData ? Flags.FlatHasData : Flags.None)
             | (patriciaHasData ? Flags.PatriciaHasData : Flags.None)
-            | (wipedForSync ? Flags.WipedForSync : Flags.None);
-        return CreateSetup(flags, layout, availableMemoryBytes, logManager).Policy;
+            | (wipedForSync ? Flags.WipedForSync : Flags.None)
+            | (fastSync ? Flags.FastSync : Flags.None)
+            | (snapSync ? Flags.SnapSync : Flags.None);
+        return CreateSetup(flags, layout, availableMemoryBytes, logManager, sstFiles: sstFiles, baseDbPath: baseDbPath).Policy;
     }
 
     private readonly record struct PolicySetup(FlatStateActivationPolicy Policy, SpyFlatColumnsDb FlatDb);
 
     private static PolicySetup CreateSetup(Flags flags, FlatLayout layout, long availableMemoryBytes, ILogManager logManager,
-        FlatDbOnRepair onRepair = FlatDbOnRepair.Resync, bool historyEnabled = false, HistoryRetentionMode historyRetention = HistoryRetentionMode.None)
+        FlatDbOnRepair onRepair = FlatDbOnRepair.Resync, bool historyEnabled = false, HistoryRetentionMode historyRetention = HistoryRetentionMode.None,
+        string[] sstFiles = null, string baseDbPath = "/data", SpyFlatColumnsDb flatDb = null)
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(flags.HasFlag(Flags.Enabled));
@@ -177,7 +271,7 @@ public class FlatStateActivationPolicyTests
         flatDbConfig.Layout.Returns(layout);
         flatDbConfig.OnRepair.Returns(onRepair);
 
-        SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
+        flatDb ??= new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
         if (flags.HasFlag(Flags.FlatHasData))
             new RocksDbPersistence(flatDb, LimboLogs.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
         if (flags.HasFlag(Flags.WipedForSync))
@@ -190,11 +284,29 @@ public class FlatStateActivationPolicyTests
         if (flags.HasFlag(Flags.PatriciaHasData))
             patriciaDb.Set([1], [1]);
 
+        ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
+        syncConfig.FastSync.Returns(flags.HasFlag(Flags.FastSync));
+        syncConfig.SnapSync.Returns(flags.HasFlag(Flags.SnapSync));
+
+        IInitConfig initConfig = Substitute.For<IInitConfig>();
+        initConfig.BaseDbPath.Returns(baseDbPath);
+        IDirectory directory = Substitute.For<IDirectory>();
+        string flatPath = DbOnTheRocks.GetFullDbPath(DbNames.Flat, baseDbPath);
+        directory.EnumerateFiles(Arg.Any<string>(), "*.sst").Returns(call =>
+            sstFiles is not null && call.ArgAt<string>(0) == flatPath
+                ? sstFiles
+                : throw new DirectoryNotFoundException(call.ArgAt<string>(0)));
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        fileSystem.Directory.Returns(directory);
+
         FlatStateActivationPolicy policy = new(
             flatDbConfig,
             new TestHardwareInfo(availableMemoryBytes),
             new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb),
             new Lazy<IDb>(() => patriciaDb),
+            syncConfig,
+            initConfig,
+            fileSystem,
             logManager);
 
         return new PolicySetup(policy, flatDb);
