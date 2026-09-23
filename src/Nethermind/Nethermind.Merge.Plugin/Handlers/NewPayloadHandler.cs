@@ -503,11 +503,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Hash256 parentHash = parent.GetOrCalculateHash();
         if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
 
-        Task removed = _processingQueue.WaitUntilExecutedCopyRemovedAsync(parentHash).AsTask();
+        ValueTask removed = _processingQueue.WaitUntilExecutedCopyRemovedAsync(parentHash);
         if (removed.IsCompleted) return true;
 
+        Task committed = removed.AsTask();
         using CancellationTokenSource bound = new();
-        bool inTime = await Task.WhenAny(removed, Task.Delay(RemainingBudget(deadline), bound.Token)) == removed;
+        bool inTime = await Task.WhenAny(committed, Task.Delay(RemainingBudget(deadline), bound.Token)) == committed;
         if (inTime) bound.Cancel();
         else if (_logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
         return inTime;
@@ -661,7 +662,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <summary>
     /// The verdict, delivered as soon as the block is executed and validated: the commit and the chain update it
     /// still has ahead of it do not change the answer, and the CL's next call waits for them where it has to
-    /// (<see cref="IBlockProcessingQueue.WaitUntilRemovedAsync"/>). Any other outcome still comes through
+    /// (<see cref="IBlockProcessingQueue.WaitUntilExecutedCopyRemovedAsync"/>). Any other outcome still comes through
     /// <see cref="GetProcessingQueueOnBlockRemoved"/>, and a verdict already given makes that a no-op.
     /// </summary>
     private void GetProcessingQueueOnBlockExecuted(object? o, BlockHashEventArgs e)

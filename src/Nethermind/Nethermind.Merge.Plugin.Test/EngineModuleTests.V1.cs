@@ -1011,7 +1011,7 @@ public partial class EngineModuleTests
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice =
             rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
 
-        Assert.That(forkchoice.Wait(TimeSpan.FromMilliseconds(500)), Is.True, "answered before the block ahead of the head is done");
+        Assert.That(await Task.WhenAny(forkchoice, Task.Delay(500)), Is.SameAs(forkchoice), "answered before the block ahead of the head is done");
         Assert.That((await forkchoice).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
     }
 
@@ -1127,7 +1127,7 @@ public partial class EngineModuleTests
             commitReleased.Set();
             Assert.That(siblingExecuted.Wait(TimeSpan.FromSeconds(5)), Is.True, "precondition: the sibling holds the second copy of the head back");
 
-            Assert.That(forkchoice.Wait(TimeSpan.FromSeconds(5)), Is.True, "answered once the committing copy is done, with the second copy still queued");
+            Assert.That(await Task.WhenAny(forkchoice, Task.Delay(TimeSpan.FromSeconds(5))), Is.SameAs(forkchoice), "answered once the committing copy is done, with the second copy still queued");
             ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
             using (Assert.EnterMultipleScope())
             {

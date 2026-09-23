@@ -81,11 +81,12 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         try
         {
-            Task removed = _processingQueue.WaitUntilExecutedCopyRemovedAsync(blockHash).AsTask();
+            ValueTask removed = _processingQueue.WaitUntilExecutedCopyRemovedAsync(blockHash);
             if (!removed.IsCompleted)
             {
+                Task committed = removed.AsTask();
                 using CancellationTokenSource bound = new();
-                if (await Task.WhenAny(removed, Task.Delay(NoGCRegionCommitBound, bound.Token)) == removed) bound.Cancel();
+                if (await Task.WhenAny(committed, Task.Delay(NoGCRegionCommitBound, bound.Token)) == committed) bound.Cancel();
             }
         }
         finally

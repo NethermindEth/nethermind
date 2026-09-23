@@ -403,11 +403,12 @@ public class ForkchoiceUpdatedHandler(
         Hash256 hash = newHeadHeader.GetOrCalculateHash();
         if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { WasProcessed: false }) return;
 
-        Task removed = processingQueue.WaitUntilExecutedCopyRemovedAsync(hash).AsTask();
+        ValueTask removed = processingQueue.WaitUntilExecutedCopyRemovedAsync(hash);
         if (removed.IsCompleted) return;
 
+        Task committed = removed.AsTask();
         using CancellationTokenSource bound = new();
-        if (await Task.WhenAny(removed, Task.Delay(_commitWait, bound.Token)) == removed) bound.Cancel();
+        if (await Task.WhenAny(committed, Task.Delay(_commitWait, bound.Token)) == committed) bound.Cancel();
     }
 
     private BlockHeader? GetBlockHeader(Hash256 headBlockHash)
