@@ -91,12 +91,7 @@ public class TraceRpcModuleTests
         using TestRpcBlockchain blockchain = context.Blockchain;
         IJsonRpcConfig config = blockchain.Container.Resolve<IJsonRpcConfig>();
         config.EnableTracingStreamMode = true;
-        // Drain the timeout pool so this request receives the source whose lifetime we inspect.
-        List<CancellationTokenSource> rented = [];
-        for (int i = 0; i < 64; i++) rented.Add(config.BuildTimeoutCancellationToken());
-        foreach (CancellationTokenSource source in rented) source.Dispose();
-        using CancellationTokenSource timeout = new();
-        JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        using CancellationTokenSource timeout = TimeoutTest.RentTrackingTimeoutSourceForNextRequest();
 
         using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_get(
             blockchain.BlockTree.Head!.Transactions[0].Hash!, [-1]);
@@ -119,23 +114,14 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public void Trace_get_ignores_out_of_range_positions([Values(long.MinValue, -2L, 2L, long.MaxValue)] long position)
+    public void Trace_get_selects_valid_positions([Values(long.MinValue, -2L, -1L, 0L, 1L, 2L, long.MaxValue)] long position)
     {
         ParityTxTraceFromStore[] traces = Enumerable.Range(0, 3)
             .Select(_ => ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace { Action = new ParityTraceAction() }).Single()).ToArray();
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+        ParityTxTraceFromStore[] expected = position is >= -1 and < 2 ? [traces[position + 1]] : [];
 
-        Assert.That(TraceRpcModule.ExtractPositionsFromTxTrace([position, 0, 1], result),
-            Is.EqualTo(new[] { traces[1], traces[2] }));
-    }
-
-    [Test]
-    public void Trace_get_preserves_existing_root_position()
-    {
-        ParityTxTraceFromStore root = ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace { Action = new ParityTraceAction() }).Single();
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([root]);
-
-        Assert.That(TraceRpcModule.ExtractPositionsFromTxTrace([-1], result), Is.EqualTo(new[] { root }));
+        Assert.That(TraceRpcModule.ExtractPositionsFromTxTrace([position], result), Is.EqualTo(expected));
     }
 
     [Test]

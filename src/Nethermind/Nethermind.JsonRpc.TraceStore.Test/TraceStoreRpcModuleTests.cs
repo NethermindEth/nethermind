@@ -61,7 +61,7 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
-    public void trace_get_preserves_inner_error([Values(ErrorCodes.ResourceNotFound, ErrorCodes.ResourceUnavailable)] int errorCode)
+    public void Trace_get_preserves_inner_error([Values(ErrorCodes.ResourceNotFound, ErrorCodes.ResourceUnavailable)] int errorCode)
     {
         TestContext test = new();
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> error =
