@@ -40,7 +40,7 @@ public class ReceiptsRegeneratorRestrictedBundleTests
         IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
 
-        StateUnavailableException sliceRefusal = new(
+        StateNotRetainedException sliceRefusal = new(
             "Historical state for block 4 is unavailable for 0x0000000000000000000000000000000000000def - it is below the general retention floor and not covered by any retained slice.");
         MissingTrieNodeException restrictedBundleRefusal = new(
             "Historical state for block 4 is unavailable", null, TreePath.Empty, Keccak.Zero, sliceRefusal);

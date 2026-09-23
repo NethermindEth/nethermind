@@ -32,12 +32,6 @@ namespace Nethermind.Benchmarks.Core
         public bool Scalar() => HexConverter.TryDecodeFromUtf8_Scalar(_hex, _bytes, isOdd: false);
 
         [Benchmark]
-        public bool Vector128() => HexConverter.TryDecodeFromUtf8_Vector128(_hex, _bytes);
-
-        [Benchmark]
-        public bool Vector256() => HexConverter.TryDecodeFromUtf8_Vector256(_hex, _bytes);
-
-        [Benchmark]
-        public bool Vector512() => HexConverter.TryDecodeFromUtf8_Vector512(_hex, _bytes);
+        public bool Vector() => HexConverter.TryDecodeFromUtf8(_hex, _bytes);
     }
 }

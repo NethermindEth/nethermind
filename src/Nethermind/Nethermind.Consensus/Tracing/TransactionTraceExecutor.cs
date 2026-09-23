@@ -34,6 +34,12 @@ public sealed class TransactionTraceExecutor(
     public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
 
     /// <inheritdoc />
+    public void PublishTransactionProcessedEvents() => inner.PublishTransactionProcessedEvents();
+
+    /// <inheritdoc />
+    public void ClearTransactionProcessedEvents() => inner.ClearTransactionProcessedEvents();
+
+    /// <inheritdoc />
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token)
     {
         TransactionTraceBoundary? boundary = TransactionTraceBoundary.Get(tracer.OtherTracer, options);

@@ -70,6 +70,10 @@ namespace Nethermind.Config
 
         public bool PreWarmHintGetOnCacheHit { get; set; } = true;
 
+        public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
+
+        public bool PreWarmCoreSplit { get; set; } = true;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
 
         // The 0.25 default emits an FP constant load the guest's ISA gate rejects; only block production reads it.
