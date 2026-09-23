@@ -364,15 +364,19 @@ public partial class BlockAccessListManager
         if (spec.ConsolidationRequestsEnabled && !IsCanonicalPredeploy(spec.Eip7251ContractAddress, Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251Constants.CodeHash)) calls++;
         if (spec.BuilderRequestsEnabled)
         {
-            if (!IsCanonicalPredeploy(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282Constants.BuilderDepositCodeHash)) calls++;
-            if (!IsCanonicalPredeploy(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282Constants.BuilderExitCodeHash)) calls++;
+            // EIP-8282 predeploy addresses are fixed; the spec has no override for them.
+            if (!HasCanonicalCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282Constants.BuilderDepositCodeHash)) calls++;
+            if (!HasCanonicalCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282Constants.BuilderExitCodeHash)) calls++;
         }
 
         return calls * (Eip8037Constants.SystemCallBaseGasLimit / GasCostOf.ColdSLoad);
     }
 
     private bool IsCanonicalPredeploy(Address? contract, Address predeploy, in ValueHash256 canonicalCodeHash)
-        => contract == predeploy && stateProvider.GetCodeHash(predeploy) == canonicalCodeHash;
+        => contract == predeploy && HasCanonicalCode(predeploy, in canonicalCodeHash);
+
+    private bool HasCanonicalCode(Address predeploy, in ValueHash256 canonicalCodeHash)
+        => stateProvider.GetCodeHash(predeploy) == canonicalCodeHash;
 
     private void ThrowIfStorageReadBudgetExceeded(Block block, ulong surplusReads, bool validateStorageReads)
     {

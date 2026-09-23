@@ -2142,12 +2142,15 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
     }
 
-    [TestCase(2000ul, 0ul, true, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
-    [TestCase(1999ul, 0ul, true, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
-    [TestCase(2000ul, 2001ul, true, true, TestName = "BAL_read_budget_exhaustion_does_not_underflow")]
-    // EIP-7928: non-canonical request code may read storage in a post-execution call that spends no block gas.
-    [TestCase(0ul, 0ul, false, false, TestName = "BAL_read_budget_allows_reads_by_noncanonical_request_contract")]
-    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool canonicalRequestContracts, bool shouldThrow)
+    [TestCase(2000ul, 0ul, true, 1, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999ul, 0ul, true, 1, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    [TestCase(2000ul, 2001ul, true, 1, true, TestName = "BAL_read_budget_exhaustion_does_not_underflow")]
+    // EIP-7928: non-canonical request code may read storage in a post-execution call that spends no block gas,
+    // up to what one call's execution grant can read; reads beyond that are still charged to block gas.
+    [TestCase(0ul, 0ul, false, 1, false, TestName = "BAL_read_budget_allows_reads_by_noncanonical_request_contract")]
+    [TestCase(Eip7928Constants.ItemCost - 1, 0ul, false, NoncanonicalRequestReadAllowance + 1, true, TestName = "BAL_read_budget_charges_reads_beyond_noncanonical_allowance")]
+    [TestCase(Eip7928Constants.ItemCost, 0ul, false, NoncanonicalRequestReadAllowance + 1, false, TestName = "BAL_read_budget_covers_reads_beyond_noncanonical_allowance")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool canonicalRequestContracts, int surplusReads, bool shouldThrow)
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
@@ -2164,7 +2167,7 @@ public class BlockProcessorTests
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithStorageReads(1)
+                .WithStorageReads([.. Enumerable.Range(1, surplusReads).Select(static i => (UInt256)i)])
                 .TestObject)
             .TestObject;
 
@@ -2936,6 +2939,9 @@ public class BlockProcessorTests
     private static GasValidationResult
         GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null) =>
         new(blockGasUsed, blockStateGasUsed, exception);
+
+    // DeployRequestPredeploys(canonical: false) makes one request contract non-canonical.
+    private const int NoncanonicalRequestReadAllowance = (int)(Eip8037Constants.SystemCallBaseGasLimit / GasCostOf.ColdSLoad);
 
     private static void DeployRequestPredeploys(IWorldState state, IReleaseSpec spec, bool canonical)
     {
