@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -50,23 +51,27 @@ public class KeyedNonceManagerTests
     }
 
     [Test]
-    public void Batched_storage_indices_match_individual_slots([Values(8, Eip8250Constants.MaxNonceKeys)] int count)
+    public void Batched_storage_indices_match_individual_slots([Range(0, Eip8250Constants.MaxNonceKeys)] int count)
     {
         UInt256[] keys = StrictlyIncreasing(count);
         UInt256[] indices = new UInt256[count];
 
         KeyedNonceManager.StorageIndices(TestItem.AddressA, keys, indices);
 
+        byte[] preimage = new byte[64];
+        TestItem.AddressA.Bytes.CopyTo(preimage.AsSpan(12, Address.Size));
         for (int i = 0; i < count; i++)
         {
-            Assert.That(indices[i], Is.EqualTo(KeyedNonceManager.StorageSlot(TestItem.AddressA, keys[i]).Index));
+            keys[i].ToBigEndian(preimage.AsSpan(32));
+            UInt256 expected = new(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true);
+            Assert.That(indices[i], Is.EqualTo(expected));
         }
     }
 
     [Test]
-    public void Batched_nonce_set_is_consumed_and_validated()
+    public void Batched_nonce_set_is_consumed_and_validated([Range(2, Eip8250Constants.MaxNonceKeys)] int count)
     {
-        UInt256[] keys = StrictlyIncreasing(Eip8250Constants.MaxNonceKeys);
+        UInt256[] keys = StrictlyIncreasing(count);
 
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, keys, nonceSeq: 41);
 

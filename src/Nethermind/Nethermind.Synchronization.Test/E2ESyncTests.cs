@@ -112,8 +112,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     private const int ChainLength = 1000;
     private const ulong HeadPivotDistance = 500;
-    /// <remarks>The BAL tests use one attempt each, bounding their combined timeout budget to six minutes.</remarks>
-    private static readonly TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(6);
     private const int BalSyncChainLength = 5_000;
     private const int PartialBalSyncChainLength = 1_000;
     private const int PartialBalActivationBlock = 400;

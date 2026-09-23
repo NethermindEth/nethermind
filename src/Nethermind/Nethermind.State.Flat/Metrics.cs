@@ -11,6 +11,18 @@ namespace Nethermind.State.Flat;
 
 public static class Metrics
 {
+    private static long _unreadableTransactionChangesetRows;
+
+    [CounterMetric]
+    [Description("Times a transaction changeset row could not be read. Repeated attempts on the same damaged row count separately; tracing falls back to replay.")]
+    public static long UnreadableTransactionChangesetRows
+    {
+        get => Volatile.Read(ref _unreadableTransactionChangesetRows);
+        set => Interlocked.Exchange(ref _unreadableTransactionChangesetRows, value);
+    }
+
+    public static void RecordUnreadableTransactionChangesetRow() => Interlocked.Increment(ref _unreadableTransactionChangesetRows);
+
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
@@ -304,6 +316,14 @@ public static class Metrics
     [GaugeMetric]
     [Description("Highest block whose state history is captured (the contiguous-from-genesis watermark); 0 when history is disabled or empty")]
     public static long FlatHistoryWatermark { get; set; }
+
+    [GaugeMetric]
+    [Description("Lowest block the per-transaction changeset index covers; 0 when the index is disabled or has indexed nothing yet")]
+    public static long TransactionChangesetIndexFrom { get; set; }
+
+    [GaugeMetric]
+    [Description("Highest block the per-transaction changeset index covers; 0 when the index is disabled or has indexed nothing yet")]
+    public static long TransactionChangesetIndexTo { get; set; }
 
     [GaugeMetric]
     [Description("1 when history capture has self-disabled (permanent gap, reorged capture, or repeated write failures); as-of reads above the watermark are refused until the flatHistory DB is resynced")]

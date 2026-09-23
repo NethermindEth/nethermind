@@ -222,7 +222,7 @@ public class TestBlockchain : IDisposable
 
         Configuration testConfiguration = _fromContainer.Configuration;
 
-        BlockchainProcessor.Start();
+        BlockProcessingQueue.Start();
 
         BlockProducer = CreateTestBlockProducer();
         BlockProducerRunner ??= CreateBlockProducerRunner();

@@ -30,6 +30,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
@@ -1391,6 +1392,7 @@ public class TraceRpcModuleTests
             Substitute.For<IBlockchainBridge>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlocksConfig>(),
+            NullPrefixStateSeedSource.Instance,
             LimboLogs.Instance);
     }
 
