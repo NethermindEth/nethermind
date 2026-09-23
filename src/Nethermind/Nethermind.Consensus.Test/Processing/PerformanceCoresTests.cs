@@ -98,7 +98,7 @@ public class PerformanceCoresTests
         // 1 inherited the narrowed mask, 2 was pinned elsewhere, 3 exited before the scan read it.
         Dictionary<int, PerformanceCores.CpuMask> threads = new() { [1] = narrowed, [2] = other };
 
-        int widened = PerformanceCores.WidenInheritors([1, 2, 3], narrowed, target,
+        int widened = PerformanceCores.WidenInheritors([1, 2, 3], [narrowed], target, static _ => false,
             (int tid, out PerformanceCores.CpuMask mask) => threads.TryGetValue(tid, out mask) ? 0 : -1,
             (int tid, ref PerformanceCores.CpuMask mask) =>
             {
@@ -114,6 +114,53 @@ public class PerformanceCoresTests
             Assert.That(threads[2].SequenceEqual(other), Is.True, "a thread with a mask of its own is left alone");
         }
     }
+
+    [Test]
+    public void WidenInheritors_LeavesThreadsInsideAScopeAlone()
+    {
+        PerformanceCores.CpuMask performance = Mask(Enumerable.Range(0, 12).ToArray());
+        PerformanceCores.CpuMask efficiency = Mask(Enumerable.Range(12, 8).ToArray());
+        PerformanceCores.CpuMask target = Mask(Enumerable.Range(0, 20).ToArray());
+        // 1 is the processing thread inside its scope, 2 a prewarm worker inside its scope, 3 inherited the efficiency
+        // mask from a worker and is in no scope.
+        Dictionary<int, PerformanceCores.CpuMask> threads = new() { [1] = performance, [2] = efficiency, [3] = efficiency };
+
+        int widened = PerformanceCores.WidenInheritors([1, 2, 3], [performance, efficiency], target, static tid => tid is 1 or 2,
+            (int tid, out PerformanceCores.CpuMask mask) => threads.TryGetValue(tid, out mask) ? 0 : -1,
+            (int tid, ref PerformanceCores.CpuMask mask) =>
+            {
+                threads[tid] = mask;
+                return 0;
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(widened, Is.EqualTo(1));
+            Assert.That(threads[1].SequenceEqual(performance), Is.True, "a scope ending elsewhere must not widen the processing thread mid-block");
+            Assert.That(threads[2].SequenceEqual(efficiency), Is.True, "nor a worker still inside its scope");
+            Assert.That(threads[3].SequenceEqual(target), Is.True, "an inheritor of any narrowed mask is put back");
+        }
+    }
+
+    [TestCase(PerformanceCpus, "0-19", new[] { 12, 13, 14, 15, 16, 17, 18, 19 }, TestName = "TryBuildEfficiencyMask_UnpinnedHybrid_TheEfficiencyCores")]
+    [TestCase(PerformanceCpus, "4-15", new[] { 12, 13, 14, 15 }, TestName = "TryBuildEfficiencyMask_MixedCpuset_TheAllowedEfficiencyCores")]
+    public void TryBuildEfficiencyMask_SelectsTheOtherCores(string performanceCpus, string allowedCpus, int[] expected)
+    {
+        bool built = PerformanceCores.TryBuildEfficiencyMask(performanceCpus, Allowed(allowedCpus), out PerformanceCores.CpuMask mask, out int[] cpus);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(cpus, Is.EqualTo(expected));
+            Assert.That(Enumerable.Range(0, PerformanceCores.MaxCpus).Where(mask.Contains), Is.EqualTo(expected));
+        }
+    }
+
+    [TestCase(PerformanceCpus, "0-11", TestName = "TryBuildEfficiencyMask_PerformanceCoresOnly_NoSplit")]
+    [TestCase(PerformanceCpus, "12-19", TestName = "TryBuildEfficiencyMask_EfficiencyCoresOnly_NoSplit")]
+    [TestCase(null, "0-15", TestName = "TryBuildEfficiencyMask_NoCoreTypes_NoSplit")]
+    public void TryBuildEfficiencyMask_OneKindOfCore_DoesNotSplit(string performanceCpus, string allowedCpus) =>
+        Assert.That(PerformanceCores.TryBuildEfficiencyMask(performanceCpus, Allowed(allowedCpus), out _, out _), Is.False);
 
     private static PerformanceCores.CpuMask Mask(params int[] cpus)
     {

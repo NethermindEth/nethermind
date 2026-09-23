@@ -16,6 +16,17 @@ internal static partial class PerformanceCores
 
     public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger) => default;
 
+    public static PrewarmSplit? Prewarm => null;
+
+    internal sealed class PrewarmSplit
+    {
+        public int NearWorkers => 0;
+
+        public Scope NarrowNear(ILogger logger) => default;
+
+        public Scope NarrowFar(ILogger logger) => default;
+    }
+
     public readonly struct Scope : IDisposable
     {
         public void Dispose() { }

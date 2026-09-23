@@ -34,9 +34,13 @@ internal static partial class PerformanceCores
     // The widening scan runs on the thread pool, one at a time; a request made while one runs makes it go again.
     private static int _scanRequested;
     private static int _scanRunning;
-    private static Selection? _widenFrom;
     private static CpuMask _widenTo;
     private static int _restoreRefused;
+
+    // The threads a scope holds narrowed right now, by kernel thread id; the scan leaves them alone. A slot is taken
+    // before the thread is narrowed and freed after it is restored, so no narrowed thread is ever missing from here.
+    private const int MaxScopes = 128;
+    private static readonly int[] _scoped = new int[MaxScopes];
 
     internal delegate int GetAffinity(int tid, out CpuMask mask);
     internal delegate int SetAffinity(int tid, ref CpuMask mask);
@@ -72,32 +76,76 @@ internal static partial class PerformanceCores
     /// Keeps the calling thread on the logical processors <paramref name="cores"/> selects until the scope is disposed,
     /// on the same thread. Does nothing where that narrows nothing, and where the kernel refuses.
     /// </summary>
-    public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger)
-    {
-        if (Selected(cores) is not { } selection) return default;
+    public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger) =>
+        Selected(cores) is { } selection ? Narrow(selection, logger) : default;
 
+    /// <summary>
+    /// How prewarm divides its workers between the core types: the first <see cref="PrewarmSplit.NearWorkers"/> run
+    /// on the performance cores and warm what the processing thread reaches next, the rest on the efficiency cores and
+    /// warm the far end of the block. Null on a CPU with one kind of core, or a cpuset holding only one kind.
+    /// </summary>
+    public static PrewarmSplit? Prewarm => OperatingSystem.IsLinux() ? Host.Prewarm : null;
+
+    internal sealed class PrewarmSplit(Selection near, Selection far)
+    {
+        public Selection Near { get; } = near;
+        public Selection Far { get; } = far;
+
+        /// <summary>The performance cores' logical processors less the one the processing thread runs on.</summary>
+        public int NearWorkers { get; } = Math.Max(1, near.Cpus.Length - 1);
+
+        public Scope NarrowNear(ILogger logger) => Narrow(Near, logger);
+
+        public Scope NarrowFar(ILogger logger) => Narrow(Far, logger);
+    }
+
+    private static Scope Narrow(Selection selection, ILogger logger)
+    {
         // pid 0 is the calling thread.
         if (sched_getaffinity(0, CpuMaskSize, out CpuMask previous) != 0) return default;
+        if (!TryTakeSlot(out int slot)) return default;
+
         CpuMask mask = selection.Mask;
-        return sched_setaffinity(0, CpuMaskSize, ref mask) == 0 ? new Scope(selection, previous, logger) : default;
+        if (sched_setaffinity(0, CpuMaskSize, ref mask) == 0) return new Scope(slot, previous, logger);
+
+        Volatile.Write(ref _scoped[slot], 0);
+        return default;
+    }
+
+    private static bool TryTakeSlot(out int slot)
+    {
+        int tid = CurrentThreadId();
+        if (tid > 0)
+        {
+            for (slot = 0; slot < MaxScopes; slot++)
+            {
+                if (Volatile.Read(ref _scoped[slot]) == 0 && Interlocked.CompareExchange(ref _scoped[slot], tid, 0) == 0) return true;
+            }
+        }
+
+        // More scopes than slots, or no thread id: narrowing a thread the scan cannot see would let it widen that
+        // thread mid-scope, so this one narrows nothing.
+        slot = -1;
+        return false;
     }
 
     public readonly struct Scope : IDisposable
     {
-        private readonly Selection? _selection;
+        // One past the slot, so the default scope holds none.
+        private readonly int _slot;
         private readonly CpuMask _previous;
         private readonly ILogger _logger;
 
-        internal Scope(Selection selection, CpuMask previous, ILogger logger)
+        internal Scope(int slot, CpuMask previous, ILogger logger)
         {
-            _selection = selection;
+            _slot = slot + 1;
             _previous = previous;
             _logger = logger;
         }
 
         public void Dispose()
         {
-            if (_selection is null) return;
+            if (_slot == 0) return;
 
             CpuMask restored = _previous;
             if (sched_setaffinity(0, CpuMaskSize, ref restored) != 0)
@@ -106,10 +154,11 @@ internal static partial class PerformanceCores
                 restored = CpuMask.Every();
                 sched_setaffinity(0, CpuMaskSize, ref restored);
                 if (Interlocked.Exchange(ref _restoreRefused, 1) == 0 && _logger.IsWarn)
-                    _logger.Warn("Block processing could not restore its thread's CPU affinity, so it widened the thread to every CPU the cpuset allows instead.");
+                    _logger.Warn("A block processing thread could not restore its CPU affinity, so it was widened to every CPU the cpuset allows instead.");
             }
 
-            RequestWidening(_selection, restored);
+            Volatile.Write(ref _scoped[_slot - 1], 0);
+            RequestWidening(restored);
         }
     }
 
@@ -121,12 +170,12 @@ internal static partial class PerformanceCores
     /// the next scope's scan.
     /// </summary>
     /// <remarks>
-    /// The scan widens any thread whose mask equals the selection, not only the ones created in the scope. Nothing
-    /// else pins threads today; a later split that pins prewarm workers to core types needs its own masks to differ.
+    /// The scan widens any thread outside a scope whose mask equals one this class narrows to, not only the ones
+    /// created in a scope; nothing else in the process pins threads. Threads inside a scope are skipped, so one scope
+    /// ending never widens another that is still open.
     /// </remarks>
-    private static void RequestWidening(Selection from, in CpuMask to)
+    private static void RequestWidening(in CpuMask to)
     {
-        _widenFrom = from;
         _widenTo = to;
         Volatile.Write(ref _scanRequested, 1);
         if (Interlocked.CompareExchange(ref _scanRunning, 1, 0) == 0)
@@ -141,7 +190,7 @@ internal static partial class PerformanceCores
             {
                 try
                 {
-                    if (_widenFrom is { } from) WidenInheritors(EnumerateThreads(), from.Mask, _widenTo, sched_getaffinity, sched_setaffinity);
+                    WidenInheritors(EnumerateThreads(), Host.Narrowed, _widenTo, IsScoped, sched_getaffinity, sched_setaffinity);
                 }
                 // An unforeseen failure leaves a thread narrowed, which the next scope's scan retries; the pool thread survives.
                 catch (Exception)
@@ -161,20 +210,23 @@ internal static partial class PerformanceCores
         public int[] Cpus { get; } = cpus;
     }
 
-    /// <summary>Built on first use by a mode that narrows, so the default leaves the host untouched.</summary>
+    /// <summary>Built on first use by a mode that narrows, so <see cref="ProcessingCores.All"/> alone leaves the host untouched.</summary>
     private static class Host
     {
-        public static readonly Selection?[] Selections = Build();
+        public static readonly Selection?[] Selections;
+        public static readonly PrewarmSplit? Prewarm;
 
-        private static Selection?[] Build()
+        /// <summary>Every mask this class narrows a thread to, which is what the widening scan looks for.</summary>
+        public static readonly CpuMask[] Narrowed;
+
+        static Host()
         {
-            Selection?[] selections = new Selection?[ModeCount];
-            if (!OperatingSystem.IsLinux()) return selections;
-
+            Selections = new Selection?[ModeCount];
+            Narrowed = [];
             try
             {
                 string? performanceCpus = ReadOrNull("/sys/devices/cpu_core/cpus");
-                if (performanceCpus is null || !TryReadAffinity(out CpuMask allowedMask)) return selections;
+                if (performanceCpus is null || !TryReadAffinity(out CpuMask allowedMask)) return;
 
                 HashSet<int> allowed = [];
                 for (int cpu = 0; cpu < MaxCpus; cpu++)
@@ -182,25 +234,63 @@ internal static partial class PerformanceCores
                     if (allowedMask.Contains(cpu)) allowed.Add(cpu);
                 }
 
+                List<CpuMask> narrowed = [];
                 foreach (ProcessingCores cores in Enum.GetValues<ProcessingCores>())
                 {
-                    if (TryBuildMask(cores, performanceCpus, allowed, ReadSiblings, out CpuMask mask, out int[] cpus))
-                        selections[(int)cores] = new Selection(mask, cpus);
+                    if (!TryBuildMask(cores, performanceCpus, allowed, ReadSiblings, out CpuMask mask, out int[] cpus)) continue;
+                    Selections[(int)cores] = new Selection(mask, cpus);
+                    narrowed.Add(mask);
                 }
 
-                return selections;
+                if (Selections[(int)ProcessingCores.Performance] is { } near
+                    && TryBuildEfficiencyMask(performanceCpus, allowed, out CpuMask farMask, out int[] farCpus))
+                {
+                    Prewarm = new PrewarmSplit(near, new Selection(farMask, farCpus));
+                    narrowed.Add(farMask);
+                }
+
+                Narrowed = [.. narrowed];
             }
             // An opt-in knob must not fail startup, nor poison the type for the processing loop: anything unforeseen narrows nothing.
             catch (Exception)
             {
-                return new Selection?[ModeCount];
+                Selections = new Selection?[ModeCount];
+                Prewarm = null;
+                Narrowed = [];
             }
         }
     }
 
     // Any value the enum does not name - the config binder accepts numbers - narrows nothing.
     private static Selection? Selected(ProcessingCores cores) =>
-        cores != ProcessingCores.All && (uint)cores < (uint)ModeCount ? Host.Selections[(int)cores] : null;
+        cores != ProcessingCores.All && (uint)cores < (uint)ModeCount && OperatingSystem.IsLinux() ? Host.Selections[(int)cores] : null;
+
+    /// <summary>
+    /// The CPUs the process may run on that are not performance cores, when there are both kinds among them; on an
+    /// Intel hybrid CPU, the efficiency cores.
+    /// </summary>
+    internal static bool TryBuildEfficiencyMask(string? performanceCpus, HashSet<int>? allowed, out CpuMask mask, out int[] cpus)
+    {
+        mask = default;
+        cpus = [];
+        if (performanceCpus is null || allowed is not { Count: > 0 }) return false;
+
+        HashSet<int> performance = ParseCpuList(performanceCpus);
+        List<int> efficiency = [];
+        bool anyPerformance = false;
+        foreach (int cpu in allowed)
+        {
+            if (performance.Contains(cpu)) anyPerformance = true;
+            else efficiency.Add(cpu);
+        }
+
+        if (!anyPerformance || efficiency.Count == 0) return false;
+
+        cpus = [.. efficiency];
+        Array.Sort(cpus);
+        foreach (int cpu in cpus) mask.Add(cpu);
+        return true;
+    }
 
     /// <summary>
     /// The logical processors <paramref name="cores"/> selects among the performance cores the process may run on,
@@ -280,19 +370,57 @@ internal static partial class PerformanceCores
         return cpus;
     }
 
-    /// <summary>Puts every thread in <paramref name="tids"/> that still holds <paramref name="narrowed"/> back on <paramref name="target"/>.</summary>
+    /// <summary>
+    /// Puts every thread in <paramref name="tids"/> that holds one of the <paramref name="narrowed"/> masks outside a
+    /// scope back on <paramref name="target"/>.
+    /// </summary>
     /// <returns>How many threads it put back.</returns>
-    internal static int WidenInheritors(IEnumerable<int> tids, in CpuMask narrowed, CpuMask target, GetAffinity getAffinity, SetAffinity setAffinity)
+    internal static int WidenInheritors(IEnumerable<int> tids, CpuMask[] narrowed, CpuMask target, Func<int, bool> isScoped, GetAffinity getAffinity, SetAffinity setAffinity)
     {
+        if (narrowed.Length == 0) return 0;
+
         int widened = 0;
         foreach (int tid in tids)
         {
             // A thread that exited meanwhile fails the calls and is skipped.
-            if (getAffinity(tid, out CpuMask current) == 0 && current.SequenceEqual(narrowed) && setAffinity(tid, ref target) == 0)
-                widened++;
+            if (isScoped(tid) || getAffinity(tid, out CpuMask current) != 0 || !IsAnyOf(current, narrowed)) continue;
+            // Checked again after the read: a scope opened in between must keep its mask.
+            if (!isScoped(tid) && setAffinity(tid, ref target) == 0) widened++;
         }
 
         return widened;
+    }
+
+    private static bool IsAnyOf(in CpuMask mask, CpuMask[] masks)
+    {
+        foreach (CpuMask candidate in masks)
+        {
+            if (mask.SequenceEqual(candidate)) return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsScoped(int tid)
+    {
+        for (int slot = 0; slot < MaxScopes; slot++)
+        {
+            if (Volatile.Read(ref _scoped[slot]) == tid) return true;
+        }
+
+        return false;
+    }
+
+    private static int CurrentThreadId()
+    {
+        try
+        {
+            return gettid();
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return 0;
+        }
     }
 
     private static IEnumerable<int> EnumerateThreads()
@@ -352,6 +480,9 @@ internal static partial class PerformanceCores
     private static int sched_getaffinity(int tid, out CpuMask mask) => sched_getaffinity(tid, CpuMaskSize, out mask);
 
     private static int sched_setaffinity(int tid, ref CpuMask mask) => sched_setaffinity(tid, CpuMaskSize, ref mask);
+
+    [DllImport("libc")]
+    private static extern int gettid();
 
     [DllImport("libc")]
     private static extern int sched_getaffinity(int pid, nint cpusetsize, out CpuMask mask);
