@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
-using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie;
@@ -19,48 +19,70 @@ public class VisitorProgressTracker
     public const int Level3Depth = 4; // 4 nibbles
     private const int MaxNodes = 65536; // 16^4 possible 4-nibble prefixes
     private const int ProgressScale = 10_000; // 0.01% precision of the reported percentage
+    // Storage nodes never reach the state-node reporting paths, so a long storage trie would
+    // otherwise never look at the clock; checking every 2^16 nodes is a single mask test
+    private const long HeartbeatCheckMask = (1 << 16) - 1;
 
     private int _seenCount; // Count of level-3 nodes seen (or estimated from shallow leaves)
 
     private long _nodeCount;
-    private long _lastReportedProgress; // Guarded by _reportLock
+    private long _lastReportedProgress = -1; // Guarded by _reportLock; below zero so 0.00 % is reported
+    private long _lastReportTimestamp; // Guarded by _reportLock
+    private bool _hasReported; // Guarded by _reportLock
     private readonly Lock _reportLock = new();
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
     private readonly DateTime _startTime;
-    private readonly ProgressLogger _logger;
+    private readonly Action<string>? _logAction;
     private readonly string _operationName;
     private readonly int _reportingInterval;
     private readonly bool _printNodes;
-    private readonly long _reportStep;
+    private readonly TimeSpan? _reportInterval;
 
+    /// <param name="operationName">Prefix of every progress line.</param>
+    /// <param name="logManager">Source of the logger the progress lines are written to.</param>
+    /// <param name="reportingInterval">Number of state nodes after which progress is re-evaluated even without level-3 coverage.</param>
+    /// <param name="printNodes">Whether the lines include the number of visited nodes.</param>
+    /// <param name="logLevel">Level the progress lines are written at.</param>
+    /// <param name="reportInterval">
+    /// When set, a line is written once per this interval, including when the percentage has not moved,
+    /// so a stalled traversal still shows its node count growing. When <c>null</c>, a line is written
+    /// every time the percentage changes, i.e. up to once per 0.01%.
+    /// </param>
     public VisitorProgressTracker(
         string operationName,
         ILogManager logManager,
         int reportingInterval = 100_000,
         bool printNodes = true,
         LogLevel logLevel = LogLevel.Debug,
-        double reportEveryPercent = 0.01)
+        TimeSpan? reportInterval = null)
     {
         ArgumentNullException.ThrowIfNull(logManager);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(reportEveryPercent);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(reportEveryPercent, 100);
+        if (reportInterval is { } interval)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(interval, TimeSpan.Zero);
+        }
 
         _operationName = operationName;
         _printNodes = printNodes;
-        // The line count is bounded by ProgressScale / _reportStep, so 1% gives ~100 lines per run
-        _reportStep = Math.Max(1, (long)Math.Round(reportEveryPercent / 100 * ProgressScale));
-        // One step below zero, so the first call past the start-up guard reports even at 0.00 %
-        _lastReportedProgress = -_reportStep;
-        _logger = new ProgressLogger(operationName, logManager, logLevel: logLevel);
-        _logger.Reset(0, ProgressScale);
-        _logger.SetFormat(FormatProgress);
+        _reportInterval = reportInterval;
+        ILogger logger = logManager.GetClassLogger<VisitorProgressTracker>();
+        InterfaceLogger underlying = logger.UnderlyingLogger;
+        _logAction = logLevel switch
+        {
+            LogLevel.Info when logger.IsInfo => underlying.Info,
+            LogLevel.Debug when logger.IsDebug => underlying.Debug,
+            LogLevel.Warn when logger.IsWarn => underlying.Warn,
+            LogLevel.Error when logger.IsError => s => underlying.Error(s),
+            LogLevel.Trace when logger.IsTrace => underlying.Trace,
+            _ => null,
+        };
         _reportingInterval = reportingInterval;
         _startTime = DateTime.UtcNow;
     }
 
-    private string FormatProgress(ProgressLogger logger)
+    private string FormatProgress(long progressValue)
     {
-        float percentage = Math.Clamp(logger.CurrentValue / (float)ProgressScale, 0, 1);
+        float percentage = Math.Clamp(progressValue / (float)ProgressScale, 0, 1);
         long work = Interlocked.Read(ref _totalWorkDone);
         string workStr = work >= 1_000_000 ? $"{work / 1_000_000.0:F1}M" : $"{work:N0}";
         return _printNodes
@@ -78,12 +100,12 @@ public class VisitorProgressTracker
     public void OnNodeVisited(in TreePath path, bool isStorage = false, bool isLeaf = false)
     {
         // Always count the work done
-        Interlocked.Increment(ref _totalWorkDone);
+        long work = Interlocked.Increment(ref _totalWorkDone);
+        bool shouldLog = _reportInterval is not null && (work & HeartbeatCheckMask) == 0;
 
         // Only track state nodes for progress estimation at level 3
         if (!isStorage)
         {
-            bool shouldLog = false;
             if (path.Length == Level3Depth)
             {
                 // Node at exactly level 3 (4 nibbles): count as 1 node
@@ -112,16 +134,21 @@ public class VisitorProgressTracker
             {
                 shouldLog = true;
             }
+        }
 
-            if (shouldLog)
-            {
-                LogProgress();
-            }
+        if (shouldLog)
+        {
+            LogProgress();
         }
     }
 
     private void LogProgress()
     {
+        if (_logAction is null)
+        {
+            return;
+        }
+
         // Skip logging for first 5 seconds OR until we've seen at least 1% of nodes
         // This avoids showing noisy early estimates
         double elapsed = (DateTime.UtcNow - _startTime).TotalSeconds;
@@ -135,20 +162,24 @@ public class VisitorProgressTracker
 
         long progressValue = (long)(progress * ProgressScale);
 
-        // Emit only once per _reportStep of progress. ProgressLogger is not thread-safe, so the
-        // update and the write happen together under the lock: a concurrent visitor holding an
-        // older, lower value can neither duplicate a step nor overwrite the value being written.
-        // Reached at most once per level-3 node or _reportingInterval nodes, so contention is negligible.
+        // Decided and written under the lock so concurrent visitors neither duplicate a line nor
+        // write a stale, lower percentage after a higher one. Reached at most once per level-3 node,
+        // _reportingInterval state nodes or heartbeat check, so contention is negligible.
         lock (_reportLock)
         {
-            if (progressValue < _lastReportedProgress + _reportStep)
+            long now = Stopwatch.GetTimestamp();
+            bool isDue = _reportInterval is { } interval
+                ? !_hasReported || Stopwatch.GetElapsedTime(_lastReportTimestamp, now) >= interval
+                : progressValue > _lastReportedProgress;
+            if (!isDue)
             {
                 return;
             }
 
-            _lastReportedProgress = progressValue;
-            _logger.Update((ulong)progressValue);
-            _logger.LogProgress();
+            _lastReportedProgress = Math.Max(_lastReportedProgress, progressValue);
+            _lastReportTimestamp = now;
+            _hasReported = true;
+            _logAction(FormatProgress(_lastReportedProgress));
         }
     }
 
@@ -157,11 +188,19 @@ public class VisitorProgressTracker
     /// </summary>
     public void Finish()
     {
+        if (_logAction is null)
+        {
+            return;
+        }
+
         lock (_reportLock)
         {
-            _logger.Update(ProgressScale);
-            _logger.MarkEnd();
-            _logger.LogProgress();
+            // A traversal that already reported 100 % does not repeat the line
+            if (_lastReportedProgress < ProgressScale)
+            {
+                _lastReportedProgress = ProgressScale;
+                _logAction(FormatProgress(ProgressScale));
+            }
         }
     }
 
