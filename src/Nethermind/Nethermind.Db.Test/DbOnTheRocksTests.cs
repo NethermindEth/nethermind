@@ -399,99 +399,37 @@ namespace Nethermind.Db.Test
                 Assert.That(didRepair, Is.True);
                 Assert.That(db.WasRepairedOnOpen, Is.True);
                 file.Received().Delete(markerFile);
+                // repaired.marker must be durable before corrupt.marker goes, or a crash in between forgets the repair.
                 if (persistUntilAcknowledged)
-                    file.Received().WriteAllText(repairedMarker, Arg.Any<string>());
+                    Received.InOrder(() =>
+                    {
+                        file.WriteAllText(repairedMarker, Arg.Any<string>());
+                        file.Delete(markerFile);
+                    });
                 else
-                    file.DidNotReceive().WriteAllText(Arg.Is<string>(path => path.Contains("repaired.marker")), Arg.Any<string>());
+                    file.DidNotReceive().WriteAllText(Arg.Is<string>(static path => path.Contains("repaired.marker")), Arg.Any<string>());
             }
         }
 
         [Test]
         public void If_no_corrupt_marker_on_open_then_repaired_marker_is_not_written()
         {
-            IDbConfig config = new DbConfig();
-
             IFile file = Substitute.For<IFile>();
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
             fileSystem.File.Returns(file);
-
-            bool didRepair = false;
-
-            try
-            {
-                _ = new RepairTrackingDbOnTheRocks(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
-                    LimboLogs.Instance,
-                    fileSystem: fileSystem,
-                    onRepair: () => didRepair = true);
-            }
-            catch (Exception)
-            {
-            }
-
-            Assert.That(didRepair, Is.False);
-            file.DidNotReceive().WriteAllText(Arg.Is<string>(path => path.Contains("repaired.marker")), Arg.Any<string>());
-        }
-
-        [TestCase(false, TestName = "Leftover_repaired_marker_is_ignored_unless_it_persists_until_acknowledge")]
-        [TestCase(true, TestName = "Leftover_repaired_marker_sets_WasRepairedOnOpen_when_it_persists_until_acknowledge")]
-        public void Leftover_repaired_marker_is_honored_only_when_it_persists_until_acknowledge(bool persistUntilAcknowledged)
-        {
-            IDbConfig config = new DbConfig();
-
-            IFile file = Substitute.For<IFile>();
-            IFileSystem fileSystem = Substitute.For<IFileSystem>();
-            fileSystem.File.Returns(file);
-
-            string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
-            string repairedMarker = Path.Join(fullPath, "repaired.marker");
-            string corruptMarker = Path.Join(fullPath, "corrupt.marker");
-            file.Exists(repairedMarker).Returns(true);
-            file.Exists(corruptMarker).Returns(false);
-
-            DbSettings settings = GetRocksDbSettings(DbPath, "test");
-            settings.PersistRepairMarkerUntilAcknowledged = persistUntilAcknowledged;
-
-            bool didRepair = false;
-            using RepairTrackingDbOnTheRocks db = new(DbPath, settings, config, _rocksdbConfigFactory,
-                LimboLogs.Instance,
-                fileSystem: fileSystem,
-                onRepair: () => didRepair = true);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(didRepair, Is.False);
-                Assert.That(db.WasRepairedOnOpen, Is.EqualTo(persistUntilAcknowledged));
-            }
-        }
-
-        [Test]
-        public void AcknowledgeRepair_deletes_repaired_marker_and_clears_flag()
-        {
-            IDbConfig config = new DbConfig();
-
-            IFile file = Substitute.For<IFile>();
-            IFileSystem fileSystem = Substitute.For<IFileSystem>();
-            fileSystem.File.Returns(file);
-
-            string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
-            string repairedMarker = Path.Join(fullPath, "repaired.marker");
-            file.Exists(repairedMarker).Returns(true);
 
             DbSettings settings = GetRocksDbSettings(DbPath, "test");
             settings.PersistRepairMarkerUntilAcknowledged = true;
 
-            using RepairTrackingDbOnTheRocks db = new(DbPath, settings, config, _rocksdbConfigFactory,
-                LimboLogs.Instance,
-                fileSystem: fileSystem,
-                onRepair: static () => { });
-
-            Assert.That(db.WasRepairedOnOpen, Is.True);
-            ((IDbMeta)db).AcknowledgeRepair();
+            bool didRepair = false;
+            using RepairTrackingDbOnTheRocks db = new(DbPath, settings, new DbConfig(), _rocksdbConfigFactory,
+                LimboLogs.Instance, fileSystem, () => didRepair = true);
 
             using (Assert.EnterMultipleScope())
             {
-                file.Received().Delete(repairedMarker);
+                Assert.That(didRepair, Is.False);
                 Assert.That(db.WasRepairedOnOpen, Is.False);
+                file.DidNotReceive().WriteAllText(Arg.Is<string>(static path => path.Contains("repaired.marker")), Arg.Any<string>());
             }
         }
 

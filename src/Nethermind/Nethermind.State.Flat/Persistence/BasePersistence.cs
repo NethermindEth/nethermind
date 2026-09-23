@@ -178,7 +178,13 @@ public static class BasePersistence
         if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
     }
 
-    internal static bool ReadWipedForSync(IReadOnlyKeyValueStore kv) => kv.Get(WipedForSyncKey) is { Length: > 0 };
+    /// <summary>Whether <see cref="ClearAllColumns"/> has marked the flat DB metadata as wiped for a state sync.</summary>
+    /// <remarks>
+    /// Set by the first batch of a wipe and cleared when a state pointer is persisted, i.e. when the sync that follows
+    /// completes. With a pre-genesis state pointer it tells a wiped DB awaiting its sync from one that was never used;
+    /// with a state pointer still present it means the wipe itself was interrupted.
+    /// </remarks>
+    public static bool ReadWipedForSync(IReadOnlyKeyValueStore metadata) => metadata.Get(WipedForSyncKey) is { Length: > 0 };
 
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
@@ -189,6 +195,10 @@ public static class BasePersistence
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         try
         {
+            // The wipe marker precedes every delete and the state pointer reset closes the wipe, so a wipe that dies
+            // midway reads back as "pointer and marker both present" and the next start redoes it.
+            batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(WipedForSyncKey, [1]);
+
             int count = 0;
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
             {
@@ -210,13 +220,8 @@ public static class BasePersistence
                 }
             }
 
-            // The state pointer goes last: a wipe that dies midway must still read back as populated so the
-            // next start redoes it instead of treating a half-wiped DB as empty. Only this key is reset;
-            // wiping the format markers makes a re-synced RLP DB read back as raw. #11996
-            // The wipe marker shares this batch so the reset pointer never reads back without it.
-            IWriteBatch metadataBatch = batch.GetColumnBatch(FlatDbColumns.Metadata);
-            metadataBatch.Remove(CurrentStateKey);
-            metadataBatch.PutSpan(WipedForSyncKey, [1]);
+            // Only the state pointer is reset; wiping the format markers makes a re-synced RLP DB read back as raw. #11996
+            batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(CurrentStateKey);
         }
         finally
         {

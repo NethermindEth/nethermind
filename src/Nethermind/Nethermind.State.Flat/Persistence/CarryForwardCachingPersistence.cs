@@ -68,12 +68,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _inner.Clear();
     }
 
-    public bool WasRepairedOnOpen => _inner.WasRepairedOnOpen;
-
-    public void AcknowledgeRepair() => _inner.AcknowledgeRepair();
-
-    public bool WasWipedForSync => _inner.WasWipedForSync;
-
     public ValueTask DisposeAsync() => _inner is IAsyncDisposable asyncDisposable
         ? asyncDisposable.DisposeAsync()
         : ValueTask.CompletedTask;

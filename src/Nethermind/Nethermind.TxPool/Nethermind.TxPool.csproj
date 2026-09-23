@@ -17,7 +17,6 @@
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Contract\Nethermind.Network.Contract.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
-    <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
   </ItemGroup>
 
 </Project>

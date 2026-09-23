@@ -47,19 +47,6 @@ public class ClearColumnsTests
         }
     }
 
-    // Acknowledging before the flush is durable would let a crash leave a half-wiped DB that the next start
-    // no longer treats as repaired.
-    [Test]
-    public void Clear_flushes_the_wipe_before_acknowledging_the_repair()
-    {
-        using ClearOrderSpyColumnsDb db = new();
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
-
-        persistence.Clear();
-
-        Assert.That(db.Events, Is.EqualTo(new[] { ClearOrderSpyColumnsDb.FlushEvent, ClearOrderSpyColumnsDb.AcknowledgeEvent }));
-    }
-
     private static IEnumerable<TestCaseData> WipeMarkerLifecycleCases()
     {
         foreach ((string name, Func<IColumnsDb<FlatDbColumns>, IPersistence> create) in PersistenceFactories())
@@ -93,15 +80,15 @@ public class ClearColumnsTests
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(persistence.WasWipedForSync, Is.EqualTo(expectedWiped));
+            Assert.That(BasePersistence.ReadWipedForSync(db.GetColumnDb(FlatDbColumns.Metadata)), Is.EqualTo(expectedWiped));
             Assert.That(reader.CurrentState, Is.EqualTo(syncBatch ? StateId.PreGenesis : to));
         }
     }
 
-    // FlatStateActivationPolicy reads the state pointer to tell "flat holds state" from "flat is empty", so a
-    // wipe that crashes midway must not have reset it yet: it has to be the last write, after every data column.
+    // FlatStateActivationPolicy reads "state pointer and wipe marker both present" as an interrupted wipe, so the
+    // marker must be the first write, committed before any data column is touched, and the pointer reset the last.
     [Test]
-    public void ClearAllColumns_resets_current_state_and_marks_the_wipe_after_every_data_column_in_the_last_batch()
+    public void ClearAllColumns_marks_the_wipe_in_the_first_batch_and_resets_current_state_in_the_last()
     {
         using MemColumnsDb<FlatDbColumns> inner = new();
         BasePersistence.SetCurrentState(inner.GetColumnDb(FlatDbColumns.Metadata),
@@ -124,27 +111,12 @@ public class ClearColumnsTests
         {
             Assert.That(db.Events.Count(static e => e == WriteOrderSpyColumnsDb.CommitEvent), Is.GreaterThan(1));
             Assert.That(db.Events.Count(static e => e == nameof(FlatDbColumns.Metadata)), Is.EqualTo(2));
-            Assert.That(db.Events.TakeLast(3), Is.EqualTo(new[] { nameof(FlatDbColumns.Metadata), nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent }));
+            Assert.That(db.Events[0], Is.EqualTo(nameof(FlatDbColumns.Metadata)));
+            Assert.That(db.Events.IndexOf(WriteOrderSpyColumnsDb.CommitEvent), Is.LessThan(db.Events.LastIndexOf(nameof(FlatDbColumns.Metadata))));
+            Assert.That(db.Events.TakeLast(2), Is.EqualTo(new[] { nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent }));
             Assert.That(BasePersistence.ReadCurrentState(inner.GetColumnDb(FlatDbColumns.Metadata)), Is.EqualTo(StateId.PreGenesis));
             Assert.That(BasePersistence.ReadWipedForSync(inner.GetColumnDb(FlatDbColumns.Metadata)), Is.True);
         }
-    }
-
-    /// <summary>Records, in order, the flush and repair-acknowledge calls made against the columns DB.</summary>
-    private sealed class ClearOrderSpyColumnsDb : SnapshotableMemColumnsDb<FlatDbColumns>, IDbMeta
-    {
-        public const string FlushEvent = "flush";
-        public const string AcknowledgeEvent = "acknowledge";
-
-        public List<string> Events { get; } = [];
-
-        void IDbMeta.Flush(bool onlyWal)
-        {
-            Events.Add(FlushEvent);
-            base.Flush(onlyWal);
-        }
-
-        void IDbMeta.AcknowledgeRepair() => Events.Add(AcknowledgeEvent);
     }
 
     /// <summary>Records, in order, the column of every write staged through its batches and each batch commit.</summary>

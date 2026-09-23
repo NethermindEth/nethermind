@@ -196,7 +196,16 @@ namespace Nethermind.TxPool
                     TimeProvider.System,
                     RequestCurrentSpecRevalidation)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            UpdateBucketsWithoutRevalidation();
+            try
+            {
+                UpdateBucketsWithoutRevalidation();
+            }
+            catch (MissingTrieNodeException e)
+            {
+                // Headers can outlive their state (e.g. after FlatDb.OnRepair=Resync). Unknown state is not an empty
+                // account, so the reloaded buckets and persisted blobs are left as they are; the next head retries.
+                if (_logger.IsWarn) _logger.Warn($"Head state is unavailable; leaving tx pool buckets untouched until the next head. {e.Message}");
+            }
             InitializeValidatedSpec();
 
             _headInfo.HeadChanged += OnHeadChange;
@@ -1128,19 +1137,8 @@ namespace Nethermind.TxPool
 
         private void UpdateBucketsWithoutRevalidation()
         {
-            try
-            {
-                _transactions.UpdatePool(_accounts, _updateBucket);
-                _blobTransactions.UpdatePool(_accounts, _updateBucket);
-            }
-            catch (MissingTrieNodeException)
-            {
-                // Head can exist (headers kept) while its state is unavailable — e.g. after
-                // FlatDb.OnRepair=Resync wiped flat state, or mid state-sync. Unknown state is not
-                // an empty account: leave the buckets (and persisted blobs) as they are and retry
-                // on the next head.
-                if (_logger.IsWarn) _logger.Warn("Head state is unavailable; leaving tx pool buckets untouched until the next head.");
-            }
+            _transactions.UpdatePool(_accounts, _updateBucket);
+            _blobTransactions.UpdatePool(_accounts, _updateBucket);
         }
 
         private void InitializeValidatedSpec()

@@ -19,18 +19,7 @@ public class FlatInTriePersistence(IColumnsDb<FlatDbColumns> db, ILogManager log
 
     public void Flush() => db.Flush();
 
-    public void Clear()
-    {
-        BasePersistence.ClearAllColumns(db);
-        db.Flush();
-        db.AcknowledgeRepair();
-    }
-
-    public bool WasRepairedOnOpen => db.WasRepairedOnOpen;
-
-    public void AcknowledgeRepair() => db.AcknowledgeRepair();
-
-    public bool WasWipedForSync => BasePersistence.ReadWipedForSync(db.GetColumnDb(FlatDbColumns.Metadata));
+    public void Clear() => BasePersistence.ClearAllColumns(db);
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {

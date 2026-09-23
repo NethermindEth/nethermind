@@ -159,6 +159,7 @@ public class SeedFlatHistoryGenesisTests
             flatDbConfig,
             new TestHardwareInfo(32L * 1024 * 1024 * 1024),
             new Lazy<IPersistence>(() => flatPersistence),
+            new Lazy<IColumnsDb<FlatDbColumns>>(() => new MemColumnsDb<FlatDbColumns>()),
             new Lazy<IDb>(() => new MemDb()),
             LimboLogs.Instance);
     }
