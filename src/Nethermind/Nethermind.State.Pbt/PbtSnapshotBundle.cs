@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.Persistence;
@@ -316,7 +317,7 @@ public sealed class PbtSnapshotBundle(
     }
 
     // The owning scope serializes capture with snapshot collection and disposal.
-    internal PbtTrieWarmupSession CreateTrieWarmupSession(ITrieWarmer trieWarmer, int sequenceId, long warmupMinSubtreeBytes)
+    internal PbtTrieWarmupSession CreateTrieWarmupSession(ITrieWarmer trieWarmer, int sequenceId, long warmupMinSubtreeBytes, ILogger logger = default)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         PbtSnapshotPooledList initialSnapshots = new(snapshots.Count);
@@ -341,7 +342,7 @@ public sealed class PbtSnapshotBundle(
             if (!readOnlyLeased) throw new ObjectDisposedException(nameof(PbtReadOnlySnapshotBundle));
             transientLeased = _transientResource.TryAcquireLease();
             if (!transientLeased) throw new ObjectDisposedException(nameof(PbtTransientResource));
-            return new PbtTrieWarmupSession(initialSnapshots, readOnlyBundle, _transientResource, trieWarmer, sequenceId, trieNodeCache, warmupMinSubtreeBytes);
+            return new PbtTrieWarmupSession(initialSnapshots, readOnlyBundle, _transientResource, trieWarmer, sequenceId, trieNodeCache, warmupMinSubtreeBytes, logger);
         }
         catch
         {

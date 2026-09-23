@@ -72,6 +72,11 @@ public static class Metrics
     public static IMetricObserver PbtPartitionFoldTime { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
+    [Description("Time of a node-group read by the pbt trie updater, by partition (suffixed _top for groups the persistence keeps in the top column) and whether a group was found (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["partition", "result"])]
+    public static IMetricObserver PbtTrieUpdaterNodeGroupReadTimes { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
     [Description("Pbt pooled resources currently rented, by category and type")]
     [KeyIsLabel("category", "resource_type")]
     public static ConcurrentDictionary<PbtResourcePool.PooledResourceLabel, long> PbtActivePooledResource { get; } = new();
@@ -124,21 +129,39 @@ public static class Metrics
         Interlocked.Add(ref _pbtBaseSnapshotCount, direction);
     }
 
-    private static long _pbtTrieWarmerTriggered;
+    [CounterMetric]
+    [Description("Pbt trie-warmer jobs successfully queued, by whether the hint named an address or a storage slot")]
+    [KeyIsLabel("kind")]
+    public static ConcurrentDictionary<string, long> PbtTrieWarmerTriggered { get; } = NewTrieWarmerMetric();
 
     [CounterMetric]
-    [Description("Pbt trie-warmer jobs successfully queued")]
-    public static long PbtTrieWarmerTriggered => Volatile.Read(ref _pbtTrieWarmerTriggered);
-
-    internal static void IncrementPbtTrieWarmerTriggered() => Interlocked.Increment(ref _pbtTrieWarmerTriggered);
-
-    private static long _pbtTrieWarmerSkippedByDeduplication;
+    [Description("Pbt trie-warmer hints skipped because the stem was already reserved in the current scope, by whether the hint named an address or a storage slot")]
+    [KeyIsLabel("kind")]
+    public static ConcurrentDictionary<string, long> PbtTrieWarmerSkippedByDeduplication { get; } = NewTrieWarmerMetric();
 
     [CounterMetric]
-    [Description("Pbt trie-warmer hints skipped because the stem was already reserved in the current scope")]
-    public static long PbtTrieWarmerSkippedByDeduplication => Volatile.Read(ref _pbtTrieWarmerSkippedByDeduplication);
+    [Description("Pbt trie-warmer hints lost because the warmer queue refused the job, by whether the hint named an address or a storage slot")]
+    [KeyIsLabel("kind")]
+    public static ConcurrentDictionary<string, long> PbtTrieWarmerDropped { get; } = NewTrieWarmerMetric();
 
-    internal static void IncrementPbtTrieWarmerSkippedByDeduplication() => Interlocked.Increment(ref _pbtTrieWarmerSkippedByDeduplication);
+    [CounterMetric]
+    [Description("Pbt trie-warmer jobs skipped at execution because their scope had already committed or closed, by whether the hint named an address or a storage slot")]
+    [KeyIsLabel("kind")]
+    public static ConcurrentDictionary<string, long> PbtTrieWarmerStale { get; } = NewTrieWarmerMetric();
+
+    [DetailedMetric]
+    [Description("Time a pbt trie-warmer job spent walking its path, by whether the hint named an address or a storage slot (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["kind"])]
+    public static IMetricObserver PbtTrieWarmerJobTime { get; set; } = new NoopMetricObserver();
+
+    internal const string TrieWarmerAddressKind = "address";
+    internal const string TrieWarmerStorageKind = "storage";
+
+    private static ConcurrentDictionary<string, long> NewTrieWarmerMetric() => new()
+    {
+        [TrieWarmerAddressKind] = 0,
+        [TrieWarmerStorageKind] = 0,
+    };
 
     private static long _pbtTrieWarmerStoppedBySmallSubtree;
 
@@ -164,4 +187,11 @@ public readonly record struct PbtSnapshotMemoryLabel(string Partition, string Ty
 {
     /// <inheritdoc/>
     public string[] Labels => [Partition, Type];
+}
+
+/// <summary>Metric labels identifying a PBT partition and whether a node-group read found a group.</summary>
+public readonly record struct PbtNodeGroupReadLabel(string Partition, string Result) : IMetricLabels
+{
+    /// <inheritdoc/>
+    public string[] Labels => [Partition, Result];
 }

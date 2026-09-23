@@ -131,7 +131,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         {
             if (_isDisposed || _pausePrewarmer)
                 return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
-            _warmupSession ??= Bundle.CreateTrieWarmupSession(_trieWarmer, _hintSequenceId, _warmupMinSubtreeBytes);
+            _warmupSession ??= Bundle.CreateTrieWarmupSession(_trieWarmer, _hintSequenceId, _warmupMinSubtreeBytes, _logger);
             _warmupSession.AcquireLease();
             return _warmupSession;
         }
@@ -154,6 +154,21 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatch(this);
 
     public void UpdateRootHash()
+    {
+        if (!_rootDirty) return;
+        // Warming past this point cannot land before the fold reads the path, so the pending jobs are cut off here.
+        RetireWarmupSession();
+        try
+        {
+            FoldRoot();
+        }
+        finally
+        {
+            ResumePrewarmer();
+        }
+    }
+
+    private void FoldRoot()
     {
         if (!_rootDirty) return;
         if (_logger.IsDebug) LogLifecycle("root calculation begin");
@@ -186,7 +201,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         RetireWarmupSession();
         try
         {
-            UpdateRootHash();
+            FoldRoot();
             StateId newStateId = new(blockNumber, _rootHash);
             if (newStateId != _currentStateId)
             {

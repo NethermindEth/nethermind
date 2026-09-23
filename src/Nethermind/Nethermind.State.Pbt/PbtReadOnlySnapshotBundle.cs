@@ -70,7 +70,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         return result;
     }
 
-    private static int GetNodeGroupPartition<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
+    internal static int GetNodeGroupPartition<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         if (path.BitDepth == 0) return 0;
         if (path.BitDepth == 4 && path.GetByte(0) == 0xF0

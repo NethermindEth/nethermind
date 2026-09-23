@@ -160,7 +160,7 @@ public class PbtRocksDbPersistence(
             throw new InvalidDataException($"The pbt database uses node-group key layout {stored}, but {nameof(IPbtConfig.NodeGroupKeyLayout)} is {configured}. Match the setting, or rebuild or re-import into a new pbt database.");
     }
 
-    private static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
+    internal static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
         if (groupKey.BitDepth == 0) return PbtColumns.Metadata;
         if (groupKey.BitDepth == 4) return PbtColumns.TopNodeGroups;
