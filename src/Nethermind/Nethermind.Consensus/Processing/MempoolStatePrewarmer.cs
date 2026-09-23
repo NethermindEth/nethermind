@@ -26,6 +26,8 @@ namespace Nethermind.Consensus.Processing;
 public sealed class MempoolStatePrewarmer : IDisposable
 {
     private const int IdlePassDelayMs = 100;
+    // A block is expected within the first third of its slot; past that, bet on the next one.
+    private const ulong ArrivalGraceSlotFraction = 3;
 
     private readonly Lazy<ITxSource> _txSource;
     private readonly IBlockTree _blockTree;
@@ -40,6 +42,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
     // Monotonic: a queued pass runs only while it still reflects the latest head.
     private long _generation;
+    private readonly ulong _secondsPerSlot;
 
     public MempoolStatePrewarmer(
         IBlockCachePreWarmer preWarmer,
@@ -56,7 +59,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
         _specProvider = specProvider;
         _timestamper = timestamper;
         _logger = logManager.GetClassLogger<MempoolStatePrewarmer>();
-        _maxHeadAgeSeconds = Math.Max(1UL, blocksConfig.SecondsPerSlot) * 4;
+        _secondsPerSlot = Math.Max(1UL, blocksConfig.SecondsPerSlot);
+        _maxHeadAgeSeconds = _secondsPerSlot * 4;
         _enabled = blocksConfig.PreWarming == PreWarmMode.BlockAndMempool;
 
         if (_enabled)
@@ -97,7 +101,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
                 headHeader,
                 next.Spec,
                 generation,
-                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, next, warmedPerSender, selectedBySender),
+                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, warmedPerSender, selectedBySender),
                 IdlePassDelayMs,
                 _cts.Token);
         }
@@ -112,10 +116,29 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private NextBlockContext PrepareNextBlockContext(BlockHeader parent)
     {
         ulong number = parent.Number + 1;
-        ulong timestamp = Math.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds);
+        ulong timestamp = PredictNextTimestamp(parent.Timestamp, _timestamper.UnixTime.Seconds, _secondsPerSlot);
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(number, timestamp));
 
         return new NextBlockContext(BuildNextBlockHeader(parent, timestamp, spec), spec);
+    }
+
+    /// <summary>
+    /// The next block's timestamp is the first slot boundary after the parent that can still produce the next block,
+    /// so the EIP-4788 ring-buffer slots the system call touches, indexed by timestamp, are the ones being warmed.
+    /// </summary>
+    /// <remarks>
+    /// A boundary that has just passed is still the likeliest next block: the block for it is proposed at the boundary
+    /// and reaches the execution layer a second or more later. Moving on the instant it passes warms the slot after it
+    /// for the last seconds of every gap, and never warms the right one at all when the head itself arrived late
+    /// enough that the first boundary is already behind us. The grace is how long a passed boundary stays the bet;
+    /// after it, a missed slot is the better explanation.
+    /// </remarks>
+    internal static ulong PredictNextTimestamp(ulong parentTimestamp, ulong now, ulong secondsPerSlot)
+    {
+        ulong grace = secondsPerSlot / ArrivalGraceSlotFraction;
+        ulong elapsed = now > parentTimestamp + grace ? now - parentTimestamp - grace : 0;
+        ulong slots = Math.Max(1UL, (elapsed + secondsPerSlot - 1) / secondsPerSlot);
+        return parentTimestamp + slots * secondsPerSlot;
     }
 
     /// <summary>
@@ -133,11 +156,17 @@ public sealed class MempoolStatePrewarmer : IDisposable
         return header;
     }
 
-    private Block? BuildDeltaBlock(BlockHeader parent, NextBlockContext next, Dictionary<AddressAsKey, int> warmedPerSender,
+    /// <remarks>
+    /// The prediction is redone every pass so a missed slot moves the warm onto the slot that will actually land,
+    /// rather than leaving the whole gap warming the cells of a block that never arrived. Its spec travels with it, so a
+    /// fork activating inside the gap warms under the spec the predicted block would run rather than the session's.
+    /// </remarks>
+    private (Block Block, IReleaseSpec Spec) BuildDeltaBlock(BlockHeader parent, Dictionary<AddressAsKey, int> warmedPerSender,
         Dictionary<AddressAsKey, SenderSelection> selectedBySender)
     {
+        NextBlockContext next = PrepareNextBlockContext(parent);
         Transaction[] delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender);
-        return delta.Length == 0 ? null : new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null));
+        return (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
     }
 
     /// <summary>
