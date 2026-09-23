@@ -18,6 +18,7 @@ public class VisitorProgressTracker
 {
     public const int Level3Depth = 4; // 4 nibbles
     private const int MaxNodes = 65536; // 16^4 possible 4-nibble prefixes
+    private const int ProgressScale = 100; // 1% granularity: one report per percentage point
 
     private int _seenCount; // Count of level-3 nodes seen (or estimated from shallow leaves)
 
@@ -33,14 +34,15 @@ public class VisitorProgressTracker
         string operationName,
         ILogManager logManager,
         int reportingInterval = 100_000,
-        bool printNodes = true)
+        bool printNodes = true,
+        LogLevel logLevel = LogLevel.Debug)
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
         _operationName = operationName;
         _printNodes = printNodes;
-        _logger = new ProgressLogger(operationName, logManager, logLevel: LogLevel.Debug);
-        _logger.Reset(0, 10000); // Use 10000 for 0.01% precision
+        _logger = new ProgressLogger(operationName, logManager, logLevel: logLevel);
+        _logger.Reset(0, ProgressScale);
         _logger.SetFormat(FormatProgress);
         _reportingInterval = reportingInterval;
         _startTime = DateTime.UtcNow;
@@ -48,12 +50,12 @@ public class VisitorProgressTracker
 
     private string FormatProgress(ProgressLogger logger)
     {
-        float percentage = Math.Clamp(logger.CurrentValue / 10000f, 0, 1);
+        float percentage = Math.Clamp(logger.CurrentValue / (float)ProgressScale, 0, 1);
         long work = Interlocked.Read(ref _totalWorkDone);
         string workStr = work >= 1_000_000 ? $"{work / 1_000_000.0:F1}M" : $"{work:N0}";
         return _printNodes
-            ? $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} nodes: {workStr,8}"
-            : $"{_operationName,-25} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)}";
+            ? $"{_operationName,-25} {percentage.ToString("P0", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} nodes: {workStr,8}"
+            : $"{_operationName,-25} {percentage.ToString("P0", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)}";
     }
 
     /// <summary>
@@ -121,7 +123,7 @@ public class VisitorProgressTracker
             return;
         }
 
-        ulong progressValue = (ulong)(progress * 10000);
+        ulong progressValue = (ulong)(progress * ProgressScale);
 
         _logger.Update(progressValue);
         _logger.LogProgress();
@@ -132,7 +134,7 @@ public class VisitorProgressTracker
     /// </summary>
     public void Finish()
     {
-        _logger.Update(10000);
+        _logger.Update(ProgressScale);
         _logger.MarkEnd();
         _logger.LogProgress();
     }

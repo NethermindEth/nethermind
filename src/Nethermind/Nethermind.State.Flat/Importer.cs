@@ -53,7 +53,7 @@ public class Importer(
         if (_logger.IsWarn) _logger.Warn("Starting import");
 
         int maxConcurrency = 8;
-        VisitorProgressTracker progressTracker = new("Flat Import", logManager);
+        VisitorProgressTracker progressTracker = new("Flat Import", logManager, logLevel: LogLevel.Info);
 
         Task visitTask = Task.Run(() =>
         {

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -146,5 +148,27 @@ public class VisitorProgressTrackerTests
         // Assert
         Assert.That(tracker.NodeCount, Is.EqualTo(1));
         Assert.That(tracker.GetProgress(), Is.EqualTo(0)); // Empty path doesn't contribute to progress
+    }
+
+    [TestCase(LogLevel.Debug, 0)]
+    [TestCase(LogLevel.Info, 1)]
+    public void OnNodeVisited_ReportsProgressAtRequestedLevel(LogLevel logLevel, int expectedReports)
+    {
+        // Arrange - a node running at the default Info level, where Debug reporting is invisible
+        InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
+        innerLogger.IsInfo.Returns(true);
+        innerLogger.IsDebug.Returns(false);
+        ILogger logger = new(innerLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<ProgressLogger>().Returns(logger);
+
+        VisitorProgressTracker tracker = new("Test", logManager, logLevel: logLevel);
+
+        // Act - a leaf at depth 1 covers 16^3 level-3 nodes, which clears the 1% threshold
+        // that otherwise suppresses reporting during the first 5 seconds
+        tracker.OnNodeVisited(TreePath.FromNibble([0]), isStorage: false, isLeaf: true);
+
+        // Assert
+        innerLogger.Received(expectedReports).Info(Arg.Any<string>());
     }
 }
