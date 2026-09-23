@@ -16,8 +16,8 @@ public enum ProcessingCores
     PerformancePhysical,
 
     /// <summary>
-    /// The fastest performance core, which prewarm then keeps clear of; the performance cores when they all report the
-    /// same top speed.
+    /// One performance core to itself: the first that does not hold CPU 0, which takes more interrupts, with prewarm
+    /// kept clear of it.
     /// </summary>
-    Fastest,
+    Dedicated,
 }

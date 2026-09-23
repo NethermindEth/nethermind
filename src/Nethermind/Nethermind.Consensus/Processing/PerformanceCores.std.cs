@@ -68,7 +68,7 @@ internal static partial class PerformanceCores
     /// </summary>
     public static PrewarmSplit? PrewarmFor(ProcessingCores cores) =>
         cores == ProcessingCores.All || (uint)cores >= (uint)ModeCount || !OperatingSystem.IsLinux() ? null
-        : cores == ProcessingCores.Fastest ? Host.PrewarmFastest
+        : cores == ProcessingCores.Dedicated ? Host.PrewarmDedicated
         : Host.Prewarm;
 
     internal sealed class PrewarmSplit(Selection near, Selection far, int nearWorkers)
@@ -131,7 +131,7 @@ internal static partial class PerformanceCores
     {
         public static readonly Selection?[] Selections;
         public static readonly PrewarmSplit? Prewarm;
-        public static readonly PrewarmSplit? PrewarmFastest;
+        public static readonly PrewarmSplit? PrewarmDedicated;
 
         static Host()
         {
@@ -147,10 +147,9 @@ internal static partial class PerformanceCores
                     if (allowedMask.Contains(cpu)) allowed.Add(cpu);
                 }
 
-                Func<int, long?> topPerformance = TopPerformanceSource(ParseCpuList(performanceCpus));
                 foreach (ProcessingCores cores in Enum.GetValues<ProcessingCores>())
                 {
-                    if (TryBuildMask(cores, performanceCpus, allowed, ReadSiblings, out CpuMask mask, out int[] cpus, topPerformance))
+                    if (TryBuildMask(cores, performanceCpus, allowed, ReadSiblings, out CpuMask mask, out int[] cpus))
                         Selections[(int)cores] = new Selection(mask, cpus);
                 }
 
@@ -161,12 +160,12 @@ internal static partial class PerformanceCores
                     // The processing thread shares the performance cores with the near workers, so they leave it one.
                     Prewarm = new PrewarmSplit(near, far, near.Cpus.Length - 1);
 
-                    PrewarmFastest = Prewarm;
-                    if (Selections[(int)ProcessingCores.Fastest] is { } fastest
-                        && TryExclude(near.Cpus, fastest.Cpus, out CpuMask rest, out int[] restCpus))
+                    PrewarmDedicated = Prewarm;
+                    if (Selections[(int)ProcessingCores.Dedicated] is { } dedicated
+                        && TryExclude(near.Cpus, dedicated.Cpus, out CpuMask rest, out int[] restCpus))
                     {
                         // The processing thread has its core to itself, so the near workers take every other one.
-                        PrewarmFastest = new PrewarmSplit(new Selection(rest, restCpus), far, restCpus.Length);
+                        PrewarmDedicated = new PrewarmSplit(new Selection(rest, restCpus), far, restCpus.Length);
                     }
                 }
             }
@@ -175,7 +174,7 @@ internal static partial class PerformanceCores
             {
                 Selections = new Selection?[ModeCount];
                 Prewarm = null;
-                PrewarmFastest = null;
+                PrewarmDedicated = null;
             }
         }
     }
@@ -185,40 +184,34 @@ internal static partial class PerformanceCores
         cores != ProcessingCores.All && (uint)cores < (uint)ModeCount && OperatingSystem.IsLinux() ? Host.Selections[(int)cores] : null;
 
     /// <summary>
-    /// The logical processors of the performance core with the highest top speed, when the cores differ; null when
-    /// they all report the same, or when a speed is unknown, and then the caller keeps every performance core.
+    /// The logical processors of the first performance core that does not hold CPU 0, which takes more interrupts; the
+    /// core of CPU 0 only when it is the one allowed. Null when a core's hyperthreads are unknown, since the core could
+    /// then not be kept whole or clear of CPU 0.
     /// </summary>
-    private static HashSet<int>? FastestCore(HashSet<int> performance, Func<int, string?> siblingsOf, Func<int, long?>? topPerformanceOf)
+    /// <remarks>
+    /// Chosen by position rather than by speed: the top frequency and the CPPC level barely differ between the
+    /// performance cores, so ranking by them would pick an effectively random core.
+    /// </remarks>
+    private static HashSet<int>? DedicatedCore(HashSet<int> performance, Func<int, string?> siblingsOf)
     {
-        if (topPerformanceOf is null || performance.Count == 0) return null;
-
-        int fastest = -1;
-        long best = long.MinValue;
-        bool differ = false;
-        foreach (int cpu in performance)
+        int[] ordered = [.. performance];
+        Array.Sort(ordered);
+        HashSet<int>? first = null;
+        foreach (int cpu in ordered)
         {
-            if (topPerformanceOf(cpu) is not { } speed) return null;
-            if (fastest >= 0 && speed != best) differ = true;
-            // Ties go to the lowest CPU, so the choice does not depend on the set's order.
-            if (speed > best || (speed == best && cpu < fastest))
-            {
-                best = speed;
-                fastest = cpu;
-            }
-        }
+            if (siblingsOf(cpu) is not { } siblings) return null;
 
-        if (!differ) return null;
-
-        HashSet<int> core = [fastest];
-        if (siblingsOf(fastest) is { } siblings)
-        {
+            HashSet<int> core = [cpu];
             foreach (int sibling in ParseCpuList(siblings))
             {
                 if (performance.Contains(sibling)) core.Add(sibling);
             }
+
+            if (!core.Contains(0) && !ParseCpuList(siblings).Contains(0)) return core;
+            first ??= core;
         }
 
-        return core;
+        return first;
     }
 
     /// <summary><paramref name="cpus"/> without <paramref name="excluded"/>, when anything is left.</summary>
@@ -277,9 +270,10 @@ internal static partial class PerformanceCores
     /// <c>false</c> for <see cref="ProcessingCores.All"/>, on a CPU with one kind of core, and where the selection
     /// holds every CPU the process may run on or none of them, since there is then nothing to narrow. Also <c>false</c>
     /// for <see cref="ProcessingCores.PerformancePhysical"/> when a core's hyperthreads are unknown: it would otherwise
-    /// narrow to what <see cref="ProcessingCores.Performance"/> does, and the two exist to be compared.
+    /// narrow to what <see cref="ProcessingCores.Performance"/> does, and the two exist to be compared; and for
+    /// <see cref="ProcessingCores.Dedicated"/>, which could then not keep the core whole.
     /// </returns>
-    internal static bool TryBuildMask(ProcessingCores cores, string? performanceCpus, HashSet<int>? allowed, Func<int, string?> siblingsOf, out CpuMask mask, out int[] cpus, Func<int, long?>? topPerformanceOf = null)
+    internal static bool TryBuildMask(ProcessingCores cores, string? performanceCpus, HashSet<int>? allowed, Func<int, string?> siblingsOf, out CpuMask mask, out int[] cpus)
     {
         mask = default;
         cpus = [];
@@ -312,7 +306,11 @@ internal static partial class PerformanceCores
             }
         }
 
-        if (cores == ProcessingCores.Fastest && FastestCore(selected, siblingsOf, topPerformanceOf) is { } core) selected = core;
+        if (cores == ProcessingCores.Dedicated)
+        {
+            if (DedicatedCore(selected, siblingsOf) is not { } core) return false;
+            selected = core;
+        }
 
         if (selected.Count == 0 || selected.Count == allowedCount) return false;
 
@@ -359,25 +357,6 @@ internal static partial class PerformanceCores
             return false;
         }
     }
-
-    /// <summary>
-    /// How a logical processor's top speed is read: the ACPI CPPC highest performance level Linux ranks favored cores
-    /// by, or the top frequency where the first performance core has no CPPC level. Chosen once for every CPU, so two
-    /// units are never compared; a CPU the chosen source cannot read has an unknown speed.
-    /// </summary>
-    private static Func<int, long?> TopPerformanceSource(HashSet<int> performanceCpus)
-    {
-        int first = int.MaxValue;
-        foreach (int cpu in performanceCpus) first = Math.Min(first, cpu);
-
-        return first != int.MaxValue && ReadNumber(CppcPath(first)) is not null
-            ? static cpu => ReadNumber(CppcPath(cpu))
-            : static cpu => ReadNumber($"/sys/devices/system/cpu/cpu{cpu}/cpufreq/cpuinfo_max_freq");
-    }
-
-    private static string CppcPath(int cpu) => $"/sys/devices/system/cpu/cpu{cpu}/acpi_cppc/highest_perf";
-
-    private static long? ReadNumber(string path) => long.TryParse(ReadOrNull(path), out long value) ? value : null;
 
     private static string? ReadSiblings(int cpu) => ReadOrNull($"/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list");
 
