@@ -68,13 +68,17 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 
-        JsonSerializer.Serialize(_jsonWriter,
-            new
-            {
-                output = trace.ReturnValue.ToHexString(true),
-                gasUsed = $"0x{trace.Gas:x}"
-            },
-            _serializerOptions);
+        if (!LimitReached)
+        {
+            JsonSerializer.Serialize(_jsonWriter,
+                new
+                {
+                    output = trace.ReturnValue.ToHexString(false),
+                    gasUsed = $"0x{trace.Gas:x}"
+                },
+                _serializerOptions);
+            GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
+        }
 
         DisposeFileStreamIfAny();
 
@@ -104,7 +108,13 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter = null;
     }
 
-    private void DumpTraceEntry(GethTxFileTraceEntry entry) => JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+    private bool LimitReached => _options.Limit != 0 && _file!.Position > _options.Limit;
+
+    private void DumpTraceEntry(GethTxFileTraceEntry entry)
+    {
+        if (!LimitReached)
+            JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+    }
 
     private string GetFileName(Hash256 txHash)
     {

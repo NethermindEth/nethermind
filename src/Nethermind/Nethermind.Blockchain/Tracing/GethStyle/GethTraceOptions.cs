@@ -26,7 +26,7 @@ public record GethTraceOptions
     public bool DisableStack { get; init; }
 
     /// <summary>
-    /// Byte limit for serialized opcode logs. Zero is unlimited; a negative value suppresses all logs.
+    /// Byte limit for serialized opcode logs or JSON Lines file records. Zero is unlimited; a negative value suppresses all records.
     /// The entry that exceeds the limit is included. Execution and named tracers are unaffected.
     /// </summary>
     [JsonConverter(typeof(LimitConverter))]
