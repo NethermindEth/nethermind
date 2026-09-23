@@ -515,15 +515,9 @@ public class TracedAccessWorldStateTests(bool parallel)
     /// <summary>A zero-balance operation on <see cref="Address.SystemUser"/> that would create its BAL entry.</summary>
     public enum SystemUserTouch { AddToBalance, AddToBalanceAndCreateIfNotExists, CreateAccount, CreateAccountIfNotExists }
 
-    [TestCase(true, SystemUserTouch.AddToBalance)]
-    [TestCase(true, SystemUserTouch.AddToBalanceAndCreateIfNotExists)]
-    [TestCase(true, SystemUserTouch.CreateAccount)]
-    [TestCase(true, SystemUserTouch.CreateAccountIfNotExists)]
-    [TestCase(false, SystemUserTouch.AddToBalance)]
-    [TestCase(false, SystemUserTouch.AddToBalanceAndCreateIfNotExists)]
-    [TestCase(false, SystemUserTouch.CreateAccount)]
-    [TestCase(false, SystemUserTouch.CreateAccountIfNotExists)]
-    public void Zero_balance_touch_of_system_user_recorded_only_outside_suppression(bool suppressed, SystemUserTouch touch)
+    [Test]
+    public void Zero_balance_touch_of_system_user_recorded_only_outside_suppression(
+        [Values] bool suppressed, [Values] SystemUserTouch touch)
     {
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
             ws.CreateAccount(Address.SystemUser, 0));
@@ -537,9 +531,14 @@ public class TracedAccessWorldStateTests(bool parallel)
                     tws.AddToBalance(Address.SystemUser, 0u, Spec, out _);
                     break;
                 case SystemUserTouch.AddToBalanceAndCreateIfNotExists:
-    [Test]
-    public void Zero_balance_touch_of_system_user_recorded_only_outside_suppression(
-        [Values] bool suppressed, [Values] SystemUserTouch touch)
+                    tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
+                    break;
+                case SystemUserTouch.CreateAccount:
+                    tws.CreateAccount(Address.SystemUser, 0u);
+                    break;
+                case SystemUserTouch.CreateAccountIfNotExists:
+                    tws.CreateAccountIfNotExists(Address.SystemUser, 0u);
+                    break;
             }
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(Address.SystemUser);

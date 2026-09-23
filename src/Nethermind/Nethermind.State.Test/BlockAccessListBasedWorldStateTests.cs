@@ -195,6 +195,7 @@ public class BlockAccessListBasedWorldStateTests
             traced.DeleteAccount(TestItem.AddressA);
             Snapshot afterDelete = traced.TakeSnapshot();
             Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.True);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.False, "recreation after a same-index delete must be recorded");
 
             traced.Restore(afterDelete);
             Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.True);

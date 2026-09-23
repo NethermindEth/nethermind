@@ -82,7 +82,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             if (accountChanges?.AccountExists is not true) GeneratingBlockAccessList.RecordAccountExistence(address, true);
             GeneratingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
-        }
 
         return wasCreated;
     }
