@@ -104,8 +104,11 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
         else
         {
-            Assert.That(envelope, Does.StartWith("{\"jsonrpc\":\"2.0\",\"result\":"));
-            Assert.That(envelope, Does.Not.Contain("\"error\""));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(envelope, Does.StartWith("{\"jsonrpc\":\"2.0\",\"result\":"));
+                Assert.That(envelope, Does.Not.Contain("\"error\""));
+            }
         }
     }
 
@@ -229,6 +232,32 @@ public class JsonRpcResponseWriterStreamingIdTests
         await pipe.Reader.CompleteAsync();
 
         Assert.That(transport.FlushCount, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task Buffered_response_preserves_preceding_batch_byte_count([Values] bool bufferResponse)
+    {
+        Pipe pipe = new();
+        CountingPipeWriter transport = new(pipe.Writer, initialWrittenCount: 1234);
+        CountingResult result = new();
+        using JsonRpcSuccessResponse response = new() { Result = result };
+        await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, new JsonSerializerOptions(),
+            isBatch: true, CancellationToken.None, bufferResponse);
+        await transport.CompleteAsync();
+        await pipe.Reader.CompleteAsync();
+
+        Assert.That(result.InitialBytes, Is.EqualTo(1234 + "{\"jsonrpc\":\"2.0\",\"result\":"u8.Length));
+    }
+
+    private sealed class CountingResult : IStreamableResult
+    {
+        public long InitialBytes { get; private set; }
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            InitialBytes = ((CountingWriter)writer).WrittenCount;
+            writer.Write("null"u8);
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class ChunkedResult : IStreamableResult

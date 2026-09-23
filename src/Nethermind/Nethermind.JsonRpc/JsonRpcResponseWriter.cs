@@ -11,7 +11,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Resettables;
 using Nethermind.Serialization.Json;
+
+[assembly: InternalsVisibleTo("nethermind")]
 
 namespace Nethermind.JsonRpc;
 
@@ -50,16 +53,66 @@ public static class JsonRpcResponseWriter
         => WriteAsync(writer, response, options, isBatch: false, cancellationToken);
 
     /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>
-    public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch, CancellationToken cancellationToken)
+    public static async ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch, CancellationToken cancellationToken)
+        => await WriteWithOutcomeAsync(writer, response, options, isBatch, cancellationToken);
+
+    internal static async ValueTask<JsonRpcResponseWriteOutcome> WriteWithOutcomeAsync(
+        PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch,
+        CancellationToken cancellationToken, bool bufferResponse = false)
     {
-        if (response.TryGetStreamableResult(out IStreamableResult? streamable))
+        if (!response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
-            return WriteStreamableWithErrorHandlingAsync(writer, response, streamable, options, isBatch, cancellationToken);
+            Write(writer, response, options);
+            return new(response.TryGetError(out Error? error) ? error?.Code : null);
         }
 
-        Write(writer, response, options);
-        return ValueTask.CompletedTask;
+        bool success = false;
+        try
+        {
+            JsonRpcResponseWriteOutcome outcome = bufferResponse
+                ? await WriteBufferedStreamableAsync(writer, response, streamable, options, isBatch, cancellationToken)
+                : await WriteStreamableWithErrorHandlingAsync(writer, response, streamable, options, isBatch, cancellationToken);
+            success = outcome.Success;
+            return outcome;
+        }
+        finally
+        {
+            response.StreamCompleted?.Invoke(success);
+            response.StreamCompleted = null;
+        }
     }
+
+    private static async ValueTask<JsonRpcResponseWriteOutcome> WriteBufferedStreamableAsync(
+        PipeWriter writer, JsonRpcResponse response, IStreamableResult streamable, JsonSerializerOptions options,
+        bool isBatch, CancellationToken cancellationToken)
+    {
+        using Stream buffer = RecyclableStream.GetStream("json-rpc-response");
+        CountingStreamPipeWriter staged = new(buffer, initialWrittenCount: (writer as CountingWriter)?.WrittenCount ?? 0);
+        try
+        {
+            try
+            {
+                await WriteStreamableAsync(staged, response, streamable, isBatch, cancellationToken);
+            }
+            catch (Exception ex) when (CanReplaceFailure(ex, response, cancellationToken))
+            {
+                using JsonRpcErrorResponse error = response.StreamExceptionHandler!(ex);
+                Write(writer, error, options);
+                return new(error.Error?.Code);
+            }
+            await staged.FlushAsync(cancellationToken);
+            buffer.Position = 0;
+            await buffer.CopyToAsync(writer.AsStream(leaveOpen: true), cancellationToken);
+            return default;
+        }
+        finally
+        {
+            await staged.CompleteAsync();
+        }
+    }
+
+    private static bool CanReplaceFailure(Exception exception, JsonRpcResponse response, CancellationToken cancellationToken) =>
+        exception is not IOException && !cancellationToken.IsCancellationRequested && response.StreamExceptionHandler is not null;
 
     /// <summary>Writes the opening token for a JSON-RPC batch response.</summary>
     public static void WriteBatchStart(IBufferWriter<byte> writer) => writer.Write(BatchStart);
@@ -86,7 +139,7 @@ public static class JsonRpcResponseWriter
     public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>
         response?.IsResourceUnavailableError == true;
 
-    private static async ValueTask WriteStreamableWithErrorHandlingAsync(
+    private static async ValueTask<JsonRpcResponseWriteOutcome> WriteStreamableWithErrorHandlingAsync(
         PipeWriter writer,
         JsonRpcResponse response,
         IStreamableResult streamable,
@@ -99,13 +152,14 @@ public static class JsonRpcResponseWriter
         {
             await WriteStreamableAsync(buffered, response, streamable, isBatch, cancellationToken);
         }
-        catch (Exception ex) when (!buffered.IsCommitted && !cancellationToken.IsCancellationRequested && response.StreamExceptionHandler is not null)
+        catch (Exception ex) when (!buffered.IsCommitted && CanReplaceFailure(ex, response, cancellationToken))
         {
-            using JsonRpcErrorResponse error = response.StreamExceptionHandler(ex);
+            using JsonRpcErrorResponse error = response.StreamExceptionHandler!(ex);
             Write(writer, error, options);
-            return;
+            return new(error.Error?.Code);
         }
         buffered.Commit();
+        return default;
     }
 
     private static async ValueTask WriteStreamableAsync(
@@ -296,8 +350,17 @@ internal interface IJsonRpcRawResponse
     void WriteRaw(IBufferWriter<byte> writer);
 }
 
-// Keep small responses replaceable if deferred execution fails, even after a tracer flush.
-// Once bytes reach the transport, an error envelope can no longer replace the partial result.
+internal readonly record struct JsonRpcResponseWriteOutcome(int? ErrorCode)
+{
+    internal bool Success => ErrorCode is null;
+    internal RpcReport ApplyTo(RpcReport report) => report with { Success = Success };
+}
+
+/// <summary>Stages the beginning of a response until deferred execution succeeds or exceeds the buffer limit.</summary>
+/// <remarks>
+/// Flushes below the limit remain local. Once committed, bytes may have reached the transport and the
+/// caller must abort on failure. Fully buffered transports stage the whole current response separately.
+/// </remarks>
 internal sealed class ValidationBufferingPipeWriter : CountingWriter
 {
     private const int BufferLimit = 16 * 1024;

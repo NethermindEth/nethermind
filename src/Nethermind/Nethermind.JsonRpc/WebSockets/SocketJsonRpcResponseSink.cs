@@ -37,7 +37,10 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         try
         {
             long startTimestamp = _reportCalls ? Stopwatch.GetTimestamp() : 0;
-            long responseBytes = await SocketJsonRpcResponseWriter.WriteMessageAsync(stream, response, cancellationToken);
+            (long responseBytes, JsonRpcResponseWriteOutcome outcome) = await SocketJsonRpcResponseWriter.WriteWithOutcomeAsync(
+                stream, response, isBatch: false, initialWrittenCount: 0, cancellationToken);
+            responseBytes += await stream.WriteEndOfMessageAsync();
+            report = outcome.ApplyTo(report);
 
             BytesWritten += responseBytes;
             if (_reportCalls)
@@ -45,6 +48,11 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
                 long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMicroseconds;
                 jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, responseBytes);
             }
+        }
+        catch
+        {
+            if (_reportCalls) jsonRpcLocalStats.ReportCall(report with { Success = false });
+            throw;
         }
         finally
         {
@@ -74,7 +82,18 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
         _isFirstBatchItem = false;
 
-        _topLevelResponseBytes += await SocketJsonRpcResponseWriter.WriteAsync(stream, response, isBatch: true, _topLevelResponseBytes, cancellationToken);
+        try
+        {
+            (long responseBytes, JsonRpcResponseWriteOutcome outcome) = await SocketJsonRpcResponseWriter.WriteWithOutcomeAsync(
+                stream, response, isBatch: true, _topLevelResponseBytes, cancellationToken);
+            _topLevelResponseBytes += responseBytes;
+            report = outcome.ApplyTo(report);
+        }
+        catch
+        {
+            if (_reportCalls) jsonRpcLocalStats.ReportCall(report with { Success = false });
+            throw;
+        }
         if (_reportCalls)
         {
             jsonRpcLocalStats.ReportCall(report);
@@ -138,12 +157,20 @@ internal static class SocketJsonRpcResponseWriter
 
     public static async ValueTask<long> WriteAsync(Stream stream, JsonRpcResponse response, bool isBatch, long initialWrittenCount, CancellationToken cancellationToken)
     {
+        (long bytesWritten, _) = await WriteWithOutcomeAsync(stream, response, isBatch, initialWrittenCount, cancellationToken);
+        return bytesWritten;
+    }
+
+    internal static async ValueTask<(long BytesWritten, JsonRpcResponseWriteOutcome Outcome)> WriteWithOutcomeAsync(
+        Stream stream, JsonRpcResponse response, bool isBatch, long initialWrittenCount, CancellationToken cancellationToken)
+    {
         CountingStreamPipeWriter writer = new(stream, ResponsePipeWriterOptions, initialWrittenCount);
         try
         {
-            await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
+            JsonRpcResponseWriteOutcome outcome = await JsonRpcResponseWriter.WriteWithOutcomeAsync(
+                writer, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
             await writer.FlushAsync(cancellationToken);
-            return writer.WrittenCount - initialWrittenCount;
+            return (writer.WrittenCount - initialWrittenCount, outcome);
         }
         finally
         {

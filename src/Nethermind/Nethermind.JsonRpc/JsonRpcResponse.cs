@@ -35,6 +35,8 @@ namespace Nethermind.JsonRpc
 
         internal Func<Exception, JsonRpcErrorResponse>? StreamExceptionHandler { get; set; }
 
+        internal Action<bool>? StreamCompleted { get; set; }
+
         internal virtual bool IsResourceUnavailableError => false;
 
         internal virtual JsonRpcResponse WithResponseContext(in JsonRpcId id, Action? disposableAction)
@@ -67,6 +69,7 @@ namespace Nethermind.JsonRpc
             action?.Invoke();
             action = null;
             StreamExceptionHandler = null;
+            StreamCompleted = null;
         }
     }
 

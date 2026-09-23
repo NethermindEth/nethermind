@@ -11,6 +11,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.IO;
@@ -87,6 +88,125 @@ public class JsonRpcSocketsClientTests
             Sink.Dispose();
             SendSemaphore.Dispose();
             Stream.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task WebSocket_timeout_replaces_uncommitted_result_or_fails_receive_loop([Values] bool committed, [Values] bool batch)
+    {
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        using Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        listener.Listen();
+        using Socket clientSocket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        await clientSocket.ConnectAsync(listener.LocalEndPoint!, deadline.Token);
+        using Socket serverSocket = await listener.AcceptAsync(deadline.Token);
+        using WebSocket clientWebSocket = WebSocket.CreateFromStream(new NetworkStream(clientSocket, ownsSocket: true), isServer: false, subProtocol: null, TimeSpan.Zero);
+        using WebSocket serverWebSocket = WebSocket.CreateFromStream(new NetworkStream(serverSocket, ownsSocket: true), isServer: true, subProtocol: null, TimeSpan.Zero);
+        IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
+        int requests = 0;
+        processor.ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>(), Arg.Any<IJsonRpcResponseSink>(),
+            Arg.Any<JsonRpcProcessingOptions>(), Arg.Any<CancellationToken>()).Returns(Respond);
+        async ValueTask Respond(CallInfo call)
+        {
+            requests++;
+            using JsonRpcSuccessResponse response = new()
+            {
+                Id = requests,
+                Result = requests == 1 ? new TimedOutStreamable(committed) : "ok",
+                StreamExceptionHandler = _ => new JsonRpcErrorResponse
+                {
+                    Id = requests,
+                    Error = new Error { Code = ErrorCodes.Timeout, Message = "timeout" }
+                }
+            };
+            IJsonRpcResponseSink sink = call.Arg<IJsonRpcResponseSink>();
+            CancellationToken token = call.Arg<CancellationToken>();
+            if (batch)
+            {
+                await sink.BeginBatchAsync(token);
+                await sink.WriteBatchItemAsync(response, new RpcReport("trace_call", 0, true), token);
+                await sink.EndBatchAsync(token);
+            }
+            else await sink.WriteSingleAsync(response, new RpcReport("trace_call", 0, true), token);
+        }
+        using TestClient<WebSocketMessageStream> server = new(new WebSocketMessageStream(serverWebSocket, LimboLogs.Instance), RpcEndpoint.Ws, processor);
+        Task receiveLoop = server.Client.ReceiveLoopAsync(deadline.Token);
+        try
+        {
+            await clientWebSocket.SendAsync("{}"u8.ToArray().AsMemory(), WebSocketMessageType.Text, true, deadline.Token);
+            if (committed)
+            {
+                Assert.CatchAsync<OperationCanceledException>(async () => await receiveLoop.WaitAsync(deadline.Token));
+                Assert.That(deadline.IsCancellationRequested, Is.False, "the execution timeout must fail the worker, not the test deadline");
+                serverWebSocket.Abort();
+                Assert.CatchAsync<WebSocketException>(async () => await ReadMessage());
+            }
+            else
+            {
+                using JsonDocument error = JsonDocument.Parse(await ReadMessage());
+                Assert.That((batch ? error.RootElement[0] : error.RootElement).GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.Timeout));
+                await clientWebSocket.SendAsync("{}"u8.ToArray().AsMemory(), WebSocketMessageType.Text, true, deadline.Token);
+                using JsonDocument success = JsonDocument.Parse(await ReadMessage());
+                Assert.That((batch ? success.RootElement[0] : success.RootElement).GetProperty("result").GetString(), Is.EqualTo("ok"));
+            }
+        }
+        finally
+        {
+            await deadline.CancelAsync();
+            serverWebSocket.Abort();
+            try { await receiveLoop; }
+            catch (OperationCanceledException) { }
+        }
+
+        async Task<string> ReadMessage()
+        {
+            using MemoryStream body = new();
+            byte[] buffer = new byte[4096];
+            ValueWebSocketReceiveResult read;
+            do
+            {
+                read = await clientWebSocket.ReceiveAsync(buffer.AsMemory(), deadline.Token);
+                body.Write(buffer, 0, read.Count);
+            } while (!read.EndOfMessage);
+            return Encoding.UTF8.GetString(body.ToArray());
+        }
+    }
+
+    [Test]
+    public async Task Socket_sink_reports_deferred_failure([Values] bool committed, [Values] bool batch)
+    {
+        using MemoryMessageStream stream = new();
+        using SemaphoreSlim semaphore = new(1, 1);
+        IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
+        stats.IsEnabled.Returns(true);
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, stats, null, semaphore, new JsonRpcContext(RpcEndpoint.Ws));
+        using JsonRpcSuccessResponse response = new()
+        {
+            Result = new TimedOutStreamable(committed),
+            StreamExceptionHandler = _ => new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.Timeout } }
+        };
+        if (batch) await sink.BeginBatchAsync(CancellationToken.None);
+        async Task Write() => await (batch
+            ? sink.WriteBatchItemAsync(response, new RpcReport("trace_call", 0, true), CancellationToken.None)
+            : sink.WriteSingleAsync(response, new RpcReport("trace_call", 0, true), CancellationToken.None));
+        if (committed) Assert.CatchAsync<OperationCanceledException>(Write);
+        else
+        {
+            await Write();
+            if (batch) await sink.EndBatchAsync(CancellationToken.None);
+        }
+        stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == "trace_call" && !report.Success), Arg.Any<long>(), Arg.Any<long?>());
+        if (committed) Assert.That(stream.ToArray().AsSpan().Count((byte)'\n'), Is.Zero);
+    }
+
+    private sealed class TimedOutStreamable(bool committed) : IStreamableResult
+    {
+        public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            writer.Write(Encoding.UTF8.GetBytes("[\"" + new string('x', committed ? 32 * 1024 : 0)));
+            await writer.FlushAsync(cancellationToken);
+            throw new OperationCanceledException();
         }
     }
 

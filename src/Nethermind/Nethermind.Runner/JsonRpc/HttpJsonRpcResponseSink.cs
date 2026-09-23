@@ -44,23 +44,25 @@ internal sealed class HttpJsonRpcResponseSink(
         return WriteStartedAsync(response, report, isBatch: false, cancellationToken);
     }
 
-    private ValueTask WriteStartedAsync(JsonRpcResponse response, RpcReport report, bool isBatch, CancellationToken cancellationToken)
+    private async ValueTask WriteStartedAsync(JsonRpcResponse response, RpcReport report, bool isBatch, CancellationToken cancellationToken)
     {
-        ValueTask writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
-        if (!writeTask.IsCompletedSuccessfully)
+        JsonRpcResponseWriteOutcome outcome;
+        try
         {
-            return WriteAfterWriteAsync(writeTask, report, isBatch);
+            outcome = await JsonRpcResponseWriter.WriteWithOutcomeAsync(
+                _writer!, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken,
+                bufferResponse: _bufferedStream is not null);
         }
-
-        writeTask.GetAwaiter().GetResult();
-        ReportWrite(report, isBatch);
-        return ValueTask.CompletedTask;
-    }
-
-    private async ValueTask WriteAfterWriteAsync(ValueTask writeTask, RpcReport report, bool isBatch)
-    {
-        await writeTask;
-        ReportWrite(report, isBatch);
+        catch
+        {
+            ReportWrite(report with { Success = false }, isBatch);
+            throw;
+        }
+        if (!isBatch && !context.Response.HasStarted && outcome.ErrorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        }
+        ReportWrite(outcome.ApplyTo(report), isBatch);
     }
 
     private void ReportWrite(RpcReport report, bool isBatch)
