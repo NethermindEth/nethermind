@@ -10,7 +10,19 @@ namespace Nethermind.Core.Test.Crypto;
 
 public class BlobProofsManagerTests
 {
-    [TestCase(ProofVersion.V0, false, false, true)]
+    [Test]
+    public void Empty_bundle_has_valid_proofs_only_without_stray_commitments_or_proofs(
+        [Values] ProofVersion version,
+        [Values] bool hasCommitment,
+        [Values] bool hasProof)
+    {
+        byte[][] commitments = hasCommitment ? [new byte[Ckzg.BytesPerCommitment]] : [];
+        byte[][] proofs = hasProof ? [new byte[Ckzg.BytesPerProof]] : [];
+
+        ShardBlobNetworkWrapper wrapper = new([], commitments, proofs, version);
+
+        Assert.That(IBlobProofsManager.For(version).ValidateProofs(wrapper), Is.EqualTo(!hasCommitment && !hasProof));
+    }
     [TestCase(ProofVersion.V0, true, false, false)]
     [TestCase(ProofVersion.V0, false, true, false)]
     [TestCase(ProofVersion.V0, true, true, false)]
