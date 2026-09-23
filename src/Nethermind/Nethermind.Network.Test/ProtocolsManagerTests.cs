@@ -418,6 +418,12 @@ public class ProtocolsManagerTests
             return this;
         }
 
+        public Context VerifyPersistedEnode(string host)
+        {
+            _peerStorage.Received(1).UpdateNode(Arg.Is<NetworkNode>(node => node.IsEnode && node.Host == host));
+            return this;
+        }
+
         public Context VerifyPersistedEnr(NodeRecord expected)
         {
             _peerStorage.Received(1).UpdateNode(Arg.Is<NetworkNode>(node =>
@@ -564,15 +570,7 @@ public class ProtocolsManagerTests
     [Test]
     public void Persists_verified_enr_after_protocol_initialization()
     {
-        NodeRecord record = new() { EnrSequence = 7 };
-        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyB.CompressedPublicKey));
-        record.SetEntry(new IpEntry(IPAddress.Parse("35.0.0.1")));
-        record.SetEntry(new TcpEntry(30000));
-        record.SetEntry(new UdpEntry(30001));
-        record.SetEntry(new Ip6Entry(IPAddress.Parse("2606:4700:4700::1111")));
-        record.SetEntry(new Tcp6Entry(30002));
-        record.SetEntry(new Udp6Entry(30003));
-        new NodeRecordSigner(new EthereumEcdsa(0), TestItem.PrivateKeyB).Sign(record);
+        NodeRecord record = CreateSignedRecord("35.0.0.1", includeIpv6: true);
         Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
         Assert.That(node!.SetVerifiedEnr(record), Is.True);
 
@@ -583,6 +581,48 @@ public class ProtocolsManagerTests
             .ReceiveStatus()
             .VerifyEthInitialized()
             .VerifyPersistedEnr(record);
+    }
+
+    [TestCase("35.0.0.1", true, TestName = "Persists the dialed endpoint when the verified ENR names another address")]
+    [TestCase("35.0.0.9", false, TestName = "Persists the dialed endpoint when the ENR is unverified")]
+    public void Persists_dialed_endpoint_instead_of_an_untrusted_or_mismatched_enr(string enrIp, bool verified)
+    {
+        NodeRecord record = CreateSignedRecord(enrIp, includeIpv6: false);
+        Node node = new(TestItem.PublicKeyB, "35.0.0.9", 30000);
+        if (verified)
+        {
+            Assert.That(node.SetVerifiedEnr(record), Is.True);
+        }
+        else
+        {
+            node.Enr = record;
+        }
+
+        When.CreateOutgoingSession(node)
+            .Handshake()
+            .Init()
+            .ReceiveHello()
+            .ReceiveStatus()
+            .VerifyEthInitialized()
+            .VerifyPersistedEnode("35.0.0.9");
+    }
+
+    private static NodeRecord CreateSignedRecord(string ip, bool includeIpv6)
+    {
+        NodeRecord record = new() { EnrSequence = 7 };
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyB.CompressedPublicKey));
+        record.SetEntry(new IpEntry(IPAddress.Parse(ip)));
+        record.SetEntry(new TcpEntry(30000));
+        record.SetEntry(new UdpEntry(30001));
+        if (includeIpv6)
+        {
+            record.SetEntry(new Ip6Entry(IPAddress.Parse("2606:4700:4700::1111")));
+            record.SetEntry(new Tcp6Entry(30002));
+            record.SetEntry(new Udp6Entry(30003));
+        }
+
+        new NodeRecordSigner(new EthereumEcdsa(0), TestItem.PrivateKeyB).Sign(record);
+        return record;
     }
 
     [Test]

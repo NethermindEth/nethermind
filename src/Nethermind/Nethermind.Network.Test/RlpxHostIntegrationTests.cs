@@ -699,6 +699,34 @@ public class RlpxHostIntegrationTests
         }
     }
 
+    [Test]
+    public async Task ConnectAsync_PublicPrimaryDoesNotFallBackToPrivateAlternate()
+    {
+        FailingClientChannelFactory channelFactory = new();
+        await using IContainer container = CreateListenerContainer(
+            "127.0.0.1",
+            IPAddress.Loopback,
+            GetAvailablePort(),
+            channelFactory: channelFactory);
+        RlpxHost host = container.Resolve<RlpxHost>();
+
+        try
+        {
+            await host.Init();
+
+            Assert.That(await host.ConnectAsync(CreateDualStackNode(
+                IPAddress.Parse("8.8.8.8"), 30303,
+                IPAddress.Parse("fc00::1"), 30304,
+                verified: true)), Is.False);
+            Assert.That(channelFactory.CreatedClientChannels, Is.EqualTo(1),
+                "a public peer must not steer the fallback dial into a private network");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
     [TestCase("8.8.8.8", false, true)]
     [TestCase("10.0.0.1", false, false)]
     [TestCase("10.0.0.1", true, true)]

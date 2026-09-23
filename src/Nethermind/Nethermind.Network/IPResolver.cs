@@ -21,6 +21,7 @@ public class IPResolver : IIPResolver, IAsyncDisposable
     private const int UnresolvedFastAttemptLimit = 5;
     private static readonly TimeSpan ResolutionCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan UnresolvedRetryDelay = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan StartupRetryDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan AutoAddressMaxStaleAge = TimeSpan.FromHours(1);
 
     private readonly ILogger _logger;
@@ -147,7 +148,15 @@ public class IPResolver : IIPResolver, IAsyncDisposable
     {
         try
         {
-            completion.SetResult(await ResolveAndRecord(_shutdown.Token));
+            // Startup consumers such as the enode read the first result once, so it gets the bounded retry.
+            IIPResolver.NethermindIp result = await ResolveAndRecord(_shutdown.Token);
+            while (_retryUnresolvedResolution)
+            {
+                await Task.Delay(StartupRetryDelay, _timeProvider, _shutdown.Token);
+                result = await ResolveAndRecord(_shutdown.Token);
+            }
+
+            completion.SetResult(result);
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
         {
