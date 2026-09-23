@@ -324,7 +324,13 @@ public partial class EngineModuleTests
             TestItem.KeccakA.ToString());
 
         using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
-        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            // Omitted blob fields are rejected earlier by [JsonRequired] with a deserialization message.
+            if (!omit) Assert.That(error.Message, Does.Contain("must be set"));
+        }
     }
 
     [Test]

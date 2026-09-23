@@ -334,6 +334,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .WithSlotNumber(1)
             .TestObject;
         ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);
@@ -368,6 +369,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .WithSlotNumber(1)
             .TestObject;
         ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);
