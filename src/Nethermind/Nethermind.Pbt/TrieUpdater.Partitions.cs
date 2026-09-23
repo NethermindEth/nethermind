@@ -180,7 +180,7 @@ public static partial class TrieUpdater
                         TraversalSubtree composed = Compose(ref sharedReader, sharedWriter, sharedPath, metrics, ref zoneFrontiers.AsSpan()[slot], touchedZoneMasks[slot]);
                         ValueHash256 groupHash = composed.Hash(4, metrics);
                         long zoneDelta = PublishGroup(store, ref sharedReader, sharedWriter, sharedPath, groupHash);
-                        OwnedSubtree zoneRoot = composed.Materialize(0);
+                        FoldResult zoneRoot = composed.Materialize(0);
                         TraversalSubtree atRoot = zoneRoot.Borrow(rootPath);
                         SetBoundary(ref rootFrontier, slot, ref atRoot);
                         rootWriter.AddDescendantDelta(slot, zoneDelta);
@@ -219,7 +219,7 @@ public static partial class TrieUpdater
         internal byte Zone { get; } = zone;
         internal TrieUpdaterMetrics? Metrics { get; } = collectMetrics ? new() : null;
         internal BoundaryNode Current;
-        internal OwnedSubtree Result;
+        internal FoldResult Result;
         /// <summary>The shared frame's size below this worker's slot, when <see cref="Current"/> spans past the worker's group.</summary>
         internal long InheritedDescendantBytes;
 
@@ -249,7 +249,7 @@ public static partial class TrieUpdater
             {
                 using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider, prefixlessBranchOmission);
                 TrieUpdater<TKey, TPath>.BoundaryNode current = TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(ref Current);
-                TrieUpdater<TKey, TPath>.OwnedSubtree result = default;
+                TrieUpdater<TKey, TPath>.FoldResult result = default;
                 TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, Metrics,
                     foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
                 TrieUpdater<TKey, TPath>.ResolveAbsentGroup(ref reader, current, path, InheritedDescendantBytes);
@@ -261,7 +261,7 @@ public static partial class TrieUpdater
                 // The result is anchored at the zone cursor its boundary slot sits on, four bits above this group.
                 ValueHash256 groupHash = result.Borrow(path.Truncated(sourceBuffer, 4)).Hash(8, Metrics);
                 result.SizeDelta = TrieUpdater<TKey, TPath>.PublishGroup(store, ref reader, writer, path, groupHash);
-                Result = OwnedSubtree.TakeFrom<TKey, TPath>(ref result);
+                Result = FoldResult.TakeFrom<TKey, TPath>(ref result);
             }
             foldTime?.Observe(Stopwatch.GetTimestamp() - start, foldLabel);
         }
@@ -279,7 +279,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     where TPath : struct, IPbtNodePath<TPath>
 {
     [SkipLocalsInit]
-    internal static OwnedSubtree FoldBoundary(
+    internal static FoldResult FoldBoundary(
         FoldContext context,
         ref GroupFrameReader<TKey, TPath> reader,
         PbtNodeGroupWriter<TPath> writer,

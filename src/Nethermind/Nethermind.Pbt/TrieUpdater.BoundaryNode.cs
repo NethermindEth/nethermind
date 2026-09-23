@@ -188,7 +188,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly ValueHash256 HashAt(scoped in PbtTraversalPath cursor, int depth, TrieUpdaterMetrics? metrics)
         {
             if (IsEmpty || IsLeaf || depth == _anchorDepth) return _hash;
-            OwnedSubtree reAnchored = ToOwnedSubtree(cursor, depth);
+            FoldResult reAnchored = ToFoldResult(cursor, depth);
             return reAnchored.Borrow(cursor).Hash(depth, metrics);
         }
 
@@ -197,11 +197,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// The result owns everything below that cursor. It keeps the hash of the stored encoding, which the encoder
         /// reuses only when it writes the node back at its own anchor, where that hash is the one it would compute.
         /// </remarks>
-        internal readonly OwnedSubtree ToOwnedSubtree(scoped in PbtTraversalPath cursor, int anchorDepth)
+        internal readonly FoldResult ToFoldResult(scoped in PbtTraversalPath cursor, int anchorDepth)
         {
             Debug.Assert(anchorDepth % PbtFourLevelGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
             if (IsEmpty) return default;
-            if (IsLeaf) return new OwnedSubtree(new Subtree(LeafKey, _hash));
+            if (IsLeaf) return new FoldResult(new Subtree(LeafKey, _hash));
 
             int splitDepth = BranchDepth;
             Debug.Assert(splitDepth >= anchorDepth, "A result branches at or below the cursor that addresses it.");
@@ -215,7 +215,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 reader.RightKey.IsEmpty ? default : TKey.Create(reader.RightKey),
                 LeafChildrenMask,
                 OwnedPrefix(cursor, anchorDepth + localLength, splitDepth));
-            return new OwnedSubtree(branch.WithKnownHash(_hash, splitDepth - _anchorDepth));
+            return new FoldResult(branch.WithKnownHash(_hash, splitDepth - _anchorDepth));
         }
 
         /// <summary>The bits from <paramref name="from"/> to <paramref name="splitDepth"/> as a standalone compressed prefix.</summary>

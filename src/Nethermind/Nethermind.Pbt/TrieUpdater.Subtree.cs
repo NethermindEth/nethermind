@@ -260,7 +260,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// are its <see cref="NodeGroupPath"/>, and anything deeper becomes an owned compressed prefix. Detaching copies
         /// the node out of its source group, so the result outlives the frame it was read from.
         /// </remarks>
-        internal readonly OwnedSubtree Materialize(int anchorDepth)
+        internal readonly FoldResult Materialize(int anchorDepth)
         {
             Debug.Assert(anchorDepth % PbtFourLevelGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
             if (IsEmpty) return default;
@@ -293,7 +293,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// The result owns everything below that cursor, so it survives traversal-buffer reuse and the release of the group
     /// it was read from, but it is only meaningful paired with a cursor at its anchor depth.
     /// </remarks>
-    internal struct OwnedSubtree(Subtree node)
+    internal struct FoldResult(Subtree node)
     {
         internal Subtree Node = node;
         /// <summary>The change in stored size across the groups this result was folded from, still owed to the caller's boundary slot.</summary>
@@ -301,11 +301,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly bool IsEmpty => Node.IsEmpty;
         internal readonly TraversalSubtree Borrow(in PbtTraversalPath cursor) => new(cursor, Node);
 
-        internal static OwnedSubtree TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.OwnedSubtree source)
+        internal static FoldResult TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.FoldResult source)
             where TSourceKey : struct, IPbtKey<TSourceKey>
             where TSourcePath : struct, IPbtNodePath<TSourcePath>
         {
-            OwnedSubtree result = default;
+            FoldResult result = default;
             if (!source.IsEmpty)
             {
                 if (source.Node.IsLeaf)

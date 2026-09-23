@@ -935,8 +935,8 @@ public class PbtNodeGroupTests
         {
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree source = new(groupPath, reader.TakeDirectCopy(groupPath, position));
             Assert.That(source.AnchorDepth, Is.EqualTo(path.BitDepth));
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree materialized = source.Materialize(groupKey.BitDepth);
-            TrieUpdater<PbtTreeKey, PbtNodePath>.OwnedSubtree converted = TrieUpdater<PbtTreeKey, PbtNodePath>.OwnedSubtree.TakeFrom(ref materialized);
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult materialized = source.Materialize(groupKey.BitDepth);
+            TrieUpdater<PbtTreeKey, PbtNodePath>.FoldResult converted = TrieUpdater<PbtTreeKey, PbtNodePath>.FoldResult.TakeFrom(ref materialized);
             TrieUpdater<PbtTreeKey, PbtNodePath>.TraversalSubtree convertedView = converted.Borrow(groupPath);
             byte[] actual = new byte[convertedView.EncodedLength(path.BitDepth)];
             convertedView.Encode(actual, path.BitDepth, null);
@@ -963,7 +963,7 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore stored = new();
         stored.SetNode(groupKey, encoding);
         using PoisoningStore store = new(stored);
-        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree materialized;
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult materialized;
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         // A root leaf's hash is the tree root the reader is opened with.
         ValueHash256 rootHash = leaf ? new(Value(9)) : PbtNodeCodec.Hash(new PbtNodeReader(encoding));
@@ -971,7 +971,7 @@ public class PbtNodeGroupTests
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree borrowed = leaf
-                ? new(groupPath, reader.TakeRoot(groupPath).ToOwnedSubtree(groupPath, 0).Node)
+                ? new(groupPath, reader.TakeRoot(groupPath).ToFoldResult(groupPath, 0).Node)
                 : new(groupPath, reader.TakeDirectCopy(groupPath, PbtFourLevelGroupGeometry.RootPosition));
             materialized = borrowed.Materialize(groupKey.BitDepth);
             Assert.That(store.ReleasedGroupDepths, Is.Empty);
@@ -1054,7 +1054,7 @@ public class PbtNodeGroupTests
         TrieUpdater<TKey, TPath>.TraversalSubtree view = directCopy
             ? new(cursor, new TrieUpdater<TKey, TPath>.DirectCopySubtree(encoding, localPath, default))
             : new(cursor, new TrieUpdater<TKey, TPath>.Subtree(localPath, left, right, default));
-        TrieUpdater<TKey, TPath>.OwnedSubtree owned = view.Materialize(groupDepth);
+        TrieUpdater<TKey, TPath>.FoldResult owned = view.Materialize(groupDepth);
         int[] depths = [groupDepth - 4, anchorDepth, splitDepth];
         foreach (int depth in depths) AssertContextualEncoding(view, key, depth, splitDepth, left, right);
         cursor.Truncate(0);
@@ -1118,7 +1118,7 @@ public class PbtNodeGroupTests
         TrieUpdater<TKey, TPath>.TraversalSubtree view = new(source,
             new TrieUpdater<TKey, TPath>.DirectCopySubtree(encoding, new NodeGroupPath(0xA, 4), default));
 
-        TrieUpdater<TKey, TPath>.OwnedSubtree owned = view.Materialize(cursorDepth);
+        TrieUpdater<TKey, TPath>.FoldResult owned = view.Materialize(cursorDepth);
         encoding.AsSpan().Fill(0xDD);
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[TPath.MaxBitDepth / 8], PbtNodePathOperations.FromKey<TPath>(key, cursorDepth));
         TrieUpdater<TKey, TPath>.TraversalSubtree reanchored = owned.Borrow(cursor);
@@ -1156,8 +1156,8 @@ public class PbtNodeGroupTests
             Assert.That(Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DirectCopySubtree>(),
                 Is.AtMost(Unsafe.SizeOf<PbtStorageTreeKey>()));
         }
-        TestContext.Out.WriteLine($"Small subtree/copy/entry/owned/boundary/frontier: {Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.DirectCopySubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.OwnedSubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.BoundaryNode>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Frontier>()}");
-        TestContext.Out.WriteLine($"Storage subtree/copy/entry/owned/boundary/frontier: {Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DirectCopySubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier>()}");
+        TestContext.Out.WriteLine($"Small subtree/copy/entry/owned/boundary/frontier: {Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.DirectCopySubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.FoldResult>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.BoundaryNode>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Frontier>()}");
+        TestContext.Out.WriteLine($"Storage subtree/copy/entry/owned/boundary/frontier: {Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DirectCopySubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier>()}");
     }
 
     [Test]
