@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -635,8 +636,11 @@ public class HistoryPrunerTests
             LimboLogs.Instance);
     }
 
-    [Test]
-    public async Task SchedulePruneHistory_passes_configured_timeout_to_scheduler([Values(5u, 0u)] uint pruningTimeoutSeconds)
+    // Runs through the real scheduler, which replaces a missing timeout with its own 2 s default. The observation
+    // window outlasts that default, so a disabled timeout must still leave the pass uncancelled at its end.
+    [TestCase(1u, true)]
+    [TestCase(0u, false)]
+    public async Task SchedulePruneHistory_cancels_the_pass_only_when_the_configured_timeout_elapses(uint pruningTimeoutSeconds, bool expectCancelled)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {
@@ -646,15 +650,15 @@ public class HistoryPrunerTests
             PruningInterval = 0
         };
 
-        CapturingScheduler scheduler = new();
+        await using BackgroundTaskScheduler realScheduler = new(Substitute.For<IBranchProcessor>(), Substitute.For<IChainHeadInfoProvider>(), 1, 16, LimboLogs.Instance);
+        DeadlineObservingScheduler scheduler = new(realScheduler, TimeSpan.FromSeconds(3));
         using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
 
         IHistoryPruner historyPruner = testBlockchain.Container.Resolve<IHistoryPruner>();
         historyPruner.SchedulePruneHistory();
 
-        await scheduler.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        TimeSpan? expected = pruningTimeoutSeconds == 0 ? null : TimeSpan.FromSeconds(pruningTimeoutSeconds);
-        Assert.That(scheduler.CapturedTimeout, Is.EqualTo(expected));
+        bool cancelled = await scheduler.CancelledWithinWindow.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(cancelled, Is.EqualTo(expectCancelled));
     }
 
     // Pointer = max(genesis block number, persisted DB value) — persisted value wins when above genesis
@@ -1113,18 +1117,17 @@ public class HistoryPrunerTests
         return bc;
     }
 
-    private sealed class CapturingScheduler : IBackgroundTaskScheduler
+    private sealed class DeadlineObservingScheduler(IBackgroundTaskScheduler inner, TimeSpan window) : IBackgroundTaskScheduler
     {
-        public TimeSpan? CapturedTimeout { get; private set; }
-        public TaskCompletionSource Invoked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> CancelledWithinWindow { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
             where TReq : notnull, IBackgroundTaskRequest<TReq>
-        {
-            CapturedTimeout = timeout;
-            Invoked.TrySetResult();
-            return true;
-        }
+            => inner.TryScheduleTask(request, (req, token) =>
+            {
+                CancelledWithinWindow.TrySetResult(token.WaitHandle.WaitOne(window));
+                return fulfillFunc(req, token);
+            }, timeout);
     }
 
     private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null)

@@ -35,6 +35,9 @@ public class HistoryPruner : IHistoryPruner
     private readonly struct HistoryPrunerRequest : IBackgroundTaskRequest<HistoryPrunerRequest>;
 
     private const int LockWaitTimeoutMs = 100;
+    // A null timeout falls back to the scheduler's short default, so a disabled timeout needs an explicit far-future
+    // deadline; it must stay within CancellationTokenSource.CancelAfter's range.
+    private static readonly TimeSpan DisabledPruningTimeout = TimeSpan.FromMilliseconds(int.MaxValue);
     private const ulong SlotsPerEpoch = 32;
 
     public ulong GetRetentionBlocks(ulong retentionEpochs) => retentionEpochs * SlotsPerEpoch;
@@ -246,9 +249,9 @@ public class HistoryPruner : IHistoryPruner
                 {
                     try
                     {
-                        TimeSpan? pruningTimeout = _historyConfig.PruningTimeoutSeconds > 0
+                        TimeSpan pruningTimeout = _historyConfig.PruningTimeoutSeconds > 0
                             ? TimeSpan.FromSeconds(_historyConfig.PruningTimeoutSeconds)
-                            : null;
+                            : DisabledPruningTimeout;
                         if (!_backgroundTaskScheduler.TryScheduleTask(default(HistoryPrunerRequest),
                                 (_, backgroundTaskToken) =>
                                 {
