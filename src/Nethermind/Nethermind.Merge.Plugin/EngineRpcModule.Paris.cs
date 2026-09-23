@@ -30,7 +30,6 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly SemaphoreSlim _locker = new(1, 1);
     /// <summary>How long an engine API call waits for the lock another call holds.</summary>
     internal static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(8);
-    private readonly TimeSpan _timeout = LockTimeout;
     private readonly GCKeeper _gcKeeper = gcKeeper;
     private readonly IBlockProcessingQueue _processingQueue = processingQueue;
     /// <summary>How long the no-GC region is kept for a commit after the answer has gone out.</summary>
@@ -58,7 +57,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         _engineRequestsTracker.OnForkchoiceUpdatedCalled();
-        if (await _locker.WaitAsync(_timeout))
+        if (await _locker.WaitAsync(LockTimeout))
         {
             long startTime = Stopwatch.GetTimestamp();
             try
@@ -115,7 +114,7 @@ public partial class EngineRpcModule : IEngineRpcModule
                 : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
         }
 
-        if (await _locker.WaitAsync(_timeout))
+        if (await _locker.WaitAsync(LockTimeout))
         {
             long startTime = Stopwatch.GetTimestamp();
             try

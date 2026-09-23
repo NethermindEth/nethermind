@@ -624,7 +624,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
-                _ = Task.Run(() => EnqueueAsync(block, processingOptions));
+                _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -679,7 +679,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { Number: ulong number }
         && _blockTree.WasProcessed(number, blockHash);
 
-    private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions)
+    private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed)
     {
         try
         {
@@ -689,9 +689,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             // A failure once the block is counted in reaches the request as BlockRemoved(QueueException), which has
             // completed it already. One before that raises no removal, and the request would otherwise wait out its
-            // budget holding the engine API's lock; it fails now instead, as it did when Enqueue ran on its thread.
+            // budget holding the engine API's lock; it fails now instead, as it did when Enqueue ran on its thread. Its
+            // own completion, not the hash's: by now a re-sent payload may have registered a fresh one.
             if (_logger.IsDebug) _logger.Debug($"Enqueueing {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
-            if (_blockValidationTasks.TryGetValue(block.Hash!, out ValidationCompletion? pending)) pending.TrySetException(e);
+            blockProcessed.TrySetException(e);
         }
     }
 
