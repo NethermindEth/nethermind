@@ -148,6 +148,8 @@ namespace Nethermind.Trie
 
         public CappedArray<byte> FullRlp => ReadRlp();
 
+        // Acquire pairs with the release publication of _nodeData in DecodeRlp: a concurrent resolver may publish a
+        // decode while another thread tests whether the node is resolved, and the decoded fields must be visible with it.
         public NodeType NodeType => Volatile.Read(ref _nodeData)?.NodeType ?? NodeType.Unknown;
         public INodeData? NodeData => Volatile.Read(ref _nodeData);
 
