@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            foreach (EventHandler<ReceiptsEventArgs> handler in handlers.GetInvocationList())
+            foreach (EventHandler<ReceiptsEventArgs> handler in Delegate.EnumerateInvocationList(handlers))
             {
                 try
                 {

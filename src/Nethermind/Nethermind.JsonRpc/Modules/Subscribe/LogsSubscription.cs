@@ -58,8 +58,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         }
 
         /// <remarks>
-        /// Filtered before queueing, so a queued block retains no receipts and a block without matches is not queued.
-        /// A block's logs are queued as one entry, so a log-heavy block cannot overflow the queue of a client that keeps up.
+        /// A block without matches is not queued. A matching block is queued as one entry, so a log-heavy block cannot
+        /// overflow the queue of a client that keeps up; the entry references the receipts shared by all subscribers,
+        /// and its logs are created one at a time while sending, so nothing is copied per block or per subscriber.
         /// </remarks>
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
@@ -70,16 +71,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 return;
             }
 
-            FilterLog[] filterLogs = [.. GetFilterLogs(blockHeader, e.TxReceipts, e.WasRemoved)];
-            if (filterLogs.Length > 0)
+            if (HasMatchingLog(blockHeader, e.TxReceipts))
             {
-                ScheduleAction(() => PublishLogs(filterLogs));
+                ScheduleAction(() => PublishLogs(e));
             }
         }
 
-        private async Task PublishLogs(FilterLog[] filterLogs)
+        private async Task PublishLogs(ReceiptsEventArgs e)
         {
-            foreach (FilterLog filterLog in filterLogs)
+            foreach (FilterLog filterLog in GetFilterLogs(e.BlockHeader, e.TxReceipts, e.WasRemoved))
             {
                 using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
@@ -105,6 +105,23 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         };
 
         private static bool IsOnSide(ulong number, ulong? bound, bool lowerBound) => lowerBound ? number >= bound : number <= bound;
+
+        private bool HasMatchingLog(BlockHeader blockHeader, TxReceipt[] receipts)
+        {
+            if (!_filter.Matches(blockHeader.Bloom!)) return false;
+
+            foreach (TxReceipt receipt in receipts)
+            {
+                if (!_filter.Matches(receipt.Bloom!)) continue;
+
+                foreach (LogEntry log in receipt.Logs!)
+                {
+                    if (_filter.Accepts(log)) return true;
+                }
+            }
+
+            return false;
+        }
 
         private IEnumerable<FilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts, bool removed)
         {
