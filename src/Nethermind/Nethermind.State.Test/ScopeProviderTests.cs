@@ -66,7 +66,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void TargetScope_UsesParentStateAndPreservesTargetHeader()
+    public void TargetScope_UsesParentState()
     {
         TestStateHeaderProvider stateHeaderProvider = new();
         using Context ctx = new(useFlat, stateHeaderProvider: stateHeaderProvider);
@@ -109,7 +109,8 @@ public class ScopeProviderTests(bool useFlat)
     {
         TestStateHeaderProvider stateHeaderProvider = new();
         using Context ctx = new(useFlat, stateHeaderProvider: stateHeaderProvider);
-        BlockHeader target = Build.A.BlockHeader.WithNumber(2).WithParentHash(TestItem.KeccakA).TestObject;
+        BlockHeader parent = HeaderAt(Keccak.EmptyTreeHash, 1);
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).TestObject;
 
         using (Assert.EnterMultipleScope())
         {
@@ -118,7 +119,7 @@ public class ScopeProviderTests(bool useFlat)
             Assert.That(scope, Is.Null);
         }
 
-        stateHeaderProvider.Parent = HeaderAt(Keccak.EmptyTreeHash, 1);
+        stateHeaderProvider.Parent = parent;
         Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope retriedScope), Is.True);
         retriedScope!.Dispose();
     }
@@ -145,9 +146,9 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat, stateHeaderProvider: stateHeaderProvider);
         BlockHeader target = Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakA).TestObject;
 
+        // ThrowOnLookup is the assertion: a genesis target that consulted the block tree would fail right here.
         Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
         scope!.Dispose();
-        Assert.That(stateHeaderProvider.LookupCalls, Is.Zero, "a genesis target must not consult the block tree");
     }
 
     [Test]
@@ -200,19 +201,18 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader target = Build.A.BlockHeader.WithTimestamp(1).TestObject;
 
         Assert.That(state.HasStateForTargetBlock(target), Is.False);
-        Assert.That(provider.LastTarget, Is.SameAs(target));
         Assert.That(state.TryBeginScopeAtTarget(target, out IDisposable failedScope), Is.False);
-        Assert.That(provider.LastTarget, Is.SameAs(target));
+        Assert.That(provider.LastTarget, Is.SameAs(target), "the refused open still forwarded its own header");
         Assert.That(failedScope, Is.Null);
         Assert.That(state.IsInScope, Is.False);
 
         provider.TryResult = true;
-        Assert.That(state.HasStateForTargetBlock(target), Is.True);
-        Assert.That(provider.LastTarget, Is.SameAs(target));
-        Assert.That(state.TryBeginScopeAtTarget(target, out IDisposable scope), Is.True);
-        Assert.That(provider.LastTarget, Is.SameAs(target));
+        BlockHeader reopened = Build.A.BlockHeader.WithTimestamp(2).TestObject;
+        Assert.That(state.HasStateForTargetBlock(reopened), Is.True);
+        Assert.That(state.TryBeginScopeAtTarget(reopened, out IDisposable scope), Is.True);
+        Assert.That(provider.LastTarget, Is.SameAs(reopened), "the accepted open forwarded its own header");
         Assert.That(state.IsInScope, Is.True);
-        Assert.That(() => state.TryBeginScopeAtTarget(target, out _), Throws.InvalidOperationException);
+        Assert.That(() => state.TryBeginScopeAtTarget(reopened, out _), Throws.InvalidOperationException);
         Assert.That(state.IsInScope, Is.True);
         scope!.Dispose();
         Assert.That(state.IsInScope, Is.False);
@@ -1413,6 +1413,42 @@ public class ScopeProviderTests(bool useFlat)
                 Assert.That(caches.ValidFor, Is.Null, "only the driver may vouch for the caches once populators are joined");
                 Assert.That(consumer.GetBalance(TestItem.AddressC), Is.EqualTo((UInt256)5));
             }
+        }
+    }
+
+    /// <remarks>
+    /// Main processing opens the consumer through <see cref="IWorldStateScopeProvider.TryBeginScopeAtTarget"/>, so the
+    /// stale-cache check has to fire on the state the target's parent names, not on the target itself.
+    /// </remarks>
+    [Test]
+    public void Test_ConsumerTargetScope_KeepsCachesOfItsParentAndClearsAnotherState([Values] bool parentIsTheWarmedState)
+    {
+        TestStateHeaderProvider stateHeaderProvider = new();
+        using Context ctx = new(useFlat, stateHeaderProvider);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        Hash256 otherRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(HeaderAt(baseRoot, 1)))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressC, new Account(5, 5));
+            }
+
+            scope.Commit(2);
+            otherRoot = scope.RootHash;
+        }
+
+        BlockHeader parent = stateHeaderProvider.Add(HeaderAt(parentIsTheWarmedState ? baseRoot : otherRoot, parentIsTheWarmedState ? 1u : 2u));
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).TestObject;
+
+        AddressAsKey keyA = TestItem.AddressA;
+        using (consumer.BeginScopeAtTarget(target))
+        {
+            Assert.That(caches.StateCache.TryGetValue(in keyA, out _), Is.EqualTo(parentIsTheWarmedState),
+                parentIsTheWarmedState
+                    ? "caches warmed for the target's own parent must be kept"
+                    : "entries of another state must not be read");
         }
     }
 

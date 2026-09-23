@@ -60,9 +60,9 @@ namespace Nethermind.AuRa.Test
             txFilter
                 .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
                 .Returns(AcceptTxResult.Accepted);
-            BranchProcessor processor = CreateProcessor(txFilter).Processor;
+            (BranchProcessor processor, _, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessor(txFilter);
 
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(stateHeaderProvider.Parent!).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx }).TestObject;
@@ -77,9 +77,9 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void For_normal_processing_it_should_not_fail_with_gas_remaining_rules()
         {
-            BranchProcessor processor = CreateProcessor().Processor;
+            (BranchProcessor processor, _, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessor();
             ulong gasLimit = 10000000;
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(stateHeaderProvider.Parent!).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).WithGasLimit(gasLimit + 1).TestObject;
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx })

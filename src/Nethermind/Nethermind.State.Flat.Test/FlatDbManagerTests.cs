@@ -491,7 +491,8 @@ public class FlatDbManagerTests
         _trieNodeCache,
         _resourcePool,
         enableDetailedMetrics: false,
-        new HistoryScopeGate());
+        new HistoryScopeGate(),
+        LimboLogs.Instance);
 
     private void RecordHistoryWindow()
     {

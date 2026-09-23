@@ -39,12 +39,7 @@ namespace Nethermind.Consensus.Processing
 
         private void DoLoad()
         {
-            if (!worldState.TryBeginScope(IWorldState.PreGenesis, out IDisposable? scope))
-            {
-                throw new InvalidOperationException("Pre-genesis state is unavailable.");
-            }
-
-            using IDisposable _ = scope;
+            using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
 
             Block genesis = genesisBuilder.Build();
 

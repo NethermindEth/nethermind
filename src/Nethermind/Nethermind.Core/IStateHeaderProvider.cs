@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Core;
 
 /// <summary>
@@ -44,4 +46,5 @@ public static class StateHeaderProviderExtensions
         baseBlock = provider.FindParentHeader(targetBlock);
         return baseBlock is not null;
     }
+
 }

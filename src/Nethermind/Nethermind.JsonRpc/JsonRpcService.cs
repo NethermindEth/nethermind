@@ -624,6 +624,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, in request.IdRef, returnAction),
 
+            // A pruned or otherwise unavailable state is an ordinary request on a historical block, not a fault of
+            // this node, so it answers ResourceUnavailable rather than falling through to an internal error.
+            StateUnavailableException or TargetInvocationException { InnerException: StateUnavailableException } =>
+                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, ex.Message, null, in request.IdRef, returnAction)),
+
             MissingTrieNodeException e =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
 

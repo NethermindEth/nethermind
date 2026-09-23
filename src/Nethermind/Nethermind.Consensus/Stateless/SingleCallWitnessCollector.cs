@@ -4,8 +4,10 @@
 using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -49,12 +51,7 @@ public class SingleCallWitnessCollector(
         // Uses blockHeader (not parentHeader) intentionally: for a single call we want the
         // post-state of the target block. Block-level witness uses parentHeader because it
         // needs the pre-state to re-execute the block's transactions.
-        if (!worldState.TryBeginScope(blockHeader, out IDisposable? scope))
-        {
-            throw new InvalidOperationException($"State is unavailable for block {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}.");
-        }
-
-        using IDisposable _ = scope;
+        using IDisposable _ = worldState.BeginScope(blockHeader);
         // Mirror BlockchainBridge.CallAndRestore: ignore the caller-supplied nonce and resolve it
         // from the scoped state. Without this, a proof_call request that includes `from` but omits
         // `nonce` fails pre-VM validation (e.g. TransactionNonceTooHigh) before the EVM runs, and

@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain;
@@ -30,12 +31,12 @@ public static class ReadOnlyTxProcessorSourceExtensions
     public static IReadOnlyTxProcessingScope Build(this IReadOnlyTxProcessorSource source, BlockHeader? baseBlock) =>
         source.TryBuild(baseBlock, out IReadOnlyTxProcessingScope? scope)
             ? scope
-            : throw new InvalidOperationException($"State is unavailable for base block {baseBlock?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
+            : throw new StateUnavailableException($"State is unavailable for base block {baseBlock?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
 
     /// <inheritdoc cref="IReadOnlyTxProcessorSource.TryBuildAtTarget"/>
     /// <exception cref="InvalidOperationException">The parent header or its state is unavailable.</exception>
     public static IReadOnlyTxProcessingScope BuildAtTarget(this IReadOnlyTxProcessorSource source, BlockHeader targetBlock) =>
         source.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? scope)
             ? scope
-            : throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
+            : throw new StateUnavailableException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 }

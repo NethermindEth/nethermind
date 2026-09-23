@@ -59,24 +59,10 @@ public class TrieStoreScopeProvider(
     /// <summary>Whether a scope can be opened at <paramref name="baseBlock"/>; a backend that recovers missing nodes on demand may accept a root it does not hold.</summary>
     protected virtual bool CanBeginScope(BlockHeader? baseBlock) => HasRoot(baseBlock);
 
-    public bool HasStateForTargetBlock(BlockHeader targetBlock)
-    {
-        ArgumentNullException.ThrowIfNull(targetBlock);
-        return _stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
-    }
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => this.HasRootForTarget(_stateHeaderProvider, targetBlock);
 
-    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
-    {
-        ArgumentNullException.ThrowIfNull(targetBlock);
-        if (!_stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent))
-        {
-            scope = null;
-            return false;
-        }
-
-        return TryBeginScope(parent, metrics, out scope);
-    }
-
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        this.TryBeginScopeAtBase(_stateHeaderProvider, targetBlock, metrics, out scope);
 
     public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
@@ -396,7 +382,6 @@ public class TrieStoreScopeProvider(
             }
 
             scope.ClearLoadedAccounts();
-
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account)

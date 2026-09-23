@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
@@ -261,7 +262,7 @@ public partial class BlockAccessListManager
 
         [DoesNotReturn]
         private static void ThrowParentStateUnavailable(BlockHeader targetBlock)
-            => throw new InvalidOperationException($"Parent state is unavailable for block {targetBlock.ToString(BlockHeader.Format.Short)}.");
+            => throw new StateUnavailableException($"Parent state is unavailable for block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 
         private void ReclaimAndResize(int size, int previousSize)
         {

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -94,7 +95,7 @@ public class DisposableScopeOverridableEnvTests
         {
             Assert.That(ctx.Env.TryBuildAndOverrideAtTarget(target, stateOverride, null, out Scope<Components>? unavailable), Is.False);
             Assert.That(unavailable, Is.Null);
-            Assert.That(() => ctx.Env.BuildAndOverrideAtTarget(target, stateOverride), Throws.InvalidOperationException);
+            Assert.That(() => ctx.Env.BuildAndOverrideAtTarget(target, stateOverride), Throws.TypeOf<StateUnavailableException>());
         }
 
         ctx.StateHeaderProvider.Parent = parent;

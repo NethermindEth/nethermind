@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Autofac.Core;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -95,8 +96,8 @@ public static class OverridableEnvExtensions
         source.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, out Scope<T>? scope) ? scope : ThrowUnavailable<Scope<T>>(targetBlock);
 
     private static TScope ThrowUnavailable<TScope>(BlockHeader targetBlock) =>
-        throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
+        throw new StateUnavailableException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 
     private static TScope ThrowBaseUnavailable<TScope>(BlockHeader? header) =>
-        throw new InvalidOperationException($"State is unavailable for base block {header?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
+        throw new StateUnavailableException($"State is unavailable for base block {header?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
 }
