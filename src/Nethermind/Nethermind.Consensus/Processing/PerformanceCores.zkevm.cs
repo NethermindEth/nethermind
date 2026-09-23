@@ -18,6 +18,8 @@ internal static partial class PerformanceCores
 
     public static PrewarmSplit? Prewarm => null;
 
+    public static void ScheduleWidening() { }
+
     internal sealed class PrewarmSplit
     {
         public int NearWorkers => 0;
