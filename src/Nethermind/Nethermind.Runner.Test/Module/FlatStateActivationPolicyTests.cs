@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
@@ -105,7 +107,7 @@ public class FlatStateActivationPolicyTests
 
         string[] expectedEvents = expectedOutcome switch
         {
-            RepairOutcome.Wiped => [SpyFlatColumnsDb.ClearEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
+            RepairOutcome.Wiped => [SpyFlatColumnsDb.WriteEvent, SpyFlatColumnsDb.FlushEvent, SpyFlatColumnsDb.AcknowledgeEvent],
             RepairOutcome.Acknowledged => [SpyFlatColumnsDb.AcknowledgeEvent],
             _ => []
         };
@@ -119,7 +121,8 @@ public class FlatStateActivationPolicyTests
 
     [TestCase(Flags.Repaired | Flags.PatriciaHasData, FlatDbOnRepair.Resync, "holds no state; the patricia backend stays active")]
     [TestCase(Flags.Repaired | Flags.FlatHasData, FlatDbOnRepair.Ignore, "may diverge")]
-    public void Repair_that_keeps_the_data_logs_why(Flags flags, FlatDbOnRepair onRepair, string expectedLog)
+    [TestCase(Flags.Repaired | Flags.FlatHasData | Flags.WipedForSync, FlatDbOnRepair.Resync, "interrupted flat DB wipe was detected after a RocksDB auto-repair")]
+    public void Repair_logs_what_the_policy_did(Flags flags, FlatDbOnRepair onRepair, string expectedLog)
     {
         TestLogger testLogger = new();
         PolicySetup setup = CreateSetup(flags | Flags.Enabled, FlatLayout.Flat, 32.GiB, new OneLoggerLogManager(new ILogger(testLogger)), onRepair);
@@ -131,6 +134,18 @@ public class FlatStateActivationPolicyTests
             Assert.That(testLogger.LogList.Count(l => l.Contains(expectedLog)), Is.EqualTo(1));
             Assert.That(testLogger.LogList.Count(static l => l.Contains("may diverge")), Is.EqualTo(onRepair == FlatDbOnRepair.Ignore ? 1 : 0));
         }
+    }
+
+    [Test]
+    public void Wipe_after_a_repair_that_dropped_the_metadata_keeps_the_rlp_slot_encoding()
+    {
+        PolicySetup setup = CreateSetup(Flags.Enabled | Flags.Repaired | Flags.FlatDataKeys, FlatLayout.Flat, 32.GiB, LimboLogs.Instance);
+        Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
+
+        TestLogger testLogger = new();
+        _ = new RocksDbPersistence(setup.FlatDb, new OneLoggerLogManager(new ILogger(testLogger)));
+
+        Assert.That(testLogger.LogList, Has.None.Contains("legacy raw storage slot encoding"));
     }
 
     private static FlatStateActivationPolicy CreatePolicy(
@@ -157,17 +172,13 @@ public class FlatStateActivationPolicyTests
         flatDbConfig.OnRepair.Returns(onRepair);
 
         SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
+        if (flags.HasFlag(Flags.FlatHasData))
+            new RocksDbPersistence(flatDb, LimboLogs.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
         if (flags.HasFlag(Flags.WipedForSync))
-            new RocksDbPersistence(flatDb, LimboLogs.Instance).Clear();
+            MarkWipedForSync(flatDb);
         if (flags.HasFlag(Flags.FlatDataKeys))
-            flatDb.GetColumnDb(FlatDbColumns.Account).Set([1], [1]);
+            flatDb.GetColumnDb(FlatDbColumns.Storage).Set([1], [1]);
         flatDb.Events.Clear();
-
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.CurrentState.Returns(flags.HasFlag(Flags.FlatHasData) ? new StateId(1, Nethermind.Core.Crypto.Keccak.Zero) : StateId.PreGenesis);
-        IPersistence flatPersistence = Substitute.For<IPersistence>();
-        flatPersistence.CreateReader().Returns(reader);
-        flatPersistence.When(static p => p.Clear()).Do(_ => flatDb.Events.Add(SpyFlatColumnsDb.ClearEvent));
 
         MemDb patriciaDb = new();
         if (flags.HasFlag(Flags.PatriciaHasData))
@@ -176,7 +187,6 @@ public class FlatStateActivationPolicyTests
         FlatStateActivationPolicy policy = new(
             flatDbConfig,
             new TestHardwareInfo(availableMemoryBytes),
-            new Lazy<IPersistence>(() => flatPersistence),
             new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb),
             new Lazy<IDb>(() => patriciaDb),
             logManager);
@@ -184,16 +194,32 @@ public class FlatStateActivationPolicyTests
         return new PolicySetup(policy, flatDb);
     }
 
-    /// <summary>A flat columns DB that reports a configurable repair flag and records the wipe, flush and acknowledge calls in order.</summary>
-    public sealed class SpyFlatColumnsDb : SnapshotableMemColumnsDb<FlatDbColumns>, IDbMeta
+    /// <summary>Copies the wipe marker from a wiped scratch DB, so it lands without the wipe dropping the state pointer.</summary>
+    private static void MarkWipedForSync(IColumnsDb<FlatDbColumns> flatDb)
     {
-        public const string ClearEvent = "clear";
+        MemColumnsDb<FlatDbColumns> scratch = new();
+        BasePersistence.ClearAllColumns(scratch);
+        IDb metadata = flatDb.GetColumnDb(FlatDbColumns.Metadata);
+        foreach (KeyValuePair<byte[], byte[]> entry in scratch.GetColumnDb(FlatDbColumns.Metadata).GetAll())
+            metadata.Set(entry.Key, entry.Value);
+    }
+
+    /// <summary>A flat columns DB that reports a configurable repair flag and records the write batch, flush and acknowledge calls in order.</summary>
+    public sealed class SpyFlatColumnsDb : SnapshotableMemColumnsDb<FlatDbColumns>, IColumnsDb<FlatDbColumns>, IDbMeta
+    {
+        public const string WriteEvent = "write";
         public const string FlushEvent = "flush";
         public const string AcknowledgeEvent = "acknowledge";
 
         public List<string> Events { get; } = [];
 
         public bool WasRepairedOnOpen { get; init; }
+
+        IColumnsWriteBatch<FlatDbColumns> IColumnsDb<FlatDbColumns>.StartWriteBatch()
+        {
+            Events.Add(WriteEvent);
+            return StartWriteBatch();
+        }
 
         void IDbMeta.Flush(bool onlyWal)
         {

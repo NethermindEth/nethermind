@@ -46,7 +46,8 @@ public static class BasePersistence
     private const string RawSlotDeprecationMessage =
         "Flat DB uses the legacy raw storage slot encoding, which is deprecated and will be removed in a future release. Please resync to adopt the RLP slot encoding.";
 
-    internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
+    /// <summary>Reads the flat DB's persisted state pointer, or <see cref="StateId.PreGenesis"/> when none is persisted.</summary>
+    public static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
         return bytes is null || bytes.Length == 0
@@ -186,7 +187,8 @@ public static class BasePersistence
     /// </remarks>
     public static bool ReadWipedForSync(IReadOnlyKeyValueStore metadata) => metadata.Get(WipedForSyncKey) is { Length: > 0 };
 
-    internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
+    /// <summary>Wipes every data column and the state pointer, keeping the format markers, and marks the DB as wiped for a state sync.</summary>
+    public static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
         // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
         // partially-synced DB on restart. #11442

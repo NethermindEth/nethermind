@@ -150,16 +150,14 @@ public class SeedFlatHistoryGenesisTests
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(flatActive);
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.CurrentState.Returns(flatActive ? new StateId(1, Keccak.Zero) : StateId.PreGenesis);
-        IPersistence flatPersistence = Substitute.For<IPersistence>();
-        flatPersistence.CreateReader().Returns(reader);
+        MemColumnsDb<FlatDbColumns> flatDb = new();
+        if (flatActive)
+            BasePersistence.SetCurrentState(flatDb.GetColumnDb(FlatDbColumns.Metadata), new StateId(1, Keccak.Zero));
 
         return new FlatStateActivationPolicy(
             flatDbConfig,
             new TestHardwareInfo(32L * 1024 * 1024 * 1024),
-            new Lazy<IPersistence>(() => flatPersistence),
-            new Lazy<IColumnsDb<FlatDbColumns>>(() => new MemColumnsDb<FlatDbColumns>()),
+            new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb),
             new Lazy<IDb>(() => new MemDb()),
             LimboLogs.Instance);
     }

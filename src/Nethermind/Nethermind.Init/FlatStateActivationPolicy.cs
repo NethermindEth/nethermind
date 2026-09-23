@@ -19,20 +19,19 @@ namespace Nethermind.Init;
 public sealed class FlatStateActivationPolicy(
     IFlatDbConfig flatDbConfig,
     IHardwareInfo hardwareInfo,
-    Lazy<IPersistence> flatPersistence,
     Lazy<IColumnsDb<FlatDbColumns>> flatDb,
     [KeyFilter(DbNames.State)] Lazy<IDb> patriciaStateDb,
     ILogManager logManager)
 {
     private static readonly long LowMemoryLayoutThreshold = 16.GiB;
 
-    private readonly bool _result = Compute(flatDbConfig, hardwareInfo, flatPersistence, flatDb, patriciaStateDb, logManager.GetClassLogger<FlatStateActivationPolicy>());
+    private readonly bool _result = Compute(flatDbConfig, hardwareInfo, flatDb, patriciaStateDb, logManager.GetClassLogger<FlatStateActivationPolicy>());
 
     public bool ShouldTurnOnFlatDb() => _result;
 
-    private static bool Compute(IFlatDbConfig flatDbConfig, IHardwareInfo hardwareInfo, Lazy<IPersistence> flatPersistence, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ILogger logger)
+    private static bool Compute(IFlatDbConfig flatDbConfig, IHardwareInfo hardwareInfo, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ILogger logger)
     {
-        bool activateFlat = DecideBackend(flatDbConfig, flatPersistence, flatDb, patriciaStateDb, logger);
+        bool activateFlat = DecideBackend(flatDbConfig, flatDb, patriciaStateDb, logger);
         if (activateFlat) AdviseLayoutForMemory(flatDbConfig, hardwareInfo, logger);
         return activateFlat;
     }
@@ -49,7 +48,7 @@ public sealed class FlatStateActivationPolicy(
             $"Set '--FlatDb.Layout {nameof(FlatLayout.FlatInTrie)}' to switch (requires a fresh flat DB sync).");
     }
 
-    private static bool DecideBackend(IFlatDbConfig flatDbConfig, Lazy<IPersistence> flatPersistence, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ILogger logger)
+    private static bool DecideBackend(IFlatDbConfig flatDbConfig, Lazy<IColumnsDb<FlatDbColumns>> flatDb, Lazy<IDb> patriciaStateDb, ILogger logger)
     {
         if (!flatDbConfig.Enabled)
         {
@@ -57,21 +56,21 @@ public sealed class FlatStateActivationPolicy(
             return false;
         }
 
-        IPersistence persistence = flatPersistence.Value;
-        bool flatHasData;
-        using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
-        {
-            flatHasData = reader.CurrentState != StateId.PreGenesis;
-        }
-
-        // A DB wiped for a resync holds no state pointer until the sync completes; it is still the active backend.
+        // The metadata is read off the columns DB rather than through IPersistence: constructing a persistence latches
+        // its slot encoding from the pre-wipe DB, which a repair that dropped the metadata would resolve as raw.
         IColumnsDb<FlatDbColumns> db = flatDb.Value;
-        bool wipedForSync = BasePersistence.ReadWipedForSync(db.GetColumnDb(FlatDbColumns.Metadata));
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        bool flatHasData = BasePersistence.ReadCurrentState(metadata) != StateId.PreGenesis;
+        // A DB wiped for a resync holds no state pointer until the sync completes; it is still the active backend.
+        bool wipedForSync = BasePersistence.ReadWipedForSync(metadata);
 
         if (flatHasData && wipedForSync)
         {
-            if (logger.IsWarn) logger.Warn("An interrupted flat DB wipe was detected; redoing it before the state sync.");
-            WipeForResync(persistence, db, logger);
+            if (logger.IsWarn)
+                logger.Warn(db.WasRepairedOnOpen
+                    ? "An interrupted flat DB wipe was detected after a RocksDB auto-repair; redoing it before the state sync."
+                    : "An interrupted flat DB wipe was detected; redoing it before the state sync.");
+            WipeForResync(db, logger);
             return true;
         }
 
@@ -87,7 +86,7 @@ public sealed class FlatStateActivationPolicy(
             {
                 if (logger.IsError)
                     logger.Error("Flat DB was auto-repaired by RocksDB; wiping flat state and re-entering state sync (FlatDb.OnRepair=Resync).");
-                WipeForResync(persistence, db, logger);
+                WipeForResync(db, logger);
                 return true;
             }
 
@@ -132,9 +131,9 @@ public sealed class FlatStateActivationPolicy(
     /// (<c>Sync.SnapSync=false</c>) never wipes and would skip every subtree whose surviving root node still hashes.
     /// The repair is acknowledged only after the wipe is flushed, so a crash in between redoes the wipe.
     /// </remarks>
-    private static void WipeForResync(IPersistence persistence, IColumnsDb<FlatDbColumns> db, ILogger logger)
+    private static void WipeForResync(IColumnsDb<FlatDbColumns> db, ILogger logger)
     {
-        persistence.Clear();
+        BasePersistence.ClearAllColumns(db);
         db.Flush();
         db.AcknowledgeRepair();
         if (logger.IsInfo) logger.Info("Flat DB wiped; the state sync refills it.");
