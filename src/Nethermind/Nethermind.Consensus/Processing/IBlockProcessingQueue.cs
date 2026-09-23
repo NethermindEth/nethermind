@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.Processing
         /// Defaulted so an implementation outside this repository keeps compiling. One that does not raise it leaves
         /// its callers waiting for <see cref="BlockRemoved"/>, which is where the answer came from before.
         /// </remarks>
-        event EventHandler<BlockHashEventArgs> BlockExecuted
+        event EventHandler<BlockVerdictEventArgs> BlockExecuted
         {
             add { }
             remove { }

@@ -1101,11 +1101,13 @@ public partial class EngineModuleTests
     /// newPayload answers VALID once the block is executed, before it is committed and marked processed. The
     /// forkchoiceUpdated that follows at once must wait for that commit rather than answer SYNCING - also for a commit
     /// slower than a second, which before newPayload answered ahead of the commit was answered VALID - but no longer
-    /// than the budget, which is what stops a stuck commit from holding the engine API's lock.
+    /// than the budget, which is what stops a stuck commit from holding the engine API's lock, and never past half the
+    /// lock timeout, however large the budget is configured.
     /// </summary>
     [TestCase(0, 60_000, true)]
     [TestCase(1500, 60_000, true)]
     [TestCase(3000, 300, false)]
+    [TestCase(6000, 60_000, false)]
     [NonParallelizable]
     public async Task forkChoiceUpdatedV1_waits_for_the_commit_of_a_block_answered_valid_before_it(int commitHeldMs, int budgetMs, bool committedInBudget)
     {

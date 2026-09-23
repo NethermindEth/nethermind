@@ -182,7 +182,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // The verdict lands; BlockRemoved never does, as if the commit were still running.
-        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         ResultWrapper<PayloadStatusV1> result = await request;
 
         using (Assert.EnterMultipleScope())
@@ -190,6 +190,80 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0), "an answered request must not leave its completion behind");
         }
+    }
+
+    /// <summary>
+    /// The branch processor treats a later failure as the commit's only when a request was actually answered VALID,
+    /// so the handler marks the verdict answered exactly when a waiting request takes it, and not for a block
+    /// nobody is waiting on.
+    /// </summary>
+    [Test, MaxTime(10_000)]
+    public async Task ValidateBlockAndProcess_marks_the_verdict_answered_only_when_a_request_takes_it()
+    {
+        Block block = PostMergeBlock();
+
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 5_000);
+
+        BlockVerdictEventArgs unwaited = new(TestItem.KeccakB, ProcessingResult.Success);
+        processingQueue.BlockExecuted += Raise.EventWith(unwaited);
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
+        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        BlockVerdictEventArgs verdict = new(block.Hash!, ProcessingResult.Success);
+        processingQueue.BlockExecuted += Raise.EventWith(verdict);
+        ResultWrapper<PayloadStatusV1> result = await request;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(verdict.Answered, Is.True, "a waiting request took this verdict");
+            Assert.That(unwaited.Answered, Is.False, "nobody was waiting on this block");
+        }
+    }
+
+    /// <summary>
+    /// Enqueueing runs off the request thread. A queue that refuses the block before counting it raises no removal,
+    /// so the request must fail at once, as it did when Enqueue ran on its own thread, instead of waiting out its
+    /// budget while holding the engine API's lock.
+    /// </summary>
+    [Test, MaxTime(10_000)]
+    public void HandleAsync_fails_at_once_when_the_block_cannot_be_enqueued()
+    {
+        Block block = PostMergeBlock();
+
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ => ValueTask.FromException(new InvalidOperationException("queue refused the block")));
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 60_000);
+
+        Assert.That(async () => await handler.HandleAsync(ExecutionPayload.Create(block)),
+            Throws.InstanceOf<InvalidOperationException>().With.Message.EqualTo("queue refused the block"),
+            "the failure reaches the request well inside its 60 s budget");
+        Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0));
     }
 
     /// <summary>
@@ -281,7 +355,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.That(request.IsCompleted, Is.False, "the request must wait for its own attempt's verdict");
-        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         ResultWrapper<PayloadStatusV1> result = await request;
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), "the answer is the re-submission's own verdict");
@@ -334,7 +408,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         firstCopyRemoved.SetResult();
 
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
         ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
@@ -374,7 +448,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
         // The verdict, and then a commit that throws: the request is answered VALID either way.
-        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.Exception, new Exception("commit failed")));
 
         ResultWrapper<PayloadStatusV1> answer = await request.WaitAsync(TimeSpan.FromSeconds(10));
@@ -382,7 +456,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(ExecutionPayload.Create(block));
         await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         await retry.WaitAsync(TimeSpan.FromSeconds(10));
 
         await processingQueue.Received(2).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
@@ -420,7 +494,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         await request.WaitAsync(TimeSpan.FromSeconds(10));
 
         // The block is in the chain now, and a copy of it that was queued earlier is skipped as no better than head.
@@ -482,7 +556,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         parentCommitted = true;
         parentRemoved.SetResult();
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        processingQueue.BlockExecuted += Raise.EventWith(new BlockHashEventArgs(block.Hash!, ProcessingResult.Success));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));

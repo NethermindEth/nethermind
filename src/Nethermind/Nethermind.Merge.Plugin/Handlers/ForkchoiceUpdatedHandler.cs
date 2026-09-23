@@ -56,8 +56,14 @@ public class ForkchoiceUpdatedHandler(
     /// a slow commit into a SYNCING the CL never got before, which leaves it on an optimistic head. Per block the worst
     /// case is now two budgets rather than one - newPayload's for the execution, this one for the commit - but only a
     /// commit that is itself that slow spends the second.
+    /// <para>
+    /// Capped at half the lock timeout. The wait holds the engine API's lock, and unlike newPayload's it is a fresh
+    /// budget rather than the rest of one: uncapped, a stalled commit under the 7 s default leaves a newPayload queued
+    /// behind it about a second before it times out, and a raised budget outlasts the lock timeout and the CL's own
+    /// request timeout, turning SYNCING into timeouts. At the cap the call behind gets at least as long as this one waited.
+    /// </para>
     /// </remarks>
-    private readonly TimeSpan _commitWait = TimeSpan.FromMilliseconds(Math.Max(0, mergeConfig.NewPayloadBlockProcessingTimeout));
+    private readonly TimeSpan _commitWait = TimeSpan.FromMilliseconds(Math.Clamp(mergeConfig.NewPayloadBlockProcessingTimeout, 0, EngineRpcModule.LockTimeout.TotalMilliseconds / 2));
 
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
@@ -403,12 +409,7 @@ public class ForkchoiceUpdatedHandler(
         Hash256 hash = newHeadHeader.GetOrCalculateHash();
         if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { WasProcessed: false }) return;
 
-        ValueTask removed = processingQueue.WaitUntilExecutedCopyRemovedAsync(hash);
-        if (removed.IsCompleted) return;
-
-        Task committed = removed.AsTask();
-        using CancellationTokenSource bound = new();
-        if (await Task.WhenAny(committed, Task.Delay(_commitWait, bound.Token)) == committed) bound.Cancel();
+        await processingQueue.WaitForExecutedCopyAsync(hash, _commitWait);
     }
 
     private BlockHeader? GetBlockHeader(Hash256 headBlockHash)

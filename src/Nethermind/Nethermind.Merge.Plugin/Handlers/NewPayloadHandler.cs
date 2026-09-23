@@ -503,14 +503,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Hash256 parentHash = parent.GetOrCalculateHash();
         if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
 
-        ValueTask removed = _processingQueue.WaitUntilExecutedCopyRemovedAsync(parentHash);
-        if (removed.IsCompleted) return true;
-
-        Task committed = removed.AsTask();
-        using CancellationTokenSource bound = new();
-        bool inTime = await Task.WhenAny(committed, Task.Delay(RemainingBudget(deadline), bound.Token)) == committed;
-        if (inTime) bound.Cancel();
-        else if (_logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
+        bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline));
+        if (!inTime && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
         return inTime;
     }
 
@@ -629,9 +623,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // (BlockchainProcessor._blockQueue), so with the queue empty the processor runs the block inside
                 // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
-                // nothing is lost by not inheriting this one's. A failure once the block is counted in reaches the
-                // request as BlockRemoved(QueueException); one before that leaves the request to its timeout and
-                // SYNCING, which the CL retries.
+                // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
                 _ = Task.Run(() => EnqueueAsync(block, processingOptions));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
@@ -665,7 +657,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// (<see cref="IBlockProcessingQueue.WaitUntilExecutedCopyRemovedAsync"/>). Any other outcome still comes through
     /// <see cref="GetProcessingQueueOnBlockRemoved"/>, and a verdict already given makes that a no-op.
     /// </summary>
-    private void GetProcessingQueueOnBlockExecuted(object? o, BlockHashEventArgs e)
+    private void GetProcessingQueueOnBlockExecuted(object? o, BlockVerdictEventArgs e)
     {
         // Left in place rather than taken: the request has its answer but not its cache entry yet, and a commit
         // that fails next needs the completion to stop that entry from standing.
@@ -675,7 +667,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             ? ValidationResult.InclusionListUnsatisfied
             : ValidationResult.Valid;
         blockProcessed.MarkVerdictGiven();
-        blockProcessed.TrySetResult((result, null));
+        if (blockProcessed.TrySetResult((result, null))) e.Answered = true;
     }
 
     /// <summary>Whether the tree has the block as processed, so a removal that failed was some other copy's.</summary>
@@ -695,9 +687,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         catch (Exception e)
         {
-            // The queue reports the failure to the request as BlockRemoved(QueueException); this only keeps the
-            // exception observed.
+            // A failure once the block is counted in reaches the request as BlockRemoved(QueueException), which has
+            // completed it already. One before that raises no removal, and the request would otherwise wait out its
+            // budget holding the engine API's lock; it fails now instead, as it did when Enqueue ran on its thread.
             if (_logger.IsDebug) _logger.Debug($"Enqueueing {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
+            if (_blockValidationTasks.TryGetValue(block.Hash!, out ValidationCompletion? pending)) pending.TrySetException(e);
         }
     }
 
@@ -830,7 +824,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         InclusionListUnsatisfied
     }
 
-    // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
     /// <summary>One request's completion, and the arbiter of whether its answer may stay cached.</summary>
     /// <remarks>
     /// The verdict reaches the request before the block is committed, so a commit that then fails races the
@@ -861,5 +854,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         public bool MarkBlockUncommitted() => Interlocked.Exchange(ref _state, Uncommitted) == Cached;
     }
 
+    // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
     private readonly record struct CachedPayloadResult(ValidationResult Result, string? Message, ValueHash256 InclusionListDigest);
 }

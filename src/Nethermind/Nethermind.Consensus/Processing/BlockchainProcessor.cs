@@ -137,15 +137,21 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Hash256 hash = block.Hash!;
         if (_inFlight.TryGetValue(hash, out InFlightBlock? inFlight)) inFlight.MarkExecuted();
 
+        BlockVerdictEventArgs verdict = new(hash, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied);
         try
         {
-            BlockExecuted?.Invoke(this, new BlockHashEventArgs(hash, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied));
+            BlockExecuted?.Invoke(this, verdict);
         }
         catch (Exception exception)
         {
             // The block is judged and the commit is next; a subscriber must not be able to turn that into a failure
             // after the verdict has gone out, which is what an exception here would unwind into.
             if (_logger.IsError) _logger.Error($"Block executed handler failed for {hash}.", exception);
+        }
+        finally
+        {
+            // A subscriber that answered before another one threw has still answered.
+            e.Answered |= verdict.Answered;
         }
     }
 
@@ -685,7 +691,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     }
 
     public event EventHandler? ProcessingQueueEmpty;
-    public event EventHandler<BlockHashEventArgs>? BlockExecuted;
+    public event EventHandler<BlockVerdictEventArgs>? BlockExecuted;
     public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
     public event EventHandler<BlockEventArgs>? BlockAdded;
     public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? InvalidBlock;
