@@ -19,15 +19,22 @@ public enum ConsensusPreset
 }
 
 /// <summary>
-/// Streams the consensus-specs preset archives (mainnet.tar.gz / minimal.tar.gz), pinned to the same
-/// release tag as <see cref="SszConsensusTestLoader"/> (see that type's remarks for why the pin sits
-/// there). Reuses <see cref="TestFixtureDownloader"/>'s selective-extraction path so only the suite
+/// Streams the consensus-specs preset archives (mainnet.tar.gz / minimal.tar.gz), pinned to
+/// <see cref="Version"/>. Reuses <see cref="TestFixtureDownloader"/>'s selective-extraction path so only the suite
 /// subtrees this driver can exercise ever hit disk - the mainnet archive is multi-gigabyte once
 /// decompressed, and the gzip stream itself cannot be seeked, so every byte is still read and
 /// decompressed regardless of what gets kept (see TestFixtureDownloader's own remarks).
 /// </summary>
 public static class ConsensusSpecArchive
 {
+    /// <summary>The consensus-specs release tag the preset archives are downloaded from.</summary>
+    /// <remarks>
+    /// Ahead of <see cref="SszConsensusTestLoader"/>'s pin, which cannot pass the last release that carries
+    /// ssz_generic. v1.7.0-alpha.14 is the first release whose <c>upgrade_to_gloas</c> sets every field of
+    /// the upgraded execution payload bid (consensus-specs #5550 and #5553), as <c>GloasForkTransition</c> does.
+    /// </remarks>
+    public const string Version = "v1.7.0-alpha.14";
+
     /// <summary>
     /// Set NETHERMIND_CONSENSUS_SPEC_MAINNET=1 to include the mainnet-preset vectors. Off by default:
     /// mainnet.tar.gz is on the order of 900 MB compressed and several GB decompressed even before
@@ -48,8 +55,16 @@ public static class ConsensusSpecArchive
     public static readonly string[] StateTransitionForks = ["electra", "fulu"];
 
     /// <summary>
+    /// The post-fork names whose <c>fork</c> vectors (a pre-fork <c>pre</c> state upgraded to the named
+    /// fork's <c>post</c>) are extracted and enumerated: exactly the forks <see cref="ForkTests"/> has an
+    /// upgrade for. Fulu and Electra fork vectors are out of reach, as this repo has no <c>upgrade_to_fulu</c>
+    /// and no Deneb state container to upgrade from.
+    /// </summary>
+    public static readonly string[] ForkUpgradeForks = ["gloas"];
+
+    /// <summary>
     /// The suite subtrees this driver knows how to run: ssz_static for every fork this repo models a
-    /// container for, the state-driven suites for <see cref="StateTransitionForks"/>, and fork_choice
+    /// container for, the state-driven suites for <see cref="StateTransitionForks"/>, fork for <see cref="ForkUpgradeForks"/>, and fork_choice
     /// for fulu only. fork_choice needs its full fixture set (steps.yaml plus the anchor/block/attestation
     /// SSZ files it references), not just manifest.yaml. <see cref="ExtractionTag"/> is derived from this
     /// same table, so widening it invalidates the cached extraction by itself.
@@ -61,6 +76,7 @@ public static class ConsensusSpecArchive
         ("epoch_processing", StateTransitionForks),
         ("sanity", StateTransitionForks),
         ("fork_choice", ["fulu"]),
+        ("fork", ForkUpgradeForks),
     ];
 
     /// <summary>
@@ -100,7 +116,7 @@ public static class ConsensusSpecArchive
             string archiveName = preset == ConsensusPreset.Mainnet ? "mainnet.tar.gz" : "minimal.tar.gz";
             string suiteName = preset == ConsensusPreset.Mainnet ? "ConsensusMainnet" : "ConsensusMinimal";
             string root = TestFixtureDownloader.EnsureDownloaded(
-                suiteName, SszConsensusTestLoader.ArchiveUrlTemplate, SszConsensusTestLoader.DefaultVersion, archiveName, ShouldExtract, ExtractionTag);
+                suiteName, SszConsensusTestLoader.ArchiveUrlTemplate, Version, archiveName, ShouldExtract, ExtractionTag);
             Roots[preset] = root;
             return root;
         }

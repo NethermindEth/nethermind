@@ -42,7 +42,7 @@ public class SanityTests
     private static void ExecuteBlocks(SanityCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("sanity/blocks", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
         {
-            RequireMainnetPreset(testCase.Preset);
+            FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
             ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
             BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
             EpochCache cache = driver.NewCache();
@@ -87,7 +87,7 @@ public class SanityTests
     private static void ExecuteSlots(SanityCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("sanity/slots", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
         {
-            RequireMainnetPreset(testCase.Preset);
+            FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
             ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
             BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
             EpochCache cache = driver.NewCache();
@@ -97,17 +97,6 @@ public class SanityTests
 
             FuluDriverSupport.AssertPostStateRoot(driver, Path.Combine(testCase.CasePath, "post.ssz_snappy"), state);
         });
-
-    private static void RequireMainnetPreset(string preset)
-    {
-        if (preset == nameof(ConsensusPreset.Minimal))
-        {
-            throw new NotImplementedInDriverException(
-                "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds, so they cannot decode a " +
-                "minimal-preset pre.ssz_snappy at all; this suite only runs for real against the mainnet preset " +
-                "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
-        }
-    }
 
     private static IEnumerable<TestCaseData> MinimalBlockCases() => Cases(ConsensusPreset.Minimal, "blocks", "meta.yaml");
     private static IEnumerable<TestCaseData> MinimalSlotCases() => Cases(ConsensusPreset.Minimal, "slots", "slots.yaml");

@@ -12,7 +12,7 @@ namespace Ethereum.Ssz.Test;
 
 public static class SszConsensusTestLoader
 {
-    // Public: Ethereum.ConsensusSpec.Test's preset-archive suites pull from the same release, just a
+    // Public: Ethereum.ConsensusSpec.Test's preset-archive suites use the same release URL layout, just a
     // different asset name (mainnet.tar.gz / minimal.tar.gz instead of general.tar.gz).
     public const string ArchiveUrlTemplate = "https://github.com/ethereum/consensus-specs/releases/download/{0}/{1}";
     private const string SszGenericPrefix = "tests/general/phase0/ssz_generic";
@@ -38,10 +38,7 @@ public static class SszConsensusTestLoader
     //
     // Do not pin back to the v1.6.x line either: it predates the EIP-7916 base-subtree change and
     // its progressive-container roots disagree with this implementation.
-    // Public so other suites pinned to the same consensus-specs release (e.g. the preset-archive
-    // suites in Ethereum.ConsensusSpec.Test) derive it instead of duplicating the literal - see this
-    // constant's own remarks for why the pin sits at this exact tag.
-    public const string DefaultVersion = "v1.7.0-alpha.13";
+    private const string DefaultVersion = "v1.7.0-alpha.13";
     private const string DefaultArchive = "general.tar.gz";
 
     private static string? s_testsRoot;
