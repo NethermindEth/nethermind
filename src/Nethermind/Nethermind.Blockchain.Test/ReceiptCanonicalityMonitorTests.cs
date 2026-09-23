@@ -90,15 +90,18 @@ public class ReceiptCanonicalityMonitorTests
         receiptStorage.Get(removed).Returns(_ => throw new InvalidOperationException());
         receiptStorage.Get(added).Returns([]);
 
+        ConcurrentQueue<(Hash256?, bool)> published = new();
         using ManualResetEventSlim addedPublished = new();
         monitor.ReceiptsInserted += (_, e) =>
         {
+            published.Enqueue((e.BlockHeader.Hash, e.WasRemoved));
             if (e.BlockHeader.Hash == added.Hash) addedPublished.Set();
         };
 
         RaiseNewCanonical(receiptStorage, added, removed);
 
         Assert.That(addedPublished.Wait(Timeout), Is.True);
+        Assert.That(published, Is.EqualTo(new[] { (added.Hash, false) }));
     }
 
     [Test]
