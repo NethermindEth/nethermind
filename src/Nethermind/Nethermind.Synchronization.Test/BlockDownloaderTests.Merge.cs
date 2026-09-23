@@ -55,6 +55,7 @@ public partial class BlockDownloaderTests
             new SyncConfig()
             {
                 FastSync = enableFastSync,
+                SnapSync = enableFastSync,
                 StateMinDistanceFromHead = fastSyncLag
             },
             new MergeConfig()
@@ -179,6 +180,7 @@ public partial class BlockDownloaderTests
         await using IContainer container = CreateMergeNode(blockTrees, new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = blocksToIgnore
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
@@ -263,6 +265,7 @@ public partial class BlockDownloaderTests
         }, new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         });
         PostMergeContext ctx = container.Resolve<PostMergeContext>();
