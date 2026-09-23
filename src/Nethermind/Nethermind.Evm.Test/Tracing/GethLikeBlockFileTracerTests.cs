@@ -32,7 +32,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         string file = TraceFile(code);
         string output = returnsData ? new string('0', 62) + "2a" : "";
         string gasUsed = returnsData ? "0x12" : "0x0";
-        Assert.That(file, Does.EndWith($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"}}\n"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(file, Does.EndWith($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"}}\n"));
+            Assert.That(file, Does.Not.Contain("\r"));
+        }
     }
 
     [TestCase("negative", 0)]
