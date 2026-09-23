@@ -49,14 +49,13 @@ public class ForkchoiceUpdatedHandler(
     IMergeConfig mergeConfig,
     ILogManager logManager) : IForkchoiceUpdatedHandler
 {
-    /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING; the commit takes milliseconds.</summary>
     /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING.</summary>
     /// <remarks>
-    /// Short on purpose: this wait holds the engine API's lock, which every other call has eight seconds to acquire,
-    /// and the commit it waits for takes milliseconds. A commit slower than this falls through to the SYNCING it got
-    /// before the wait existed.
+    /// The newPayload budget: before newPayload answered ahead of the commit, it held the engine API's lock through that
+    /// same commit for up to this long, so waiting here holds it no longer than it was held then. A shorter bound turns
+    /// a slow commit into a SYNCING the CL never got before, which leaves it on an optimistic head.
     /// </remarks>
-    private static readonly TimeSpan CommitWait = TimeSpan.FromSeconds(1);
+    private readonly TimeSpan _commitWait = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
 
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
@@ -393,13 +392,12 @@ public class ForkchoiceUpdatedHandler(
     /// <summary>
     /// newPayload answers VALID once the block is executed, before it is committed and marked processed, and the CL's
     /// forkchoice follows at once: a head that has its verdict and is still committing gets its moment here rather than
-    /// the SYNCING that would make the CL retry. Only for such a head, only when nothing is queued ahead of it, and
-    /// briefly, because the engine API's lock is held meanwhile: a head that is merely queued, a backlog or a commit
-    /// slower than <see cref="CommitWait"/> get the SYNCING they always got.
+    /// the SYNCING that would make the CL retry. A head that is merely queued has no verdict, so the wait completes at
+    /// once and it gets the SYNCING it always got; blocks queued behind a committing head do not delay its commit, so
+    /// they do not stop the wait either.
     /// </summary>
     private async Task WaitForHeadCommitAsync(BlockHeader newHeadHeader)
     {
-        if (processingQueue.Count > 1) return;
         Hash256 hash = newHeadHeader.GetOrCalculateHash();
         if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { WasProcessed: false }) return;
 
@@ -407,7 +405,7 @@ public class ForkchoiceUpdatedHandler(
         if (removed.IsCompleted) return;
 
         using CancellationTokenSource bound = new();
-        if (await Task.WhenAny(removed, Task.Delay(CommitWait, bound.Token)) == removed) bound.Cancel();
+        if (await Task.WhenAny(removed, Task.Delay(_commitWait, bound.Token)) == removed) bound.Cancel();
     }
 
     private BlockHeader? GetBlockHeader(Hash256 headBlockHash)
