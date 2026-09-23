@@ -92,11 +92,12 @@ namespace Nethermind.Xdc
 
             if (_xdcContext.CurrentRound != 0)
             {
-                bool bootstrapFirstProposer = IsBootstrapFirstProposer();
-                if (IsSynced() || bootstrapFirstProposer)
+                bool synced = IsSynced();
+                bool bootstrapChain = IsBootstrap();
+                if (synced || bootstrapChain)
                 {
-                    if (!IsSynced() && bootstrapFirstProposer)
-                        _logger.Info("Starting round at genesis bootstrap, we are round-1 leader");
+                    if (!synced && bootstrapChain)
+                        _logger.Info("Starting round at genesis bootstrap");
 
                     XdcBlockHeader head = (XdcBlockHeader)_blockTree.Head!.Header;
                     StartRoundTask(head, _xdcContext.CurrentRound);
@@ -149,7 +150,7 @@ namespace Nethermind.Xdc
 
         private void OnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            if (!IsSynced()) return;
+            if (!IsSynced() && !IsBootstrap()) return;
 
             _lastActivityTime = DateTime.UtcNow;
 
@@ -159,7 +160,7 @@ namespace Nethermind.Xdc
 
         private void OnNewRound(object? sender, NewRoundEventArgs args)
         {
-            if (!IsSynced()) return;
+            if (!IsSynced() && !IsBootstrap()) return;
 
             _lastActivityTime = DateTime.UtcNow;
 
@@ -485,25 +486,26 @@ namespace Nethermind.Xdc
         private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
             epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
 
-        // TODO: consider using a another sync indicator
-        private bool IsSynced() => !_blockTree.IsSyncing().isSyncing && _blockTree.Head is not null;
+        private bool IsSynced() => !_blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).isSyncing && _blockTree.Head is not null;
 
         /// <summary>
-        /// True when this node is the round-1 leader on a freshly bootstrapped chain where
+        /// True when this node is on a freshly bootstrapped chain where
         /// <see cref="IsSynced"/> is false only because genesis counts as syncing.
         /// </summary>
-        private bool IsBootstrapFirstProposer()
+        private bool IsBootstrap()
         {
-            if (_blockTree.Head?.Header is not XdcBlockHeader head || _xdcContext.CurrentRound != 1)
+            if (_blockTree.Head?.Header is not XdcBlockHeader head)
+                return false;
+
+            (_, ulong headNumber, ulong bestSuggested) = _blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus);
+            if (headNumber != 0 || bestSuggested != 0)
                 return false;
 
             BlockRoundInfo qc = _xdcContext.HighestQC.ProposedBlockInfo;
             if (qc.Round != 0 || qc.BlockNumber != head.Number || qc.Hash != head.Hash)
                 return false;
 
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(head, 1);
-            return _epochSwitchManager.GetEpochSwitchInfo(head) is { Masternodes.Length: > 0 }
-                && IsMyTurn(head, 1, spec);
+            return _epochSwitchManager.GetEpochSwitchInfo(head) is { Masternodes.Length: > 0 };
         }
     }
 }

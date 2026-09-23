@@ -25,10 +25,17 @@ namespace Nethermind.Core.Test.Crypto
             ecdsa.Verify(testCase.Tx.SenderAddress!, testCase.Tx);
         }
 
+        [Test]
+        public void Verify_returns_false_for_unsigned_transaction()
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            Transaction tx = Build.A.Transaction.TestObject;
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Signature_test_sepolia(bool eip155)
+            Assert.That(ecdsa.Verify(TestItem.AddressA, tx), Is.False);
+        }
+
+        [Test]
+        public void Signature_test_sepolia([Values] bool eip155)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             PrivateKey key = Build.A.PrivateKey.TestObject;
@@ -38,9 +45,40 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(address, Is.EqualTo(key.Address));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Signature_test_sepolia_1559(bool eip155)
+        [Test]
+        public void TryRecoverAddress_recovers_sender_for_signed_transaction()
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            PrivateKey key = Build.A.PrivateKey.TestObject;
+            Transaction tx = Build.A.Transaction.TestObject;
+            ecdsa.Sign(key, tx);
+
+            bool result = ecdsa.TryRecoverAddress(tx, out Address? address);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(address, Is.EqualTo(key.Address));
+            }
+        }
+
+        [Test]
+        public void TryRecoverAddress_returns_false_for_unsigned_transaction()
+        {
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            Transaction tx = Build.A.Transaction.TestObject;
+
+            bool result = ecdsa.TryRecoverAddress(tx, out Address? address);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.False);
+                Assert.That(address, Is.Null);
+            }
+        }
+
+        [Test]
+        public void Signature_test_sepolia_1559([Values] bool eip155)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             PrivateKey key = Build.A.PrivateKey.TestObject;
@@ -50,9 +88,8 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(address, Is.EqualTo(key.Address));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Signature_test_olympic(bool isEip155Enabled)
+        [Test]
+        public void Signature_test_olympic([Values] bool isEip155Enabled)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
             PrivateKey key = Build.A.PrivateKey.TestObject;

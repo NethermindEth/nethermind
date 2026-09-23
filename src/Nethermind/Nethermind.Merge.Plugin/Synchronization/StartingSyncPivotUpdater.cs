@@ -175,12 +175,8 @@ public class StartingSyncPivotUpdater(
     }
 
     protected async Task<ulong?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
-        (await TryGetFromPeers(hash, cancellationToken, static async (peer, hash256, token) =>
-        {
-            BlockHeader? header = await peer.GetHeadBlockHeader(hash256, token);
-            // Only accept a header that is actually the requested block; a peer must not substitute another.
-            return header is not null && header.Hash == hash256 ? header : null;
-        }, type))?.Number;
+        (await TryGetFromPeers(hash, cancellationToken,
+            static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token), type))?.Number;
 
     protected async Task<BlockHeader?> TryGetFromPeers<T>(T id, CancellationToken cancellationToken,
         Func<ISyncPeer, T, CancellationToken, Task<BlockHeader?>> getHeader, string? type = Pivot)

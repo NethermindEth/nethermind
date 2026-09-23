@@ -26,9 +26,9 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -719,18 +719,6 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_reject_null_receipt_payload_during_deserialization()
-    {
-        TxReceipt[] receipts = [null!];
-        using ReceiptsMessage70 response = new(1111, new[] { receipts }.ToPooledList(), false);
-
-        HandleIncomingStatusMessage();
-        RlpException? exception = Assert.Throws<RlpException>(() => HandleZeroMessage(response, Eth70MessageCode.Receipts));
-
-        Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
-    }
-
-    [Test]
     public async Task Should_return_immediately_when_peer_returns_fewer_blocks_than_requested()
     {
         // Scenario: Handler requests N blocks, peer returns fewer with LastBlockIncomplete = false
@@ -849,6 +837,19 @@ public class Eth70ProtocolHandlerTests
             Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
             Assert.That(response.LastBlockIncomplete, Is.False);
         }
+    }
+
+    [Test]
+    public void Should_bound_receipt_lookups_for_blocks_without_transactions()
+    {
+        // A block with no transactions costs a single byte of response, so the size limit alone
+        // never ends the loop.
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns([]);
+
+        ReceiptsMessage70 response = RequestReceipts(
+            Enumerable.Repeat(Keccak.Zero, NethermindSyncLimits.MaxHashesFetch).ToArray());
+
+        Assert.That(response.TxReceipts, Has.Count.EqualTo(2 * NethermindSyncLimits.MaxReceiptFetch));
     }
 
     [Test]

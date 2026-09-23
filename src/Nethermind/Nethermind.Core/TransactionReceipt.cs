@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -62,11 +63,11 @@ namespace Nethermind.Core
         // receipts root or block hashes. They are surfaced solely in the diagnostic
         // JSON dump (BlockTraceDumper) to aid investigation of EIP-7778/EIP-8037
         // gas-accounting issues.
-        /// <summary>EIP-7778 pre-refund gas used by block-level gas accounting (regular dim).</summary>
+        /// <summary>EIP-7778 pre-refund gas used by block-level gas accounting (execution dim).</summary>
         public ulong BlockGasUsed { get; set; }
         /// <summary>EIP-8037 state-dim gas (storage / state-mutating ops) used by block accounting.</summary>
         public ulong StorageGasUsed { get; set; }
-        /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas).</summary>
+        /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas). Not the EIP-8037 execution-dimension block-accounting figure — see <see cref="BlockGasUsed"/>.</summary>
         public ulong ExecutionGasUsed { get; set; }
         /// <summary>Effective gas price after EIP-1559 baseFee adjustment - computed at receipt-build time.</summary>
         public UInt256 EffectiveGasPrice { get; set; }
@@ -82,7 +83,8 @@ namespace Nethermind.Core
         ///     Removed in EIP-658
         /// </summary>
         public Hash256? PostTransactionState { get; set; }
-        public Bloom? Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
+        [AllowNull]
+        public Bloom Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
 
@@ -120,7 +122,7 @@ namespace Nethermind.Core
         /// </summary>
         public Hash256StructRef PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
 
-        public BloomStructRef Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
+        public BloomStructRef Bloom = receipt.Bloom.ToStructRef();
 
         /// <summary>
         /// Rlp encoded logs

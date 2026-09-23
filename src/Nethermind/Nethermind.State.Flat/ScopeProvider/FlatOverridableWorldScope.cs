@@ -75,7 +75,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             snapshot.Dispose();
         }
 
-        _resourcePool.ReturnCachedResource(ResourcePool.Usage.ReadOnlyProcessingEnv, transientResource);
+        transientResource.ReleaseLease();
     }
 
     private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock)
@@ -161,11 +161,12 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             return false;
         }
 
-        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
         {
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
             int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-            return snapshotBundle.GetSlot(address, index, selfDestructIdx) ?? [];
+            snapshotBundle.GetSlot(address, index, selfDestructIdx, out UInt256? slot);
+            value = slot.GetValueOrDefault();
         }
 
         public byte[]? GetCode(Hash256 codeHash)
@@ -179,6 +180,15 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             StateId stateId = new(baseBlock);
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
 
+            // Mirrors FlatStateReader.RunTreeVisitor: a historical bundle is trie-less, so fail as state-unavailable
+            // instead of throwing NotSupportedException mid-walk.
+            if (snapshotBundle.IsHistorical)
+            {
+                throw new MissingTrieNodeException(
+                    $"State proofs at historical block {stateId.BlockNumber} are not supported", null, TreePath.Empty,
+                    baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
+            }
+
             ConcurrencyController concurrency = new(1);
             StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle, concurrency);
 
@@ -189,4 +199,3 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);
     }
 }
-

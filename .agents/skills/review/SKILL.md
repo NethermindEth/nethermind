@@ -164,6 +164,8 @@ Only flag when it genuinely affects correctness or usability:
 - A comment or doc that **contradicts the code** — misleading docs are worse than no docs
 - A non-obvious consensus rule or algorithm applied with no reference to the EIP or Yellow Paper section — link it so future reviewers can verify
 - Config keys whose units or defaults are ambiguous (e.g., is it milliseconds or seconds?)
+- An **added** comment that adds nothing beyond the code it sits on — it restates the adjacent statement (`// increment counter` over `i++`), narrates an obviously-named call (`// create the writer` over `new Writer()`), or an XML `<summary>` that just repeats the member name. Per AGENTS.md, "comments that merely restate the code are noise" — flag it for deletion. Hold the >80% bar: flag only clearly-redundant comments, never a terse one that explains *why*, cites a spec/EIP, states an invariant, or warns the caller.
+- An **added** comment carrying author uncertainty or generation residue — `// not sure how to handle this`, `// maybe this should be X`, `// AI generated`, `// as requested`, or a bare `// TODO` with no actionable detail. These should be resolved or moved to a tracked issue, not merged.
 
 ---
 

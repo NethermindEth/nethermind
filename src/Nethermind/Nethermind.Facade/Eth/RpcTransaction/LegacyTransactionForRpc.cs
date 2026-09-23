@@ -111,12 +111,13 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.Zero;
 
-        // null Gas → caller didn't specify, default to gasCap (uncapped if gasCap is unset).
-        // explicit Gas (including 0) → use as-is, capped at gasCap. This matches Geth: gas: 0x0
-        // is a literal request that fails the intrinsic gas check, not a "missing" signal.
+        // Omitted gas falls back to the lower of the RPC gas cap and the processor-enforced cap; an explicit gas
+        // is only lowered to the RPC gas cap, so a request above the processor-enforced cap still fails validation.
+        // Explicit zero is a literal request that fails the intrinsic gas check, not a missing-gas default.
         ulong effectiveCap = gasCap.EffectiveGasCap();
+        ulong processorCap = spec?.GetProcessorEnforcedTxGasLimitCap() ?? ulong.MaxValue;
         tx.GasLimit = Gas is null
-            ? effectiveCap
+            ? Math.Min(effectiveCap, processorCap)
             : Math.Min(Gas.Value, effectiveCap);
 
         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))

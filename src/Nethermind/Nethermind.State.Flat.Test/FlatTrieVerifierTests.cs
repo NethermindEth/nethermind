@@ -23,9 +23,12 @@ namespace Nethermind.State.Flat.Test;
 /// and preimage mode (two-pass verification).
 /// </summary>
 [TestFixture(FlatLayout.Flat)]
+[TestFixture(FlatLayout.PreimageFlatV1)]
 [TestFixture(FlatLayout.PreimageFlat)]
 public class FlatTrieVerifierTests(FlatLayout layout)
 {
+    private bool IsPreimage => layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat;
+
     private static readonly AccountDecoder SlimAccountDecoder = AccountDecoder.Slim;
     private MemDb _trieDb = null!;
     private RawScopedTrieStore _trieStore = null!;
@@ -46,8 +49,8 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         // These tests seed the Storage column with raw (un-wrapped) bytes after the persistence is built,
         // so slot-presence detection can't kick in — pin the raw encoding up front.
         BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
-        _persistence = layout == FlatLayout.PreimageFlat
-            ? new PreimageRocksdbPersistence(_columnsDb, _logManager)
+        _persistence = IsPreimage
+            ? new PreimageRocksdbPersistence(_columnsDb, _logManager, layout)
             : new RocksDbPersistence(_columnsDb, _logManager);
     }
 
@@ -88,7 +91,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         ValueHash256 addrHash;
         ValueHash256 slotHash;
 
-        if (layout == FlatLayout.PreimageFlat)
+        if (IsPreimage)
         {
             addrHash = CreatePreimageAddressKey(address);
             slotHash = ValueKeccak.Zero;
@@ -103,9 +106,17 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         }
 
         byte[] storageKey = new byte[52];
-        addrHash.Bytes[..4].CopyTo(storageKey.AsSpan()[..4]);
-        slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
-        addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
+        if (layout == FlatLayout.PreimageFlat)
+        {
+            addrHash.Bytes[..20].CopyTo(storageKey.AsSpan()[..20]);
+            slotHash.Bytes.CopyTo(storageKey.AsSpan()[20..52]);
+        }
+        else
+        {
+            addrHash.Bytes[..4].CopyTo(storageKey.AsSpan()[..4]);
+            slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
+            addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
+        }
 
         storageDb.PutSpan(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros());
     }
@@ -113,7 +124,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     private void CorruptAccountInFlat(Address address, Account corruptedAccount)
     {
         IDb accountDb = _columnsDb.GetColumnDb(FlatDbColumns.Account);
-        ValueHash256 addrKey = layout == FlatLayout.PreimageFlat
+        ValueHash256 addrKey = IsPreimage
             ? CreatePreimageAddressKey(address)
             : ValueKeccak.Compute(address.Bytes);
 

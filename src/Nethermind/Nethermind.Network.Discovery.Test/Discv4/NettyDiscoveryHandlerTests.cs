@@ -14,6 +14,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -74,6 +75,35 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         {
             _channels.ForEach(static x => { x.CloseAsync(); });
             await Task.Delay(50);
+        }
+
+        [Test]
+        public async Task Send_serializes_on_channel_event_loop([Values] bool sendFromEventLoop)
+        {
+            IMessageSerializationService real = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
+            IMessageSerializationService service = Substitute.For<IMessageSerializationService>();
+            bool serializedOnEventLoop = false;
+            IByteBuffer? serialized = null;
+            service.ZeroSerialize(Arg.Any<PingMsg>(), Arg.Any<IByteBufferAllocator>()).Returns(ci =>
+            {
+                serializedOnEventLoop = _channels[^1].EventLoop.InEventLoop;
+                return serialized = real.ZeroSerialize(ci.Arg<PingMsg>(), UnpooledByteBufferAllocator.Default);
+            });
+            await StartUdpChannel("127.0.0.1", 10003, _kademliaAdaptersMocks[0], service);
+            PingMsg message = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address, _address2, new byte[32])
+            {
+                FarAddress = _address2
+            };
+
+            if (sendFromEventLoop)
+                await _channels[^1].EventLoop.SubmitAsync(() => _discoveryHandlers[^1].SendMsg(message)).Unwrap();
+            else
+                await Task.Run(() => _discoveryHandlers[^1].SendMsg(message));
+
+            Assert.That(serializedOnEventLoop, Is.True);
+            await SleepWhileWaiting();
+            await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Any<PingMsg>());
+            Assert.That(serialized?.ReferenceCount, Is.Zero);
         }
 
         [Test]
@@ -168,7 +198,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             int? globalInboundMessageBurst = null,
             int? inboundMessageQueueCapacity = null,
             int? inboundMessageWorkerCount = null,
-            IMessageSerializationService? messageSerializationService = null)
+            IMessageSerializationService? messageSerializationService = null,
+            ILogManager? logManager = null)
         {
             IKademliaAdapter adapter = Substitute.For<IKademliaAdapter>();
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
@@ -179,7 +210,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 channel,
                 service,
                 Timestamper.Default,
-                LimboLogs.Instance,
+                logManager ?? LimboLogs.Instance,
                 nodeFilter,
                 globalInboundMessageBurst,
                 inboundMessageQueueCapacity,
@@ -218,6 +249,21 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public void ForwardsDiscv5MinimumSizePacketWithoutDebugLogging()
+        {
+            TestLogger logger = new() { IsTrace = false };
+            (IKademliaAdapter _, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService _) =
+                CreateHandler(logManager: new OneLoggerLogManager(new ILogger(logger)));
+            byte[] data = new byte[63];
+            DatagramPacket packet = new(Unpooled.WrappedBuffer(data), _address2, _address);
+
+            handler.ChannelRead(ctx, packet);
+
+            ctx.Received().FireChannelRead(Arg.Any<DatagramPacket>());
+            Assert.That(logger.LogList, Is.Empty);
+        }
+
+        [Test]
         public async Task FarFutureMessagesAreRejected()
         {
             PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + (long)TimeSpan.FromHours(2).TotalSeconds, _address, _address2, new byte[32])
@@ -229,6 +275,22 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await SleepWhileWaiting();
 
             _ = _kademliaAdaptersMocks[1].DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [TestCase(-60, "has expired")]
+        [TestCase(7200, "expires too far in the future")]
+        public async Task InvalidExpirationIsLoggedAtTrace(long expirationOffsetSeconds, string expectedMessage)
+        {
+            TestLogger logger = new() { IsDebug = false };
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) =
+                CreateHandler(logManager: new OneLoggerLogManager(new ILogger(logger)));
+            byte[] data = SerializePing(service, expirationOffsetSeconds);
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), _address2, _address));
+            await SleepWhileWaiting();
+
+            Assert.That(logger.LogList, Has.Some.Contains(expectedMessage));
+            _ = adapter.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
         }
 
         [Test]
@@ -308,6 +370,30 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await adapter.Received(8).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
         }
 
+        [TestCase("::ffff:127.0.0.2", "127.0.0.2")]
+        [TestCase("2001:db8::2", "2001:db8::2")]
+        public async Task DualStackSender_IsAcceptedInCanonicalForm(string senderAddress, string expectedAddress)
+        {
+            (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
+
+            TaskCompletionSource<DiscoveryMsg> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(callInfo =>
+            {
+                received.TrySetResult(callInfo.Arg<DiscoveryMsg>());
+                return Task.CompletedTask;
+            });
+
+            IPEndPoint sender = new(IPAddress.Parse(senderAddress), _address2.Port);
+            byte[] data = SerializePing(service);
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), sender, _address));
+
+            DiscoveryMsg message = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+            ctx.DidNotReceive().FireChannelRead(Arg.Any<object>());
+            Assert.That(message.FarAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse(expectedAddress), sender.Port)));
+        }
+
         [Test]
         public async Task GlobalInboundRateLimiter_Drops_Messages_AboveBurstLimit()
         {
@@ -365,9 +451,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Assert.That(() => Interlocked.CompareExchange(ref received, 0, 0), Is.EqualTo(2).After(5000, 10));
         }
 
-        private byte[] SerializePing(IMessageSerializationService service)
+        private byte[] SerializePing(IMessageSerializationService service, long expirationOffsetSeconds = 1200)
         {
-            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address2, _address, new byte[32])
+            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + expirationOffsetSeconds, _address2, _address, new byte[32])
             {
                 FarAddress = _address
             };
@@ -440,7 +526,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             }
 
             public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
-                => innerService.Deserialize<T>(buffer);
+            {
+                if (typeof(T) == typeof(PingMsg) && Interlocked.Increment(ref _deserializeCalls) == 1)
+                {
+                    deserializeEntered.Set();
+                    unblockDeserialize.Wait(TimeSpan.FromSeconds(10));
+                }
+
+                return innerService.Deserialize<T>(buffer);
+            }
         }
     }
 }

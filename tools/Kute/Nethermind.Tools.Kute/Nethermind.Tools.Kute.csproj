@@ -9,10 +9,15 @@
       <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
       <PackageReference Include="System.CommandLine" />
       <PackageReference Include="Prometheus.Client.MetricPusher" />
+      <PackageReference Include="ZstdSharp.Port" />
     </ItemGroup>
 
     <ItemGroup>
       <EmbeddedResource Include="Assets/report.html" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <InternalsVisibleTo Include="Nethermind.Tools.Kute.Test" />
     </ItemGroup>
 
 </Project>

@@ -1,12 +1,13 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 
-public sealed class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
+public sealed class NeighbourMsgHandler(int k, IPAddress localIp) : ITaskCompleter<Node[]>
 {
     private readonly Lock _lock = new();
     private readonly Node[] _nodes = new Node[k];
@@ -28,11 +29,16 @@ public sealed class NeighbourMsgHandler(int k) : ITaskCompleter<Node[]>
         {
             if (TaskCompletionSource.Task.IsCompleted) return false;
 
-            if (_count >= k || _count + neighborsMsg.Nodes.Count > k) return false;
+            if (_count >= k) return false;
 
-            for (int i = 0; i < neighborsMsg.Nodes.Count; i++)
+            for (int i = 0; i < neighborsMsg.Nodes.Count && _count < k; i++)
             {
-                _nodes[_count++] = neighborsMsg.Nodes[i];
+                Node node = neighborsMsg.Nodes[i];
+                if (node.HasDiscoveryEndpoint &&
+                    DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address))
+                {
+                    _nodes[_count++] = node;
+                }
             }
 
             isComplete = _count == k;

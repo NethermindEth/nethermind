@@ -16,12 +16,14 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -43,15 +45,16 @@ public class Eth68ProtocolHandler(ISession session,
     : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
     private const int MaxPooledTransactionHashesPerRequest = 256;
+    private static readonly int PooledTransactionsResponseSoftLimit = (int)2.MiB;
 
-    private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
-    private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
+    protected readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
+    protected readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
-    private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
+    protected readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
         ? long.MaxValue
         : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
 
-    private ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
+    protected ClockCache<ValueHash256, (int, TxType)> TxShapeAnnouncements { get; } = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
 
     public override string Name => "eth68";
 
@@ -66,10 +69,18 @@ public class Eth68ProtocolHandler(ISession session,
             case Eth68MessageCode.NewPooledTransactionHashes:
                 if (CanReceiveTransactions)
                 {
-                    NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
-                        Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
-                    ReportIn(newPooledTxHashesMsg, size);
-                    Handle(newPooledTxHashesMsg);
+                    if (IsTransactionGossipAllowed())
+                    {
+                        NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
+                            Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
+                        ReportIn(newPooledTxHashesMsg, size);
+                        Handle(newPooledTxHashesMsg);
+                    }
+                    else
+                    {
+                        const string txFlooding = $"Ignoring {nameof(NewPooledTransactionHashesMessage68)} because of transaction flooding.";
+                        ReportIn(txFlooding, size);
+                    }
                 }
                 else
                 {
@@ -100,7 +111,8 @@ public class Eth68ProtocolHandler(ISession session,
 
         TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
-        AddNotifiedTransactions(message.Hashes.AsSpan());
+        foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
+            NotifiedTransactions.Set(in hash);
 
         long startTime = Logger.IsTrace ? Stopwatch.GetTimestamp() : 0;
 
@@ -109,92 +121,214 @@ public class Eth68ProtocolHandler(ISession session,
         if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
     }
 
-    protected void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
+    protected void RequestPooledTransactions(
+        IOwnedReadOnlyList<ValueHash256> hashes,
+        IOwnedReadOnlyList<int> sizes,
+        IOwnedReadOnlyList<byte> types,
+        bool registerForRetry = true)
     {
-        ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
         ReadOnlySpan<int> sizesSpan = sizes.AsSpan();
         ReadOnlySpan<byte> typesSpan = types.AsSpan();
 
-        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashesSpan);
+        for (int start = 0; start < hashes.Count; start += MaxPooledTransactionHashesPerRequest)
+        {
+            int count = Math.Min(MaxPooledTransactionHashesPerRequest, hashes.Count - start);
+            RequestPooledTransactionsPage(
+                hashes, start,
+                sizesSpan.Slice(start, count),
+                typesSpan.Slice(start, count),
+                registerForRetry);
+        }
+    }
 
+    private void RequestPooledTransactionsPage(
+        IOwnedReadOnlyList<ValueHash256> hashes,
+        int start,
+        ReadOnlySpan<int> sizes,
+        ReadOnlySpan<byte> types,
+        bool registerForRetry)
+    {
+        using ArrayPoolListRef<int> newTxHashesIndexes = AddMarkUnknownHashes(hashes, start, sizes, types, registerForRetry);
         if (newTxHashesIndexes.Count == 0)
         {
-            hashes.Dispose();
-            sizes.Dispose();
-            types.Dispose();
-
             return;
         }
 
         int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-        ArrayPoolList<Hash256> hashesToRequest = new(newTxHashesIndexes.Count);
-
-        int discoveredCount = newTxHashesIndexes.Count;
+        // Retry batches must remain compatible with peers that still use the 100 KiB response target.
+        int responseSizeLimit = registerForRetry ? PooledTransactionsResponseSoftLimit : TransactionsMessage.MaxPacketSize;
+        int responseSizeLeft = responseSizeLimit;
+        int requestCapacity = Math.Min(newTxHashesIndexes.Count, MaxPooledTransactionHashesPerRequest);
+        ArrayPoolList<ValueHash256>? hashesToRequest = null;
+        ReadOnlySpan<ValueHash256> valueHashes = hashes.AsSpan();
         int toRequestCount = 0;
+        bool hasOversizedTransaction = false;
 
         foreach (int index in newTxHashesIndexes.AsSpan())
         {
-            Hash256 hash = hashesSpan[index];
-            int txSize = sizesSpan[index];
-            TxType txType = (TxType)typesSpan[index];
-            TxShapeAnnouncements.Set(hash, (txSize, txType));
+            ref readonly ValueHash256 hash = ref valueHashes[start + index];
+            (int Size, TxType Type) txShape = TxShapeAnnouncements.TryGet(hash, out (int Size, TxType Type) announcedShape)
+                ? announcedShape
+                : (sizes[index], (TxType)types[index]);
+            int txSize = txShape.Size;
 
-            long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
-
-            if (txSize > maxTxSize)
-                continue;
-
-            if (CanRequestPooledTransaction(txType))
+            bool isOversized = txSize > TransactionsMessage.MaxPacketSize;
+            if (ShouldSendCurrentRequest(txSize, packetSizeLeft, responseSizeLeft, toRequestCount, hasOversizedTransaction))
             {
-                bool countsTowardPacketSize = txSize <= TransactionsMessage.MaxPacketSize;
-                if (ShouldSendCurrentRequest(countsTowardPacketSize, txSize, packetSizeLeft, toRequestCount))
-                {
-                    SendHashesToRequest();
-                }
+                SendHashesToRequest();
+            }
 
-                hashesToRequest.Add(hash);
-                _txPool.NotifyAboutTx(hash, this);
-                if (countsTowardPacketSize)
-                {
-                    packetSizeLeft -= txSize;
-                }
-                toRequestCount++;
+            hashesToRequest ??= new ArrayPoolList<ValueHash256>(requestCapacity);
+            hashesToRequest.Add(hash);
+            toRequestCount++;
+
+            if (isOversized)
+            {
+                responseSizeLeft -= txSize;
+                hasOversizedTransaction = true;
+            }
+            else
+            {
+                packetSizeLeft -= txSize;
             }
         }
 
-        if (hashesToRequest.Count is not 0)
+        if (hashesToRequest is not null)
         {
-            Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
-        }
-        else
-        {
-            hashesToRequest.Dispose();
+            SendHashesToRequest();
         }
 
         void SendHashesToRequest()
         {
-            Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
-            hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
+            ArrayPoolList<ValueHash256> request = hashesToRequest!;
+            hashesToRequest = null;
+            SendPooledTransactionRequest<V66.Messages.GetPooledTransactionsMessage>(request);
             packetSizeLeft = TransactionsMessage.MaxPacketSize;
+            responseSizeLeft = responseSizeLimit;
             toRequestCount = 0;
+            hasOversizedTransaction = false;
         }
     }
 
-    private bool CanRequestPooledTransaction(TxType txType) => _blobSupportEnabled || txType is not TxType.Blob;
-
-    private static bool ShouldSendCurrentRequest(bool countsTowardPacketSize, int txSize, int packetSizeLeft, int toRequestCount) =>
-        toRequestCount >= MaxPooledTransactionHashesPerRequest
-        || (countsTowardPacketSize && txSize > packetSizeLeft && toRequestCount > 0);
-
-    private ArrayPoolListRef<int> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
+    public override void HandleMessages(ReadOnlySpan<ValueHash256> txHashes)
     {
-        ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(hashes.Length);
-        for (int i = 0; i < hashes.Length; i++)
+        for (int start = 0; start < txHashes.Length; start += MaxPooledTransactionHashesPerRequest)
         {
-            Hash256 hash = hashes[i];
-            if (!_txPool.IsKnown(hash))
+            int count = Math.Min(MaxPooledTransactionHashesPerRequest, txHashes.Length - start);
+            HandleMessagesPage(txHashes.Slice(start, count));
+        }
+    }
+
+    private void HandleMessagesPage(ReadOnlySpan<ValueHash256> txHashes)
+    {
+        ArrayPoolList<ValueHash256>? hashesWithShape = null;
+        ArrayPoolList<int>? sizes = null;
+        ArrayPoolList<byte>? types = null;
+        ArrayPoolList<ValueHash256>? hashesWithoutShape = null;
+
+        try
+        {
+            for (int i = 0; i < txHashes.Length; i++)
             {
-                if (_txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
+                ValueHash256 txHash = txHashes[i];
+                if (TxShapeAnnouncements.TryGet(txHash, out (int Size, TxType Type) txShape))
+                {
+                    hashesWithShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
+                    sizes ??= new ArrayPoolList<int>(txHashes.Length);
+                    types ??= new ArrayPoolList<byte>(txHashes.Length);
+
+                    hashesWithShape.Add(txHash);
+                    sizes.Add(txShape.Size);
+                    types.Add((byte)txShape.Type);
+                }
+                else
+                {
+                    hashesWithoutShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
+                    hashesWithoutShape.Add(txHash);
+                }
+            }
+
+            if (hashesWithShape is not null)
+            {
+                RequestPooledTransactions(hashesWithShape, sizes!, types!, registerForRetry: false);
+            }
+
+            if (hashesWithoutShape is not null)
+            {
+                base.HandleMessages(hashesWithoutShape.AsSpan());
+            }
+        }
+        finally
+        {
+            hashesWithShape?.Dispose();
+            sizes?.Dispose();
+            types?.Dispose();
+            hashesWithoutShape?.Dispose();
+        }
+    }
+
+    private protected bool CanRequestPooledTransaction(TxType txType) =>
+        CanDecodeTransactionType(txType) && (txType is not TxType.Blob || _blobSupportEnabled);
+
+    private static bool CanDecodeTransactionType(TxType txType) => txType switch
+    {
+        TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.Blob or TxType.SetCode => true,
+        _ => false,
+    };
+
+    private static bool ShouldSendCurrentRequest(
+        int txSize,
+        int packetSizeLeft,
+        int responseSizeLeft,
+        int toRequestCount,
+        bool hasOversizedTransaction)
+    {
+        if (toRequestCount == 0)
+        {
+            return false;
+        }
+
+        bool isOversized = txSize > TransactionsMessage.MaxPacketSize;
+        return isOversized != hasOversizedTransaction
+            || (isOversized ? txSize > responseSizeLeft : txSize > packetSizeLeft);
+    }
+
+    private ArrayPoolListRef<int> AddMarkUnknownHashes(
+        IOwnedReadOnlyList<ValueHash256> hashes,
+        int start,
+        ReadOnlySpan<int> sizes,
+        ReadOnlySpan<byte> types,
+        bool registerForRetry)
+    {
+        ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(sizes.Length);
+        ReadOnlySpan<ValueHash256> valueHashes = hashes.AsSpan();
+        for (int i = 0; i < sizes.Length; i++)
+        {
+            ref readonly ValueHash256 hash = ref valueHashes[start + i];
+            bool isKnown = _txPool.IsKnown(in hash);
+            if (!isKnown)
+            {
+                (int Size, TxType Type) txShape = (sizes[i], (TxType)types[i]);
+                if (txShape.Size <= 0 || !CanDecodeTransactionType(txShape.Type))
+                {
+                    continue;
+                }
+
+                // Delivered transactions must match their first decodable announcement even when that announcement was not requestable.
+                if (!TxShapeAnnouncements.TryGet(hash, out (int Size, TxType Type) retainedShape))
+                {
+                    TxShapeAnnouncements.Set(hash, txShape);
+                    retainedShape = txShape;
+                }
+
+                if (!CanRequestPooledTransaction(retainedShape.Type)
+                    || retainedShape.Size > (retainedShape.Type.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
+                {
+                    // Keep the valid shape for delivery validation, but make shaped retries a no-op for transactions this node cannot process.
+                    continue;
+                }
+
+                if (!registerForRetry || _txPool.NotifyAboutTx(in hash, this) is AnnounceResult.RequestRequired)
                 {
                     discoveredTxHashesAndSizes.Add(i);
                 }
@@ -203,6 +337,9 @@ public class Eth68ProtocolHandler(ISession session,
 
         return discoveredTxHashesAndSizes;
     }
+
+    protected override bool ShouldNotifyTransactionCore(Transaction tx) =>
+        !IsSparseBlobTransaction(tx) && base.ShouldNotifyTransactionCore(tx);
 
     protected override void SendNewTransactionCore(Transaction tx)
     {
@@ -215,7 +352,7 @@ public class Eth68ProtocolHandler(ISession session,
             SendMessage(
                 new ArrayPoolList<byte>(1) { (byte)tx.Type },
                 new ArrayPoolList<int>(1) { tx.GetLength() },
-                new ArrayPoolList<Hash256>(1) { tx.Hash }
+                new ArrayPoolList<ValueHash256>(1) { tx.Hash!.ValueHash256 }
             );
         }
     }
@@ -230,7 +367,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
         ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<ValueHash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {
@@ -246,7 +383,7 @@ public class Eth68ProtocolHandler(ISession session,
             {
                 types.Add((byte)tx.Type);
                 sizes.Add(tx.GetLength());
-                hashes.Add(tx.Hash);
+                hashes.Add(tx.Hash.ValueHash256);
                 TxPool.Metrics.PendingTransactionsHashesSent++;
             }
         }
@@ -263,10 +400,24 @@ public class Eth68ProtocolHandler(ISession session,
         }
     }
 
-    private void SendMessage(IOwnedReadOnlyList<byte> types, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<Hash256> hashes)
+    private void SendMessage(IOwnedReadOnlyList<byte> types, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<ValueHash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Send(message);
+    }
+
+    protected override bool CanServePooledTransaction(Transaction tx) => !IsSparseBlobTransaction(tx);
+
+    /// <inheritdoc/>
+    protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    {
+        if (_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask) && !availableMask.IsFull)
+        {
+            tx = default;
+            return false;
+        }
+
+        return base.TryGetPooledTransactionToServe(hash, out tx);
     }
 
     protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
@@ -279,10 +430,7 @@ public class Eth68ProtocolHandler(ISession session,
             if (!ValidateSizeAndType(transactionsSpan[i]))
             {
                 // [0, startIdx) were already handled in a prior scheduler slot.
-                for (int j = startIdx; j < transactionsSpan.Length; j++)
-                {
-                    transactionsSpan[j].ClearPreHash();
-                }
+                ReturnUnsubmittedTransactions(transactionsSpan[startIdx..]);
                 transactions.Dispose();
                 throw new SubprotocolException("invalid pooled tx type or size");
             }
@@ -292,5 +440,37 @@ public class Eth68ProtocolHandler(ISession session,
     }
 
     private bool ValidateSizeAndType(Transaction? tx)
-        => tx is not null && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (tx.GetLength() == txShape.Size && tx.Type == txShape.Type));
+        => tx is not null
+        && !IsSparseBlobTransaction(tx)
+        && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (MatchesAnnouncedTransactionSize(tx, txShape.Size) && tx.Type == txShape.Type));
+
+    /// <summary>
+    /// Checks a fetched pooled transaction against the size its announcement declared.
+    /// </summary>
+    protected static bool MatchesAnnouncedSize(Transaction tx, int announcedSize)
+    {
+        int actualSize = tx.GetLength();
+        return actualSize == announcedSize
+            || tx.SupportsBlobs
+            && tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            && GetGethBlobTransactionSizeEstimate(tx, wrapper) == announcedSize;
+    }
+
+    // geth estimates the network wrapper as the canonical transaction plus a separately wrapped sidecar.
+    // https://github.com/ethereum/go-ethereum/blob/fdce1ff22f2c2bde0e6a8d1921168f4b7036781f/core/txpool/blobpool/blobpool.go#L174-L201
+    private static int GetGethBlobTransactionSizeEstimate(Transaction tx, ShardBlobNetworkWrapper wrapper)
+    {
+        int sidecarContentLength = checked(
+            Rlp.LengthOf(wrapper.Blobs)
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs));
+        return checked(tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength));
+    }
+
+    protected virtual bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize) =>
+        MatchesAnnouncedSize(tx, announcedSize);
+
+    private static bool IsSparseBlobTransaction(Transaction tx) =>
+        tx is LightTransaction { ProofVersion: ProofVersion.V1 } lightTx && !lightTx.BlobCellMask.IsFull
+        || tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper && !wrapper.HasFullBlobs();
 }

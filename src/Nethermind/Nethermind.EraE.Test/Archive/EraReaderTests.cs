@@ -4,7 +4,9 @@
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.EraE.Archive;
+using Nethermind.Serialization.Rlp;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.Specs;
@@ -14,6 +16,25 @@ namespace Nethermind.EraE.Test.Archive;
 
 internal class EraReaderTests
 {
+    [Test, NonParallelizable]
+    public async Task Imported_transactions_do_not_consume_the_network_pool([Values] bool postMerge)
+    {
+        Transaction source = Build.A.Transaction.Signed().TestObject;
+        using TestEraFile file = await TestEraFile.Create(postMerge ? 0U : 1U, postMerge ? 1U : 0U, transaction: source);
+        HashSet<Transaction> pooled = new(ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
+        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+
+        using EraReader reader = new(file.FilePath);
+        (Block block, _) = await reader.GetBlockByNumber(0);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions[0].Hash, Is.EqualTo(source.Hash));
+            Assert.That(pooled.Contains(block.Transactions[0]), Is.False);
+        }
+    }
+
     [TestCase(3U, 0U)]
     [TestCase(0U, 3U)]
     public async Task GetBlockByNumber_ReturnsCorrectBlockNumbers(uint preMergeCount, uint postMergeCount)
@@ -40,12 +61,12 @@ internal class EraReaderTests
     }
 
     [Test]
-    public async Task ReadAccumulatorRoot_InPreMergeEpoch_Succeeds()
+    public async Task ReadAccumulatorRoot_InPreMergeEpoch_ReturnsRootOfContents()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        Assert.That(() => sut.ReadAccumulatorRoot(), Throws.Nothing);
+        Assert.That(sut.ReadAccumulatorRoot(), Is.EqualTo(ComputeAccumulatorRoot(file.Contents)));
     }
 
     [Test]
@@ -53,11 +74,7 @@ internal class EraReaderTests
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
 
-        using AccumulatorCalculator calculator = new();
-        foreach ((Block block, _) in file.Contents)
-            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
-
-        ValueHash256 expectedRoot = calculator.ComputeRoot();
+        ValueHash256 expectedRoot = ComputeAccumulatorRoot(file.Contents);
 
         using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
@@ -100,11 +117,7 @@ internal class EraReaderTests
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 2);
 
-        using AccumulatorCalculator calculator = new();
-        foreach ((Block block, _) in file.Contents.Where(c => !c.Block.Header.IsPostMerge))
-            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
-
-        ValueHash256 expectedRoot = calculator.ComputeRoot();
+        ValueHash256 expectedRoot = ComputeAccumulatorRoot(file.Contents.Where(c => !c.Block.Header.IsPostMerge));
 
         using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
@@ -152,4 +165,11 @@ internal class EraReaderTests
         Assert.That(receipts[0].Bloom, Is.Not.Null, "bloom must be auto-computed from logs");
     }
 
+    private static ValueHash256 ComputeAccumulatorRoot(IEnumerable<(Block Block, TxReceipt[] Receipts)> contents)
+    {
+        using AccumulatorCalculator calculator = new();
+        foreach ((Block block, _) in contents)
+            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
+        return calculator.ComputeRoot();
+    }
 }

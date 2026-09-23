@@ -15,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -41,16 +40,13 @@ namespace Nethermind.Consensus.Processing;
 /// </remarks>
 public partial class BlockAccessListManager(
     IWorldState stateProvider,
-    ISpecProvider specProvider,
-    IBlockhashProvider blockHashProvider,
     ILogManager logManager,
     IBlocksConfig blocksConfig,
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
-    CodeInfoRepositoryFactory codeInfoRepositoryFactory,
+    BalTxProcessorFactory txProcessorFactory,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-    ITransactionProcessorFactory? transactionProcessorFactory = null,
     IExecutionRequestsProcessorFactory? executionRequestsProcessorFactory = null)
     : IBlockAccessListManager, IDisposable
 {
@@ -58,12 +54,13 @@ public partial class BlockAccessListManager(
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
-    private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory));
+    private BalReadStoragePlan? _readPlan;
+    // Null in a build that folds parallel execution out, so nothing behind the pool is compiled.
+    private readonly Lazy<ParallelTxProcessorWithWorldStateManager>? _parallelTxProcessorWithWorldStateManager = ExecutionFlags.ParallelExecution
+        ? new Lazy<ParallelTxProcessorWithWorldStateManager>(() => new(stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, txProcessorFactory))
+        : null;
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory));
+        new(() => new(stateProvider, logManager, txProcessorFactory));
     private const int GasValidationChunkSize = 8;
     private ulong? _gasRemaining;
     private bool _isBuilding;
@@ -129,11 +126,13 @@ public partial class BlockAccessListManager(
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
+        DisposableExtensions.DisposeAndNull(ref _readPlan);
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-        ParallelExecutionEnabled = Enabled
+        ParallelExecutionEnabled = ExecutionFlags.ParallelExecution
+            && Enabled
             && blocksConfig.ParallelExecution
             && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)
             && !_isBuilding
@@ -148,6 +147,9 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
+            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+            if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
+                _readPlan = new BalReadStoragePlan(bal);
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
             // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
@@ -157,7 +159,7 @@ public partial class BlockAccessListManager(
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
-                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: _readPlan is null);
                 ulong suggestedReads = 0;
                 foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
                 {
@@ -167,7 +169,6 @@ public partial class BlockAccessListManager(
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
-            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
         }
 
         _balWarmupTask = StartBalReadWarmup(suggestedBlock);
@@ -176,7 +177,7 @@ public partial class BlockAccessListManager(
     // Only the parallel executor drains the hint; sequential execution contends with the warming reads.
     private Task? StartBalReadWarmup(Block suggestedBlock)
     {
-        if (!BatchReadEnabled || !ParallelExecutionEnabled || suggestedBlock.BlockAccessList is null)
+        if (!ExecutionFlags.ParallelExecution || !BatchReadEnabled || !ParallelExecutionEnabled || suggestedBlock.BlockAccessList is null)
             return null;
 
         try
@@ -192,6 +193,9 @@ public partial class BlockAccessListManager(
 
     public void WaitForBalWarmup()
     {
+        // Only the parallel path starts warming, so a build without it has nothing to wait for.
+        if (!ExecutionFlags.ParallelExecution) return;
+
         Task? task = _balWarmupTask;
         if (task is null) return;
         _balWarmupTask = null;
@@ -216,16 +220,18 @@ public partial class BlockAccessListManager(
     {
         if (Enabled)
         {
-            _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager.Value : _sequentialTxProcessorWithWorldStateManager.Value;
+            _txProcessorWithWorldStateManager = ExecutionFlags.ParallelExecution && ParallelExecutionEnabled
+                ? _parallelTxProcessorWithWorldStateManager!.Value
+                : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot);
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot, _readPlan);
         }
     }
 
     public void SpendGas(ulong gas)
     {
         CheckInitialized();
-        _gasRemaining -= gas;
+        _gasRemaining = _gasRemaining.Value.SaturatingSub(gas);
     }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -258,19 +264,20 @@ public partial class BlockAccessListManager(
 
     public void ReturnTxProcessor(uint balIndex)
     {
-        if (Enabled && ParallelExecutionEnabled)
+        if (ExecutionFlags.ParallelExecution && Enabled && ParallelExecutionEnabled)
         {
             // Eagerly detach the worker's generated BAL into a per-tx slot and recycle the
             // pool slot. Workers therefore never block on the validator — but the validator
             // still merges per-tx slots into the target in order, preserving incremental
             // validation semantics.
-            _parallelTxProcessorWithWorldStateManager.Value.Return(balIndex);
+            _parallelTxProcessorWithWorldStateManager!.Value.Return(balIndex);
         }
     }
 
     public void Dispose()
     {
-        if (_parallelTxProcessorWithWorldStateManager.IsValueCreated)
+        DisposableExtensions.DisposeAndNull(ref _readPlan);
+        if (ExecutionFlags.ParallelExecution && _parallelTxProcessorWithWorldStateManager!.IsValueCreated)
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }

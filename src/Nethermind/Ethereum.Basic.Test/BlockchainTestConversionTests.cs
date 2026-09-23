@@ -10,9 +10,8 @@ namespace Ethereum.Basic.Test;
 
 public class BlockchainTestConversionTests
 {
-    [TestCase("Amsterdam")]
-    [TestCase("ParisToShanghaiAtTime15k")]
-    public void ConvertToBlockchainTests_PopulatesForkName(string network)
+    [Test]
+    public void ConvertToBlockchainTests_PopulatesForkName([Values("Amsterdam", "ParisToShanghaiAtTime15k")] string network)
     {
         string json = $$"""
             {

@@ -31,16 +31,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     // it save a decent amount of CPU.
     private readonly ConcurrentDictionary<StateId, ReadOnlySnapshotBundle> _readonlySnapshotBundleCache = new();
 
-    // First it go to here
     private readonly Task _compactorTask;
     private readonly Channel<StateId> _compactorJobs;
 
-    // And here in parallel.
     // The node cache is kinda important for performance, so we want it populated as quickly as possible.
     private readonly Task _populateTrieNodeCacheTask;
     private readonly Channel<TransientResource> _populateTrieNodeCacheJobs;
 
-    // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
@@ -52,6 +49,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     // For debugging. Do the compaction synchronously
     private readonly bool _inlineCompaction;
+    private readonly CancellationToken _processExitToken;
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
@@ -90,10 +88,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
 
-        // Created after the throwing setup above: a ctor throw never constructs the linked CTS (whose
-        // registration on the long-lived ProcessExitSource would otherwise leak, since Autofac does not
-        // dispose a failed-ctor instance).
-        _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
+        // Keep worker cancellation under this manager's control so process-exit cancellation cannot preempt the
+        // ordered channel drain in DisposeAsync. A job that fails is logged and the worker takes the next one; only
+        // a worker that stops, cancelled or failed outside its jobs, cancels the others, so no producer is left
+        // waiting for space on a channel nobody reads any more.
+        _processExitToken = processExitSource.Token;
+        _cancelTokenSource = new();
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
@@ -119,6 +119,16 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            _cancelTokenSource.Cancel();
+        }
+        catch
+        {
+            _cancelTokenSource.Cancel();
+            throw;
+        }
+        finally
+        {
+            _compactorJobs.Writer.TryComplete();
         }
     }
 
@@ -153,6 +163,17 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            _cancelTokenSource.Cancel();
+        }
+        catch
+        {
+            _cancelTokenSource.Cancel();
+            throw;
+        }
+        finally
+        {
+            // No producer may wait for space after the only consumer has stopped.
+            _persistenceJobs.Writer.TryComplete();
         }
     }
 
@@ -181,13 +202,29 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            _cancelTokenSource.Cancel();
+        }
+        catch
+        {
+            _cancelTokenSource.Cancel();
+            throw;
+        }
+        finally
+        {
+            _populateTrieNodeCacheJobs.Writer.TryComplete();
         }
     }
 
     private void PopulateTrieNodeCache(TransientResource transientResource)
     {
-        _trieNodeCache.Add(transientResource);
-        _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+        try
+        {
+            _trieNodeCache.Add(transientResource);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
     }
 
     private async Task NotifyWhenSlow(string name, Func<Task> closure)
@@ -299,7 +336,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
                 if (!_snapshotRepository.HasState(baseBlock))
                 {
-                    throw new InvalidOperationException($"State {baseBlock} no longer exists; concurrently removed.");
+                    throw new StateUnavailableException($"State {baseBlock} no longer exists; concurrently removed.");
                 }
 
                 attempt++;
@@ -353,7 +390,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (persistedStateId != StateId.PreGenesis && endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
-            _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+            transientResource.ReleaseLease();
             snapshot.Dispose();
             return;
         }
@@ -361,7 +398,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (!_snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase))
         {
             if (_logger.IsWarn) _logger.Warn($"State {snapshot.To} already added");
-            _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+            transientResource.ReleaseLease();
             snapshot.Dispose();
             return;
         }
@@ -371,19 +408,19 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (_inlineCompaction)
         {
-            RunCompactJobSync(endBlock, transientResource, _cancelTokenSource.Token).Wait();
+            RunCompactJobSync(endBlock, transientResource, _processExitToken).Wait();
         }
         else
         {
             if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
             {
                 // Queue full, return to pool instead of leaking
-                _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+                transientResource.ReleaseLease();
             }
 
             if (!_compactorJobs.Writer.TryWrite(endBlock))
             {
-                if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
+                if (_processExitToken.IsCancellationRequested) return; // When cancelled the queue stop
 
                 // Block processing is now stalled waiting for the compactor to drain the queue; measure how long.
                 long stallStart = Stopwatch.GetTimestamp();
@@ -394,7 +431,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
                 while (true)
                 {
-                    using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cancelTokenSource.Token);
+                    using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
+                        _processExitToken, _cancelTokenSource.Token);
                     cts.CancelAfter(delay);
 
                     try
@@ -402,7 +440,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                         _compactorJobs.Writer.WriteAsync(endBlock, cts.Token).AsTask().Wait();
                         break;
                     }
-                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException && !_cancelTokenSource.Token.IsCancellationRequested)
+                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException
+                        && !_processExitToken.IsCancellationRequested
+                        && !_cancelTokenSource.Token.IsCancellationRequested)
                     {
                         delay = TimeSpan.FromSeconds(5);
                         if (_logger.IsWarn) _logger.Warn("Compactor job stall! Persistence is too slow for the network.");
@@ -440,11 +480,22 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Persist every snapshot up to the committed head into RocksDB and clear the caches.
+    /// </summary>
+    /// <remarks>
+    /// Persists every tier up to the committed head, finalized or not, and prunes both tiers behind it.
+    /// That collapses the reorg window to zero: the single RocksDB state ends up at an unfinalized block,
+    /// and a later reorg below it cannot be served because the branch-point state no longer exists and
+    /// <see cref="AddSnapshot"/> rejects snapshots at or below the persisted block. Only for special cases
+    /// that need the state at the tip in RocksDB — genesis load and tests — never on the normal
+    /// shutdown path, where the persisted-snapshot tier is already durable and reloaded on start.
+    /// </remarks>
     public void FlushCache(CancellationToken cancellationToken)
     {
         if (_logger.IsInfo) _logger.Info("FlatDbManager FlushCache started.");
 
-        StateId persistedState = _persistenceManager.FlushToPersistence();
+        StateId persistedState = _persistenceManager.FlushToPersistence(cancellationToken);
 
         if (cancellationToken.IsCancellationRequested) return;
         if (persistedState == StateId.PreGenesis) return;
@@ -462,22 +513,57 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         return false;
     }
 
+    public void DropStateNotReachableFrom(in StateId head)
+    {
+        _persistenceManager.DropStateNotReachableFrom(head);
+        // Cached bundles lease the snapshots they were assembled over; without this the pruned ones stay
+        // alive until the periodic clear.
+        ClearReadOnlyBundleCache();
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Drains the queues in feed order — the compactor writes into the persistence queue, so it has to
+    /// drain first — before cancelling, so in-flight finality-driven persistence is not lost. It does not
+    /// <see cref="FlushCache"/>: that would persist the unfinalized tail and break reorgs across the
+    /// restart. The in-memory tier is re-executed from the persisted-snapshot tier on the next start.
+    /// If a worker stops before draining, sibling waits are cancelled instead; a failed job does not stop a worker.
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) == 1) return;
 
-        ClearReadOnlyBundleCache();
-        _cancelTokenSource.Cancel();
+        try
+        {
+            ClearReadOnlyBundleCache();
 
-        _compactorJobs.Writer.Complete();
-        _populateTrieNodeCacheJobs.Writer.Complete();
-        _persistenceJobs.Writer.Complete();
+            _compactorJobs.Writer.TryComplete();
+            await _compactorTask;
 
-        await _compactorTask;
-        await _populateTrieNodeCacheTask;
-        await _persistenceTask;
-        await _clearBundleCacheTask;
+            _persistenceJobs.Writer.TryComplete();
+            await _persistenceTask;
+        }
+        finally
+        {
+            _compactorJobs.Writer.TryComplete();
+            _persistenceJobs.Writer.TryComplete();
+            _populateTrieNodeCacheJobs.Writer.TryComplete();
+            _cancelTokenSource.Cancel();
 
-        _cancelTokenSource.Dispose();
+            try
+            {
+                await Task.WhenAll(
+                    _compactorTask,
+                    _persistenceTask,
+                    _populateTrieNodeCacheTask,
+                    _clearBundleCacheTask);
+            }
+            finally
+            {
+                while (_populateTrieNodeCacheJobs.Reader.TryRead(out TransientResource? cachedResource))
+                    cachedResource.ReleaseLease();
+                _cancelTokenSource.Dispose();
+            }
+        }
     }
 }

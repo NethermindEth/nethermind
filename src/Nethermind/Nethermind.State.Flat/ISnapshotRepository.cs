@@ -63,6 +63,9 @@ public interface ISnapshotRepository
     /// <summary>Whether the persisted base bucket holds a snapshot at <paramref name="stateId"/>.</summary>
     bool HasBasePersistedSnapshot(in StateId stateId);
 
+    /// <summary>Leases the persisted base snapshot whose To equals <paramref name="to"/>. Caller disposes.</summary>
+    bool TryLeaseBasePersistedSnapshot(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
+
     /// <summary>Every loaded persisted snapshot across the three buckets, for one-off lifecycle iteration
     /// (bloom rebuild) at load time.</summary>
     IEnumerable<PersistedSnapshot> PersistedSnapshots { get; }
@@ -74,7 +77,18 @@ public interface ISnapshotRepository
     void MarkPersistedTierForShutdown();
 
     /// <summary>Prune persisted snapshots with <c>To.BlockNumber</c> before the given block number.</summary>
+    /// <remarks>Also evicts cached finalized roots and verified ancestry below that height.</remarks>
     void RemovePersistedStatesUntil(ulong blockNumber);
+
+    /// <summary>Remove persisted snapshots at or below finality whose state root differs from the
+    /// known finalized root at that height. Retains the current persisted base and locally committed ancestry.</summary>
+    /// <remarks>Defers when finality is ahead of the committed head, a known finalized tip conflicts with its ancestry,
+    /// or the committed chain cannot reach the current persisted state. Unknown roots retain only their own heights.
+    /// Known roots are cached until their heights are pruned or fall below the current persisted state;
+    /// conflicting roots are invalidated and unknown roots are retried on later passes. Ancestry verified
+    /// against a committed head is reused while later heads extend it.</remarks>
+    void RemoveFinalizedPersistedForks(in StateId currentPersistedState);
+
     /// <summary>Assemble the backward chain from <paramref name="stateId"/> down to
     /// <paramref name="targetStateId"/> across both tiers, returning the in-memory and persisted snapshots
     /// along the winning path (oldest-first). Empty when no path reaches the target; caller disposes the result.</summary>
@@ -144,4 +158,14 @@ public interface ISnapshotRepository
     /// </remarks>
     /// <param name="canonicalStateId">The canonical state being persisted.</param>
     void RemoveSiblingAndDescendents(in StateId canonicalStateId);
+
+    /// <summary>
+    /// Removes every snapshot in both tiers whose <c>To</c> is not on the <c>From</c>-edge ancestry of
+    /// <paramref name="head"/>, and records <paramref name="head"/> as the last committed state. No-op
+    /// when the head is neither <paramref name="currentPersistedState"/> nor a state some snapshot holds,
+    /// or when <paramref name="currentPersistedState"/> is not on that ancestry.
+    /// </summary>
+    /// <returns>The number of removals: one per state dropped from the in-memory tier and one per state
+    /// dropped from the persisted tier, so a state held in both counts twice.</returns>
+    int RemoveUnreachableFrom(in StateId head, in StateId currentPersistedState);
 }

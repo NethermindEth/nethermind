@@ -65,7 +65,7 @@ public class PreimageRecordingPersistenceTests
         Address addressB = TestItem.AddressB;
         Account account = TestItem.GenerateIndexedAccount(0);
         UInt256 slot = 42;
-        SlotValue? value = SlotValue.FromSpanWithoutLeadingZero([0x01, 0x02, 0x03]);
+        UInt256? value = BaseFlatPersistence.DecodeSlotValue([0x01, 0x02, 0x03]);
 
         using (IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None))
         {
@@ -76,7 +76,7 @@ public class PreimageRecordingPersistenceTests
 
         // Verify inner batch calls
         innerBatch.Received(1).SetAccount(addressA, account);
-        innerBatch.Received(1).SetStorage(addressA, slot, Arg.Is<SlotValue?>(v => v != null));
+        innerBatch.Received(1).SetStorage(addressA, slot, Arg.Is<UInt256?>(v => v != null));
         innerBatch.Received(1).SelfDestruct(addressB);
 
         // Verify address preimages
@@ -159,7 +159,7 @@ public class PreimageRecordingPersistenceTests
         }
 
         // With preimage available, raw operations are translated to non-raw
-        Assert.That(innerBatch.SetStorageCalls, Has.One.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c =>
+        Assert.That(innerBatch.SetStorageCalls, Has.One.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c =>
             c.Addr == address && c.Slot == slot && c.Value is not null));
         Assert.That(innerBatch.SetAccountCalls, Has.One.Matches<(Address Addr, Account? Account)>(c =>
             c.Addr == address && c.Account == account));

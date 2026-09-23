@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -6,6 +6,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
@@ -18,8 +19,10 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using System;
+using Microsoft.Extensions.ObjectPool;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -40,13 +43,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
-          IMessageHandler<PooledTransactionRequestMessage>
+          IBatchMessageHandler<PooledTransactionRequestMessage, ValueHash256>
     {
         public override string Name => "eth65";
 
         public override byte ProtocolVersion => EthVersions.Eth65;
 
         private const int MaxNumberOfTxsInOneMsg = 256;
+        private static readonly ObjectPool<HashSet<ValueHash256>> ResponseHashesPool =
+            new DefaultObjectPool<HashSet<ValueHash256>>(new ResponseHashesPolicy(), maximumRetained: 16);
+
+        private sealed class ResponseHashesPolicy : PooledObjectPolicy<HashSet<ValueHash256>>
+        {
+            public override HashSet<ValueHash256> Create() => new(MaxNumberOfTxsInOneMsg);
+
+            public override bool Return(HashSet<ValueHash256> hashes)
+            {
+                hashes.Clear();
+                return true;
+            }
+        }
+        private static readonly int PooledTransactionsResponseSoftLimit = (int)2.MiB;
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
@@ -56,9 +73,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     if (CanReceiveTransactions)
                     {
-                        using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
-                        ReportIn(newPooledTxMsg, size);
-                        Handle(newPooledTxMsg);
+                        if (IsTransactionGossipAllowed())
+                        {
+                            using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                            ReportIn(newPooledTxMsg, size);
+                            Handle(newPooledTxMsg);
+                        }
+                        else
+                        {
+                            const string txFlooding = $"Ignoring {nameof(NewPooledTransactionHashesMessage)} because of transaction flooding.";
+                            ReportIn(txFlooding, size);
+                        }
                     }
                     else
                     {
@@ -75,10 +100,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
-                        Handle(pooledTxMsg);
+                        HandlePooledTransactions(pooledTxMsg);
                     }
                     else
                     {
+                        IgnorePooledTransactionResponse();
                         const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
                         ReportIn(ignored, size);
                     }
@@ -91,15 +117,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         protected virtual void Handle(NewPooledTransactionHashesMessage msg) => RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
 
-        protected void AddNotifiedTransactions(ReadOnlySpan<Hash256> hashes)
+        protected void AddNotifiedTransactions(ReadOnlySpan<ValueHash256> hashes)
         {
             for (int i = 0; i < hashes.Length; i++)
             {
-                Hash256 hash = hashes[i];
-                if (hash is not null)
-                {
-                    NotifiedTransactions.Set(hash.ValueHash256);
-                }
+                NotifiedTransactions.Set(hashes[i]);
             }
         }
 
@@ -113,36 +135,83 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
-        internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
+        internal ValueTask<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
+            ArrayPoolList<Transaction> txsToSend = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
 
-            int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-            foreach (Hash256 hash in msg.Hashes.AsSpan())
+            // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
+            // first 256 hashes miss, keep scanning without growing the deduplication set.
+            HashSet<ValueHash256> seenHashes = ResponseHashesPool.Get();
+            try
             {
-                if (cancellationToken.IsCancellationRequested) break;
-
-                if (_txPool.TryGetPendingTransaction(hash, out Transaction tx))
+                // Eth/68 and later use the 2 MiB pooled-transactions soft response limit from the devp2p eth capability.
+                int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
+                    ? PooledTransactionsResponseSoftLimit
+                    : TransactionsMessage.MaxPacketSize;
+                foreach (ref readonly ValueHash256 hash in msg.Hashes.AsSpan())
                 {
-                    int txSize = tx.GetLength();
+                    if (cancellationToken.IsCancellationRequested) break;
 
-                    if (txSize > packetSizeLeft && txsToSend.Count > 0)
+                    if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && txsToSend.Count > 0)
                     {
                         break;
                     }
 
-                    txsToSend.Add(tx);
-                    packetSizeLeft -= txSize;
-                    TxPool.Metrics.PendingTransactionsSent++;
-                }
-            }
+                    if (seenHashes.Count < MaxNumberOfTxsInOneMsg && !seenHashes.Add(hash))
+                    {
+                        continue;
+                    }
 
-            return Task.FromResult(new PooledTransactionsMessage(txsToSend));
+                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    {
+                        Transaction responseTx = PreparePooledTransactionForResponse(tx);
+                        int txSize = responseTx.GetLength();
+
+                        if (txSize > packetSizeLeft && txsToSend.Count > 0)
+                        {
+                            break;
+                        }
+
+                        txsToSend.Add(responseTx);
+                        packetSizeLeft -= txSize;
+                        TxPool.Metrics.PendingTransactionsSent++;
+                    }
+                }
+
+                return new ValueTask<PooledTransactionsMessage>(CreatePooledTransactionsMessage(txsToSend));
+            }
+            catch
+            {
+                txsToSend.Dispose();
+                throw;
+            }
+            finally
+            {
+                ResponseHashesPool.Return(seenHashes);
+            }
         }
+
+        protected virtual bool CanServePooledTransaction(Transaction tx) => true;
+
+        /// <summary>
+        /// Gets the representation of a pooled transaction that this protocol version can serve.
+        /// </summary>
+        protected virtual bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
+            => _txPool.TryGetPendingTransaction(hash, out tx);
+
+        protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
+
+        /// <summary>Builds the response to a <see cref="GetPooledTransactionsMessage"/>.</summary>
+        /// <remarks>Overridden by protocol versions that carry the response on a different message code.</remarks>
+        protected virtual PooledTransactionsMessage CreatePooledTransactionsMessage(IOwnedReadOnlyList<Transaction> transactions) => new(transactions);
+
+        /// <summary>Builds a transaction hash announcement.</summary>
+        /// <inheritdoc cref="CreatePooledTransactionsMessage" path="/remarks"/>
+        protected virtual NewPooledTransactionHashesMessage CreateAnnouncementMessage(IOwnedReadOnlyList<Hash256> hashes) => new(hashes);
 
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
-            void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes) => Send(new NewPooledTransactionHashesMessage(hashes));
+            void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes) => Send(CreateAnnouncementMessage(hashes));
 
             if (sendFullTx)
             {
@@ -177,43 +246,40 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes)
-            where TMessage : P2PMessage, INew<IOwnedReadOnlyList<Hash256>, TMessage>
+        private protected void SendPooledTransactionRequest<TMessage>(IOwnedReadOnlyList<ValueHash256> hashes)
+            where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>
         {
-            AddNotifiedTransactions(hashes.AsSpan());
+            ReportPooledTransactionRequest(hashes.AsSpan());
+            Send(TMessage.New(hashes));
+        }
+
+        protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes, bool registerForRetry = true)
+            where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>
+        {
+            using ArrayPoolListRef<ValueHash256> values = new(hashes.Count);
+            foreach (Hash256 hash in hashes.AsSpan()) values.Add(hash.ValueHash256);
+            RequestPooledTransactions<TMessage>(values.AsSpan(), registerForRetry);
+        }
+
+        private void RequestPooledTransactions<TMessage>(ReadOnlySpan<ValueHash256> hashesSpan, bool registerForRetry)
+            where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>
+        {
+            foreach (ref readonly ValueHash256 hash in hashesSpan) NotifiedTransactions.Set(in hash);
 
             long startTime = Stopwatch.GetTimestamp();
-            TxPool.Metrics.PendingTransactionsHashesReceived += hashes.Count;
+            TxPool.Metrics.PendingTransactionsHashesReceived += hashesSpan.Length;
 
-            ArrayPoolList<Hash256> newTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
-
-            if (newTxHashes.Count is 0)
+            for (int start = 0; start < hashesSpan.Length; start += MaxNumberOfTxsInOneMsg)
             {
-                newTxHashes.Dispose();
-                return;
-            }
-
-            if (newTxHashes.Count <= MaxNumberOfTxsInOneMsg)
-            {
-                Send(TMessage.New(newTxHashes));
-            }
-            else
-            {
-                try
-                {
-                    for (int start = 0; start < newTxHashes.Count; start += MaxNumberOfTxsInOneMsg)
-                    {
-                        int end = Math.Min(start + MaxNumberOfTxsInOneMsg, newTxHashes.Count);
-
-                        ArrayPoolList<Hash256> hashesToRequest = new(end - start);
-                        hashesToRequest.AddRange(newTxHashes.AsSpan()[start..end]);
-
-                        Send(TMessage.New(hashesToRequest));
-                    }
-                }
-                finally
+                int count = Math.Min(MaxNumberOfTxsInOneMsg, hashesSpan.Length - start);
+                ArrayPoolList<ValueHash256> newTxHashes = AddMarkUnknownHashes(hashesSpan.Slice(start, count), registerForRetry);
+                if (newTxHashes.Count is 0)
                 {
                     newTxHashes.Dispose();
+                }
+                else
+                {
+                    SendPooledTransactionRequest<TMessage>(newTxHashes);
                 }
             }
 
@@ -221,29 +287,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
-        private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
+        private ArrayPoolList<ValueHash256> AddMarkUnknownHashes(ReadOnlySpan<ValueHash256> hashes, bool registerForRetry)
         {
-            ArrayPoolList<Hash256> discoveredTxHashesAndSizes = new(hashes.Length);
+            ArrayPoolList<ValueHash256> discoveredTxHashesAndSizes = new(hashes.Length);
 
             for (int i = 0; i < hashes.Length; i++)
             {
-                Hash256 hash = hashes[i];
-                if (!_txPool.IsKnown(hash))
+                ref readonly ValueHash256 hash = ref hashes[i];
+                if (!_txPool.IsKnown(in hash)
+                    && (!registerForRetry || _txPool.NotifyAboutTx(in hash, this) is AnnounceResult.RequestRequired))
                 {
-                    if (_txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
-                    {
-                        discoveredTxHashesAndSizes.Add(hash);
-                    }
+                    discoveredTxHashesAndSizes.Add(hash);
                 }
             }
 
             return discoveredTxHashesAndSizes;
         }
 
-        public virtual void HandleMessage(PooledTransactionRequestMessage message)
+        public virtual void HandleMessage(PooledTransactionRequestMessage message) =>
+            HandleMessages<GetPooledTransactionsMessage>([message.TxHash]);
+
+        public virtual void HandleMessages(ReadOnlySpan<ValueHash256> txHashes) =>
+            HandleMessages<GetPooledTransactionsMessage>(txHashes);
+
+        protected void HandleMessages<TMessage>(ReadOnlySpan<ValueHash256> txHashes)
+            where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>
         {
-            using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
+            for (int start = 0; start < txHashes.Length; start += MaxNumberOfTxsInOneMsg)
+            {
+                int count = Math.Min(MaxNumberOfTxsInOneMsg, txHashes.Length - start);
+                RequestPooledTransactions<TMessage>(txHashes.Slice(start, count), registerForRetry: false);
+            }
         }
     }
 }

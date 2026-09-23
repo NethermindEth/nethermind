@@ -23,12 +23,6 @@ public ref struct Merkleizer
         _filled = 0;
     }
 
-    public Merkleizer(int depth)
-    {
-        _chunks = new UInt256[depth + 1];
-        _filled = 0;
-    }
-
     public void Feed(UInt256 chunk) => FeedAtLevel(chunk, 0);
 
     private void FeedAtLevel(UInt256 chunk, int level)
@@ -68,7 +62,7 @@ public ref struct Merkleizer
                 break;
             }
 
-            UInt256 chunk = Merkle.ZeroHashes[lowestSet];
+            UInt256 chunk = Merkle.ZeroHash(lowestSet);
             FeedAtLevel(chunk, lowestSet);
         }
 

@@ -332,7 +332,7 @@ namespace Nethermind.Db.LogIndex
             {
                 if (algoBytes.IsEmpty) // DB is empty
                 {
-                    KeyValuePair<string, CompressionAlgorithm> selected = configAlgo is not null
+                    KeyValuePair<string, CompressionAlgorithm> selected = configAlgoName is not null && configAlgo is not null
                         ? KeyValuePair.Create(configAlgoName, configAlgo)
                         : CompressionAlgorithm.Best;
 
@@ -347,7 +347,7 @@ namespace Nethermind.Db.LogIndex
                 _metaDb.DangerousReleaseMemory(algoBytes);
             }
 
-            if (!CompressionAlgorithm.Supported.TryGetValue(usedAlgoName, out CompressionAlgorithm usedAlgo))
+            if (!CompressionAlgorithm.Supported.TryGetValue(usedAlgoName, out CompressionAlgorithm? usedAlgo))
             {
                 throw new NotSupportedException(
                     $"Used compression algorithm ({usedAlgoName}) is not supported on this platform. " +
@@ -548,11 +548,11 @@ namespace Nethermind.Db.LogIndex
                 throw new ArgumentException($"Unexpected blocks batch order: ({batch[0]} to {batch[^1]}).");
 
             if (!IsBlockNewer(batch[^1].BlockNumber, isBackwardSync))
-                return new(batch);
+                return new(batch, isBackwardSync);
 
             long timestamp = Stopwatch.GetTimestamp();
 
-            LogIndexAggregate aggregate = new(batch);
+            LogIndexAggregate aggregate = new(batch, isBackwardSync);
             foreach ((int blockNumber, TxReceipt[] receipts) in batch)
             {
                 if (!IsBlockNewer(blockNumber, isBackwardSync))
@@ -563,7 +563,7 @@ namespace Nethermind.Db.LogIndex
 
                 foreach (TxReceipt receipt in receipts)
                 {
-                    if (receipt.Logs == null)
+                    if (receipt.Logs is null)
                         continue;
 
                     foreach (LogEntry log in receipt.Logs)
@@ -702,7 +702,7 @@ namespace Nethermind.Db.LogIndex
 
             long totalTimestamp = Stopwatch.GetTimestamp();
 
-            bool isBackwardSync = aggregate.LastBlockNum < aggregate.FirstBlockNum;
+            bool isBackwardSync = aggregate.IsBackwardSync;
             SemaphoreSlim semaphore = isBackwardSync ? _backwardWriteSemaphore : _forwardWriteSemaphore;
             await LockRunAsync(semaphore);
 

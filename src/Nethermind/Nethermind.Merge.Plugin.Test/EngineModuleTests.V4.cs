@@ -69,7 +69,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain =
             await CreateBlockchain(Prague.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -268,9 +268,8 @@ public partial class EngineModuleTests
         Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list(bool blockAccessListsEnabled)
+    [Test]
+    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list([Values] bool blockAccessListsEnabled)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(
             blockAccessListsEnabled ? Amsterdam.Instance : Prague.Instance);
@@ -408,6 +407,23 @@ public partial class EngineModuleTests
         Assert.That(head!.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests)));
     }
 
+    // EIP-7843: in SimulateBlockProduction mode the attributes are synthesised from the head itself,
+    // so their slot must be strictly greater than the head's or the handler rejects its own attributes.
+    [Test]
+    public async Task ForkchoiceUpdatedV4_without_attributes_simulates_block_production_after_Eip7843()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            Amsterdam.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", SimulateBlockProduction = true });
+        Hash256 head = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await chain.EngineRpcModule
+            .engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(head, head, head), null);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+    }
+
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null, bool withRequests = false)
@@ -429,7 +445,7 @@ public partial class EngineModuleTests
             Assert.That(payloadStatusResponse.Status, Is.EqualTo(PayloadStatus.Valid));
             if (setHead)
             {
-                Hash256 newHead = getPayloadResult!.BlockHash;
+                Hash256 newHead = getPayloadResult!.BlockHash!;
                 ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
                 ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV3(forkchoiceStateV1);
                 Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -473,7 +489,7 @@ public partial class EngineModuleTests
         bool waitForBlockImprovement,
         Withdrawal[]? withdrawals)
     {
-        Hash256 head = chain.BlockTree.HeadHash;
+        Hash256 head = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;

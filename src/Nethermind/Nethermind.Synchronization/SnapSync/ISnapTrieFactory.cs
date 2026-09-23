@@ -14,4 +14,10 @@ public interface ISnapTrieFactory
 
     ISnapTree<PathWithAccount> CreateStateTree();
     ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath);
+
+    // Marked when the range phase drains, read after EnsureInitialize, so a later run over the same data
+    // skips the phase. Records nothing by default, so a backend that does not keep its store across runs
+    // re-requests the ranges instead of skipping them over data it discarded.
+    bool IsRangePhaseFinished() => false;
+    void MarkRangePhaseFinished() { }
 }

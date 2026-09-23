@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -16,34 +17,16 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.State
 {
-    public class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
+    public partial class StorageTree : PatriciaTree, IWorldStateScopeProvider.IStorageTree
     {
-        private static readonly ValueHash256[] Lookup = CreateLookup();
         public static readonly byte[] ZeroBytes = [0];
 
-        private static ValueHash256[] CreateLookup()
-        {
-            const int LookupSize = 1024;
-
-            Span<byte> buffer = stackalloc byte[32];
-            ValueHash256[] lookup = new ValueHash256[LookupSize];
-
-            for (int i = 0; i < lookup.Length; i++)
-            {
-                UInt256 index = new((uint)i);
-                index.ToBigEndian(buffer);
-                lookup[i] = ValueKeccak.Compute(buffer);
-            }
-
-            return lookup;
-        }
-
-        public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
+        public StorageTree(IScopedTrieStore trieStore, ILogManager logManager)
             : this(trieStore, Keccak.EmptyTreeHash, logManager)
         {
         }
 
-        public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
+        public StorageTree(IScopedTrieStore trieStore, Hash256 rootHash, ILogManager logManager)
             : base(trieStore, rootHash, true, logManager) => TrieType = TrieType.Storage;
 
         [SkipLocalsInit]
@@ -71,57 +54,31 @@ namespace Nethermind.State
             ComputeKey(index, out key);
         }
 
-        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, byte[]? value)
-        {
-            byte[] encodedValue;
-            if (value.IsZero())
-            {
-                encodedValue = [];
-            }
-            else
-            {
-                encodedValue = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
-                Rlp.Encode(value, encodedValue);
-            }
-
-            return new BulkSetEntry(in key, encodedValue);
-        }
-
+        /// <summary>Looks up a slot key, returning its preimage on a cache miss.</summary>
         [SkipLocalsInit]
-        public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool TryGetCachedKey(in UInt256 index, out ValueHash256 key, out ValueHash256 preimage)
         {
-            ValueHash256[] lookup = Lookup;
-            ulong u0 = index.u0;
-            if (index.IsUint64 && u0 < (uint)lookup.Length)
+            Unsafe.SkipInit(out preimage);
+            if (index.IsUint64 && index.u0 < (uint)Lookup.Length)
             {
-                return GetArray(
-                    in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0),
-                    storageRoot);
+                key = Lookup[(int)index.u0];
+                return true;
             }
-
-            return GetWithKeyGenerate(in index, storageRoot);
-
-            [SkipLocalsInit]
-            byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
-            {
-                ComputeKey(index, out ValueHash256 key);
-                return GetArray(in key, storageRoot);
-            }
+            index.ToBigEndian(preimage.BytesAsSpan);
+            return KeccakCache.TryGet(preimage.BytesAsSpan, out key);
         }
 
-        public byte[] GetArray(in ValueHash256 key, Hash256? rootHash = null)
+        private static byte[] EncodeNonZeroValue(ReadOnlySpan<byte> value)
         {
-            ReadOnlySpan<byte> rawKey = key.Bytes;
-            ReadOnlySpan<byte> value = Get(rawKey, rootHash);
-
-            if (value.IsEmpty)
-            {
-                return ZeroBytes;
-            }
-
-            RlpReader rlp = new(value);
-            return rlp.DecodeByteArray();
+            byte[] encoded = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
+            Rlp.Encode(value, encoded);
+            return encoded;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, ReadOnlySpan<byte> value, bool isZero) =>
+            new(in key, isZero ? [] : EncodeNonZeroValue(value));
 
         public void Commit() => Commit(false, WriteFlags.None);
 
@@ -129,47 +86,107 @@ namespace Nethermind.State
 
         public bool WasEmptyTree => RootHash == EmptyTreeHash;
 
-        public byte[] Get(in UInt256 index) => Get(index, null);
-
-        public void HintSet(in UInt256 index, byte[]? value)
-        {
-        }
+        [SkipLocalsInit]
+        public void Get(in UInt256 index, out UInt256 value) => Get(in index, out value, null);
 
         [SkipLocalsInit]
-        public void Set(in UInt256 index, byte[] value)
+        internal void Get(in UInt256 index, out UInt256 value, Hash256? storageRoot)
         {
             ValueHash256[] lookup = Lookup;
             ulong u0 = index.u0;
             if (index.IsUint64 && u0 < (uint)lookup.Length)
             {
-                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), value);
+                Get(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), out value, storageRoot);
             }
             else
             {
-                SetWithKeyGenerate(in index, value);
-            }
-
-            [SkipLocalsInit]
-            void SetWithKeyGenerate(in UInt256 index, byte[] value)
-            {
-                ComputeKey(index, out ValueHash256 key);
-                SetInternal(in key, value);
+                GetWithKeyGenerate(in index, out value, storageRoot);
             }
         }
 
-        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true) => SetInternal(in key, value, rlpEncode);
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GetWithKeyGenerate(in UInt256 index, out UInt256 value, Hash256? storageRoot)
+        {
+            ComputeKey(in index, out ValueHash256 key);
+            Get(in key, out value, storageRoot);
+        }
 
-        private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
+        [SkipLocalsInit]
+        private void Get(in ValueHash256 key, out UInt256 value, Hash256? storageRoot)
+        {
+            ReadOnlySpan<byte> encoded = Get(key.Bytes, storageRoot);
+            if (encoded.IsEmpty)
+            {
+                value = default;
+                return;
+            }
+            RlpReader reader = new(encoded);
+            ReadOnlySpan<byte> decoded = reader.DecodeByteArraySpan();
+            if (decoded.Length > 32) throw new TrieException("Storage value exceeds 256 bits");
+            value = new UInt256(decoded, isBigEndian: true);
+        }
+
+        public void HintSet(in UInt256 index)
+        {
+        }
+
+        [SkipLocalsInit]
+        public void Set(in UInt256 index, ReadOnlySpan<byte> value) => Set(in index, value, value.IsZero());
+
+        [SkipLocalsInit]
+        internal void Set(in UInt256 index, ReadOnlySpan<byte> value, bool isZero)
+        {
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
+            {
+                SetInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), value, isZero);
+            }
+            else
+            {
+                SetWithKeyGenerate(in index, value, isZero);
+            }
+
+            [SkipLocalsInit]
+            void SetWithKeyGenerate(in UInt256 index, ReadOnlySpan<byte> value, bool isZero)
+            {
+                ComputeKey(index, out ValueHash256 key);
+                SetInternal(in key, value, isZero);
+            }
+        }
+
+        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
+        {
+            if (rlpEncode)
+            {
+                SetInternal(in key, value);
+            }
+            else if (value.IsZero())
+            {
+                Set(key.Bytes, []);
+            }
+            else
+            {
+                Set(key.Bytes, new CappedArray<byte>(value));
+            }
+        }
+
+        private void SetInternal(in ValueHash256 hash, ReadOnlySpan<byte> value) => SetInternal(in hash, value, value.IsZero());
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void SetInternal(in ValueHash256 hash, ReadOnlySpan<byte> value, bool isZero)
         {
             ReadOnlySpan<byte> rawKey = hash.Bytes;
-            if (value.IsZero())
+            if (isZero)
             {
                 Set(rawKey, []);
             }
             else
             {
-                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
-                Set(rawKey, rlpEncoded);
+                // Bind the CappedArray overload the Rlp one used to forward to, so a non-zero write
+                // keeps bypassing the virtual byte[] entry point that HealingStorageTree overrides.
+                Set(rawKey, new CappedArray<byte>(EncodeNonZeroValue(value)));
             }
         }
     }

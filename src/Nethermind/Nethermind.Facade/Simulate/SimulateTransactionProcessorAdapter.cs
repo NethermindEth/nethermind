@@ -11,21 +11,22 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Facade.Simulate;
 
+/// <remarks>
+/// Stateful and single-threaded: it advances a per-block <c>_currentTxIndex</c> and mutates the shared
+/// <see cref="SimulateRequestState"/> gas counters with unsynchronised <c>-=</c>. It must therefore only ever
+/// drive one transaction stream at a time, in order — i.e. the sequential block-access-list path. Simulate
+/// guarantees this by never attaching a <c>BlockAccessList</c> to its synthesised blocks, which keeps
+/// <c>BlockAccessListManager.ParallelExecutionEnabled</c> false. Do not register it on a parallel pool.
+/// </remarks>
 public class SimulateTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, SimulateRequestState simulateRequestState) : ITransactionProcessorAdapter
 {
     private int _currentTxIndex = 0;
+    private ulong _maxTotalGasLimit = ulong.MaxValue;
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
-        // The gas limit per tx go down as the block is processed.
-        if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
-        {
-            transaction.GasLimit = Math.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
-        }
-
-        if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
-        {
-            transaction.GasLimit = simulateRequestState.TotalGasLeft;
-        }
+        // The non-BAL / validation:false paths never run the block executor's pre-check, so resolve the gas
+        // here; on the BAL path this repeats it with the same budget, leaving the accepted limit unchanged.
+        PrepareForInclusionCheck(transaction, simulateRequestState.BlockStateGasLeft);
         transaction.Hash = transaction.CalculateHash();
 
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
@@ -42,7 +43,26 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _currentTxIndex = 0;
-        BlockExecutionContext ctx = new(blockExecutionContext.Header, blockExecutionContext.Spec.WithoutEip3607());
-        transactionProcessor.SetBlockExecutionContext(in ctx);
+        _maxTotalGasLimit = blockExecutionContext.Spec.GetProcessorEnforcedTxGasLimitCap();
+        transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+    }
+
+    /// <inheritdoc/>
+    public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable)
+    {
+        simulateRequestState.BlockStateGasLeft = stateGasAvailable;
+
+        // The per-dimension budgets shrink as the block is processed.
+        if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
+        {
+            transaction.GasLimit = Math.Min(
+                Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable),
+                Math.Min(simulateRequestState.TotalGasLeft, _maxTotalGasLimit));
+        }
+
+        if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
+        {
+            transaction.GasLimit = simulateRequestState.TotalGasLeft;
+        }
     }
 }

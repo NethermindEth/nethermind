@@ -52,22 +52,38 @@ public static partial class IReleaseSpecExtensions
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
+        public bool InclusionListsEnabled => spec.IsEip7805Enabled;
 
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
+
+        /// <summary>The per-transaction gas limit cap.</summary>
+        /// <remarks>
+        /// EIP-8037's absolute cap on <c>tx.gas</c> across both gas dimensions, EIP-7825's execution-gas
+        /// cap before it, uncapped earlier.
+        /// </remarks>
+        public ulong GetTxGasLimitCap()
+            => spec.IsEip8037Enabled ? Eip8037Constants.TxMaxTotalGasLimit
+                : spec.IsEip7825Enabled ? Eip7825Constants.DefaultTxGasLimitCap
+                : ulong.MaxValue;
+
+        /// <summary>The part of <see cref="GetTxGasLimitCap"/> the transaction processor rejects by itself,
+        /// including when validation is skipped.</summary>
+        /// <remarks>
+        /// EIP-7825's execution-gas cap is checked by <c>GasLimitCapTxValidator</c> and the gas estimator only, so a
+        /// caller that defaults an omitted gas limit for <c>eth_call</c>-style requests must clamp by this rather than
+        /// by <see cref="GetTxGasLimitCap"/>; the wider cap would silently drop a gas-less request to EIP-7825's
+        /// 16,777,216 — below a typical <c>JsonRpc.GasCap</c> and below the block gas limit — without rejecting
+        /// anything the processor would have run.
+        /// </remarks>
+        public ulong GetProcessorEnforcedTxGasLimitCap()
+            => spec.IsEip8037Enabled ? Eip8037Constants.TxMaxTotalGasLimit : ulong.MaxValue;
+
         /// <summary>
-        /// Returns a spec with EIP-158 disabled, preventing empty-account deletion on commit.
-        /// Used when applying state overrides to preserve EIP-7610 CREATE collision detection.
+        /// Returns a spec with EIP-158 disabled so state-override commits preserve synthetic accounts with storage.
         /// </summary>
         public IReleaseSpec WithoutEip158() =>
             spec.IsEip158Enabled ? GetNoEip158Spec(spec) : spec;
-
-        /// <summary>
-        /// Returns a spec with EIP-3607 disabled, allowing contract addresses to act as transaction senders.
-        /// Used in <c>eth_simulateV1</c> where state-overridden contracts may be the <c>from</c> address.
-        /// </summary>
-        public IReleaseSpec WithoutEip3607() =>
-            spec.IsEip3607Enabled ? GetNoEip3607Spec(spec) : spec;
     }
 }

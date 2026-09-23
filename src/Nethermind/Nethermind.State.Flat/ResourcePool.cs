@@ -57,7 +57,14 @@ public class ResourcePool : IResourcePool
 
     public void ReturnSortedSnapshotContent(Usage usage, SortedSnapshotContent sortedContent) => _categories[usage].ReturnSortedSnapshotContent(sortedContent);
 
-    public TransientResource GetCachedResource(Usage usage) => _categories[usage].GetCachedResource();
+    public TransientResource GetCachedResource(Usage usage)
+    {
+        TransientResource transientResource = _categories[usage].GetCachedResource();
+        // Arm the owner lease and register the return owner at the checkout itself, so no caller can
+        // obtain a resource whose final ReleaseLease has nowhere to return it.
+        transientResource.OnRented(this, usage);
+        return transientResource;
+    }
 
     public void ReturnCachedResource(Usage usage, TransientResource transientResource) => _categories[usage].ReturnCachedResource(transientResource);
 

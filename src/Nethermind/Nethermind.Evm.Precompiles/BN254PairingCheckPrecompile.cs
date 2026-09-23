@@ -17,7 +17,7 @@ public partial class BN254PairingCheckPrecompile : IPrecompile<BN254PairingCheck
     public static Address Address { get; } = Address.FromNumber(8);
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-7910" />
-    public static string Name => "BN254_PAIRING";
+    public string Name => "BN254_PAIRING";
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-1108" />
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 45_000UL : 100_000UL;

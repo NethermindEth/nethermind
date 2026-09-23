@@ -129,7 +129,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
             _forkAware = ForkAwareForChain(_chainSpec.ChainId);
 
-            if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
+            if (_chainSpec.Parameters.TerminalTotalDifficulty?.IsZero == true)
+            {
+                MergeBlockNumber = (ForkActivation)0;
+            }
+            else if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
                 MergeBlockNumber = (ForkActivation)(_chainSpec.Parameters.TerminalPoWBlockNumber.Value + 1);
             }
@@ -357,6 +361,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7708Enabled = (chainSpec.Parameters.Eip7708TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip7954Enabled = (chainSpec.Parameters.Eip7954TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
+            releaseSpec.IsEip7805Enabled = (chainSpec.Parameters.Eip7805TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             if (releaseSpec.IsEip7954Enabled)
             {
