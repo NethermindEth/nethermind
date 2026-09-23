@@ -1261,6 +1261,31 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// EIP-7825's execution-gas cap is enforced by <c>GasLimitCapTxValidator</c> and the gas estimator, never by the
+    /// transaction processor, so <see cref="SimulateTransactionProcessorAdapter"/> must not clamp the no-gas default
+    /// by it. 16,777,216 sits below a typical block gas limit, so clamping there would silently under-execute a
+    /// gas-less call against a block that can afford far more.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_defaults_missing_gas_above_the_eip7825_execution_cap()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        chain.RpcConfig.GasCap = Eip7825Constants.DefaultTxGasLimitCap * 4;
+
+        SimulatePayload<TransactionForRpc> payload = EthRpcSimulateTestsBase.CreateGasProbePayload();
+        payload.BlockStateCalls![0].BlockOverrides =
+            new BlockOverride { GasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2 };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        UInt256 gasAvailable = new(result.Data.First().Calls.First().ReturnData!, isBigEndian: true);
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap),
+            $"gas available ({gasAvailable}) should reflect the block budget, not the EIP-7825 execution-gas cap");
+    }
+
+    /// <summary>
     /// #12692 (item 1): the no-gas default tracks the running budget, so multiple gas-less calls in one block all fit.
     /// </summary>
     [Test]

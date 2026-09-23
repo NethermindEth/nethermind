@@ -68,6 +68,18 @@ public static partial class IReleaseSpecExtensions
                 : spec.IsEip7825Enabled ? Eip7825Constants.DefaultTxGasLimitCap
                 : ulong.MaxValue;
 
+        /// <summary>The part of <see cref="GetTxGasLimitCap"/> the transaction processor rejects by itself,
+        /// including when validation is skipped.</summary>
+        /// <remarks>
+        /// EIP-7825's execution-gas cap is checked by <c>GasLimitCapTxValidator</c> and the gas estimator only, so a
+        /// caller that defaults an omitted gas limit for <c>eth_call</c>-style requests must clamp by this rather than
+        /// by <see cref="GetTxGasLimitCap"/>; the wider cap would silently drop a gas-less request to EIP-7825's
+        /// 16,777,216 — below a typical <c>JsonRpc.GasCap</c> and below the block gas limit — without rejecting
+        /// anything the processor would have run.
+        /// </remarks>
+        public ulong GetProcessorEnforcedTxGasLimitCap()
+            => spec.IsEip8037Enabled ? Eip8037Constants.TxMaxTotalGasLimit : ulong.MaxValue;
+
         /// <summary>
         /// Returns a spec with EIP-158 disabled so state-override commits preserve synthetic accounts with storage.
         /// </summary>

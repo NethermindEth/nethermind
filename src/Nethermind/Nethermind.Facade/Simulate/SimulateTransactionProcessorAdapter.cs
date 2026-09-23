@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -42,7 +43,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _currentTxIndex = 0;
-        _maxTotalGasLimit = blockExecutionContext.Spec.IsEip8037Enabled ? Eip8037Constants.TxMaxTotalGasLimit : ulong.MaxValue;
+        _maxTotalGasLimit = blockExecutionContext.Spec.GetProcessorEnforcedTxGasLimitCap();
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
     }
 
