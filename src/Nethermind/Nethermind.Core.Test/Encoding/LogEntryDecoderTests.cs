@@ -75,9 +75,8 @@ public class LogEntryDecoderTests
         Assert.That(decoded, Is.Null);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Interface_decoders_return_null_for_empty_log_entry(bool compact)
+    [Test]
+    public void Interface_decoders_return_null_for_empty_log_entry([Values] bool compact)
     {
         RlpDecoder<LogEntry?> decoder = compact ? CompactLogEntryDecoder.Instance : LogEntryDecoder.Instance;
         RlpReader ctx = new(Rlp.OfEmptyList.Bytes);
@@ -85,9 +84,8 @@ public class LogEntryDecoderTests
         Assert.That(decoder.Decode(ref ctx), Is.Null);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Storage_struct_ref_decoders_return_default_for_empty_log_entry(bool compact)
+    [Test]
+    public void Storage_struct_ref_decoders_return_default_for_empty_log_entry([Values] bool compact)
     {
         RlpReader reader = new(Rlp.OfEmptyList.Bytes);
 
@@ -113,9 +111,8 @@ public class LogEntryDecoderTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Struct_ref_decoders_reject_null_address(bool compact)
+    [Test]
+    public void Struct_ref_decoders_reject_null_address([Values] bool compact)
     {
         Rlp malformed = compact
             ? Rlp.Encode(Rlp.OfEmptyByteArray, Rlp.OfEmptyList, Rlp.Encode(0), Rlp.OfEmptyByteArray)
@@ -152,9 +149,8 @@ public class LogEntryDecoderTests
         });
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Compact_decoder_rejects_zero_prefix_that_expands_data_beyond_limit(bool useStructRef)
+    [Test]
+    public void Compact_decoder_rejects_zero_prefix_that_expands_data_beyond_limit([Values] bool useStructRef)
     {
         Rlp malformed = CreateCompactLogEntryWithTooLargeZeroPrefix();
 

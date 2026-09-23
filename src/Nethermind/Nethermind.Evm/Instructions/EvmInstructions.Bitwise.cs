@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
@@ -12,7 +11,7 @@ namespace Nethermind.Evm;
 
 public static partial class EvmInstructions
 {
-    /// <summary>Writes a value below 2^64 into a stack slot, in the stack's big-endian layout.</summary>
+    /// <summary>Writes a value below 2^64 into a stack slot, in the stack's limb layout.</summary>
     /// <remarks>
     /// For targets with no 256-bit register, building the word as an <see cref="EvmWord"/> value and
     /// storing it makes the value address-taken, so it lands on the frame and is read back to be stored
@@ -36,12 +35,12 @@ public static partial class EvmInstructions
         else
         {
             ref ulong parts = ref As<byte, ulong>(ref slot);
-            parts = 0;
             Add(ref parts, 1) = 0;
             Add(ref parts, 2) = 0;
+            Add(ref parts, 3) = 0;
         }
-
-        WriteUnaligned(ref Add(ref slot, EvmStack.WordSize - sizeof(ulong)), BinaryPrimitives.ReverseEndianness(value));
+        // Stack words are in UInt256 limb layout: the value is limb 0, as is.
+        WriteUnaligned(ref slot, value);
     }
 
     /// <summary>
@@ -69,39 +68,44 @@ public static partial class EvmInstructions
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpBitwise">The specific bitwise operation to execute.</typeparam>
+    /// <typeparam name="TTracingInst">A compile-time flag indicating whether instruction tracing is active.</typeparam>
     /// <param name="_">An unused virtual machine instance parameter.</param>
     /// <param name="stack">The EVM stack from which operands are retrieved and where the result is stored.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or a stack underflow error.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBitwise<TGasPolicy, TOpBitwise>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
+    public static EvmExceptionType InstructionBitwise<TGasPolicy, TOpBitwise, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpBitwise : struct, IOpBitwise
+        where TTracingInst : struct, IFlag
     {
         // Deduct the operation's gas cost.
-        TGasPolicy.Consume<TOpBitwise>(ref gas);
+        if (!TGasPolicy.UpdateGas<TOpBitwise>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return BitwiseCore<TOpBitwise>(ref stack);
+        return BitwiseCore<TOpBitwise, TTracingInst, OnFlag>(ref stack);
     }
 
-    /// <summary>Gas-free body of <see cref="InstructionBitwise{TGasPolicy, TOpBitwise}"/>.</summary>
+    /// <summary>Gas-free body of <see cref="InstructionBitwise{TGasPolicy, TOpBitwise, TTracingInst}"/>.</summary>
+    /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must have verified at least 2 stack items.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType BitwiseCore<TOpBitwise>(ref EvmStack stack)
+    internal static EvmExceptionType BitwiseCore<TOpBitwise, TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
         if (!Vector256.IsHardwareAccelerated && typeof(TOpBitwise) == typeof(OpBitwiseEq))
-            return EqualsInSlot(ref stack);
+            return EqualsInSlot<TTracingInst, TCheckDepth>(ref stack);
 
         if (!Vector128.IsHardwareAccelerated &&
             (typeof(TOpBitwise) == typeof(OpBitwiseAnd) ||
              typeof(TOpBitwise) == typeof(OpBitwiseOr) ||
              typeof(TOpBitwise) == typeof(OpBitwiseXor)))
-            return BitwiseScalar<TOpBitwise>(ref stack);
+            return BitwiseScalar<TOpBitwise, TTracingInst, TCheckDepth>(ref stack);
 
         // One depth check, then one address computation: the popped slot sits one word above the
         // slot the result overwrites.
-        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
         EvmWord aVec = ReadUnaligned<EvmWord>(ref Add(ref topRef, EvmStack.WordSize));
@@ -109,6 +113,7 @@ public static partial class EvmInstructions
 
         // Write the result directly into the memory of the top stack element.
         WriteUnaligned(ref topRef, TOpBitwise.Operation(aVec, bVec));
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
@@ -123,9 +128,11 @@ public static partial class EvmInstructions
     /// same way. Comparing the slots removes that round trip.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType EqualsInSlot(ref EvmStack stack)
+    private static EvmExceptionType EqualsInSlot<TTracingInst, TCheckDepth>(ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
-        if (!stack.EnsureDepth(2))
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2))
             return EvmExceptionType.StackUnderflow;
 
         ref byte bBytes = ref stack.Pop1Peek32BytesUnchecked();
@@ -151,14 +158,17 @@ public static partial class EvmInstructions
         }
 
         WriteSmallWordToSlot(ref bBytes, equal ? 1UL : 0UL);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref bBytes);
         return EvmExceptionType.None;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType BitwiseScalar<TOpBitwise>(ref EvmStack stack)
+    private static EvmExceptionType BitwiseScalar<TOpBitwise, TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TOpBitwise : struct, IOpBitwise
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
     {
-        if (!stack.EnsureDepth(2))
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2))
             return EvmExceptionType.StackUnderflow;
 
         ref byte bBytes = ref stack.Pop1Peek32BytesUnchecked();
@@ -187,6 +197,7 @@ public static partial class EvmInstructions
             Add(ref b, 3) ^= Add(ref a, 3);
         }
 
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref bBytes);
         return EvmExceptionType.None;
     }
 
@@ -195,6 +206,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseAnd : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseAnd(a, b);
     }
 
@@ -203,6 +215,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseOr : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.BitwiseOr(a, b);
     }
 
@@ -211,6 +224,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseXor : IOpBitwise
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => Vector256.Xor(a, b);
     }
 
@@ -221,7 +235,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpBitwiseEq : IOpBitwise
     {
-        /// <summary>The word a true comparison pushes: one, in the stack's big-endian layout.</summary>
+        /// <summary>The word a true comparison pushes: one, in the stack's limb layout.</summary>
         /// <remarks>
         /// Property form so the JIT folds it to a PC-relative rodata load. As a static field it was a
         /// class-initialized test, a materialized absolute address and an indirect load on the taken path.
@@ -229,12 +243,13 @@ public static partial class EvmInstructions
         public static EvmWord One
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            // Stack words are in UInt256 limb layout: the least significant byte comes first.
             get => Vector256.Create(
                 (byte)
+                1, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 1
+                0, 0, 0, 0, 0, 0, 0, 0
             );
         }
 

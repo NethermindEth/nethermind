@@ -311,9 +311,8 @@ public class FlatBalHealingTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Storage_written_around_an_account_delete_is_wiped_from_flat_store(bool blockByBlock)
+    [Test]
+    public void Storage_written_around_an_account_delete_is_wiped_from_flat_store([Values] bool blockByBlock)
     {
         SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05])]), Acc(TestItem.AddressB, 200));
         Hash256 afterWrite = BuildRoot(
@@ -428,7 +427,7 @@ public class FlatBalHealingTests
     private bool FlatSlotExists(Address address, UInt256 slot)
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync);
-        SlotValue value = default;
+        UInt256 value = default;
         return reader.TryGetSlot(address, slot, ref value);
     }
 
@@ -495,7 +494,7 @@ public class FlatBalHealingTests
                 foreach (Slot slot in slots)
                 {
                     storage.Set(slot.Key, slot.Value);
-                    batch.SetStorage(spec.Address, slot.Key, SlotValue.FromSpanWithoutLeadingZero(slot.Value));
+                    batch.SetStorage(spec.Address, slot.Key, BaseFlatPersistence.DecodeSlotValue(slot.Value));
                 }
                 storage.Commit();
                 account = account.WithChangedStorageRoot(storage.RootHash);

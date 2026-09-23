@@ -34,14 +34,12 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
-using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.History;
@@ -52,7 +50,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
-        private bool? _previousStrictHexFormat;
 
         public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig() { Timeout = -1 };
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
@@ -65,7 +62,6 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptFinder ReceiptFinder => Container.Resolve<IReceiptFinder>();
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
-        public ILogIndexConfig LogIndexConfig { get; } = new LogIndexConfig();
         public IReceiptConfig ReceiptConfig { get; private set; } = new ReceiptConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
@@ -89,6 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             private IBlockFinder? _blockFinderOverride = null;
             private IReceiptFinder? _receiptFinderOverride = null;
             private IBlockchainBridge? _blockchainBridgeOverride = null;
+            private IReceiptConfig? _receiptConfigOverride = null;
             private IBlocksConfig? _blocksConfigOverride = null;
 
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
@@ -135,6 +132,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             public Builder<T> WithReceiptConfig(IReceiptConfig receiptConfig)
             {
                 _blockchain.ReceiptConfig = receiptConfig;
+                _receiptConfigOverride = receiptConfig;
                 return this;
             }
 
@@ -179,6 +177,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
                 if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
                 if (_blocksConfigOverride is not null) builder.AddSingleton(_blocksConfigOverride);
+                if (_receiptConfigOverride is not null) builder.AddSingleton(_receiptConfigOverride);
             });
         }
 
@@ -201,8 +200,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,
             @this.ForkInfo,
-            @this.LogIndexConfig,
-            @this.ReceiptConfig,
             @this.BlocksConfig.SecondsPerSlot,
             new HeadBlockSignal(@this.BlockTree),
             new EthCapabilitiesProvider(
@@ -216,8 +213,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
-            _previousStrictHexFormat ??= EthereumJsonSerializer.StrictHexFormat;
-            EthereumJsonSerializer.StrictHexFormat = RpcConfig.StrictHexFormat;
+            // StrictHexFormat is not set here. It is a process-global that every fixture in this assembly shares,
+            // and writing it per build raced concurrent fixtures - see StrictHexFormatAssemblySetup and #13204.
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
@@ -253,26 +250,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             return this;
         }
 
-        public override void Dispose()
-        {
-            try
-            {
-                base.Dispose();
-            }
-            finally
-            {
-                if (_previousStrictHexFormat is bool previousStrictHexFormat)
-                {
-                    EthereumJsonSerializer.StrictHexFormat = previousStrictHexFormat;
-                    _previousStrictHexFormat = null;
-                }
-            }
-        }
-
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
             RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
 
-        private IBlockchainProcessor? _currentBlockchainProcessor;
+        private IBlockProcessingQueue? _currentBlockchainProcessor;
 
         public async Task RestartBlockchainProcessor()
         {
@@ -282,13 +263,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
             else
             {
-                await BlockchainProcessor.StopAsync();
+                await BlockProcessingQueue.StopAsync();
             }
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
-            _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
-                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
-            _currentBlockchainProcessor.Start();
+            BlockchainProcessor newProcessor = new(BlockTree, BranchProcessor,
+                SpecProvider, BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+            _currentBlockchainProcessor = newProcessor;
+            newProcessor.Start();
         }
     }
 }

@@ -22,6 +22,41 @@ namespace Nethermind.Serialization.SszGenerator.Test;
 public class EncodingTest
 {
     [Test]
+    public void Container_merkleization_does_not_allocate_scratch_arrays([Values] bool progressive)
+    {
+        FixedC standard = new() { Fixed1 = 1, Fixed2 = 2 };
+        ProgressiveContainerSample extended = new() { Head = 1, Tail = 2 };
+        UInt256 expected;
+        if (progressive)
+        {
+            MerkleizeProgressiveSpec([(UInt256)1, (UInt256)2], out expected);
+            expected = MixInActiveFieldsSpec(expected, 0b00000101);
+        }
+        else
+        {
+            expected = HashConcat((UInt256)1, (UInt256)2);
+        }
+
+        UInt256 actual = default;
+        for (int i = 0; i < 100; i++) CalculateRoot();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++) CalculateRoot();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(allocated, Is.Zero);
+        }
+
+        void CalculateRoot()
+        {
+            if (progressive) ProgressiveContainerSample.Merkleize(extended, out actual);
+            else FixedC.Merkleize(standard, out actual);
+        }
+    }
+
+    [Test]
     public void Test_ComplexStructure_EncodingRoundTrip()
     {
         ComplexStruct test = new()
@@ -596,10 +631,8 @@ public class EncodingTest
     /// container holding a <c>byte[]</c> or a converter-backed value type, so replacing the
     /// former with the latter to drop the per-item allocation is a wire-compatible refactor.
     /// </summary>
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(3)]
-    public void Converter_item_list_encodes_identically_to_wrapped_byte_vector_list(int itemCount)
+    [Test]
+    public void Converter_item_list_encodes_identically_to_wrapped_byte_vector_list([Values(0, 1, 3)] int itemCount)
     {
         const int itemLength = TestBytes48SszVectorTypeConverter.Length;
 
@@ -1069,7 +1102,7 @@ public class EncodingTest
 
     private static UInt256 MerkleizeWithConverter<T>(T value, FeedItem<T> feed)
     {
-        Merkleizer merkleizer = new(0);
+        Merkleizer merkleizer = new(new UInt256[1]);
         feed(ref merkleizer, value);
         merkleizer.CalculateRoot(out UInt256 root);
         return root;

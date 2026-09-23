@@ -368,7 +368,7 @@ public class SstIngestionTests
         }
     }
 
-    private static SlotValue Slot(byte v) => SlotValue.FromSpanWithoutLeadingZero(new byte[] { v });
+    private static UInt256 Slot(byte v) => v;
     private static StateId State(ulong number, byte seed) => new(number, ValueKeccak.Compute(new byte[] { seed }));
 
     private void Reopen(bool persistViaSstIngestion = true)
@@ -391,16 +391,16 @@ public class SstIngestionTests
         return Directory.Exists(stagingDir) ? Directory.GetFiles(stagingDir, "*.sst") : [];
     }
 
-    private static void AssertSlot(IPersistence.IPersistenceReader reader, in UInt256 slot, SlotValue expected)
+    private static void AssertSlot(IPersistence.IPersistenceReader reader, in UInt256 slot, in UInt256 expected)
     {
-        SlotValue read = default;
+        UInt256 read = default;
         Assert.That(reader.TryGetSlot(Addr, slot, ref read), Is.True);
-        Assert.That(read.AsReadOnlySpan.ToArray(), Is.EqualTo(expected.AsReadOnlySpan.ToArray()));
+        Assert.That(read, Is.EqualTo(expected));
     }
 
     private static void AssertSlotAbsent(IPersistence.IPersistenceReader reader, in UInt256 slot)
     {
-        SlotValue read = default;
+        UInt256 read = default;
         Assert.That(reader.TryGetSlot(Addr, slot, ref read), Is.False);
     }
 
@@ -476,7 +476,7 @@ public class SstIngestionTests
     public void Ingest_round_trips_and_advances_pointer()
     {
         StateId s1 = State(1, 1);
-        SlotValue v1 = Slot(0x11), v2 = Slot(0x22);
+        UInt256 v1 = Slot(0x11), v2 = Slot(0x22);
 
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
         {
@@ -497,7 +497,7 @@ public class SstIngestionTests
     {
         StateId s1 = State(1, 1);
         StateId s2 = State(2, 2);
-        SlotValue v1 = Slot(0x11), v2 = Slot(0x22), v1b = Slot(0x1b), v3 = Slot(0x33);
+        UInt256 v1 = Slot(0x11), v2 = Slot(0x22), v1b = Slot(0x1b), v3 = Slot(0x33);
 
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
         {
@@ -525,7 +525,7 @@ public class SstIngestionTests
     {
         StateId s1 = State(1, 1);
         StateId s2 = State(2, 2);
-        SlotValue v1 = Slot(0x11), v2 = Slot(0x22);
+        UInt256 v1 = Slot(0x11), v2 = Slot(0x22);
 
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
         {
@@ -565,7 +565,7 @@ public class SstIngestionTests
         Hash256 storageAccount = TestItem.KeccakA;
         TreePath storagePath = new(Keccak.Compute("storage"), 8);
         byte[] payload = [0x02, 0x02];
-        SlotValue v2 = Slot(0x22);
+        UInt256 v2 = Slot(0x22);
 
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
         {
@@ -624,7 +624,7 @@ public class SstIngestionTests
         Hash256 storageAccount = TestItem.KeccakA;
         TreePath storagePath = new(Keccak.Compute("storage"), 8);
         byte[] payload = [0x02, 0x02];
-        SlotValue v2 = Slot(0x22);
+        UInt256 v2 = Slot(0x22);
 
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
         {
@@ -814,9 +814,9 @@ public class SstIngestionTests
                 Assert.That(account, Is.Not.Null);
                 Assert.That(account!.Nonce, Is.EqualTo(n), "Account column is torn relative to the pointer");
 
-                SlotValue slotValue = default;
+                UInt256 slotValue = default;
                 Assert.That(reader.TryGetSlot(Addr, Slot1, ref slotValue), Is.True);
-                Assert.That(slotValue.AsReadOnlySpan.ToArray(), Is.EqualTo(Slot((byte)n).AsReadOnlySpan.ToArray()), "Storage column is torn relative to the pointer");
+                Assert.That(slotValue, Is.EqualTo(Slot((byte)n)), "Storage column is torn relative to the pointer");
 
                 Assert.That(reader.TryLoadStateRlp(topPath, ReadFlags.None), Is.EqualTo(expected), "StateTopNodes column is torn relative to the pointer");
                 Assert.That(reader.TryLoadStateRlp(deepPath, ReadFlags.None), Is.EqualTo(expected), "StateNodes column is torn relative to the pointer");
@@ -836,7 +836,7 @@ public class SstIngestionTests
         using SnapshotableMemColumnsDb<FlatDbColumns> memDb = new();
         RocksDbPersistence persistence = new(memDb, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
         StateId s1 = State(1, 1);
-        SlotValue v1 = Slot(0x11);
+        UInt256 v1 = Slot(0x11);
 
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
         {

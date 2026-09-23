@@ -16,6 +16,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -80,36 +81,35 @@ public class SnapFlatStateServerTests
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
         using IByteArrayList result = _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None)!;
 
-        Assert.That(result.Count, Is.LessThan(RequestCount));
+        // Below the lookup cap too, so this asserts the byte limit rather than that cap.
+        Assert.That(result.Count, Is.LessThan(ISnapStateServer.MaxTrieNodeLookups));
     }
 
     [Test]
     public void GetTrieNodes_RespectsHardResponseByteLimitInStorageLoop()
     {
-        // Rebuild state with a single account whose storage root is persisted, so the
-        // storage inner loop is actually reached (state-tree navigation needs the leaf, not
-        // just the root).
-        Hash256 addressHash = Keccak.Compute(TestItem.AddressA.Bytes);
-        Hash256 storageRoot = BuildAndPersistStorageRoot(addressHash, out byte[] storageRootRlp);
-        byte[] stateRootRlp = BuildSingleAccountStateRoot(addressHash, storageRoot, out _rootHash);
-        _stateId = new StateId(0, _rootHash.ValueHash256);
-
-        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
-            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()));
-
-        WriteState(stateRootRlp, addressHash, storageRootRlp);
-
         // Single PathGroup with one account path followed by RequestCount empty storage paths.
         // Each iteration returns the (non-empty) storage root, so the inner reqStorage loop
         // must hit the byte limit before completing.
-        byte[][] group = new byte[RequestCount + 1][];
-        group[0] = addressHash.Bytes.ToArray();
-        for (int i = 1; i <= RequestCount; i++) group[i] = [];
+        using IByteArrayList result = RequestStoragePaths(slotCount: 256, storagePath: []);
 
-        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = group }]);
-        using IByteArrayList result = _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None)!;
+        // Below the lookup cap too, so this asserts the byte limit rather than that cap.
+        Assert.That(result.Count, Is.LessThan(ISnapStateServer.MaxTrieNodeLookups - 1));
+    }
 
-        Assert.That(result.Count, Is.LessThan(RequestCount));
+    [Test]
+    public void GetTrieNodes_BoundsLookupsForPathsThatResolveToNothing()
+    {
+        // Nibbles a,b,c,d in compact form, against a storage trie that is a single leaf: every
+        // one of them resolves to no node at all and contributes nothing to the response size.
+        using IByteArrayList result = RequestStoragePaths(slotCount: 1, storagePath: [0x00, 0xab, 0xcd]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The account lookup takes the first of the budget, the storage lookups the rest.
+            Assert.That(result.Count, Is.EqualTo(ISnapStateServer.MaxTrieNodeLookups - 1));
+            Assert.That(result[0].Length, Is.Zero);
+        }
     }
 
     [Test]
@@ -139,6 +139,31 @@ public class SnapFlatStateServerTests
         }
     }
 
+    /// <summary>
+    /// Rebuilds the state with a single account whose storage root is persisted, so the storage
+    /// inner loop is actually reached (state-tree navigation needs the leaf, not just the root),
+    /// then asks for <see cref="RequestCount"/> copies of <paramref name="storagePath"/>.
+    /// </summary>
+    private IByteArrayList RequestStoragePaths(int slotCount, byte[] storagePath)
+    {
+        Hash256 addressHash = Keccak.Compute(TestItem.AddressA.Bytes);
+        Hash256 storageRoot = BuildAndPersistStorageRoot(addressHash, slotCount, out byte[] storageRootRlp);
+        byte[] stateRootRlp = BuildSingleAccountStateRoot(addressHash, storageRoot, out _rootHash);
+        _stateId = new StateId(0, _rootHash.ValueHash256);
+
+        _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
+            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()));
+
+        WriteState(stateRootRlp, addressHash, storageRootRlp);
+
+        byte[][] group = new byte[RequestCount + 1][];
+        group[0] = addressHash.Bytes.ToArray();
+        for (int i = 1; i <= RequestCount; i++) group[i] = storagePath;
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = group }]);
+        return _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None)!;
+    }
+
     private static byte[] BuildRootRlp(out Hash256 rootHash)
     {
         using MemDb trieDb = new();
@@ -155,15 +180,16 @@ public class SnapFlatStateServerTests
         return tree.GetNodeByPath([], rootHash)!;
     }
 
-    private static Hash256 BuildAndPersistStorageRoot(Hash256 addressHash, out byte[] rootRlp)
+    private static Hash256 BuildAndPersistStorageRoot(Hash256 addressHash, int slotCount, out byte[] rootRlp)
     {
         using MemDb storageDb = new();
         RawScopedTrieStore storageStore = new(storageDb, addressHash);
         StorageTree storageTree = new(storageStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
 
-        // 32 populated slots produces a branch-heavy root well above the per-iteration size
-        // we need to push the total response past HardResponseByteLimit (2 MB / RequestCount).
-        for (int i = 0; i < 32; i++)
+        // Enough slots gives a root branch whose 16 children are all hash references, the widest
+        // node the loop can repeat; a single slot gives a leaf root that any non-empty path
+        // misses without touching a child node.
+        for (int i = 0; i < slotCount; i++)
         {
             storageTree.Set(Keccak.Compute(i.ToBigEndianByteArray()).Bytes, Rlp.Encode((UInt256)i + 1));
         }

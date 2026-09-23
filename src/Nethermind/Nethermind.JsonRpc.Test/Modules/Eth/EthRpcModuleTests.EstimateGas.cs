@@ -697,6 +697,29 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_estimateGas_gas_hint_above_eip8037_total_cap_returns_estimate()
+    {
+        // The over-cap gas hint is invalid for inclusion, but the estimator must clamp to
+        // TX_MAX_TOTAL_GAS_LIMIT and still return the executable minimum, not the cap error.
+        using Context ctx = await Context.Create(new TestSpecProvider(Amsterdam.Instance));
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(Eip8037Constants.TxMaxTotalGasLimit + 1)
+            .WithValue(0)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.GasPrice = null;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
+
+        // Zero-value transfer to an existing EOA: TX_BASE_COST + COLD_ACCOUNT_ACCESS.
+        ulong expected = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess;
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected.ToHexString(true)}\",\"id\":67}}"));
+    }
+
+    [Test]
     public async Task Eth_estimateGas_value_transfer_creating_account_is_exact()
     {
         // Production error margin (the shared Context defaults to 0), where the buggy estimator over-estimated.
@@ -877,4 +900,21 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
     }
 
+    [Test]
+    public async Task Eth_estimateGas_self_recursive_call_until_exhaustion_does_not_return_internal_error()
+    {
+        // 0x5f5f5f5f5f305af1 = PUSH0 x5, ADDRESS, GAS, CALL: the contract CALLs itself with all remaining gas
+        // until the 63/64 rule or the depth limit stops the recursion. Every frame must be reported to the
+        // EstimateGasTracer in balance; a stray ReportActionError surfaced as -32603 "Stack empty." on 2.0.0-rc.
+        object? transaction = JsonSerializer.Deserialize<object>("""{"to":"0x00000000000000000000000000000000000000aa"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>("""{"0x00000000000000000000000000000000000000aa":{"code":"0x5f5f5f5f5f305af1"}}""");
+
+        TestSpecProvider specProvider = new(Prague.Instance);
+        using Context ctx = await Context.Create(specProvider);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+
+        Assert.That(serialized, Does.Not.Contain("-32603"), serialized);
+        Assert.That(serialized, Does.Contain("\"result\":\"0x"), serialized);
+    }
 }

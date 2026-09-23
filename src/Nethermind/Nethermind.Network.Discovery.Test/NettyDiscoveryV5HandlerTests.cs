@@ -85,9 +85,8 @@ namespace Nethermind.Network.Discovery.Test
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void AddressNotAvailableSendFailureIsTraceOnly(bool traceEnabled)
+        [Test]
+        public void AddressNotAvailableSendFailureIsTraceOnly([Values] bool traceEnabled)
         {
             TestLogger logger = new() { IsDebug = true, IsTrace = traceEnabled };
             IChannel channel = Substitute.For<IChannel>();
@@ -199,12 +198,13 @@ namespace Nethermind.Network.Discovery.Test
             }
         }
 
-        [Test]
-        public async Task MapsIpv4MappedIpv6SenderToIpv4()
+        [TestCase("::ffff:127.0.0.1", "127.0.0.1")]
+        [TestCase("2001:db8::1", "2001:db8::1")]
+        public async Task ForwardsSenderInCanonicalForm(string senderAddress, string expectedAddress)
         {
             byte[] data = [1, 2, 3];
-            IPEndPoint from = new(IPAddress.Parse("::ffff:127.0.0.1"), 10000);
-            IPEndPoint expectedFrom = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint from = new(IPAddress.Parse(senderAddress), 10000);
+            IPEndPoint expectedFrom = new(IPAddress.Parse(expectedAddress), 10000);
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
             using CancellationTokenSource cancellationSource = new(10_000);
@@ -231,9 +231,8 @@ namespace Nethermind.Network.Discovery.Test
             }
         }
 
-        [TestCase(0)]
-        [TestCase(1280 + 1)]
-        public async Task SkipsMessagesOfInvalidSize(int size)
+        [Test]
+        public async Task SkipsMessagesOfInvalidSize([Values(0, 1280 + 1)] int size)
         {
             byte[] data = [1, 2, 3];
             byte[] invalidData = Enumerable.Repeat((byte)1, size).ToArray();

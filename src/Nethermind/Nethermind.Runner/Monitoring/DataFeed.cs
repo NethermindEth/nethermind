@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -45,7 +46,11 @@ public class DataFeed
     private readonly ILogger _logger;
     private readonly CancellationToken _lifetime;
 
-    private long _subscribers;
+    // Per event type, so a subscriber that only wants processing statistics does not make the node
+    // build the forkChoice payload - the whole head block with every transaction, receipt and log.
+    private readonly long[] _subscribersByType = new long[Enum.GetValues<EntryType>().Length];
+    private static readonly EntryType[] StreamedEntryTypes =
+        [EntryType.processed, EntryType.log, EntryType.forkChoice, EntryType.txLinks, EntryType.system, EntryType.peers];
 
     public DataFeed(
         ITxPool txPool,
@@ -62,7 +67,7 @@ public class DataFeed
         ArgumentNullException.ThrowIfNull(receiptFinder);
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(syncPeerPool);
-        ArgumentNullException.ThrowIfNull(mainProcessingContext?.BlockchainProcessor);
+        ArgumentNullException.ThrowIfNull(mainProcessingContext?.BlockProcessingQueue);
 
         _lifetime = lifetime;
         _txPool = txPool;
@@ -72,7 +77,7 @@ public class DataFeed
 
         _logger = logManager.GetClassLogger<DataFeed>();
 
-        mainProcessingContext.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
+        mainProcessingContext.BlockProcessingQueue.NewProcessingStatistics += OnNewProcessingStatistics;
         blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
         ConsoleHelpers.LineWritten += OnConsoleLineWritten;
         _ = StartTxFlowRefresh();
@@ -82,10 +87,11 @@ public class DataFeed
 
     public async Task ProcessingFeedAsync(HttpContext ctx, CancellationToken ct)
     {
-        Interlocked.Increment(ref _subscribers);
+        EntryType[] requested = ParseRequestedEvents(ctx.Request.Query["events"]);
+        foreach (EntryType type in requested) Interlocked.Increment(ref _subscribersByType[(int)type]);
         try
         {
-            await ProcessingFeeds(ctx, ct);
+            await ProcessingFeeds(ctx, requested, ct);
         }
         catch (OperationCanceledException)
         {
@@ -97,11 +103,31 @@ public class DataFeed
         }
         finally
         {
-            Interlocked.Decrement(ref _subscribers);
+            foreach (EntryType type in requested) Interlocked.Decrement(ref _subscribersByType[(int)type]);
         }
     }
 
-    private async Task ProcessingFeeds(HttpContext ctx, CancellationToken ct)
+    /// <summary>Resolves the <c>events</c> query parameter (comma-separated <see cref="EntryType"/> names) to the streamed event types; absent, empty, or containing no recognized streamed event names means all of them.</summary>
+    internal static EntryType[] ParseRequestedEvents(string? events)
+    {
+        if (string.IsNullOrWhiteSpace(events)) return StreamedEntryTypes;
+
+        ReadOnlySpan<char> names = events;
+        using ArrayPoolList<EntryType> requested = new(StreamedEntryTypes.Length);
+        foreach (Range range in names.Split(','))
+        {
+            if (Enum.TryParse(names[range].Trim(), ignoreCase: true, out EntryType type)
+                && Array.IndexOf(StreamedEntryTypes, type) >= 0
+                && !requested.Contains(type))
+            {
+                requested.Add(type);
+            }
+        }
+
+        return requested.Count == 0 ? StreamedEntryTypes : requested.AsSpan().ToArray();
+    }
+
+    private async Task ProcessingFeeds(HttpContext ctx, EntryType[] requested, CancellationToken ct)
     {
         ctx.Response.ContentType = "text/event-stream";
         ctx.Response.Headers["X-Accel-Buffering"] = "no";
@@ -120,7 +146,7 @@ public class DataFeed
 
         Channel<ChannelEntry> channel = Channel.CreateUnbounded<ChannelEntry>();
 
-        InitializeChannelSubscriptions(channel, ct);
+        InitializeChannelSubscriptions(channel, requested, ct);
 
         await foreach (ChannelEntry entry in channel.Reader.ReadAllAsync(ct))
         {
@@ -171,14 +197,22 @@ public class DataFeed
         }
     }
 
-    private void InitializeChannelSubscriptions(Channel<ChannelEntry> channel, CancellationToken ct)
+    private void InitializeChannelSubscriptions(Channel<ChannelEntry> channel, EntryType[] requested, CancellationToken ct)
     {
-        _ = ChannelSubscribe(EntryType.processed, () => _processing.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.log, () => _log.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.forkChoice, () => _forkChoice.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.txLinks, () => _txFlow.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.system, () => _systemStats.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.peers, () => _peers.Task, channel, ct);
+        foreach (EntryType type in requested)
+        {
+            Func<Task<byte[]>> nextTask = type switch
+            {
+                EntryType.processed => () => _processing.Task,
+                EntryType.log => () => _log.Task,
+                EntryType.forkChoice => () => _forkChoice.Task,
+                EntryType.txLinks => () => _txFlow.Task,
+                EntryType.system => () => _systemStats.Task,
+                EntryType.peers => () => _peers.Task,
+                _ => throw new ArgumentOutOfRangeException(nameof(requested), type, "Not a streamed event type")
+            };
+            _ = ChannelSubscribe(type, nextTask, channel, ct);
+        }
     }
 
     private static byte[] GetNodeData()
@@ -193,7 +227,7 @@ public class DataFeed
         {
             await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
-            if (!HaveSubscribers) continue;
+            if (!HaveSubscribers(EntryType.txLinks)) continue;
 
             byte[] data = GetTxFlowTask();
 
@@ -228,7 +262,7 @@ public class DataFeed
         Environment.ProcessCpuUsage cpuUsage = Environment.CpuUsage;
         long timeStamp = Stopwatch.GetTimestamp();
 
-        if (!HaveSubscribers)
+        if (!HaveSubscribers(EntryType.system))
         {
             _lastCpuUsage = cpuUsage;
             _lastTimeStamp = timeStamp;
@@ -259,7 +293,7 @@ public class DataFeed
         {
             await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
-            if (!HaveSubscribers) continue;
+            if (!HaveSubscribers(EntryType.peers)) continue;
 
             byte[] data = GetPeersTask();
             DataCompletion peers = _peers;
@@ -318,7 +352,7 @@ public class DataFeed
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
     {
         // No subscribers, no need to prepare event data
-        if (!HaveSubscribers) return;
+        if (!HaveSubscribers(EntryType.processed)) return;
 
         DataCompletion processing = _processing;
         _processing = new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -329,13 +363,14 @@ public class DataFeed
     private void OnForkChoiceUpdated(object? sender, IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
         // No subscribers, no need to prepare event data
-        if (!HaveSubscribers) return;
+        if (!HaveSubscribers(EntryType.forkChoice)) return;
 
+        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
         Task.Run(() =>
         {
             try
             {
-                OnForkChoiceUpdated(choice);
+                OnForkChoiceUpdated(forkChoice, choice);
             }
             catch (Exception e)
             {
@@ -345,10 +380,8 @@ public class DataFeed
     }
 
     private DataCompletion _forkChoice = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private void OnForkChoiceUpdated(IBlockTree.ForkChoiceUpdateEventArgs choice)
+    private void OnForkChoiceUpdated(DataCompletion forkChoice, IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
-        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
-
         Block head = choice.Head;
         Transaction[] txs = head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
@@ -484,7 +517,7 @@ public class DataFeed
     private void OnConsoleLineWritten(object? sender, string logLine)
     {
         // No subscribers, no need to prepare event data
-        if (!HaveSubscribers) return;
+        if (!HaveSubscribers(EntryType.log)) return;
 
         DataCompletion log = _log;
         _log = new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -492,7 +525,7 @@ public class DataFeed
         log.TrySetResult(JsonSerializer.SerializeToUtf8Bytes(new[] { logLine }, JsonSerializerOptions.Web));
     }
 
-    private bool HaveSubscribers => Volatile.Read(ref _subscribers) > 0;
+    private bool HaveSubscribers(EntryType type) => Volatile.Read(ref _subscribersByType[(int)type]) > 0;
 }
 
 internal class SystemStats

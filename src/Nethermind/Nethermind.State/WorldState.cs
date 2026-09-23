@@ -54,7 +54,7 @@ namespace Nethermind.State
 
         public WorldState(
             IWorldStateScopeProvider scopeProvider,
-            ILogManager? logManager)
+            ILogManager logManager)
         {
             ScopeProvider = scopeProvider;
             _stateProvider = new StateProvider(logManager, _localMetrics);
@@ -68,6 +68,7 @@ namespace Nethermind.State
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MemberNotNull(nameof(_currentScope))]
         private void GuardInScope()
         {
             if (_currentScope is null) ThrowOutOfScope();
@@ -107,27 +108,46 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+        public void GetOriginal(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.GetOriginal(storageCell);
+            _persistentStorageProvider.GetOriginal(in storageCell, out value);
         }
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public void Get(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.Get(storageCell);
+            _persistentStorageProvider.Get(in storageCell, out value);
         }
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in UInt256 newValue)
         {
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+
+        public void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+            => Set(in storageCell, in newValue);
+
+        /// <summary>Reads a parent-state slot without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers.</remarks>
+        internal void GetPureReadStorage(in StorageCell cell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _transientStorageProvider.Get(storageCell);
+            _persistentStorageProvider.GetPureRead(in cell, out value);
         }
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+
+        /// <summary>Reads a parent-state account without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers.</remarks>
+        internal Account? GetPureReadAccount(Address address)
+        {
+            DebugGuardInScope();
+            return _stateProvider.GetPureRead(address);
+        }
+        public void GetTransientState(in StorageCell storageCell, out UInt256 value)
+        {
+            DebugGuardInScope();
+            _transientStorageProvider.Get(in storageCell, out value);
+        }
+        public void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         {
             DebugGuardInScope();
             _transientStorageProvider.Set(storageCell, newValue);
@@ -139,6 +159,14 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
+        /// <summary>Refuses an overlay before changing accounts if locally cached storage would hide its values.</summary>
+        public bool TryApplyAccountOverlay(IStateReadOverlay overlay)
+        {
+            if (_persistentStorageProvider.HasCachedStorage(overlay)) return false;
+            _stateProvider.ApplyAccountOverlay(overlay);
+            return true;
+        }
+
         public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         {
             if (accessList?.IsEmpty == false)
@@ -226,7 +254,7 @@ namespace Nethermind.State
 
         public void CommitTree(ulong blockNumber)
         {
-            DebugGuardInScope();
+            GuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
             // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
@@ -277,10 +305,13 @@ namespace Nethermind.State
             {
                 if (_currentScope is not null)
                 {
+                    // Reset first: it unwinds code staged since the last commit, and this scope's only
+                    // remaining chance to report that is the flush below.
+                    Reset();
                     // Fold any counters accumulated outside a Commit (e.g. prewarmer read warming) before the scope closes.
                     _localMetrics.Flush();
-                    Reset();
                     _stateProvider.SetScope(null);
+                    _persistentStorageProvider.SetBackendScope(null);
                     _currentScope.Dispose();
                 }
             }
@@ -297,7 +328,7 @@ namespace Nethermind.State
         public Task HintBal(ReadOnlyBlockAccessList bal)
         {
             GuardInScope();
-            return _currentScope!.HintBal(bal);
+            return _currentScope.HintBal(bal);
         }
 
         public ref readonly UInt256 GetBalance(Address address)
@@ -342,7 +373,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             Account? account = _stateProvider.GetThroughCache(address);
             accountExists = account is not null;
-            return accountExists && (account!.IsContract || account.Nonce != 0);
+            return account is not null && (account.IsContract || account.Nonce != 0);
         }
 
         public bool IsDeadAccount(Address address)
@@ -355,7 +386,7 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
-            DebugGuardInScope();
+            GuardInScope();
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);

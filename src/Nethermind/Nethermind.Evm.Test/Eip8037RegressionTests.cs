@@ -74,6 +74,54 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
+    // blockGasLimit above TX_MAX_TOTAL_GAS_LIMIT so only rule 1 (not the block gas limit) can reject.
+    private TransactionResult ExecuteTxWithGasLimit(ulong txGasLimit)
+    {
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(txGasLimit)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .To(Recipient)
+            .SignedAndResolved(new EthereumEcdsa(SpecProvider.ChainId), SenderKey)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            txGasLimit,
+            transaction: transaction,
+            blockGasLimit: Eip8037Constants.TxMaxTotalGasLimit + 1_000_000);
+
+        return _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            CreateTracer());
+    }
+
+    [Test]
+    public void Eip8037_rejects_tx_gas_limit_above_max_total_gas_limit()
+    {
+        TransactionResult result = ExecuteTxWithGasLimit(Eip8037Constants.TxMaxTotalGasLimit + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap));
+            Assert.That(TestState.GetNonce(Sender), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_accepts_tx_gas_limit_at_max_total_gas_limit()
+    {
+        TransactionResult result = ExecuteTxWithGasLimit(Eip8037Constants.TxMaxTotalGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(TestState.GetNonce(Sender), Is.EqualTo(1));
+        }
+    }
+
     [Test]
     public void Eip8037_soft_failed_call_refunds_spilled_new_account_state_gas_to_gas_left()
     {
@@ -438,7 +486,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
         TestState.CreateAccount(contractAddress, pruneTarget ? UInt256.Zero : (UInt256)1);
-        TestState.Set(new StorageCell(contractAddress, 0), [1]);
+        TestState.Set(new StorageCell(contractAddress, 0), (UInt256)1);
         if (pruneTarget)
         {
             TestState.Commit(Spec, commitRoots: false);
@@ -743,7 +791,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             ? ContractAddress.From(Recipient, salt.PadLeft(32), initCode)
             : ContractAddress.From(Recipient, 0);
         TestState.CreateAccount(createAddress, 0);
-        TestState.Set(new StorageCell(createAddress, 0), [1]);
+        TestState.Set(new StorageCell(createAddress, 0), (UInt256)1);
         TestState.Commit(Spec, commitRoots: false);
         Assert.That(TestState.AccountExists(createAddress), Is.False);
 
@@ -836,7 +884,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             ? ContractAddress.From(Recipient, salt.PadLeft(32), initCode)
             : ContractAddress.From(Recipient, 0);
         TestState.CreateAccount(createAddress, 1);
-        TestState.Set(new StorageCell(Recipient, 0), [0x01]);
+        TestState.Set(new StorageCell(Recipient, 0), (UInt256)0x01);
         ulong creatorNonceBefore = TestState.GetNonce(Recipient);
 
         Prepare codeBuilder = create2
@@ -1220,7 +1268,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     public void Eip8037_static_create_followed_by_parent_sstore_must_not_leak_create_state_gas(bool create2)
     {
         Address createdAddress = SetupStaticCreateAttempt(create2);
-        TestState.Set(new StorageCell(Recipient, 0), [0xDE, 0xAD]);
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256((ReadOnlySpan<byte>)[0xDE, 0xAD], isBigEndian: true));
 
         byte[] outerCode = Prepare.EvmCode
             .StaticCall(TestItem.AddressC, 200_000)
@@ -1239,8 +1287,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(327_634));
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(241_330));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
-        Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }));
-        Assert.That(TestState.Get(new StorageCell(Recipient, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
+        AssertStorage(UInt256.Zero, UInt256.Zero);
+        AssertStorage(UInt256.One, UInt256.One);
         Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(0ul));
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
     }

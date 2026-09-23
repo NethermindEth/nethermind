@@ -4,6 +4,7 @@
 using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
@@ -15,6 +16,120 @@ namespace Nethermind.Evm.Test;
 
 public class EthereumGasPolicyTests
 {
+    /// <summary>A cell warmed after a snapshot must read cold again once that snapshot is restored.</summary>
+    /// <remarks>
+    /// <see cref="StackAccessTracker.IsCold(in StorageCell)"/> remembers the last cell it found warm, so a
+    /// repeated read answers without probing the set. Only a restore or the pooled reset can take a cell
+    /// back out, and this pins that the memo is dropped there — were it not, a reverted warm-up would keep
+    /// reporting warm and the next access would be charged warm gas instead of cold.
+    /// </remarks>
+    [Test]
+    public void Reverted_warm_up_is_cold_again()
+    {
+        StorageCell cell = new(TestItem.AddressA, UInt256.One);
+        StorageCell other = new(TestItem.AddressB, UInt256.One);
+        using StackAccessTracker tracker = new();
+
+        tracker.TakeSnapshot();
+        tracker.WarmUp(in cell);
+
+        // Read it twice: the second read is the one served from the memo.
+        Assert.That(tracker.IsCold(in cell), Is.False);
+        Assert.That(tracker.IsCold(in cell), Is.False);
+
+        tracker.Restore();
+
+        Assert.That(tracker.IsCold(in cell), Is.True, "the warm-up was reverted");
+        Assert.That(tracker.IsCold(in other), Is.True);
+    }
+
+    /// <summary>Returning a tracker to the pool must drop the remembered warm cell, or the next rental
+    /// serves a cold cell as warm across a transaction boundary — a genuinely cold SLOAD charged 100
+    /// instead of 2100.</summary>
+    /// <remarks>The pool's localCapacity is 1, so a same-thread dispose-then-rent reuses the one state
+    /// deterministically; this pins the Clear() -> ForgetWarm() path that Restore()'s test does not.</remarks>
+    [Test]
+    public void Pooled_reset_drops_the_remembered_cell()
+    {
+        StorageCell cell = new(TestItem.AddressA, UInt256.One);
+        object returnedState;
+        using (StackAccessTracker first = new())
+        {
+            returnedState = first.AccessedAddresses;
+            first.WarmUp(in cell);
+            Assert.That(first.IsCold(in cell), Is.False, "sets the memo");
+        }
+
+        using StackAccessTracker second = new();
+        // Without this the assertion below also holds for a fresh state, so it could not fail if the
+        // reuse it claims to exercise ever stopped happening.
+        Assert.That(second.AccessedAddresses, Is.SameAs(returnedState), "precondition: the pool reused the state");
+        Assert.That(second.IsCold(in cell), Is.True, "a pooled reset must forget the warm cell");
+    }
+
+    /// <summary>The memo must answer for the cell it remembers, not for a different one.</summary>
+    [Test]
+    public void Warm_cell_does_not_make_other_cells_warm()
+    {
+        StorageCell warm = new(TestItem.AddressA, UInt256.One);
+        StorageCell sameAddressOtherSlot = new(TestItem.AddressA, new UInt256(2));
+        StorageCell otherAddressSameSlot = new(TestItem.AddressB, UInt256.One);
+        using StackAccessTracker tracker = new();
+
+        tracker.WarmUp(in warm);
+        Assert.That(tracker.IsCold(in warm), Is.False);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.IsCold(in sameAddressOtherSlot), Is.True);
+            Assert.That(tracker.IsCold(in otherAddressSameSlot), Is.True);
+            Assert.That(tracker.IsCold(in warm), Is.False, "still warm after the misses");
+        }
+    }
+
+    [Test]
+    public void Memory_cost_preserves_preexpanded_range_and_full_width_validation(
+        [Values(0UL, 1UL, 31UL, 32UL, 33UL, ulong.MaxValue)] ulong offset,
+        [Values(0UL, 1UL, 32UL, 64UL)] ulong length, [Values] bool highLimb,
+        [Values] bool wideLength)
+    {
+        EvmPooledMemory memory = new();
+        memory.CalculateMemoryCost(UInt256.Zero, 64, out _);
+        UInt256 position = new(offset, highLimb ? 1UL : 0UL, 0, 0);
+        UInt256 uint256Length = length;
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(0);
+
+        bool success = wideLength
+            ? EthereumGasPolicy.UpdateMemoryCost(ref gas, in position, in uint256Length, ref memory)
+            : EthereumGasPolicy.UpdateMemoryCost(ref gas, in position, length, ref memory);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.EqualTo(length == 0 || (!highLimb && offset <= 64 && length <= 64 - offset)));
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in gas), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Memory_cost_rejects_full_width_length(
+        [Values] bool maxOffset, [Values(0UL, ulong.MaxValue)] ulong availableGas)
+    {
+        EvmPooledMemory memory = new();
+        memory.CalculateMemoryCost(UInt256.Zero, 64, out _);
+        UInt256 position = maxOffset ? UInt256.MaxValue : UInt256.Zero;
+        UInt256 length = new(0, 1, 0, 0);
+        EthereumGasPolicy gas = EthereumGasPolicy.FromULong(availableGas);
+
+        bool success = EthereumGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref memory);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(memory.Size, Is.EqualTo(64));
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in gas), Is.EqualTo(availableGas));
+        }
+    }
+
     [Test, Combinatorial]
     public void Specialized_account_access_matches_dynamic_policy_without_reading_fork_flags(
         [Values] bool eip8038,
@@ -34,15 +149,15 @@ public class EthereumGasPolicyTests
         }
         EthereumGasPolicy dynamicGas = EthereumGasPolicy.FromULong(availableGas);
         EthereumGasPolicy specializedGas = EthereumGasPolicy.FromULong(availableGas);
-        bool expected = EthereumGasPolicy.ConsumeAccountAccessGas(ref dynamicGas, spec, in dynamicTracker, tracingAccess, TestItem.AddressC, kind);
+        bool expected = EthereumGasPolicy.TryConsumeAccountAccessGas(ref dynamicGas, spec, in dynamicTracker, tracingAccess, TestItem.AddressC, kind);
         spec.ClearReceivedCalls();
 
         bool actual = (hotAndCold, eip8038) switch
         {
-            (true, true) => EthereumGasPolicy.ConsumeAccountAccessGas<OnFlag, OnFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
-            (true, false) => EthereumGasPolicy.ConsumeAccountAccessGas<OnFlag, OffFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
-            (false, true) => EthereumGasPolicy.ConsumeAccountAccessGas<OffFlag, OnFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
-            (false, false) => EthereumGasPolicy.ConsumeAccountAccessGas<OffFlag, OffFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
+            (true, true) => EthereumGasPolicy.TryConsumeAccountAccessGas<OnFlag, OnFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
+            (true, false) => EthereumGasPolicy.TryConsumeAccountAccessGas<OnFlag, OffFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
+            (false, true) => EthereumGasPolicy.TryConsumeAccountAccessGas<OffFlag, OnFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
+            (false, false) => EthereumGasPolicy.TryConsumeAccountAccessGas<OffFlag, OffFlag>(ref specializedGas, spec, in specializedTracker, tracingAccess, TestItem.AddressC, kind),
         };
 
         using (Assert.EnterMultipleScope())
@@ -75,15 +190,15 @@ public class EthereumGasPolicyTests
         }
         EthereumGasPolicy dynamicGas = EthereumGasPolicy.FromULong(availableGas);
         EthereumGasPolicy specializedGas = EthereumGasPolicy.FromULong(availableGas);
-        bool expected = EthereumGasPolicy.ConsumeStorageAccessGas(ref dynamicGas, in dynamicTracker, tracingAccess, in cell, kind, spec);
+        bool expected = EthereumGasPolicy.TryConsumeStorageAccessGas(ref dynamicGas, in dynamicTracker, tracingAccess, in cell, kind, spec);
         spec.ClearReceivedCalls();
 
         bool actual = (hotAndCold, eip8038) switch
         {
-            (true, true) => EthereumGasPolicy.ConsumeStorageAccessGas<OnFlag, OnFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
-            (true, false) => EthereumGasPolicy.ConsumeStorageAccessGas<OnFlag, OffFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
-            (false, true) => EthereumGasPolicy.ConsumeStorageAccessGas<OffFlag, OnFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
-            (false, false) => EthereumGasPolicy.ConsumeStorageAccessGas<OffFlag, OffFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
+            (true, true) => EthereumGasPolicy.TryConsumeStorageAccessGas<OnFlag, OnFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
+            (true, false) => EthereumGasPolicy.TryConsumeStorageAccessGas<OnFlag, OffFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
+            (false, true) => EthereumGasPolicy.TryConsumeStorageAccessGas<OffFlag, OnFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
+            (false, false) => EthereumGasPolicy.TryConsumeStorageAccessGas<OffFlag, OffFlag>(ref specializedGas, in specializedTracker, tracingAccess, in cell, kind, spec),
         };
 
         using (Assert.EnterMultipleScope())
@@ -107,8 +222,8 @@ public class EthereumGasPolicyTests
         bool expected = NetMeteredDynamic(ref dynamicGas, spec);
         spec.ClearReceivedCalls();
         bool actual = eip8038
-            ? EthereumGasPolicy.ConsumeNetMeteredSStoreGas<OnFlag>(ref specializedGas, spec)
-            : EthereumGasPolicy.ConsumeNetMeteredSStoreGas<OffFlag>(ref specializedGas, spec);
+            ? EthereumGasPolicy.TryConsumeNetMeteredSStoreGas<OnFlag>(ref specializedGas, spec)
+            : EthereumGasPolicy.TryConsumeNetMeteredSStoreGas<OffFlag>(ref specializedGas, spec);
 
         using (Assert.EnterMultipleScope())
         {
@@ -140,28 +255,28 @@ public class EthereumGasPolicyTests
 
     // The net-metered charge has no non-generic form on the policy, so reach the interface default.
     private static bool NetMeteredDynamic<TPolicy>(ref TPolicy gas, IReleaseSpec spec)
-        where TPolicy : struct, IGasPolicy<TPolicy> => TPolicy.ConsumeNetMeteredSStoreGas(ref gas, spec);
+        where TPolicy : struct, IGasPolicy<TPolicy> => TPolicy.TryConsumeNetMeteredSStoreGas(ref gas, spec);
 
     private static bool StorageWriteDynamic(ref EthereumGasPolicy gas, IReleaseSpec spec, bool eip8037, bool slotCreation) =>
         (eip8037, slotCreation) switch
         {
-            (true, true) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OnFlag>(ref gas, spec),
-            (true, false) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OffFlag>(ref gas, spec),
-            (false, true) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OnFlag>(ref gas, spec),
-            (false, false) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OffFlag>(ref gas, spec),
+            (true, true) => EthereumGasPolicy.TryConsumeStorageWrite<OnFlag, OnFlag>(ref gas, spec),
+            (true, false) => EthereumGasPolicy.TryConsumeStorageWrite<OnFlag, OffFlag>(ref gas, spec),
+            (false, true) => EthereumGasPolicy.TryConsumeStorageWrite<OffFlag, OnFlag>(ref gas, spec),
+            (false, false) => EthereumGasPolicy.TryConsumeStorageWrite<OffFlag, OffFlag>(ref gas, spec),
         };
 
     private static bool StorageWriteSpecialized(ref EthereumGasPolicy gas, IReleaseSpec spec, bool eip8037, bool slotCreation, bool eip8038) =>
         (eip8037, slotCreation, eip8038) switch
         {
-            (true, true, true) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OnFlag, OnFlag>(ref gas, spec),
-            (true, true, false) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OnFlag, OffFlag>(ref gas, spec),
-            (true, false, true) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OffFlag, OnFlag>(ref gas, spec),
-            (true, false, false) => EthereumGasPolicy.ConsumeStorageWrite<OnFlag, OffFlag, OffFlag>(ref gas, spec),
-            (false, true, true) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OnFlag, OnFlag>(ref gas, spec),
-            (false, true, false) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OnFlag, OffFlag>(ref gas, spec),
-            (false, false, true) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OffFlag, OnFlag>(ref gas, spec),
-            (false, false, false) => EthereumGasPolicy.ConsumeStorageWrite<OffFlag, OffFlag, OffFlag>(ref gas, spec),
+            (true, true, true) => EthereumGasPolicy.TryConsumeStorageWrite<OnFlag, OnFlag, OnFlag>(ref gas, spec),
+            (true, true, false) => EthereumGasPolicy.TryConsumeStorageWrite<OnFlag, OnFlag, OffFlag>(ref gas, spec),
+            (true, false, true) => EthereumGasPolicy.TryConsumeStorageWrite<OnFlag, OffFlag, OnFlag>(ref gas, spec),
+            (true, false, false) => EthereumGasPolicy.TryConsumeStorageWrite<OnFlag, OffFlag, OffFlag>(ref gas, spec),
+            (false, true, true) => EthereumGasPolicy.TryConsumeStorageWrite<OffFlag, OnFlag, OnFlag>(ref gas, spec),
+            (false, true, false) => EthereumGasPolicy.TryConsumeStorageWrite<OffFlag, OnFlag, OffFlag>(ref gas, spec),
+            (false, false, true) => EthereumGasPolicy.TryConsumeStorageWrite<OffFlag, OffFlag, OnFlag>(ref gas, spec),
+            (false, false, false) => EthereumGasPolicy.TryConsumeStorageWrite<OffFlag, OffFlag, OffFlag>(ref gas, spec),
         };
 
     // The costs have to agree with the flag: SpecGasCosts folds NetMeteredSStoreCost to Free under
@@ -177,7 +292,7 @@ public class EthereumGasPolicyTests
 
     private static IReleaseSpec CreateAccessSpec(bool hotAndCold, bool eip8038)
     {
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.UseHotAndColdStorage.Returns(hotAndCold);
         spec.IsEip8038Enabled.Returns(eip8038);
         spec.Precompiles.Returns(((IReleaseSpec)Cancun.Instance).Precompiles);
@@ -189,7 +304,6 @@ public class EthereumGasPolicyTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(EthereumGasPolicy.GetRemainingGas(in actual), Is.EqualTo(EthereumGasPolicy.GetRemainingGas(in expected)));
-            Assert.That(EthereumGasPolicy.IsOutOfGas(in actual), Is.EqualTo(EthereumGasPolicy.IsOutOfGas(in expected)));
         }
     }
 
@@ -236,14 +350,14 @@ public class EthereumGasPolicyTests
         spec.IsEip8038Enabled.Returns(eip8038);
         EthereumGasPolicy dynamicGas = EthereumGasPolicy.FromULong(availableGas);
         EthereumGasPolicy specializedGas = dynamicGas;
-        bool expected = ChargeCreate<EvmInstructions.DynamicCreateSpec>(ref dynamicGas, spec, eip8037, create2, words);
+        bool expected = ChargeCreateDynamic(ref dynamicGas, spec, eip8037, create2, words);
         spec.ClearReceivedCalls();
         bool actual = (eip3860, eip8038) switch
         {
-            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, OnFlag>>(ref specializedGas, spec, eip8037, create2, words),
-            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, OnFlag>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038On>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038Off>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038On>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038Off>>(ref specializedGas, spec, eip8037, create2, words),
         };
 
         using (Assert.EnterMultipleScope())
@@ -259,13 +373,24 @@ public class EthereumGasPolicyTests
         where TSpec : struct, EvmInstructions.ICreateSpec =>
         (eip8037, create2) switch
         {
-            (true, true) => TSpec.ConsumeCreateGas<EthereumGasPolicy, OnFlag, EvmInstructions.OpCreate2>(ref gas, spec, words),
-            (true, false) => TSpec.ConsumeCreateGas<EthereumGasPolicy, OnFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
-            (false, true) => TSpec.ConsumeCreateGas<EthereumGasPolicy, OffFlag, EvmInstructions.OpCreate2>(ref gas, spec, words),
-            (false, false) => TSpec.ConsumeCreateGas<EthereumGasPolicy, OffFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
+            (true, true) => TSpec.TryConsumeCreateGas<EthereumGasPolicy, OnFlag, EvmInstructions.OpCreate2>(ref gas, spec, words),
+            (true, false) => TSpec.TryConsumeCreateGas<EthereumGasPolicy, OnFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
+            (false, true) => TSpec.TryConsumeCreateGas<EthereumGasPolicy, OffFlag, EvmInstructions.OpCreate2>(ref gas, spec, words),
+            (false, false) => TSpec.TryConsumeCreateGas<EthereumGasPolicy, OffFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
         };
 
-    // Locks the ConsumeDataCopyGas contract: the policy computes base access cost + per-word copy
+    /// <summary>The policy's own spec-reading create charge, the oracle the specialized specs must match.</summary>
+    private static bool ChargeCreateDynamic<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec, bool eip8037, bool create2, ulong words)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
+        (eip8037, create2) switch
+        {
+            (true, true) => TGasPolicy.TryConsumeCreateGas<OnFlag, EvmInstructions.OpCreate2>(ref gas, spec, words),
+            (true, false) => TGasPolicy.TryConsumeCreateGas<OnFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
+            (false, true) => TGasPolicy.TryConsumeCreateGas<OffFlag, EvmInstructions.OpCreate2>(ref gas, spec, words),
+            (false, false) => TGasPolicy.TryConsumeCreateGas<OffFlag, EvmInstructions.OpCreate>(ref gas, spec, words),
+        };
+
+    // Locks the TryConsumeDataCopyGas contract: the policy computes base access cost + per-word copy
     // cost internally, so any multidimensional policy can rely on (and re-categorize) the same total.
     [TestCase(false, 0UL, TestName = "CODECOPY/CALLDATACOPY/RETURNDATACOPY, empty")]
     [TestCase(false, 5UL, TestName = "CODECOPY/CALLDATACOPY/RETURNDATACOPY, 5 words")]
@@ -275,7 +400,7 @@ public class EthereumGasPolicyTests
     {
         const ulong initial = 1_000_000;
         EthereumGasPolicy gas = EthereumGasPolicy.FromULong(initial);
-        EthereumGasPolicy.ConsumeDataCopyGas(ref gas, Cancun.Instance, isExternalCode, words);
+        EthereumGasPolicy.TryConsumeDataCopyGas(ref gas, Cancun.Instance, isExternalCode, words);
 
         ulong baseCost = isExternalCode ? Cancun.Instance.GasCosts.ExtCodeCost : GasCostOf.VeryLow;
         ulong expected = baseCost + GasCostOf.Memory * words;
@@ -301,16 +426,43 @@ public class EthereumGasPolicyTests
         Assert.That(defaultImplementations, Is.GreaterThan(0));
     }
 
-    [Test]
-    public void CreateAvailableFromIntrinsic_returns_out_of_gas_when_gas_limit_below_intrinsic()
+    [TestCase(0UL)]
+    [TestCase(100UL)]
+    public void ClearExecutionGas_preserves_state_gas_accounting(ulong executionGas)
+    {
+        EthereumGasPolicy gas = new()
+        {
+            Value = executionGas,
+            StateReservoir = 50,
+            StateGasUsed = 30,
+            StateGasSpill = 20,
+            StateGasSpillRefunded = 10,
+        };
+
+        EthereumGasPolicy.ClearExecutionGas(ref gas);
+
+        Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill, gas.StateGasSpillRefunded),
+            Is.EqualTo((0UL, 50L, 30L, 20L, 10L)));
+    }
+
+    [TestCase(29_999UL, false, 0UL)]
+    [TestCase(30_000UL, false, 0UL)]
+    [TestCase(213_599UL, false, 0UL)]
+    [TestCase(213_600UL, true, 0UL)]
+    [TestCase(213_601UL, true, 1UL)]
+    public void CreateAvailableFromIntrinsic_checks_execution_and_state_gas(ulong gasLimit, bool expectedSuccess, ulong expectedRemaining)
     {
         EthereumGasPolicy intrinsic = new() { Value = 30_000, StateReservoir = 183_600 };
 
-        EthereumGasPolicy available = EthereumGasPolicy.CreateAvailableFromIntrinsic(30_000, in intrinsic, Amsterdam.Instance);
+        bool success = EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, Amsterdam.Instance, out EthereumGasPolicy available);
 
-        Assert.That(EthereumGasPolicy.IsOutOfGas(in available), Is.True);
-        Assert.That(EthereumGasPolicy.GetRemainingGas(in available), Is.EqualTo(0UL));
-        Assert.That(EthereumGasPolicy.GetStateReservoir(in available), Is.EqualTo(0L));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.EqualTo(expectedSuccess));
+            Assert.That(EthereumGasPolicy.GetRemainingGas(in available), Is.EqualTo(expectedRemaining));
+            Assert.That(EthereumGasPolicy.GetStateReservoir(in available), Is.Zero);
+            Assert.That(EthereumGasPolicy.GetStateGasUsed(in available), Is.EqualTo(expectedSuccess ? intrinsic.StateReservoir : 0));
+        }
     }
 
     [Test]
@@ -336,6 +488,23 @@ public class EthereumGasPolicyTests
         Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas)));
     }
 
+    [TestCase(20_000UL, false)]
+    [TestCase(30_000UL, false)]
+    [TestCase(40_000UL, true)]
+    public void MinimalGas_preserves_selected_policy(ulong floorValue, bool selectFloor)
+    {
+        EthereumGasPolicy standard = new() { Value = 30_000, StateReservoir = 100, StateGasUsed = 200, StateGasSpill = 300, StateGasSpillRefunded = 400 };
+        EthereumGasPolicy floor = new() { Value = floorValue, StateReservoir = 500, StateGasUsed = 600, StateGasSpill = 700, StateGasSpillRefunded = 800 };
+        IntrinsicGas<EthereumGasPolicy> intrinsic = new(standard, floor);
+        EthereumGasPolicy expected = selectFloor ? floor : standard;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsic.MinimalGas, Is.EqualTo(expected));
+            Assert.That((EthereumGasPolicy)intrinsic, Is.EqualTo(expected));
+        }
+    }
+
     [TestCase(100UL, 40UL, 10L, 50UL, TestName = "positive_reservoir_is_subtracted")]
     [TestCase(100UL, 40UL, -10L, 70UL, TestName = "negative_reservoir_spill_is_added_back")]
 #if !DEBUG
@@ -354,6 +523,56 @@ public class EthereumGasPolicyTests
         ulong preRefundGas = GetPreRefundGas(in gas, gasLimit);
 
         Assert.That(preRefundGas, Is.EqualTo(expected));
+    }
+
+    [Test, Combinatorial]
+    public void Specialized_sload_base_matches_price_book(
+        [Values] bool hotAndCold,
+        [Values(0UL, 99UL, 800UL, 10000UL)] ulong availableGas)
+    {
+        IReleaseSpec spec = CreateAccessSpec(hotAndCold, false);
+        EthereumGasPolicy expectedGas = EthereumGasPolicy.FromULong(availableGas);
+        EthereumGasPolicy actualGas = expectedGas;
+        bool expected = EthereumGasPolicy.UpdateGas(ref expectedGas, spec.GasCosts.SLoadCost);
+        spec.ClearReceivedCalls();
+
+        bool actual = hotAndCold
+            ? EthereumGasPolicy.TryConsumeSLoadBaseGas<OnFlag>(ref actualGas, spec)
+            : EthereumGasPolicy.TryConsumeSLoadBaseGas<OffFlag>(ref actualGas, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            AssertGasMatches(in actualGas, in expectedGas);
+            if (hotAndCold) Assert.That(spec.ReceivedCalls(), Is.Empty);
+        }
+    }
+
+    [Test, Combinatorial]
+    public void Specialized_exp_price_matches_price_book(
+        [Values] bool eip160,
+        [Values(0UL, 1UL, 32UL)] ulong exponentBytes,
+        [Values(0UL, 9UL, 10UL, 49UL, 50UL, 1599UL, 1600UL)] ulong availableGas)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.UseExpDDosProtection.Returns(eip160);
+        SpecGasCosts gasCosts = new(spec);
+        spec.GasCosts.Returns(gasCosts);
+        EthereumGasPolicy expectedGas = EthereumGasPolicy.FromULong(availableGas);
+        EthereumGasPolicy actualGas = expectedGas;
+        bool expected = EthereumGasPolicy.UpdateGas(ref expectedGas, spec.GasCosts.ExpByteCost * exponentBytes);
+        spec.ClearReceivedCalls();
+
+        bool actual = eip160
+            ? EthereumGasPolicy.TryConsumeExpBytes<OnFlag>(ref actualGas, spec, exponentBytes)
+            : EthereumGasPolicy.TryConsumeExpBytes<OffFlag>(ref actualGas, spec, exponentBytes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            AssertGasMatches(in actualGas, in expectedGas);
+            Assert.That(spec.ReceivedCalls(), Is.Empty);
+        }
     }
 
     private static ulong GetPreRefundGas<TGasPolicy>(in TGasPolicy gas, ulong gasLimit)

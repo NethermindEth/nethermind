@@ -115,7 +115,7 @@ namespace Nethermind.Core.Extensions
             return a1.SequenceEqual(a2);
         }
 
-        public static bool IsZero(this byte[] bytes) => bytes.AsSpan().IndexOfAnyExcept((byte)0) < 0;
+        public static bool IsZero([NotNullWhen(false)] this byte[]? bytes) => bytes.AsSpan().IndexOfAnyExcept((byte)0) < 0;
 
         public static bool IsZero(this Span<byte> bytes) => bytes.IndexOfAnyExcept((byte)0) < 0;
 

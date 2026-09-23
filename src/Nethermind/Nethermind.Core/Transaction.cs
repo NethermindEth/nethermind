@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -19,7 +20,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
-    public class Transaction
+    public partial class Transaction
     {
         public const byte MaxTxType = 0x7F;
         public const uint BaseTxGasCost = 21000;
@@ -95,16 +96,23 @@ namespace Nethermind.Core
             Hash256? hash = _hash;
             if (hash is not null) return hash;
 
-            lock (this)
-            {
-                hash = _hash;
-                if (hash is not null) return hash;
+            return CalculateHashSynchronized();
+        }
 
-                if (_preHash.Length > 0)
-                {
-                    _hash = hash = Keccak.Compute(_preHash.Span);
-                    ClearPreHashInternal();
-                }
+        /// <summary>Computes and memoizes the hash, holding whatever exclusion the target needs.</summary>
+        /// <remarks>Split per target: see <c>Transaction.std.cs</c> and <c>Transaction.zkevm.cs</c>.</remarks>
+        private partial Hash256 CalculateHashSynchronized();
+
+        /// <summary>The memoizing computation itself, with no exclusion of its own.</summary>
+        private Hash256 ComputeAndMemoizeHash()
+        {
+            Hash256? hash = _hash;
+            if (hash is not null) return hash;
+
+            if (_preHash.Length > 0)
+            {
+                _hash = hash = Keccak.Compute(_preHash.Span);
+                ClearPreHashInternal();
             }
 
             return hash!;
@@ -318,6 +326,7 @@ namespace Nethermind.Core
                 obj.AccessList = default;
                 obj.MaxFeePerBlobGas = default;
                 obj.BlobVersionedHashes = default;
+                PooledBlobBuffers.Return(obj);
                 obj.NetworkWrapper = default;
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
@@ -341,6 +350,8 @@ namespace Nethermind.Core
         /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
         public void CopyTo(Transaction tx, bool copyHash)
         {
+            // Copies share the network payload and can outlive the original transaction.
+            PooledBlobBuffers.Disown(this);
             if (copyHash)
             {
                 tx.Hash = Hash;
@@ -423,6 +434,28 @@ namespace Nethermind.Core
         BlobCellMask CellMask = default,
         byte[][]? Cells = null)
     {
+        /// <remarks>
+        /// Record copies share this token. Disown the transaction before publishing any additional
+        /// reference to its wrapper or blob arrays; idempotent returns alone do not prevent use after return.
+        /// </remarks>
+        internal PooledBlobBuffers? PooledBuffers { get; init; }
+
+        /// <inheritdoc/>
+        /// <remarks>Pool ownership is excluded so equality depends only on the payload and record type.</remarks>
+        public virtual bool Equals(ShardBlobNetworkWrapper? other) =>
+            ReferenceEquals(this, other)
+            || (other is not null
+                && EqualityContract == other.EqualityContract
+                && Blobs == other.Blobs
+                && Commitments == other.Commitments
+                && Proofs == other.Proofs
+                && Version == other.Version
+                && CellMask.Equals(other.CellMask)
+                && Cells == other.Cells);
+
+        /// <inheritdoc/>
+        public override int GetHashCode() => HashCode.Combine(EqualityContract, Blobs, Commitments, Proofs, Version, CellMask, Cells);
+
         /// <summary>
         /// Creates a blob network wrapper without sparse-cell data.
         /// </summary>

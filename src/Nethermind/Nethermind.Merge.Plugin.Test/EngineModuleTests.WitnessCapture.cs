@@ -750,13 +750,13 @@ public partial class EngineModuleTests
         foreach (byte[] node in witness.State)
             witnessNodes.Add(ValueKeccak.Compute(node));
 
-        Assert.That(proof.Proof, Is.Not.Null.And.Not.Empty, $"expected a non-empty account proof for {account}");
-        foreach (byte[] node in proof.Proof!)
+        Assert.That(proof.Proof, Is.Not.Empty, $"expected a non-empty account proof for {account}");
+        foreach (byte[] node in proof.Proof)
             Assert.That(witnessNodes, Does.Contain(ValueKeccak.Compute(node)),
                 $"witness State must contain the account-proof node for {account}");
 
-        foreach (StorageProof storageProof in proof.StorageProofs ?? [])
-            foreach (byte[] node in storageProof.Proof ?? [])
+        foreach (StorageProof storageProof in proof.StorageProofs)
+            foreach (byte[] node in storageProof.Proof)
                 Assert.That(witnessNodes, Does.Contain(ValueKeccak.Compute(node)),
                     $"witness State must contain the storage-proof node for {account}");
     }
@@ -808,6 +808,12 @@ public partial class EngineModuleTests
     private sealed class CountingBranchProcessorDecorator(IBranchProcessor inner, Action onProcess)
         : IBranchProcessor
     {
+        public event EventHandler<BlockExecutedEventArgs>? BlockExecuted
+        {
+            add => inner.BlockExecuted += value;
+            remove => inner.BlockExecuted -= value;
+        }
+
         public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
         {
             add => inner.BlockProcessed += value;
