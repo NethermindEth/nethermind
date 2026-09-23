@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using NUnit.Framework;
+using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
@@ -85,48 +85,85 @@ public class BeaconChainStoreTests
         Assert.That(version, Is.EqualTo(newer), "a refused database must not be restamped as one this build can read");
     }
 
-    private static SignedBeaconBlock CreateMinimalBlock(ulong slot) => new()
+    private static readonly Hash256 BlockRoot = new(Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333"));
+
+    // The last Fulu slot goes through the Fulu-typed adapters and the first Gloas slot does not, which pins the boundary on both sides.
+    [Test]
+    public void Fulu_and_gloas_blocks_read_back_in_the_shape_of_the_fork_their_slot_belongs_to()
     {
-        Message = new BeaconBlock
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Sepolia);
+        Hash256 fuluRoot = new(Bytes.FromHexString("0x4444444444444444444444444444444444444444444444444444444444444444"));
+        SignedBeaconBlock fulu = CreateMinimalBlock(FirstGloasSlot - 1);
+        // The children index must follow the block's parent_root, not the bid's parent_block_root, which an unvalidated block such as an anchor may set differently.
+        SignedBeaconBlockGloas gloas = CreateMinimalGloasBlock(FirstGloasSlot, parentRoot: fuluRoot, bidParentRoot: Keccak.OfAnEmptyString);
+
+        store.PutBlock(fuluRoot, fulu);
+        store.PutForkedBlock(BlockRoot, new ForkedSignedBeaconBlock.OfGloas(gloas));
+
+        Assert.That(store.TryGetForkedBlock(fuluRoot, out ForkedSignedBeaconBlock? readFulu), Is.True);
+        Assert.That(store.TryGetForkedBlock(BlockRoot, out ForkedSignedBeaconBlock? readGloas), Is.True);
+        Assert.That(store.TryGetBlock(fuluRoot, out SignedBeaconBlock? adapted), Is.True, "the Fulu-typed read still serves a Fulu block");
+        Assert.That(readFulu, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
+        Assert.That(readGloas, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        bool hasChildren = store.TryGetChildren(fuluRoot, out Hash256[] children, out _);
+        using (Assert.EnterMultipleScope())
         {
-            Slot = slot,
-            ProposerIndex = 21,
-            ParentRoot = Hash256.Zero,
-            StateRoot = Hash256.Zero,
-            Body = new BeaconBlockBody
-            {
-                Eth1Data = new Eth1Data { DepositRoot = Hash256.Zero, DepositCount = 0, BlockHash = Hash256.Zero },
-                Graffiti = Hash256.Zero,
-                ProposerSlashings = [],
-                AttesterSlashings = [],
-                Attestations = [],
-                Deposits = [],
-                VoluntaryExits = [],
-                SyncAggregate = new SyncAggregate { SyncCommitteeBits = new BitArray(512) },
-                ExecutionPayload = new ExecutionPayload
-                {
-                    ParentHash = Hash256.Zero,
-                    FeeRecipient = Address.Zero,
-                    StateRoot = Hash256.Zero,
-                    ReceiptsRoot = Hash256.Zero,
-                    LogsBloom = Bloom.Empty,
-                    PrevRandao = Hash256.Zero,
-                    BlockNumber = 23_000_000,
-                    GasLimit = 30_000_000,
-                    GasUsed = 21_000,
-                    Timestamp = 1_750_000_000,
-                    ExtraData = Bytes.FromHexString("0xc0ffee"),
-                    BaseFeePerGas = 7,
-                    BlockHash = Hash256.Zero,
-                    Transactions = [],
-                    Withdrawals = [],
-                    BlobGasUsed = 0,
-                    ExcessBlobGas = 0,
-                },
-                BlsToExecutionChanges = [],
-                BlobKzgCommitments = [],
-                ExecutionRequests = new ExecutionRequests { Deposits = [], Withdrawals = [], Consolidations = [] },
-            },
-        },
-    };
+            Assert.That(SignedBeaconBlock.Encode(((ForkedSignedBeaconBlock.OfFulu)readFulu!).Block), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
+            Assert.That(SignedBeaconBlockGloas.Encode(((ForkedSignedBeaconBlock.OfGloas)readGloas!).Block), Is.EqualTo(SignedBeaconBlockGloas.Encode(gloas)));
+            Assert.That(SignedBeaconBlock.Encode(adapted!), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
+            Assert.That(hasChildren, Is.True);
+            Assert.That(children, Is.EqualTo(new[] { BlockRoot }));
+        }
+    }
+
+    [Test]
+    public void The_fulu_typed_read_refuses_a_gloas_block_by_name_rather_than_misreading_it()
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Sepolia);
+        store.PutForkedBlock(BlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(FirstGloasSlot)));
+
+        Assert.That(() => store.TryGetBlock(BlockRoot, out _),
+            Throws.InvalidOperationException.With.Message.Contains(nameof(BeaconChainStore.TryGetForkedBlock)));
+    }
+
+    [Test]
+    public void The_fulu_typed_write_refuses_a_block_at_a_gloas_slot_by_name_and_stores_nothing()
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Sepolia);
+
+        Assert.That(() => store.PutBlock(BlockRoot, CreateMinimalBlock(FirstGloasSlot)),
+            Throws.InvalidOperationException.With.Message.Contains(nameof(BeaconChainStore.PutForkedBlock)));
+        Assert.That(store.HasBlock(BlockRoot), Is.False);
+    }
+
+    [Test]
+    public void The_forked_write_refuses_a_shape_that_would_read_back_as_another_fork()
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Sepolia);
+
+        Assert.That(() => store.PutForkedBlock(BlockRoot, new ForkedSignedBeaconBlock.OfFulu(CreateMinimalBlock(FirstGloasSlot))),
+            Throws.TypeOf<BeaconStateException>());
+        Assert.That(store.HasBlock(BlockRoot), Is.False);
+    }
+
+    // Without a spec no Gloas fork is known: any slot is the Fulu shape, as before the forked members existed.
+    [Test]
+    public void Without_a_spec_every_block_is_the_fulu_shape_and_a_gloas_block_is_refused()
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        SignedBeaconBlock fulu = CreateMinimalBlock(FirstGloasSlot);
+
+        store.PutBlock(BlockRoot, fulu);
+
+        Assert.That(store.TryGetBlock(BlockRoot, out SignedBeaconBlock? read), Is.True);
+        Assert.That(store.TryGetForkedBlock(BlockRoot, out ForkedSignedBeaconBlock? forked), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SignedBeaconBlock.Encode(read!), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));
+            Assert.That(forked, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
+        }
+
+        Assert.That(() => store.PutForkedBlock(BlockRoot, new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(FirstGloasSlot))),
+            Throws.InvalidOperationException, "a Gloas block stored without a spec would read back as the Fulu shape");
+    }
 }
