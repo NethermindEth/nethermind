@@ -3,18 +3,24 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Logging;
+using Nethermind.Optimism.CL;
+using Nethermind.Optimism.CL.P2P;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.TxPool;
 using NSubstitute;
+using IIPResolver = Nethermind.Network.IIPResolver;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -22,6 +28,27 @@ namespace Nethermind.Optimism.Test;
 [Parallelizable(ParallelScope.All)]
 public class OptimismModuleTests
 {
+    [Test]
+    public void Invalid_cl_p2p_host_reports_the_configuration_key()
+    {
+        OptimismConfig config = new() { ClP2PHost = "localhost" };
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        using OptimismCLP2P p2p = new(
+            Substitute.For<IExecutionEngineManager>(),
+            10,
+            [],
+            config,
+            TestItem.AddressA,
+            Substitute.For<ITimestamper>(),
+            ipResolver,
+            LimboLogs.Instance);
+
+        Assert.That(
+            async () => await p2p.Run(CancellationToken.None),
+            Throws.TypeOf<InvalidConfigurationException>()
+                .With.Message.Contains($"{nameof(IOptimismConfig)}.{nameof(IOptimismConfig.ClP2PHost)}"));
+    }
+
     [TestCase(true, TestName = "CL enabled registers the CL startup step")]
     [TestCase(false, TestName = "CL disabled skips the CL startup step")]
     public void ClEnabled_gates_cl_registration(bool clEnabled)

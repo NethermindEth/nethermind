@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
@@ -346,9 +347,41 @@ public partial class BlockAccessListManager
         => hasNoChangesAtIndex
         && ((index == 0 && address == Address.SystemUser && !hasChargeableReads) || hasChargeableReads);
 
+    /// <summary>
+    /// Upper bound on the chargeable storage reads the post-execution request calls can add without spending block gas.
+    /// </summary>
+    /// <remarks>
+    /// EIP-7928: an early surplus-reads rejection must not reject a valid block, and system-call reads are not paid
+    /// for by block gas. Canonical request bytecode at its predeploy reads only its own storage, which the budget
+    /// excludes; any other code may read up to its execution grant at the cold <c>SLOAD</c> cost.
+    /// </remarks>
+    private ulong PostExecutionReadAllowance(IReleaseSpec spec)
+    {
+        if (!spec.RequestsEnabled) return 0ul;
+
+        ulong calls = 0ul;
+        if (spec.WithdrawalRequestsEnabled && !IsCanonicalPredeploy(spec.Eip7002ContractAddress, Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002Constants.CodeHash)) calls++;
+        if (spec.ConsolidationRequestsEnabled && !IsCanonicalPredeploy(spec.Eip7251ContractAddress, Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251Constants.CodeHash)) calls++;
+        if (spec.BuilderRequestsEnabled)
+        {
+            // EIP-8282 predeploy addresses are fixed; the spec has no override for them.
+            if (!HasCanonicalCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282Constants.BuilderDepositCodeHash)) calls++;
+            if (!HasCanonicalCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282Constants.BuilderExitCodeHash)) calls++;
+        }
+
+        return calls * (Eip8037Constants.SystemCallBaseGasLimit / GasCostOf.ColdSLoad);
+    }
+
+    private bool IsCanonicalPredeploy(Address? contract, Address predeploy, in ValueHash256 canonicalCodeHash)
+        => contract == predeploy && HasCanonicalCode(predeploy, in canonicalCodeHash);
+
+    private bool HasCanonicalCode(Address predeploy, in ValueHash256 canonicalCodeHash)
+        => stateProvider.GetCodeHash(predeploy) == canonicalCodeHash;
+
     private void ThrowIfStorageReadBudgetExceeded(Block block, ulong surplusReads, bool validateStorageReads)
     {
-        if (validateStorageReads && surplusReads > 0ul && _gasRemaining < surplusReads * Eip7928Constants.ItemCost)
+        if (validateStorageReads && surplusReads > _postExecutionReadAllowance
+            && _gasRemaining < (surplusReads - _postExecutionReadAllowance) * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
