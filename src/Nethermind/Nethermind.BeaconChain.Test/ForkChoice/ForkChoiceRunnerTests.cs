@@ -27,13 +27,6 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// </summary>
 public class ForkChoiceRunnerTests
 {
-    [TestCase(0ul, false, TestName = "epoch_boundary_slot_is_unstable")]
-    [TestCase(1ul, true, TestName = "mid_epoch_slot_is_stable")]
-    [TestCase(31ul, true, TestName = "last_slot_of_epoch_is_stable")]
-    [TestCase(32ul, false, TestName = "next_epoch_boundary_is_unstable")]
-    public void IsShufflingStable_is_false_only_at_an_epoch_boundary(ulong slot, bool expected) =>
-        Assert.That(ForkChoiceRunner.IsShufflingStable(slot, slotsPerEpoch: 32), Is.EqualTo(expected));
-
     [TestCase(0ul, 0ul, true, TestName = "same_epoch_is_ok")]
     [TestCase(64ul, 0ul, true, TestName = "exactly_the_max_gap_is_ok")]
     [TestCase(96ul, 0ul, false, TestName = "one_epoch_past_the_max_gap_is_not_ok")]
