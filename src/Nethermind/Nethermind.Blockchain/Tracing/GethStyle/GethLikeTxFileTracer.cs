@@ -109,6 +109,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         entry.OpcodeRaw = default;
         entry.ProgramCounter = default;
         entry.Refund = default;
+        entry.ReturnData = default;
         entry.Stack = default;
         entry.Storage = default;
 

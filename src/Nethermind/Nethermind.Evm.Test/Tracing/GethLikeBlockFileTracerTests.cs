@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -117,6 +118,45 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
                     Assert.That(stack.GetRawText(), Is.EqualTo(disableStack ? "null" : expectedStacks[i]), $"opcode record {i}");
             }
         }
+    }
+
+    [Test]
+    public void File_return_data_follows_call_results([Values] bool enableReturnData, [Values(Instruction.RETURN, Instruction.REVERT)] Instruction exit)
+    {
+        byte[] code = PrepareReturningCalls(exit);
+        string[] records = TraceFile(code, enableReturnData: enableReturnData).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        using JsonDocument trace = JsonDocument.Parse("[" + string.Join(',', records) + "]");
+        JsonElement[] opcodes = trace.RootElement.EnumerateArray().Where(record => record.TryGetProperty("opName", out _)).ToArray();
+        int firstReturnData = Array.FindIndex(opcodes, record => record.GetProperty("opName").GetString() == "RETURNDATASIZE");
+        int lastReturnData = Array.FindLastIndex(opcodes, record => record.GetProperty("opName").GetString() == "CALL");
+        Assert.That(firstReturnData, Is.GreaterThan(0));
+        Assert.That(lastReturnData, Is.GreaterThan(firstReturnData));
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < opcodes.Length; i++)
+            {
+                bool expected = enableReturnData && i >= firstReturnData && i <= lastReturnData;
+                bool present = opcodes[i].TryGetProperty("returnData", out JsonElement returnData);
+                Assert.That(present, Is.EqualTo(expected), $"opcode record {i}");
+                if (present)
+                    Assert.That(returnData.GetString(), Is.EqualTo("0x" + new string('0', 62) + "2a"), $"opcode record {i}");
+            }
+        }
+    }
+
+    [Test]
+    public void File_limit_counts_return_data_bytes([Values(-1, 0)] int offset)
+    {
+        byte[] code = PrepareReturningCalls(Instruction.RETURN);
+        string[] records = TraceFile(code, enableReturnData: true).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int firstReturnData = Array.FindIndex(records, record => record.Contains("\"returnData\""));
+        Assert.That(firstReturnData, Is.GreaterThan(0));
+        long boundary = Encoding.UTF8.GetByteCount(string.Join('\n', records[..(firstReturnData + 1)])) + 1;
+        int expectedRecords = firstReturnData + (offset < 0 ? 1 : 2);
+        string expected = string.Join('\n', records[..expectedRecords]) + "\n";
+
+        Assert.That(TraceFile(code, boundary + offset, enableReturnData: true), Is.EqualTo(expected));
     }
 
     [Test]
@@ -263,11 +303,23 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         blockTracer.EndTxTrace();
     }
 
-    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false)
+    private byte[] PrepareReturningCalls(Instruction exit)
+    {
+        byte[] callee = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(0).Op(exit).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, callee, Spec);
+        TestState.CreateAccount(TestItem.AddressE, 1.Ether);
+        TestState.Commit(Spec);
+        return Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.RETURNDATASIZE)
+            .Op(Instruction.POP).Call(TestItem.AddressE, 50_000).Op(Instruction.STOP).Done;
+    }
+
+    private string TraceFile(byte[] code, long limit = 0, bool disableStack = false, bool enableReturnData = false)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
-        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack }, fileSystem, Spec);
+        using GethLikeBlockFileTracer tracer = new(Build.A.Block.TestObject, GethTraceOptions.Default with { Limit = limit, DisableStack = disableStack, EnableReturnData = enableReturnData }, fileSystem, Spec);
         ExecuteBlock(tracer, code);
         return fileSystem.File.ReadAllText(tracer.FileNames.Single());
     }
