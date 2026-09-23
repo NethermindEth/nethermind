@@ -68,9 +68,10 @@ public class KeyedNonceManagerTests
     }
 
     [Test]
-    public void Batched_storage_indices_match_individual_slots([Range(0, Eip8250Constants.MaxNonceKeys)] int count)
+    public void Batched_storage_indices_match_individual_slots(
+        [Range(0, Eip8250Constants.MaxNonceKeys)] int count, [Values] bool wide)
     {
-        UInt256[] keys = StrictlyIncreasing(count);
+        UInt256[] keys = StrictlyIncreasing(count, wide);
         UInt256[] indices = new UInt256[count];
 
         KeyedNonceManager.StorageIndices(TestItem.AddressA, keys, indices);
@@ -82,23 +83,6 @@ public class KeyedNonceManagerTests
             keys[i].ToBigEndian(preimage.AsSpan(32));
             UInt256 expected = new(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true);
             Assert.That(indices[i], Is.EqualTo(expected));
-        }
-    }
-
-    // The batch and the scalar tail are interchangeable by design, so whichever the gate picks must derive
-    // the same slot. Only the fixed vectors above pin StorageSlot itself, so this closes the gap for
-    // arbitrary keys — the property FirstUseCount's batch gate rests on.
-    [Test]
-    public void Batched_storage_indices_match_the_scalar_slots([Range(2, Eip8250Constants.MaxNonceKeys)] int count)
-    {
-        UInt256[] keys = StrictlyIncreasing(count, wide: true);
-        UInt256[] indices = new UInt256[count];
-
-        KeyedNonceManager.StorageIndices(TestItem.AddressA, keys, indices);
-
-        for (int i = 0; i < count; i++)
-        {
-            Assert.That(indices[i], Is.EqualTo(KeyedNonceManager.StorageSlot(TestItem.AddressA, keys[i]).Index));
         }
     }
 
@@ -276,7 +260,7 @@ public class KeyedNonceManagerTests
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue - 1), Is.True);
     }
 
-    /// <param name="wide">Fills the upper words too, so the batch lanes carry a full 32-byte key rather than
+    /// <param name="wide">Fills the upper words too, so a batch lane carries a full 32-byte key rather than
     /// one whose high bytes a cleared buffer would supply anyway.</param>
     private static UInt256[] StrictlyIncreasing(int count, bool wide = false)
     {
