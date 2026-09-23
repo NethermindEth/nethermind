@@ -462,11 +462,13 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugResetHead_WhenInvoked_UpdatesHeadBlock()
+    public async Task DebugResetHead_WhenInvoked_UpdatesHeadBlock([Values] bool updated)
     {
+        _debugBridge.UpdateHeadBlock(TestItem.KeccakA).Returns(updated);
+
         string response = await SerializedRequest("debug_resetHead", TestItem.KeccakA);
 
-        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{(updated ? "true" : "false")},\"id\":67}}"));
         _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
 

@@ -407,6 +407,23 @@ public partial class EngineModuleTests
         Assert.That(head!.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests)));
     }
 
+    // EIP-7843: in SimulateBlockProduction mode the attributes are synthesised from the head itself,
+    // so their slot must be strictly greater than the head's or the handler rejects its own attributes.
+    [Test]
+    public async Task ForkchoiceUpdatedV4_without_attributes_simulates_block_production_after_Eip7843()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            Amsterdam.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", SimulateBlockProduction = true });
+        Hash256 head = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await chain.EngineRpcModule
+            .engine_forkchoiceUpdatedV4(new ForkchoiceStateV1(head, head, head), null);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+    }
+
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null, bool withRequests = false)

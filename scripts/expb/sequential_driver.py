@@ -25,6 +25,7 @@ WARM_BAD = re.compile(r"\[payload-server\]\s+warmup\s+block=(\d+)\s+FAILED\b", r
 SEVERE = re.compile(r"\b(?:Unhandled|Fatal|ERROR)\b", re.I)
 LIMIT = 4096
 MAX_DIAGNOSTIC_LINES = 20
+CLIENTS = ("nethermind", "reth", "geth")
 current = None
 cancelled = False
 watchdog: threading.Timer | None = None
@@ -65,9 +66,19 @@ def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
         config = json.loads(json.dumps(config).replace(old, new))
     scenarios = config.get("scenarios")
     if not isinstance(scenarios, dict) or not isinstance(scenarios.get("nethermind"), dict): raise ValueError("config has no scenarios.nethermind mapping")
-    name = f"nethermind-{image['id']}-run{run}"
+    client = get("CLIENT", "nethermind")
+    if client not in CLIENTS: raise ValueError(f"CLIENT must be one of {', '.join(CLIENTS)}, got {client!r}")
+    name = f"{client}-{image['id']}-run{run}"
     config["scenarios"] = {name: (scenario := scenarios.pop("nethermind"))}
-    scenario.update({"image": image["image"], **({"amount": amount} if amount is not None else {})})
+    scenario.update({"client": client, "image": image["image"], **({"amount": amount} if amount is not None else {})})
+    if client != "nethermind":
+        # Reference clients reuse the Nethermind scenario's payloads but never its flags, env or
+        # volumes; they read their own snapshot through the overlay backend, and opening a large
+        # reference snapshot can take several minutes on the benchmark runners.
+        if get("MEASUREMENT_MODE", "standard") == "compute-warm" or get("TRACE_BLOCKS") or parse_pairs(get("CLIENT_ENV")):
+            raise ValueError(f"compute-warm, TRACE_BLOCKS and CLIENT_ENV are Nethermind-only and cannot be used with client={client}")
+        if not get("CLIENT_SNAPSHOT_DIR") or not get("SNAPSHOT_MOUNT_PATH"): raise ValueError(f"client={client} needs CLIENT_SNAPSHOT_DIR and SNAPSHOT_MOUNT_PATH")
+        scenario.update({"snapshot_source": get("CLIENT_SNAPSHOT_DIR"), "snapshot_backend": "overlay", "extra_flags": [], "extra_env": {}, "extra_commands": [], "extra_volumes": {}, "snapshot_mount_path": get("SNAPSHOT_MOUNT_PATH"), "startup_wait": 600})
     extra = parse_flags(get("ADDITIONAL_EXTRA_FLAGS"))
     if get("MEASUREMENT_MODE", "standard") == "compute-warm":
         if any("JsonRpc.GasCap" in item for item in extra): raise ValueError("compute-warm conflicts with GasCap override")
@@ -126,8 +137,12 @@ def stop(_signum: int, _frame: object) -> None:
     watchdog = threading.Timer(int(get("CLEANUP_GRACE_SECONDS", "90")), force, (process,))
     watchdog.daemon = True
     watchdog.start()
-def collect_metrics(log_path: Path | str) -> tuple[dict, dict[str, list[str]]]:
-    """Parse a campaign log once while keeping diagnostics bounded in memory."""
+def collect_metrics(log_path: Path | str, use_sse: bool = True) -> tuple[dict, dict[str, list[str]]]:
+    """Parse a campaign log once while keeping diagnostics bounded in memory.
+
+    With use_sse=False (measurement_source=engine-api) the k6 request table is the only timing
+    source, so every client is measured on the same clock.
+    """
     sse = []
     rows = []
     diagnostics = {"exceptions": [], "invalid": [], "severe": []}
@@ -140,7 +155,7 @@ def collect_metrics(log_path: Path | str) -> tuple[dict, dict[str, list[str]]]:
     with Path(log_path).open("r", encoding="utf-8", errors="replace") as log:
         for raw_line in log:
             line = ANSI.sub("", raw_line).rstrip("\r\n")
-            if match := SSE.search(line):
+            if use_sse and (match := SSE.search(line)):
                 sse.append((int(match.group(1)), float(match.group(2))))
             if match := K6.match(line):
                 rows.append((int(match.group(1)), int(match.group(2)), float(match.group(3))))
@@ -172,11 +187,18 @@ def collect_metrics(log_path: Path | str) -> tuple[dict, dict[str, list[str]]]:
     outside = metric_stats(outside_values)
     processing_source = "SSE" if sse else "TTFB"
     mgas_s = None
+    request_mgas_s = None
+    # The feed reports a block when the next payload is requested, so it can lack the last one; both
+    # throughputs divide the gas of the same payloads, so they stay directly comparable.
+    paired = min(len(rows), len(sse)) if sse else len(rows)
+    paired_gas = sum(gas for _, gas, _ in rows[:paired]) / 1_000_000
     if sse and rows:
-        paired = min(len(rows), len(sse))
         processing_total = sum(value for _, value in sse[:paired])
         if processing_total > 0:
-            mgas_s = sum(gas for _, gas, _ in rows[:paired]) / 1_000_000 / (processing_total / 1_000)
+            mgas_s = paired_gas / (processing_total / 1_000)
+    request_total = sum(value for _, _, value in rows[:paired])
+    if request_total > 0:
+        request_mgas_s = paired_gas / (request_total / 1_000)
     parsed = {
         "source": processing_source if processing_values else "none",
         "count": len(processing_values),
@@ -190,6 +212,7 @@ def collect_metrics(log_path: Path | str) -> tuple[dict, dict[str, list[str]]]:
         "request": request,
         "outside": outside if sse else metric_stats([]),
         "mgas_s": mgas_s,
+        "request_mgas_s": request_mgas_s,
         "warm_ok": sorted(warm_ok),
         "warm_bad": sorted(warm_bad),
         "shutdown": shutdown,
@@ -207,7 +230,7 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     started = now()
     log_path = directory / f"combined-{started.replace(':', '').replace('-', '')}.log"
     config_path = directory / "config.json"
-    result = {"sample_id": sample_id, "image_id": image["id"], "image": image["image"], "run": run, "started_at": started, "architecture": platform.machine(), "runner_hostname": socket.gethostname(), "log": str(log_path), "config": str(config_path), "expb_source": get("EXPB_SOURCE", "unknown"), "expb_env": get("EXPB_ENV_PASSTHROUGH"), "measurement_mode": get("MEASUREMENT_MODE", "standard"), "status": "failed"}
+    result = {"sample_id": sample_id, "image_id": image["id"], "image": image["image"], "run": run, "started_at": started, "architecture": platform.machine(), "runner_hostname": socket.gethostname(), "log": str(log_path), "config": str(config_path), "expb_source": get("EXPB_SOURCE", "unknown"), "expb_env": get("EXPB_ENV_PASSTHROUGH"), "measurement_mode": get("MEASUREMENT_MODE", "standard"), "client": get("CLIENT", "nethermind"), "measurement_source": get("MEASUREMENT_SOURCE", "auto"), "status": "failed"}
     config = base
     try:
         config, scenario = render(base, image, run)
@@ -226,6 +249,8 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
             command = [get("EXPB_BIN", "expb"), "execute-scenarios", "--config-file", str(runtime_config_path), "--per-payload-metrics", "--per-payload-metrics-logs", "--print-logs"]
             if get("DOTTRACE", "false") == "true": command += ["--dottrace", "--dottrace-mode", get("DOTTRACE_MODE", "sampling"), "--dotnet-trace"]
             if get("PERF", "false") == "true": command.append("--perf")
+            # Cross-client runs share the k6 request clock; keep the Nethermind-only SSE feed off.
+            if get("MEASUREMENT_SOURCE", "auto") == "engine-api": command.append("--no-client-metrics")
             result["command"] = command
             child_env = os.environ.copy()
             child_env.update(parse_pairs(get("EXPB_ENV_PASSTHROUGH")))
@@ -242,7 +267,7 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     finally:
         if watchdog is not None: watchdog.cancel()
         current = None
-    parsed, diagnostics = collect_metrics(log_path)
+    parsed, diagnostics = collect_metrics(log_path, use_sse=get("MEASUREMENT_SOURCE", "auto") != "engine-api")
     try:
         verify_clean(config)
         clean_error = ""
@@ -254,7 +279,8 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     if expected is None or delivered != expected or len(set(parsed["payload_indices"])) != delivered: reasons.append(f"delivery count/IDs expected {expected}, got {delivered}")
     if parsed["source"] == "SSE" and (delivered < 1 or parsed["sse_count"] not in (delivered, delivered - 1) or len(set(parsed["ids"])) != parsed["sse_count"]): reasons.append(f"SSE coverage/IDs are {parsed['sse_count']} for {delivered} delivered")
     if parsed["avg"] is None: reasons.append("processing metrics are missing")
-    if not parsed["shutdown"]: reasons.append("normal shutdown marker is missing")
+    # Only Nethermind prints this marker; reference clients rely on expb's cleanup marker below.
+    if get("CLIENT", "nethermind") == "nethermind" and not parsed["shutdown"]: reasons.append("normal shutdown marker is missing")
     if not parsed["cleanup"]: reasons.append("cleanup completed marker is missing")
     if parsed["exception_count"]: reasons.append(f"{parsed['exception_count']} exception line(s) detected")
     if parsed["invalid_count"]: reasons.append(f"{parsed['invalid_count']} invalid block line(s) detected")
@@ -299,14 +325,15 @@ def write_summary(root: Path, images: list[dict], run_count: int, samples: list[
     successful = {image["id"]: [sample for sample in samples if sample["status"] == "success" and sample["image_id"] == image["id"]] for image in images}
     baseline_id = images[0]["id"]
     stats = {image["id"]: image_stats(successful[image["id"]]) for image in images}
-    lines = ["## EXPB Campaign", "", f"Runner: {socket.gethostname()} ({platform.machine()})", f"Samples: {len(samples)}", "", "| Sample | Status | Source | Count | Processing AVG ms | Request AVG ms | Outside AVG ms | MGas/s |", "|---|---|---|---:|---:|---:|---:|---:|"]
+    lines = ["## EXPB Campaign", "", f"Runner: {socket.gethostname()} ({platform.machine()})", f"Client: {get('CLIENT', 'nethermind')} (measurement_source={get('MEASUREMENT_SOURCE', 'auto')})", f"Samples: {len(samples)}", "", "**Images:**", *(f"- `{image['id']}` → `{image['image']}`" for image in images), "", "| Sample | Status | Source | Count | Processing AVG ms | Request AVG ms | Outside AVG ms | MGas/s | Request MGas/s |", "|---|---|---|---:|---:|---:|---:|---:|---:|"]
     rows = []
     for sample in samples:
         metrics = sample["metrics"]
         source = metrics.get("source", "n/a")
         processing_avg = format_ms(metrics.get("avg")) if source == "SSE" else "n/a"
         mgas_s = metrics.get("mgas_s")
-        rows.append(f"| {sample['sample_id']} | {sample['status']} | {source} | {metrics.get('count', 0)} | {processing_avg} | {format_ms(metrics.get('request', {}).get('avg'))} | {format_ms(metrics.get('outside', {}).get('avg'))} | {f'{mgas_s:.2f}' if mgas_s is not None else 'n/a'} |")
+        request_mgas_s = metrics.get("request_mgas_s")
+        rows.append(f"| {sample['sample_id']} | {sample['status']} | {source} | {metrics.get('count', 0)} | {processing_avg} | {format_ms(metrics.get('request', {}).get('avg'))} | {format_ms(metrics.get('outside', {}).get('avg'))} | {f'{mgas_s:.2f}' if mgas_s is not None else 'n/a'} | {f'{request_mgas_s:.2f}' if request_mgas_s is not None else 'n/a'} |")
     lines += rows
     lines.append("")
     for image in images:

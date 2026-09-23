@@ -34,7 +34,9 @@ def environment(**values: str):
         "AMOUNT",
         "ADDITIONAL_EXTRA_FLAGS",
         "CAMPAIGN_FAIL_FAST",
+        "CLIENT",
         "CLIENT_ENV",
+        "CLIENT_SNAPSHOT_DIR",
         "DELAY_SECONDS",
         "EXPB_CAMPAIGN_DIR",
         "EXPB_DATA_DIR",
@@ -43,7 +45,9 @@ def environment(**values: str):
         "FLAT_SNAPSHOT_BLOCK_DIR",
         "FLAT_SNAPSHOT_DIR",
         "MEASUREMENT_MODE",
+        "MEASUREMENT_SOURCE",
         "RUN_COUNT",
+        "SNAPSHOT_MOUNT_PATH",
         "TRACE_BLOCKS",
     )
     previous = {name: os.environ.get(name) for name in managed}
@@ -149,6 +153,8 @@ class CollectMetricsTests(unittest.TestCase):
         # Request minus processing is the request path and GC, paired per payload.
         self.assertEqual(parsed["outside"]["avg"], 5.0)
         self.assertAlmostEqual(parsed["mgas_s"], 60 / (50 / 1000))
+        # The request series gets its own throughput over the same payloads' gas.
+        self.assertAlmostEqual(parsed["request_mgas_s"], 60 / (60 / 1000))
         self.assertTrue(parsed["shutdown"] and parsed["cleanup"])
         self.assertEqual(diagnostics, {"exceptions": [], "invalid": [], "severe": []})
 
@@ -159,6 +165,20 @@ class CollectMetricsTests(unittest.TestCase):
         self.assertEqual(parsed["ids"], [1])
         self.assertIsNone(parsed["outside"]["avg"])
         self.assertIsNone(parsed["mgas_s"])
+
+    def test_engine_api_ignores_the_client_feed_so_every_client_shares_one_clock(self) -> None:
+        # measurement_source=engine-api compares clients on k6's request time; a stray Nethermind SSE
+        # line must not turn one arm of a cross-client comparison into a processing-time measurement.
+        log = self.write_log(
+            "[payload-server] client_metric block_number=100 processing_ms=20\n"
+            "| 1 | 30000000 | 25.0 |\n"
+            "| 2 | 30000000 | 35.0 |\n"
+        )
+        parsed, _ = driver.collect_metrics(log, use_sse=False)
+        self.assertEqual(parsed["source"], "TTFB")
+        self.assertEqual((parsed["count"], parsed["sse_count"], parsed["avg"]), (2, 0, 30.0))
+        self.assertIsNone(parsed["mgas_s"])
+        self.assertAlmostEqual(parsed["request_mgas_s"], 60 / (60 / 1000))
 
     def test_an_empty_log_reports_no_source_rather_than_a_zero_measurement(self) -> None:
         parsed, _ = driver.collect_metrics(self.write_log(""))
@@ -206,6 +226,51 @@ class RenderTests(unittest.TestCase):
         scenario = config["scenarios"][name]
         self.assertEqual(scenario["extra_flags"], ["--JsonRpc.GasCap=100"])
         self.assertEqual(scenario["extra_env"], {"A": "1"})
+
+    def test_a_reference_client_gets_its_own_snapshot_and_none_of_the_nethermind_settings(self) -> None:
+        base = {
+            "scenarios": {
+                "nethermind": {
+                    "image": "placeholder",
+                    "extra_flags": ["--FlatDb.Enabled=true"],
+                    "extra_env": {"NETHERMIND_X": "1"},
+                    "extra_volumes": {"a": "b"},
+                }
+            }
+        }
+        image = {"id": "image-1-abc", "image": "ghcr.io/paradigmxyz/reth:v1"}
+        with environment(
+            CLIENT="reth",
+            CLIENT_SNAPSHOT_DIR="/mnt/sda/reth-25490000",
+            SNAPSHOT_MOUNT_PATH="/execution-data",
+            ADDITIONAL_EXTRA_FLAGS="--engine.slow-block-threshold=0",
+        ):
+            config, name = driver.render(base, image, 1)
+        self.assertEqual(name, "reth-image-1-abc-run1")
+        scenario = config["scenarios"][name]
+        self.assertEqual(scenario["client"], "reth")
+        self.assertEqual(scenario["image"], image["image"])
+        self.assertEqual(scenario["snapshot_source"], "/mnt/sda/reth-25490000")
+        self.assertEqual(scenario["snapshot_backend"], "overlay")
+        self.assertEqual(scenario["snapshot_mount_path"], "/execution-data")
+        self.assertEqual(scenario["startup_wait"], 600)
+        # Dispatched flags still reach the reference client; the template's Nethermind ones do not.
+        self.assertEqual(scenario["extra_flags"], ["--engine.slow-block-threshold=0"])
+        self.assertEqual((scenario["extra_env"], scenario["extra_volumes"], scenario["extra_commands"]), ({}, {}, []))
+
+    def test_a_reference_client_refuses_nethermind_only_settings(self) -> None:
+        snapshot = {"CLIENT_SNAPSHOT_DIR": "/mnt/sda/geth-25490000", "SNAPSHOT_MOUNT_PATH": "/execution-data/geth"}
+        for label, values in (
+            ("compute-warm", {"MEASUREMENT_MODE": "compute-warm"}),
+            ("block tracing", {"TRACE_BLOCKS": "25490001"}),
+            ("client env", {"CLIENT_ENV": "DOTNET_gcServer=1"}),
+            ("a missing snapshot", {"CLIENT_SNAPSHOT_DIR": ""}),
+        ):
+            with self.subTest(rejected=label), environment(CLIENT="geth", **{**snapshot, **values}):
+                with self.assertRaises(ValueError):
+                    driver.render(self.BASE, self.IMAGE, 1)
+        with environment(CLIENT="erigon"), self.assertRaises(ValueError):
+            driver.render(self.BASE, self.IMAGE, 1)
 
     def test_a_config_without_the_nethermind_scenario_is_rejected(self) -> None:
         with environment(), self.assertRaises(ValueError):
@@ -328,8 +393,10 @@ class SummaryTests(unittest.TestCase):
             driver.write_summary(root, images, 2, [sample("image-1-run1", "success", 23.007412345678901), sample("image-1-run2", "failed", None)])
             summary = (root / "summary.md").read_text(encoding="utf-8")
 
-        self.assertIn("| image-1-run1 | success | SSE | 1 | 23.0074 | 23.0074 | n/a | n/a |", summary)
-        self.assertIn("| image-1-run2 | failed | SSE | 1 | n/a | n/a | n/a | n/a |", summary)
+        self.assertIn("| image-1-run1 | success | SSE | 1 | 23.0074 | 23.0074 | n/a | n/a | n/a |", summary)
+        self.assertIn("| image-1-run2 | failed | SSE | 1 | n/a | n/a | n/a | n/a | n/a |", summary)
+        # Ids are opaque; the summary has to say which full image reference each one ran.
+        self.assertIn("- `image-1` → `repo:tag`", summary)
         self.assertIn("Image image-1: mean AVG=23.0074 ms;", summary)
         self.assertNotIn("None", summary)
 
