@@ -385,6 +385,27 @@ public class BlockProcessorTests
         }
     }
 
+    // EIP-2935 runs the code the history account holds, with EIP-8037's full 30M execution grant; a direct
+    // storage write of the parent hash is equivalent only for the canonical bytecode.
+    [Test]
+    public async Task Eip2935_HistorySystemCall_RunsAccountCodeWithFullExecutionGrant()
+    {
+        IReleaseSpec spec = Amsterdam.Instance;
+        byte[] storeGasLeft = [(byte)Instruction.GAS, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE];
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .WithGenesisPostProcessor((_, state) =>
+            {
+                state.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
+                state.InsertCode(Eip2935Constants.BlockHashHistoryAddress, storeGasLeft, spec);
+            }));
+
+        Block block = await chain.AddBlock();
+
+        chain.StateReader.GetStorage(block.Header, Eip2935Constants.BlockHashHistoryAddress, UInt256.Zero, out UInt256 gasLeft);
+        Assert.That(gasLeft, Is.EqualTo((UInt256)(Eip8037Constants.SystemCallBaseGasLimit - GasCostOf.Base)));
+    }
+
     [Test]
     public async Task TransactionTraceBoundary_WhenThePrefixIsSeeded_TellsNoHandlerAboutMisnumberedReceipts()
     {
@@ -2121,13 +2142,20 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
     }
 
-    [TestCase(2000ul, 0ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
-    [TestCase(1999ul, 0ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
-    [TestCase(2000ul, 2001ul, true, TestName = "BAL_read_budget_exhaustion_does_not_underflow")]
-    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool shouldThrow)
+    [TestCase(2000ul, 0ul, true, 1, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999ul, 0ul, true, 1, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    [TestCase(2000ul, 2001ul, true, 1, true, TestName = "BAL_read_budget_exhaustion_does_not_underflow")]
+    // EIP-7928: non-canonical request code may read storage in a post-execution call that spends no block gas,
+    // up to what one call's execution grant can read; reads beyond that are still charged to block gas.
+    [TestCase(0ul, 0ul, false, 1, false, TestName = "BAL_read_budget_allows_reads_by_noncanonical_request_contract")]
+    [TestCase(Eip7928Constants.ItemCost - 1, 0ul, false, NoncanonicalRequestReadAllowance + 1, true, TestName = "BAL_read_budget_charges_reads_beyond_noncanonical_allowance")]
+    [TestCase(Eip7928Constants.ItemCost, 0ul, false, NoncanonicalRequestReadAllowance + 1, false, TestName = "BAL_read_budget_covers_reads_beyond_noncanonical_allowance")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool canonicalRequestContracts, int surplusReads, bool shouldThrow)
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        DeployRequestPredeploys(stateProvider, Amsterdam.Instance, canonicalRequestContracts);
         BlockAccessListManager balManager = new(
             stateProvider,
             LimboLogs.Instance,
@@ -2139,7 +2167,7 @@ public class BlockProcessorTests
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithStorageReads(1)
+                .WithStorageReads([.. Enumerable.Range(1, surplusReads).Select(static i => (UInt256)i)])
                 .TestObject)
             .TestObject;
 
@@ -2911,6 +2939,24 @@ public class BlockProcessorTests
     private static GasValidationResult
         GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null) =>
         new(blockGasUsed, blockStateGasUsed, exception);
+
+    // DeployRequestPredeploys(canonical: false) makes one request contract non-canonical.
+    private const int NoncanonicalRequestReadAllowance = (int)(Eip8037Constants.SystemCallBaseGasLimit / GasCostOf.ColdSLoad);
+
+    private static void DeployRequestPredeploys(IWorldState state, IReleaseSpec spec, bool canonical)
+    {
+        Deploy(Eip7002Constants.WithdrawalRequestPredeployAddress, canonical ? Eip7002TestConstants.Code : [0x00]);
+        Deploy(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.Code);
+        Deploy(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.Code);
+        Deploy(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.Code);
+        state.Commit(spec);
+
+        void Deploy(Address address, byte[] code)
+        {
+            state.CreateAccount(address, 0, 1);
+            state.InsertCode(address, ValueKeccak.Compute(code), code, spec);
+        }
+    }
 
     private static void PrepareSetup(BlockAccessListManager balManager, Block block, IReleaseSpec spec, ProcessingOptions options = ProcessingOptions.None)
     {

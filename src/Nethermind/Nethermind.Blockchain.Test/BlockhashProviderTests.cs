@@ -42,16 +42,15 @@ public class BlockhashProviderTests
         return (worldState, worldState.StateRoot);
     }
 
-    private static IWorldState CreateWorldStateWithHistoryContract(IReleaseSpec spec)
+    private static (IWorldState, Hash256) CreateWorldStateWithHistoryContract(IReleaseSpec spec)
     {
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
-        byte[] code = [1, 2, 3];
-        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, spec);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, spec);
         worldState.Commit(spec);
         worldState.CommitTree(0);
-        return worldState;
+        return (worldState, worldState.StateRoot);
     }
 
 
@@ -685,18 +684,19 @@ public class BlockhashProviderTests
     public void BlockAccessListManager_blockhash_state_changes_match_BlockhashStore()
     {
         IReleaseSpec spec = Amsterdam.Instance;
-        IWorldState legacyWorldState = CreateWorldStateWithHistoryContract(spec);
-        IWorldState balWorldState = CreateWorldStateWithHistoryContract(spec);
-        Block parent = Build.A.Block.WithNumber(41).TestObject;
+        // The direct write equals running the contract only for the canonical bytecode.
+        (IWorldState legacyWorldState, Hash256 stateRoot) = CreateWorldStateWithHistoryContract(spec);
+        (IWorldState balWorldState, _) = CreateWorldStateWithHistoryContract(spec);
+        Block parent = Build.A.Block.WithNumber(41).WithStateRoot(stateRoot).TestObject;
         Block current = Build.A.Block.WithParent(parent).TestObject;
         UInt256 parentBlockIndex = new((current.Number - 1) % spec.Eip2935RingBufferSize);
         StorageCell storageCell = new(Eip2935Constants.BlockHashHistoryAddress, parentBlockIndex);
 
-        using IDisposable legacyScope = legacyWorldState.BeginScope(current.Header);
+        using IDisposable legacyScope = legacyWorldState.BeginScope(parent.Header);
         new BlockhashStore(legacyWorldState).ApplyBlockhashStateChanges(current.Header, spec);
         legacyWorldState.Get(in storageCell, out UInt256 expectedStoredHash);
 
-        using IDisposable balScope = balWorldState.BeginScope(current.Header);
+        using IDisposable balScope = balWorldState.BeginScope(parent.Header);
         TestSingleReleaseSpecProvider specProvider = new(spec);
         BlockAccessListManager balManager = new(
             balWorldState,
@@ -712,7 +712,11 @@ public class BlockhashProviderTests
         balManager.NextTransaction();
 
         balWorldState.Get(in storageCell, out UInt256 actualStoredHash);
-        Assert.That(actualStoredHash, Is.EqualTo(expectedStoredHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedStoredHash, Is.EqualTo(parent.Hash!.ToUInt256()), "the direct write must store the parent hash");
+            Assert.That(actualStoredHash, Is.EqualTo(expectedStoredHash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
