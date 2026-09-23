@@ -62,9 +62,9 @@ public class FilterManagerTests
         _filterStore = new FilterStore(new TimerFactory(), timeout: 400, cleanupInterval: 100);
 
         LogsShouldNotBeEmpty(static _ => { }, static _ => { });
-        Assert.That(_filterManager.GetLogs(0), Is.Not.Empty);
+        Assert.That(Drain(_filterManager.GetLogs(0)), Is.Not.Empty);
         await Task.Delay(600);
-        Assert.That(_filterManager.GetLogs(0), Is.Empty);
+        Assert.That(Drain(_filterManager.GetLogs(0)), Is.Empty);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -303,7 +303,7 @@ public class FilterManagerTests
         Block block = Build.A.Block.TestObject;
 
         _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
-        _filterManager.PollBlockHashes(blockFilter.Id);
+        _filterManager.PollBlockHashes(blockFilter.Id).Dispose();
 
         const int producerCount = 4;
         const int blocksPerProducer = 125;
@@ -373,7 +373,7 @@ public class FilterManagerTests
         Block block = Build.A.Block.WithBloom(new Bloom()).TestObject;
         _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, [receipt]));
 
-        Assert.That(_filterManager.PollLogs(filter.Id), Is.Empty);
+        Assert.That(Drain(_filterManager.PollLogs(filter.Id)), Is.Empty);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -386,12 +386,12 @@ public class FilterManagerTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Is.EqualTo(new[] { processedBeforeInstall.Hash }));
-            Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Is.Empty);
+            Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Is.EqualTo(new[] { processedBeforeInstall.Hash }));
+            Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Is.Empty);
         });
 
         Block next = RaiseBlockProcessed();
-        Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Is.EqualTo(new[] { next.Hash }));
+        Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Is.EqualTo(new[] { next.Hash }));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -408,9 +408,9 @@ public class FilterManagerTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(_filterManager.PollLogs(early.Id).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 1, 2 }));
-            Assert.That(_filterManager.PollLogs(late.Id).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 2 }));
-            Assert.That(_filterManager.PollLogs(early.Id), Is.Empty);
+            Assert.That(Drain(_filterManager.PollLogs(early.Id)).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 1, 2 }));
+            Assert.That(Drain(_filterManager.PollLogs(late.Id)).Select(static l => l.BlockNumber), Is.EqualTo(new ulong[] { 2 }));
+            Assert.That(Drain(_filterManager.PollLogs(early.Id)), Is.Empty);
         });
     }
 
@@ -431,9 +431,9 @@ public class FilterManagerTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(_filterManager.PollPendingTransactionHashes(first.Id), Is.EqualTo(new[] { kept.Hash }));
-            Assert.That(_filterManager.PollPendingTransactionHashes(first.Id), Is.Empty);
-            Assert.That(_filterManager.PollPendingTransactionHashes(second.Id), Is.EqualTo(new[] { kept.Hash }));
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(first.Id)), Is.EqualTo(new[] { kept.Hash }));
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(first.Id)), Is.Empty);
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(second.Id)), Is.EqualTo(new[] { kept.Hash }));
         });
     }
 
@@ -466,7 +466,7 @@ public class FilterManagerTests
         Assert.Multiple(() =>
         {
             Assert.That(IsCollected(receipt), Is.True);
-            Assert.That(_filterManager.PollBlockHashes(blockFilter.Id), Has.Count.EqualTo(1));
+            Assert.That(Drain(_filterManager.PollBlockHashes(blockFilter.Id)), Has.Length.EqualTo(1));
         });
     }
 
@@ -574,6 +574,11 @@ public class FilterManagerTests
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(transaction));
         return new WeakReference(transaction.Hash);
+    }
+
+    private static T[] Drain<T>(ArrayPoolList<T> list)
+    {
+        using (list) return list.ToArray();
     }
 
     private static bool IsCollected(WeakReference reference)
