@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -48,7 +49,16 @@ namespace Nethermind.Blockchain
             Publish(e.Block, removed: false);
         });
 
-        private void OnBlockRemovedFromMain(object? sender, BlockEventArgs e) => Enqueue(() => Publish(e.Block, removed: true));
+        private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e) => Enqueue(() =>
+        {
+            if (_disposed || ReceiptsInserted is null) return;
+
+            Block? block = _blockTree.FindBlock(e.Header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, e.Header.Number);
+            if (block is not null)
+            {
+                Publish(block, removed: true);
+            }
+        });
 
         private void Enqueue(Action action)
         {

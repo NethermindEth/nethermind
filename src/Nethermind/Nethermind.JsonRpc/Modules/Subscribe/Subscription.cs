@@ -38,8 +38,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public abstract string Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
 
-        /// <remarks>Matches geth's per-client notification buffer.</remarks>
         internal const int MaxQueuedMessages = 20_000;
+
+        private volatile bool _overflowed;
 
         private Channel<Func<Task>> SendChannel { get; } = Channel.CreateBounded<Func<Task>>(new BoundedChannelOptions(MaxQueuedMessages) { SingleReader = true });
 
@@ -68,14 +69,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 }, default);
 
         /// <remarks>
-        /// A client that falls <see cref="MaxQueuedMessages"/> messages behind is disconnected, as geth does, rather than
-        /// buffering without limit.
+        /// A client that falls <see cref="MaxQueuedMessages"/> messages behind is disconnected rather than buffered
+        /// without limit, and its backlog is dropped.
         /// </remarks>
         protected void ScheduleAction(Func<Task> action)
         {
             // TryComplete fails once disposed, so only an overflow gets past it.
             if (SendChannel.Writer.TryWrite(action) || !SendChannel.Writer.TryComplete()) return;
 
+            _overflowed = true;
             if (_logger.IsWarn) _logger.Warn($"{GetErrorMsg()} Client fell {MaxQueuedMessages} messages behind and is disconnected.");
             // Off the caller's thread, which may be block processing.
             _ = Task.Run(JsonRpcDuplexClient.Dispose);
@@ -93,6 +95,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 {
                     while (SendChannel.Reader.TryRead(out Func<Task> action))
                     {
+                        if (_overflowed) continue;
+
                         try
                         {
                             await action();

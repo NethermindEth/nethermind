@@ -55,27 +55,29 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
 
-        private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptCanonicalityMonitor.ReceiptsInserted), e.WasRemoved);
-
-        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed) => ScheduleAction(() => TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
-
-        private async Task TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
+        /// <remarks>
+        /// Filtered before queueing, so the send queue holds one entry per notification and retains no receipts.
+        /// </remarks>
+        private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
-            if (IsWithinBound(_filter.FromBlock, blockHeader, lowerBound: true) && IsWithinBound(_filter.ToBlock, blockHeader, lowerBound: false))
+            BlockHeader blockHeader = e.BlockHeader;
+            if (!IsWithinBound(_filter.FromBlock, blockHeader, lowerBound: true) || !IsWithinBound(_filter.ToBlock, blockHeader, lowerBound: false))
             {
-                IEnumerable<FilterLog> filterLogs = GetFilterLogs(blockHeader, receipts, removed);
+                if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id}: {nameof(_receiptCanonicalityMonitor.ReceiptsInserted)} event happens, but there are no logs matching filter.");
+                return;
+            }
 
-                foreach (FilterLog filterLog in filterLogs)
-                {
-                    using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
-                    await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                    if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
-                }
-            }
-            else
+            foreach (FilterLog filterLog in GetFilterLogs(blockHeader, e.TxReceipts, e.WasRemoved))
             {
-                if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id}: {eventName} event happens, but there are no logs matching filter.");
+                ScheduleAction(() => PublishLog(filterLog));
             }
+        }
+
+        private async Task PublishLog(FilterLog filterLog)
+        {
+            using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
+            await JsonRpcDuplexClient.SendJsonRpcResult(result);
+            if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
         }
 
         /// <summary>

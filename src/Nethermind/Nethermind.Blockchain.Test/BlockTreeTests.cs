@@ -2860,7 +2860,7 @@ public class BlockTreeTests
         blockTree.TryUpdateMainChain(chain[3].Header, wereProcessed: true, forceUpdateHeadBlock: true);
 
         List<(Hash256?, bool Added)> events = [];
-        blockTree.BlockRemovedFromMain += (_, e) => events.Add((e.Block.Hash, false));
+        blockTree.BlockRemovedFromMain += (_, e) => events.Add((e.Header.Hash, false));
         blockTree.BlockAddedToMain += (_, e) => events.Add((e.Block.Hash, true));
 
         blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);

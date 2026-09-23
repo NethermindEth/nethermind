@@ -1373,7 +1373,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
             Block block = Build.A.Block.TestObject;
             Block previousBlock = Build.A.Block.WithHeader(blockHeader).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptStorage.Get(previousBlock).Returns(txReceipts);
+            _receiptStorage.Get(block).Returns([]);
             List<JsonRpcResult> jsonRpcResults = [];
 
             ManualResetEvent manualResetEvent = new(false);

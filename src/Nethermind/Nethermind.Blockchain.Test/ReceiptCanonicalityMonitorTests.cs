@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -92,6 +93,7 @@ public class ReceiptCanonicalityMonitorTests
         using ReceiptCanonicalityMonitor monitor = new(receiptStorage, blockTree, LimboLogs.Instance);
 
         Block removed = Build.A.Block.WithNumber(2).WithExtraData([1]).TestObject;
+        blockTree.FindBlock(removed.Hash!, Arg.Any<BlockTreeLookupOptions>(), removed.Number).Returns(removed);
         Block added = Build.A.Block.WithNumber(2).TestObject;
 
         ConcurrentQueue<(Hash256?, bool)> published = new();
@@ -102,7 +104,7 @@ public class ReceiptCanonicalityMonitorTests
             allPublished.Signal();
         };
 
-        blockTree.BlockRemovedFromMain += Raise.EventWith(new object(), new BlockEventArgs(removed));
+        blockTree.BlockRemovedFromMain += Raise.EventWith(new object(), new BlockHeaderEventArgs(removed.Header));
         RaiseNewCanonical(receiptStorage, added);
 
         Assert.That(allPublished.Wait(Timeout), Is.True);

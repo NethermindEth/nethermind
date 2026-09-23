@@ -1154,10 +1154,11 @@ namespace Nethermind.Blockchain
 
             foreach ((ulong number, Hash256 hash) in removedFromMain.AsSpan())
             {
-                Block? removed = FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: number);
+                // Header only, so a deep rewind does not load its whole removed branch here.
+                BlockHeader? removed = FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: number);
                 if (removed is not null)
                 {
-                    BlockRemovedFromMain?.Invoke(this, new BlockEventArgs(removed));
+                    BlockRemovedFromMain?.Invoke(this, new BlockHeaderEventArgs(removed));
                 }
             }
 
@@ -1801,7 +1802,7 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain;
 
-        public event EventHandler<BlockEventArgs>? BlockRemovedFromMain;
+        public event EventHandler<BlockHeaderEventArgs>? BlockRemovedFromMain;
 
         public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;
 

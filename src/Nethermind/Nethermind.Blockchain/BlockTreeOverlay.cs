@@ -199,7 +199,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         }
     }
 
-    public event EventHandler<BlockEventArgs>? BlockRemovedFromMain
+    public event EventHandler<BlockHeaderEventArgs>? BlockRemovedFromMain
     {
         add
         {
