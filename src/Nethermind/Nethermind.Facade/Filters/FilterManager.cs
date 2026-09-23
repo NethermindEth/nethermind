@@ -122,14 +122,7 @@ namespace Nethermind.Facade.Filters
                 return;
             }
 
-            // Built from the logs, as stored receipts are not guaranteed to carry blooms.
-            Bloom bloom = new();
-            foreach (TxReceipt receipt in e.TxReceipts)
-            {
-                if (receipt.Logs is not null) bloom.Add(receipt.Logs);
-            }
-
-            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, bloom, e.TxReceipts, Removed: true));
+            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, Removed: true));
         }
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
