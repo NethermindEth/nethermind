@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
@@ -17,6 +18,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
+[StepCommand("import-flat-db", "Copy the pruning-trie state database into the flat state database.")]
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockTree)],
     dependents: [typeof(InitializeBlockchain)]
@@ -26,7 +28,6 @@ public class ImportFlatDb(
     IPersistence persistence,
     INodeStorage nodeStorage,
     Importer importer,
-    IProcessExitSource exitSource,
     IFlatDbConfig flatDbConfig,
     ILogManager logManager
 ) : IStep
@@ -38,10 +39,10 @@ public class ImportFlatDb(
         // Validate that we're not using a preimage layout
         if (flatDbConfig.Layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat)
         {
-            if (_logger.IsError) _logger.Error($"Cannot import with FlatLayout.{flatDbConfig.Layout}. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead.");
-            if (_logger.IsError) _logger.Error("Preimage mode does not support importing from trie state because the importer uses hash-based raw operations.");
-            exitSource.Exit(1);
-            return;
+            throw new InvalidConfigurationException(
+                $"Cannot import with FlatLayout.{flatDbConfig.Layout}. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead. " +
+                "Preimage mode does not support importing from trie state because the importer uses hash-based raw operations.",
+                ExitCodes.ForbiddenOptionValue);
         }
 
         BlockHeader? head = blockTree.Head?.Header;
@@ -67,17 +68,6 @@ public class ImportFlatDb(
 
         if (_logger.IsInfo) _logger.Info($"Copying state {head.ToString(BlockHeader.Format.Short)} with state root {head.StateRoot}");
 
-        try
-        {
-            await importer.Copy(new StateId(head), cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsInfo) _logger.Info("Import cancelled by user");
-            exitSource.Exit(1);
-            return;
-        }
-
-        exitSource.Exit(0);
+        await importer.Copy(new StateId(head), cancellationToken);
     }
 }

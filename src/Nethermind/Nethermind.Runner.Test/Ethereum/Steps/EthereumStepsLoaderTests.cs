@@ -74,8 +74,20 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(StepCAuRa)),
                 new StepInfo(typeof(StepCStandard)),
                 new StepInfo(typeof(StepE)),
+                new StepInfo(typeof(CommandStep)),
                 new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep)),
         ]);
+
+    [Test]
+    public void Command_names_are_unique()
+    {
+        string[] commands = [.. LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly)
+            .Concat(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly))
+            .Select(static s => s.Command)
+            .Where(static c => c is not null)!];
+
+        Assert.That(commands, Is.Unique);
+    }
 
     private void CheckPlugin(INethermindPlugin plugin)
     {
@@ -95,7 +107,8 @@ public class EthereumStepsLoaderTests
             stepInfo.StepType.FullName,
             stepInfo.StepBaseType.FullName,
             string.Join(",", stepInfo.Dependencies.Select(static t => t.FullName).Order()),
-            string.Join(",", stepInfo.Dependents.Select(static t => t.FullName).Order()));
+            string.Join(",", stepInfo.Dependents.Select(static t => t.FullName).Order()),
+            stepInfo.Command);
 
     private static IEnumerable<StepInfo> LoadStepInfoFromAssembly(Assembly assembly)
     {

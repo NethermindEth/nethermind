@@ -24,6 +24,9 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
 
         await stepsManager.InitializeAll(cancellationToken);
 
+        // A command run has already produced its own output and is about to exit; a node info screen is noise.
+        if (stepsManager.HasTarget) return;
+
         string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
 
         if (_logger.IsInfo) _logger.Info(infoScreen);

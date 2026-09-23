@@ -194,6 +194,41 @@ public class EthereumRunnerTests
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
     }
 
+    /// <summary>
+    /// Proves the real production container resolves a command by name and ends the run on its own. Which steps
+    /// the closure contains is covered by <c>EthereumStepsManagerTests</c>.
+    /// </summary>
+    [Test]
+    [MaxTime(60000)]
+    public async Task Command_run_completes_and_asks_to_exit()
+    {
+        Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
+
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+        configProvider.Initialize();
+
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        ApiBuilder builder = new(processExitSource, configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: "verify-trie");
+
+        try
+        {
+            await runner.Start(CancellationToken.None).WaitAsync(RunnerTimeout);
+
+            processExitSource.Received().Exit(ExitCodes.Ok);
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
     [MaxTime(300000)]
     public async Task Smoke_CanResolveAllSteps((string file, ConfigProvider configProvider) testCase, int testIndex)
@@ -214,7 +249,7 @@ public class EthereumRunnerTests
         ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
         plugins.Add(new RunnerTestPlugin(true));
-        EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
 
         INethermindApi api = runner.Api;
 
@@ -381,7 +416,7 @@ public class EthereumRunnerTests
             ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
             plugins.Add(new RunnerTestPlugin());
-            EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+            EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
 
             using CancellationTokenSource cts = new();
 

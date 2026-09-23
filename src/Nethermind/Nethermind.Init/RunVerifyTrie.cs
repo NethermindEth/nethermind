@@ -14,6 +14,7 @@ using Nethermind.State;
 
 namespace Nethermind.Init;
 
+[StepCommand("verify-trie", "Verify that the full state trie is stored for the current head.")]
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockTree)],
     dependents: [typeof(InitializeBlockchain)]
@@ -34,7 +35,12 @@ public class RunVerifyTrie(
         if (head is not null)
         {
             _logger.Info($"Starting from {head.Number} {head.StateRoot}{Environment.NewLine}");
-            worldStateManager.VerifyTrie(head, processExitSource!.Token);
+            if (!worldStateManager.VerifyTrie(head, processExitSource!.Token))
+            {
+                // Report the verdict through the exit code so the command is usable from a script.
+                if (_logger.IsError) _logger.Error("Verify trie failed");
+                processExitSource.Exit(ExitCodes.GeneralError);
+            }
         }
 
         return Task.CompletedTask;

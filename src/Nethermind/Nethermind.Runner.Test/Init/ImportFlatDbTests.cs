@@ -64,7 +64,6 @@ public class ImportFlatDbTests
             _persistence,
             _nodeStorage,
             _importer,
-            Substitute.For<IProcessExitSource>(),
             new FlatDbConfig(),
             LimboLogs.Instance);
     }

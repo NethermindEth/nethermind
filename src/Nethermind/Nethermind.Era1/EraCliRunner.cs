@@ -26,7 +26,7 @@ public class EraCliRunner(
         }
     }
 
-    private async Task Export(CancellationToken cancellation)
+    public async Task Export(CancellationToken cancellation)
     {
         try
         {
@@ -47,7 +47,7 @@ public class EraCliRunner(
         }
     }
 
-    private async Task Import(CancellationToken cancellation)
+    public async Task Import(CancellationToken cancellation)
     {
         try
         {

@@ -29,6 +29,7 @@ namespace Nethermind.Runner.Ethereum.Modules;
 /// <param name="configProvider"></param>
 /// <param name="processExitSource"></param>
 /// <param name="plugins"></param>
+/// <param name="command">The standalone command to run instead of the node, or <c>null</c> to start a node.</param>
 /// <param name="logManager"></param>
 public class NethermindRunnerModule(
     EthereumJsonSerializer jsonSerializer,
@@ -36,6 +37,7 @@ public class NethermindRunnerModule(
     IConfigProvider configProvider,
     IProcessExitSource processExitSource,
     IEnumerable<INethermindPlugin> plugins,
+    string? command,
     ILogManager logManager
 ) : Module
 {
@@ -77,6 +79,9 @@ public class NethermindRunnerModule(
             .AddSingleton<IJsonSerializer>(jsonSerializer)
             .AddSingleton<IConsensusPlugin>(consensusPlugin)
             ;
+
+        if (command is not null)
+            builder.AddSingleton(new StepCommandSelection(command));
 
         foreach (INethermindPlugin plugin in plugins)
         {

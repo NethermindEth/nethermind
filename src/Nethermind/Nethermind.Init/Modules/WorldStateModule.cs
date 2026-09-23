@@ -35,10 +35,14 @@ public class WorldStateModule(IInitConfig initConfig) : Module
 
             // Verify-trie admin RPC is backend-agnostic; a single implementation serves both backends.
             .RegisterSingletonJsonRpcModule<IVerifyTrieAdminRpcModule, VerifyTrieAdminRpcModule>()
+
+            // Registered unconditionally so `nethermind verify-trie` can always find it. Carrying
+            // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
+            // Backend-agnostic: VerifyTrie resolves to whichever backend is active.
+            .AddStep(typeof(RunVerifyTrie))
         ;
 
-        // Backend-agnostic diagnostic step; VerifyTrie resolves to whichever backend is active.
         if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
-            builder.AddStep(typeof(RunVerifyTrie));
+            builder.SelectStepTarget(typeof(RunVerifyTrie));
     }
 }

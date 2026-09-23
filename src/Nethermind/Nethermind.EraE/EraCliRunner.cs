@@ -19,19 +19,27 @@ public sealed class EraCliRunner(
     {
         if (!string.IsNullOrEmpty(eraConfig.ImportDirectory))
         {
-            if (historyConfig.Pruning == PruningModes.UseAncientBarriers)
-            {
-                throw new EraException(
-                    "EraE import is configured alongside History.Pruning=UseAncientBarriers. " +
-                    "This would immediately prune the imported blocks. " +
-                    "Either disable history pruning or remove the import directory.");
-            }
-
-            await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.From, eraConfig.To, eraConfig.TrustedAccumulatorFile, token);
+            await Import(token);
         }
         else if (!string.IsNullOrEmpty(eraConfig.ExportDirectory))
         {
-            await eraExporter.Export(eraConfig.ExportDirectory!, eraConfig.From, eraConfig.To, token);
+            await Export(token);
         }
     }
+
+    public async Task Import(CancellationToken token)
+    {
+        if (historyConfig.Pruning == PruningModes.UseAncientBarriers)
+        {
+            throw new EraException(
+                "EraE import is configured alongside History.Pruning=UseAncientBarriers. " +
+                "This would immediately prune the imported blocks. " +
+                "Either disable history pruning or remove the import directory.");
+        }
+
+        await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.From, eraConfig.To, eraConfig.TrustedAccumulatorFile, token);
+    }
+
+    public async Task Export(CancellationToken token) =>
+        await eraExporter.Export(eraConfig.ExportDirectory!, eraConfig.From, eraConfig.To, token);
 }
