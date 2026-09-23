@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
             ctx.ReadSequenceLength();
 
             message.RequestId = ctx.DecodeLong();
-            message.BlockHashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeValueKeccak() ?? default, limit: SnapMessageLimits.GetBlockAccessListsHashesRlpLimit);
+            message.BlockHashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeValueKeccakNonNull(), limit: SnapMessageLimits.GetBlockAccessListsHashesRlpLimit);
             message.Bytes = ctx.DecodeLong();
 
             return message;

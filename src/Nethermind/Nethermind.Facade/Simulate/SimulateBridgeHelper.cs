@@ -27,7 +27,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
         | ProcessingOptions.IgnoreParentNotOnMainChain
-        | ProcessingOptions.MarkAsProcessed
         | ProcessingOptions.StoreReceipts;
 
     private void PrepareState(
@@ -37,10 +36,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         ulong blockNumber,
         IReleaseSpec releaseSpec)
     {
-        // state-override commits must not trigger EIP-158 deletion on accounts whose
-        // code/nonce were zeroed while storage remains — EIP-7610 collision checks need that storage.
         releaseSpec = releaseSpec.WithoutEip158();
-
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
 
         TransactionWithSourceDetails[]? calls = blockStateCall.Calls;

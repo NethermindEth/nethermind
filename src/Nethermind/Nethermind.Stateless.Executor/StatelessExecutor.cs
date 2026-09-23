@@ -26,11 +26,12 @@ public static class StatelessExecutor
 
         try
         {
+            // Also installs the run's hash seed, which every hash-keyed container below depends on.
             payload = InputDecoder.Decode(data);
         }
         catch (Exception ex)
         {
-            Debug.Fail(ex.Message);
+            Debug.WriteLine(ex.Message);
             return output;
         }
 
@@ -51,11 +52,12 @@ public static class StatelessExecutor
         try
         {
             Block block = payload.GetBlock();
-            ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
+            ReadOnlySpan<SszPublicKey> publicKeys = payload.PublicKeys.Span;
             Transaction[] transactions = block.Transactions;
 
             if (transactions.Length == publicKeys.Length &&
-                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span))
+                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span) &&
+                HeaderValidator.ValidateHash(block.Header))
             {
                 ISpecProvider specProvider = payload.SpecProvider;
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
@@ -64,16 +66,17 @@ public static class StatelessExecutor
                     KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
                 for (int i = 0; i < transactions.Length; i++)
-                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].Bytes.AsSpan(1));
+                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].AsSpan()[1..]);
 
                 using Witness witness = payload.Witness.ToWitness();
 
-                success = Execute(block, witness, specProvider);
+                // Reconstruction derives body roots; the hash check above binds them to the declared block hash.
+                success = Execute(block, witness, specProvider, validateHashes: false);
             }
         }
         catch (Exception ex)
         {
-            Debug.Fail(ex.Message);
+            Debug.WriteLine(ex.Message);
         }
 
         if (success)
@@ -86,6 +89,9 @@ public static class StatelessExecutor
     }
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
+        => Execute(suggestedBlock, witness, specProvider, validateHashes: true);
+
+    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes)
     {
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
@@ -98,7 +104,7 @@ public static class StatelessExecutor
         }
         else
         {
-            Debug.Fail("Witness is missing the parent header");
+            Debug.WriteLine("Witness is missing the parent header");
             return false;
         }
 
@@ -117,14 +123,14 @@ public static class StatelessExecutor
             NullLogManager.Instance
         );
 
-        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error))
+        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error, validateHashes))
         {
-            Debug.Fail(error);
+            Debug.WriteLine(error);
             return false;
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
-            witness, specProvider, Always.Valid, NullLogManager.Instance);
+            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
 
         using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
 
@@ -138,7 +144,7 @@ public static class StatelessExecutor
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
-            Debug.Fail(error);
+            Debug.WriteLine(error);
             return false;
         }
 

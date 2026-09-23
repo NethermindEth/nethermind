@@ -136,7 +136,8 @@ public class WitnessGeneratingWorldState(
                 {
                     ValueHash256 slotKey = default;
                     StorageTree.ComputeKeyWithLookup(slot, ref slotKey);
-                    bool deleted = base.Get(new StorageCell(address, slot)).IndexOfAnyExcept((byte)0) < 0;
+                    base.Get(new StorageCell(address, slot), out UInt256 storageValue);
+                    bool deleted = storageValue.IsZero;
                     slotEntries.Add(new(slotKey, deleted ? PatriciaTrieWitnessGenerator.AccessType.Delete : PatriciaTrieWitnessGenerator.AccessType.Upsert));
                 }
                 PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(address), new Hash256(storageRoot), slotEntries.AsSpan(), sink);
@@ -172,12 +173,6 @@ public class WitnessGeneratingWorldState(
     {
         RecordEmptySlots(address);
         return base.GetNonce(address);
-    }
-
-    public override bool IsStorageEmpty(Address address)
-    {
-        RecordEmptySlots(address);
-        return base.IsStorageEmpty(address);
     }
 
     public override byte[]? GetCode(Address address)
@@ -230,22 +225,28 @@ public class WitnessGeneratingWorldState(
         return ref base.GetCodeHash(address);
     }
 
-    public override ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+    public override void GetOriginal(in StorageCell storageCell, out UInt256 value)
     {
         RecordSlot(storageCell);
-        return base.GetOriginal(in storageCell);
+        base.GetOriginal(in storageCell, out value);
     }
 
-    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override void Get(in StorageCell storageCell, out UInt256 value)
     {
         RecordSlot(storageCell);
-        return base.Get(in storageCell);
+        base.Get(in storageCell, out value);
     }
 
-    public override void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
         RecordSlot(storageCell);
         base.Set(in storageCell, newValue);
+    }
+
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+    {
+        RecordSlot(storageCell);
+        State.Set(in storageCell, in newValue, in currentValue);
     }
 
     public override void ClearStorage(Address address)

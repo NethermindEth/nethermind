@@ -49,6 +49,40 @@ namespace Nethermind.Store.Test.Proofs
         }
 
         [Test]
+        public void Storage_keys_match_individual_hashes(
+            [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 31, 32, 33, 1023, 1024)] int count,
+            [Values(0, 1, 2)] int collectionKind)
+        {
+            UInt256[] keys = new UInt256[count];
+            ValueHash256[] expectedHashes = new ValueHash256[count];
+            string[] expectedKeys = new string[count];
+            Random random = new(42);
+            byte[] bytes = new byte[32];
+            for (int i = 0; i < count; i++)
+            {
+                random.NextBytes(bytes);
+                if (i % 3 == 0) Array.Fill(bytes, (byte)(i % 2 == 0 ? 0 : 255));
+                keys[i] = new UInt256(bytes, isBigEndian: true);
+                expectedHashes[i] = ValueKeccak.Compute(bytes);
+                expectedKeys[i] = bytes.ToHexString(true, true);
+            }
+
+            IReadOnlyCollection<UInt256> storageKeys = collectionKind switch
+            {
+                1 => new List<UInt256>(keys),
+                2 => new LinkedList<UInt256>(keys),
+                _ => keys
+            };
+            AccountProofCollector collector = new(TestItem.AddressA, storageKeys);
+            AccountProof proof = collector.BuildResult();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(collector.GetHashedStorageKeys(), Is.EqualTo(expectedHashes));
+                Assert.That(proof.StorageProofs.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+            }
+        }
+
+        [Test]
         public void ShouldVisit_throws_when_cancellation_requested()
         {
             using CancellationTokenSource cts = new();
@@ -110,9 +144,9 @@ namespace Nethermind.Store.Test.Proofs
                 Assert.That(proof.CodeHash, Is.EqualTo(Hash256.Zero));
                 Assert.That(proof.StorageRoot, Is.EqualTo(Hash256.Zero));
                 Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
-                Assert.That(proof.StorageProofs?[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
-                Assert.That(proof.StorageProofs?[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
-                Assert.That(proof.StorageProofs?[2].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
+                Assert.That(proof.StorageProofs[0].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
+                Assert.That(proof.StorageProofs[1].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
+                Assert.That(proof.StorageProofs[2].Value?.ToArray(), Is.EqualTo(new byte[] { 0 }));
             }
         }
 
@@ -309,7 +343,7 @@ namespace Nethermind.Store.Test.Proofs
         {
             (StateTree tree, _) = CreateTreeWithUInt256Storage();
             AccountProof proof = CollectProof(tree, TestItem.AddressA, StorageKeyZeroAndOne);
-            Assert.That(proof.StorageProofs?[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
+            Assert.That(proof.StorageProofs[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
             Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[1]));
         }
 
@@ -318,8 +352,8 @@ namespace Nethermind.Store.Test.Proofs
         {
             (StateTree tree, _) = CreateTreeWithUInt256Storage();
             AccountProof proof = CollectProof(tree, TestItem.AddressA, StorageKeyZeroAndOne);
-            Assert.That(proof.StorageProofs![0].Key!, Is.EqualTo("0x0"));
-            Assert.That(proof.StorageProofs![1].Key!, Is.EqualTo("0x1"));
+            Assert.That(proof.StorageProofs[0].Key!, Is.EqualTo("0x0"));
+            Assert.That(proof.StorageProofs[1].Key!, Is.EqualTo("0x1"));
         }
 
         private static readonly byte[] StorageKeyA = Bytes.FromHexString("0x000000000000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaa");
@@ -334,7 +368,7 @@ namespace Nethermind.Store.Test.Proofs
 
             AccountProof proof = CollectProof(tree, TestItem.AddressA, keys);
             for (int i = 0; i < 3; i++)
-                Assert.That(proof.StorageProofs?[i].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[i]));
+                Assert.That(proof.StorageProofs[i].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[i]));
         }
 
         private void Storage_proofs_have_values_set_complex_5_keys(byte[] c, byte[] d, byte[] e)
@@ -344,7 +378,7 @@ namespace Nethermind.Store.Test.Proofs
 
             AccountProof proof = CollectProof(tree, TestItem.AddressA, keys);
             for (int i = 0; i < 5; i++)
-                Assert.That(proof.StorageProofs?[i].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[i]));
+                Assert.That(proof.StorageProofs[i].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[i]));
         }
 
         [Test]
@@ -385,14 +419,14 @@ namespace Nethermind.Store.Test.Proofs
 
             byte[][] queryKeys = [StorageKeyA, StorageKeyB, c, d, e];
             AccountProof proof = CollectProof(tree, TestItem.AddressA, queryKeys);
-            Assert.That(proof.StorageProofs?[0].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[0]));
-            Assert.That(proof.StorageProofs?[1].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
-            Assert.That(proof.StorageProofs?[2].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[2]));
-            Assert.That(proof.StorageProofs?[3].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
-            Assert.That(proof.StorageProofs?[4].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[4]));
+            Assert.That(proof.StorageProofs[0].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[0]));
+            Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
+            Assert.That(proof.StorageProofs[2].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[2]));
+            Assert.That(proof.StorageProofs[3].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
+            Assert.That(proof.StorageProofs[4].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo(StorageValueHexes[4]));
 
-            Assert.That(proof.StorageProofs?[1].Proof, Has.Length.EqualTo(2));
-            Assert.That(proof.StorageProofs?[3].Proof, Has.Length.EqualTo(1));
+            Assert.That(proof.StorageProofs[1].Proof, Has.Length.EqualTo(2));
+            Assert.That(proof.StorageProofs[3].Proof, Has.Length.EqualTo(1));
         }
 
         [Test]
@@ -451,9 +485,9 @@ namespace Nethermind.Store.Test.Proofs
 
             byte[][] queryKeys = [StorageKeyA, c, e];
             AccountProof proof = CollectProof(tree, TestItem.AddressA, queryKeys);
-            Assert.That(proof.StorageProofs?[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
-            Assert.That(proof.StorageProofs?[1].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[2]));
-            Assert.That(proof.StorageProofs?[2].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[4]));
+            Assert.That(proof.StorageProofs[0].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[0]));
+            Assert.That(proof.StorageProofs[1].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[2]));
+            Assert.That(proof.StorageProofs[2].Value?.Span.ToHexString(true), Is.EqualTo(StorageValueHexes[4]));
         }
 
 

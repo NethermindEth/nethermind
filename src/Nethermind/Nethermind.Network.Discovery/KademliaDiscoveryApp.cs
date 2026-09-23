@@ -30,8 +30,10 @@ public abstract class KademliaDiscoveryApp(
     private Task? _runningTask;
     private Task? _stopTask;
     private Task? _disposeTask;
-    private readonly object _lifetimeLock = new();
-    private int _activationStarted;
+    private readonly Lock _lifetimeLock = new();
+    private int _channelActive;
+    private int _initialized;
+    private bool _activationStarted;
 
     protected ILogger Logger { get; } = logger;
 
@@ -42,6 +44,7 @@ public abstract class KademliaDiscoveryApp(
         try
         {
             await Initialize(_stopCts.Token);
+            Volatile.Write(ref _initialized, 1);
             TryStartActivation();
         }
         catch (Exception e)
@@ -135,6 +138,12 @@ public abstract class KademliaDiscoveryApp(
         _kademlia.OnNodeRemoved += OnKademliaNodeRemoved;
     }
 
+    private protected static void PreserveDiscoveryState(Node replacement, Node current)
+    {
+        replacement.IsBootnode = current.IsBootnode;
+        replacement.MergeEnrStateFrom(current);
+    }
+
     protected virtual async Task Initialize(CancellationToken cancellationToken)
     {
         IIPResolver.NethermindIp ip = await _ipResolver.Resolve(cancellationToken);
@@ -153,18 +162,34 @@ public abstract class KademliaDiscoveryApp(
             return;
         }
 
+        Volatile.Write(ref _channelActive, 1);
         TryStartActivation();
+    }
+
+    protected void ActivateIfChannelIsActive(IChannel channel)
+    {
+        if (channel.Active)
+        {
+            OnChannelActivated(channel, EventArgs.Empty);
+        }
     }
 
     private void TryStartActivation()
     {
-        if (_stopCts.IsCancellationRequested ||
-            Interlocked.CompareExchange(ref _activationStarted, 1, 0) != 0)
+        lock (_lifetimeLock)
         {
-            return;
-        }
+            if (_stopTask is not null ||
+                _stopCts.IsCancellationRequested ||
+                Volatile.Read(ref _channelActive) == 0 ||
+                Volatile.Read(ref _initialized) == 0 ||
+                _activationStarted)
+            {
+                return;
+            }
 
-        _runningTask = StartActivationAsync(_stopCts.Token);
+            _activationStarted = true;
+            _runningTask = StartActivationAsync(_stopCts.Token);
+        }
     }
 
     protected virtual void DetachEventHandlers()

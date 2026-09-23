@@ -9,6 +9,7 @@ using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -16,6 +17,25 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class KeccakTests
     {
+        [OneTimeSetUp]
+        public void Check_instruction_set_expectations() => VectorIsaExpectations.AssertPinnedInstructionSet();
+
+        [Test]
+        public void ToUInt256_preserves_big_endian_limb_order([Values] bool zero)
+        {
+            Hash256 hash = new(zero
+                ? "0x0000000000000000000000000000000000000000000000000000000000000000"
+                : "0x0102030405060708111213141516171821222324252627283132333435363738");
+            UInt256 expected = zero ? UInt256.Zero : new UInt256(
+                0x3132333435363738, 0x2122232425262728, 0x1112131415161718, 0x0102030405060708);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hash.ToUInt256(), Is.EqualTo(expected));
+                Assert.That(hash.ValueHash256.ToUInt256(), Is.EqualTo(expected));
+            }
+        }
+
         public const string KeccakOfAnEmptyString = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
         public const string KeccakZero = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 
@@ -203,28 +223,61 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Avx512_eight_way_64_byte_hash_matches_individual_hashes()
+        public void Eight_way_hash_matches_individual_hashes([Values(32, 64, 136, 272, 408, 544, 1088, 2176)] int inputLength)
+            => AssertBatchedHashMatchesIndividualHashes(inputLength, 8);
+
+        [Test]
+        public void Four_way_padded_hash_matches_individual_hashes([Values(136, 272, 408, 544, 1088, 2176)] int inputLength)
+            => AssertBatchedHashMatchesIndividualHashes(inputLength, 4);
+
+        private static void AssertBatchedHashMatchesIndividualHashes(int inputLength, int batchSize)
         {
-            if (!Avx512F.IsSupported)
+            if (batchSize == 8 ? !Avx512F.IsSupported : !Avx2.IsSupported)
             {
-                Assert.Ignore("AVX-512F intrinsics are not supported on this machine.");
+                Assert.Ignore("The required batch intrinsics are not supported on this machine.");
             }
 
-            const int inputLength = 64;
+            bool padded = inputLength >= 136;
             const int hashLength = 32;
-            const int batchSize = 8;
             byte[] input = new byte[inputLength * batchSize];
             byte[] output = new byte[hashLength * batchSize];
 
             Random random = new(42);
-            for (int iteration = 0; iteration < 16; iteration++)
+            for (int iteration = 0; iteration < 136 / batchSize; iteration++)
             {
                 random.NextBytes(input);
-                KeccakHash.ComputeHash64Bytes8Avx512(ref input[0], ref output[0]);
+                if (padded)
+                {
+                    for (int i = 0; i < batchSize; i++)
+                    {
+                        int length = inputLength - 136 + iteration * batchSize + i;
+                        Span<byte> block = input.AsSpan(i * inputLength, inputLength);
+                        block[length..].Clear();
+                        block[length] = 0x01;
+                        block[^1] |= 0x80;
+                    }
+                    if (inputLength > 136 && batchSize == 8)
+                        KeccakHash.ComputePaddedMultiBlocks8Avx512(ref input[0], inputLength, ref output[0]);
+                    else if (batchSize == 8)
+                        KeccakHash.ComputePaddedBlocks8Avx512(ref input[0], ref output[0]);
+                    else if (inputLength > 136)
+                        KeccakHash.ComputePaddedMultiBlocks4Avx2(ref input[0], inputLength, ref output[0]);
+                    else
+                        KeccakHash.ComputePaddedBlocks4Avx2(ref input[0], ref output[0]);
+                }
+                else if (inputLength == 32)
+                {
+                    KeccakHash.ComputeHash32Bytes8Avx512(ref input[0], ref output[0]);
+                }
+                else
+                {
+                    KeccakHash.ComputeHash64Bytes8Avx512(ref input[0], ref output[0]);
+                }
 
                 for (int i = 0; i < batchSize; i++)
                 {
-                    ValueHash256 expected = ValueKeccak.Compute(input.AsSpan(i * inputLength, inputLength));
+                    int length = padded ? inputLength - 136 + iteration * batchSize + i : inputLength;
+                    ValueHash256 expected = ValueKeccak.Compute(input.AsSpan(i * inputLength, length));
                     Assert.That(output.AsSpan(i * hashLength, hashLength).SequenceEqual(expected.Bytes), Is.True,
                         $"Hash mismatch at iteration {iteration}, batch index {i}.");
                 }
@@ -232,28 +285,28 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Avx512vl_two_way_532_byte_hash_matches_individual_hashes()
+        public void Batched_532_byte_hash_matches_individual_hashes([Values(2, 8)] int batchSize)
         {
-            if (!Avx512F.VL.IsSupported)
+            if (batchSize == 8 ? !Avx512F.IsSupported : !Avx512F.VL.IsSupported)
             {
                 Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
             }
 
-            byte[] input0 = new byte[532];
-            byte[] input1 = new byte[532];
-            byte[][] inputs = [input0, input1];
-            byte[] output = new byte[2 * Hash256.Size];
+            byte[] inputs = new byte[batchSize * 532];
+            byte[] output = new byte[batchSize * Hash256.Size];
             Random random = new(42);
 
             for (int iteration = 0; iteration < 16; iteration++)
             {
-                random.NextBytes(input0);
-                random.NextBytes(input1);
-                KeccakHash.ComputeHash532Bytes2Avx512VL(ref input0[0], ref input1[0], ref output[0]);
+                random.NextBytes(inputs);
+                if (batchSize == 8)
+                    KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref output[0]);
+                else
+                    KeccakHash.ComputeHash532Bytes2Avx512VL(ref inputs[0], ref inputs[532], ref output[0]);
 
-                for (int i = 0; i < inputs.Length; i++)
+                for (int i = 0; i < batchSize; i++)
                 {
-                    ValueHash256 expected = ValueKeccak.Compute(inputs[i]);
+                    ValueHash256 expected = ValueKeccak.Compute(inputs.AsSpan(i * 532, 532));
                     Assert.That(output.AsSpan(i * Hash256.Size, Hash256.Size).SequenceEqual(expected.Bytes), Is.True,
                         $"Hash mismatch at iteration {iteration}, batch index {i}.");
                 }
@@ -266,16 +319,66 @@ namespace Nethermind.Core.Test
         [TestCase(64, "52c1f4616862f9d5011ed6a2a77d89a2102e51ee7db2db045bb5fb267fba98d1")]
         public void Common_input_lengths_match_known_hash(int inputLength, string expected)
         {
-            byte[] input = new byte[inputLength];
+            byte[] input = FilledInput(inputLength);
             byte[] output = new byte[32];
-            for (int i = 0; i < input.Length; i++)
-            {
-                input[i] = (byte)(i * 37 + 11);
-            }
 
             KeccakHash.ComputeHash(input, output);
 
             Assert.That(output.ToHexString(), Is.EqualTo(expected));
+        }
+
+        // The sponge squeezes a single block, so it can only serve an output that fits the rate,
+        // STATE_SIZE - 2 * size. Larger sizes used to be accepted: at 100 the rate is zero and the absorb
+        // loop never advanced, and above that it is negative and the state was indexed backwards.
+        [Test]
+        public void Unsupported_output_sizes_are_rejected([Values(0, 67, 100, 137, 201)] int outputLength)
+        {
+            byte[] input = new byte[200];
+            byte[] output = new byte[outputLength];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => KeccakHash.ComputeHash(input, output), Throws.InstanceOf<ArgumentOutOfRangeException>());
+                Assert.That(() => KeccakHash.Create(outputLength), Throws.InstanceOf<ArgumentOutOfRangeException>());
+            }
+        }
+
+        // UpdateFinalTo squeezes from that same single block, so it is bounded by the sponge's rate
+        // rather than by MAX_HASH_SIZE. 66 is the widest hash and so carries the narrowest rate, 68.
+        [Test]
+        public void Incremental_output_wider_than_the_rate_is_rejected()
+        {
+            byte[] input = new byte[300];
+
+            KeccakHash atRate = KeccakHash.Create(66);
+            atRate.Update(input);
+            KeccakHash overRate = KeccakHash.Create(66);
+            overRate.Update(input);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => atRate.UpdateFinalTo(new byte[68]), Throws.Nothing);
+                Assert.That(() => overRate.UpdateFinalTo(new byte[69]), Throws.InstanceOf<ArgumentOutOfRangeException>());
+            }
+        }
+
+        // The 20- and 32-byte inputs take ComputeHash's sub-rate fast paths, which write the terminator at
+        // stateBytes[input.Length] without comparing it against the rate. That is only safe because the rate
+        // is at least 68, which the widest output, 66, exercises at its tightest.
+        [Test]
+        public void Supported_output_sizes_agree_across_the_one_shot_and_incremental_paths(
+            [Values(20, 32, 300)] int inputLength,
+            [Values(1, 32, 64, 66)] int outputLength)
+        {
+            byte[] input = FilledInput(inputLength);
+
+            byte[] oneShot = new byte[outputLength];
+            KeccakHash.ComputeHash(input, oneShot);
+
+            KeccakHash incremental = KeccakHash.Create(outputLength);
+            incremental.Update(input);
+
+            Assert.That(incremental.Hash, Is.EqualTo(oneShot));
         }
 
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]
@@ -284,6 +387,25 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(hexString);
             ValueHash256 h = ValueKeccak.Compute(bytes);
             Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Partial_word_absorption_matches_reference(
+            [Range(0, 7)] int tailLength, [Values(0, 1, 7)] int offset, [Values(32, 64)] int hashLength)
+        {
+            // One rate block and one ulong are absorbed first, leaving exactly tailLength bytes for
+            // the 4/2/1-byte path. Nonzero offsets also exercise unaligned reads.
+            int inputLength = 200 - 2 * hashLength + sizeof(ulong) + tailLength;
+            byte[] input = FilledInput(offset + inputLength);
+            byte[] expected = new byte[hashLength];
+            Org.BouncyCastle.Crypto.Digests.KeccakDigest reference = new(hashLength * 8);
+            reference.BlockUpdate(input, offset, inputLength);
+            reference.DoFinal(expected, 0);
+            byte[] actual = new byte[hashLength];
+
+            KeccakHash.ComputeHash(input.AsSpan(offset, inputLength), actual);
+
+            Assert.That(actual, Is.EqualTo(expected));
         }
 
         [TestCaseSource(nameof(KeccakCases))]
@@ -1415,6 +1537,17 @@ namespace Nethermind.Core.Test
         {
             public Memory<byte> Memory => data;
             public void Dispose() { }
+        }
+
+        private static byte[] FilledInput(int length)
+        {
+            byte[] input = new byte[length];
+            for (int i = 0; i < input.Length; i++)
+            {
+                input[i] = (byte)(i * 37 + 11);
+            }
+
+            return input;
         }
 
         private static FieldInfo GetRemainderCacheField()

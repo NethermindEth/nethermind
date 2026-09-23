@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Test.Data
             using MemoryStream stream = new();
             using (Utf8JsonWriter writer = new(stream))
             {
-                converter.Write(writer, 1, null!);
+                converter.Write(writer, 1, JsonSerializerOptions.Default);
                 writer.Flush();
             }
 
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             IdConverter converter = new();
             Assert.Throws<NotSupportedException>(
-                () => converter.Write(new Utf8JsonWriter(new MemoryStream()), 1.1, null));
+                () => converter.Write(new Utf8JsonWriter(new MemoryStream()), 1.1, JsonSerializerOptions.Default));
         }
 
         [TestCase(typeof(int))]
@@ -65,9 +65,8 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(converter.CanConvert(type), Is.EqualTo(true));
         }
 
-        [TestCase(typeof(object))]
-        [TestCase(typeof(IdConverterTests))]
-        public void It_supports_all_silly_types_and_we_can_live_with_it(Type type)
+        [Test]
+        public void It_supports_all_silly_types_and_we_can_live_with_it([Values(typeof(object), typeof(IdConverterTests))] Type type)
         {
             IdConverter converter = new();
             Assert.That(converter.CanConvert(type), Is.EqualTo(true));

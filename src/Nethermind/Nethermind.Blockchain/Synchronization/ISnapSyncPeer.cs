@@ -18,5 +18,7 @@ namespace Nethermind.Blockchain.Synchronization
         Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token);
         Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token);
         Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token);
+        Task<IByteArrayList> GetBlockAccessLists(IReadOnlyList<ValueHash256> blockHashes, CancellationToken token) =>
+            Task.FromResult<IByteArrayList>(EmptyByteArrayList.Instance);
     }
 }

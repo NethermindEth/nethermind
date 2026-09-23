@@ -441,7 +441,7 @@ public static class HexWriter
         const int StackThreshold = 512;
         int tokenLength = 4 + data.Length * 2;
         // data is unbounded (e.g. a whole memory snapshot), so only stay on the stack while small.
-        byte[] rented = tokenLength > StackThreshold ? ArrayPool<byte>.Shared.Rent(tokenLength) : null;
+        byte[]? rented = tokenLength > StackThreshold ? ArrayPool<byte>.Shared.Rent(tokenLength) : null;
         Span<byte> token = rented is not null ? rented : stackalloc byte[StackThreshold];
         token[0] = (byte)'"';
         token[1] = (byte)'0';

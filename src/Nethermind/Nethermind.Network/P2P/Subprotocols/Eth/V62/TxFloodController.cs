@@ -10,6 +10,7 @@ using Nethermind.TxPool;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Threading;
 
@@ -38,6 +39,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private long _notAcceptedSinceLastCheck;
         private int _unproductivePooledTransactionWindows;
         private bool _isLegacyDowngraded;
+        private bool _isLegacyDisconnectRequested;
+        private bool _isInvalidTransactionDisconnectRequested;
         private bool _isPooledTransactionDowngraded;
 
         public TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, ILogger logger, Random? random = null)
@@ -84,34 +87,49 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     if (accepted == AcceptTxResult.Invalid)
                     {
-                        disconnectRequest ??= new(
-                            DisconnectReason.InvalidTxReceived,
-                            "invalid tx",
-                            $"Disconnecting {_protocolHandler} due to invalid tx received");
+                        if (!_isInvalidTransactionDisconnectRequested && disconnectRequest is null)
+                        {
+                            _isInvalidTransactionDisconnectRequested = true;
+                            disconnectRequest = new(
+                                DisconnectReason.InvalidTxReceived,
+                                "invalid tx",
+                                "invalid tx received");
+                        }
+                    }
+                    else if (accepted == AcceptTxResult.InvalidBlobProofs)
+                    {
+                        if (_logger.IsTrace) TraceDowngrading("invalid blob proofs");
+                        _isLegacyDowngraded = true;
                     }
                     else
                     {
                         _notAcceptedSinceLastCheck++;
                         if (!_isLegacyDowngraded && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 10)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to tx flooding");
+                            if (_logger.IsTrace) TraceDowngrading("tx flooding");
                             _isLegacyDowngraded = true;
                         }
-                        else if (_notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
+                        else if (!_isLegacyDisconnectRequested
+                            && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
                         {
+                            _isLegacyDisconnectRequested = true;
                             disconnectRequest ??= new(
                                 DisconnectReason.TxFlooding,
                                 $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds}",
-                                $"Disconnecting {_protocolHandler} due to tx flooding");
+                                "tx flooding");
                         }
                     }
                 }
             }
 
             DisconnectIfRequested(disconnectRequest);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceDowngrading(string reason) =>
+                _logger.Trace($"Downgrading {_protocolHandler} due to {reason}");
         }
 
-        public void ReportPooledTransactionRequest(ReadOnlySpan<Hash256> hashes)
+        public void ReportPooledTransactionRequest(ReadOnlySpan<ValueHash256> hashes)
         {
             DisconnectRequest? disconnectRequest;
             lock (_accountingLock)
@@ -202,6 +220,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 _checkpoint = now;
                 _notAcceptedSinceLastCheck = 0;
                 _isLegacyDowngraded = false;
+                _isLegacyDisconnectRequested = false;
+                _isInvalidTransactionDisconnectRequested = false;
                 _previousPooledTransactionSample.Clear();
                 (_currentPooledTransactionSample, _previousPooledTransactionSample) =
                     (_previousPooledTransactionSample, _currentPooledTransactionSample);
@@ -221,7 +241,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         return new(
                             DisconnectReason.TxFlooding,
                             $"pooled transaction flooding: returned requested transactions in {useful} of {sampled} sampled request messages",
-                            $"Disconnecting {_protocolHandler} due to unproductive pooled transaction announcements");
+                            "unproductive pooled transaction announcements");
                     }
                 }
                 else
@@ -256,14 +276,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug(disconnect.DebugMessage);
+            if (_logger.IsTrace) TraceDisconnect(disconnect.TraceReason);
             _protocolHandler.Disconnect(disconnect.Reason, disconnect.Details);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceDisconnect(string reason) =>
+                _logger.Trace($"Disconnecting {_protocolHandler} due to {reason}");
         }
 
         private readonly record struct DisconnectRequest(
             DisconnectReason Reason,
             string Details,
-            string DebugMessage);
+            string TraceReason);
 
         private sealed class PooledTransactionSample(int capacity)
         {
@@ -278,7 +302,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             public long RequestedHashes { get; private set; }
 
             public void ReportRequest(
-                ReadOnlySpan<Hash256> hashes,
+                ReadOnlySpan<ValueHash256> hashes,
                 Random random,
                 byte[] fingerprintKey)
             {
@@ -392,7 +416,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             public bool IsUseful { get; private set; }
 
             public void Set(
-                ReadOnlySpan<Hash256> hashes,
+                ReadOnlySpan<ValueHash256> hashes,
                 long sequence,
                 byte[] fingerprintKey)
             {
@@ -410,7 +434,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 for (int i = 0; i < hashes.Length; i++)
                 {
                     _fingerprints[i] = GetPooledTransactionFingerprint(
-                        hashes[i].ValueHash256,
+                        hashes[i],
                         fingerprintKey);
                 }
 
@@ -451,13 +475,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             public void AddCreditsTo(Dictionary<ulong, int> creditedFingerprints)
             {
+                int returnedCount = 0;
+                for (int i = 0; i < _count; i++)
+                {
+                    if (_returned[i]) returnedCount++;
+                }
+                int capacity = creditedFingerprints.EnsureCapacity(0);
+                int requiredCapacity = creditedFingerprints.Count + returnedCount;
+                if (requiredCapacity > capacity)
+                {
+                    creditedFingerprints.EnsureCapacity(Math.Max(requiredCapacity, capacity * 2));
+                }
                 for (int i = 0; i < _count; i++)
                 {
                     if (_returned[i])
                     {
                         ulong fingerprint = _fingerprints[i];
-                        creditedFingerprints.TryGetValue(fingerprint, out int count);
-                        creditedFingerprints[fingerprint] = count + 1;
+                        creditedFingerprints.Increment(fingerprint);
                     }
                 }
             }

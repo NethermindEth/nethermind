@@ -35,39 +35,43 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell.
-    /// Span is valid until the next call on this <see cref="IWorldState"/> instance.
     /// </summary>
-    /// <param name="storageCell"></param>
-    /// <returns></returns>
-    ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell);
+    /// <param name="storageCell">Storage location.</param>
+    /// <param name="value">Original value at the cell.</param>
+    void GetOriginal(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
-    /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> Get(in StorageCell storageCell);
+    /// <param name="value">Value at cell</param>
+    void Get(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void Set(in StorageCell storageCell, byte[] newValue);
+    void Set(in StorageCell storageCell, in UInt256 newValue);
+
+    /// <summary>Sets a storage value using the caller's current value for change recording.</summary>
+    /// <remarks>The cell must not have changed since the caller read <paramref name="currentValue"/>.</remarks>
+    void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => Set(in storageCell, in newValue);
 
     /// <summary>
     /// Get the transient storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
-    /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell);
+    /// <param name="value">Value at cell</param>
+    void GetTransientState(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
     /// Set the provided value to transient storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void SetTransientState(in StorageCell storageCell, byte[] newValue);
+    void SetTransientState(in StorageCell storageCell, in UInt256 newValue);
 
     /// <summary>
     /// Reset all storage
@@ -90,6 +94,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default);
 
     void WarmUp(Address address);
+
+    /// <summary>Applies prefix account changes to block-start caches. False leaves state unchanged and requires ordinary replay.</summary>
+    bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
 
     /// <summary>
     /// Clear all storage at specified address
@@ -160,11 +167,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
-    // See https://eips.ethereum.org/EIPS/eip-7610
+    // EIP-684: a creation collision occurs when the destination has code or a non-zero nonce.
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {
         accountExists = AccountExists(address);
         return accountExists
-            && (IsContract(address) || !(GetNonce(address) == 0) || !IsStorageEmpty(address));
+            && (IsContract(address) || GetNonce(address) != 0);
     }
 }

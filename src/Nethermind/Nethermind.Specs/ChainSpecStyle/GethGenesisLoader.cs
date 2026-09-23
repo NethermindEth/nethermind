@@ -25,7 +25,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
     {
         try
         {
-            GethGenesisJson gethGenesis = serializer.Deserialize<GethGenesisJson>(streamData);
+            GethGenesisJson? gethGenesis = serializer.Deserialize<GethGenesisJson>(streamData);
+            ArgumentNullException.ThrowIfNull(gethGenesis);
             return ConvertToChainSpec(gethGenesis);
         }
         catch (Exception e)
@@ -37,33 +38,32 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
     private ChainSpec ConvertToChainSpec(GethGenesisJson gethGenesisJson)
     {
         ArgumentNullException.ThrowIfNull(gethGenesisJson);
-        ArgumentNullException.ThrowIfNull(gethGenesisJson.Config);
+        GethGenesisConfigJson config = gethGenesisJson.Config
+            ?? throw new ArgumentNullException(nameof(gethGenesisJson.Config));
 
         ChainSpec chainSpec = new()
         {
-            ChainId = gethGenesisJson.Config.ChainId,
-            NetworkId = gethGenesisJson.Config.ChainId
+            ChainId = config.ChainId,
+            NetworkId = config.ChainId
         };
 
-        LoadGenesis(gethGenesisJson, chainSpec);
-        LoadEngine(gethGenesisJson, chainSpec);
+        LoadGenesis(gethGenesisJson, config, chainSpec);
+        LoadEngine(config, chainSpec);
         LoadAllocations(gethGenesisJson, chainSpec);
-        LoadParameters(gethGenesisJson, chainSpec);
+        LoadParameters(config, chainSpec);
         LoadTransitions(chainSpec);
 
         return chainSpec;
     }
 
-    private void LoadEngine(GethGenesisJson gethGenesis, ChainSpec chainSpec)
+    private void LoadEngine(GethGenesisConfigJson config, ChainSpec chainSpec)
     {
-        chainSpec.EngineChainSpecParametersProvider = new GethGenesisEngineParametersProvider(gethGenesis.Config);
+        chainSpec.EngineChainSpecParametersProvider = new GethGenesisEngineParametersProvider(config);
         chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
     }
 
-    private void LoadParameters(GethGenesisJson gethGenesis, ChainSpec chainSpec)
+    private void LoadParameters(GethGenesisConfigJson config, ChainSpec chainSpec)
     {
-        GethGenesisConfigJson config = gethGenesis.Config;
-
         Dictionary<ulong, OrderedBlobScheduleSettings> blobSchedulesByTimestamp = [];
         IReadOnlyDictionary<string, ulong>? timestamps = ((IHasNamedForks)config).NamedForkTimestamps;
         if (config.BlobSchedule is not null && timestamps is not null)
@@ -188,7 +188,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             [nameof(BPO5)] = new(8),
         };
 
-    private static void LoadGenesis(GethGenesisJson gethGenesisJson, ChainSpec chainSpec)
+    private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec)
     {
         ulong nonce = gethGenesisJson.Nonce;
         Hash256 mixHash = gethGenesisJson.MixHash ?? Keccak.Zero;
@@ -197,7 +197,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         byte[] extraData = gethGenesisJson.ExtraData ?? [];
         ulong gasLimit = gethGenesisJson.GasLimit ?? 0;
         Address beneficiary = gethGenesisJson.Coinbase ?? Address.Zero;
-        UInt256 baseFee = gethGenesisJson.Config.LondonBlock switch
+        UInt256 baseFee = config.LondonBlock switch
         {
             null => gethGenesisJson.BaseFeePerGas ?? UInt256.Zero,
             0 => gethGenesisJson.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee,
@@ -227,7 +227,6 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         static bool IsForkActive(ulong? forkTime, ulong timestamp) => forkTime <= timestamp;
 
-        GethGenesisConfigJson config = gethGenesisJson.Config;
         bool isShanghaiActive = IsForkActive(config.ShanghaiTime, genesisHeader.Timestamp);
         bool isCancunActive = IsForkActive(config.CancunTime, genesisHeader.Timestamp);
         bool isPragueActive = IsForkActive(config.PragueTime, genesisHeader.Timestamp);
@@ -362,8 +361,8 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         private static readonly UInt256 ThreeEth = new(3_000_000_000_000_000_000ul);
         private static readonly UInt256 TwoEth = new(2_000_000_000_000_000_000ul);
 
-        public string? EngineName => SealEngineType;
-        public string? SealEngineType => Core.SealEngineType.Ethash;
+        public string EngineName => Core.SealEngineType.Ethash;
+        public string SealEngineType => Core.SealEngineType.Ethash;
 
         public ulong HomesteadTransition { get; } = config.HomesteadBlock ?? 0;
         public ulong? DaoHardforkTransition { get; } = config.DaoForkSupport == false ? null : config.DaoForkBlock;

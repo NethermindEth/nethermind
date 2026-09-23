@@ -13,6 +13,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.RPC;
@@ -341,8 +342,8 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
             foreach ((string holder, UInt256 amount) in epochReward.DelegatedReward ?? [])
             {
-                totalDelegatedReward.TryGetValue(holder, out UInt256 existing);
-                totalDelegatedReward[holder] = existing + amount;
+                ref UInt256 total = ref CollectionsMarshal.GetValueRefOrAddDefault(totalDelegatedReward, holder, out _);
+                total += amount;
             }
         }
 

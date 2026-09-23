@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
@@ -12,7 +13,6 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -76,12 +76,18 @@ public class NettyDiscoveryHandler(
 
     public override void ChannelReadComplete(IChannelHandlerContext context) => context.Flush();
 
-    public async Task SendMsg(DiscoveryMsg discoveryMsg)
+    public Task SendMsg(DiscoveryMsg discoveryMsg)
+        => Channel.EventLoop.InEventLoop
+            ? SendMsgCore(discoveryMsg)
+            : Channel.EventLoop.SubmitAsync(static (handler, message) =>
+                ((NettyDiscoveryHandler)handler).SendMsgCore((DiscoveryMsg)message), this, discoveryMsg).Unwrap();
+
+    private async Task SendMsgCore(DiscoveryMsg discoveryMsg)
     {
         IByteBuffer msgBuffer;
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
+            if (_logger.IsTrace) TraceSending(discoveryMsg);
             msgBuffer = Serialize(discoveryMsg, Channel.Allocator);
         }
         catch (Exception e)
@@ -112,12 +118,20 @@ public class NettyDiscoveryHandler(
         }
         catch (Exception e)
         {
-            if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {e}");
+            if (_logger.IsTrace) TraceSendFailure(discoveryMsg, e);
         }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
         Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
+        Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv4", FastEnum.GetName(discoveryMsg.MsgType)!));
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceSending(DiscoveryMsg message) => _logger.Trace($"Sending message: {message}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceSendFailure(DiscoveryMsg message, Exception exception) =>
+        _logger.Trace($"Error when sending a discovery message Msg: {message} ,Exp: {exception}");
 
     private bool TryAcceptPacket(DatagramPacket packet, out MsgType type, out bool shouldForward, out EndPoint address)
     {
@@ -125,15 +139,13 @@ public class NettyDiscoveryHandler(
         shouldForward = true;
 
         IByteBuffer content = packet.Content;
-        // Mirrors NettyDiscoveryV5Handler.NormalizeEndpoint.
         address = packet.Sender is IPEndPoint senderEndpoint ? NormalizeEndpoint(senderEndpoint) : packet.Sender;
 
         int size = content.ReadableBytes;
-        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, size);
 
         if (size < 98)
         {
-            if (_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {size}, sender: {address}");
+            if (_logger.IsTrace) TraceNonDiscv4Message(size, address);
             return false;
         }
 
@@ -141,7 +153,7 @@ public class NettyDiscoveryHandler(
         byte msgTypeByte = content.GetByte(readerIndex + 97);
         if (FromMsgTypeByte(msgTypeByte) is not { } resolvedType)
         {
-            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {msgTypeByte}, sender: {address}");
+            if (_logger.IsTrace) TraceUnsupportedMessageType(msgTypeByte, address);
             return false;
         }
 
@@ -151,17 +163,25 @@ public class NettyDiscoveryHandler(
 
         if (!_globalInboundMessageLimiter.TryAcquire())
         {
-            if (_logger.IsDebug) _logger.Debug($"Rate limiting discovery message globally, type: {type}, sender: {address}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address}");
             return false;
         }
 
         if (address is IPEndPoint remoteEndpoint && !TryAcceptInbound(remoteEndpoint))
         {
-            if (_logger.IsDebug) _logger.Debug($"Rate limiting discovery message {type} from {remoteEndpoint}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message {type} from {remoteEndpoint}");
             return false;
         }
 
         return true;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceNonDiscv4Message(int messageSize, EndPoint sender) =>
+            _logger.Trace($"Forwarding non-discv4 discovery message, length: {messageSize}, sender: {sender}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceUnsupportedMessageType(byte messageType, EndPoint sender) =>
+            _logger.Trace($"Unsupported message type: {messageType}, sender: {sender}");
     }
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
@@ -190,7 +210,7 @@ public class NettyDiscoveryHandler(
     protected virtual MsgType? FromMsgTypeByte(byte b) =>
         FastEnum.IsDefined((MsgType)b) ? (MsgType)b : null;
 
-    private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg) => type switch
+    private DiscoveryMsg Deserialize(MsgType type, IByteBuffer msg) => type switch
     {
         MsgType.Ping => _msgSerializationService.Deserialize<PingMsg>(msg),
         MsgType.Pong => _msgSerializationService.Deserialize<PongMsg>(msg),
@@ -220,14 +240,14 @@ public class NettyDiscoveryHandler(
             if (timeToExpire < 0)
             {
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} expired", size);
-                if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {msg}");
+                if (_logger.IsTrace) TraceExpiredMessage(-timeToExpire, type, address, msg);
                 return false;
             }
 
             if (timeToExpire > MaxFutureExpirationOffset.TotalSeconds)
             {
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} far future", size);
-                if (_logger.IsDebug) _logger.Debug($"Received a discovery message that expires too far in the future ({timeToExpire} seconds), type: {type}, sender: {address}, message: {msg}");
+                if (_logger.IsTrace) TraceFarFutureMessage(timeToExpire, type, address, msg);
                 return false;
             }
         }
@@ -235,25 +255,45 @@ public class NettyDiscoveryHandler(
         if (msg.FarAddress is null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far address", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid far address {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsTrace) TraceMissingFarAddress(type, address, msg);
             return false;
         }
 
         if (!msg.FarAddress.Equals(address))
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has incorrect far address", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsTrace) TraceFakeIp(type, address, msg);
             return false;
         }
 
         if (msg.FarPublicKey is null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far public key", size);
-            if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {msg.FarAddress}, type: {type}, sender: {address}, message: {msg}");
+            if (_logger.IsTrace) TraceMissingPublicKey(type, address, msg);
             return false;
         }
 
         return true;
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceExpiredMessage(long secondsAgo, MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Received a discovery message that has expired {secondsAgo} seconds ago, type: {messageType}, sender: {sender}, message: {message}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceFarFutureMessage(long seconds, MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Received a discovery message that expires too far in the future ({seconds} seconds), type: {messageType}, sender: {sender}, message: {message}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceMissingFarAddress(MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Discovery message without a valid far address {message.FarAddress}, type: {messageType}, sender: {sender}, message: {message}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceFakeIp(MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Discovery fake IP detected - pretended {message.FarAddress}, type: {messageType}, sender: {sender}, message: {message}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceMissingPublicKey(MsgType messageType, EndPoint sender, DiscoveryMsg message) =>
+            _logger.Trace($"Discovery message without a valid signature {message.FarAddress}, type: {messageType}, sender: {sender}, message: {message}");
     }
 
     private static void ReportMsgByType(DiscoveryMsg msg, int size)
@@ -273,11 +313,6 @@ public class NettyDiscoveryHandler(
     // multi-packet exchanges are not dropped before signature verification.
     private bool TryAcceptInbound(IPEndPoint remoteEndpoint)
         => _inboundMessageLimiter.TryAccept(remoteEndpoint.Address);
-
-    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
-        => endpoint.Address.IsIPv4MappedToIPv6
-            ? new IPEndPoint(endpoint.Address.MapToIPv4(), endpoint.Port)
-            : endpoint;
 
     private async Task LogDisconnectFailureAsync(Task disconnectTask)
     {
@@ -363,19 +398,33 @@ public class NettyDiscoveryHandler(
         msg = null;
         IByteBuffer content = packet.Packet.Content;
         int readerIndex = content.ReaderIndex;
-        using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(packet.Size, out byte[] msgBytes);
-        content.GetBytes(readerIndex, msgBytes, 0, packet.Size);
+        IByteBuffer msgBuffer = content.RetainedSlice(readerIndex, packet.Size);
 
         try
         {
-            msg = Deserialize(packet.Type, new ArraySegment<byte>(msgBytes, 0, packet.Size));
+            msg = Deserialize(packet.Type, msgBuffer);
             msg.FarAddress = (IPEndPoint)packet.Address;
             return true;
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {packet.Type}, sender: {packet.Address}, msg: {msgBytes.AsSpan(0, packet.Size).ToHexString()}, {e.Message}");
+            if (_logger.IsTrace) TraceDeserializationFailure(packet, msgBuffer, e);
             return false;
+        }
+        finally
+        {
+            msgBuffer.Release();
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceDeserializationFailure(InboundDiscoveryPacket failedPacket, IByteBuffer messageBuffer, Exception exception) =>
+            _logger.Trace($"Error during deserialization of the message, type: {failedPacket.Type}, sender: {failedPacket.Address}, msg: {GetBytes(messageBuffer).AsSpan().ToHexString()}, {exception.Message}");
+
+        static byte[] GetBytes(IByteBuffer messageBuffer)
+        {
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(messageBuffer.ReadableBytes);
+            messageBuffer.GetBytes(messageBuffer.ReaderIndex, bytes);
+            return bytes;
         }
     }
 

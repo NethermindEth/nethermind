@@ -24,8 +24,7 @@ SENTINEL = "SENTINEL_PRIVATE_CALLDATA"
 
 
 class RpcServer:
-    """Minimal JSON-RPC test double; responder(id) -> result hex | ('error',) | ('http', status)
-    | ('http_json_error', status) | bytes. Answers the node-identity calls itself."""
+    """Minimal JSON-RPC test double; responder(id) -> result | error/status tuples | bytes."""
 
     def __init__(self, responder, head=25_490_000, chain=1, block_hash=None):
         outer = self
@@ -54,11 +53,13 @@ class RpcServer:
                     self.send_response(verdict[1])
                 elif isinstance(verdict, tuple) and verdict[0] == "http_json_error":
                     body = json.dumps({"jsonrpc": "2.0", "id": request["id"],
-                                       "error": {"code": -32000, "message": SENTINEL}}).encode()
+                                       "error": {"code": verdict[2] if len(verdict) > 2 else -32000,
+                                                  "message": SENTINEL}}).encode()
                     self.send_response(verdict[1])
                 elif isinstance(verdict, tuple) and verdict[0] == "error":
                     body = json.dumps({"jsonrpc": "2.0", "id": request["id"],
-                                       "error": {"code": -32000, "message": SENTINEL}}).encode()
+                                       "error": {"code": verdict[1] if len(verdict) > 1 else -32000,
+                                                  "message": SENTINEL}}).encode()
                     self.send_response(200)
                 elif isinstance(verdict, bytes):
                     body = verdict
@@ -334,6 +335,15 @@ class CorpusParityTests(unittest.TestCase):
         self.assertEqual(report["baseline_rpc_errors"], 1)
         self.assertEqual(report["matched"], 2)
 
+    def test_eth_call_all_rpc_errors_remain_valid_agreement(self):
+        corpus = self.write_corpus(2)
+        with unittest.mock.patch.dict(os.environ, {"RPC_BENCH_CORPUS_METHOD": "eth_call"}):
+            self.run_baseline(corpus, lambda i: ("error", -32000))
+            self.assertTrue(self.state.exists())
+            clean, report, _ = self.run_compare(corpus, lambda i: ("error", -32000))
+        self.assertTrue(clean)
+        self.assertEqual((report["matched"], report["both_rpc_errors"]), (0, 2))
+
     def test_baseline_still_aborts_on_transport_failures_with_counts_only_error(self):
         corpus = self.write_corpus(3)
         with RpcServer(lambda i: ("http", 503) if i == 2 else "0xab") as server:
@@ -435,6 +445,380 @@ class EnvironmentCapTests(unittest.TestCase):
     def test_an_absent_override_uses_the_default(self):
         with unittest.mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual(corpus_parity._env_int("CAP", 10), 10)
+
+
+class TraceCallModeTests(unittest.TestCase):
+    """The corpus stays an eth_call capture on disk; trace mode rewrites it as it is loaded."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.state = self.dir / "state.json.gz"
+        self.report = self.dir / "parity.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    @staticmethod
+    def trace_mode(tracer="callTracer"):
+        return unittest.mock.patch.dict(
+            os.environ,
+            {"RPC_BENCH_CORPUS_METHOD": "debug_traceCall", "RPC_BENCH_CORPUS_TRACER": tracer},
+        )
+
+    @staticmethod
+    def parity_mode(trace_types="trace"):
+        return unittest.mock.patch.dict(
+            os.environ,
+            {"RPC_BENCH_CORPUS_METHOD": "trace_call", "RPC_BENCH_CORPUS_TRACE_TYPES": trace_types},
+        )
+
+    def write_corpus(self, records):
+        path = self.dir / "corpus.jsonl.gz"
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            f.write("\n".join(json.dumps(r) for r in records) + "\n")
+        return path
+
+    def run_baseline(self, corpus, responder):
+        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+            corpus_parity.baseline(str(corpus), server.url, str(self.state))
+
+    def run_compare(self, corpus, responder):
+        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+            clean = corpus_parity.compare(str(corpus), server.url, str(self.state),
+                                          str(self.report), "base_client", "cand_client")
+        return clean, json.loads(self.report.read_text(encoding="utf-8"))
+
+    def test_overrides_move_from_positional_params_into_the_options_object(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [
+            {"to": "0x1", "data": SENTINEL}, "0x1853a90",
+            {"0xc": {"balance": "0x1"}}, {"number": "0x2"},
+        ]}])
+        with self.trace_mode():
+            self.assertEqual(corpus_parity.load_corpus(corpus), [[
+                {"to": "0x1", "data": SENTINEL},
+                "0x1853a90",
+                {"tracer": "callTracer",
+                 "stateOverrides": {"0xc": {"balance": "0x1"}},
+                 "blockOverrides": {"number": "0x2"}},
+            ]])
+
+    def test_supported_tracers_default_missing_block_to_latest(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}]},
+                                    {"method": "eth_call", "params": [{"to": "0x2"}, None, None]}])
+        for tracer in ("prestateTracer", "stateGasTracer"):
+            with self.subTest(tracer=tracer), self.trace_mode(tracer):
+                self.assertEqual(corpus_parity.load_corpus(corpus), [
+                    [{"to": "0x1"}, "latest", {"tracer": tracer}],
+                    [{"to": "0x2"}, "latest", {"tracer": tracer}],
+                ])
+
+    def test_the_struct_logger_is_selected_by_an_empty_tracer(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        with self.trace_mode(""):
+            self.assertEqual(corpus_parity.load_corpus(corpus), [[{"to": "0x1"}, "latest", {}]])
+
+    def test_mode_off_leaves_every_record_untouched(self):
+        params = [{"to": "0x1"}, "latest", {"0xc": {"balance": "0x1"}}]
+        corpus = self.write_corpus([{"method": "eth_call", "params": params}])
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(corpus_parity.load_corpus(corpus), [params])
+            self.assertEqual(corpus_parity.corpus_method(), "eth_call")
+
+    def test_an_unknown_tracer_is_rejected_before_any_request(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}]}])
+        with self.trace_mode("callTracer2"):
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.load_corpus(corpus)
+        self.assertIn("unknown tracer", str(caught.exception))
+
+    def test_a_record_without_params_names_its_line_rather_than_becoming_a_different_call(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}]},
+                                    {"method": "eth_call", "params": []}])
+        with self.trace_mode():
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.load_corpus(corpus)
+        self.assertIn("line 2", str(caught.exception))
+
+    def test_the_request_carries_the_trace_method_and_the_rewritten_params(self):
+        sent = []
+
+        def fake_fetch(url, body):
+            sent.append(json.loads(body))
+            return 200, json.dumps({"jsonrpc": "2.0", "id": 1, "result": {"type": "CALL"}}).encode()
+
+        with self.trace_mode(), unittest.mock.patch.object(corpus_parity, "_fetch", fake_fetch):
+            method = corpus_parity.corpus_method()
+            category, outcome = corpus_parity._post(
+                "http://x", 1, [{"to": "0x1"}, "latest", {"tracer": "callTracer"}], method)
+        self.assertEqual(method, "debug_traceCall")
+        self.assertEqual(sent[0]["method"], "debug_traceCall")
+        self.assertEqual(sent[0]["params"][2], {"tracer": "callTracer"})
+        self.assertIsNone(category)
+        # A trace is compared by digest, never stored: fixed width and no response content.
+        self.assertRegex(outcome, r"^0x[0-9a-f]{64}$")
+
+    def test_probe_requires_a_successful_trace_result_and_rejects_capability_failures(self):
+        modes = (("debug_traceCall", self.trace_mode), ("trace_call", self.parity_mode))
+        for mode, mode_context in modes:
+            with self.subTest(mode=mode), mode_context():
+                first_only = self.dir / "first-only.jsonl.gz"
+                with gzip.open(first_only, "wt", encoding="utf-8") as output:
+                    output.write(json.dumps({"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}))
+                    output.write("\n{not json\n")
+                calls = []
+                with RpcServer(lambda i: calls.append(i) or {"type": "CALL"}) as server:
+                    with contextlib.redirect_stdout(io.StringIO()) as output:
+                        corpus_parity.probe(str(first_only), server.url)
+                self.assertEqual(calls, [1], "a successful first record should stop parsing and probing")
+                self.assertIn("probe OK", output.getvalue())
+
+                corpus = self.write_corpus([
+                    {"method": "eth_call", "params": [{"to": "0x1"}, "latest"]},
+                    {"method": "eth_call", "params": [{"to": "0x2"}, "latest"]},
+                ])
+                for response in (("error", -32000), ("http_json_error", 404, -32003)):
+                    calls = []
+                    with self.subTest(response=response), \
+                            RpcServer(lambda i, response=response: calls.append(i) or
+                                      (response if i == 1 else {"type": "CALL"})) as server:
+                        with contextlib.redirect_stdout(io.StringIO()) as output:
+                            corpus_parity.probe(str(corpus), server.url)
+                    self.assertEqual(calls, [1, 2], "ordinary RPC errors should advance to the next record")
+                    self.assertIn("probe OK", output.getvalue())
+
+                calls = []
+                with RpcServer(lambda i: calls.append(i) or ("error", -32000)) as server:
+                    with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                        corpus_parity.probe(str(corpus), server.url)
+                self.assertEqual(calls, [1, 2])
+                self.assertIn("no successful results over 2 records", str(raised.exception))
+                self.assertNotIn(SENTINEL, str(raised.exception))
+
+                for code in (-32600, -32601):
+                    for response in (("error", code), ("http_json_error", 404, code)):
+                        calls = []
+                        with self.subTest(response=response), \
+                                RpcServer(lambda i, response=response: calls.append(i) or response) as server:
+                            with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                                corpus_parity.probe(str(corpus), server.url)
+                        self.assertEqual(calls, [1])
+                        self.assertIn(f"rpc_error:{code}", str(raised.exception))
+                        self.assertNotIn(SENTINEL, str(raised.exception))
+
+                malformed = json.dumps({"jsonrpc": "2.0", "id": 1,
+                                        "error": {"message": SENTINEL}}).encode()
+                calls = []
+                with RpcServer(lambda i: calls.append(i) or malformed) as server:
+                    with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                        corpus_parity.probe(str(corpus), server.url)
+                self.assertEqual(calls, [1])
+                self.assertIn("rpc_error", str(raised.exception))
+                self.assertNotIn(SENTINEL, str(raised.exception))
+
+                calls = []
+                with RpcServer(lambda i: calls.append(i) or ("http", 503)) as server:
+                    with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                        corpus_parity.probe(str(corpus), server.url)
+                self.assertEqual(calls, [1])
+                self.assertIn("transport_failure", str(raised.exception))
+
+    def test_probe_rejects_oversize_trace_responses_with_limit_guidance(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        oversized_bodies = (
+            b"{not json" + b"x" * 32,
+            json.dumps({"jsonrpc": "2.0", "id": 1, "error": {"code": -32000}}).encode() + b"x" * 32,
+        )
+        modes = (("debug_traceCall", self.trace_mode), ("trace_call", self.parity_mode))
+        for mode, mode_context in modes:
+            with self.subTest(mode=mode), mode_context():
+                for body in oversized_bodies:
+                    with self.subTest(body=body[:12]), unittest.mock.patch.object(
+                        corpus_parity, "MAX_RESPONSE_BYTES", 8
+                    ), RpcServer(lambda i, body=body: body) as server:
+                        with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                            corpus_parity.probe(str(corpus), server.url)
+                    message = str(raised.exception)
+                    self.assertIn("response_too_large", message)
+                    self.assertIn("MAX_RESPONSE_BYTES=8", message)
+                    self.assertIn("increase tool_config.max_response_bytes / RPC_BENCH_MAX_RESPONSE_BYTES", message)
+                    self.assertNotIn(SENTINEL, message)
+
+                valid = json.dumps({"jsonrpc": "2.0", "id": 1, "result": {"type": "CALL"}}).encode()
+                with unittest.mock.patch.object(
+                    corpus_parity, "MAX_RESPONSE_BYTES", len(valid) + 1
+                ), RpcServer(lambda i: {"type": "CALL"}) as server:
+                    with contextlib.redirect_stdout(io.StringIO()) as output:
+                        corpus_parity.probe(str(corpus), server.url)
+                self.assertIn("probe OK", output.getvalue())
+
+    def test_oversize_replay_is_counted_as_invalid_response(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        self.run_baseline(corpus, lambda i: "0xabab")
+        oversized = b"not json" + b"x" * 32
+        with unittest.mock.patch.object(corpus_parity, "MAX_RESPONSE_BYTES", 8):
+            clean, report = self.run_compare(corpus, lambda i: oversized)
+        self.assertFalse(clean)
+        self.assertEqual(report["candidate_invalid_responses"], 1)
+        self.assertEqual(report["candidate_transport_failures"], 0)
+        self.assertNotIn(SENTINEL, json.dumps(report))
+
+    def test_trace_requires_successful_results_but_allows_mixed_errors(self):
+        modes = (("debug_traceCall", self.trace_mode), ("trace_call", self.parity_mode))
+        cases = (
+            ("all-error", [("error", -32000)], False, 0, 1),
+            ("mixed", [{"type": "CALL"}, ("error", -32000)], True, 1, 1),
+            ("successful", [{"type": "CALL"}, {"type": "CALL", "gasUsed": "0x2"}], True, 2, 0),
+        )
+        for mode, mode_context in modes:
+            for name, outcomes, expected_clean, expected_matched, expected_errors in cases:
+                with self.subTest(mode=mode, case=name), mode_context():
+                    self.state.unlink(missing_ok=True)
+                    self.report.unlink(missing_ok=True)
+                    corpus = self.write_corpus([
+                        {"method": "eth_call", "params": [{"to": f"0x{index}"}, "latest"]}
+                        for index in range(1, len(outcomes) + 1)
+                    ])
+
+                    def responder(index, outcomes=outcomes):
+                        return outcomes[index - 1]
+
+                    if name == "all-error":
+                        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+                            with self.assertRaises(corpus_parity.CorpusParityError) as raised:
+                                corpus_parity.baseline(str(corpus), server.url, str(self.state))
+                            self.assertIn("no successful results", str(raised.exception))
+                            self.assertFalse(self.state.exists())
+                            with gzip.open(self.state, "wt", encoding="utf-8") as output:
+                                json.dump({
+                                    "total": 1,
+                                    "head": server.head,
+                                    "chain_id": server.chain,
+                                    "block_hash": server.block_hash,
+                                    "results": [corpus_parity.ERROR_MARKER],
+                                }, output)
+                            clean = corpus_parity.compare(
+                                str(corpus), server.url, str(self.state), str(self.report),
+                                "base_client", "cand_client",
+                            )
+                        report = json.loads(self.report.read_text(encoding="utf-8"))
+                    else:
+                        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+                            corpus_parity.baseline(str(corpus), server.url, str(self.state))
+                        with RpcServer(responder) as server, contextlib.redirect_stdout(io.StringIO()):
+                            clean = corpus_parity.compare(
+                                str(corpus), server.url, str(self.state), str(self.report),
+                                "base_client", "cand_client",
+                            )
+                        report = json.loads(self.report.read_text(encoding="utf-8"))
+
+                    self.assertEqual(clean, expected_clean)
+                    self.assertEqual(report["matched"], expected_matched)
+                    self.assertEqual(report["both_rpc_errors"], expected_errors)
+
+    def test_trace_cli_replays_probe_before_writing_outputs(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        baseline_state = self.dir / "cli-baseline.json.gz"
+        compare_state = self.dir / "cli-compare-state.json.gz"
+        compare_report = self.dir / "cli-compare-report.json"
+        timings_output = self.dir / "cli-timings.csv"
+        cases = (
+            ("baseline", ("--state", str(baseline_state)), (baseline_state,)),
+            ("compare", ("--state", str(compare_state), "--report", str(compare_report),
+                         "--baseline-client", "base", "--candidate-client", "candidate"),
+             (compare_state, compare_report)),
+            ("timings", ("--out", str(timings_output), "--passes", "1"),
+             (timings_output, timings_output.with_name("timings.meta.json"))),
+        )
+        for mode, mode_context in (("debug_traceCall", self.trace_mode), ("trace_call", self.parity_mode)):
+            for response, expected_error in (
+                    (("error", -32600), "rpc_error:-32600"),
+                    (("error", -32000), "no successful results over 1 records")):
+                for command, options, outputs in cases:
+                    with self.subTest(mode=mode, response=response, command=command), mode_context(), \
+                            RpcServer(lambda i, response=response: response) as server, \
+                            contextlib.redirect_stderr(io.StringIO()) as error:
+                        status = corpus_parity.main([
+                            command, "--corpus", str(corpus), "--rpc-url", server.url, *options,
+                        ])
+                    self.assertEqual(status, 2)
+                    self.assertIn(expected_error, error.getvalue())
+                    for output in outputs:
+                        self.assertFalse(output.exists(), f"{command} wrote {output}")
+
+        eth_state = self.dir / "eth-call-state.json.gz"
+        calls = []
+        with unittest.mock.patch.dict(os.environ, {"RPC_BENCH_CORPUS_METHOD": "eth_call"}), \
+                RpcServer(lambda i: calls.append(i) or "0xab") as server, \
+                contextlib.redirect_stdout(io.StringIO()):
+            status = corpus_parity.main([
+                "baseline", "--corpus", str(corpus), "--rpc-url", server.url, "--state", str(eth_state),
+            ])
+        self.assertEqual(status, 0)
+        self.assertTrue(eth_state.exists())
+        self.assertEqual(calls, [1])
+
+    def test_clients_agreeing_on_a_trace_match_and_disagreeing_is_a_content_mismatch(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        trace = {"type": "CALL", "gasUsed": "0x1", "calls": [{"type": "STATICCALL"}]}
+        with self.trace_mode():
+            self.run_baseline(corpus, lambda i: trace)
+            # Key order must not read as a divergence — the digest is taken over canonical JSON.
+            reordered = {"calls": trace["calls"], "gasUsed": trace["gasUsed"], "type": trace["type"]}
+            clean, _ = self.run_compare(corpus, lambda i: reordered)
+            self.assertTrue(clean)
+            clean, report = self.run_compare(corpus, lambda i: {"type": "CALL", "gasUsed": "0x2"})
+        self.assertFalse(clean)
+        self.assertEqual(report["content_mismatches"], 1)
+
+    def test_parity_trace_call_puts_the_types_second_and_the_override_fourth(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [
+            {"to": "0x1"}, "0x1853a90", {"0xc": {"balance": "0x1"}},
+        ]}])
+        with self.parity_mode("trace,stateDiff"):
+            self.assertEqual(corpus_parity.load_corpus(corpus), [[
+                {"to": "0x1"}, ["trace", "stateDiff"], "0x1853a90", {"0xc": {"balance": "0x1"}},
+            ]])
+            self.assertEqual(corpus_parity.corpus_method(), "trace_call")
+
+    def test_parity_trace_call_omits_an_absent_state_override(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        with self.parity_mode():
+            self.assertEqual(corpus_parity.load_corpus(corpus),
+                             [[{"to": "0x1"}, ["trace"], "latest"]])
+
+    def test_parity_trace_call_refuses_a_record_carrying_block_overrides(self):
+        """trace_call has no block-override parameter; dropping one would replay a different call."""
+        corpus = self.write_corpus([
+            {"method": "eth_call", "params": [{"to": "0x1"}, "latest"]},
+            {"method": "eth_call", "params": [{"to": "0x2"}, "latest", None, {"number": "0x2"}]},
+        ])
+        with self.parity_mode():
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.load_corpus(corpus)
+        self.assertIn("line 2", str(caught.exception))
+        self.assertIn("blockOverrides", str(caught.exception))
+
+    def test_an_unknown_trace_type_is_rejected_before_any_request(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}]}])
+        with self.parity_mode("trace,bogus"):
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.load_corpus(corpus)
+        self.assertIn("unknown trace type", str(caught.exception))
+
+    def test_an_unknown_corpus_method_is_rejected(self):
+        with unittest.mock.patch.dict(os.environ, {"RPC_BENCH_CORPUS_METHOD": "trace_callMany"}):
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.corpus_method()
+        self.assertIn("unknown corpus method", str(caught.exception))
+
+    def test_word_level_diffs_are_refused_because_outcomes_are_digests(self):
+        corpus = self.write_corpus([{"method": "eth_call", "params": [{"to": "0x1"}, "latest"]}])
+        with self.trace_mode():
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.compare(str(corpus), "http://x", str(self.state), str(self.report),
+                                      "base_client", "cand_client", diffs_path=str(self.dir / "d.json"))
+        self.assertIn("--diffs", str(caught.exception))
 
 
 if __name__ == "__main__":

@@ -36,6 +36,15 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     /// The fork requested via the <c>Eth-Execution-Version</c> header for this fork-scoped request,
     /// as stashed by <see cref="SszMiddleware"/>, or <c>null</c> for unscoped/blob endpoints.
     /// </summary>
+    /// <summary>Decodes a hex path segment into <paramref name="destination"/>, which it must fill exactly.</summary>
+    /// <remarks>The segment may carry a <c>0x</c> prefix. Nothing is allocated, so a malformed segment costs nothing.</remarks>
+    protected static bool TryDecodeHexPathExtra(ReadOnlySpan<char> extra, Span<byte> destination)
+    {
+        ReadOnlySpan<char> hex = extra.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? extra[2..] : extra;
+        return hex.Length == destination.Length * 2
+               && Convert.FromHexString(hex, destination, out _, out _) == OperationStatus.Done;
+    }
+
     protected static string? GetRequestedFork(HttpContext ctx) =>
         ctx.Items.TryGetValue(SszMiddleware.RouteForkItemKey, out object? fork) ? fork as string : null;
 

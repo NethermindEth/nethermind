@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -95,7 +95,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
 
     // Streams a two-pointer merge of two nonce-sorted bucket arrays from the standard and
     // blob pools (TxDistinctSortedPool sorts each bucket by nonce). Pending = txs whose
-    // nonce continues from accountNonce; gap → queued. Mirrors Geth's split.
+    // nonce continues from accountNonce; gap -> queued. Mirrors Geth's split.
     // Note: TxTypeTxFilter prevents a sender from holding both types simultaneously, so
     // the merge case is rare in practice but the API handles it correctly anyway.
     private static (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued)
@@ -123,8 +123,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
             }
             else
             {
-                // Indexer (not Add) so a duplicate nonce — should be impossible given
-                // TxTypeTxFilter, but defensive — does not crash the RPC handler.
+                // Indexer (not Add) so a duplicate nonce should not crash the RPC handler.
                 queued[nonce] = next;
             }
         }

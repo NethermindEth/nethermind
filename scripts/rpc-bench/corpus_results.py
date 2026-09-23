@@ -224,13 +224,14 @@ def _validate_timings_meta(path: Path) -> None:
     with path.open("r", encoding="utf-8") as source:
         data = json.load(source)
     required = {"head", "chain_id", "block_hash", "records", "passes", "requests",
-                "target_rps", "achieved_rps", "concurrency", "warmup_seconds", "outcomes"}
+                "target_rps", "achieved_rps", "concurrency", "warmup_seconds", "warmup_rps",
+                "outcomes"}
     if not isinstance(data, dict) or set(data) != required:
         raise CorpusResultsError(f"{path.name} does not match the timings metadata schema")
     for key in ("head", "chain_id", "records", "passes", "requests", "concurrency", "warmup_seconds"):
         if isinstance(data[key], bool) or not isinstance(data[key], int) or data[key] < 0:
             raise CorpusResultsError(f"{path.name}: {key} is not a non-negative integer")
-    for key in ("target_rps", "achieved_rps"):
+    for key in ("target_rps", "achieved_rps", "warmup_rps"):
         if isinstance(data[key], bool) or not isinstance(data[key], (int, float)) or data[key] < 0:
             raise CorpusResultsError(f"{path.name}: {key} is not a non-negative number")
     if not isinstance(data["block_hash"], str) or not BLOCK_HASH_PATTERN.fullmatch(data["block_hash"]):

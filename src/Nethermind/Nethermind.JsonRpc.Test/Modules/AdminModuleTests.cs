@@ -123,7 +123,7 @@ public class AdminModuleTests
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         List<PeerInfo> peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
         Assert.That(peerInfoList.Count, Is.EqualTo(1), "the setup wires exactly one validated active peer");
 
@@ -142,7 +142,7 @@ public class AdminModuleTests
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_nodeInfo");
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         NodeInfo nodeInfo = ((JsonElement)response.Result!).Deserialize<NodeInfo>(EthereumJsonSerializer.JsonOptions)!;
 
         using (Assert.EnterMultipleScope())
@@ -169,7 +169,7 @@ public class AdminModuleTests
     {
         string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_dataDir");
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         Assert.That(response.Result!.ToString(), Is.EqualTo(_exampleDataDir), "admin_dataDir reflects the path passed at module construction");
     }
 
@@ -196,7 +196,7 @@ public class AdminModuleTests
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString, persistent);
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         Assert.That(result, Is.True, "addTrustedPeer is idempotent: adding a new or already-trusted peer must report success as a boolean, matching geth's Server.AddTrustedPeer semantics");
         await trustedNodesManager.Received(1).AddAsync(Arg.Any<Enode>(), expectedUpdateFile, Arg.Any<CancellationToken>());
@@ -232,7 +232,7 @@ public class AdminModuleTests
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_removeTrustedPeer", _enodeString, persistent);
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         Assert.That(result, Is.True, "a valid enode is removed from the trusted set, reported as a boolean");
         await trustedNodesManager.Received(1).RemoveAsync(Arg.Any<Enode>(), expectedUpdateFile, Arg.Any<CancellationToken>());
@@ -247,7 +247,7 @@ public class AdminModuleTests
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_removeTrustedPeer", _enodeString);
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         Assert.That(result, Is.True, "removeTrustedPeer is idempotent: untrusting an unknown peer is success, matching geth's Server.RemoveTrustedPeer semantics");
     }
@@ -266,7 +266,7 @@ public class AdminModuleTests
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addPeer", _enodeString, persistent);
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         Assert.That(result, Is.True, "a valid enode is added to the static peer set and the call must report success as a boolean");
         await staticNodesManager.Received(1).AddAsync(Arg.Is<NetworkNode>(n => n.Enode!.Info == _enodeString), expectedUpdateFile, Arg.Any<CancellationToken>());
@@ -283,11 +283,11 @@ public class AdminModuleTests
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_removePeer", _enodeString, persistent);
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         Assert.That(result, Is.True, "a valid enode is removed from the static peer set and active session, reported as a boolean");
         await staticNodesManager.Received(1).RemoveAsync(Arg.Is<NetworkNode>(n => n.Enode!.Info == _enodeString), expectedUpdateFile, Arg.Any<CancellationToken>());
-        peerPool.Received(1).TryRemove(Arg.Any<PublicKey>(), out Arg.Any<Peer>());
+        peerPool.Received(1).TryRemove(Arg.Any<PublicKey>(), out Arg.Any<Peer?>());
     }
 
     [Test]
@@ -296,12 +296,12 @@ public class AdminModuleTests
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         staticNodesManager.RemoveAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
         IPeerPool peerPool = Substitute.For<IPeerPool>();
-        peerPool.TryRemove(Arg.Any<PublicKey>(), out Arg.Any<Peer>()).Returns(false);
+        peerPool.TryRemove(Arg.Any<PublicKey>(), out Arg.Any<Peer?>()).Returns(false);
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(staticNodesManager: staticNodesManager, peerPool: peerPool);
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_removePeer", _enodeString);
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)!;
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         Assert.That(result, Is.True, "removePeer is idempotent: removing an unknown peer is success, matching geth's Server.RemovePeer semantics");
     }
@@ -570,6 +570,34 @@ public class AdminModuleTests
     }
 
     [Test]
+    public void AdminPeers_WithoutEthHandler_UsesHighestAdvertisedEthCapabilityForProtocolInfo()
+    {
+        Capability[] capabilities = [new Capability("eth", 67), new Capability("eth", 68), new Capability("snap", 1)];
+        Peer peer = CreateTestPeer("erigon/v3.0.12", capabilities);
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
+
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
+
+        PeerInfo peerInfo = result.Data[0];
+        Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
+        Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(68), "fallback protocol info should use the highest advertised eth capability");
+    }
+
+    [Test]
+    public void AdminPeers_WithNegotiatedEthHandler_UsesNegotiatedEthVersionForProtocolInfo()
+    {
+        Capability[] capabilities = [new Capability("eth", 68), new Capability("eth", 72), new Capability("snap", 1)];
+        Peer peer = CreateTestPeer("Nethermind/v1.38.0", capabilities, ethProtocolVersion: 72);
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
+
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
+
+        PeerInfo peerInfo = result.Data[0];
+        Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
+        Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(72), "an active eth handler exposes the negotiated protocol version");
+    }
+
+    [Test]
     public void PeerInfo_WithHashedPublicKeyJson_DeserializesSuccessfully()
     {
         const string fullKeyHex = "a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
@@ -588,7 +616,7 @@ public class AdminModuleTests
             """;
         EthereumJsonSerializer serializer = new();
 
-        PeerInfo peerInfo = serializer.Deserialize<PeerInfo>(json);
+        PeerInfo peerInfo = serializer.Deserialize<PeerInfo>(json)!;
 
         Assert.That(peerInfo.Id, Is.Not.Null, "a hashed-id PeerInfo JSON must still produce a non-null id");
         Assert.That(peerInfo.Id.Bytes.Length, Is.EqualTo(64), "the public key payload retains its 64-byte length even when the JSON only carried the 32-byte hash");
@@ -652,7 +680,8 @@ public class AdminModuleTests
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(nodeRecordProvider: nodeRecordProvider);
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)
+            ?? throw new InvalidOperationException("JSON-RPC response deserialization returned null.");
         NodeInfo nodeInfo = ((JsonElement)response.Result!).Deserialize<NodeInfo>(EthereumJsonSerializer.JsonOptions)!;
 
         Assert.That(nodeInfo.Enr, Is.EqualTo(enrString), "admin_nodeInfo surfaces the signed local ENR");
@@ -664,7 +693,8 @@ public class AdminModuleTests
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
 
-        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized)
+            ?? throw new InvalidOperationException("JSON-RPC response deserialization returned null.");
         NodeInfo nodeInfo = ((JsonElement)response.Result!).Deserialize<NodeInfo>(EthereumJsonSerializer.JsonOptions)!;
 
         Assert.That(nodeInfo.Enr, Is.Null, "the ENR is unavailable when discovery is disabled");
@@ -768,7 +798,15 @@ public class AdminModuleTests
         return peerPool;
     }
 
-    private static Peer CreateTestPeer(string clientId, Capability[] capabilities, bool isStatic = false, bool isInbound = false)
+    private static int GetProtocolVersion(object protocolInfo)
+        => (int)protocolInfo.GetType().GetProperty("Version")!.GetValue(protocolInfo)!;
+
+    private static Peer CreateTestPeer(
+        string clientId,
+        Capability[] capabilities,
+        bool isStatic = false,
+        bool isInbound = false,
+        byte? ethProtocolVersion = null)
     {
         Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic) { ClientId = clientId };
         Peer peer = new(node);
@@ -782,12 +820,20 @@ public class AdminModuleTests
         {
             IP2PProtocolHandler protocolHandler = Substitute.For<IP2PProtocolHandler>();
             protocolHandler.GetCapabilities().Returns(capabilities);
-            session.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>())
+            session.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler?>())
                 .Returns(x => { x[1] = protocolHandler; return true; });
         }
         else
         {
-            session.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>()).Returns(false);
+            session.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler?>()).Returns(false);
+        }
+
+        if (ethProtocolVersion.HasValue)
+        {
+            IProtocolHandler ethHandler = Substitute.For<IProtocolHandler>();
+            ethHandler.ProtocolVersion.Returns(ethProtocolVersion.Value);
+            session.TryGetProtocolHandler("eth", out Arg.Any<IProtocolHandler>())
+                .Returns(x => { x[1] = ethHandler; return true; });
         }
 
         if (isInbound)

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -83,7 +84,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = checked(chain.Bridge.HeadBlock.Number + 10),
+                            Number = checked(chain.Bridge.HeadBlock!.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -128,7 +129,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = checked(chain.Bridge.HeadBlock.Number + 10),
+                            Number = checked(chain.Bridge.HeadBlock!.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -278,6 +279,86 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// Genesis persisted, the block below still queued: a body is readable only through the store that queued
+    /// its deferred write, so eth_simulateV1 must read through that store or silently build on an older parent.
+    /// </summary>
+    [Test]
+    public async Task Test_eth_simulateV1_builds_on_requested_parent_while_its_body_write_is_pending()
+    {
+        PausedDeferredBlockDataWriter deferredWriter = new();
+        TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(new GenesisOnlyRpcBlockchain())
+            .Build((builder) => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
+                .AddSingleton<IDeferredBlockDataWriter>(deferredWriter));
+
+        deferredWriter.Drain();
+        Block parent = await chain.AddBlock();
+
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [new()] };
+
+        SimulateBlockResult<SimulateCallResult> simulated =
+            chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(parent.Number)).Data[0];
+
+        Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash));
+        Assert.That(simulated.Number, Is.EqualTo(parent.Number + 1));
+    }
+
+    [Test]
+    public async Task Test_eth_simulateV1_reuses_environment_after_real_head_advances()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> firstPayload = new() { BlockStateCalls = [new()] };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> first =
+            chain.EthRpcModule.eth_simulateV1(firstPayload, BlockParameter.Latest);
+        Assert.That(first.Result.ResultType, Is.EqualTo(Core.ResultType.Success), first.Result.Error);
+
+        Block previousHead = chain.BlockTree.Head!;
+        Block realHead = await chain.AddBlock();
+        Assert.That(realHead.Number, Is.EqualTo(previousHead.Number + 1));
+        Assert.That(first.Data![0].Number, Is.EqualTo(realHead.Number));
+        Assert.That(first.Data![0].Hash, Is.Not.EqualTo(realHead.Hash));
+
+        SimulatePayload<TransactionForRpc> secondPayload = new() { BlockStateCalls = [new()] };
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> second =
+            chain.EthRpcModule.eth_simulateV1(secondPayload, BlockParameter.Latest);
+        Assert.That(second.Result.ResultType, Is.EqualTo(Core.ResultType.Success), second.Result.Error);
+        Assert.That(second.Data![0].ParentHash, Is.EqualTo(realHead.Hash));
+        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(realHead.Hash));
+    }
+
+    private sealed class PausedDeferredBlockDataWriter : IDeferredBlockDataWriter
+    {
+        private readonly List<Action> _queued = [];
+
+        public bool Enabled => true;
+
+        public void Enqueue(Action work)
+        {
+            lock (_queued) _queued.Add(work);
+        }
+
+        public void Drain()
+        {
+            Action[] pending;
+            lock (_queued)
+            {
+                pending = [.. _queued];
+                _queued.Clear();
+            }
+
+            foreach (Action work in pending) work();
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Drain();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <summary>
     ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
     ///     We test on blocks before current head and after it,
     ///     Note that if we get blocks before head we set simulation start state to one of that first block
@@ -389,7 +470,7 @@ public class EthSimulateTestsBlocksAndTransactions
                         ]
                        }
                        """;
-        return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
+        return serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input)!;
     }
 
     [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
@@ -519,7 +600,7 @@ public class EthSimulateTestsBlocksAndTransactions
     public async Task eth_simulateV1_MovePrecompileToAddress_invalid_override_returns_error(string payloadJson, int expectedErrorCode, string expectedMessage)
     {
         EthereumJsonSerializer serializer = new();
-        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson);
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson)!;
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
@@ -593,9 +674,8 @@ public class EthSimulateTestsBlocksAndTransactions
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
     // Verifies that blockOverrides.time is respected by the EVM TIMESTAMP opcode in eth_simulateV1
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Test_eth_simulateV1_block_override_time_is_seen_by_timestamp_opcode(bool validation)
+    [Test]
+    public async Task Test_eth_simulateV1_block_override_time_is_seen_by_timestamp_opcode([Values] bool validation)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 

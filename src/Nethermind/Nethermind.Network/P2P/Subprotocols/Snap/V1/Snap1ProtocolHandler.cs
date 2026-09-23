@@ -189,7 +189,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
         private StorageRangeMessage FulfillStorageRangeMessage(GetStorageRangeMessage getStorageRangeMessage, CancellationToken cancellationToken)
         {
             StorageRange? storageRange = getStorageRangeMessage.StorageRange;
-            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? ranges, IByteArrayList? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
+            Hash256 rootHash = storageRange.RootHash
+                ?? throw new InvalidOperationException("A storage range request requires a root hash.");
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? ranges, IByteArrayList? proofs) = SyncServer.GetStorageRanges(rootHash, storageRange.Accounts,
                 storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes, cancellationToken);
             return new StorageRangeMessage { Proofs = proofs, Slots = ranges };
         }
@@ -214,6 +216,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
 
         public async Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
         {
+            _ = range.RootHash
+                ?? throw new ArgumentException("A storage range request requires a root hash.", nameof(range));
+
             StorageRangeMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
                 SendRequest(new GetStorageRangeMessage()
                 {
@@ -243,7 +248,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             return await GetTrieNodes(request.RootHash, groups, token);
         }
 
-        public async Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) => await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
+        public async Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+            => await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
 
         private async Task<IByteArrayList> GetTrieNodes(Hash256 rootHash, IOwnedReadOnlyList<PathGroup> groups, CancellationToken token)
         {
@@ -266,8 +272,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             for (int i = 0; i < paths.Length; i++)
             {
                 AccountWithStorageStartingHash path = paths[i];
+                PathWithAccount pathAndAccount = path.PathAndAccount
+                    ?? throw new ArgumentException("An account refresh request requires an account path.", nameof(request));
                 using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
-                groupWriter.WriteValue(path.PathAndAccount.Path.Bytes);
+                groupWriter.WriteValue(pathAndAccount.Path.Bytes);
                 groupWriter.WriteValue(_emptyBytes);
             }
             rootWriter.Dispose();
