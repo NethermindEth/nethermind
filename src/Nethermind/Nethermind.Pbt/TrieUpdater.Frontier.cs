@@ -9,11 +9,11 @@ internal static partial class TrieUpdater<TKey, TPath>
     where TKey : struct, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
-    /// <summary>The boundary slots still borrowing their value from the group being read.</summary>
+    /// <summary>The boundary slots of the group being rebuilt.</summary>
     /// <remarks>
-    /// Entries are filled by <see cref="Decompose"/> as it consumes the existing node group and taken back by
-    /// <see cref="Compose"/> as it rebuilds, so a node here is always read against the traversal cursor itself.
-    /// A node anchored at another group belongs in <see cref="BoundaryResults"/> instead.
+    /// Entries are filled by <see cref="Decompose"/> as it consumes the existing node group, and by the folds that
+    /// replace its touched slots, then taken back by <see cref="Compose"/> as it rebuilds. Every node here is read
+    /// against the traversal cursor, so a node anchored elsewhere is re-anchored before it is placed.
     /// </remarks>
     internal struct Frontier
     {

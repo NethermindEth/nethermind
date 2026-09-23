@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
@@ -17,6 +18,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// An original node is always a stored branch: the root leaf is acquired as a <see cref="NodeKind.Leaf"/> and every
     /// other leaf is inlined in its parent branch, so a leaf is only ever its key and hash. A composed branch carries the
     /// keys of its leaf children, flagged by <see cref="LeafChildren"/> because fixed-length key types have no empty value.
+    /// A composed branch reaching past its group also owns the compressed prefix below it, so that it stays readable
+    /// against the cursor that placed it rather than against a group path of its own.
     /// </remarks>
     internal struct Subtree
     {
@@ -62,8 +65,14 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren)
+            : this(path, left, right, leftLeafKey, rightLeafKey, leafChildren, default) { }
+
+        /// <param name="prefix">The owned compressed prefix below this branch's anchor, empty when it branches at its anchor.</param>
+        internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
+            ReadOnlyMemory<byte> prefix)
         {
             Kind = NodeKind.Branch;
+            Encoding = prefix;
             HashOrLeft = left;
             _right = right;
             Path = path;
@@ -83,7 +92,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly bool IsEmpty => Kind == NodeKind.Empty;
         internal readonly bool IsLeaf => Kind == NodeKind.Leaf;
         internal readonly ValueHash256 LeafHash => HashOrLeft;
-        internal readonly CompressedPrefix Prefix => Kind == NodeKind.Branch ? default : Reader.Prefix;
+        internal readonly CompressedPrefix Prefix => Kind != NodeKind.Branch
+            ? Reader.Prefix
+            : Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(Encoding.Span);
         internal readonly ValueHash256 LeftHash => Kind == NodeKind.Branch ? HashOrLeft : Reader.LeftHash;
         internal readonly ValueHash256 RightHash => Kind == NodeKind.Branch ? _right : Reader.RightHash;
         /// <summary>Which children are leaves, for an original branch read from its trailer.</summary>
@@ -116,9 +127,9 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (HasRightLeaf) _rightLeafKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftLength)..]);
         }
 
-        /// <summary>Copies this branch's children into a composed branch anchored at <paramref name="path"/>.</summary>
-        internal readonly Subtree CopyBranch(NodeGroupPath path) =>
-            new(path, LeftHash, RightHash, HasLeftLeaf ? LeftLeafKey : default, HasRightLeaf ? RightLeafKey : default, LeafChildrenMask);
+        /// <summary>Copies this branch's children into a composed branch anchored at <paramref name="path"/>, over <paramref name="prefix"/>.</summary>
+        internal readonly Subtree CopyBranch(NodeGroupPath path, ReadOnlyMemory<byte> prefix) =>
+            new(path, LeftHash, RightHash, HasLeftLeaf ? LeftLeafKey : default, HasRightLeaf ? RightLeafKey : default, LeafChildrenMask, prefix);
 
         internal static Subtree Move(ref Subtree source)
         {
@@ -245,44 +256,52 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         /// <summary>Detaches this view for a caller that addresses it at <paramref name="anchorDepth"/>.</summary>
         /// <remarks>
-        /// A branch within the group at <paramref name="anchorDepth"/> is anchored there, so its whole position fits the
-        /// group path a caller already holds as its cursor. A deeper branch keeps its own group as its anchor.
+        /// The result is read against that caller's cursor: its group path is the cursor itself, the four levels below
+        /// are its <see cref="NodeGroupPath"/>, and anything deeper becomes an owned compressed prefix. Detaching copies
+        /// the node out of its source group, so the result outlives the frame it was read from.
         /// </remarks>
-        [SkipLocalsInit]
         internal readonly OwnedSubtree Materialize(int anchorDepth)
         {
             Debug.Assert(anchorDepth % PbtFourLevelGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
             if (IsEmpty) return default;
-            if (IsLeaf) return new(default, Node);
+            if (IsLeaf) return new(Node);
 
             int splitDepth = BranchDepth;
             Debug.Assert(splitDepth >= anchorDepth, "A result branches at or below the cursor that addresses it.");
-            int groupDepth = splitDepth - anchorDepth <= PbtFourLevelGroupGeometry.LevelsPerGroup
-                ? anchorDepth
-                : splitDepth / 4 * 4;
-            int localLength = splitDepth - groupDepth;
-            Span<byte> branchBytes = stackalloc byte[PbtBitPrefix.ByteCount(splitDepth)];
-            branchBytes.Clear();
-            CopyBranchBits(0, splitDepth, branchBytes);
-            int slot = localLength == 0 ? 0 : branchBytes[groupDepth >> 3] >> (4 - (groupDepth & 7)) & 15;
-            if (localLength != 0) slot &= 15 << (4 - localLength);
-            Span<byte> groupBytes = branchBytes[..PbtBitPrefix.ByteCount(groupDepth)];
-            if ((groupDepth & 7) != 0) groupBytes[^1] &= 0xF0;
-            return new(TPath.Create(groupBytes, groupDepth), Node.CopyBranch(new NodeGroupPath(slot, localLength)));
+            int localLength = Math.Min(splitDepth - anchorDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
+            int slot = 0;
+            for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | PrefixBit(bit);
+            return new(Node.CopyBranch(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
+                OwnedPrefix(anchorDepth + localLength, splitDepth)));
+        }
+
+        /// <summary>The bits from <paramref name="anchorDepth"/> to <paramref name="splitDepth"/> as a standalone compressed prefix.</summary>
+        private readonly ReadOnlyMemory<byte> OwnedPrefix(int anchorDepth, int splitDepth)
+        {
+            int bitCount = splitDepth - anchorDepth;
+            if (bitCount == 0) return default;
+            // Zeroed, because the bits are copied in by disjunction.
+            byte[] prefix = new byte[sizeof(ushort) + PbtBitPrefix.ByteCount(bitCount)];
+            BinaryPrimitives.WriteUInt16BigEndian(prefix, (ushort)bitCount);
+            CopyBranchBits(anchorDepth, bitCount, prefix.AsSpan(sizeof(ushort)));
+            return prefix;
         }
 
         internal static TraversalSubtree Move(ref TraversalSubtree source) => new(source.GroupPath, Subtree.Move(ref source.Node));
     }
 
-    /// <summary>A detached result whose group anchor survives traversal-buffer reuse.</summary>
-    internal struct OwnedSubtree(TPath groupPath, Subtree node)
+    /// <summary>A detached result, read against the cursor of the caller it was materialized for.</summary>
+    /// <remarks>
+    /// The result owns everything below that cursor, so it survives traversal-buffer reuse and the release of the group
+    /// it was read from, but it is only meaningful paired with a cursor at its anchor depth.
+    /// </remarks>
+    internal struct OwnedSubtree(Subtree node)
     {
-        internal TPath GroupPath = groupPath;
         internal Subtree Node = node;
         /// <summary>The change in stored size across the groups this result was folded from, still owed to the caller's boundary slot.</summary>
         internal long SizeDelta;
         internal readonly bool IsEmpty => Node.IsEmpty;
-        internal readonly TraversalSubtree Borrow(Span<byte> buffer) => new(PbtTraversalPath.FromPath(buffer, GroupPath), Node);
+        internal readonly TraversalSubtree Borrow(in PbtTraversalPath cursor) => new(cursor, Node);
 
         internal static OwnedSubtree TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.OwnedSubtree source)
             where TSourceKey : struct, IPbtKey<TSourceKey>
@@ -296,10 +315,10 @@ internal static partial class TrieUpdater<TKey, TPath>
                 else
                 {
                     Debug.Assert(source.Node.Kind == NodeKind.Branch);
-                    result = new(source.GroupPath.ToPath<TPath>(), new Subtree(source.Node.Path, source.Node.LeftHash, source.Node.RightHash,
+                    result = new(new Subtree(source.Node.Path, source.Node.LeftHash, source.Node.RightHash,
                         source.Node.HasLeftLeaf ? TKey.Create(source.Node.LeftLeafKey.Bytes) : default,
                         source.Node.HasRightLeaf ? TKey.Create(source.Node.RightLeafKey.Bytes) : default,
-                        source.Node.LeafChildrenMask));
+                        source.Node.LeafChildrenMask, source.Node.Encoding));
                 }
             }
             result.SizeDelta = source.SizeDelta;

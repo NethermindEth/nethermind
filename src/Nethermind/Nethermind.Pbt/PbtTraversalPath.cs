@@ -70,6 +70,16 @@ public ref struct PbtTraversalPath
         BitDepth = depth;
     }
 
+    /// <summary>Copies the first <paramref name="depth"/> bits of this cursor into a caller-owned buffer.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The depth is negative or beyond this cursor.</exception>
+    internal readonly PbtTraversalPath Truncated(Span<byte> buffer, int depth)
+    {
+        if ((uint)depth > (uint)BitDepth) throw new ArgumentOutOfRangeException(nameof(depth));
+        PbtTraversalPath cursor = new(buffer);
+        cursor.AppendKey(_buffer, depth);
+        return cursor;
+    }
+
     /// <summary>Creates an immutable snapshot of the current path.</summary>
     public readonly TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath> =>
         TPath.Create(_buffer[..PbtBitPrefix.ByteCount(BitDepth)], BitDepth);
