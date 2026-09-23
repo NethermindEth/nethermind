@@ -162,6 +162,25 @@ public class PerformanceCoresTests
     public void TryBuildEfficiencyMask_OneKindOfCore_DoesNotSplit(string performanceCpus, string allowedCpus) =>
         Assert.That(PerformanceCores.TryBuildEfficiencyMask(performanceCpus, Allowed(allowedCpus), out _, out _), Is.False);
 
+    [Test]
+    public void RestoreTarget_ThreadEnteringWithANarrowedMask_GoesBackToTheAllowedSet()
+    {
+        PerformanceCores.CpuMask performance = Mask(Enumerable.Range(0, 12).ToArray());
+        PerformanceCores.CpuMask efficiency = Mask(Enumerable.Range(12, 8).ToArray());
+        PerformanceCores.CpuMask allowed = Mask(Enumerable.Range(0, 20).ToArray());
+        PerformanceCores.CpuMask pinnedByOperator = Mask(0, 1, 12, 13);
+        PerformanceCores.CpuMask[] narrowed = [performance, efficiency];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PerformanceCores.RestoreTarget(performance, narrowed, allowed).SequenceEqual(allowed), Is.True,
+                "a prewarm worker started inside the processing scope must not be restored onto the performance cores");
+            Assert.That(PerformanceCores.RestoreTarget(efficiency, narrowed, allowed).SequenceEqual(allowed), Is.True);
+            Assert.That(PerformanceCores.RestoreTarget(pinnedByOperator, narrowed, allowed).SequenceEqual(pinnedByOperator), Is.True,
+                "a mask of the thread's own is restored as it was");
+        }
+    }
+
     private static PerformanceCores.CpuMask Mask(params int[] cpus)
     {
         PerformanceCores.CpuMask mask = default;

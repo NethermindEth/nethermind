@@ -34,7 +34,6 @@ internal static partial class PerformanceCores
     // The widening scan runs on the thread pool, one at a time; a request made while one runs makes it go again.
     private static int _scanRequested;
     private static int _scanRunning;
-    private static CpuMask _widenTo;
     private static int _restoreRefused;
 
     // The threads a scope holds narrowed right now, by kernel thread id; the scan leaves them alone. A slot is taken
@@ -77,7 +76,16 @@ internal static partial class PerformanceCores
     /// on the same thread. Does nothing where that narrows nothing, and where the kernel refuses.
     /// </summary>
     public static Scope NarrowCurrentThread(ProcessingCores cores, ILogger logger) =>
-        Selected(cores) is { } selection ? Narrow(selection, logger) : default;
+        Selected(cores) is { } selection ? Narrow(selection, logger, widenOnDispose: true) : default;
+
+    /// <summary>
+    /// Asks for a scan that puts back the threads which inherited a narrowed mask. The prewarm scopes do not ask on
+    /// their own disposal, which falls inside the block; the prewarm asks once its workers have joined.
+    /// </summary>
+    public static void ScheduleWidening()
+    {
+        if (OperatingSystem.IsLinux() && Host.Narrowed.Length > 0) RequestWidening();
+    }
 
     /// <summary>
     /// How prewarm divides its workers between the core types: the first <see cref="PrewarmSplit.NearWorkers"/> run
@@ -94,19 +102,20 @@ internal static partial class PerformanceCores
         /// <summary>The performance cores' logical processors less the one the processing thread runs on.</summary>
         public int NearWorkers { get; } = Math.Max(1, near.Cpus.Length - 1);
 
-        public Scope NarrowNear(ILogger logger) => Narrow(Near, logger);
+        public Scope NarrowNear(ILogger logger) => Narrow(Near, logger, widenOnDispose: false);
 
-        public Scope NarrowFar(ILogger logger) => Narrow(Far, logger);
+        public Scope NarrowFar(ILogger logger) => Narrow(Far, logger, widenOnDispose: false);
     }
 
-    private static Scope Narrow(Selection selection, ILogger logger)
+    private static Scope Narrow(Selection selection, ILogger logger, bool widenOnDispose)
     {
         // pid 0 is the calling thread.
         if (sched_getaffinity(0, CpuMaskSize, out CpuMask previous) != 0) return default;
+        previous = RestoreTarget(previous, Host.Narrowed, Host.Allowed);
         if (!TryTakeSlot(out int slot)) return default;
 
         CpuMask mask = selection.Mask;
-        if (sched_setaffinity(0, CpuMaskSize, ref mask) == 0) return new Scope(slot, previous, logger);
+        if (sched_setaffinity(0, CpuMaskSize, ref mask) == 0) return new Scope(slot, previous, logger, widenOnDispose);
 
         Volatile.Write(ref _scoped[slot], 0);
         return default;
@@ -135,12 +144,14 @@ internal static partial class PerformanceCores
         private readonly int _slot;
         private readonly CpuMask _previous;
         private readonly ILogger _logger;
+        private readonly bool _widenOnDispose;
 
-        internal Scope(int slot, CpuMask previous, ILogger logger)
+        internal Scope(int slot, CpuMask previous, ILogger logger, bool widenOnDispose)
         {
             _slot = slot + 1;
             _previous = previous;
             _logger = logger;
+            _widenOnDispose = widenOnDispose;
         }
 
         public void Dispose()
@@ -158,7 +169,7 @@ internal static partial class PerformanceCores
             }
 
             Volatile.Write(ref _scoped[_slot - 1], 0);
-            RequestWidening(restored);
+            if (_widenOnDispose) RequestWidening();
         }
     }
 
@@ -174,9 +185,8 @@ internal static partial class PerformanceCores
     /// created in a scope; nothing else in the process pins threads. Threads inside a scope are skipped, so one scope
     /// ending never widens another that is still open.
     /// </remarks>
-    private static void RequestWidening(in CpuMask to)
+    private static void RequestWidening()
     {
-        _widenTo = to;
         Volatile.Write(ref _scanRequested, 1);
         if (Interlocked.CompareExchange(ref _scanRunning, 1, 0) == 0)
             ThreadPool.UnsafeQueueUserWorkItem(static _ => RunWidening(), null);
@@ -190,7 +200,9 @@ internal static partial class PerformanceCores
             {
                 try
                 {
-                    WidenInheritors(EnumerateThreads(), Host.Narrowed, _widenTo, IsScoped, sched_getaffinity, sched_setaffinity);
+                    // Once the kernel has refused a restore the recorded allowed set is stale; every CPU is narrowed to the cpuset.
+                    CpuMask target = Volatile.Read(ref _restoreRefused) == 0 ? Host.Allowed : CpuMask.Every();
+                    WidenInheritors(EnumerateThreads(), Host.Narrowed, target, IsScoped, sched_getaffinity, sched_setaffinity);
                 }
                 // An unforeseen failure leaves a thread narrowed, which the next scope's scan retries; the pool thread survives.
                 catch (Exception)
@@ -219,6 +231,9 @@ internal static partial class PerformanceCores
         /// <summary>Every mask this class narrows a thread to, which is what the widening scan looks for.</summary>
         public static readonly CpuMask[] Narrowed;
 
+        /// <summary>What the process may run on, read once: the one mask a thread is put back on.</summary>
+        public static readonly CpuMask Allowed;
+
         static Host()
         {
             Selections = new Selection?[ModeCount];
@@ -227,6 +242,7 @@ internal static partial class PerformanceCores
             {
                 string? performanceCpus = ReadOrNull("/sys/devices/cpu_core/cpus");
                 if (performanceCpus is null || !TryReadAffinity(out CpuMask allowedMask)) return;
+                Allowed = allowedMask;
 
                 HashSet<int> allowed = [];
                 for (int cpu = 0; cpu < MaxCpus; cpu++)
@@ -390,6 +406,13 @@ internal static partial class PerformanceCores
 
         return widened;
     }
+
+    /// <summary>
+    /// What a scope puts its thread back on. A thread started inside another scope and not yet put back enters holding
+    /// that scope's mask; it goes back to what the process may run on, not to that.
+    /// </summary>
+    internal static CpuMask RestoreTarget(in CpuMask previous, CpuMask[] narrowed, in CpuMask allowed) =>
+        IsAnyOf(previous, narrowed) ? allowed : previous;
 
     private static bool IsAnyOf(in CpuMask mask, CpuMask[] masks)
     {

@@ -106,7 +106,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         senderRecovery)
     {
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
-        _coreSplit = blocksConfig.PreWarmCoreSplit ? PerformanceCores.Prewarm : null;
+        // Under All nothing is pinned, and the near workers are sized around a pinned processing thread.
+        _coreSplit = blocksConfig.PreWarmCoreSplit && blocksConfig.ProcessingCores != ProcessingCores.All ? PerformanceCores.Prewarm : null;
     }
 
     internal BlockCachePreWarmer(
@@ -906,6 +907,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // drops the block.
             queue.Unload();
             if (queue != _warmupQueue) queue.Dispose();
+            // The workers have joined: put back any thread they started, now rather than on each worker's way out, which falls inside the block.
+            if (_coreSplit is not null) PerformanceCores.ScheduleWidening();
         }
 
         ArrayPool<int>.Shared.Return(claimed);
