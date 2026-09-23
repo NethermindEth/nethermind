@@ -249,7 +249,11 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
-        Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Calls, Has.Count.EqualTo(3), "factory must create then call twice");
+            Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
+        }
     }
 
     [Test(Description = "The deferred path must order its Burn logs by destroy order like the inline path")]
