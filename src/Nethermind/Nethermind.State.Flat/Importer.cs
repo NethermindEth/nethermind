@@ -32,7 +32,7 @@ public class Importer(
     private const int BatchSize = 128_000;
     private const int FlushInterval = 50_000_000;
     private const int CheckCancelInterval = 100_000;
-    private static readonly TimeSpan ProgressReportInterval = TimeSpan.FromSeconds(60); // one Info line a minute, also while stalled
+    private static readonly TimeSpan ProgressHeartbeatInterval = TimeSpan.FromSeconds(60);
 
     private record struct Entry(Hash256? address, TreePath path, TrieNode node);
 
@@ -54,7 +54,7 @@ public class Importer(
         if (_logger.IsWarn) _logger.Warn("Starting import");
 
         int maxConcurrency = 8;
-        VisitorProgressTracker progressTracker = new("Flat Import", logManager, logLevel: LogLevel.Info, reportInterval: ProgressReportInterval);
+        VisitorProgressTracker progressTracker = new("Flat Import", logManager, logLevel: LogLevel.Info, heartbeatInterval: ProgressHeartbeatInterval);
 
         Task visitTask = Task.Run(() =>
         {
@@ -65,10 +65,16 @@ public class Importer(
                 {
                     MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount), // Tend to be faster with low thread
                 });
+
+                // Reports 100 %, so only for a traversal that completed: a cancelled one also returns
+                // normally, because ShouldVisit turns false
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    visitor.Finish();
+                }
             }
             finally
             {
-                visitor.Finish();
                 channel.Writer.Complete();
             }
         }, cancellationToken);

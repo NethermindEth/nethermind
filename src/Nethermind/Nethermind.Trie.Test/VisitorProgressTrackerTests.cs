@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -150,100 +155,188 @@ public class VisitorProgressTrackerTests
         Assert.That(tracker.GetProgress(), Is.EqualTo(0)); // Empty path doesn't contribute to progress
     }
 
-    [TestCase(LogLevel.Debug, true, 0, 1)]
-    [TestCase(LogLevel.Debug, false, 0, 0)]
-    [TestCase(LogLevel.Info, false, 1, 0)]
-    public void OnNodeVisited_ReportsProgressAtRequestedLevel(LogLevel logLevel, bool isDebugEnabled, int expectedInfoReports, int expectedDebugReports)
+    [TestCase(LogLevel.Debug, true, true, 0, 1)]
+    [TestCase(LogLevel.Debug, true, false, 0, 0)]
+    [TestCase(LogLevel.Info, true, false, 1, 0)]
+    [TestCase(LogLevel.Info, false, false, 0, 0)]
+    public void OnNodeVisited_ReportsProgressAtRequestedLevel(LogLevel logLevel, bool isInfoEnabled, bool isDebugEnabled, int expectedInfoReports, int expectedDebugReports)
     {
         // Arrange
-        InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
-        innerLogger.IsInfo.Returns(true);
-        innerLogger.IsDebug.Returns(isDebugEnabled);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(isInfoEnabled);
+        logger.IsDebug.Returns(isDebugEnabled);
+        VisitorProgressTracker tracker = new("Test", new OneLoggerLogManager(new ILogger(logger)), logLevel: logLevel);
 
-        VisitorProgressTracker tracker = new("Test", CreateLogManager(innerLogger), logLevel: logLevel);
-
-        // Act - a leaf at depth 1 covers 16^3 level-3 nodes, which clears the 1% threshold
-        // that otherwise suppresses reporting during the first 5 seconds
-        tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 0 }), isStorage: false, isLeaf: true);
+        // Act
+        tracker.OnNodeVisited(DepthOneLeaf(0), isStorage: false, isLeaf: true);
 
         // Assert
-        innerLogger.Received(expectedInfoReports).Info(Arg.Any<string>());
-        innerLogger.Received(expectedDebugReports).Debug(Arg.Any<string>());
+        logger.Received(expectedInfoReports).Info(Arg.Any<string>());
+        logger.Received(expectedDebugReports).Debug(Arg.Any<string>());
     }
 
-    [TestCase(null, 1)]
-    [TestCase(0, 2)]
-    [TestCase(3600, 1)]
-    public void OnNodeVisited_ReportsUnchangedProgressOnlyOnHeartbeat(int? reportIntervalSeconds, int expectedReports)
+    [Test]
+    public void OnNodeVisited_WithoutHeartbeat_ReportsEveryPercentageChangeOnce()
     {
         // Arrange - reportingInterval: 1 re-evaluates progress on every state node
-        InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
-        innerLogger.IsDebug.Returns(true);
-        TimeSpan? reportInterval = reportIntervalSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null;
+        VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, new ManualTimeProvider(), reportingInterval: 1);
 
-        VisitorProgressTracker tracker = new("Test", CreateLogManager(innerLogger), reportingInterval: 1, reportInterval: reportInterval);
+        // Act - a branch below level 3 does not move the percentage; of the seven level-3 nodes that follow,
+        // only the last one takes the estimate from 4096 to 4103 / 65536, the first value that reads 6.26 %
+        tracker.OnNodeVisited(DepthOneLeaf(0), isStorage: false, isLeaf: true);
+        tracker.OnNodeVisited(DeepBranch, isStorage: false, isLeaf: false);
+        for (int i = 0; i < 7; i++)
+        {
+            tracker.OnNodeVisited(LevelThreeNode(0x1000 + i));
+        }
 
-        // Act - a leaf at depth 1 is 6.25%; a branch below level 3 does not move the percentage
-        tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 0 }), isStorage: false, isLeaf: true);
-        tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 0, 1, 2, 3, 4 }), isStorage: false, isLeaf: false);
+        // Assert
+        logger.Received(2).Debug(Arg.Any<string>());
+        Received.InOrder(() =>
+        {
+            logger.Debug(Arg.Is<string>(line => line.Contains("6.25 %")));
+            logger.Debug(Arg.Is<string>(line => line.Contains("6.26 %")));
+        });
+    }
 
-        // Assert - without a heartbeat an unchanged percentage is not repeated; with a due one it is
-        innerLogger.Received(expectedReports).Debug(Arg.Any<string>());
-        innerLogger.Received(expectedReports).Debug(Arg.Is<string>(line => line.Contains("6.25 %")));
+    [Test]
+    public void OnNodeVisited_WithHeartbeat_ReportsOncePerIntervalWithTheCurrentNodeCount()
+    {
+        // Arrange
+        ManualTimeProvider time = new();
+        VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, time, TimeSpan.FromSeconds(60), reportingInterval: 1);
+
+        // Act
+        tracker.OnNodeVisited(DepthOneLeaf(0), isStorage: false, isLeaf: true); // first line straight away
+        tracker.OnNodeVisited(DepthOneLeaf(1), isStorage: false, isLeaf: true); // 12.50 %, but not due yet
+        time.Advance(TimeSpan.FromSeconds(59));
+        tracker.OnNodeVisited(DeepBranch, isStorage: false, isLeaf: false);
+        time.Advance(TimeSpan.FromSeconds(1));
+        tracker.OnNodeVisited(DeepBranch, isStorage: false, isLeaf: false);
+        time.Advance(TimeSpan.FromSeconds(60));
+        tracker.OnNodeVisited(DeepBranch, isStorage: false, isLeaf: false); // due again without any progress
+
+        // Assert
+        logger.Received(3).Debug(Arg.Any<string>());
+        Received.InOrder(() =>
+        {
+            logger.Debug(Arg.Is<string>(line => IsProgressLine(line, "6.25 %", 1)));
+            logger.Debug(Arg.Is<string>(line => IsProgressLine(line, "12.50 %", 4)));
+            logger.Debug(Arg.Is<string>(line => IsProgressLine(line, "12.50 %", 5)));
+        });
     }
 
     [TestCase(null, 1)]
-    [TestCase(0, 2)]
-    public void OnNodeVisited_ChecksHeartbeatDuringStorageTraversal(int? reportIntervalSeconds, int expectedReports)
+    [TestCase(60, 2)]
+    public void OnNodeVisited_ChecksHeartbeatDuringStorageTraversal(int? heartbeatSeconds, int expectedReports)
     {
         // Arrange
-        InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
-        innerLogger.IsDebug.Returns(true);
-        TimeSpan? reportInterval = reportIntervalSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null;
+        ManualTimeProvider time = new();
+        VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, time, ToInterval(heartbeatSeconds));
 
-        VisitorProgressTracker tracker = new("Test", CreateLogManager(innerLogger), reportInterval: reportInterval);
-
-        // Act - one state leaf, then enough storage nodes to reach the 2^16 heartbeat check
-        tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 0 }), isStorage: false, isLeaf: true);
+        // Act - storage nodes never re-evaluate progress themselves, so only the check on every
+        // 2^16-th visited node can notice that the interval has passed
+        tracker.OnNodeVisited(DepthOneLeaf(0), isStorage: false, isLeaf: true);
+        time.Advance(TimeSpan.FromSeconds(60));
         for (int i = 1; i < 1 << 16; i++)
         {
             tracker.OnNodeVisited(TreePath.Empty, isStorage: true);
         }
 
         // Assert
-        innerLogger.Received(expectedReports).Debug(Arg.Any<string>());
+        logger.Received(expectedReports).Debug(Arg.Any<string>());
     }
 
     [Test]
-    public void Finish_ReportsCompletionOnce()
+    public void OnNodeVisited_ReportsZeroProgressOnceStartUpDelayHasPassed()
     {
         // Arrange
-        InterfaceLogger innerLogger = Substitute.For<InterfaceLogger>();
-        innerLogger.IsDebug.Returns(true);
+        ManualTimeProvider time = new();
+        VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, time);
 
-        VisitorProgressTracker tracker = new("Test", CreateLogManager(innerLogger));
+        // Act - three level-3 nodes are below 1 %, so nothing is written during the first 5 seconds
+        for (int i = 0; i < 3; i++)
+        {
+            tracker.OnNodeVisited(LevelThreeNode(i));
+        }
 
-        // Act - the first call reports 6.25%, Finish reports 100%, a second Finish does not repeat it
-        tracker.OnNodeVisited(TreePath.FromNibble(new byte[] { 0 }), isStorage: false, isLeaf: true);
+        logger.DidNotReceive().Debug(Arg.Any<string>());
+        time.Advance(TimeSpan.FromSeconds(5));
+        tracker.OnNodeVisited(LevelThreeNode(3));
+
+        // Assert - 4 / 65536 still reads 0.00 %, and that first line is written
+        logger.Received(1).Debug(Arg.Any<string>());
+        logger.Received(1).Debug(Arg.Is<string>(line => line.Contains(" 0.00 %")));
+    }
+
+    [TestCase(null, 1, 2)]
+    [TestCase(3600, 1, 2)]
+    [TestCase(null, 16, 16)]
+    [TestCase(0, 16, 16)]
+    public void Finish_ReportsCompletionOnce(int? heartbeatSeconds, int depthOneLeaves, int expectedReports)
+    {
+        // Arrange
+        VisitorProgressTracker tracker = CreateTracker(out InterfaceLogger logger, new ManualTimeProvider(), ToInterval(heartbeatSeconds));
+
+        // Act - 16 depth-1 leaves cover the whole key space, so the traversal itself already reports 100 %
+        for (int i = 0; i < depthOneLeaves; i++)
+        {
+            tracker.OnNodeVisited(DepthOneLeaf((byte)i), isStorage: false, isLeaf: true);
+        }
+
         tracker.Finish();
         tracker.Finish();
 
         // Assert
-        innerLogger.Received(2).Debug(Arg.Any<string>());
-        innerLogger.Received(1).Debug(Arg.Is<string>(line => line.Contains("100.00 %")));
+        logger.Received(expectedReports).Debug(Arg.Any<string>());
+        logger.Received(1).Debug(Arg.Is<string>(line => line.Contains("100.00 %")));
+    }
+
+    [TestCase(null)]
+    [TestCase(0)]
+    public void OnNodeVisited_ConcurrentVisitorsNeverReportLowerProgress(int? heartbeatSeconds)
+    {
+        // Arrange - lines are written under the tracker's lock, so the list is in write order
+        TestLogger testLogger = new();
+        VisitorProgressTracker tracker = new("Test", new OneLoggerLogManager(new ILogger(testLogger)),
+            heartbeatInterval: ToInterval(heartbeatSeconds), timeProvider: new ManualTimeProvider());
+
+        // Act
+        Parallel.For(0, 1 << 16, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i => tracker.OnNodeVisited(LevelThreeNode(i)));
+
+        // Assert - without a heartbeat each percentage is written once; with one it may repeat but never go back
+        double[] percentages = testLogger.LogList.Select(ParsePercentage).ToArray();
+        Assert.That(percentages, heartbeatSeconds is null ? Is.Ordered.Ascending.And.Unique : Is.Ordered.Ascending);
+        Assert.That(percentages[^1], Is.EqualTo(100));
     }
 
     [Test]
-    public void Constructor_RejectsNegativeReportInterval() =>
-        Assert.Throws<ArgumentOutOfRangeException>(() => _ = new VisitorProgressTracker("Test", LimboLogs.Instance, reportInterval: TimeSpan.FromSeconds(-1)));
+    public void Constructor_RejectsNegativeHeartbeatInterval() =>
+        Assert.That(() => new VisitorProgressTracker("Test", LimboLogs.Instance, heartbeatInterval: TimeSpan.FromSeconds(-1)),
+            Throws.InstanceOf<ArgumentOutOfRangeException>().With.Property(nameof(ArgumentException.ParamName)).EqualTo("heartbeatInterval"));
 
-    private static ILogManager CreateLogManager(InterfaceLogger innerLogger)
+    // A branch below level 3, which never moves the estimate
+    private static readonly TreePath DeepBranch = TreePath.FromNibble(new byte[] { 0, 1, 2, 3, 4 });
+
+    // Covers 16^3 of the 65536 level-3 prefixes, i.e. 6.25 %
+    private static TreePath DepthOneLeaf(byte nibble) => TreePath.FromNibble(new[] { nibble });
+
+    private static TreePath LevelThreeNode(int index) =>
+        TreePath.FromNibble(new[] { (byte)(index >> 12 & 0xF), (byte)(index >> 8 & 0xF), (byte)(index >> 4 & 0xF), (byte)(index & 0xF) });
+
+    private static TimeSpan? ToInterval(int? seconds) => seconds is { } s ? TimeSpan.FromSeconds(s) : null;
+
+    private static VisitorProgressTracker CreateTracker(out InterfaceLogger logger, TimeProvider timeProvider, TimeSpan? heartbeatInterval = null, int reportingInterval = 100_000)
     {
-        // Built before Returns(), otherwise NSubstitute sees the ILogger constructor's reads of
-        // innerLogger as the call being configured
-        ILogger logger = new(innerLogger);
-        ILogManager logManager = Substitute.For<ILogManager>();
-        logManager.GetClassLogger<VisitorProgressTracker>().Returns(logger);
-        return logManager;
+        logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        return new VisitorProgressTracker("Test", new OneLoggerLogManager(new ILogger(logger)), reportingInterval,
+            heartbeatInterval: heartbeatInterval, timeProvider: timeProvider);
     }
+
+    private static bool IsProgressLine(string line, string percentage, int nodes) =>
+        line.Contains(percentage) && Regex.IsMatch(line, $@"nodes:\s+{nodes}$");
+
+    private static double ParsePercentage(string line) =>
+        double.Parse(Regex.Match(line, @"(\d+\.\d{2}) %").Groups[1].Value, CultureInfo.InvariantCulture);
 }

@@ -12,6 +12,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -93,5 +94,53 @@ public class ImporterTests
 
         await Assert.ThatAsync(async () => await _importer.Copy(new StateId(0, _stateTree.RootHash), cts.Token),
             Throws.InstanceOf<System.OperationCanceledException>());
+    }
+
+    [Test]
+    public async Task Copy_ReportsFullProgressWhenTheTraversalCompletes()
+    {
+        SeedTree(10);
+        (Importer importer, InterfaceLogger logger) = CreateImporterWithInfoLogger();
+
+        await importer.Copy(new StateId(0, _stateTree.RootHash));
+
+        logger.Received(1).Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("100.00 %")));
+    }
+
+    [Test]
+    public async Task Copy_DoesNotReportFullProgressWhenTheTraversalFails()
+    {
+        (Importer importer, InterfaceLogger logger) = CreateImporterWithInfoLogger();
+
+        // The state root is not in node storage, so the traversal fails on its first node
+        await Assert.ThatAsync(async () => await importer.Copy(new StateId(0, TestItem.KeccakA)),
+            Throws.InstanceOf<TrieException>());
+
+        logger.DidNotReceive().Info(Arg.Is<string>(line => line.Contains("100.00 %")));
+    }
+
+    [Test]
+    public async Task Copy_DoesNotReportFullProgressWhenCancelledDuringTheTraversal()
+    {
+        // Fixed addresses keep the trie shape deterministic; its depth-1 leaves produce a progress line
+        _stateTree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(1));
+        _stateTree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(2));
+        _stateTree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(3));
+        _stateTree.Commit();
+        using CancellationTokenSource cts = new();
+        (Importer importer, InterfaceLogger logger) = CreateImporterWithInfoLogger();
+        logger.When(l => l.Info(Arg.Is<string>(line => line.Contains("Flat Import")))).Do(_ => cts.Cancel());
+
+        await Assert.ThatAsync(async () => await importer.Copy(new StateId(0, _stateTree.RootHash), cts.Token),
+            Throws.InstanceOf<System.OperationCanceledException>());
+
+        logger.DidNotReceive().Info(Arg.Is<string>(line => line.Contains("100.00 %")));
+    }
+
+    private (Importer importer, InterfaceLogger logger) CreateImporterWithInfoLogger()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        return (new Importer(new NodeStorage(_trieDb), _persistence, new OneLoggerLogManager(new ILogger(logger))), logger);
     }
 }
