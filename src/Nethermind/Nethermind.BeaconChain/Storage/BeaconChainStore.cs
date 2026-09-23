@@ -6,6 +6,8 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,8 +45,15 @@ public static class BeaconChainMetadataKeys
 /// when first opened at schema version <see cref="ChildrenIndexSchemaVersion"/>, so no such block
 /// survives an upgrade.
 /// </para>
+/// <para>
+/// Blocks are read and written in the shape of the fork their slot belongs to, as
+/// <see cref="SignedBeaconBlockCodec"/> decides. Without a spec no Gloas fork is known: every block
+/// is stored and read as <see cref="SignedBeaconBlock"/> and a Gloas block is refused.
+/// </para>
 /// </remarks>
-public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
+/// <param name="db">The beacon chain columns.</param>
+/// <param name="spec">The network whose fork schedule decides each block's shape; <c>null</c> reads and writes the Fulu shape only.</param>
+public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSpec? spec = null)
 {
     /// <summary>Layout version of every column; bump it whenever a change needs an existing database migrated or refused.</summary>
     public const uint CurrentSchemaVersion = ChildrenIndexSchemaVersion;
@@ -74,19 +83,38 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
     private readonly IDb _states = db.GetColumnDb(BeaconChainDbColumns.States);
     private readonly IDb _metadata = db.GetColumnDb(BeaconChainDbColumns.Metadata);
 
+    /// <summary>Stores a pre-Gloas block; see <see cref="PutForkedBlock"/>.</summary>
+    /// <exception cref="InvalidOperationException">The block's slot is in the Gloas fork.</exception>
+    public void PutBlock(Hash256 root, SignedBeaconBlock block)
+    {
+        if (spec is not null && SignedBeaconBlockCodec.IsGloasSlot(block.Message!.Slot, spec))
+        {
+            throw new InvalidOperationException($"{nameof(PutBlock)} cannot store the Gloas block {root} at slot {block.Message.Slot}; use {nameof(PutForkedBlock)}");
+        }
+
+        PutForkedBlock(root, new ForkedSignedBeaconBlock.OfFulu(block));
+    }
+
     /// <summary>Stores a block and links it into the children index of its parent.</summary>
     /// <remarks>
     /// Callers are the single import worker and the checkpoint-sync anchor write, never concurrent,
     /// so the read-modify-write of the children entries below needs no lock. The whole update is one
     /// write batch so a crash cannot leave a stored block missing from its parent's child list.
     /// </remarks>
-    public void PutBlock(Hash256 root, SignedBeaconBlock block)
+    /// <exception cref="BeaconStateException">The block's shape is not the one of the fork its slot belongs to.</exception>
+    /// <exception cref="InvalidOperationException">The block is a Gloas block and this store has no spec.</exception>
+    public void PutForkedBlock(Hash256 root, ForkedSignedBeaconBlock block)
     {
-        Hash256 parentRoot = block.Message!.ParentRoot!;
+        Hash256 parentRoot = ParentRootOf(block);
+        byte[] ssz = spec is not null
+            ? SignedBeaconBlockCodec.Encode(block, spec)
+            : block is ForkedSignedBeaconBlock.OfFulu fulu
+                ? SignedBeaconBlock.Encode(fulu.Block)
+                : throw new InvalidOperationException($"A store without a {nameof(BeaconChainSpec)} cannot store the {block.GetType().Name} block {root}: it would read back as the Fulu shape");
         bool firstStore = !_blocks.KeyExists(root.Bytes);
 
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
-        batch.GetColumnBatch(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
+        batch.GetColumnBatch(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(ssz));
         IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
 
         Span<byte> parentKey = stackalloc byte[ChildrenKeyLength];
@@ -186,7 +214,25 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
     /// <summary>Whether a block is stored under <paramref name="root"/>, without reading or decoding it.</summary>
     public bool HasBlock(Hash256 root) => _blocks.KeyExists(root.Bytes);
 
+    /// <summary>Reads a pre-Gloas block; see <see cref="TryGetForkedBlock"/>.</summary>
+    /// <exception cref="InvalidOperationException">The stored block is a Gloas block.</exception>
     public bool TryGetBlock(Hash256 root, [NotNullWhen(true)] out SignedBeaconBlock? block)
+    {
+        if (!TryGetForkedBlock(root, out ForkedSignedBeaconBlock? forked))
+        {
+            block = null;
+            return false;
+        }
+
+        block = forked is ForkedSignedBeaconBlock.OfFulu fulu
+            ? fulu.Block
+            : throw new InvalidOperationException($"{nameof(TryGetBlock)} cannot read the Gloas block {root} at slot {forked.Slot}; use {nameof(TryGetForkedBlock)}");
+        return true;
+    }
+
+    /// <summary>Reads a block in the shape of the fork its slot belongs to.</summary>
+    /// <exception cref="BeaconStateException">The stored record is not a well-formed signed beacon block prefix.</exception>
+    public bool TryGetForkedBlock(Hash256 root, [NotNullWhen(true)] out ForkedSignedBeaconBlock? block)
     {
         byte[]? compressed = _blocks.Get(root.Bytes);
         if (compressed is null)
@@ -195,9 +241,24 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
             return false;
         }
 
-        SignedBeaconBlock.Decode(Snappy.DecompressToArray(compressed), out block);
+        byte[] ssz = Snappy.DecompressToArray(compressed);
+        if (spec is not null)
+        {
+            block = SignedBeaconBlockCodec.Decode(ssz, spec);
+            return true;
+        }
+
+        SignedBeaconBlock.Decode(ssz, out SignedBeaconBlock fulu);
+        block = new ForkedSignedBeaconBlock.OfFulu(fulu);
         return true;
     }
+
+    private static Hash256 ParentRootOf(ForkedSignedBeaconBlock block) => block switch
+    {
+        ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.ParentRoot!,
+        ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message!.ParentRoot!,
+        _ => throw new NotSupportedException($"Unhandled signed beacon block shape {block.GetType().Name}"),
+    };
 
     /// <summary>Deletes a block and unlinks it from its parent's child list, so that list never names a block this node no longer holds.</summary>
     /// <remarks>
