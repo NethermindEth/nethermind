@@ -12,7 +12,7 @@ namespace Nethermind.JsonRpc.Modules
     //   _queuedCalls: SlowPath waiters, bounded by RequestQueueLimit.
     //   _sharedCalls: SharedPath in-flight, bounded by MaxConcurrentSharedRequests — caps memory
     //                 for heavy sharable methods (eth_call / eth_estimateGas / eth_createAccessList).
-    public sealed class RpcLimits(int queuedLimit = 0, int sharedLimit = 0)
+    public sealed class RpcLimits
     {
         /// <summary>
         /// The node-wide limits, used by every <see cref="BoundedModulePool{T}"/> that is not given its own instance.
@@ -25,8 +25,14 @@ namespace Nethermind.JsonRpc.Modules
             Default.SharedLimit = sharedLimit;
         }
 
-        private int QueuedLimit { get; set; } = queuedLimit;
-        private int SharedLimit { get; set; } = sharedLimit;
+        internal RpcLimits(int queuedLimit = 0, int sharedLimit = 0)
+        {
+            QueuedLimit = queuedLimit;
+            SharedLimit = sharedLimit;
+        }
+
+        private int QueuedLimit { get; set; }
+        private int SharedLimit { get; set; }
         private bool QueuedLimitEnabled => QueuedLimit > 0;
         private bool SharedLimitEnabled => SharedLimit > 0;
         private int _queuedCalls;
