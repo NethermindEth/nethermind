@@ -8,30 +8,36 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider) : IOverridableEnvFactory
+public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider, IPrefixStateSeedSource? prefixSeeds = null) : IOverridableEnvFactory
 {
     public IOverridableEnv Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
+        StateReadOverlaySlot? readOverlay = prefixSeeds is { Enabled: true } ? new StateReadOverlaySlot() : null;
+        IWorldStateScopeProvider scopeProvider = readOverlay is null
+            ? overridableScope.WorldState
+            : new OverlaidScopeProvider(overridableScope.WorldState, readOverlay);
         ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState)
+            .AddSingleton<IWorldStateScopeProvider>(scopeProvider)
             .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
             .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) =>
                 codeInfoRepo as OverridableCodeInfoRepository
                 ?? throw new InvalidOperationException($"{nameof(ICodeInfoRepository)} must be decorated by {nameof(OverridableCodeInfoRepository)}.")));
 
         OverridableSpecProvider overridableSpecProvider = new(specProvider);
-        return new OverridableEnv(overridableScope, childLifetimeScope, specProvider, overridableSpecProvider);
+        return new OverridableEnv(overridableScope, childLifetimeScope, specProvider, overridableSpecProvider, readOverlay);
     }
 
     private class OverridableEnv(
         IOverridableWorldScope overridableScope,
         ILifetimeScope childLifetimeScope,
         ISpecProvider specProvider,
-        OverridableSpecProvider overridableSpecProvider
+        OverridableSpecProvider overridableSpecProvider,
+        StateReadOverlaySlot? readOverlay
     ) : Module, IOverridableEnv, IDisposable
     {
         private IDisposable? _worldScopeCloser;
@@ -83,6 +89,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
         private void Reset()
         {
+            readOverlay?.Disarm();
             _codeInfoRepository.ResetOverrides();
             overridableSpecProvider.ResetOverride();
 
@@ -91,15 +98,18 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             overridableScope.ResetOverrides();
         }
 
-        protected override void Load(ContainerBuilder builder) =>
+        protected override void Load(ContainerBuilder builder)
+        {
             builder
                 .AddScoped<IWorldState>(_worldState)
                 .AddScoped<IStateReader>(overridableScope.GlobalStateReader)
                 .AddScoped<IOverridableEnv>(this)
                 .AddScoped<ICodeInfoRepository>(_codeInfoRepository)
                 .AddScoped<IOverridableCodeInfoRepository>(_codeInfoRepository)
-                .AddScoped<ISpecProvider>(overridableSpecProvider)
-            ;
+                .AddScoped<ISpecProvider>(overridableSpecProvider);
+
+            if (readOverlay is not null) builder.AddScoped<StateReadOverlaySlot>(readOverlay);
+        }
 
         public void Dispose() =>
             // Note: This is the env's dispose, not the scope dispose.

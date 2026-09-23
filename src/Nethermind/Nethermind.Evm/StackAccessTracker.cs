@@ -30,7 +30,24 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
 
-    public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
+    /// <remarks>
+    /// A loop reading one slot asks this of the same cell every iteration, and the set probe costs about as
+    /// much as the storage read that follows it. Remembering the last cell found warm answers the repeat
+    /// from an inlined compare. Only <see cref="Restore"/> and the pooled reset can take a cell back out of
+    /// the set, and both forget it; adding never invalidates, so a remembered cell cannot go stale warm.
+    /// </remarks>
+    public readonly bool IsCold(in StorageCell storageCell)
+    {
+        if (_trackingState.IsKnownWarm(in storageCell)) return false;
+
+        if (_trackingState.AccessedStorageCells.Contains(storageCell))
+        {
+            _trackingState.RememberWarm(in storageCell);
+            return false;
+        }
+
+        return true;
+    }
 
     public readonly bool WarmUp(Address address)
         => _trackingState.AccessedAddresses.Add(address);
@@ -73,6 +90,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         {
             _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
             _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+            _trackingState.ForgetWarm();
         }
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
@@ -109,8 +127,22 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
 
+        private StorageCell _lastWarmCell;
+        private bool _hasLastWarmCell;
+
+        public bool IsKnownWarm(in StorageCell storageCell) => _hasLastWarmCell && _lastWarmCell.Equals(in storageCell);
+
+        public void RememberWarm(in StorageCell storageCell)
+        {
+            _lastWarmCell = storageCell;
+            _hasLastWarmCell = true;
+        }
+
+        public void ForgetWarm() => _hasLastWarmCell = false;
+
         private void Clear()
         {
+            ForgetWarm();
             AccessedAddresses.Clear();
             AccessedStorageCells.Clear();
             Logs.Clear();

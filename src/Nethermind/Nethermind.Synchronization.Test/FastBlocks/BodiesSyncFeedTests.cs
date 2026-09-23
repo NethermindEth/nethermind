@@ -76,10 +76,17 @@ public class BodiesSyncFeedTests
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _historyPruner = Substitute.For<IHistoryPruner>();
-        _feed = new BodiesSyncFeed(
+        _feed = CreateFeed(CreateBlockValidator());
+    }
+
+    private static BlockValidator CreateBlockValidator() =>
+        new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
+
+    private BodiesSyncFeed CreateFeed(IBlockValidator blockValidator) =>
+        new(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
-            CreateBlockValidator(),
+            blockValidator,
             _syncPointers,
             _syncPeerPool,
             _syncConfig,
@@ -90,10 +97,6 @@ public class BodiesSyncFeedTests
             LimboLogs.Instance,
             flushDbInterval: 10
         );
-    }
-
-    private static BlockValidator CreateBlockValidator() =>
-        new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
     [TearDown]
     public void TearDown()
@@ -166,7 +169,12 @@ public class BodiesSyncFeedTests
         Block firstBlock = _syncingFromBlockTree.FindBlock(req.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!;
         Block skippedBlock = _syncingFromBlockTree.FindBlock(req.Infos[1]!.BlockNumber, BlockTreeLookupOptions.None)!;
         Block thirdBlock = _syncingFromBlockTree.FindBlock(req.Infos[2]!.BlockNumber, BlockTreeLookupOptions.None)!;
-        req.Response = new OwnedBlockBodies([firstBlock.Body, thirdBlock.Body]);
+        // The third body is rejected against the skipped header before it matches, so it is the body whose
+        // transaction root gets cached. A differing root on the fourth makes the match below depend on that
+        // cache being cleared.
+        Block fourthBlock = _syncingFromBlockTree.FindBlock(req.Infos[3]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        Assert.That(fourthBlock.Header.TxRoot, Is.Not.EqualTo(thirdBlock.Header.TxRoot), "the two bodies must differ for this to assert anything");
+        req.Response = new OwnedBlockBodies([firstBlock.Body, thirdBlock.Body, fourthBlock.Body]);
         req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
 
         SyncResponseHandlingResult result = _feed.HandleResponse(req);
@@ -175,9 +183,41 @@ public class BodiesSyncFeedTests
         Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
         Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
         Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
+        Assert.That(_syncingToBlockTree.FindBlock(fourthBlock.Hash!, BlockTreeLookupOptions.None, fourthBlock.Number), Is.Not.Null);
         _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),
+            Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task ShouldValidateAnUnmatchedBodyOnceRegardlessOfRequestedHeaderCount()
+    {
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator
+            .ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(false);
+        using BodiesSyncFeed feed = CreateFeed(blockValidator);
+        feed.InitializeFeed();
+
+        using BodiesSyncBatch req = (await feed.PrepareRequest())!;
+        int requestedHeaders = req.Infos.Count(static (info) => info is not null);
+        Assert.That(requestedHeaders, Is.GreaterThan(1), "the batch must span several headers for this to assert anything");
+
+        // A body that matches none of the requested headers keeps the response index pinned, so it is
+        // offered to every one of them.
+        req.Response = new OwnedBlockBodies([new BlockBody([Build.A.Transaction.WithNonce(12345).TestObject], [])]);
+        req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        feed.HandleResponse(req);
+
+        Assert.That(
+            blockValidator.ReceivedCalls().Count(static (call) => call.GetMethodInfo().Name == nameof(IBlockValidator.ValidateBodyAgainstHeader)),
+            Is.EqualTo(1),
+            "an unmatched body must be validated exactly once, not once per requested header");
+        _syncPeerPool.Received(1).ReportBreachOfProtocol(
+            Arg.Any<PeerInfo>(),
+            DisconnectReason.InvalidTxOrUncle,
             Arg.Any<string>());
     }
 

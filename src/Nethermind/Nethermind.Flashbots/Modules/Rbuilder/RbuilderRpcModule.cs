@@ -7,7 +7,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -90,8 +89,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
             {
                 foreach (KeyValuePair<UInt256, UInt256> changedSlot in accountChange.ChangedSlots)
                 {
-                    ReadOnlySpan<byte> bytes = changedSlot.Value.ToBigEndian().WithoutLeadingZeros();
-                    worldState.Set(new StorageCell(address, changedSlot.Key), bytes.ToArray());
+                    worldState.Set(new StorageCell(address, changedSlot.Key), changedSlot.Value);
                 }
             }
         }

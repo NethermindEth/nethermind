@@ -4,7 +4,9 @@
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.EraE.Archive;
+using Nethermind.Serialization.Rlp;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.Specs;
@@ -14,6 +16,25 @@ namespace Nethermind.EraE.Test.Archive;
 
 internal class EraReaderTests
 {
+    [Test, NonParallelizable]
+    public async Task Imported_transactions_do_not_consume_the_network_pool([Values] bool postMerge)
+    {
+        Transaction source = Build.A.Transaction.Signed().TestObject;
+        using TestEraFile file = await TestEraFile.Create(postMerge ? 0U : 1U, postMerge ? 1U : 0U, transaction: source);
+        HashSet<Transaction> pooled = new(ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
+        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+
+        using EraReader reader = new(file.FilePath);
+        (Block block, _) = await reader.GetBlockByNumber(0);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions[0].Hash, Is.EqualTo(source.Hash));
+            Assert.That(pooled.Contains(block.Transactions[0]), Is.False);
+        }
+    }
+
     [TestCase(3U, 0U)]
     [TestCase(0U, 3U)]
     public async Task GetBlockByNumber_ReturnsCorrectBlockNumbers(uint preMergeCount, uint postMergeCount)

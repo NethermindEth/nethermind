@@ -40,6 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
             if (byteBuffer.ReaderIndex - startReaderIndex != checkPosition)
             {
+                eth66Message.Dispose();
                 ThrowUnexpectedTrailingData();
             }
 
