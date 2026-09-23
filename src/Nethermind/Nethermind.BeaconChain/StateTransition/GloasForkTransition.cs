@@ -127,9 +127,8 @@ public static class GloasForkTransition
                 ExecutionRequestsRoot = SszRoots.HashTreeRoot(new ExecutionRequestsGloas()),
             },
             PayloadExpectedWithdrawals = [],
-            // Placeholder until InitializePtcWindow runs below, matching the spec's own
-            // PayloadTimelinessCommitteeWindow() default-constructed value at this point in
-            // upgrade_to_gloas, before its `post.ptc_window = initialize_ptc_window(post)` line.
+            // Placeholder until InitializePtcWindow runs below. The spec builds ptc_window from pre in this
+            // constructor, before onboarding; the order is immaterial, as onboarding touches neither.
             PtcWindow = EmptyPtcWindow((int)Presets.PtcWindowLength),
         };
 
