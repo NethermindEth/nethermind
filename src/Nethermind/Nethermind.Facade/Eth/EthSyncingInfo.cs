@@ -42,7 +42,7 @@ namespace Nethermind.Facade.Eth
             if (beaconSyncTarget > bestSuggestedNumber)
             {
                 bestSuggestedNumber = beaconSyncTarget;
-                isSyncing = bestSuggestedNumber > headNumberOrZero + (ulong)MaxDistanceForSynced;
+                isSyncing |= bestSuggestedNumber > headNumberOrZero + (ulong)MaxDistanceForSynced;
             }
             SyncMode syncMode = _syncModeSelector.Current;
 

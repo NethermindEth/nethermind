@@ -137,16 +137,12 @@ namespace Nethermind.Facade.Test.Eth
         /// (current FCU/pivot destination), not that historical high-water mark.
         /// </summary>
         [Test]
-        public void GetFullInfo_AbandonedBeaconHighWater_CurrentTargetCaughtUp_DoesNotKeepReportingSyncing()
-        {
+        public void GetFullInfo_AbandonedBeaconHighWater_CurrentTargetCaughtUp_DoesNotKeepReportingSyncing() =>
             AssertAbandonedHighWaterDoesNotKeepSyncing(10000UL);
-        }
 
         [Test]
-        public void GetFullInfo_AbandonedBeaconHighWater_BeaconSyncFinished_DoesNotKeepReportingSyncing()
-        {
+        public void GetFullInfo_AbandonedBeaconHighWater_BeaconSyncFinished_DoesNotKeepReportingSyncing() =>
             AssertAbandonedHighWaterDoesNotKeepSyncing(null);
-        }
 
         private static void AssertAbandonedHighWaterDoesNotKeepSyncing(ulong? targetHeight)
         {
@@ -170,6 +166,30 @@ namespace Nethermind.Facade.Test.Eth
             Assert.That(syncingResult.IsSyncing, Is.False);
             Assert.That(syncingResult.HighestBlock, Is.Not.EqualTo(130000UL));
             Assert.That(syncingResult, Is.EqualTo(SyncingResult.NotSyncing));
+        }
+
+        /// <summary>
+        /// A node that only knows genesis is syncing; a nearby beacon target must not flip that to not syncing.
+        /// </summary>
+        [Test]
+        public void GetFullInfo_AtGenesisWithNearbyBeaconTarget_ReportsSyncing([Values(1UL, 8UL)] ulong targetHeight)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(0UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(0UL).TestObject).TestObject);
+
+            IBeaconSyncStrategy beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+            beaconSyncStrategy.GetTargetBlockHeight().Returns(targetHeight);
+
+            EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, new SyncConfig(),
+                new StaticSelector(SyncMode.WaitingForBlock), syncProgressResolver, beaconSyncStrategy, LimboLogs.Instance);
+
+            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
+
+            Assert.That(syncingResult.IsSyncing, Is.True);
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(targetHeight));
         }
 
         [TestCase(6178001UL, 6178000UL, false)]
