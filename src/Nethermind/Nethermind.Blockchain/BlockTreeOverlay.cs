@@ -199,6 +199,26 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         }
     }
 
+    public event EventHandler<BlockEventArgs>? BlockRemovedFromMain
+    {
+        add
+        {
+            if (value is not null)
+            {
+                _baseTree.BlockRemovedFromMain += value;
+                _overlayTree.BlockRemovedFromMain += value;
+            }
+        }
+        remove
+        {
+            if (value is not null)
+            {
+                _baseTree.BlockRemovedFromMain -= value;
+                _overlayTree.BlockRemovedFromMain -= value;
+            }
+        }
+    }
+
     public event EventHandler<BlockEventArgs>? NewHeadBlock
     {
         add

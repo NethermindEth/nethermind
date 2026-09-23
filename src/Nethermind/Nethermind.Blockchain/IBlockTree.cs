@@ -217,6 +217,13 @@ namespace Nethermind.Blockchain
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
 
         /// <summary>
+        /// A block left the canonical chain without a block at its number replacing it, because the head moved
+        /// to a lower block (a rewind or a reorg onto a shorter branch).
+        /// </summary>
+        /// <remarks>Raised from the tip down, before the <see cref="BlockAddedToMain"/> events of the same update.</remarks>
+        event EventHandler<BlockEventArgs> BlockRemovedFromMain { add { } remove { } }
+
+        /// <summary>
         /// A block is now set as head
         /// </summary>
         event EventHandler<BlockEventArgs> NewHeadBlock;

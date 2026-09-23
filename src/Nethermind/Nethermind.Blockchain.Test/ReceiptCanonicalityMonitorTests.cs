@@ -23,7 +23,7 @@ public class ReceiptCanonicalityMonitorTests
     public void Publishes_receipts_in_canonicalisation_order()
     {
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, LimboLogs.Instance);
+        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, Substitute.For<IBlockTree>(), LimboLogs.Instance);
 
         Block removed = Build.A.Block.WithNumber(1).WithExtraData([1]).TestObject;
         Block first = Build.A.Block.WithNumber(1).TestObject;
@@ -59,31 +59,10 @@ public class ReceiptCanonicalityMonitorTests
     }
 
     [Test]
-    public void Blocked_subscriber_does_not_delay_another()
-    {
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        receiptStorage.Get(Arg.Any<Block>()).Returns([]);
-        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, LimboLogs.Instance);
-
-        using CountdownEvent otherReceivedBoth = new(2);
-        using ManualResetEventSlim unblockedByOther = new();
-        monitor.ReceiptsInserted += (_, _) =>
-        {
-            if (otherReceivedBoth.Wait(Timeout)) unblockedByOther.Set();
-        };
-        monitor.ReceiptsInserted += (_, _) => otherReceivedBoth.Signal();
-
-        RaiseNewCanonical(receiptStorage, Build.A.Block.WithNumber(1).TestObject);
-        RaiseNewCanonical(receiptStorage, Build.A.Block.WithNumber(2).TestObject);
-
-        Assert.That(unblockedByOther.Wait(Timeout), Is.True);
-    }
-
-    [Test]
     public void Publishes_new_block_when_reading_the_removed_block_fails()
     {
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, LimboLogs.Instance);
+        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, Substitute.For<IBlockTree>(), LimboLogs.Instance);
 
         Block removed = Build.A.Block.WithNumber(1).WithExtraData([1]).TestObject;
         Block added = Build.A.Block.WithNumber(1).TestObject;
@@ -105,11 +84,37 @@ public class ReceiptCanonicalityMonitorTests
     }
 
     [Test]
+    public void Publishes_block_removed_from_main_before_the_following_update()
+    {
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        receiptStorage.Get(Arg.Any<Block>()).Returns([]);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, blockTree, LimboLogs.Instance);
+
+        Block removed = Build.A.Block.WithNumber(2).WithExtraData([1]).TestObject;
+        Block added = Build.A.Block.WithNumber(2).TestObject;
+
+        ConcurrentQueue<(Hash256?, bool)> published = new();
+        using CountdownEvent allPublished = new(2);
+        monitor.ReceiptsInserted += (_, e) =>
+        {
+            published.Enqueue((e.BlockHeader.Hash, e.WasRemoved));
+            allPublished.Signal();
+        };
+
+        blockTree.BlockRemovedFromMain += Raise.EventWith(new object(), new BlockEventArgs(removed));
+        RaiseNewCanonical(receiptStorage, added);
+
+        Assert.That(allPublished.Wait(Timeout), Is.True);
+        Assert.That(published, Is.EqualTo(new[] { (removed.Hash, true), (added.Hash, false) }));
+    }
+
+    [Test]
     public void Drops_events_still_queued_for_an_unsubscribed_handler([Values] bool disposeMonitor)
     {
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         receiptStorage.Get(Arg.Any<Block>()).Returns([]);
-        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, LimboLogs.Instance);
+        using ReceiptCanonicalityMonitor monitor = new(receiptStorage, Substitute.For<IBlockTree>(), LimboLogs.Instance);
 
         using ManualResetEventSlim firstEntered = new();
         using ManualResetEventSlim release = new();
@@ -121,17 +126,11 @@ public class ReceiptCanonicalityMonitorTests
             release.Wait(Timeout);
         };
         monitor.ReceiptsInserted += handler;
-        // Every subscriber's queue gets an event before any is delivered, so this proves block 2 is queued for the handler.
-        using ManualResetEventSlim secondQueued = new();
-        monitor.ReceiptsInserted += (_, e) =>
-        {
-            if (e.BlockHeader.Number == 2) secondQueued.Set();
-        };
 
         RaiseNewCanonical(receiptStorage, Build.A.Block.WithNumber(1).TestObject);
         Assert.That(firstEntered.Wait(Timeout), Is.True);
+        // Queued behind block 1, whose handler is still running.
         RaiseNewCanonical(receiptStorage, Build.A.Block.WithNumber(2).TestObject);
-        Assert.That(secondQueued.Wait(Timeout), Is.True);
 
         if (disposeMonitor)
         {

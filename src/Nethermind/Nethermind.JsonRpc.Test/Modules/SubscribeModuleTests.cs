@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _specProvider = Substitute.For<ISpecProvider>();
             _filterStore = new FilterStore(new TimerFactory());
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
-            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
+            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager);
             _syncConfig = new SyncConfig();
             _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             _ethSyncingInfo = new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
@@ -578,6 +578,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockHeader wanted = Build.A.BlockHeader.WithNumber(99).TestObject;
             BlockHeader sibling = Build.A.BlockHeader.WithNumber(99).WithExtraData([1]).TestObject;
             BlockParameter blockHash = new(wanted.Hash!);
+            _blockTree.FindHeader(Arg.Is<BlockParameter>(p => p.BlockHash == wanted.Hash)).Returns(wanted);
+            _blockTree.FindHeader(Arg.Is<BlockParameter>(p => p.BlockHash == wanted.Hash), true).Returns(wanted);
             Filter filter = new() { FromBlock = blockHash, ToBlock = blockHash };
 
             List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 1,
@@ -586,6 +588,22 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain($"\"blockHash\":\"{wanted.Hash}\""));
+        }
+
+        [Test]
+        public void LogsSubscription_with_numeric_bounds_publishes_only_blocks_within_them()
+        {
+            Filter filter = new() { FromBlock = new BlockParameter(99), ToBlock = new BlockParameter(100) };
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 2,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(98).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(101).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\""));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x64\""));
         }
 
         [Test]
@@ -603,6 +621,27 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x64\""));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x65\""));
+        }
+
+        [Test]
+        public void Subscription_disconnects_a_client_that_falls_too_far_behind()
+        {
+            _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>())
+                .Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
+            ReceiptsEventArgs receiptsEvent = MatchingLogEvent(Build.A.BlockHeader.WithNumber(1).TestObject);
+
+            using (new LogsSubscription(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, null))
+            {
+                // The first message blocks the sender and the queue fills behind it.
+                for (int i = 0; i < Subscription.MaxQueuedMessages + 2; i++)
+                {
+                    receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+                }
+
+                Assert.That(() => _jsonRpcDuplexClient.ReceivedCalls().Any(c => c.GetMethodInfo().Name == nameof(IDisposable.Dispose)),
+                    Is.True.After(10_000, 50));
+            }
         }
 
         private void SetHead(ulong number)
