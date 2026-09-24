@@ -21,6 +21,9 @@ public class AccountChangesAtIndex(Address address)
     public NonceChange? NonceChange { get; internal set; }
     public CodeChange? CodeChange { get; internal set; }
 
+    /// <summary>Physical existence after a mutation at this index, independently of EIP-161 emptiness.</summary>
+    public bool? AccountExists { get; internal set; }
+
     public UInt256? PreTxBalance { get; internal set; }
     public byte[]? PreTxCode { get; internal set; }
     private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
@@ -67,6 +70,7 @@ public class AccountChangesAtIndex(Address address)
         BalanceChange = null;
         NonceChange = null;
         CodeChange = null;
+        AccountExists = null;
         PreTxBalance = null;
         PreTxCode = null;
         _preTxStorage?.ClearAndTrim();
