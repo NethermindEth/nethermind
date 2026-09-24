@@ -53,8 +53,6 @@ public sealed class ProtoArrayForkChoice
             Root: finalizedCheckpoint.Root,
             ParentRoot: null,
             StateRoot: finalizedBlockStateRoot,
-            // The finalized block root always lies on an epoch boundary, so it is its own target.
-            TargetRoot: finalizedCheckpoint.Root,
             JustifiedCheckpoint: justifiedCheckpoint,
             FinalizedCheckpoint: finalizedCheckpoint,
             ExecutionStatus: executionStatus,
