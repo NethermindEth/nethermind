@@ -8,6 +8,7 @@ using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
@@ -48,7 +49,7 @@ public class GossipLoopbackTests
         ITopic publisherTopic = publisher.GetTopic(blockTopic);
         GossipRouter router = new(Spec, slotClock, LimboLogs.Instance);
         router.Start(subscriber.GetTopic, digest);
-        TaskCompletionSource<SignedBeaconBlock> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ForkedSignedBeaconBlock> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
         router.BeaconBlockReceived += block => received.TrySetResult(block);
 
         subscriber.Discover([LoopbackAddress(publisher)]);
@@ -63,8 +64,8 @@ public class GossipLoopbackTests
             token.ThrowIfCancellationRequested();
         }
 
-        SignedBeaconBlock receivedBlock = await received.Task;
-        Assert.That(receivedBlock.Message!.Slot, Is.EqualTo(slotClock.CurrentSlot).Within(1), "the published block round-trips the mesh");
+        ForkedSignedBeaconBlock receivedBlock = await received.Task;
+        Assert.That(receivedBlock.Slot, Is.EqualTo(slotClock.CurrentSlot).Within(1), "the published block round-trips the mesh");
     }
 
     private static BeaconP2P CreateHost()

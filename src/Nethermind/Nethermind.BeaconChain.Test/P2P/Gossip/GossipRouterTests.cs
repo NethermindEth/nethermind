@@ -20,7 +20,7 @@ using Snappier;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-public class GossipRouterTests
+public partial class GossipRouterTests
 {
     // A Fulu/BPO2-era mainnet slot so messages exercise the current digest configuration.
     private const ulong CurrentSlot = 13_410_304;
@@ -40,7 +40,7 @@ public class GossipRouterTests
     {
         GossipRouter router = CreateRouter();
         List<byte[]> received = [];
-        router.BeaconBlockReceived += b => received.Add(SignedBeaconBlock.Encode(b));
+        router.BeaconBlockReceived += b => received.Add(SignedBeaconBlockCodec.Encode(b, Spec));
         router.AggregateAndProofReceived += a => received.Add(SignedAggregateAndProof.Encode(a));
         router.VoluntaryExitReceived += e => received.Add(SignedVoluntaryExit.Encode(e));
         router.ProposerSlashingReceived += s => received.Add(ProposerSlashing.Encode(s));

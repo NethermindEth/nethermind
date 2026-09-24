@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 
 namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
@@ -28,12 +29,13 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
     protected BeaconChainSpec Spec { get; } = spec;
 
     /// <summary>The context bytes of a block chunk: the fork digest of the block's slot epoch.</summary>
-    protected byte[] ContextBytesFor(SignedBeaconBlock block) => ForkDigest.Compute(Spec, Spec.GetEpoch(block.Message!.Slot));
+    protected byte[] ContextBytesFor(ForkedSignedBeaconBlock block) => ForkDigest.Compute(Spec, Spec.GetEpoch(block.Slot));
 
+    /// <summary>Reads block chunks, each decoded as the SSZ shape of the fork its context bytes name.</summary>
     /// <param name="overallTimeout">Overrides <see cref="MaxBlocksResponseDuration"/>; test-only seam, production call sites omit it.</param>
-    protected async Task<IReadOnlyList<SignedBeaconBlock>> ReadBlockChunksAsync(Stream stream, int maxBlocks, string protocolId, TimeSpan? overallTimeout = null)
+    protected async Task<IReadOnlyList<ForkedSignedBeaconBlock>> ReadBlockChunksAsync(Stream stream, int maxBlocks, string protocolId, TimeSpan? overallTimeout = null)
     {
-        List<SignedBeaconBlock> blocks = [];
+        List<ForkedSignedBeaconBlock> blocks = [];
         using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxBlocksResponseDuration);
         CancellationTokenSource cts = timeout.Cts;
         try
@@ -52,10 +54,10 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
                     throw new Eth2ReqRespException($"Peer responded with more than the requested {maxBlocks} blocks");
                 }
 
-                SignedBeaconBlock block;
+                ForkedSignedBeaconBlock block;
                 try
                 {
-                    SignedBeaconBlock.Decode(chunk.Payload, out block);
+                    block = SignedBeaconBlockCodec.Decode(chunk.Payload, Spec);
                 }
                 catch (Exception e) when (e is not Eth2ReqRespException and not OperationCanceledException)
                 {
@@ -63,10 +65,11 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
                     throw new Eth2ReqRespException($"Malformed block chunk: {e.Message}");
                 }
 
+                // The shape was chosen by slot, so requiring digest(epoch(slot)) accepts exactly what decoding by the context fork would.
                 if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(block)))
                 {
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
-                    throw new Eth2ReqRespException($"Block chunk context bytes do not match the fork digest of slot {block.Message!.Slot}");
+                    throw new Eth2ReqRespException($"Block chunk context bytes do not match the fork digest of slot {block.Slot}");
                 }
 
                 blocks.Add(block);
@@ -82,9 +85,9 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
         return blocks;
     }
 
-    protected Task WriteBlockChunkAsync(Stream stream, SignedBeaconBlock block, CancellationTokenSource cts)
+    protected Task WriteBlockChunkAsync(Stream stream, ForkedSignedBeaconBlock block, CancellationTokenSource cts)
     {
         cts.CancelAfter(RespTimeout);
-        return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, ContextBytesFor(block), SignedBeaconBlock.Encode(block), cts.Token);
+        return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, ContextBytesFor(block), SignedBeaconBlockCodec.Encode(block, Spec), cts.Token);
     }
 }

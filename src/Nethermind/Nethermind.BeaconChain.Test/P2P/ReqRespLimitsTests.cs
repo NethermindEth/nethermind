@@ -12,6 +12,7 @@ using Multiformats.Address;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Dto;
@@ -195,7 +196,7 @@ public class ReqRespLimitsTests
     {
         public const string ProtocolId = "/test/blocks-limits/1";
 
-        public Task<IReadOnlyList<SignedBeaconBlock>> ReadBlocksAsync(Stream stream, int maxBlocks, TimeSpan? overallTimeout = null) =>
+        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> ReadBlocksAsync(Stream stream, int maxBlocks, TimeSpan? overallTimeout = null) =>
             ReadBlockChunksAsync(stream, maxBlocks, ProtocolId, overallTimeout);
     }
 

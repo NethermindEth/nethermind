@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -910,13 +911,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public void RecordMessageSent() => Interlocked.Increment(ref _messagesSent);
 
-        public async Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
+        public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
         {
             RecordMessageSent();
             return await p2p.RequestBlocksByRangeAsync(Session, startSlot, count, token);
         }
 
-        public async Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token)
+        public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token)
         {
             RecordMessageSent();
             return await p2p.RequestBlocksByRootAsync(Session, roots, token);
@@ -926,6 +927,21 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             RecordMessageSent();
             return await p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token);
+        }
+
+        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
+            throw new NotSupportedException("The Gloas data_column_sidecars_by_range dial is not implemented");
+
+        public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
+        {
+            RecordMessageSent();
+            return await p2p.RequestExecutionPayloadEnvelopesByRangeAsync(Session, startSlot, count, token);
+        }
+
+        public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token)
+        {
+            RecordMessageSent();
+            return await p2p.RequestExecutionPayloadEnvelopesByRootAsync(Session, roots, token);
         }
 
         public void ReportFailure(PeerFailureReason reason, string? detail = null)

@@ -105,7 +105,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// <exception cref="InvalidOperationException">The block is a Gloas block and this store has no spec.</exception>
     public void PutForkedBlock(Hash256 root, ForkedSignedBeaconBlock block)
     {
-        Hash256 parentRoot = ParentRootOf(block);
+        Hash256 parentRoot = block.ParentRoot;
         byte[] ssz = spec is not null
             ? SignedBeaconBlockCodec.Encode(block, spec)
             : block is ForkedSignedBeaconBlock.OfFulu fulu
@@ -252,13 +252,6 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         block = new ForkedSignedBeaconBlock.OfFulu(fulu);
         return true;
     }
-
-    private static Hash256 ParentRootOf(ForkedSignedBeaconBlock block) => block switch
-    {
-        ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.ParentRoot!,
-        ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message!.ParentRoot!,
-        _ => throw new NotSupportedException($"Unhandled signed beacon block shape {block.GetType().Name}"),
-    };
 
     /// <summary>Deletes a block and unlinks it from its parent's child list, so that list never names a block this node no longer holds.</summary>
     /// <remarks>
