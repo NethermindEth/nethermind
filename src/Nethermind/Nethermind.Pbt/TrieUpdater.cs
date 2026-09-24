@@ -392,8 +392,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped in PbtTraversalPath path, in ValueHash256 hash)
     {
         Span<long> descendantBytes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
-        for (int slot = 0; slot < descendantBytes.Length; slot++) descendantBytes[slot] = reader.DescendantBytes(slot) + writer.DescendantDelta(slot);
-        using RefCountingMemory? payload = writer.Detach(descendantBytes);
+        ushort candidateSlots = (ushort)(reader.DescendantMask | writer.DescendantDeltaMask);
+        for (uint remaining = candidateSlots; remaining != 0; remaining &= remaining - 1)
+        {
+            int slot = BitOperations.TrailingZeroCount(remaining);
+            descendantBytes[slot] = reader.DescendantBytes(slot) + writer.DescendantDelta(slot);
+        }
+        using RefCountingMemory? payload = writer.Detach(descendantBytes, candidateSlots);
         Debug.Assert(reader.IsResolved, "A frame is loaded or declared absent before it publishes, so an empty payload length means no stored group.");
         if (payload is not null || reader.PayloadLength != 0) sink.SetNodeGroup(path, hash, payload);
         return (payload?.GetSpan().Length ?? 0) - reader.PayloadLength + writer.DescendantDelta();

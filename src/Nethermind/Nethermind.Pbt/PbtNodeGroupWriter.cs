@@ -23,6 +23,8 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private RefCountingMemory? _memory;
     private OffsetBuffer _offsets;
     private DescendantDeltaBuffer _descendantDeltas;
+    private ushort _descendantDeltaMask;
+    private long _descendantDeltaTotal;
     private uint _availability;
     private int _written;
     private int _lastPosition = -1;
@@ -45,16 +47,19 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <summary>The size change folded below boundary slot <paramref name="slot"/> since this frame was opened.</summary>
     internal long DescendantDelta(int slot) => _descendantDeltas[slot];
 
+    /// <summary>The boundary slots a size change was folded below; every other slot's change is zero.</summary>
+    internal ushort DescendantDeltaMask => _descendantDeltaMask;
+
     /// <summary>The summed size change folded below every boundary slot.</summary>
-    internal long DescendantDelta()
-    {
-        long descendantDelta = 0;
-        foreach (long slotDelta in _descendantDeltas) descendantDelta += slotDelta;
-        return descendantDelta;
-    }
+    internal long DescendantDelta() => _descendantDeltaTotal;
 
     /// <summary>Records the size change of the groups folded below <paramref name="slot"/>.</summary>
-    internal void AddDescendantDelta(int slot, long delta) => _descendantDeltas[slot] += delta;
+    internal void AddDescendantDelta(int slot, long delta)
+    {
+        _descendantDeltas[slot] += delta;
+        _descendantDeltaMask |= (ushort)(1 << slot);
+        _descendantDeltaTotal += delta;
+    }
 
     /// <summary>Reserves the exact encoding length for the next position without committing it.</summary>
     internal Span<byte> GetSpan(int position, int encodingLength)
@@ -183,7 +188,11 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     /// <summary>Finishes the footer and transfers the output lease, or returns null for an empty group.</summary>
     /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot, or empty for none; ignored for an empty group.</param>
-    internal RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes)
+    internal RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes) => Detach(descendantBytes, ushort.MaxValue);
+
+    /// <inheritdoc cref="Detach(ReadOnlySpan{long})"/>
+    /// <param name="candidateSlots">The slots of <paramref name="descendantBytes"/> that may be nonzero; every other slot is known to be zero.</param>
+    internal RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateCommitted();
@@ -193,12 +202,13 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
             return null;
         }
 
-        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability, PbtNodeGroupCodec.DescendantMask(descendantBytes));
+        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
+        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask);
         int length = PbtNodeGroupCodec.HeaderLength + _written + trailerLength;
         EnsureCapacity(length);
         PbtNodeGroupCodec.Header.CopyTo(_memory!.GetSpan());
         Span<byte> footer = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength);
-        PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability, descendantBytes);
+        PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability, descendantMask, descendantBytes);
         RefCountingMemory memory = _memory;
         // The snapshot retains the detached buffer's whole capacity until the segment is persisted, so
         // the payload moves whenever a re-rent would land it in a smaller bucket.

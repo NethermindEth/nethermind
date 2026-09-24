@@ -735,7 +735,7 @@ public class PbtNodeGroupTests
         byte[] shortPayload = new byte[PbtNodeGroupCodec.HeaderLength + shortEncoding.Length + PbtNodeGroupCodec.GetTrailerLength(1, 0)];
         PbtNodeGroupCodec.Header.CopyTo(shortPayload);
         shortEncoding.CopyTo(shortPayload, PbtNodeGroupCodec.HeaderLength);
-        PbtNodeGroupCodec.WriteFooter(shortPayload.AsSpan(PbtNodeGroupCodec.HeaderLength + shortEncoding.Length), stackalloc ushort[PbtNodeGroupCodec.PositionCount], 1u, default);
+        PbtNodeGroupCodec.WriteFooter(shortPayload.AsSpan(PbtNodeGroupCodec.HeaderLength + shortEncoding.Length), stackalloc ushort[PbtNodeGroupCodec.PositionCount], 1u, 0, default);
 #if DEBUG
         Assert.That(() => ValidateLeafGroup(groupKey, 0, shortPayload, streamingWriter), Throws.TypeOf<InvalidDataException>());
 #else

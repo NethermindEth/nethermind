@@ -158,13 +158,18 @@ public static class PbtNodeGroupCodec
         BitOperations.PopCount(availability) * sizeof(ushort) + sizeof(uint) + DescendantsLength(descendantMask);
 
     /// <summary>Validates per-slot descendant sizes and returns the mask of nonzero slots; an empty span means no descendants.</summary>
-    internal static ushort DescendantMask(ReadOnlySpan<long> descendantBytes)
+    internal static ushort DescendantMask(ReadOnlySpan<long> descendantBytes) => DescendantMask(descendantBytes, ushort.MaxValue);
+
+    /// <inheritdoc cref="DescendantMask(ReadOnlySpan{long})"/>
+    /// <param name="candidateSlots">The slots that may be nonzero; every other slot is known to be zero and is not read.</param>
+    internal static ushort DescendantMask(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
         if (descendantBytes.IsEmpty) return 0;
         if (descendantBytes.Length != DescendantSlots) throw new ArgumentException("One size per boundary slot is required.", nameof(descendantBytes));
         ushort descendantMask = 0;
-        for (int slot = 0; slot < DescendantSlots; slot++)
+        for (uint remaining = candidateSlots; remaining != 0; remaining &= remaining - 1)
         {
+            int slot = BitOperations.TrailingZeroCount(remaining);
             long slotBytes = descendantBytes[slot];
             ArgumentOutOfRangeException.ThrowIfNegative(slotBytes, nameof(descendantBytes));
             if (slotBytes > MaxDescendantBytes) throw new InvalidDataException("PBT node group descendant size exceeds the uint48 limit.");
@@ -173,9 +178,9 @@ public static class PbtNodeGroupCodec
         return descendantMask;
     }
 
-    internal static void WriteFooter(Span<byte> footer, ReadOnlySpan<ushort> offsets, uint availability, ReadOnlySpan<long> descendantBytes)
+    /// <param name="descendantMask">The <see cref="DescendantMask(ReadOnlySpan{long})"/> of <paramref name="descendantBytes"/>.</param>
+    internal static void WriteFooter(Span<byte> footer, ReadOnlySpan<ushort> offsets, uint availability, ushort descendantMask, ReadOnlySpan<long> descendantBytes)
     {
-        ushort descendantMask = DescendantMask(descendantBytes);
         int offsetIndex = 0;
         for (uint remaining = availability; remaining != 0; remaining &= remaining - 1)
         {

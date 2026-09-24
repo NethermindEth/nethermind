@@ -21,6 +21,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     private readonly TrieUpdaterMetrics? _metrics;
     private RefCountingMemory? _lease;
     private DescendantBuffer _descendantBytes;
+    private ushort _descendantMask;
     private bool _loaded;
     private OffsetBuffer _offsets;
     private LengthBuffer _lengths;
@@ -60,7 +61,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
             _metrics?.IncrementGroupParses();
             // The store validated the payload, so the footer is walked by its set bits alone, which a small group has few of.
             ReadOnlySpan<byte> payload = _lease.GetSpan();
-            ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
+            ushort descendantMask = _descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
             ReadOnlySpan<byte> field = payload[^(PbtNodeGroupCodec.DescendantMaskLength + BitOperations.PopCount(descendantMask) * PbtNodeGroupCodec.DescendantBytesLength)..];
             for (uint remaining = descendantMask; remaining != 0; remaining &= remaining - 1)
             {
@@ -105,6 +106,9 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     /// <remarks>Read only once the frame is resolved, or for a frame whose input is empty or a leaf, which has no descendants.</remarks>
     internal readonly long DescendantBytes(int slot) => _descendantBytes[slot];
 
+    /// <summary>The boundary slots whose <see cref="DescendantBytes"/> may be nonzero; every other slot is zero.</summary>
+    internal readonly ushort DescendantMask => _descendantMask;
+
     /// <summary>Declares that no group is stored below this frame's boundary node, so a later load is a no-op instead of a store miss.</summary>
     /// <remarks>
     /// A group holds the nodes strictly below its boundary node, so a boundary node with nothing stored below it
@@ -126,6 +130,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     {
         DeclareAbsent();
         _descendantBytes[slot] = descendantBytes;
+        _descendantMask |= (ushort)(1 << slot);
     }
 
     internal ReadOnlyMemory<byte> GetEncoding(scoped in PbtTraversalPath path, int position)
