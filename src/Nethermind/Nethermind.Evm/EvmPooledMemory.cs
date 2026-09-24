@@ -879,6 +879,8 @@ public struct EvmPooledMemory
 
         if (requiredEnd > initializedSize)
         {
+            // Over-zero to a chunk boundary so sequential MSTORE growth stays amortized; size the window from
+            // requiredEnd rather than the expansion delta to limit wasted clearing for small frames.
             ulong zeroChunk = Math.Min(4 * 1024UL, Math.Max(256UL, BitOperations.RoundUpToPowerOf2(requiredEnd) >> 3));
             ulong target = Math.Min((ulong)memory.Length, (requiredEnd + (zeroChunk - 1)) & ~(zeroChunk - 1));
             Array.Clear(memory, (int)initializedSize, (int)(target - initializedSize));
