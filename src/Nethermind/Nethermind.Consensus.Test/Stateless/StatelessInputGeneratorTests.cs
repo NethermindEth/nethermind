@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -39,6 +40,7 @@ using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
@@ -80,6 +82,69 @@ public class StatelessInputGeneratorTests
                 body.CopyTo(modified, sizeof(ushort));
                 encoded = modified;
             }
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Encoded_execution_rejects_an_empty_transaction_entry()
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
+            // Through the SSZ view: the payload caches the wrapped transaction array, so a write to the
+            // inner byte[][] would not survive the re-encode.
+            input.NewPayloadRequest.ExecutionPayload.Transactions[0] = new SszProgressiveBytes { Bytes = [] };
+
+            byte[] body = StatelessInput<SszExecutionPayload>.Encode(input);
+            byte[] modified = new byte[body.Length + sizeof(ushort)];
+            encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
+            body.CopyTo(modified, sizeof(ushort));
+
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(modified), out StatelessValidationResult result);
+            Assert.That(result.IsSuccess, Is.False);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Encoded_execution_reports_the_sentinel_for_an_unsupported_schema([Values(0x1101, 0x1502, 0x0000)] int schemaId)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            BinaryPrimitives.WriteUInt16BigEndian(encoded, (ushort)schemaId);
+
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded), out StatelessValidationResult result);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.IsSuccess, Is.False);
+                Assert.That(result.SchemaId, Is.Zero);
+                Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(Hash256.Zero));
+            }
+        }
+    }
+
+    /// <summary>
+    /// An ancestor the witness does not carry must fail the block rather than resolve to zero, which is what
+    /// the stateless spec achieves by indexing its block-hash list out of range.
+    /// </summary>
+    [Test]
+    public void Blockhash_of_an_ancestor_missing_from_the_witness_fails_the_block()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader current = Build.A.BlockHeader.WithNumber(101).WithParent(parent).TestObject;
+        StatelessBlockTree blockTree = new([parent]);
+        BlockhashProvider provider = new(blockTree, Substitute.For<IWorldState>(), NullLogManager.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBlockhash(current, 100, Cancun.Instance), Is.EqualTo(parent.Hash));
+            Assert.That(() => provider.GetBlockhash(current, 99, Cancun.Instance), Throws.Exception);
         }
     }
 
