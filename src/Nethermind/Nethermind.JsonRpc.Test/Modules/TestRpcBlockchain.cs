@@ -70,6 +70,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
 
         public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }
+        public HeadBlockSignal HeadBlockSignal { get; private set; } = null!;
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType, long? testTimeout = null) => ForTest<TestRpcBlockchain>(sealEngineType, testTimeout);
 
         public static Builder<T> ForTest<T>(string sealEngineType, long? testTimeout = null) where T : TestRpcBlockchain, new() =>
@@ -195,13 +196,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.SpecProvider,
             @this.GasPriceOracle,
             new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
-            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
+            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.BlocksConfig.SecondsPerSlot,
-            new HeadBlockSignal(@this.BlockTree),
+            @this.HeadBlockSignal,
             new EthCapabilitiesProvider(
                 @this.BlockTree.AsReadOnly(),
                 @this.Container.Resolve<IStateBoundary>(),
@@ -245,6 +246,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance
             );
 
+            HeadBlockSignal = new HeadBlockSignal(BlockTree);
             EthRpcModule = _ethRpcModuleBuilder(this);
 
             return this;
