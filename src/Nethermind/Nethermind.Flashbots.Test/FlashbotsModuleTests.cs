@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,6 +17,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
@@ -29,29 +31,15 @@ public partial class FlashbotsModuleTests
     [TestCaseSource(nameof(InvalidSubmissions))]
     public virtual async Task ValidateBuilderSubmissionV3_Invalid(Func<Block, BlobsBundleV1> bundleFactory, string expectedError)
     {
-        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+        // The block built below is not a faithful execution result (its header carries no gas used); block validation
+        // is switched off so that the blobs bundle checks are what gets exercised.
+        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance, flashbotsConfig: new FlashbotsConfig { EnableValidation = false });
         IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
 
         Block block = CreateBlock(chain);
         BlobsBundleV1 bundle = bundleFactory(block);
 
-        BuilderBlockValidationRequest request = new(
-            new BidTrace(
-                0, block.Header.ParentHash!,
-                block.Header.Hash!,
-                TestKeysAndAddress!.TestBuilderKey.PublicKey,
-                TestKeysAndAddress.TestValidatorKey.PublicKey,
-                TestKeysAndAddress.TestBuilderAddr,
-                block.Header.GasLimit,
-                block.Header.GasUsed,
-                new UInt256(132912184722469)
-            ),
-            new RExecutionPayloadV3(ExecutionPayloadV3.Create(block)),
-            bundle,
-            [],
-            block.Header.GasLimit,
-            new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042")
-        );
+        BuilderBlockValidationRequest request = BuildRequest(block, bundle);
 
         ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
         Assert.That(result, Is.Not.Null);
@@ -62,6 +50,70 @@ public partial class FlashbotsModuleTests
         JsonRpcSuccessResponse? jsonResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
         Assert.That(jsonResponse, Is.Not.Null);
     }
+
+    [Test]
+    public async Task ValidateBuilderSubmissionV3_RejectsABlockWhoseHeaderDoesNotMatchItsExecution()
+    {
+        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+        IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
+
+        Block block = CreateBlock(chain);
+        BuilderBlockValidationRequest request = BuildRequest(block, new BlobsBundleV1(block));
+
+        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
+
+        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+        Assert.That(result.Result.Error, Does.StartWith("HeaderGasUsedMismatch"),
+            "the default configuration must not report a block with a bogus header as valid");
+        Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(block.Hash!, out _), Is.False,
+            "a rejected submission must not be recorded as an invalid block for the Engine API");
+    }
+
+    [Test]
+    public async Task ValidateBuilderSubmissionV3_AcceptsABlockBuiltByTheNode()
+    {
+        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance, flashbotsConfig: new FlashbotsConfig { UseBalanceDiffProfit = true });
+        IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
+
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Hash256 parentBeaconBlockRoot = TestItem.KeccakE;
+        PayloadAttributes attributes = new()
+        {
+            Timestamp = parent.Timestamp + 12,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = TestKeysAndAddress!.TestBuilderAddr,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = parentBeaconBlockRoot
+        };
+        string payloadId = chain.PayloadPreparationService.StartPreparingPayload(parent, attributes)!;
+        GetPayloadV3Result payload = (await chain.EngineRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!;
+        Block block = payload.ExecutionPayload.TryGetBlock().Data!;
+        BuilderBlockValidationRequest request = BuildRequest(block, payload.BlobsBundle, expectedProfit: UInt256.Zero, parentBeaconBlockRoot);
+
+        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
+
+        Assert.That(result.Result.Error, Is.Null);
+        Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid));
+    }
+
+    private BuilderBlockValidationRequest BuildRequest(Block block, BlobsBundleV1 bundle, UInt256? expectedProfit = null, Hash256? parentBeaconBlockRoot = null) =>
+        new(
+            new BidTrace(
+                0, block.Header.ParentHash!,
+                block.Header.Hash!,
+                TestKeysAndAddress!.TestBuilderKey.PublicKey,
+                TestKeysAndAddress.TestValidatorKey.PublicKey,
+                TestKeysAndAddress.TestBuilderAddr,
+                block.Header.GasLimit,
+                block.Header.GasUsed,
+                expectedProfit ?? new UInt256(132912184722469)
+            ),
+            new RExecutionPayloadV3(ExecutionPayloadV3.Create(block)),
+            bundle,
+            [],
+            block.Header.GasLimit,
+            parentBeaconBlockRoot ?? new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042")
+        );
 
     private static IEnumerable<TestCaseData> InvalidSubmissions()
     {
