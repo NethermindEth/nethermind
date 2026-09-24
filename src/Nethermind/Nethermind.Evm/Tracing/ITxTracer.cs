@@ -82,7 +82,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// - <see cref="ReportStackPush"/>
     /// - <see cref="ReportMemoryChange"/>
     /// - <see cref="ReportGasUpdateForVmTrace"/>
-    /// - <see cref="IStorageTracer.ReportStorageChange(in ReadOnlySpan{byte}, in ReadOnlySpan{byte})"/>
+    /// - <see cref="ReportOperationStorageChange"/>
     /// </remarks>
     bool IsTracingInstructions { get; }
 
@@ -298,6 +298,12 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
     void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new[] { data });
+
+    /// <summary>
+    /// Reports the slot key and new value written by SSTORE, for the vmTrace <c>store</c> entry.
+    /// </summary>
+    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 
     /// <summary>
     ///

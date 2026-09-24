@@ -29,14 +29,6 @@ public interface IStorageTracer
     /// <summary>
     /// Reports change of storage slot for key
     /// </summary>
-    /// <param name="key"></param>
-    /// <param name="value"></param>
-    /// <remarks>Depends on <see cref="ITxTracer.IsTracingInstructions"/>; reported by SSTORE during instruction tracing.</remarks>
-    void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
-
-    /// <summary>
-    /// Reports change of storage slot for key
-    /// </summary>
     /// <param name="storageCell"></param>
     /// <param name="before"></param>
     /// <param name="after"></param>

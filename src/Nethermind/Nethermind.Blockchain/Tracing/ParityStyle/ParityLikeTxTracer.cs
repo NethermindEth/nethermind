@@ -335,7 +335,7 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
         _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)

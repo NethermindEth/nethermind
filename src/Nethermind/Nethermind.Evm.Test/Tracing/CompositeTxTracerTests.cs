@@ -27,7 +27,7 @@ public class CompositeTxTracerTests
         ReadOnlySpan<byte> key = [1, 2];
         ReadOnlySpan<byte> value = [3, 4];
 
-        tracer.ReportStorageChange(key, value);
+        tracer.ReportOperationStorageChange(key, value);
 
         using (Assert.EnterMultipleScope())
         {
@@ -49,7 +49,7 @@ public class CompositeTxTracerTests
             IsTracingStorage = storage;
         }
 
-        public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
             Reports++;
             Key = key.ToArray();
