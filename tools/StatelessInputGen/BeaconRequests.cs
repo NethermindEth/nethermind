@@ -33,14 +33,21 @@ internal static class BeaconRequests
 
         ulong slot = (block.Timestamp - genesisTime) / secondsPerSlot;
         using JsonDocument beaconBlock = await Get(beaconUrl, $"eth/v2/beacon/blocks/{slot}", cancellationToken);
-        JsonElement body = beaconBlock.RootElement.GetProperty("data").GetProperty("message").GetProperty("body");
+        (byte[][]? requests, string? error) = FromBeaconBlockBody(beaconBlock.RootElement.GetProperty("data").GetProperty("message").GetProperty("body"), block);
 
+        return (requests, error is null ? null : $"beacon slot {slot}: {error}");
+    }
+
+    /// <summary>Flat-encodes the execution requests of a beacon block body and checks them against the block.</summary>
+    /// <returns>The flat-encoded requests, or <c>null</c> with the reason if they don't belong to the block.</returns>
+    internal static (byte[][]? Requests, string? Error) FromBeaconBlockBody(JsonElement body, Block block)
+    {
         string? blockHash = body.GetProperty("execution_payload").GetProperty("block_hash").GetString();
         if (!string.Equals(blockHash, block.Hash?.ToString(), StringComparison.OrdinalIgnoreCase))
-            return (null, $"beacon slot {slot} holds execution block {blockHash}, not {block.Hash}");
+            return (null, $"holds execution block {blockHash}, not {block.Hash}");
 
         if (!body.TryGetProperty("execution_requests", out JsonElement requests))
-            return (null, $"beacon block at slot {slot} has no execution requests");
+            return (null, "no execution requests");
 
         List<byte[]> flat = [];
         foreach (JsonProperty group in requests.EnumerateObject())
@@ -72,7 +79,7 @@ internal static class BeaconRequests
 
         return hash == block.Header.RequestsHash
             ? (result, null)
-            : (null, $"beacon requests hash to {hash}, but the header has {block.Header.RequestsHash}");
+            : (null, $"requests hash to {hash}, but the header has {block.Header.RequestsHash}");
     }
 
     private static byte[] EncodeDeposit(JsonElement deposit) =>
