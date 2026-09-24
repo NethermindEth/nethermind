@@ -29,7 +29,7 @@ public interface IStorageTracer
     /// </summary>
     /// <param name="key"></param>
     /// <param name="value"></param>
-    /// <remarks>Reported by SSTORE for instruction tracing, so it depends on <see cref="ITxTracer.IsTracingInstructions"/> rather than <see cref="IsTracingStorage"/></remarks>
+    /// <remarks>Depends on <see cref="ITxTracer.IsTracingInstructions"/>; reported by SSTORE during instruction tracing.</remarks>
     void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 
     /// <summary>

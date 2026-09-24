@@ -5,6 +5,8 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using NSubstitute;
@@ -15,6 +17,46 @@ namespace Nethermind.Evm.Test.Tracing;
 [Parallelizable(ParallelScope.All)]
 public class CompositeTxTracerTests
 {
+    [Test]
+    public void Storage_instruction_reports_follow_instruction_tracing(
+        [Values] bool instructions, [Values] bool storage)
+    {
+        StorageInstructionTracer observer = new(instructions, storage);
+        ParityLikeTxTracer stateDiff = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+        using CompositeTxTracer tracer = new(observer, stateDiff);
+        ReadOnlySpan<byte> key = [1, 2];
+        ReadOnlySpan<byte> value = [3, 4];
+
+        tracer.ReportStorageChange(key, value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Reports, Is.EqualTo(instructions ? 1 : 0));
+            Assert.That(observer.Key, Is.EqualTo(instructions ? key.ToArray() : null));
+            Assert.That(observer.Value, Is.EqualTo(instructions ? value.ToArray() : null));
+        }
+    }
+
+    private sealed class StorageInstructionTracer : TxTracer
+    {
+        public int Reports { get; private set; }
+        public byte[]? Key { get; private set; }
+        public byte[]? Value { get; private set; }
+
+        public StorageInstructionTracer(bool instructions, bool storage)
+        {
+            IsTracingInstructions = instructions;
+            IsTracingStorage = storage;
+        }
+
+        public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        {
+            Reports++;
+            Key = key.ToArray();
+            Value = value.ToArray();
+        }
+    }
+
     [Test]
     public void InstructionMask_WhenSiblingNeedsSnapshots_RequiresFullTracing(
         [Values] bool stack, [Values] bool memory, [Values] bool returnData)
