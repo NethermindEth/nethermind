@@ -1640,7 +1640,7 @@ public class BlockProcessorTests
         BlockHeader parent = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
         using (stateProvider.BeginScope(parent))
         {
-            stateProvider.ApplyBal(bal, Amsterdam.Instance);
+            stateProvider.ApplyBal(bal);
             assertState(stateProvider);
         }
     }

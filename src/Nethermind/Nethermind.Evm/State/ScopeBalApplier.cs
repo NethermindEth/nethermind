@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.State;
 
@@ -14,7 +13,7 @@ public static class ScopeBalApplier
 {
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
     /// <param name="scope">The scope to write into.</param>
-    public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal, IReleaseSpec spec)
+    public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal)
     {
         IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
         try
@@ -40,7 +39,8 @@ public static class ScopeBalApplier
                     account = account.WithChangedCodeHash(codeChange.CodeHash.ToCommitment());
                 }
 
-                if (account.IsEmpty && spec.IsEip158Enabled)
+                // EIP-158 is always active with BALs (EIP-7928 postdates Spurious Dragon), so an empty account is removed.
+                if (account.IsEmpty)
                 {
                     writeBatch.Set(address, null);
                     continue;

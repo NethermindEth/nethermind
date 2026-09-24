@@ -196,7 +196,7 @@ public partial class BlockProcessor
                                     ReadOnlyBlockAccessList bal = state.block.BlockAccessList;
                                     // The world state never sees the BAL's writes, so its account changes would miss them.
                                     if (state.isBlockProcessingThread) state.block.AccountChanges = bal.GetStateChangedAddresses();
-                                    state.stateProvider.ApplyBal(bal, state.specProvider.GetSpec(state.block.Header));
+                                    state.stateProvider.ApplyBal(bal);
                                     state.stateProvider.RecalculateStateRoot();
                                     return state;
                                 }

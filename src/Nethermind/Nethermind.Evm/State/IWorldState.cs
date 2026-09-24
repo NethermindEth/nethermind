@@ -42,7 +42,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     Task HintBal(ReadOnlyBlockAccessList bal);
 
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
-    void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec);
+    void ApplyBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);

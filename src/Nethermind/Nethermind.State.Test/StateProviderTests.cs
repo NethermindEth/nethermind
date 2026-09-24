@@ -102,7 +102,7 @@ public class StateProviderTests(bool useFlat)
         using Context applied = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 appliedRoot = CommitBlockOverGenesis(applied.WorldState, state =>
         {
-            state.ApplyBal(bal, Amsterdam.Instance);
+            state.ApplyBal(bal);
             state.RecalculateStateRoot();
         }, readBack: state =>
         {

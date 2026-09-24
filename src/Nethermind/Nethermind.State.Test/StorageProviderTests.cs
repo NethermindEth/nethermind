@@ -13,7 +13,6 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -2332,8 +2331,8 @@ public class StorageProviderTests(bool useFlat)
             public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
                 => baseScope.HintBal(bal, sink);
 
-            public void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec)
-                => baseScope.ApplyBal(bal, spec);
+            public void ApplyBal(ReadOnlyBlockAccessList bal)
+                => baseScope.ApplyBal(bal);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 

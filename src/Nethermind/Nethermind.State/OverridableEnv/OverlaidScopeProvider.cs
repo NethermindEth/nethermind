@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -80,7 +79,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => inner.WriteBackCommittedState(takeSnapshot);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => inner.HintBal(bal, sink);
-        public void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec) => inner.ApplyBal(bal, spec);
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => inner.ApplyBal(bal);
 
         public void Dispose() => inner.Dispose();
     }

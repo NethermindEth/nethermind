@@ -728,7 +728,7 @@ public class ScopeProviderTests(bool useFlat)
         UInt256 slotReadInScope = default;
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
         {
-            ws.ApplyBal(bal, Cancun.Instance);
+            ws.ApplyBal(bal);
             ws.RecalculateStateRoot();
             balanceReadInScope = ws.GetBalance(TestItem.AddressA);
             ws.Get(in SlotA1, out slotReadInScope);

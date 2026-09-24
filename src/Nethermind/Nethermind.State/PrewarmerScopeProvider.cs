@@ -10,7 +10,6 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -322,9 +321,9 @@ public class PrewarmerScopeProvider(
             return baseScope.HintBal(bal, sink);
         }
 
-        public void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec)
+        public void ApplyBal(ReadOnlyBlockAccessList bal)
         {
-            baseScope.ApplyBal(bal, spec);
+            baseScope.ApplyBal(bal);
             _appliedBal = bal;
         }
 

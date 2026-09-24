@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.State;
@@ -144,8 +143,7 @@ public interface IWorldStateScopeProvider
         /// call <see cref="UpdateRootHash"/> afterwards. See <see cref="ScopeBalApplier"/> for the generic implementation.
         /// </remarks>
         /// <param name="bal">The Block Access List whose last change per field is applied.</param>
-        /// <param name="spec">The release spec of the block the list belongs to.</param>
-        void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec);
+        void ApplyBal(ReadOnlyBlockAccessList bal);
     }
 
     /// <summary>
