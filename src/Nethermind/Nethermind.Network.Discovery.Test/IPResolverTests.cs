@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -214,13 +215,15 @@ public class IPResolverTests
         bool expected)
         => Assert.That(IPResolver.IsUsableLocalAddress(IPAddress.Parse(address), family), Is.EqualTo(expected));
 
-    [Test]
-    public async Task Wrong_family_source_result_is_rejected()
+    [TestCase("2001:4860:4860::8844", TestName = "Wrong-family source result is rejected")]
+    [TestCase("192.0.2.1", TestName = "Special-use source result is rejected")]
+    [TestCase("224.0.0.1", TestName = "Multicast source result is rejected")]
+    public async Task Unusable_source_result_is_rejected(string unusable)
     {
         await using IPResolver ipResolver = CreateResolver(
             new NetworkConfig { ExternalIpV6 = "2001:4860:4860::8888" },
             family => family == AddressFamily.InterNetwork
-                ? [SuccessfulSource("2001:4860:4860::8844"), SuccessfulSource("8.8.4.4")]
+                ? [SuccessfulSource(unusable), SuccessfulSource("8.8.4.4")]
                 : throw new InvalidOperationException("The configured IPv6 family must not be resolved."));
 
         IIPResolver.NethermindIp ip = await ipResolver.Resolve();
@@ -247,24 +250,20 @@ public class IPResolverTests
     }
 
     [Test]
-    public async Task Unavailable_family_sources_are_tried_once()
+    public async Task Unavailable_family_source_is_tried_once_per_attempt()
     {
-        IIPSource ipv4Source = Substitute.For<IIPSource>();
         IIPSource ipv6Source = Substitute.For<IIPSource>();
-        ipv4Source.TryGetIP(Arg.Any<CancellationToken>()).Returns(Task.FromResult((false, IPAddress.None)));
         ipv6Source.TryGetIP(Arg.Any<CancellationToken>()).Returns(Task.FromResult((false, IPAddress.IPv6None)));
         await using IPResolver ipResolver = CreateResolver(
             new NetworkConfig(),
-            family => family == AddressFamily.InterNetwork ? [ipv4Source] : [ipv6Source]);
+            family => family == AddressFamily.InterNetwork ? [SuccessfulSource("8.8.8.8")] : [ipv6Source]);
 
         IIPResolver.NethermindIp ip = await ipResolver.Resolve();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.None));
-            Assert.That(ip.ExternalIpV4, Is.Null);
+            Assert.That(ip.ExternalIpV4, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
             Assert.That(ip.ExternalIpV6, Is.Null);
-            await ipv4Source.Received(1).TryGetIP(Arg.Any<CancellationToken>());
             await ipv6Source.Received(1).TryGetIP(Arg.Any<CancellationToken>());
         }
     }
@@ -272,16 +271,24 @@ public class IPResolverTests
     [Test]
     public async Task V5_record_refreshes_without_new_heads_or_resolver_reads([Values] bool initiallyUnresolved)
     {
+        const int startupAttempts = 5;
         ManualTimeProvider timeProvider = new();
-        Queue<(bool Success, IPAddress Ip)> results = new(
-        [
-            initiallyUnresolved ? (false, IPAddress.None) : (true, IPAddress.Parse("8.8.8.8")),
-            (true, IPAddress.Parse("8.8.4.4")),
-            (true, IPAddress.Parse("1.1.1.1"))
-        ]);
+        Queue<(bool Success, IPAddress Ip)> results = new(initiallyUnresolved
+            ? Enumerable.Repeat((false, IPAddress.None), startupAttempts)
+            : [(true, IPAddress.Parse("8.8.8.8"))]);
+        results.Enqueue((true, IPAddress.Parse("8.8.4.4")));
+        results.Enqueue((true, IPAddress.Parse("1.1.1.1")));
         IIPSource source = new StubIpSource(() => Task.FromResult(results.Dequeue()));
         await using IPResolver ipResolver = CreateResolver(new NetworkConfig(),
             family => family == AddressFamily.InterNetwork ? [source] : [], timeProvider: timeProvider);
+        // Container activation reads the address synchronously, so startup has to finish first.
+        Task<IIPResolver.NethermindIp> startup = ipResolver.Resolve().AsTask();
+        for (int attempt = 1; initiallyUnresolved && attempt < startupAttempts; attempt++)
+        {
+            timeProvider.Advance(TimeSpan.FromSeconds(2));
+        }
+
+        await startup.WaitAsync(TimeSpan.FromSeconds(5));
         await using IContainer container = CreateContainer(ipResolver);
         container.Resolve<IBlockTree>().SuggestBlock(Build.A.Block.Genesis.TestObject);
         NetworkListenerState listeners = container.Resolve<NetworkListenerState>();
@@ -290,7 +297,7 @@ public class IPResolverTests
         INodeRecordProvider provider = container.Resolve<INodeRecordProvider>();
         NodeRecord initial = await provider.GetCurrentAsync();
 
-        timeProvider.Advance(initiallyUnresolved ? TimeSpan.FromSeconds(10) : TimeSpan.FromMinutes(5));
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
         NodeRecord recovered = await provider.GetCurrentAsync();
         timeProvider.Advance(TimeSpan.FromMinutes(5));
         NodeRecord rotated = await provider.GetCurrentAsync();
@@ -358,7 +365,7 @@ public class IPResolverTests
     }
 
     [Test]
-    public async Task Fully_unresolved_startup_retries_after_short_delay()
+    public async Task Startup_resolution_retries_before_answering_one_shot_consumers()
     {
         ManualTimeProvider timeProvider = new();
         Queue<(bool Success, IPAddress Ip)> results = new(
@@ -370,19 +377,17 @@ public class IPResolverTests
         await using IPResolver ipResolver = CreateResolver(
             new NetworkConfig(),
             family => family == AddressFamily.InterNetwork ? [source] : [],
-            timeProvider: timeProvider);
+            timeProvider: timeProvider,
+            hasLocalAddressFamily: family => family == AddressFamily.InterNetwork);
 
-        IIPResolver.NethermindIp unresolved = await ipResolver.Resolve();
-        timeProvider.Advance(TimeSpan.FromSeconds(9));
-        IIPResolver.NethermindIp cached = await ipResolver.Resolve();
-        timeProvider.Advance(TimeSpan.FromSeconds(1));
-        IIPResolver.NethermindIp resolved = await ipResolver.Resolve();
+        Task<IIPResolver.NethermindIp> startup = ipResolver.Resolve().AsTask();
+        Assert.That(startup.IsCompleted, Is.False, "a transient first failure must not reach consumers that read the address once");
+        timeProvider.Advance(TimeSpan.FromSeconds(2));
+        IIPResolver.NethermindIp resolved = await startup.WaitAsync(TimeSpan.FromSeconds(5));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(unresolved.ExternalIp, Is.EqualTo(IPAddress.None));
-            Assert.That(cached, Is.EqualTo(unresolved));
-            Assert.That(resolved.ExternalIpV4, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
+            Assert.That(resolved.ExternalIp, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
             Assert.That(results, Is.Empty);
         }
     }
@@ -403,20 +408,32 @@ public class IPResolverTests
             timeProvider: timeProvider,
             hasLocalAddressFamily: family => family == AddressFamily.InterNetwork);
 
-        await ipResolver.Resolve();
+        Task<IIPResolver.NethermindIp> startup = ipResolver.Resolve().AsTask();
+        for (int attempt = 1; attempt < 5; attempt++)
+        {
+            timeProvider.Advance(TimeSpan.FromSeconds(2));
+        }
+
+        IIPResolver.NethermindIp ip = await startup.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.None));
+            Assert.That(sourceCalls, Is.EqualTo(5));
+        }
+
         for (int attempt = 1; attempt < 5; attempt++)
         {
             timeProvider.Advance(TimeSpan.FromSeconds(10));
-            await ipResolver.Resolve();
         }
 
-        timeProvider.Advance(TimeSpan.FromSeconds(10));
-        await ipResolver.Resolve();
-        Assert.That(sourceCalls, Is.EqualTo(5));
+        Assert.That(sourceCalls, Is.EqualTo(9), "a network that comes up late still gets the ten-second retries");
 
-        timeProvider.Advance(TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(50));
+        timeProvider.Advance(TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(59));
+        Assert.That(sourceCalls, Is.EqualTo(9));
+
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
         await ipResolver.Resolve();
-        Assert.That(sourceCalls, Is.EqualTo(6));
+        Assert.That(sourceCalls, Is.EqualTo(10));
     }
 
     [Test]
@@ -610,15 +627,16 @@ public class IPResolverTests
     {
         await using IPResolver ipResolver = CreateResolver(
             new NetworkConfig(),
-            _ => throw new InvalidOperationException("Source factory failed."));
+            family => family == AddressFamily.InterNetwork
+                ? throw new InvalidOperationException("Source factory failed.")
+                : [SuccessfulSource("2001:4860:4860::8888")]);
 
         IIPResolver.NethermindIp ip = await ipResolver.Resolve();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.None));
             Assert.That(ip.ExternalIpV4, Is.Null);
-            Assert.That(ip.ExternalIpV6, Is.Null);
+            Assert.That(ip.ExternalIpV6, Is.EqualTo(IPAddress.Parse("2001:4860:4860::8888")));
         }
     }
 
@@ -817,11 +835,10 @@ public class IPResolverTests
             logManager,
             timeProvider);
 
-        await ipResolver.Resolve();
-        timeProvider.Advance(TimeSpan.FromMinutes(5));
-        await ipResolver.Resolve();
-        timeProvider.Advance(TimeSpan.FromMinutes(5));
-        await ipResolver.Resolve();
+        Task<IIPResolver.NethermindIp> startup = ipResolver.Resolve().AsTask();
+        timeProvider.Advance(TimeSpan.FromSeconds(2));
+        timeProvider.Advance(TimeSpan.FromSeconds(2));
+        await startup.WaitAsync(TimeSpan.FromSeconds(5));
         timeProvider.Advance(TimeSpan.FromHours(2));
         await ipResolver.Resolve();
 
@@ -836,7 +853,7 @@ public class IPResolverTests
     public async Task Can_resolve_local_ip_with_override()
     {
         const string ipOverride = "99.99.99.99";
-        INetworkConfig networkConfig = new NetworkConfig { LocalIp = ipOverride };
+        INetworkConfig networkConfig = new NetworkConfig { LocalIp = ipOverride, EnableExternalIpResolution = false };
         await using IPResolver ipResolver = CreateResolver(networkConfig);
         IIPResolver.NethermindIp ip = await ipResolver.Resolve();
         Assert.That(ip.LocalIp, Is.EqualTo(IPAddress.Parse(ipOverride)));
@@ -904,10 +921,14 @@ public class IPResolverTests
     {
         private DateTimeOffset _utcNow = DateTimeOffset.UnixEpoch;
         private long _timestamp;
-        private ManualTimer? _timer;
+        private readonly List<ManualTimer> _timers = [];
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-            => _timer = new ManualTimer(this, callback, state, dueTime);
+        {
+            ManualTimer timer = new(this, callback, state, dueTime);
+            _timers.Add(timer);
+            return timer;
+        }
 
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
@@ -919,7 +940,10 @@ public class IPResolverTests
         {
             _utcNow += timeSpan;
             _timestamp += timeSpan.Ticks;
-            _timer?.FireIfDue();
+            foreach (ManualTimer timer in _timers.ToArray())
+            {
+                timer.FireIfDue();
+            }
         }
 
         public void AdjustUtc(TimeSpan timeSpan) => _utcNow += timeSpan;
