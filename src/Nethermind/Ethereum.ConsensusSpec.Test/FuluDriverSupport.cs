@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
 using YamlDotNet.RepresentationModel;
@@ -29,10 +30,6 @@ namespace Ethereum.ConsensusSpec.Test;
 /// </summary>
 public static class FuluDriverSupport
 {
-    // Derived from BeaconChainSpec.Mainnet rather than a separate literal, so this can never drift
-    // from the value StateTransition.Apply itself falls back to for a pre-BPO-schedule epoch.
-    public static readonly ulong MaxBlobsPerBlockElectra = BeaconChainSpec.Mainnet.MaxBlobsPerBlockElectra;
-
     public static BeaconStateFulu DecodeState(string path)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(path);
@@ -63,7 +60,7 @@ public static class FuluDriverSupport
     /// Fails the vector unless the working state's root, taken in the fork's own shape, equals the
     /// expected post-state's; on mismatch names the diverging fields so the failure is debuggable.
     /// </summary>
-    public static void AssertPostStateRoot(ForkDriver driver, string postPath, BeaconStateFulu actual)
+    public static void AssertPostStateRoot<TState>(ForkDriver<TState> driver, string postPath, TState actual) where TState : class
     {
         (object expectedPost, Hash256 expectedRoot) = driver.DecodePost(postPath);
         Hash256 actualRoot = driver.StateRoot(actual);
@@ -90,11 +87,65 @@ public static class FuluDriverSupport
             Assert.Fail($"expected {subject} to be rejected by a spec assertion, but the pipeline threw {thrown.GetType().Name} on the way: {thrown}");
     }
 
-    public static PubkeyCache BuildPubkeyCache(BeaconStateFulu state)
+    public static PubkeyCache BuildPubkeyCache(Validator[] validators)
     {
         PubkeyCache pubkeys = new();
-        pubkeys.Build(state.Validators!);
+        pubkeys.Build(validators);
         return pubkeys;
+    }
+
+    /// <summary>
+    /// The runtime config a vector runs under: its own <c>config.yaml</c> when present, which replaces the
+    /// default config (tests/formats/README.md, "config.yaml"), otherwise the mainnet config.
+    /// </summary>
+    /// <remarks>
+    /// Only the fields the state transition reads are taken from the file: the Electra, Fulu and Gloas fork
+    /// epochs, <c>GLOAS_FORK_VERSION</c>, <c>MAX_BLOBS_PER_BLOCK_ELECTRA</c> and <c>BLOB_SCHEDULE</c>. A key the
+    /// file omits keeps its mainnet value; the rest of the spec is mainnet's.
+    /// </remarks>
+    public static BeaconChainSpec CaseSpec(string casePath)
+    {
+        BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
+        string configPath = Path.Combine(casePath, "config.yaml");
+        if (!File.Exists(configPath))
+            return mainnet;
+
+        using StreamReader reader = new(configPath);
+        YamlStream yaml = [];
+        yaml.Load(reader);
+        YamlMappingNode config = (YamlMappingNode)yaml.Documents[0].RootNode;
+
+        ulong Scalar(string key, ulong fallback) =>
+            config.Children.TryGetValue(new YamlScalarNode(key), out YamlNode? node) ? ulong.Parse(((YamlScalarNode)node).Value!) : fallback;
+
+        byte[] gloasForkVersion = config.Children.TryGetValue(new YamlScalarNode("GLOAS_FORK_VERSION"), out YamlNode? version)
+            ? Bytes.FromHexString(((YamlScalarNode)version).Value!)
+            : mainnet.GloasForkVersion;
+
+        BlobScheduleEntry[] blobSchedule = mainnet.BlobSchedule;
+        if (config.Children.TryGetValue(new YamlScalarNode("BLOB_SCHEDULE"), out YamlNode? schedule))
+        {
+            blobSchedule = [.. ((YamlSequenceNode)schedule).Children.Cast<YamlMappingNode>().Select(static entry => new BlobScheduleEntry(
+                ulong.Parse(((YamlScalarNode)entry.Children[new YamlScalarNode("EPOCH")]).Value!),
+                ulong.Parse(((YamlScalarNode)entry.Children[new YamlScalarNode("MAX_BLOBS_PER_BLOCK")]).Value!)))];
+        }
+
+        return new BeaconChainSpec
+        {
+            ChainId = mainnet.ChainId,
+            SecondsPerSlot = mainnet.SecondsPerSlot,
+            SlotsPerEpoch = mainnet.SlotsPerEpoch,
+            GenesisTime = mainnet.GenesisTime,
+            GenesisValidatorsRoot = mainnet.GenesisValidatorsRoot,
+            Forks = mainnet.Forks,
+            BlobSchedule = blobSchedule,
+            ElectraForkEpoch = Scalar("ELECTRA_FORK_EPOCH", mainnet.ElectraForkEpoch),
+            FuluForkEpoch = Scalar("FULU_FORK_EPOCH", mainnet.FuluForkEpoch),
+            MaxBlobsPerBlockElectra = Scalar("MAX_BLOBS_PER_BLOCK_ELECTRA", mainnet.MaxBlobsPerBlockElectra),
+            GloasForkEpoch = Scalar("GLOAS_FORK_EPOCH", mainnet.GloasForkEpoch),
+            GloasForkVersion = gloasForkVersion,
+            Bootnodes = mainnet.Bootnodes,
+        };
     }
 
     /// <summary>
