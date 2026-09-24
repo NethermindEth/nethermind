@@ -434,8 +434,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     // Run with DOTNET_EnableAVX=0 and DOTNET_EnableHWIntrinsic=0 to exercise the Vector128 and scalar handlers.
     private static IEnumerable<TestCaseData> SuccessfulWordOperationCases()
     {
-        const string zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
-        const string one = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        const string zero = "0x0";
+        const string one = "0x1";
         const string allA = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         const string allF = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
@@ -444,7 +444,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         yield return WordOperationCase(Instruction.NOT, ["0x00"], allF);
         yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012345"], one);
         yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012346"], zero);
-        yield return WordOperationCase(Instruction.AND, [allA, "0x0f"], $"{zero[..^2]}0a");
+        yield return WordOperationCase(Instruction.AND, [allA, "0x0f"], "0xa");
         yield return WordOperationCase(Instruction.OR, [allA, "0x0f"], $"{allA[..^2]}af");
         yield return WordOperationCase(Instruction.XOR, [allA, "0x0f"], $"{allA[..^2]}a5");
         yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x00"],
@@ -453,12 +453,9 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             "0xffffffffffffffffffffffffffffffffffffffffffffff800000000000000000");
         yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x8000000000000000000000000000000000", "0x10"],
             "0xffffffffffffffffffffffffffffff8000000000000000000000000000000000");
-        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x20"],
-            "0x0000000000000000000000000000000000000000000000000000000000000080");
-        yield return WordOperationCase(Instruction.CLZ, ["0x00"],
-            "0x0000000000000000000000000000000000000000000000000000000000000100");
-        yield return WordOperationCase(Instruction.CLZ, [one],
-            "0x00000000000000000000000000000000000000000000000000000000000000ff");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x20"], "0x80");
+        yield return WordOperationCase(Instruction.CLZ, ["0x00"], "0x100");
+        yield return WordOperationCase(Instruction.CLZ, ["0x01"], "0xff");
     }
 
     private static TestCaseData WordOperationCase(Instruction opcode, string[] operands, string expected) =>
