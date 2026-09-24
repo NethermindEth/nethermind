@@ -523,7 +523,10 @@ public class GCKeeperTests
         logger.Received(1).Info(Arg.Is<string>(message => message.StartsWith("GCKeeper lifecycle process totals at dispose")
             && message.Contains("in-flight entry work may finish after this snapshot")
             && message.Contains("queueWaitSamples=")
-            && message.Contains("runtimeAttempts=")));
+            && message.Contains("runtimeAttempts=")
+            && message.Contains("admissionFaults=")
+            && message.Contains("cleanupFaults=")
+            && !message.Contains("Exception", StringComparison.Ordinal)));
     }
 
     private static GCKeeper CreateRegionKeeper(RegionRuntime runtime, Action<IThreadPoolWorkItem> queue)
