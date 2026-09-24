@@ -33,16 +33,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         Block head = chain.BlockTree.Head!;
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = head.Timestamp + 1,
-            PrevRandao = TestItem.KeccakH,
-            SuggestedFeeRecipient = TestItem.AddressF,
-            Withdrawals = [],
-            ParentBeaconBlockRoot = TestItem.KeccakE,
-            SlotNumber = 1,
-            TargetGasLimit = head.GasLimit
-        };
+        PayloadAttributes payloadAttributes = CreateAmsterdamPayloadAttributes(head.Header);
         ForkchoiceStateV1 forkchoiceState = new(head.Hash!, head.Hash!, head.Hash!);
 
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse =
