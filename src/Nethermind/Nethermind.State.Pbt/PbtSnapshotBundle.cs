@@ -28,19 +28,16 @@ public sealed class PbtSnapshotBundle(
     private readonly PbtWriteBatchBuilder<PbtPath> _accountBatch = resourcePool.GetWriteBatch(usage);
     private readonly PbtWriteBatchBuilder<PbtPath> _codeBatch = resourcePool.GetWriteBatch(usage);
     private readonly PbtWriteBatchBuilder<PbtStoragePath> _storageBatch = resourcePool.GetStorageWriteBatch(usage);
-    private readonly Lock _accountLock = new();
-    private readonly Dictionary<ValueHash256, ValueHash256> _accountsAwaitingCode = [];
+    private readonly ConcurrentDictionary<ValueHash256, ValueHash256> _accountsAwaitingCode = new();
     // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
     private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
     // Accounts the layer above read past this bundle for the block in the write buffer, so a write never re-reads them.
     private readonly ConcurrentDictionary<ValueHash256, Account?> _hintedAccounts = new();
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
-    // Storage commits may write one run from several threads. Replacing a run is a read-modify-replace of a
-    // pooled instance across three dictionary operations, so the dictionary's own atomicity cannot keep two
-    // writers from starting at the same run and losing a slot, and a CAS retry is unsafe because a returned
-    // instance can be re-rented and stored under the same key (ABA). A stripe per run serializes the writers.
-    private const int RunLockStripes = 64;
-    private readonly Lock[] _runLocks = CreateRunLocks();
+    // Storage commits may write one run from several threads, so a write replaces its run by compare-and-swap.
+    // A replaced run is held here until the write buffer is sealed: returned earlier, it could be re-rented and
+    // stored back under the same key, and a writer still comparing against it would overwrite a newer run (ABA).
+    private readonly ConcurrentQueue<ISlotRun> _replacedRuns = new();
     private bool _isDisposed;
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
@@ -55,13 +52,6 @@ public sealed class PbtSnapshotBundle(
     }
 
     internal int PendingMutationCount => _accountBatch.Count + _codeBatch.Count + _storageBatch.Count;
-
-    private static Lock[] CreateRunLocks()
-    {
-        Lock[] locks = new Lock[RunLockStripes];
-        for (int stripe = 0; stripe < locks.Length; stripe++) locks[stripe] = new Lock();
-        return locks;
-    }
 
     private void SetPbtLeaf(PbtPath key, ValueHash256? value)
     {
@@ -82,15 +72,12 @@ public sealed class PbtSnapshotBundle(
     internal PbtPartitionBatches PrepareLeafChanges()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        lock (_accountLock)
+        foreach ((ValueHash256 addressHash, ValueHash256 awaitedCodeHash) in _accountsAwaitingCode)
         {
-            foreach ((ValueHash256 addressHash, ValueHash256 awaitedCodeHash) in _accountsAwaitingCode)
-            {
-                CodeInfo code = GetCode(awaitedCodeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaitedCodeHash}.");
-                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
-            }
-            _accountsAwaitingCode.Clear();
+            CodeInfo code = GetCode(awaitedCodeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaitedCodeHash}.");
+            WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
         }
+        _accountsAwaitingCode.Clear();
         PbtPartitionBatches changes = new();
         try
         {
@@ -150,58 +137,47 @@ public sealed class PbtSnapshotBundle(
     public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
         HashedKey<PbtStorageTreeKey> runKey = PbtStateKey.StorageRun(address, addressHash, slot, out int index);
-        return BufferRun(runKey, addressHash).Get(index);
+        return BufferRun(WriteBuffer, runKey, addressHash).Get(index);
     }
 
     /// <summary>The run as the write buffer holds it, borrowed; the first touch of a run buffers it as currently visible.</summary>
-    private ISlotRun BufferRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    private ISlotRun BufferRun(PbtSnapshotContent writeBuffer, in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
     {
-        PbtSnapshotContent writeBuffer = WriteBuffer;
-        if (writeBuffer.TryGetSlotRun(runKey, out ISlotRun? run)) return run;
-        lock (_runLocks[StripeOf(runKey)]) return BufferRunLocked(writeBuffer, runKey, addressHash);
-    }
-
-    /// <inheritdoc cref="BufferRun"/>
-    /// <remarks>The caller must already hold the run's stripe lock.</remarks>
-    private ISlotRun BufferRunLocked(PbtSnapshotContent writeBuffer, in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
-    {
-        if (writeBuffer.TryGetSlotRun(runKey, out ISlotRun? run)) return run;
-        run = FindLocalRun(runKey, addressHash)?.Clone() ?? readOnlyBundle.RentRun(runKey, addressHash);
-        // The probe above ran under the stripe, so no run can be displaced here.
-        writeBuffer.SetRun(runKey, run, previous: null);
+        ISlotRun? run;
+        while (!writeBuffer.TryGetSlotRun(runKey, out run))
+        {
+            run = FindLocalRun(runKey, addressHash)?.Clone() ?? readOnlyBundle.RentRun(runKey, addressHash);
+            if (writeBuffer.TryAddRun(runKey, run)) return run;
+            SlotRun.Return(run);
+        }
         return run;
     }
 
-    private static int StripeOf(in HashedKey<PbtStorageTreeKey> runKey) => runKey.GetHashCode() & (RunLockStripes - 1);
-
     public void SetAccount(Address address, Account? account)
     {
-        lock (_accountLock)
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
+        Account? previous = GetAccount(addressHash);
+        // Code chunk leaves are shared per code hash without a reference count, so a non-delegation code hash
+        // can never be replaced or removed once set (EIP-6780 and EIP-161 guarantee this in protocol execution).
+        if (previous is { HasCode: true } && previous.CodeHash != account?.CodeHash)
         {
-            ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-            Account? previous = GetAccount(addressHash);
-            // Code chunk leaves are shared per code hash without a reference count, so a non-delegation code hash
-            // can never be replaced or removed once set (EIP-6780 and EIP-161 guarantee this in protocol execution).
-            if (previous is { HasCode: true } && previous.CodeHash != account?.CodeHash)
-            {
-                CodeInfo previousCode = GetCode(previous.CodeHash.ValueHash256) ?? throw new InvalidDataException($"Missing PBT bytecode for {previous.CodeHash}.");
-                if (!Eip7702Constants.IsDelegatedCode(previousCode.CodeSpan))
-                    throw new InvalidOperationException($"The code of {address} cannot be replaced or removed: EIP-8297 code leaves are shared by code hash.");
-            }
-            CodeInfo? code = account is { HasCode: true } ? GetCode(account.CodeHash.ValueHash256) : null;
+            CodeInfo previousCode = GetCode(previous.CodeHash.ValueHash256) ?? throw new InvalidDataException($"Missing PBT bytecode for {previous.CodeHash}.");
+            if (!Eip7702Constants.IsDelegatedCode(previousCode.CodeSpan))
+                throw new InvalidOperationException($"The code of {address} cannot be replaced or removed: EIP-8297 code leaves are shared by code hash.");
+        }
+        CodeInfo? code = account is { HasCode: true } ? GetCode(account.CodeHash.ValueHash256) : null;
 
-            WriteAccountLeaves(addressHash, account, code);
+        WriteAccountLeaves(addressHash, account, code);
 
-            _accountsAwaitingCode.Remove(addressHash);
-            WriteBuffer.Accounts[addressHash] = account;
-            if (account is null)
-            {
-                SelfDestruct(addressHash);
-            }
-            else if (account.HasCode && code is null)
-            {
-                _accountsAwaitingCode[addressHash] = account.CodeHash.ValueHash256;
-            }
+        _accountsAwaitingCode.TryRemove(addressHash, out _);
+        WriteBuffer.Accounts[addressHash] = account;
+        if (account is null)
+        {
+            SelfDestruct(addressHash);
+        }
+        else if (account.HasCode && code is null)
+        {
+            _accountsAwaitingCode[addressHash] = account.CodeHash.ValueHash256;
         }
     }
 
@@ -247,10 +223,16 @@ public sealed class PbtSnapshotBundle(
         HashedKey<PbtStorageTreeKey> runKey = SlotRun.RunKey(key);
         int index = SlotRun.IndexOf(key);
         PbtSnapshotContent writeBuffer = WriteBuffer;
-        lock (_runLocks[StripeOf(runKey)])
+        while (true)
         {
-            ISlotRun current = BufferRunLocked(writeBuffer, runKey, addressHash);
-            writeBuffer.SetRun(runKey, current.With(index, value), current);
+            ISlotRun current = BufferRun(writeBuffer, runKey, addressHash);
+            ISlotRun next = current.With(index, value);
+            if (writeBuffer.TryReplaceRun(runKey, next, current))
+            {
+                _replacedRuns.Enqueue(current);
+                return;
+            }
+            SlotRun.Return(next);
         }
     }
 
@@ -277,18 +259,12 @@ public sealed class PbtSnapshotBundle(
     /// <summary>Stores bytecode written in this block; its chunk leaves are staged by the account writes that reference it.</summary>
     internal void SetCode(in ValueHash256 codeHash, CodeInfo code)
     {
-        lock (_accountLock)
-        {
-            WriteBuffer.Codes[codeHash] = code;
-            using ArrayPoolListRef<ValueHash256> resolved = new(0);
-            foreach ((ValueHash256 addressHash, ValueHash256 awaitedCodeHash) in _accountsAwaitingCode)
-            {
-                if (awaitedCodeHash != codeHash) continue;
+        WriteBuffer.Codes[codeHash] = code;
+        // An account registered after this scan is resolved by PrepareLeafChanges. Removing by address and code hash
+        // claims the entry, so an account re-set to other code meanwhile keeps waiting for that code.
+        foreach ((ValueHash256 addressHash, ValueHash256 awaitedCodeHash) in _accountsAwaitingCode)
+            if (awaitedCodeHash == codeHash && _accountsAwaitingCode.TryRemove(new KeyValuePair<ValueHash256, ValueHash256>(addressHash, codeHash)))
                 WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
-                resolved.Add(addressHash);
-            }
-            foreach (ValueHash256 addressHash in resolved) _accountsAwaitingCode.Remove(addressHash);
-        }
     }
 
     private void WriteCodeChunkLeaves(in ValueHash256 codeHash, CodeInfo code)
@@ -381,10 +357,16 @@ public sealed class PbtSnapshotBundle(
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _hintedAccounts.Clear();
+        ReturnReplacedRuns();
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
         retired = _transientResource;
         Volatile.Write(ref _transientResource, resourcePool.GetCachedResource(usage));
         return snapshot;
+    }
+
+    private void ReturnReplacedRuns()
+    {
+        while (_replacedRuns.TryDequeue(out ISlotRun? run)) SlotRun.Return(run);
     }
 
     public void Dispose()
@@ -393,6 +375,7 @@ public sealed class PbtSnapshotBundle(
         _accountsAwaitingCode.Clear();
         _codeMemo.Clear();
         _hintedAccounts.Clear();
+        ReturnReplacedRuns();
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;
         try

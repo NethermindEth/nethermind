@@ -943,19 +943,48 @@ public class PbtSnapshotBundleTests
     {
         using PbtTrieNodeCache cache = new(CacheConfig("account", 1048576));
         RefCountingMemory[] sources = [Memory(Bytes.FromHexString("010203")), Memory(new byte[1600]), Memory(new byte[8])];
-        System.Threading.Tasks.Parallel.For(0, 10000, iteration =>
-        {
-            PbtNodePath path = CachePath(CachePartitions[iteration % CachePartitions.Length]);
-            int variant = (iteration / CachePartitions.Length) % sources.Length;
-            ValueHash256 groupHash = new(Value((byte)variant));
-            cache.Add(groupHash, path, sources[variant]);
-            if (cache.TryGet(groupHash, path, out RefCountingMemory? payload))
-                using (payload) Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(sources[variant].GetSpan().ToArray()), "a lock-free hit must return the payload admitted under its own subtree hash");
-            if ((iteration & 63) == 0) cache.Clear();
-        });
+        (PbtNodePath Path, int Variant) Entry(int iteration) =>
+            (CachePath(CachePartitions[iteration % CachePartitions.Length]), (iteration / CachePartitions.Length) % sources.Length);
+        // Writes to the cache come from one thread at a time; lookups run concurrently with them.
+        System.Threading.Tasks.Parallel.Invoke(
+            () =>
+            {
+                for (int iteration = 0; iteration < 10000; iteration++)
+                {
+                    (PbtNodePath path, int variant) = Entry(iteration);
+                    cache.Add(new ValueHash256(Value((byte)variant)), path, sources[variant]);
+                    if ((iteration & 63) == 0) cache.Clear();
+                }
+            },
+            () => System.Threading.Tasks.Parallel.For(0, 10000, iteration =>
+            {
+                (PbtNodePath path, int variant) = Entry(iteration);
+                if (cache.TryGet(new ValueHash256(Value((byte)variant)), path, out RefCountingMemory? payload))
+                    using (payload) Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(sources[variant].GetSpan().ToArray()), "a lock-free hit must return the payload admitted under its own subtree hash");
+            }));
         foreach (RefCountingMemory source in sources) ((IDisposable)source).Dispose();
         cache.Clear();
         Assert.That(cache.MemorySize, Is.Zero);
+    }
+
+    [Test]
+    public void Child_cache_concurrent_replacements_and_hits_release_every_superseded_payload()
+    {
+        TrackingMemoryProvider memoryProvider = new();
+        PbtTrieNodeCache.ChildCache child = new(16);
+        PbtNodePath path = CachePath("account");
+        byte[][] encodings = [Bytes.FromHexString("01"), Bytes.FromHexString("0202")];
+        System.Threading.Tasks.Parallel.For(0, 10000, iteration =>
+        {
+            int variant = iteration & 1;
+            ValueHash256 groupHash = new(Value((byte)variant));
+            using (RefCountingMemory payload = Memory(encodings[variant], memoryProvider)) child.Set(groupHash, path, payload);
+            if (child.TryGet(groupHash, path, out RefCountingMemory? hit))
+                using (hit) Assert.That(hit.GetSpan().ToArray(), Is.EqualTo(encodings[variant]), "a lock-free hit must return the payload staged under its own subtree hash");
+        });
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(1), "only the surviving entry keeps its payload");
+        child.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
     }
 
     [TestCase(0, false)]
@@ -1157,6 +1186,43 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(pendingAfterBalanceChange, Is.EqualTo(3), "a balance change stages header leaves only, never code chunks");
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
+        }
+    }
+
+    [Test]
+    public void Concurrent_slot_account_and_code_writes_are_all_kept()
+    {
+        const int WritesPerSlot = 2000;
+        const int AccountCount = 64;
+        PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+        static byte[] CodeOf(int index) => [0x60, (byte)index];
+        static Account AccountOf(int index) => Build.An.Account.WithNonce((ulong)index + 1).WithCode(CodeOf(index)).TestObject;
+
+        System.Threading.Tasks.Parallel.Invoke(
+            // Every slot of one run has its own writer, so a replacement built from a stale run would undo another slot's write.
+            () => System.Threading.Tasks.Parallel.For(0, SlotRun.Width, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = SlotRun.Width }, slot =>
+            {
+                for (uint write = 1; write <= WritesPerSlot; write++)
+                {
+                    UInt256 value = write;
+                    bundle.SetSlot(TestItem.AddressA, (UInt256)(uint)slot, EvmWordSlot.FromUInt256(in value));
+                }
+            }),
+            () => System.Threading.Tasks.Parallel.For(0, AccountCount, index => bundle.SetAccount(TestItem.Addresses[index], AccountOf(index))),
+            () => System.Threading.Tasks.Parallel.For(0, AccountCount, index =>
+                bundle.SetCode(AccountOf(index).CodeHash.ValueHash256, new CodeInfo(CodeOf(index)))));
+
+        Dictionary<string, byte[]> model = [];
+        for (uint slot = 0; slot < SlotRun.Width; slot++) PbtReferenceModel.SetSlot(model, TestItem.AddressA, slot, WritesPerSlot);
+        for (int index = 0; index < AccountCount; index++) PbtReferenceModel.SetAccount(model, TestItem.Addresses[index], (ulong)index + 1, 0, CodeOf(index));
+        UInt256 lastWrite = WritesPerSlot;
+        using (Assert.EnterMultipleScope())
+        {
+            for (uint slot = 0; slot < SlotRun.Width; slot++)
+                Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(EvmWordSlot.FromUInt256(in lastWrite)), $"slot {slot}");
+            Assert.That(Fold(bundle, default), Is.EqualTo(PbtReferenceModel.Root(model)));
         }
     }
 

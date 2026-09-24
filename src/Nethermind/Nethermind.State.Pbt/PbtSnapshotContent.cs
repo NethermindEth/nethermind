@@ -52,16 +52,19 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal void SetRun(in HashedKey<PbtStorageTreeKey> runKey, ISlotRun run)
     {
         Storages.TryGetValue(runKey, out ISlotRun? previous);
-        SetRun(runKey, run, previous);
-    }
-
-    /// <inheritdoc cref="SetRun(in HashedKey{PbtStorageTreeKey}, ISlotRun)"/>
-    /// <param name="previous">The run <paramref name="run"/> replaces, as the serialized caller already read it.</param>
-    internal void SetRun(in HashedKey<PbtStorageTreeKey> runKey, ISlotRun run, ISlotRun? previous)
-    {
         Storages[runKey] = run;
         if (previous is not null) SlotRun.Return(previous);
     }
+
+    /// <summary>Takes ownership of <paramref name="run"/> unless the layer already holds a run of <paramref name="runKey"/>.</summary>
+    internal bool TryAddRun(in HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) => Storages.TryAdd(runKey, run);
+
+    /// <summary>Takes ownership of <paramref name="run"/> if the layer still holds <paramref name="expected"/>, which the caller then owns.</summary>
+    /// <remarks>
+    /// The compare is by reference, so <paramref name="expected"/> must stay out of the pool while any writer may still
+    /// compare against it: a re-rented instance stored back under the same key would let a stale replacement through.
+    /// </remarks>
+    internal bool TryReplaceRun(in HashedKey<PbtStorageTreeKey> runKey, ISlotRun run, ISlotRun expected) => Storages.TryUpdate(runKey, run, expected);
 
     /// <summary>Retains an independent reference to a complete group replacement, or records a null tombstone.</summary>
     internal void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
