@@ -17,6 +17,7 @@ using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test;
 

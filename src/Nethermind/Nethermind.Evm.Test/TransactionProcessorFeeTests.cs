@@ -19,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs.GnosisForks;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 

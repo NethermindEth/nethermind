@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
 

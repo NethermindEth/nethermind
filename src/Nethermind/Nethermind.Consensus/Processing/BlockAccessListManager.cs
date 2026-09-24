@@ -88,6 +88,9 @@ public partial class BlockAccessListManager(
     // _gasRemaining instead of re-walking the whole BAL.
     private ulong _suggestedChargeableStorageReads;
     private ulong _generatedChargeableStorageReads;
+    // EIP-7928: post-execution system calls read storage without spending block gas, so the
+    // surplus-reads budget must leave room for what their own execution grant can read.
+    private ulong _postExecutionReadAllowance;
     private bool _hasGeneratedValidationIndexUpdates;
     // for tests
     internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
@@ -225,6 +228,9 @@ public partial class BlockAccessListManager(
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
             _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot, _readPlan);
+            _postExecutionReadAllowance = _suggestedChargeableStorageReads > 0ul
+                ? PostExecutionReadAllowance(_blockExecutionContext.Value.Spec)
+                : 0ul;
         }
     }
 
@@ -320,6 +326,7 @@ public partial class BlockAccessListManager(
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
         _suggestedChargeableStorageReads = 0ul;
         _generatedChargeableStorageReads = 0ul;
+        _postExecutionReadAllowance = 0ul;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
         _currentGeneratedBlockAccessList = null;

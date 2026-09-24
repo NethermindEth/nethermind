@@ -71,7 +71,7 @@ public class PersistenceManager(
         set => Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(value));
     }
 
-    public IPersistence.IPersistenceReader LeaseReader() => persistence.CreateReader();
+    public IPersistence.IPersistenceReader LeaseReader(ReaderFlags flags = ReaderFlags.None) => persistence.CreateReader(flags);
 
     public StateId GetCurrentPersistedStateId()
     {

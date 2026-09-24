@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.State;
 
 namespace Nethermind.Xdc.Test;
 

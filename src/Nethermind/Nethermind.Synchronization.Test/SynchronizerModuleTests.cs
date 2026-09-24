@@ -51,6 +51,7 @@ public class SynchronizerModuleTests
         SyncConfig syncConfig = new()
         {
             FastSync = true,
+            SnapSync = true,
             DownloadHeadersInFastSync = true,
             DownloadBodiesInFastSync = false,
             DownloadBlockAccessListsInFastSync = true
@@ -185,7 +186,7 @@ public class SynchronizerModuleTests
         ISyncFeed<BlocksRequest>? fullSyncFeed = null,
         ILogManager? logManager = null)
     {
-        SyncConfig syncConfig = new() { FastSync = true };
+        SyncConfig syncConfig = new() { FastSync = true, SnapSync = true };
 
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider(syncConfig)))

@@ -25,6 +25,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 

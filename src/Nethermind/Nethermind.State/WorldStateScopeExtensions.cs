@@ -4,9 +4,11 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
+using Nethermind.Evm.State;
 
-namespace Nethermind.Evm.State;
+#pragma warning disable IDE0130 // The extensions belong with the interfaces they extend, which live in Nethermind.Evm; the exception they throw lives here, and Nethermind.Evm cannot reference it.
+namespace Nethermind.State;
+#pragma warning restore IDE0130
 
 /// <summary>
 /// Throwing counterparts of the <c>TryBeginScope</c> members, for callers to which an unavailable state is a broken
@@ -15,22 +17,22 @@ namespace Nethermind.Evm.State;
 public static class WorldStateScopeExtensions
 {
     /// <inheritdoc cref="IWorldState.TryBeginScope"/>
-    /// <exception cref="StateUnavailableException">The state at <paramref name="baseBlock"/> is unavailable.</exception>
+    /// <exception cref="StateNotRetainedException">The state at <paramref name="baseBlock"/> is unavailable.</exception>
     public static IDisposable BeginScope(this IWorldState worldState, BlockHeader? baseBlock) =>
         worldState.TryBeginScope(baseBlock, out IDisposable? scopeCloser) ? scopeCloser : ThrowUnavailable<IDisposable>(baseBlock);
 
     /// <inheritdoc cref="IWorldState.TryBeginScopeAtTarget"/>
-    /// <exception cref="StateUnavailableException">The parent header or its state is unavailable.</exception>
+    /// <exception cref="StateNotRetainedException">The parent header or its state is unavailable.</exception>
     public static IDisposable BeginScopeAtTarget(this IWorldState worldState, BlockHeader targetBlock) =>
         worldState.TryBeginScopeAtTarget(targetBlock, out IDisposable? scopeCloser) ? scopeCloser : ThrowNoParent<IDisposable>(targetBlock);
 
     /// <inheritdoc cref="IWorldStateScopeProvider.TryBeginScope"/>
-    /// <exception cref="StateUnavailableException">The state at <paramref name="baseBlock"/> is unavailable.</exception>
+    /// <exception cref="StateNotRetainedException">The state at <paramref name="baseBlock"/> is unavailable.</exception>
     public static IWorldStateScopeProvider.IScope BeginScope(this IWorldStateScopeProvider scopeProvider, BlockHeader? baseBlock, LocalMetrics metrics) =>
         scopeProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? scope) ? scope : ThrowUnavailable<IWorldStateScopeProvider.IScope>(baseBlock);
 
     /// <inheritdoc cref="IWorldStateScopeProvider.TryBeginScopeAtTarget"/>
-    /// <exception cref="StateUnavailableException">The parent header or its state is unavailable.</exception>
+    /// <exception cref="StateNotRetainedException">The parent header or its state is unavailable.</exception>
     public static IWorldStateScopeProvider.IScope BeginScopeAtTarget(this IWorldStateScopeProvider scopeProvider, BlockHeader targetBlock, LocalMetrics metrics) =>
         scopeProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? scope) ? scope : ThrowNoParent<IWorldStateScopeProvider.IScope>(targetBlock);
 
@@ -54,8 +56,8 @@ public static class WorldStateScopeExtensions
     }
 
     private static TScope ThrowUnavailable<TScope>(BlockHeader? baseBlock) =>
-        throw new StateUnavailableException($"State is unavailable for base block {baseBlock?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
+        throw new StateNotRetainedException($"State is unavailable for base block {baseBlock?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
 
     private static TScope ThrowNoParent<TScope>(BlockHeader targetBlock) =>
-        throw new StateUnavailableException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
+        throw new StateNotRetainedException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 }

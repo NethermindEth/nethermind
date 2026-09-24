@@ -95,7 +95,7 @@ public class DisposableScopeOverridableEnvTests
         {
             Assert.That(ctx.Env.TryBuildAndOverrideAtTarget(target, stateOverride, null, out Scope<Components>? unavailable), Is.False);
             Assert.That(unavailable, Is.Null);
-            Assert.That(() => ctx.Env.BuildAndOverrideAtTarget(target, stateOverride), Throws.TypeOf<StateUnavailableException>());
+            Assert.That(() => ctx.Env.BuildAndOverrideAtTarget(target, stateOverride), Throws.TypeOf<StateNotRetainedException>());
         }
 
         ctx.StateHeaderProvider.Parent = parent;

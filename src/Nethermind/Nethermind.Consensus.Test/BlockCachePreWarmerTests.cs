@@ -2680,4 +2680,42 @@ public class BlockCachePreWarmerTests
         Assert.That(thirdPass.Count, Is.Zero);
         thirdPass.Dispose();
     }
+
+    [Test]
+    public void TryClaimJob_FrontAndBack_MeetWithoutSharingAJob()
+    {
+        long taken = 0;
+        List<int> front = [];
+        List<int> back = [];
+
+        // Front and back alternate over five jobs: the front takes 0, 1, 2 and the back 4, 3.
+        for (int i = 0; i < 10; i++)
+        {
+            bool fromBack = i % 2 == 1;
+            if (BlockCachePreWarmer.TryClaimJob(ref taken, 5, fromBack, out int index)) (fromBack ? back : front).Add(index);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(front, Is.EqualTo(new[] { 0, 1, 2 }), "the front takes block order");
+            Assert.That(back, Is.EqualTo(new[] { 4, 3 }), "the back takes from the end");
+            Assert.That(BlockCachePreWarmer.TryClaimJob(ref taken, 5, fromBack: false, out _), Is.False, "every job is handed out once");
+        }
+    }
+
+    [Test]
+    public void TryClaimJob_Concurrently_HandsOutEveryJobExactlyOnce()
+    {
+        const int jobs = 10_000;
+        long taken = 0;
+        int[] claims = new int[jobs];
+
+        Parallel.For(0, 8, worker =>
+        {
+            while (BlockCachePreWarmer.TryClaimJob(ref taken, jobs, fromBack: worker % 2 == 1, out int index))
+                Interlocked.Increment(ref claims[index]);
+        });
+
+        Assert.That(claims, Is.All.EqualTo(1));
+    }
 }

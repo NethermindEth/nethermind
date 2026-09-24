@@ -27,6 +27,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Test;
 

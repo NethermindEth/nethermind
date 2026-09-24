@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.State;
 
 namespace Nethermind.Store.Test;
 

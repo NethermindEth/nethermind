@@ -28,6 +28,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Modules;
+using Nethermind.State;
 
 namespace Nethermind.Clique.Test;
 

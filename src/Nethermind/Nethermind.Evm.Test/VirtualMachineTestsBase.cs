@@ -21,6 +21,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using NUnit.Framework;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 

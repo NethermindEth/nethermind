@@ -15,6 +15,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -182,8 +183,9 @@ public class BranchProcessor(
                 // is the last one the queue answers for. The suggested block is what the queue knows the branch by.
                 if (notReadOnly && i == blocksCount - 1)
                 {
-                    BlockExecuted?.Invoke(this, new BlockExecutedEventArgs(suggestedBlock));
-                    verdictGiven = true;
+                    BlockExecutedEventArgs executed = new(suggestedBlock);
+                    BlockExecuted?.Invoke(this, executed);
+                    verdictGiven = executed.Answered;
                 }
 
                 QueueClearCaches(preWarmTask);
@@ -237,9 +239,10 @@ public class BranchProcessor(
             QueueClearCaches(preWarmTask);
             WaitAndClear(ref preWarmTask);
 
-            // Answered VALID already, so a failure from here on belongs to the commit, not to the block. Left as an
-            // invalid block it would be deleted from the tree and recorded on the invalid chain, and the forkchoice
-            // that follows the VALID this block was given would answer INVALID for it and for every child of it.
+            // A request was answered VALID already, so a failure from here on belongs to the commit, not to the block.
+            // Left as an invalid block it would be deleted from the tree and recorded on the invalid chain, and the
+            // forkchoice that follows that VALID would answer INVALID for it and for every child of it. A block nobody
+            // was answered for, sync's included, keeps the invalid-block handling it always had.
             if (verdictGiven && ex is InvalidBlockException)
                 throw new InvalidOperationException($"Block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} failed after its verdict.", ex);
 

@@ -13,6 +13,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 

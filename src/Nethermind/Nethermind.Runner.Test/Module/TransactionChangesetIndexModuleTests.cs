@@ -38,6 +38,7 @@ using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 using NSubstitute;
 using WorldStateSnapshot = Nethermind.Evm.State.Snapshot;
+using Nethermind.State;
 
 namespace Nethermind.Runner.Test.Module;
 

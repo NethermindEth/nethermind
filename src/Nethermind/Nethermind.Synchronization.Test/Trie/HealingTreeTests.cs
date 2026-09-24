@@ -30,6 +30,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.History;
 using Nethermind.Init.Modules;
+using Nethermind.State;
 
 namespace Nethermind.Synchronization.Test.Trie;
 

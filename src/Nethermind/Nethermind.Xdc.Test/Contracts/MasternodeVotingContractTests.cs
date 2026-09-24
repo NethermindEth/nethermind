@@ -27,6 +27,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using static Nethermind.Consensus.Processing.AutoReadOnlyTxProcessingEnvFactory;
+using Nethermind.State;
 
 namespace Nethermind.Xdc.Test.Contracts;
 

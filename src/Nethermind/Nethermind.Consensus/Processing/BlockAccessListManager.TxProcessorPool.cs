@@ -262,7 +262,7 @@ public partial class BlockAccessListManager
 
         [DoesNotReturn]
         private static void ThrowParentStateUnavailable(BlockHeader targetBlock)
-            => throw new StateUnavailableException($"Parent state is unavailable for block {targetBlock.ToString(BlockHeader.Format.Short)}.");
+            => throw new StateNotRetainedException($"Parent state is unavailable for block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 
         private void ReclaimAndResize(int size, int previousSize)
         {

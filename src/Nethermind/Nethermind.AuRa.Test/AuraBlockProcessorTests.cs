@@ -32,6 +32,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.State;
 
 namespace Nethermind.AuRa.Test
 {
