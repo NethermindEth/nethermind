@@ -438,6 +438,29 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void pending_transaction_re_added_to_the_pool_is_reported_once_per_poll([Values] bool pollBeforeReAdd)
+    {
+        PendingTransactionFilter filter = new(_currentFilterId++);
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        _txPool.ContainsTx(transaction.Hash!, transaction.Type).Returns(true);
+        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(transaction));
+        Hash256[] beforeReAdd = pollBeforeReAdd ? Drain(_filterManager.PollPendingTransactionHashes(filter.Id)) : [];
+
+        // Removed from the pool and admitted again, e.g. included and then reorged out.
+        _txPool.NewPending += Raise.EventWith(_txPool, new TxPool.TxEventArgs(transaction));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(beforeReAdd, Is.EqualTo(pollBeforeReAdd ? new[] { transaction.Hash } : []));
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(filter.Id)), Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(Drain(_filterManager.PollPendingTransactionHashes(filter.Id)), Is.Empty);
+        });
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void block_receipts_are_released_once_every_log_filter_has_read_them()
     {
         LogFilter polled = BuildFilter(static _ => { });

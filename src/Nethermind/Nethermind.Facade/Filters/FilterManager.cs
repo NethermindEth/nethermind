@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Collections.Pooled;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -160,7 +161,7 @@ namespace Nethermind.Facade.Filters
 
         /// <remarks>
         /// Reports only the transactions that are still in the pool, so ones included, replaced or evicted since they
-        /// arrived are skipped.
+        /// arrived are skipped. A transaction removed and re-added since the last poll is reported once.
         /// </remarks>
         public ArrayPoolList<Hash256> PollPendingTransactionHashes(int filterId)
         {
@@ -169,13 +170,16 @@ namespace Nethermind.Facade.Filters
                 return ArrayPoolList<Hash256>.Empty();
 
             ArrayPoolList<Hash256> result = new(transactions.Count);
+            // Every admission of a re-added transaction passes the pool check, so each hash is reported once per poll.
+            using PooledSet<Hash256>? reported = transactions.Count > 1 ? new PooledSet<Hash256>(transactions.Count) : null;
             foreach (PendingTransaction transaction in transactions)
             {
-                if (_txPool.ContainsTx(transaction.Hash, transaction.Type))
+                if (_txPool.ContainsTx(transaction.Hash, transaction.Type) && (reported?.Add(transaction.Hash) ?? true))
                 {
                     result.Add(transaction.Hash);
                 }
             }
+
             return result;
         }
 
