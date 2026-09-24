@@ -13,7 +13,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using NUnit.Framework;
-using Nethermind.State;
 
 namespace Nethermind.Optimism.Test;
 

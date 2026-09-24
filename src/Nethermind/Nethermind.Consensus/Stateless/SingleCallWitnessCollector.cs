@@ -10,7 +10,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
 

@@ -25,7 +25,6 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test
 {

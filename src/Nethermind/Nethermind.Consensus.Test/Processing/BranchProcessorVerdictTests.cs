@@ -15,7 +15,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.State;
 using Nethermind.Core.Test;
 
 namespace Nethermind.Consensus.Test.Processing;

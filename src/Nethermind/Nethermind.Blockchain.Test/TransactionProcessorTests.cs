@@ -23,7 +23,6 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 

@@ -19,7 +19,6 @@ using Nethermind.Specs;
 using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test.Tracing
 {

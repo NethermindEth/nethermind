@@ -10,7 +10,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using NUnit.Framework;
 using System;
-using Nethermind.State;
 
 namespace Nethermind.Optimism.Test;
 

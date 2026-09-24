@@ -4,10 +4,12 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Evm.State;
+using Nethermind.State;
 
-#pragma warning disable IDE0130 // The extensions belong with the interfaces they extend, which live in Nethermind.Evm; the exception they throw lives here, and Nethermind.Evm cannot reference it.
-namespace Nethermind.State;
+// The assembly is Nethermind.State, because that is where StateNotRetainedException lives and Nethermind.Evm cannot
+// reference it; the namespace is the one the extended interfaces live in, so callers need no extra using.
+#pragma warning disable IDE0130
+namespace Nethermind.Evm.State;
 #pragma warning restore IDE0130
 
 /// <summary>

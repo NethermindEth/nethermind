@@ -34,12 +34,12 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.State;
 using Nethermind.Trie;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Testably.Abstractions;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test;
 

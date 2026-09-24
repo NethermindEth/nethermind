@@ -26,7 +26,6 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test;
 

@@ -23,7 +23,6 @@ using Nethermind.Evm.State;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using NUnit.Framework;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 

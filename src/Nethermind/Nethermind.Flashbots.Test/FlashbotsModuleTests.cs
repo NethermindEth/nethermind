@@ -22,7 +22,6 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using NUnit.Framework;
-using Nethermind.State;
 
 namespace Nethermind.Flashbots.Test;
 
