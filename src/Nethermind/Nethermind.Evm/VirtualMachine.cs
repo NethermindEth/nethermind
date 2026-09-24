@@ -119,6 +119,10 @@ public partial class VirtualMachine<TGasPolicy>(
     private ICodeInfoRepository _codeInfoRepository = null!;
 
     private ReadOnlyMemory<byte> _returnDataBuffer;
+    private const int MaxRetainedReturnDataScratch = 32 * 1024;
+    private byte[] _returnDataScratch = [];
+    private int _stagedReturnDataLength;
+
     /// <summary>Scratch for the big-endian words <see cref="TraceStack"/> hands a tracer.</summary>
     /// <remarks>Reused across instructions, like the stack it mirrors; only a stack-tracing run allocates it.</remarks>
     private byte[] _tracedStackWords = [];
@@ -152,6 +156,40 @@ public partial class VirtualMachine<TGasPolicy>(
     public IWorldState WorldState => _worldState;
     public ref readonly UInt256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
+
+    internal void StageReturnData(ReadOnlySpan<byte> returnData)
+    {
+        _stagedReturnDataLength = returnData.Length;
+
+        byte[] output;
+        if (returnData.IsEmpty)
+        {
+            output = Array.Empty<byte>();
+        }
+        // Only nested non-create outputs are consumed before this buffer can be reused by a later child call.
+        else if (returnData.Length <= MaxRetainedReturnDataScratch
+            && !_currentState.IsTopLevel
+            && !_currentState.ExecutionType.IsAnyCreate()
+            && !_txTracer.IsTracing)
+        {
+            byte[] scratch = _returnDataScratch;
+            if (scratch.Length < returnData.Length)
+            {
+                int size = (int)BitOperations.RoundUpToPowerOf2((uint)returnData.Length);
+                _returnDataScratch = scratch = GC.AllocateUninitializedArray<byte>(size);
+            }
+
+            returnData.CopyTo(scratch);
+            output = scratch;
+        }
+        else
+        {
+            output = returnData.ToArray();
+        }
+
+        ReturnData = output;
+    }
+
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
@@ -1421,6 +1459,7 @@ public partial class VirtualMachine<TGasPolicy>(
         where TCancelable : struct, IFlag
     {
         ReturnData = null;
+        _stagedReturnDataLength = 0;
 
         // May not be zero when resuming after a call.
         nint programCounter = VmState.ProgramCounter;
@@ -1472,11 +1511,11 @@ public partial class VirtualMachine<TGasPolicy>(
 
     DataReturn:
         Debug.Assert(ReturnData is byte[], "RETURN stages a byte array before stopping dispatch.");
-        return new CallResult(Unsafe.As<byte[]>(ReturnData), null);
+        return new CallResult(Unsafe.As<byte[]>(ReturnData).AsMemory(0, _stagedReturnDataLength), null);
 
     Revert:
         Debug.Assert(ReturnData is byte[], "REVERT stages a byte array before stopping dispatch.");
-        return new CallResult(Unsafe.As<byte[]>(ReturnData), null, shouldRevert: true, exceptionType);
+        return new CallResult(Unsafe.As<byte[]>(ReturnData).AsMemory(0, _stagedReturnDataLength), null, shouldRevert: true, exceptionType);
 
     ReturnFailure:
         if (exceptionType == EvmExceptionType.OutOfGas)
