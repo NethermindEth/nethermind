@@ -493,6 +493,28 @@ public class StartupTests
     }
 
     [Test]
+    public async Task ProcessJsonRpcRequest_BufferedStreamedSuccessIsComplete([Values(0, 32 * 1024)] int payloadSize, [Values] bool batch)
+    {
+        string payload = new('x', payloadSize);
+        ProbeBlobStreamableResult result = new((writer, _) =>
+        {
+            writer.Write(Encoding.UTF8.GetBytes("[\"" + payload + "\"]"));
+            return ValueTask.CompletedTask;
+        });
+        Startup startup = CreateStreamingStartup(result, bufferResponse: true);
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
+        await using KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(startup, url);
+        string request = CreateJsonRpcRequest(GetBlobsV2Method);
+        if (batch) request = "[" + CreateJsonRpcRequest(idJson: "2") + "," + request + "]";
+
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        string response = await host.PostAsync(request, deadline.Token);
+
+        AssertJsonResponse(response, root =>
+            Assert.That((batch ? root[1] : root).GetProperty("result")[0].GetString(), Is.EqualTo(payload)));
+    }
+
+    [Test]
     [NonParallelizable]
     public async Task ProcessJsonRpcRequest_Deferred_limit_reports_failure_and_service_unavailable([Values] bool bufferResponse, [Values] bool batch)
     {

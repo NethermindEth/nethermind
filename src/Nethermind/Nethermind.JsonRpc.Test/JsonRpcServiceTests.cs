@@ -492,6 +492,7 @@ public class JsonRpcServiceTests
         yield return (new ResourceNotFoundException("History pruned"), ErrorCodes.PrunedHistoryUnavailable, false);
         yield return (new InsufficientBalanceException(TestItem.AddressA), ErrorCodes.InvalidInput, false);
         yield return (new InvalidOperationException("Replay failed"), ErrorCodes.InternalError, false);
+        yield return (new IOException("History read failed"), ErrorCodes.InternalError, false);
         yield return (new ArgumentException("Invalid replay argument"), ErrorCodes.InvalidParams, false);
         yield return (new LimitExceededException("limit"), ErrorCodes.LimitExceeded, false);
         yield return (new OperationCanceledException("Replay timeout"), ErrorCodes.Timeout, false);

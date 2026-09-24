@@ -11,10 +11,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.IO;
 using Nethermind.Core.Resettables;
 using Nethermind.Serialization.Json;
-
-[assembly: InternalsVisibleTo("nethermind")]
 
 namespace Nethermind.JsonRpc;
 
@@ -63,15 +62,14 @@ public static class JsonRpcResponseWriter
         if (!response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
             Write(writer, response, options);
-            return new(response.TryGetError(out Error? error) ? error?.Code : null);
+            return JsonRpcResponseWriteOutcome.Of(response);
         }
 
         bool success = false;
         try
         {
-            JsonRpcResponseWriteOutcome outcome = bufferResponse
-                ? await WriteBufferedStreamableAsync(writer, response, streamable, options, isBatch, cancellationToken)
-                : await WriteStreamableWithErrorHandlingAsync(writer, response, streamable, options, isBatch, cancellationToken);
+            JsonRpcResponseWriteOutcome outcome = await WriteStreamableWithErrorHandlingAsync(
+                writer, response, streamable, options, isBatch, bufferResponse ? long.MaxValue : StagingPipeWriter.DefaultLimit, cancellationToken);
             success = outcome.Success;
             return outcome;
         }
@@ -81,38 +79,6 @@ public static class JsonRpcResponseWriter
             response.StreamCompleted = null;
         }
     }
-
-    private static async ValueTask<JsonRpcResponseWriteOutcome> WriteBufferedStreamableAsync(
-        PipeWriter writer, JsonRpcResponse response, IStreamableResult streamable, JsonSerializerOptions options,
-        bool isBatch, CancellationToken cancellationToken)
-    {
-        using Stream buffer = RecyclableStream.GetStream("json-rpc-response");
-        CountingStreamPipeWriter staged = new(buffer, initialWrittenCount: (writer as CountingWriter)?.WrittenCount ?? 0);
-        try
-        {
-            try
-            {
-                await WriteStreamableAsync(staged, response, streamable, isBatch, cancellationToken);
-            }
-            catch (Exception ex) when (CanReplaceFailure(ex, response, cancellationToken))
-            {
-                using JsonRpcErrorResponse error = response.StreamExceptionHandler!(ex);
-                Write(writer, error, options);
-                return new(error.Error?.Code);
-            }
-            await staged.FlushAsync(cancellationToken);
-            buffer.Position = 0;
-            await buffer.CopyToAsync(writer.AsStream(leaveOpen: true), cancellationToken);
-            return default;
-        }
-        finally
-        {
-            await staged.CompleteAsync();
-        }
-    }
-
-    private static bool CanReplaceFailure(Exception exception, JsonRpcResponse response, CancellationToken cancellationToken) =>
-        exception is not IOException && !cancellationToken.IsCancellationRequested && response.StreamExceptionHandler is not null;
 
     /// <summary>Writes the opening token for a JSON-RPC batch response.</summary>
     public static void WriteBatchStart(IBufferWriter<byte> writer) => writer.Write(BatchStart);
@@ -145,21 +111,23 @@ public static class JsonRpcResponseWriter
         IStreamableResult streamable,
         JsonSerializerOptions options,
         bool isBatch,
+        long stagingLimit,
         CancellationToken cancellationToken)
     {
-        ValidationBufferingPipeWriter buffered = new(writer);
+        using StagingPipeWriter staged = new(writer, stagingLimit);
         try
         {
-            await WriteStreamableAsync(buffered, response, streamable, isBatch, cancellationToken);
+            await WriteStreamableAsync(staged, response, streamable, isBatch, cancellationToken);
         }
-        catch (Exception ex) when (!buffered.IsCommitted && CanReplaceFailure(ex, response, cancellationToken))
+        // Nothing reaches the transport before commitment, so an uncommitted failure is never a transport failure.
+        catch (Exception ex) when (!staged.IsCommitted && !cancellationToken.IsCancellationRequested && response.StreamExceptionHandler is not null)
         {
-            using JsonRpcErrorResponse error = response.StreamExceptionHandler!(ex);
+            using JsonRpcErrorResponse error = response.StreamExceptionHandler(ex);
             Write(writer, error, options);
-            return new(error.Error?.Code);
+            return JsonRpcResponseWriteOutcome.Of(error);
         }
-        buffered.Commit();
-        return default;
+        staged.Commit();
+        return JsonRpcResponseWriteOutcome.Of(response);
     }
 
     private static async ValueTask WriteStreamableAsync(
@@ -350,50 +318,69 @@ internal interface IJsonRpcRawResponse
     void WriteRaw(IBufferWriter<byte> writer);
 }
 
-internal readonly record struct JsonRpcResponseWriteOutcome(int? ErrorCode)
+internal readonly record struct JsonRpcResponseWriteOutcome(bool Success, bool IsResourceUnavailable)
 {
-    internal bool Success => ErrorCode is null;
+    internal static JsonRpcResponseWriteOutcome Of(JsonRpcResponse response) =>
+        new(!response.TryGetError(out Error? error) || error is null, response.IsResourceUnavailableError);
+
     internal RpcReport ApplyTo(RpcReport report) => report with { Success = Success };
 }
 
-/// <summary>Stages the beginning of a response until deferred execution succeeds or exceeds the buffer limit.</summary>
+/// <summary>Stages the beginning of a response until deferred execution succeeds or exceeds the staging limit.</summary>
 /// <remarks>
-/// Flushes below the limit remain local. Once committed, bytes may have reached the transport and the
-/// caller must abort on failure. Fully buffered transports stage the whole current response separately.
+/// Flushes below the limit remain local, so their results never report a completed or cancelled reader. Once
+/// committed, bytes may have reached the transport and the caller must abort on failure. Transports that buffer
+/// the whole response stage it without a limit, so a failure can always replace the current response.
 /// </remarks>
-internal sealed class ValidationBufferingPipeWriter : CountingWriter
+internal sealed class StagingPipeWriter : CountingWriter, IDisposable
 {
-    private const int BufferLimit = 16 * 1024;
-    private readonly ArrayBufferWriter<byte> _buffer = new(256);
+    internal const int DefaultLimit = 16 * 1024;
     private readonly PipeWriter _writer;
+    private readonly long _limit;
+    private RecyclableMemoryStream? _buffer = RecyclableStream.GetStream("json-rpc-response");
 
-    internal ValidationBufferingPipeWriter(PipeWriter writer)
+    internal StagingPipeWriter(PipeWriter writer, long limit)
     {
         _writer = writer;
+        _limit = limit;
         WrittenCount = (writer as CountingWriter)?.WrittenCount ?? 0;
     }
 
-    internal bool IsCommitted { get; private set; }
+    internal bool IsCommitted => _buffer is null;
     public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
-    public override long UnflushedBytes => _writer.UnflushedBytes + _buffer.WrittenCount;
+    public override long UnflushedBytes => _writer.UnflushedBytes + (_buffer?.Length ?? 0);
 
     internal void Commit()
     {
-        if (IsCommitted) return;
-        IsCommitted = true;
-        _writer.Write(_buffer.WrittenSpan);
-        _buffer.Clear();
+        if (_buffer is not { } buffer) return;
+        _buffer = null;
+        using (buffer)
+        {
+            foreach (ReadOnlyMemory<byte> segment in buffer.GetReadOnlySequence())
+            {
+                _writer.Write(segment.Span);
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        _buffer?.Dispose();
+        _buffer = null;
     }
 
     public override Memory<byte> GetMemory(int sizeHint = 0)
     {
-        int remaining = BufferLimit - _buffer.WrittenCount;
-        if (!IsCommitted && Math.Max(sizeHint, 1) <= remaining)
+        if (_buffer is { } buffer)
         {
-            Memory<byte> memory = _buffer.GetMemory(sizeHint);
-            return memory[..Math.Min(memory.Length, remaining)];
+            long remaining = _limit - buffer.Length;
+            if (Math.Max(sizeHint, 1) <= remaining)
+            {
+                Memory<byte> memory = buffer.GetMemory(sizeHint);
+                return memory[..(int)Math.Min(memory.Length, remaining)];
+            }
+            Commit();
         }
-        Commit();
         return _writer.GetMemory(sizeHint);
     }
 
@@ -401,8 +388,8 @@ internal sealed class ValidationBufferingPipeWriter : CountingWriter
 
     public override void Advance(int bytes)
     {
-        if (IsCommitted) _writer.Advance(bytes);
-        else _buffer.Advance(bytes);
+        if (_buffer is { } buffer) buffer.Advance(bytes);
+        else _writer.Advance(bytes);
         WrittenCount += bytes;
     }
 

@@ -58,7 +58,7 @@ internal sealed class HttpJsonRpcResponseSink(
             ReportWrite(report with { Success = false }, isBatch);
             throw;
         }
-        if (!isBatch && !context.Response.HasStarted && outcome.ErrorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
+        if (!isBatch && !context.Response.HasStarted && outcome.IsResourceUnavailable)
         {
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
         }
