@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
@@ -77,6 +78,28 @@ public class GloasBlockProcessingTests
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true))!;
         Assert.That(ex.Message, Does.Contain("cannot cover a bid"));
+    }
+
+    /// <summary>
+    /// Spec <c>get_blob_parameters</c> falls back to <c>MAX_BLOBS_PER_BLOCK_ELECTRA</c> when no <c>BLOB_SCHEDULE</c>
+    /// entry applies, independent of <c>FULU_FORK_EPOCH</c>; mainnet's Fulu epoch is far past this state's.
+    /// </summary>
+    [TestCase(0, true)]
+    [TestCase(1, false)]
+    public void ProcessExecutionPayloadBid_caps_blob_commitments_at_the_electra_limit_before_any_blob_schedule_entry(int overLimit, bool accepted)
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet;
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        Assert.That(state.GetCurrentEpoch(), Is.LessThan(spec.FuluForkEpoch), "fixture bug: the state must predate the spec's Fulu epoch");
+        SignedExecutionPayloadBid bid = SelfBuildBid(state, state.LatestBlockHash!, Hash(0x99));
+        bid.Message!.BlobKzgCommitments = new SszKzgCommitment[(int)spec.MaxBlobsPerBlockElectra + overLimit];
+
+        Action process = () => GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, spec, new PubkeyCache(), verifySignature: true);
+
+        if (accepted)
+            Assert.That(process, Throws.Nothing);
+        else
+            Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.Contains("blob commitments"));
     }
 
     // ---- Envelope verification: a pure check against the committed bid, no state mutation ----
@@ -286,6 +309,39 @@ public class GloasBlockProcessingTests
         });
     }
 
+    /// <summary>
+    /// The spec's registry reads in <c>process_withdrawals</c> raise <c>IndexError</c> past the end, which its
+    /// tests count as a failed assert; each one must refuse the block rather than crash.
+    /// </summary>
+    [TestCase("builder pending withdrawal")]
+    [TestCase("builders sweep cursor")]
+    [TestCase("pending partial withdrawal")]
+    [TestCase("validators sweep cursor")]
+    public void ProcessWithdrawals_refuses_a_registry_index_past_the_end(string corruptedEntry)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.LatestBlockHash = state.LatestExecutionPayloadBid!.BlockHash;
+        ulong builderCount = (ulong)state.Builders!.Length;
+        ulong validatorCount = (ulong)state.Validators!.Length;
+        switch (corruptedEntry)
+        {
+            case "builder pending withdrawal":
+                state.BuilderPendingWithdrawals = [new BuilderPendingWithdrawal { BuilderIndex = builderCount, Amount = Gwei, FeeRecipient = Address.Zero }];
+                break;
+            case "builders sweep cursor":
+                state.NextWithdrawalBuilderIndex = builderCount;
+                break;
+            case "pending partial withdrawal":
+                state.PendingPartialWithdrawals = [new PendingPartialWithdrawal { ValidatorIndex = validatorCount, Amount = Gwei, WithdrawableEpoch = 0 }];
+                break;
+            case "validators sweep cursor":
+                state.NextWithdrawalValidatorIndex = validatorCount;
+                break;
+        }
+
+        Assert.That(() => GloasBlockProcessing.ProcessWithdrawals(state), Throws.TypeOf<BeaconStateException>().With.Message.Contains("out of range"));
+    }
+
     [Test]
     public void ProcessWithdrawals_is_a_no_op_when_the_parent_payload_was_not_delivered()
     {
@@ -311,7 +367,7 @@ public class GloasBlockProcessingTests
         BeaconBlockBodyGloas body = new() { Deposits = [], Attestations = attestations };
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            GloasBlockProcessing.ProcessOperations(state, body, parentSlot: 0, new EpochCache(), new PubkeyCache(), verifySignatures: false))!;
+            GloasBlockProcessing.ProcessOperations(state, body, parentSlot: 0, UpgradeEpochSpec(), new EpochCache(), new PubkeyCache(), verifySignatures: false))!;
         Assert.That(ex.Message, Does.Contain("exceeding the limit"));
     }
 

@@ -18,9 +18,9 @@ namespace Nethermind.BeaconChain.StateTransition;
 
 /// <summary>
 /// The one-time Fulu -&gt; Gloas state upgrade (spec <c>upgrade_to_gloas</c>,
-/// <c>specs/gloas/fork.md</c> "Upgrading the state", fetched from ethereum/consensus-specs `master`
-/// 2026-09-19) and the two post-construction steps the spec runs against the new state:
-/// <c>onboard_builders_from_pending_deposits</c> and <c>initialize_ptc_window</c>.
+/// <c>specs/gloas/fork.md</c> "Upgrading the state", consensus-specs v1.7.0-beta.2) and the two
+/// post-construction steps the spec runs against the new state: <c>initialize_ptc_window</c> and
+/// <c>onboard_builders_from_pending_deposits</c>.
 /// </summary>
 /// <remarks>
 /// Runs once, at the boundary slot, and does not need a Gloas-shaped
@@ -127,8 +127,8 @@ public static class GloasForkTransition
                 ExecutionRequestsRoot = SszRoots.HashTreeRoot(new ExecutionRequestsGloas()),
             },
             PayloadExpectedWithdrawals = [],
-            // Placeholder until InitializePtcWindow runs below. The spec builds ptc_window from pre in this
-            // constructor, before onboarding; the order is immaterial, as onboarding touches neither.
+            // Placeholder until InitializePtcWindow runs below. The spec fills it with initialize_ptc_window(post)
+            // before onboarding; the order is immaterial, as onboarding changes nothing compute_ptc reads.
             PtcWindow = EmptyPtcWindow((int)Presets.PtcWindowLength),
         };
 

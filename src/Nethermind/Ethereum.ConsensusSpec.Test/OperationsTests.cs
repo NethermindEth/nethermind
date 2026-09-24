@@ -7,6 +7,7 @@ using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using NUnit.Framework;
@@ -16,7 +17,8 @@ namespace Ethereum.ConsensusSpec.Test;
 /// <summary>
 /// Runs the consensus-specs <c>operations</c> suite against this repo's per-operation
 /// <c>BlockProcessing.Process*</c> methods, which are documented as "independently callable, matching
-/// the per-operation spec test fixtures" - this suite is exactly what that sentence describes. Driven
+/// the per-operation spec test fixtures" - this suite is exactly what that sentence describes - and,
+/// for Gloas, the <c>GloasBlockProcessing.Process*</c> ones. Driven
 /// for every fork in <see cref="ConsensusSpecArchive.StateTransitionForks"/> through its
 /// <see cref="ForkDriver"/>; earlier forks have no state container in this repo and are not enumerated
 /// (see <see cref="ConsensusSpecArchive"/>). Minimal-preset vectors are reported not-implemented,
@@ -25,10 +27,10 @@ namespace Ethereum.ConsensusSpec.Test;
 [TestFixture]
 public class OperationsTests
 {
-    private readonly record struct OpContext(BeaconStateFulu State, EpochCache Cache, PubkeyCache Pubkeys, bool VerifySignatures, bool ExecutionValid);
+    private readonly record struct OpContext<TState>(TState State, EpochCache Cache, PubkeyCache Pubkeys, bool VerifySignatures, bool ExecutionValid, BeaconChainSpec Spec, string CasePath);
 
     /// <summary>operation folder name -> (operand file name, action applied to the decoded state).</summary>
-    private static readonly Dictionary<string, (string File, Action<OpContext, byte[]> Apply)> Handlers = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, (string? File, Action<OpContext<BeaconStateFulu>, byte[]> Apply)> Handlers = new(StringComparer.Ordinal)
     {
         ["attestation"] = ("attestation.ssz_snappy", (ctx, ssz) =>
         {
@@ -76,7 +78,7 @@ public class OperationsTests
         {
             BeaconBlockBody.Decode(ssz, out BeaconBlockBody value);
             FixedNewPayloadNotifier notifier = new(ctx.ExecutionValid);
-            BlockProcessing.ProcessExecutionPayload(ctx.State, value, notifier, FuluDriverSupport.MaxBlobsPerBlockElectra);
+            BlockProcessing.ProcessExecutionPayload(ctx.State, value, notifier, ctx.Spec.MaxBlobsPerBlockElectra);
         }
         ),
         ["proposer_slashing"] = ("proposer_slashing.ssz_snappy", (ctx, ssz) =>
@@ -111,6 +113,109 @@ public class OperationsTests
         ),
     };
 
+    /// <summary>
+    /// The Gloas handlers (tests/formats/operations/README.md): <c>execution_payload</c> is gone, <c>withdrawals</c>
+    /// takes no operand, and <c>attestation</c> reads <c>parent_slot</c> from meta.yaml.
+    /// </summary>
+    private static readonly Dictionary<string, (string? File, Action<OpContext<BeaconStateGloas>, byte[]> Apply)> GloasHandlers = new(StringComparer.Ordinal)
+    {
+        ["attestation"] = ("attestation.ssz_snappy", (ctx, ssz) =>
+        {
+            AttestationGloas.Decode(ssz, out AttestationGloas value);
+            ulong parentSlot = ulong.Parse(FuluDriverSupport.ParseFlowMap(Path.Combine(ctx.CasePath, "meta.yaml"))["parent_slot"]);
+            GloasBlockProcessing.ProcessAttestation(ctx.State, value, parentSlot, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
+        }
+        ),
+        ["attester_slashing"] = ("attester_slashing.ssz_snappy", (ctx, ssz) =>
+        {
+            AttesterSlashingGloas.Decode(ssz, out AttesterSlashingGloas value);
+            GloasBlockProcessing.ProcessAttesterSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
+        }
+        ),
+        ["block_header"] = ("block.ssz_snappy", (ctx, ssz) =>
+        {
+            BeaconBlockGloas.Decode(ssz, out BeaconBlockGloas value);
+            GloasBlockProcessing.ProcessBlockHeader(ctx.State, value);
+        }
+        ),
+        ["bls_to_execution_change"] = ("address_change.ssz_snappy", (ctx, ssz) =>
+        {
+            SignedBlsToExecutionChange.Decode(ssz, out SignedBlsToExecutionChange value);
+            GloasBlockProcessing.ProcessBlsToExecutionChange(ctx.State, value, ctx.VerifySignatures);
+        }
+        ),
+        ["builder_deposit_request"] = ("builder_deposit_request.ssz_snappy", (ctx, ssz) =>
+        {
+            BuilderDepositRequest.Decode(ssz, out BuilderDepositRequest value);
+            GloasBlockProcessing.ProcessBuilderDepositRequest(ctx.State, value);
+        }
+        ),
+        ["builder_exit_request"] = ("builder_exit_request.ssz_snappy", (ctx, ssz) =>
+        {
+            BuilderExitRequest.Decode(ssz, out BuilderExitRequest value);
+            GloasBlockProcessing.ProcessBuilderExitRequest(ctx.State, value);
+        }
+        ),
+        ["consolidation_request"] = ("consolidation_request.ssz_snappy", (ctx, ssz) =>
+        {
+            ConsolidationRequest.Decode(ssz, out ConsolidationRequest value);
+            GloasBlockProcessing.ProcessConsolidationRequest(ctx.State, value, ctx.Cache);
+        }
+        ),
+        ["deposit_request"] = ("deposit_request.ssz_snappy", (ctx, ssz) =>
+        {
+            DepositRequest.Decode(ssz, out DepositRequest value);
+            GloasBlockProcessing.ProcessDepositRequest(ctx.State, value);
+        }
+        ),
+        ["execution_payload_bid"] = ("execution_payload_bid.ssz_snappy", (ctx, ssz) =>
+        {
+            SignedExecutionPayloadBid.Decode(ssz, out SignedExecutionPayloadBid value);
+            GloasBlockProcessing.ProcessExecutionPayloadBid(ctx.State, value, ctx.Spec, ctx.Pubkeys, ctx.VerifySignatures);
+        }
+        ),
+        ["parent_execution_payload"] = ("block.ssz_snappy", (ctx, ssz) =>
+        {
+            BeaconBlockGloas.Decode(ssz, out BeaconBlockGloas value);
+            GloasBlockProcessing.ProcessParentExecutionPayload(ctx.State, value, ctx.Cache);
+        }
+        ),
+        ["payload_attestation"] = ("payload_attestation.ssz_snappy", (ctx, ssz) =>
+        {
+            PayloadAttestation.Decode(ssz, out PayloadAttestation value);
+            GloasBlockProcessing.ProcessPayloadAttestation(ctx.State, value, ctx.Spec, ctx.Pubkeys, ctx.VerifySignatures);
+        }
+        ),
+        ["proposer_slashing"] = ("proposer_slashing.ssz_snappy", (ctx, ssz) =>
+        {
+            ProposerSlashing.Decode(ssz, out ProposerSlashing value);
+            GloasBlockProcessing.ProcessProposerSlashing(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
+        }
+        ),
+        ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", (ctx, ssz) =>
+        {
+            SyncAggregate.Decode(ssz, out SyncAggregate value);
+            GloasBlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.VerifySignatures);
+        }
+        ),
+        ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", ApplyGloasVoluntaryExit),
+        // The churn-boundary cases of process_voluntary_exit, generated under their own handler name.
+        ["voluntary_exit_churn"] = ("voluntary_exit.ssz_snappy", ApplyGloasVoluntaryExit),
+        ["withdrawal_request"] = ("withdrawal_request.ssz_snappy", (ctx, ssz) =>
+        {
+            WithdrawalRequest.Decode(ssz, out WithdrawalRequest value);
+            GloasBlockProcessing.ProcessWithdrawalRequest(ctx.State, value, ctx.Cache);
+        }
+        ),
+        ["withdrawals"] = (null, (ctx, _) => GloasBlockProcessing.ProcessWithdrawals(ctx.State)),
+    };
+
+    private static void ApplyGloasVoluntaryExit(OpContext<BeaconStateGloas> ctx, byte[] ssz)
+    {
+        SignedVoluntaryExit.Decode(ssz, out SignedVoluntaryExit value);
+        GloasBlockProcessing.ProcessVoluntaryExit(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
+    }
+
     private sealed class FixedNewPayloadNotifier(bool valid) : INewPayloadNotifier
     {
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => valid ? ExecutionStatus.Valid : ExecutionStatus.Invalid;
@@ -134,43 +239,59 @@ public class OperationsTests
                     "NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
             }
 
-            ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
-
-            if (!Handlers.TryGetValue(testCase.OperationName, out (string File, Action<OpContext, byte[]> Apply) handler))
-                throw new NotImplementedInDriverException($"operation '{testCase.OperationName}' has no handler in this driver.");
-
-            string operandPath = Path.Combine(testCase.CasePath, handler.File);
-            if (!File.Exists(operandPath))
-                throw new NotImplementedInDriverException($"expected operand file '{handler.File}' is missing for this vector.");
-
-            BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
-            OpContext ctx = new(
-                state,
-                driver.NewCache(),
-                FuluDriverSupport.BuildPubkeyCache(state),
-                FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath),
-                FuluDriverSupport.ReadExecutionValid(testCase.CasePath));
-
-            byte[] operand = SszConsensusTestLoader.ReadSszSnappy(operandPath);
-            string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
-            bool expectSuccess = File.Exists(postPath);
-
-            Exception? thrown = null;
-            try { handler.Apply(ctx, operand); }
-            catch (Exception ex) { thrown = ex; }
-
-            if (expectSuccess)
+            switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
             {
-                if (thrown is not null)
-                    Assert.Fail($"expected the operation to be accepted, but it threw: {thrown}");
-
-                FuluDriverSupport.AssertPostStateRoot(driver, postPath, ctx.State);
-            }
-            else
-            {
-                FuluDriverSupport.AssertRejected(thrown, "the operation");
+                case ForkDriver<BeaconStateFulu> fulu:
+                    Run(testCase, fulu, Handlers);
+                    break;
+                case ForkDriver<BeaconStateGloas> gloas:
+                    Run(testCase, gloas, GloasHandlers);
+                    break;
+                case ForkDriver other:
+                    throw new NotImplementedInDriverException($"fork '{other.Fork}' has no operations handler table.");
             }
         });
+
+    private static void Run<TState>(OperationCase testCase, ForkDriver<TState> driver, Dictionary<string, (string? File, Action<OpContext<TState>, byte[]> Apply)> handlers)
+        where TState : class
+    {
+        if (!handlers.TryGetValue(testCase.OperationName, out (string? File, Action<OpContext<TState>, byte[]> Apply) handler))
+            throw new NotImplementedInDriverException($"operation '{testCase.OperationName}' has no handler in this driver.");
+
+        string? operandPath = handler.File is null ? null : Path.Combine(testCase.CasePath, handler.File);
+        if (operandPath is not null && !File.Exists(operandPath))
+            throw new NotImplementedInDriverException($"expected operand file '{handler.File}' is missing for this vector.");
+
+        TState state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
+        OpContext<TState> ctx = new(
+            state,
+            driver.NewCache(),
+            FuluDriverSupport.BuildPubkeyCache(driver.ValidatorsOf(state)),
+            FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath),
+            FuluDriverSupport.ReadExecutionValid(testCase.CasePath),
+            FuluDriverSupport.CaseSpec(testCase.CasePath),
+            testCase.CasePath);
+
+        byte[] operand = operandPath is null ? [] : SszConsensusTestLoader.ReadSszSnappy(operandPath);
+        string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
+        bool expectSuccess = File.Exists(postPath);
+
+        Exception? thrown = null;
+        try { handler.Apply(ctx, operand); }
+        catch (Exception ex) { thrown = ex; }
+
+        if (expectSuccess)
+        {
+            if (thrown is not null)
+                Assert.Fail($"expected the operation to be accepted, but it threw: {thrown}");
+
+            FuluDriverSupport.AssertPostStateRoot(driver, postPath, ctx.State);
+        }
+        else
+        {
+            FuluDriverSupport.AssertRejected(thrown, "the operation");
+        }
+    }
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 

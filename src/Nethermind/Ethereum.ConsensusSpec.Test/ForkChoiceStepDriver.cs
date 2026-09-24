@@ -50,7 +50,7 @@ internal static class ForkChoiceStepDriver
         byte[] anchorBlockSsz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "anchor_block.ssz_snappy"));
         BeaconBlock.Decode(anchorBlockSsz, out BeaconBlock anchorBlock);
 
-        PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(anchorState);
+        PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(anchorState.Validators!);
         InMemoryStateProvider stateProvider = new();
         Hash256 anchorRoot = SszRoots.HashTreeRoot(anchorBlock);
         stateProvider.States[anchorRoot] = anchorState;

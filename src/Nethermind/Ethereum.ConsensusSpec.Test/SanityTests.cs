@@ -7,6 +7,7 @@ using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using NUnit.Framework;
@@ -17,7 +18,7 @@ namespace Ethereum.ConsensusSpec.Test;
 /// Runs the consensus-specs <c>sanity</c> suite: <c>blocks</c> (apply a sequence of signed blocks via
 /// the fork's <c>state_transition</c>) and <c>slots</c> (advance slots via the fork's
 /// <c>process_slots</c>), both through the vector's <see cref="ForkDriver"/>. Driven for the same forks
-/// as <see cref="OperationsTests"/>.
+/// as <see cref="OperationsTests"/>, each block under the vector's own runtime config.
 /// </summary>
 [TestFixture]
 public class SanityTests
@@ -43,60 +44,88 @@ public class SanityTests
         ConsensusSpecTestSummary.RunAndRecord("sanity/blocks", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
         {
             FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
-            ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
-            BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
-            EpochCache cache = driver.NewCache();
-            PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(state);
-            bool verifySignatures = FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath);
-
-            Dictionary<string, string> meta = FuluDriverSupport.ParseFlowMap(Path.Combine(testCase.CasePath, "meta.yaml"));
-            int blocksCount = int.Parse(meta["blocks_count"]);
-
-            string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
-            bool expectSuccess = File.Exists(postPath);
-
-            Exception? thrown = null;
-            try
+            switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
             {
-                for (int i = 0; i < blocksCount; i++)
-                {
-                    byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, $"blocks_{i}.ssz_snappy"));
-                    SignedBeaconBlock.Decode(ssz, out SignedBeaconBlock signedBlock);
-                    FixedNewPayloadNotifier notifier = new(valid: true);
-                    driver.ApplyBlock(state, signedBlock, cache, pubkeys, notifier, verifySignatures);
-                }
-            }
-            catch (Exception ex)
-            {
-                thrown = ex;
-            }
-
-            if (expectSuccess)
-            {
-                if (thrown is not null)
-                    Assert.Fail($"expected all {blocksCount} block(s) to apply, but it threw: {thrown}");
-
-                FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
-            }
-            else
-            {
-                FuluDriverSupport.AssertRejected(thrown, "the block sequence");
+                case ForkDriver<BeaconStateFulu> fulu:
+                    RunBlocks(testCase, fulu);
+                    break;
+                case ForkDriver<BeaconStateGloas> gloas:
+                    RunBlocks(testCase, gloas);
+                    break;
+                case ForkDriver other:
+                    throw new NotImplementedInDriverException($"fork '{other.Fork}' has no state type this suite knows.");
             }
         });
+
+    private static void RunBlocks<TState>(SanityCase testCase, ForkDriver<TState> driver) where TState : class
+    {
+        TState state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
+        EpochCache cache = driver.NewCache();
+        PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(driver.ValidatorsOf(state));
+        bool verifySignatures = FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath);
+        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(testCase.CasePath);
+
+        Dictionary<string, string> meta = FuluDriverSupport.ParseFlowMap(Path.Combine(testCase.CasePath, "meta.yaml"));
+        int blocksCount = int.Parse(meta["blocks_count"]);
+
+        string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
+        bool expectSuccess = File.Exists(postPath);
+
+        Exception? thrown = null;
+        try
+        {
+            for (int i = 0; i < blocksCount; i++)
+            {
+                byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, $"blocks_{i}.ssz_snappy"));
+                FixedNewPayloadNotifier notifier = new(valid: true);
+                driver.ApplyBlock(state, ssz, spec, cache, pubkeys, notifier, verifySignatures);
+            }
+        }
+        catch (Exception ex)
+        {
+            thrown = ex;
+        }
+
+        if (expectSuccess)
+        {
+            if (thrown is not null)
+                Assert.Fail($"expected all {blocksCount} block(s) to apply, but it threw: {thrown}");
+
+            FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
+        }
+        else
+        {
+            FuluDriverSupport.AssertRejected(thrown, "the block sequence");
+        }
+    }
 
     private static void ExecuteSlots(SanityCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("sanity/slots", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
         {
             FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
-            ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
-            BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
-            EpochCache cache = driver.NewCache();
-            int slots = FuluDriverSupport.ParseScalarInt(Path.Combine(testCase.CasePath, "slots.yaml"));
-
-            driver.ProcessSlots(state, state.Slot + (ulong)slots, cache);
-
-            FuluDriverSupport.AssertPostStateRoot(driver, Path.Combine(testCase.CasePath, "post.ssz_snappy"), state);
+            switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
+            {
+                case ForkDriver<BeaconStateFulu> fulu:
+                    RunSlots(testCase, fulu);
+                    break;
+                case ForkDriver<BeaconStateGloas> gloas:
+                    RunSlots(testCase, gloas);
+                    break;
+                case ForkDriver other:
+                    throw new NotImplementedInDriverException($"fork '{other.Fork}' has no state type this suite knows.");
+            }
         });
+
+    private static void RunSlots<TState>(SanityCase testCase, ForkDriver<TState> driver) where TState : class
+    {
+        TState state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
+        EpochCache cache = driver.NewCache();
+        int slots = FuluDriverSupport.ParseScalarInt(Path.Combine(testCase.CasePath, "slots.yaml"));
+
+        driver.ProcessSlots(state, driver.SlotOf(state) + (ulong)slots, cache);
+
+        FuluDriverSupport.AssertPostStateRoot(driver, Path.Combine(testCase.CasePath, "post.ssz_snappy"), state);
+    }
 
     private static IEnumerable<TestCaseData> MinimalBlockCases() => Cases(ConsensusPreset.Minimal, "blocks", "meta.yaml");
     private static IEnumerable<TestCaseData> MinimalSlotCases() => Cases(ConsensusPreset.Minimal, "slots", "slots.yaml");

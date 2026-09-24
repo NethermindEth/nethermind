@@ -15,7 +15,7 @@ namespace Ethereum.ConsensusSpec.Test;
 /// one <c>EpochProcessing.Process*</c> method, applied to the fixture's pre-state and compared by root
 /// against its post-state. Driven for the same forks as <see cref="OperationsTests"/>, through the same
 /// <see cref="ForkDriver"/>; no sub-transition reads the proposer index, so the Electra carry-through
-/// needs nothing beyond the fork's state shape.
+/// needs nothing beyond the fork's state shape. Gloas maps to the <c>GloasEpochProcessing.Process*</c> methods.
 /// </summary>
 [TestFixture]
 public class EpochProcessingTests
@@ -39,6 +39,29 @@ public class EpochProcessingTests
         ["sync_committee_updates"] = (state, _) => EpochProcessing.ProcessSyncCommitteeUpdates(state),
     };
 
+    private static readonly Dictionary<string, Action<BeaconStateGloas, EpochCache>> GloasHandlers = new(StringComparer.Ordinal)
+    {
+        ["builder_pending_payments"] = GloasEpochProcessing.ProcessBuilderPendingPayments,
+        ["effective_balance_updates"] = GloasEpochProcessing.ProcessEffectiveBalanceUpdates,
+        ["eth1_data_reset"] = (state, _) => GloasEpochProcessing.ProcessEth1DataReset(state),
+        ["historical_summaries_update"] = (state, _) => GloasEpochProcessing.ProcessHistoricalSummariesUpdate(state),
+        ["inactivity_updates"] = (state, _) => GloasEpochProcessing.ProcessInactivityUpdates(state),
+        ["justification_and_finalization"] = GloasEpochProcessing.ProcessJustificationAndFinalization,
+        ["participation_flag_updates"] = (state, _) => GloasEpochProcessing.ProcessParticipationFlagUpdates(state),
+        ["pending_consolidations"] = (state, _) => GloasEpochProcessing.ProcessPendingConsolidations(state),
+        ["pending_deposits"] = GloasEpochProcessing.ProcessPendingDeposits,
+        // The churn-boundary cases of process_pending_deposits, generated under their own handler name.
+        ["pending_deposits_churn"] = GloasEpochProcessing.ProcessPendingDeposits,
+        ["proposer_lookahead"] = (state, _) => GloasEpochProcessing.ProcessProposerLookahead(state),
+        ["ptc_window"] = (state, _) => GloasEpochProcessing.ProcessPtcWindow(state),
+        ["randao_mixes_reset"] = (state, _) => GloasEpochProcessing.ProcessRandaoMixesReset(state),
+        ["registry_updates"] = GloasEpochProcessing.ProcessRegistryUpdates,
+        ["rewards_and_penalties"] = GloasEpochProcessing.ProcessRewardsAndPenalties,
+        ["slashings"] = GloasEpochProcessing.ProcessSlashings,
+        ["slashings_reset"] = (state, _) => GloasEpochProcessing.ProcessSlashingsReset(state),
+        ["sync_committee_updates"] = (state, _) => GloasEpochProcessing.ProcessSyncCommitteeUpdates(state),
+    };
+
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(EpochProcessingCase testCase) => Execute(testCase);
 
@@ -56,40 +79,54 @@ public class EpochProcessingTests
                     "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
             }
 
-            ForkDriver driver = FuluDriverSupport.RequireForkDriver(testCase.Fork);
-
-            if (!Handlers.TryGetValue(testCase.SubTransitionName, out Action<BeaconStateFulu, EpochCache>? apply))
-                throw new NotImplementedInDriverException($"epoch sub-transition '{testCase.SubTransitionName}' has no handler in this driver.");
-
-            BeaconStateFulu state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
-            EpochCache cache = driver.NewCache();
-
-            // Most epoch_processing vectors are unconditional (no invalid-input case: a sub-transition
-            // is a mechanical fold over existing state, not a signature or bounds check on attacker
-            // input) - but some ARE, e.g. registry_updates/invalid_large_withdrawable_epoch supplies a
-            // validator whose churn-adjusted exit epoch overflows uint64 and carries no post.ssz_snappy,
-            // meaning the reference implementation also cannot produce a valid post-state for it. Absent
-            // post.ssz_snappy is therefore "expect this sub-transition to fail", exactly like operations
-            // and sanity/blocks - discovered by this suite's own mutation-testing pass, not assumed.
-            string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
-            bool expectSuccess = File.Exists(postPath);
-
-            Exception? thrown = null;
-            try { apply(state, cache); }
-            catch (Exception ex) { thrown = ex; }
-
-            if (expectSuccess)
+            switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
             {
-                if (thrown is not null)
-                    Assert.Fail($"expected the sub-transition to succeed, but it threw: {thrown}");
-
-                FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
-            }
-            else
-            {
-                FuluDriverSupport.AssertRejected(thrown, "the sub-transition");
+                case ForkDriver<BeaconStateFulu> fulu:
+                    Run(testCase, fulu, Handlers);
+                    break;
+                case ForkDriver<BeaconStateGloas> gloas:
+                    Run(testCase, gloas, GloasHandlers);
+                    break;
+                case ForkDriver other:
+                    throw new NotImplementedInDriverException($"fork '{other.Fork}' has no epoch_processing handler table.");
             }
         });
+
+    private static void Run<TState>(EpochProcessingCase testCase, ForkDriver<TState> driver, Dictionary<string, Action<TState, EpochCache>> handlers)
+        where TState : class
+    {
+        if (!handlers.TryGetValue(testCase.SubTransitionName, out Action<TState, EpochCache>? apply))
+            throw new NotImplementedInDriverException($"epoch sub-transition '{testCase.SubTransitionName}' has no handler in this driver.");
+
+        TState state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
+        EpochCache cache = driver.NewCache();
+
+        // Most epoch_processing vectors are unconditional (no invalid-input case: a sub-transition
+        // is a mechanical fold over existing state, not a signature or bounds check on attacker
+        // input) - but some ARE, e.g. registry_updates/invalid_large_withdrawable_epoch supplies a
+        // validator whose churn-adjusted exit epoch overflows uint64 and carries no post.ssz_snappy,
+        // meaning the reference implementation also cannot produce a valid post-state for it. Absent
+        // post.ssz_snappy is therefore "expect this sub-transition to fail", exactly like operations
+        // and sanity/blocks - discovered by this suite's own mutation-testing pass, not assumed.
+        string postPath = Path.Combine(testCase.CasePath, "post.ssz_snappy");
+        bool expectSuccess = File.Exists(postPath);
+
+        Exception? thrown = null;
+        try { apply(state, cache); }
+        catch (Exception ex) { thrown = ex; }
+
+        if (expectSuccess)
+        {
+            if (thrown is not null)
+                Assert.Fail($"expected the sub-transition to succeed, but it threw: {thrown}");
+
+            FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
+        }
+        else
+        {
+            FuluDriverSupport.AssertRejected(thrown, "the sub-transition");
+        }
+    }
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
