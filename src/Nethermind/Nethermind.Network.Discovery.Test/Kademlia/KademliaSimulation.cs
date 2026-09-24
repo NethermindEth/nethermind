@@ -169,9 +169,10 @@ public class KademliaSimulation
         TimeSpan queryDuration = sw.Elapsed;
         double totalNodesReturned = nodeIds.Count * _config.KSize;
 
-        // Alpha > 1 lookups race their Task.Run workers and end when the first one stops, so the
-        // ratio moves run to run (observed 0.948-0.99).
-        Assert.That(closestKCount / totalNodesReturned, Is.GreaterThan(0.9));
+        // Alpha = 1 is deterministic (~0.9935). Alpha > 1 lookups interleave their Task.Run workers,
+        // so the ratio moves run to run (observed 0.948-0.99).
+        double minClosestKRatio = _config.Alpha == 1 ? 0.98 : 0.93;
+        Assert.That(closestKCount / totalNodesReturned, Is.GreaterThan(minClosestKRatio));
 
         TestContext.Out.WriteLine($"Closest K ratio {closestKCount / totalNodesReturned}");
         TestContext.Out.WriteLine($"Missed ratio {missedCount / totalNodesReturned}");
