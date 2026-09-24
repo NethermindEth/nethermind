@@ -20,7 +20,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// Instead of bucketing each group by nibble, decomposing it and composing it back, a single recursion descends one
     /// bit at a time, splitting the sorted range where the bit turns to one and carrying the stored node covering each
     /// position alongside. The recursion returns in post-order, the order a group stores its positions in, so every
-    /// node is appended to the group as soon as it is composed.
+    /// node is appended to the group as soon as it is composed. A fold below a boundary slot hands back the final
+    /// encoding of the node its parent group stores there.
     /// </remarks>
     /// <param name="sortedOperations">Operations in strictly ascending key order.</param>
     [SkipLocalsInit]
@@ -34,13 +35,20 @@ internal static partial class TrieUpdater<TKey, TPath>
         FoldContext context = new(store, storeWriter, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, null, null, default, prefixlessBranchOmission);
         Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
         PbtTraversalPath path = new(pathBuffer);
+        Span<byte> encoding = stackalloc byte[MaxNodeLength];
         GroupFrameReader<TKey, TPath> reader = new(store, 0, currentRoot, metrics);
         using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
             using PbtNodeGroupWriter<TPath> writer = new(0, context.MemoryProvider, context.PrefixlessBranchOmission);
             BoundaryNode root = reader.TakeRoot(path);
-            FoldResult result = FoldSortedRange(context, ref reader, writer, root, sortedOperations, ref path, 0, 0);
-            ValueHash256 hash = writer.WriteRoot(path, result, metrics);
+            SlotNode result = FoldSortedRange(context, ref reader, writer, root, sortedOperations, ref path, 0, 0, encoding);
+            ValueHash256 hash = default;
+            if (!result.IsEmpty)
+            {
+                ReadOnlySpan<byte> node = encoding[..result.Length];
+                node.CopyTo(writer.Append(PbtFourLevelGroupGeometry.RootPosition, node.Length));
+                hash = result.Hash != default ? result.Hash : HashBranch(node, metrics);
+            }
             PublishGroup(storeWriter, ref reader, writer, path, hash);
             return hash;
         }
@@ -53,20 +61,37 @@ internal static partial class TrieUpdater<TKey, TPath>
             Debug.Assert(operations[index - 1].Key.CompareTo(operations[index].Key) < 0, "Operations must be in strictly ascending key order.");
     }
 
+    /// <summary>The longest node encoding: a branch whose prefix and both inlined keys are as long as a key can be.</summary>
+    private const int MaxNodeLength = PbtNodeCodec.MaxBranchPreimageLength + PbtNodeCodec.BranchTrailerHeaderLength + 2 * PbtStorageTreeKey.MaxLength;
+
+    /// <summary>A node a fold encoded for its caller to place, anchored at the depth the caller places it at.</summary>
+    private struct SlotNode(int length, in ValueHash256 hash)
+    {
+        /// <summary>The encoding's length, or zero when the subtree folded away.</summary>
+        internal readonly int Length = length;
+        /// <summary>The node's hash, or default when its encoding still has to be hashed.</summary>
+        internal readonly ValueHash256 Hash = hash;
+        /// <summary>The change in stored size across the groups this node was folded from, still owed to the caller's boundary slot.</summary>
+        internal long SizeDelta;
+        internal readonly bool IsEmpty => Length == 0;
+    }
+
     /// <summary>The sorted counterpart of <see cref="FoldMutations"/>, with the in-frame recursion in place of bucketing.</summary>
+    /// <param name="anchorDepth">The depth the caller places the result at; the range and <paramref name="input"/> share the path down to <paramref name="bitDepth"/>.</param>
+    /// <param name="encoding">Receives the result's encoding, at least <see cref="MaxNodeLength"/> bytes.</param>
     [SkipLocalsInit]
-    private static FoldResult FoldSortedRange(FoldContext context, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter<TPath> ownerWriter,
-        scoped in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int resultDepth)
+    private static SlotNode FoldSortedRange(FoldContext context, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter<TPath> ownerWriter,
+        scoped in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int anchorDepth, scoped Span<byte> encoding)
     {
         Debug.Assert(path.BitDepth == bitDepth);
         TrieUpdaterMetrics? metrics = context.Metrics;
         BoundaryNode current = input;
-        if (operations.IsEmpty) return current.ToFoldResult(path, resultDepth);
+        if (operations.IsEmpty) return EncodeReanchored(current, anchorDepth, encoding);
 
         if (current.IsEmpty)
         {
             if (operations.Length == 1)
-                return operations[0].Value == default ? default : CreateLeaf(operations[0], metrics);
+                return operations[0].Value == default ? default : EncodeLeaf(operations[0].Key, HashLeaf(operations[0], metrics), encoding);
         }
         else if (current.IsLeaf)
         {
@@ -77,13 +102,12 @@ internal static partial class TrieUpdater<TKey, TPath>
                 if (operation.Key.Equals(leafKey))
                 {
                     if (operation.Value == default) return default;
-                    FoldResult leaf = CreateLeaf(operation, metrics);
-                    return leaf.LeafHash == current.Hash ? current.ToFoldResult(path, resultDepth) : leaf;
+                    return EncodeLeaf(leafKey, HashLeaf(operation, metrics), encoding);
                 }
-                if (operation.Value == default) return current.ToFoldResult(path, resultDepth);
+                if (operation.Value == default) return EncodeLeaf(leafKey, current.Hash, encoding);
                 int divergenceDepth = leafKey.FirstDifferingBit(operation.Key, bitDepth);
                 if (divergenceDepth < Math.Min(leafKey.BitLength, operation.Key.BitLength))
-                    return TwoLeafBranch(new FoldResult(leafKey, current.Hash), CreateLeaf(operation, metrics), divergenceDepth, resultDepth);
+                    return EncodeTwoLeafBranch(leafKey, current.Hash, operation.Key, HashLeaf(operation, metrics), divergenceDepth, anchorDepth, encoding);
             }
         }
         else if (operations.Length == 1 && current.LeafChildrenMask == (LeftLeaf | RightLeaf))
@@ -93,20 +117,20 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (right || operation.Key.Equals(current.LeftLeafKey))
             {
                 if (operation.Value == default)
-                    return right ? new FoldResult(current.LeftLeafKey, current.LeftHash) : new FoldResult(current.RightLeafKey, current.RightHash);
-                FoldResult leaf = CreateLeaf(operation, metrics);
-                if (leaf.LeafHash == (right ? current.RightHash : current.LeftHash)) return current.ToFoldResult(path, resultDepth);
-                FoldResult branch = current.ToFoldResult(path, resultDepth);
-                return new FoldResult(branch.Path, right ? branch.LeftHash : leaf.LeafHash, right ? leaf.LeafHash : branch.RightHash,
-                    branch.LeafKey, branch.RightLeafKey, branch.LeafChildren, branch.Encoding);
+                    return right ? EncodeLeaf(current.LeftLeafKey, current.LeftHash, encoding) : EncodeLeaf(current.RightLeafKey, current.RightHash, encoding);
+                ValueHash256 leafHash = HashLeaf(operation, metrics);
+                if (leafHash == (right ? current.RightHash : current.LeftHash)) return EncodeReanchored(current, anchorDepth, encoding);
+                PbtNodeReader branch = current.Reader;
+                int length = EncodeReanchored(branch, anchorDepth - current.AnchorDepth, right ? branch.LeftHash : leafHash, right ? leafHash : branch.RightHash, encoding);
+                return new SlotNode(length, default);
             }
-            if (operation.Value == default) return current.ToFoldResult(path, resultDepth);
+            if (operation.Value == default) return EncodeReanchored(current, anchorDepth, encoding);
         }
 
         // A key ending here sorts before every longer key it prefixes, so it can only be the first.
         if (!TKey.IsFixedLength && bitDepth > 0 && (bitDepth & 7) == 0
             && (operations[0].Key.BitLength == bitDepth || (current.IsLeaf && current.LeafKey.BitLength == bitDepth)))
-            return FoldSortedTerminal(context, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, resultDepth);
+            return FoldSortedTerminal(context, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, anchorDepth, encoding);
 
         TKey firstKey = operations[0].Key;
         int branchDepth = operations.Length == 1 ? firstKey.BitLength : firstKey.FirstDifferingBit(operations[^1].Key, bitDepth);
@@ -118,7 +142,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (groupDepth > bitDepth)
         {
             path.AppendKey(firstKey.Bytes, groupDepth);
-            FoldResult result = FoldSortedRange(context, ref ownerReader, ownerWriter, current, operations, ref path, groupDepth, resultDepth);
+            SlotNode result = FoldSortedRange(context, ref ownerReader, ownerWriter, current, operations, ref path, groupDepth, anchorDepth, encoding);
             path.Truncate(bitDepth);
             if (ownerReader.BitDepth == bitDepth)
             {
@@ -129,41 +153,55 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         if (ownerReader.BitDepth == bitDepth)
-            return WalkFrame(context, ref ownerReader, ownerWriter, current, operations, path, resultDepth);
+        {
+            // Only the tree root folds in the frame it was handed; its root is detached for the caller to write back.
+            ComposedNode root = WalkFrame(context, ref ownerReader, ownerWriter, current, operations, path);
+            if (root.IsEmpty) return default;
+            ownerWriter.Entry(root.Offset, root.Length).Span.CopyTo(encoding);
+            ownerWriter.DropLast(PbtFourLevelGroupGeometry.RootPosition);
+            return new SlotNode(root.Length, root.Hash);
+        }
 
-        return FoldSortedInOwnFrame(context, in ownerReader, current, operations, ref path, bitDepth, resultDepth);
+        return FoldSortedInOwnFrame(context, in ownerReader, current, operations, ref path, bitDepth, anchorDepth, encoding);
     }
 
     /// <summary>Folds a range holding a key that ends at <paramref name="bitDepth"/>, apart from the longer keys, as <see cref="FoldMutations"/> does.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static FoldResult FoldSortedTerminal(FoldContext context, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter<TPath> ownerWriter,
-        BoundaryNode current, ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int resultDepth)
+    [SkipLocalsInit]
+    private static SlotNode FoldSortedTerminal(FoldContext context, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter<TPath> ownerWriter,
+        BoundaryNode current, ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int anchorDepth, scoped Span<byte> encoding)
     {
+        Span<byte> other = stackalloc byte[MaxNodeLength];
         bool hasTerminalLeaf = current.IsLeaf && current.LeafKey.BitLength == bitDepth;
         if (operations[0].Key.BitLength == bitDepth)
         {
             BoundaryNode terminal = hasTerminalLeaf ? BoundaryNode.Move(ref current) : default;
-            FoldResult terminalResult = FoldSortedRange(context, ref ownerReader, ownerWriter, terminal, operations[..1], ref path, bitDepth, resultDepth);
-            FoldResult descendantResult = FoldSortedRange(context, ref ownerReader, ownerWriter, current, operations[1..], ref path, bitDepth, resultDepth);
+            SlotNode terminalResult = FoldSortedRange(context, ref ownerReader, ownerWriter, terminal, operations[..1], ref path, bitDepth, anchorDepth, other);
+            SlotNode descendantResult = FoldSortedRange(context, ref ownerReader, ownerWriter, current, operations[1..], ref path, bitDepth, anchorDepth, encoding);
             if (!terminalResult.IsEmpty && !descendantResult.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-            FoldResult result = terminalResult.IsEmpty ? descendantResult : terminalResult;
+            SlotNode result = descendantResult;
+            if (!terminalResult.IsEmpty)
+            {
+                other[..terminalResult.Length].CopyTo(encoding);
+                result = terminalResult;
+            }
             result.SizeDelta = terminalResult.SizeDelta + descendantResult.SizeDelta;
             return result;
         }
 
         BoundaryNode descendants = default;
-        FoldResult descendantsResult = FoldSortedRange(context, ref ownerReader, ownerWriter, descendants, operations, ref path, bitDepth, resultDepth);
+        SlotNode descendantsResult = FoldSortedRange(context, ref ownerReader, ownerWriter, descendants, operations, ref path, bitDepth, anchorDepth, other);
         if (!descendantsResult.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-        FoldResult leafResult = current.ToFoldResult(path, resultDepth);
+        SlotNode leafResult = EncodeReanchored(current, anchorDepth, encoding);
         leafResult.SizeDelta = descendantsResult.SizeDelta;
         return leafResult;
     }
 
-    /// <summary>The sorted counterpart of <see cref="FoldInOwnFrame"/>.</summary>
+    /// <summary>The sorted counterpart of <see cref="FoldInOwnFrame"/>, detaching the group's root as the encoding its caller places.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
-    private static FoldResult FoldSortedInOwnFrame(FoldContext context, in GroupFrameReader<TKey, TPath> ownerReader, scoped in BoundaryNode current,
-        ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int resultDepth)
+    private static SlotNode FoldSortedInOwnFrame(FoldContext context, in GroupFrameReader<TKey, TPath> ownerReader, scoped in BoundaryNode current,
+        ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int anchorDepth, scoped Span<byte> encoding)
     {
         TrieUpdaterMetrics? metrics = context.Metrics;
         GroupFrameReader<TKey, TPath> reader = new(context.Store, bitDepth, metrics);
@@ -171,19 +209,27 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
             ResolveAbsentGroup(ref reader, in ownerReader, path, current);
-            if (!reader.IsResolved) reader.SetGroupHash(current.HashAt(path, bitDepth, metrics));
-            FoldResult result = WalkFrame(context, ref reader, writer, current, operations, path, resultDepth);
-            PbtTraversalPath resultCursor = path.Truncated(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)], resultDepth);
-            ValueHash256 hash = result.Hash(resultCursor, bitDepth, metrics);
-            result.SizeDelta = PublishGroup(context.Writer, ref reader, writer, path, hash);
-            if (result.Kind == NodeKind.Branch) result = result.WithKnownHash(hash, result.BranchDepth(resultCursor) - bitDepth);
+            if (!reader.IsResolved) reader.SetGroupHash(HashAt(current, bitDepth, metrics));
+            ComposedNode root = WalkFrame(context, ref reader, writer, current, operations, path);
+            SlotNode result = default;
+            ValueHash256 groupHash = default;
+            if (!root.IsEmpty)
+            {
+                ReadOnlySpan<byte> node = writer.Entry(root.Offset, root.Length).Span;
+                groupHash = root.Hash != default ? root.Hash : HashBranch(node, metrics);
+                result = anchorDepth == bitDepth || PbtNodeReader.FromValidated(node).IsLeaf
+                    ? Copy(node, groupHash, encoding)
+                    : new SlotNode(EncodeLifted(PbtNodeReader.FromValidated(node), path, anchorDepth, encoding), default);
+                writer.DropLast(PbtFourLevelGroupGeometry.RootPosition);
+            }
+            result.SizeDelta = PublishGroup(context.Writer, ref reader, writer, path, groupHash);
             return result;
         }
     }
 
-    /// <summary>Rebuilds the open frame's group from <paramref name="input"/> and the range, returning its root for the caller to place.</summary>
-    private static FoldResult WalkFrame(FoldContext context, ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
-        scoped in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations, PbtTraversalPath path, int resultDepth)
+    /// <summary>Rebuilds the open frame's group from <paramref name="input"/> and the range, leaving its root as the last entry, at the root position.</summary>
+    private static ComposedNode WalkFrame(FoldContext context, ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
+        scoped in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations, PbtTraversalPath path)
     {
         int bitDepth = path.BitDepth;
         // Only a branch splitting inside the group has anything stored in it; the root position is the input itself.
@@ -195,12 +241,102 @@ internal static partial class TrieUpdater<TKey, TPath>
         try
         {
             ComposedNode root = Walk(ref walk, default, input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource), operations);
-            return TakeRoot(writer, path, resultDepth, Land(ref reader, writer, path, root, PbtFourLevelGroupGeometry.RootPosition));
+            return root.IsEmpty ? default : Land(ref reader, writer, path, root, PbtFourLevelGroupGeometry.RootPosition);
         }
         finally
         {
-            if (walk.FoldedAhead is { } foldedAhead) ArrayPool<FoldResult>.Shared.Return(foldedAhead);
+            if (walk.FoldedAhead is { } foldedAhead) ArrayPool<byte>.Shared.Return(foldedAhead);
+            if (walk.FoldedAheadNodes is { } foldedAheadNodes) ArrayPool<SlotNode>.Shared.Return(foldedAheadNodes);
         }
+    }
+
+    private static SlotNode Copy(ReadOnlySpan<byte> node, in ValueHash256 hash, Span<byte> encoding)
+    {
+        node.CopyTo(encoding);
+        return new SlotNode(node.Length, hash);
+    }
+
+    private static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding, TrieUpdaterMetrics? metrics)
+    {
+        metrics?.IncrementNodeHashes();
+        return Blake3Hash.Hash(PbtNodeReader.FromValidated(encoding).Preimage);
+    }
+
+    private static ValueHash256 HashLeaf(in PbtWriteOperation<TKey> operation, TrieUpdaterMetrics? metrics)
+    {
+        metrics?.IncrementNodeHashes();
+        // Copied out first: a span taken off a readonly reference's property would point at a hidden temporary.
+        TKey key = operation.Key;
+        ValueHash256 value = operation.Value;
+        return PbtNodeCodec.HashLeaf(key.Bytes, value.Bytes);
+    }
+
+    private static SlotNode EncodeLeaf(TKey key, in ValueHash256 hash, Span<byte> encoding)
+    {
+        PbtNodeCodec.EncodeLeaf(encoding, key);
+        return new SlotNode(PbtNodeCodec.LeafLength(key.Length), hash);
+    }
+
+    /// <summary>Encodes <paramref name="node"/> anchored at <paramref name="anchorDepth"/>, at or below its own anchor.</summary>
+    private static SlotNode EncodeReanchored(scoped in BoundaryNode node, int anchorDepth, Span<byte> encoding)
+    {
+        if (node.IsEmpty) return default;
+        if (node.IsLeaf) return EncodeLeaf(node.LeafKey, node.Hash, encoding);
+        PbtNodeReader branch = node.Reader;
+        int skippedBits = anchorDepth - node.AnchorDepth;
+        return new SlotNode(EncodeReanchored(branch, skippedBits, branch.LeftHash, branch.RightHash, encoding), skippedBits == 0 ? node.Hash : default);
+    }
+
+    /// <summary>Encodes <paramref name="stored"/> with the first <paramref name="skippedBits"/> of its prefix dropped and the given child hashes.</summary>
+    private static int EncodeReanchored(scoped PbtNodeReader stored, int skippedBits, in ValueHash256 left, in ValueHash256 right, Span<byte> encoding)
+    {
+        CompressedPrefix prefix = stored.Prefix;
+        int bitCount = prefix.BitCount - skippedBits;
+        int length = PbtNodeCodec.BranchLength(bitCount, stored.LeftKey.Length, stored.RightKey.Length);
+        PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, left, right);
+        if (bitCount != 0) PbtBitPrefix.CopyBits(prefix.Bytes, skippedBits, bitCount, encoding[3..], 0);
+        PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..length], stored.LeftKey, stored.RightKey);
+        return length;
+    }
+
+    /// <summary>Encodes a group's root branch, stored at the group's depth, anchored higher at <paramref name="anchorDepth"/> after a prefix jump.</summary>
+    /// <remarks>The bits between the two depths are the path's, which the jump skipped along the range's shared prefix.</remarks>
+    private static int EncodeLifted(scoped PbtNodeReader root, scoped in PbtTraversalPath path, int anchorDepth, Span<byte> encoding)
+    {
+        CompressedPrefix prefix = root.Prefix;
+        int liftedBits = path.BitDepth - anchorDepth;
+        int bitCount = prefix.BitCount + liftedBits;
+        int length = PbtNodeCodec.BranchLength(bitCount, root.LeftKey.Length, root.RightKey.Length);
+        PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, root.LeftHash, root.RightHash);
+        PbtBitPrefix.CopyBits(path.Bytes, anchorDepth, liftedBits, encoding[3..], 0);
+        if (prefix.BitCount != 0) PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, encoding[3..], liftedBits);
+        PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..length], root.LeftKey, root.RightKey);
+        return length;
+    }
+
+    /// <summary>The branch over two leaves whose keys first differ at <paramref name="branchDepth"/>, anchored at <paramref name="anchorDepth"/>.</summary>
+    private static SlotNode EncodeTwoLeafBranch(TKey first, in ValueHash256 firstHash, TKey second, in ValueHash256 secondHash, int branchDepth, int anchorDepth,
+        Span<byte> encoding)
+    {
+        bool firstIsLeft = first.GetBit(branchDepth) == 0;
+        TKey leftKey = firstIsLeft ? first : second;
+        TKey rightKey = firstIsLeft ? second : first;
+        int bitCount = branchDepth - anchorDepth;
+        int length = PbtNodeCodec.BranchLength(bitCount, leftKey.Length, rightKey.Length);
+        PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, firstIsLeft ? firstHash : secondHash, firstIsLeft ? secondHash : firstHash);
+        if (bitCount != 0) PbtBitPrefix.CopyBits(first.Bytes, anchorDepth, bitCount, encoding[3..], 0);
+        PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..length], leftKey.Bytes, rightKey.Bytes);
+        return new SlotNode(length, default);
+    }
+
+    /// <summary>The hash of <paramref name="node"/> as the group at <paramref name="depth"/> is keyed by, as <see cref="BoundaryNode.HashAt"/>.</summary>
+    [SkipLocalsInit]
+    private static ValueHash256 HashAt(scoped in BoundaryNode node, int depth, TrieUpdaterMetrics? metrics)
+    {
+        if (node.IsEmpty || node.IsLeaf || depth == node.AnchorDepth) return node.Hash;
+        Span<byte> encoding = stackalloc byte[MaxNodeLength];
+        int length = EncodeReanchored(node.Reader, depth - node.AnchorDepth, node.LeftHash, node.RightHash, encoding);
+        return HashBranch(encoding[..length], metrics);
     }
 
     /// <summary>Composes the node at <paramref name="local"/> from its <paramref name="cover"/> and the operations below it, appending it to the group.</summary>
@@ -353,7 +489,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         node = default;
         if (cover.IsEmpty)
         {
-            if (operation.Value != default) node = AppendResult(walk.Writer, local.Position, CreateLeaf(operation, walk.Context.Metrics));
+            if (operation.Value != default) node = AppendLeaf(walk.Writer, local.Position, operation.Key, HashLeaf(operation, walk.Context.Metrics));
             return true;
         }
         if (!operation.Key.Equals(walk.LeafKey(cover)))
@@ -363,8 +499,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             return true;
         }
         if (operation.Value == default) return true;
-        FoldResult leaf = CreateLeaf(operation, walk.Context.Metrics);
-        node = leaf.LeafHash == walk.LeafHash(cover) ? AppendUntouched(ref walk, local, cover) : AppendResult(walk.Writer, local.Position, leaf);
+        ValueHash256 leafHash = HashLeaf(operation, walk.Context.Metrics);
+        node = leafHash == walk.LeafHash(cover) ? AppendUntouched(ref walk, local, cover) : AppendLeaf(walk.Writer, local.Position, operation.Key, leafHash);
         return true;
     }
 
@@ -389,7 +525,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 return AppendImplicitBranchSorted(ref walk.Reader, walk.Writer, walk.Path, position);
         }
 
-        if (walk.IsLeaf(cover)) return AppendResult(walk.Writer, position, new FoldResult(walk.LeafKey(cover), walk.LeafHash(cover)));
+        if (walk.IsLeaf(cover)) return AppendLeaf(walk.Writer, position, walk.LeafKey(cover), walk.LeafHash(cover));
 
         // A branch anchored above this position, whose compressed prefix passes through it.
         PbtNodeReader node = walk.Node(cover, out int anchorDepth);
@@ -405,29 +541,49 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (copied != 0) walk.Context.Metrics?.AddBulkCopy(copied);
     }
 
-    /// <summary>Folds the boundary slot <paramref name="local"/> in the group below and appends its result, as <see cref="BucketFolds"/> does.</summary>
-    private static ComposedNode FoldSlot(scoped ref SortedWalk walk, NodeGroupPath local, Cover cover, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
+    private static ComposedNode AppendLeaf(PbtNodeGroupWriter<TPath> writer, int position, TKey key, in ValueHash256 hash)
     {
-        FoldResult result = FoldSlotResult(ref walk, local, cover, operations);
-        return result.IsEmpty ? default : AppendResult(walk.Writer, local.Position, result);
+        int offset = writer.WrittenCount;
+        int length = PbtNodeCodec.LeafLength(key.Length);
+        PbtNodeCodec.EncodeLeaf(writer.Append(position, length), key);
+        return new ComposedNode(offset, length, hash);
     }
 
+    /// <summary>Folds the boundary slot <paramref name="local"/> in the group below and appends the node it returns, as <see cref="BucketFolds"/> does.</summary>
     [SkipLocalsInit]
-    private static FoldResult FoldSlotResult(scoped ref SortedWalk walk, NodeGroupPath local, Cover cover, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
+    private static ComposedNode FoldSlot(scoped ref SortedWalk walk, NodeGroupPath local, Cover cover, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
     {
         int slot = local.Slot;
+        Span<byte> encoding = stackalloc byte[MaxNodeLength];
+        SlotNode result;
+        scoped ReadOnlySpan<byte> node;
         if ((walk.FoldedAheadMask >> slot & 1) != 0)
         {
             walk.FoldedAheadMask &= ~(1 << slot);
-            return FoldResult.Move(ref walk.FoldedAhead![slot]);
+            result = walk.FoldedAheadNodes![slot];
+            node = walk.FoldedAhead.AsSpan(slot * MaxNodeLength, result.Length);
         }
+        else
+        {
+            result = FoldSlotBelow(ref walk, local, cover, operations, encoding);
+            node = encoding[..result.Length];
+        }
+        if (result.IsEmpty) return default;
+        int offset = walk.Writer.WrittenCount;
+        node.CopyTo(walk.Writer.Append(local.Position, node.Length));
+        return new ComposedNode(offset, node.Length, result.Hash);
+    }
 
+    /// <summary>Folds the group below the boundary slot <paramref name="local"/>, encoding the node the slot then holds into <paramref name="encoding"/>.</summary>
+    private static SlotNode FoldSlotBelow(scoped ref SortedWalk walk, NodeGroupPath local, Cover cover, ReadOnlySpan<PbtWriteOperation<TKey>> operations, scoped Span<byte> encoding)
+    {
+        int slot = local.Slot;
         BoundaryNode boundary = walk.Boundary(cover);
         int bitDepth = walk.BitDepth;
+        int slotDepth = bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
         PbtTraversalPath slotPath = walk.Path;
         slotPath.AppendMut(slot);
-        FoldResult result = FoldSortedRange(walk.Context, ref walk.Reader, walk.Writer, boundary, operations, ref slotPath,
-            bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, bitDepth);
+        SlotNode result = FoldSortedRange(walk.Context, ref walk.Reader, walk.Writer, boundary, operations, ref slotPath, slotDepth, slotDepth, encoding);
         slotPath.Truncate(bitDepth);
         walk.Writer.AddDescendantDelta(slot, result.SizeDelta);
         return result;
@@ -447,13 +603,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup)
         {
             int slot = local.Slot;
-            if ((walk.FoldedAheadMask >> slot & 1) != 0) return !walk.FoldedAhead![slot].IsEmpty;
-            FoldResult result = FoldSlotResult(ref walk, local, cover, operations);
-            walk.FoldedAhead ??= ArrayPool<FoldResult>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots);
+            if ((walk.FoldedAheadMask >> slot & 1) != 0) return !walk.FoldedAheadNodes![slot].IsEmpty;
+            walk.FoldedAhead ??= ArrayPool<byte>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots * MaxNodeLength);
+            walk.FoldedAheadNodes ??= ArrayPool<SlotNode>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots);
+            SlotNode result = FoldSlotBelow(ref walk, local, cover, operations, walk.FoldedAhead.AsSpan(slot * MaxNodeLength, MaxNodeLength));
+            walk.FoldedAheadNodes![slot] = result;
             walk.FoldedAheadMask |= 1 << slot;
-            bool survives = !result.IsEmpty;
-            walk.FoldedAhead[slot] = result;
-            return survives;
+            return !result.IsEmpty;
         }
 
         int split = SplitIndex(operations, walk.BitDepth + local.Length);
@@ -531,7 +687,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly int BitDepth;
         private readonly BoundaryNode _input;
         private readonly uint _stored;
-        internal FoldResult[]? FoldedAhead;
+        /// <summary>The encodings of the slots folded ahead of the walk, <see cref="MaxNodeLength"/> bytes per slot.</summary>
+        internal byte[]? FoldedAhead;
+        internal SlotNode[]? FoldedAheadNodes;
         internal int FoldedAheadMask;
 
         internal SortedWalk(FoldContext context, ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
