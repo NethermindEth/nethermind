@@ -222,17 +222,17 @@ public class HeaderValidatorTests
         Hash256 requestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
 
         yield return new TestCaseData(firstCancun, 0ul, null, null, BlockErrorMessages.MissingExcessBlobGas)
-            .SetName("A_Cancun_null_excess_blob_gas_is_rejected");
+            .SetName("Cancun_null_excess_blob_gas_is_rejected");
         yield return new TestCaseData(firstCancun, null, 0ul, null, BlockErrorMessages.MissingBlobGasUsed)
-            .SetName("B_Cancun_null_blob_gas_used_is_rejected");
+            .SetName("Cancun_null_blob_gas_used_is_rejected");
         yield return new TestCaseData(lastPreCancun, null, 0ul, null, BlockErrorMessages.NotAllowedExcessBlobGas)
-            .SetName("C_pre_Cancun_excess_blob_gas_is_rejected");
+            .SetName("Pre_Cancun_excess_blob_gas_is_rejected");
         yield return new TestCaseData(lastPreCancun, 0ul, null, null, BlockErrorMessages.NotAllowedBlobGasUsed)
-            .SetName("D_pre_Cancun_blob_gas_used_is_rejected");
+            .SetName("Pre_Cancun_blob_gas_used_is_rejected");
         yield return new TestCaseData(lastPreCancun, null, null, requestsHash, BlockErrorMessages.RequestsNotEnabled)
-            .SetName("E_pre_Prague_requests_hash_is_rejected");
+            .SetName("Pre_Prague_requests_hash_is_rejected");
         yield return new TestCaseData(firstCancun, 0ul, 0ul, null, null)
-            .SetName("F_first_Cancun_header_is_accepted");
+            .SetName("First_Cancun_header_is_accepted");
         yield return new TestCaseData(lastPreCancun, null, null, null, null)
             .SetName("Last_pre_Cancun_header_is_accepted");
         // Values no parent could produce: the ExcessBlobGas comparison must still be skipped when orphaned.
