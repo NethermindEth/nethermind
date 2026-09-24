@@ -67,6 +67,11 @@ public sealed class AssociativeCache<TKey, TValue>
 {
     private const int Ways = 8;
     private const int WayShift = 3;
+    // These Hull-Dobell conditions give the 32-bit LCG a full period.
+    private const uint TimestampRefreshLcgMultiplier = 1_664_525u;
+    private const uint TimestampRefreshLcgIncrement = 1_013_904_223u;
+
+    [ThreadStatic] private static uint _timestampRefreshRandomState;
 
     private readonly Entry[] _entries;
     private readonly int _setMask;
@@ -159,19 +164,16 @@ public sealed class AssociativeCache<TKey, TValue>
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && storedKey.Equals(in key))
             {
-                // JIT eliminates this branch entirely per TRefreshTicker instantiation.
-                // Eviction age uses the high-resolution clock rather than a shared counter: a
-                // per-hit Interlocked on a cache-wide field is a serialized cross-core RMW under
-                // concurrent readers (and it dirtied the line _epochAndCount lives on, which
-                // every TryGet reads first). Single-threaded the clock read loses a few ns to the
-                // old Interlocked (and more on hosts whose clocksource is not TSC), but it writes
-                // only this entry's own line, so hits scale with reader count — the regime that
-                // motivated the change. Do not flip back to a shared counter for the ns.
-                // Ticker store without the set gate is safe: 8-byte aligned long is atomic on
-                // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
-                // not key/value correctness — the "losing" ticker value is simply slightly stale.
+                // JIT eliminates this branch entirely for TryGetNoRefresh. Sample 1/16 of refreshing
+                // hits to skip most clock reads and entry writes; high LCG bits avoid short low-bit
+                // cycles aliasing periodic key access, and thread-local state avoids shared writes.
                 if (TRefreshTicker.IsActive)
-                    e.Ticker = Stopwatch.GetTimestamp();
+                {
+                    uint state = unchecked(_timestampRefreshRandomState * TimestampRefreshLcgMultiplier + TimestampRefreshLcgIncrement);
+                    _timestampRefreshRandomState = state;
+                    if ((state >> 28) == 0)
+                        e.Ticker = Stopwatch.GetTimestamp();
+                }
                 value = storedValue;
                 return true;
             }
