@@ -95,7 +95,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatFullStateFinder>()
 
             // Persistences
-            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat, static settings => settings.PersistRepairMarkerUntilAcknowledged = true)
             .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx => ctx
                 .Resolve<IDbFactory>()
                 .CreateDb(new DbSettings(
@@ -106,8 +106,6 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
-
-            .AddDatabase(DbNames.Preimage)
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {
@@ -120,14 +118,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 
-                if (flatDbConfig.EnablePreimageRecording)
-                {
-                    IDb preimageDb = ctx.ResolveKeyed<IDb>(DbNames.Preimage);
-                    persistence = new PreimageRecordingPersistence(persistence, preimageDb);
-                }
-
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
-                return new CarryForwardCachingPersistence(cachedReader);
+                return flatDbConfig.EnableCarryForwardCache ? new CarryForwardCachingPersistence(cachedReader) : cachedReader;
             })
             ;
 
@@ -144,6 +136,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             builder
                 .AddSingleton<Importer>()
                 .AddStep(typeof(ImportFlatDb));
+        }
+
+        // Only pulls the state DB open during init; PruningTrieStoreModule still decides.
+        if (flatDbConfig.DropPruningTrieState)
+        {
+            builder.AddStep(typeof(DropPruningTrieState));
         }
 
         builder.RegisterInstance(NullHistoricalTrieVisitor.Instance)

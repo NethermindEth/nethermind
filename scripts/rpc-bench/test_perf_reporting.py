@@ -24,6 +24,7 @@ START_NODE = ROOT / "scripts" / "rpc-bench" / "start-node.sh"
 STOP_NODE = ROOT / "scripts" / "rpc-bench" / "stop-node.sh"
 START_PROFILERS = ROOT / "scripts" / "rpc-bench" / "start-profilers.sh"
 RUN_JSONBENCH = ROOT / "scripts" / "rpc-bench" / "run-jsonbench.sh"
+SEQUENTIAL_DRIVER = ROOT / "scripts" / "expb" / "sequential_driver.py"
 PROFILE_ARTIFACT_GATE = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
 
 WORKFLOW_JOB_PATTERN = re.compile(
@@ -1520,7 +1521,7 @@ printf 'parity_fail=%s parity_skipped=%s rows=%s\\n' "$parity_fail" "$parity_ski
             RPC_LIB.read_text(encoding="utf-8"),
         )
 
-        # Pinned collector: the rig pins expb and json-bench for the same reason.
+        # Pinned collector: the rig pins json-bench to keep profiling reproducible.
         start_node = START_NODE.read_text(encoding="utf-8")
         self.assertRegex(start_node, r'DOTNET_TRACE_VERSION="\$\{DOTNET_TRACE_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"')
         self.assertEqual(start_node.count('dotnet tool install --version "$DOTNET_TRACE_VERSION"'), 2)
@@ -1540,6 +1541,14 @@ printf 'parity_fail=%s parity_skipped=%s rows=%s\\n' "$parity_fail" "$parity_ski
                 f"{job_name} must archive dotTrace/EventPipe data before failing invalid perf output",
             )
             self.assertIn("exit 1", collector[collector.index(deferred_failure) :])
+
+    def test_campaign_fail_fast_is_scoped_to_an_explicit_image_comparison(self) -> None:
+        # Retrospective sweeps bisect across many master builds, where the images that did run stay
+        # useful; an explicit `docker_images` A/B is invalid the moment one arm fails.
+        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
+        campaign = workflow_named_step_body(expb_workflow, "benchmark-multi", "Run sequential EXPB campaign")
+        self.assertIn("CAMPAIGN_FAIL_FAST: ${{ needs.resolve.outputs.docker_images != '' }}", campaign)
+        self.assertIn('fail_fast = get("CAMPAIGN_FAIL_FAST", "true") != "false"', SEQUENTIAL_DRIVER.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
