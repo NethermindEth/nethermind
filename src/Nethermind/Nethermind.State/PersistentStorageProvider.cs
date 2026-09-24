@@ -31,7 +31,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private IWorldStateScopeProvider.IScope? _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
-    private const int StoragesInitialCapacity = 4_096;
+    private const int StoragesInitialCapacity = 64;
 
     private Dictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
     // Handed back by a detached write-back once it is done with the map it took.

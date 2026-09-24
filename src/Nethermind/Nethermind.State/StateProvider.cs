@@ -44,7 +44,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // Code staged for CodeDb by the current transaction, paired with the change-log position of the
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
     private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
-    private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+    private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(64);
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
     private List<AddressAsKey>? _spareRemovedWithStorage;
