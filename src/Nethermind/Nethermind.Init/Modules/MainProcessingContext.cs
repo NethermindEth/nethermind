@@ -46,10 +46,11 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
 
-                .AddScoped<BlockchainProcessor.Options, IReceiptConfig>(receiptConfig => new()
+                .AddScoped<BlockchainProcessor.Options, IReceiptConfig, IBlocksConfig>((receiptConfig, blocksConfig) => new()
                 {
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                    DumpOptions = initConfig.AutoDump
+                    DumpOptions = initConfig.AutoDump,
+                    ProcessingCores = blocksConfig.ProcessingCores
                 })
                 .AddScoped<BlockchainProcessor>()
                 .Bind<IBlockchainProcessor, BlockchainProcessor>()

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -61,9 +62,34 @@ public class PrewarmerScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => baseProvider.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
+        if (!baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = WrapScope(baseScope, metrics, baseScope.RootHash, PrefetchScopeAnchor.AtTarget(targetBlock));
+        return true;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!baseProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = WrapScope(baseScope, metrics, baseBlock?.StateRoot, PrefetchScopeAnchor.AtBase(baseBlock));
+        return true;
+    }
+
+    private IWorldStateScopeProvider.IScope WrapScope(IWorldStateScopeProvider.IScope scope, LocalMetrics metrics, Hash256? stateRoot, PrefetchScopeAnchor prefetchAnchor)
+    {
         if (!isPrewarmer)
         {
             try
@@ -71,8 +97,8 @@ public class PrewarmerScopeProvider(
                 // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
                 preBlockCaches.BeginConsumerScope();
                 preBlockCaches.MainScope = scope;
-                // The consumer reads the state at baseBlock through the caches, which may still describe another state.
-                preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot, logger);
+                // The consumer reads the state at the opened root through the caches, which may still describe another state.
+                preBlockCaches.EnsureNotStaleFor(stateRoot, logger);
             }
             catch
             {
@@ -89,12 +115,26 @@ public class PrewarmerScopeProvider(
             }
         }
         PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        return new ScopeWrapper(baseProvider, baseBlock, scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, baseBlock?.StateRoot);
+        return new ScopeWrapper(baseProvider, prefetchAnchor, scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot);
+    }
+
+    /// <summary>
+    /// How the stride prefetcher reopens the state this scope was opened on: at the same target block (the provider
+    /// resolves its parent again) or at the same explicit base block.
+    /// </summary>
+    private readonly record struct PrefetchScopeAnchor(BlockHeader? Block, bool IsTarget)
+    {
+        public static PrefetchScopeAnchor AtTarget(BlockHeader targetBlock) => new(targetBlock, true);
+        public static PrefetchScopeAnchor AtBase(BlockHeader? baseBlock) => new(baseBlock, false);
+
+        /// <exception cref="StateNotRetainedException">The state is no longer available.</exception>
+        public IWorldStateScopeProvider.IScope Open(IWorldStateScopeProvider provider, LocalMetrics metrics) =>
+            IsTarget ? provider.BeginScopeAtTarget(Block!, metrics) : provider.BeginScope(Block, metrics);
     }
 
     private sealed class ScopeWrapper(
         IWorldStateScopeProvider baseProvider,
-        BlockHeader? baseBlock,
+        PrefetchScopeAnchor prefetchAnchor,
         IWorldStateScopeProvider.IScope baseScope,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
@@ -323,7 +363,8 @@ public class PrewarmerScopeProvider(
             {
                 // A private, never-flushed LocalMetrics: the block's own instance is single-threaded
                 // by contract, while this scope is shared by the concurrent prefetch readers.
-                _prefetchScope ??= baseProvider.BeginScope(baseBlock, new LocalMetrics());
+                // Throws when the parent state is gone; the prefetcher treats that as no prefetch for the contract.
+                _prefetchScope ??= prefetchAnchor.Open(baseProvider, new LocalMetrics());
                 return _prefetchScope.CreateStorageTree(address);
             }
         }

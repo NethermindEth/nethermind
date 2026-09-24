@@ -20,6 +20,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
   - Prefer composition over inheritance — inheritance has caused many extensibility issues in this code base.
 - When multiple solutions are viable, prefer them in this order: one that removes code, then one that adds code without adding surface area (new interfaces or public methods) or touching existing code, and last, one that modifies existing code. Removing code removes failure points; additive changes generally don't regress existing behavior and are the easiest to review. This ranks viable designs — a bug in existing code should still be fixed in place, not wrapped. If a change makes existing code unused, remove it.
 - When fixing a bug, always add a regression test
+- Nethermind supports little-endian platforms only; `Nethermind.Runner/Program.cs` throws at startup otherwise. Do not add `BitConverter.IsLittleEndian` checks, endian-neutral fallbacks or comments noting the assumption, and do not raise little-endian assumptions as review findings.
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
 - Prefer self-documenting code — clear names and structure should remove the need for most comments. Emit a comment only when it captures context that is not obvious from the code itself: the _why_ behind a non-obvious choice, an invariant, a workaround, an EIP/Yellow-Paper reference, a subtle edge case, etc. Comments that merely restate the code are noise — don't add them, and remove them when you encounter them. Keep comments concise and ensure that they make sense in the context of the master branch, not referencing the specifics of the current session.
 - When in doubt, do not add a comment. An unnecessary comment contributes to reviewer fatigue.
@@ -66,6 +67,10 @@ Before creating a pull request:
   dotnet format whitespace src/Nethermind/ --folder
   ```
 - Follow the [pull_request_template.md](.github/pull_request_template.md) format: fill in the changes section, tick the appropriate type-of-change checkboxes, and complete the testing/documentation sections. The checkboxes drive automatic PR labeling.
+
+## Agent declaration
+
+- When creating a PR or commenting on GitHub under a human account, state that you are an AI agent acting on behalf of the user and name the harness and model, e.g. `🤖 AI agent (Claude Code / Opus 5) on behalf of @user` — this makes it easy to trace which configuration produced which behavior. Put it in the `Remarks` section of the PR body, or at the end of a comment. This does not apply to commit messages, nor to comments posted under a bot account, whose identity already discloses the agent.
 
 ## Benchmark workflows
 
