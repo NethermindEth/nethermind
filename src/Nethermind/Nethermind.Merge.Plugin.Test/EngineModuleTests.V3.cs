@@ -257,8 +257,9 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
-        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)
             = await PreparePayloadRequestEnv();
+        using MergeTestBlockchain disposeChain = chain;
 
         string executionPayloadString = serializer.Serialize(executionPayload);
 
@@ -284,8 +285,9 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_invalidblockhash()
     {
-        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer _, ExecutionPayloadV3 _)
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer _, ExecutionPayloadV3 _, MergeTestBlockchain chain)
             = await PreparePayloadRequestEnv();
+        using MergeTestBlockchain disposeChain = chain;
 
         string requestStr = """
                             {"parentHash":"0xd6194b42ad579c195e9aaaf04692619f4de9c5fbdd6b58baaabe93384e834d25","feeRecipient":"0x0000000000000000000000000000000000000000","stateRoot":"0xfe1fa6bb862e4a5efd9ee8967b356d4f7b6205a437eeac8b0e625db3cb662018","receiptsRoot":"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421","logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","prevRandao":"0xfaebfae9aef88ac8eba03decf329c8155991e07cb1a9dc6ac69e420550a45037","blockNumber":"0x1","gasLimit":"0x2fefd8","gasUsed":"0x0","timestamp":"0x1235","extraData":"0x4e65746865726d696e64","baseFeePerGas":"0x342770c0","blockHash":"0x0718890af079939b4aae6ac0ecaa94c633ad73e69e787f526f0d558043e8e2f1","transactions":[],"withdrawals":[{"index":"0x1","validatorIndex":"0x0","address":"0x0000000000000000000000000000000000000000","amount":"0x64"},{"index":"0x2","validatorIndex":"0x1","address":"0x0100000000000000000000000000000000000000","amount":"0x64"},{"index":"0x3","validatorIndex":"0x2","address":"0x0200000000000000000000000000000000000000","amount":"0x64"},{"index":"0x4","validatorIndex":"0x3","address":"0x0300000000000000000000000000000000000000","amount":"0x64"},{"index":"0x5","validatorIndex":"0x4","address":"0x0400000000000000000000000000000000000000","amount":"0x64"},{"index":"0x6","validatorIndex":"0x5","address":"0x0500000000000000000000000000000000000000","amount":"0x64"},{"index":"0x7","validatorIndex":"0x6","address":"0x0600000000000000000000000000000000000000","amount":"0x64"},{"index":"0x8","validatorIndex":"0x7","address":"0x0700000000000000000000000000000000000000","amount":"0x64"},{"index":"0x9","validatorIndex":"0x8","address":"0x0800000000000000000000000000000000000000","amount":"0x64"},{"index":"0xa","validatorIndex":"0x9","address":"0x0900000000000000000000000000000000000000","amount":"0x64"}],"excessBlobGas":"0x0"}
@@ -298,10 +300,10 @@ public partial class EngineModuleTests
         Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
-    private async Task<(JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 correctExecutionPayload)>
+    private async Task<(JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 correctExecutionPayload, MergeTestBlockchain chain)>
             PreparePayloadRequestEnv(IReleaseSpec? releaseSpec = null)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec ?? Cancun.Instance);
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec ?? Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { ModuleType.Engine } };
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -310,7 +312,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = await CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [], blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem.KeccakA);
 
-        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, chain.Container.Resolve<GCKeeper>()), new(RpcEndpoint.Http), new(), executionPayload);
+        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, chain.Container.Resolve<GCKeeper>()), new(RpcEndpoint.Http), new(), executionPayload, chain);
     }
 
     [Test]
@@ -320,8 +322,9 @@ public partial class EngineModuleTests
         [Values] bool omit)
     {
         IReleaseSpec releaseSpec = version switch { 3 => Cancun.Instance, 4 => Prague.Instance, _ => Amsterdam.Instance };
-        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)
             = await PreparePayloadRequestEnv(releaseSpec);
+        using MergeTestBlockchain disposeChain = chain;
 
         JsonObject payload = serializer.Deserialize<JsonObject>(serializer.Serialize(executionPayload))!;
         if (version >= EngineApiVersions.NewPayload.V5)
@@ -361,8 +364,9 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_should_decline_empty_fields()
     {
-        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)
             = await PreparePayloadRequestEnv();
+        using MergeTestBlockchain disposeChain = chain;
 
         string executionPayloadString = serializer.Serialize(executionPayload);
         string blobsString = serializer.Serialize(Array.Empty<byte[]>());
