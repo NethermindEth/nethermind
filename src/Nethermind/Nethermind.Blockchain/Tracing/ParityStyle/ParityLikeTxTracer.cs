@@ -56,7 +56,6 @@ public class ParityLikeTxTracer : TxTracer
         if ((_parityTraceTypes & ParityTraceTypes.Trace) != 0)
         {
             IsTracingActions = true;
-            IsTracingReceipt = true;
         }
 
         if ((_parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
@@ -64,12 +63,11 @@ public class ParityLikeTxTracer : TxTracer
             IsTracingActions = true;
             IsTracingInstructions = true;
             IsTracingCode = true;
-            IsTracingReceipt = true;
         }
     }
 
     public sealed override bool IsTracingActions { get; protected set; }
-    public sealed override bool IsTracingReceipt { get; protected set; }
+    public sealed override bool IsTracingReceipt => true;
     public override bool IsCollectingLogs => false;
     public sealed override bool IsTracingInstructions { get; protected set; }
     public sealed override bool IsTracingCode { get; protected set; }
@@ -238,6 +236,12 @@ public class ParityLikeTxTracer : TxTracer
             throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
         }
 
+        if (!IsTracingActions)
+        {
+            _trace.Output = output;
+            return;
+        }
+
         _trace.Action ??= CreateRootActionFromTx();
 
         if (_trace.Action.TraceAddress.Length == 0)
@@ -257,6 +261,8 @@ public class ParityLikeTxTracer : TxTracer
         }
 
         _trace.Output = output;
+
+        if (!IsTracingActions) return;
 
         if (_trace.Action is null)
         {
