@@ -169,7 +169,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     private static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, Span<PbtWriteOperation<TKey>> operations, BucketPlan plan, PbtPrefixlessBranchOmission prefixlessBranchOmission, TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider)
     {
         if (operations.IsEmpty) return currentRoot;
-        FoldContext context = new(store, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, null, null, default, prefixlessBranchOmission);
+        using IPbtConcurrentWriter storeWriter = store.CreateWriter();
+        FoldContext context = new(store, storeWriter, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, null, null, default, prefixlessBranchOmission);
         Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
         PbtTraversalPath path = new(pathBuffer);
         GroupFrameReader<TKey, TPath> reader = new(store, 0, currentRoot, metrics);
@@ -180,7 +181,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             FoldResult result = FoldMutations(context, ref reader, writer, root, operations, ref path, 0, 0, plan);
             TraversalSubtree resolved = result.Borrow(path);
             ValueHash256 hash = writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, 0, ref resolved, metrics);
-            PublishGroup(store, ref reader, writer, path, hash);
+            PublishGroup(storeWriter, ref reader, writer, path, hash);
             return hash;
         }
     }
@@ -370,7 +371,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             // The result is anchored where the caller places it, which a jump leaves above this frame.
             PbtTraversalPath resultCursor = path.Truncated(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)], resultDepth);
             ValueHash256 hash = result.Hash(resultCursor, bitDepth, metrics);
-            result.SizeDelta = PublishGroup(context.Store, ref reader, writer, path, hash);
+            result.SizeDelta = PublishGroup(context.Writer, ref reader, writer, path, hash);
             // The owner group writes this root at the same depth, so a composed root can reuse the hash just published.
             if (result.Kind == NodeKind.Branch) result = result.WithKnownHash(hash, result.BranchDepth(resultCursor) - bitDepth);
             return result;
@@ -383,14 +384,14 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// slot. A group that stays absent stores nothing, so only the folded change survives, and the store is not told
     /// to delete a group it never held.
     /// </remarks>
-    internal static long PublishGroup(IPbtStore store, ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
+    internal static long PublishGroup(IPbtNodeGroupSink sink, ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
         scoped in PbtTraversalPath path, in ValueHash256 hash)
     {
         Span<long> descendantBytes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
         for (int slot = 0; slot < descendantBytes.Length; slot++) descendantBytes[slot] = reader.DescendantBytes(slot) + writer.DescendantDelta(slot);
         using RefCountingMemory? payload = writer.Detach(descendantBytes);
         Debug.Assert(reader.IsResolved, "A frame is loaded or declared absent before it publishes, so an empty payload length means no stored group.");
-        if (payload is not null || reader.PayloadLength != 0) store.SetNodeGroup(path, hash, payload);
+        if (payload is not null || reader.PayloadLength != 0) sink.SetNodeGroup(path, hash, payload);
         return (payload?.GetSpan().Length ?? 0) - reader.PayloadLength + writer.DescendantDelta();
     }
 
@@ -599,10 +600,13 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// is the backing array of every operation range, so a bucket can rebuild its span on another thread,
     /// and <see cref="FanOut"/> gives how many operations a concurrent run of buckets holds at least, by what it has stored below it.
     /// <see cref="Metrics"/> is not thread-safe, so each concurrent bucket folds under <see cref="WithMetrics"/> and is merged afterwards.
+    /// Groups are read from <see cref="Store"/> but published to <see cref="Writer"/>, which a concurrent bucket replaces
+    /// with its own <see cref="IPbtStore.CreateWriter"/> so it never writes the store directly.
     /// </remarks>
-    internal sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, TrieUpdaterMetrics? metrics, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut, PbtPrefixlessBranchOmission prefixlessBranchOmission)
+    internal sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, TrieUpdaterMetrics? metrics, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut, PbtPrefixlessBranchOmission prefixlessBranchOmission)
     {
         internal IPbtStore Store { get; } = store;
+        internal IPbtNodeGroupSink Writer { get; } = writer;
         internal IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
         internal TrieUpdaterMetrics? Metrics { get; } = metrics;
         internal ConcurrencyController? FoldQuota { get; } = foldQuota;
@@ -610,7 +614,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal FoldFanOut FanOut { get; } = fanOut;
         internal PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; } = prefixlessBranchOmission;
 
-        internal FoldContext WithMetrics(TrieUpdaterMetrics metrics) => new(Store, MemoryProvider, metrics, FoldQuota, Operations, FanOut, PrefixlessBranchOmission);
+        internal FoldContext WithMetrics(TrieUpdaterMetrics metrics) => new(Store, Writer, MemoryProvider, metrics, FoldQuota, Operations, FanOut, PrefixlessBranchOmission);
+
+        internal FoldContext WithWriter(IPbtNodeGroupSink writer) => new(Store, writer, MemoryProvider, Metrics, FoldQuota, Operations, FanOut, PrefixlessBranchOmission);
     }
 
     private struct BucketFold(int slot, int offset, int count, BoundaryNode current, long descendantBytes, FoldContext context)
@@ -630,7 +636,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             GroupFrameReader<TKey, TPath> owner = new(Context.Store, bitDepth, null);
             owner.InheritDescendants(Slot, descendantBytes);
             using PbtNodeGroupWriter<TPath> ownerWriter = new(bitDepth, Context.MemoryProvider, Context.PrefixlessBranchOmission);
-            Result = FoldMutations(Context, ref owner, ownerWriter, current, Context.Operations!.AsSpan(offset, count),
+            using IPbtConcurrentWriter writer = Context.Store.CreateWriter();
+            Result = FoldMutations(Context.WithWriter(writer), ref owner, ownerWriter, current, Context.Operations!.AsSpan(offset, count),
                 ref path, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, bitDepth, new BucketPlan(default, knownCommonPrefixLength, isSorted));
         }
     }

@@ -115,7 +115,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
     private sealed class WindowStore(
         IPbtPersistence.IReader reader,
         IPbtPersistence.IWriteBatch batch,
-        CancellationToken cancellationToken) : IPbtStore
+        CancellationToken cancellationToken) : IPbtStore, IPbtNodeGroupSink
     {
         private readonly Lock _writeLock = new();
 
@@ -130,5 +130,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
             cancellationToken.ThrowIfCancellationRequested();
             lock (_writeLock) batch.SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
         }
+
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
     }
 }

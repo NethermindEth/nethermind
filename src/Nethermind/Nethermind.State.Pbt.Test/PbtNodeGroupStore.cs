@@ -11,8 +11,10 @@ using Nethermind.Pbt;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>In-memory store of canonical nodes grouped by four-level ownership boundaries.</summary>
-public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider = null) : IPbtStore, IDisposable
+public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider = null) : IPbtStore, IPbtNodeGroupSink, IDisposable
 {
+    public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
     private readonly IRefCountingMemoryProvider _memoryProvider = memoryProvider ?? PooledRefCountingMemoryProvider.Instance;
     private readonly System.Threading.Lock _groupLock = new();
     private Dictionary<PbtStorageNodePath, RefCountingMemory> _groups = [];

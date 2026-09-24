@@ -92,6 +92,12 @@ internal static class PbtStoreTestExtensions
         store.SetNodeGroup(cursor, groupHash, payload);
     }
 
+    internal static void SetNodeGroup(this IPbtStore store, scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+    {
+        using IPbtConcurrentWriter writer = store.CreateWriter();
+        writer.SetNodeGroup(groupKey, groupHash, payload);
+    }
+
     internal static PbtNodeGroupReader ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
         where TPath : struct, IPbtNodePath<TPath>
     {

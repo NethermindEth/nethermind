@@ -59,7 +59,7 @@ public static partial class TrieUpdater
     /// serially. Each zone's fold time is observed on <paramref name="partitionFoldTime"/> labelled by partition, so
     /// an imbalance between them is visible. Groups rewritten by this fold leave prefixless interior branches
     /// implicit as <paramref name="prefixlessBranchOmission"/> selects; untouched groups keep their layout.
-    /// The supplied store must support concurrent reads and writes. Failed
+    /// The supplied store must support concurrent reads; each worker writes through its own <see cref="IPbtStore.CreateWriter"/>. Failed
     /// folds may leave partial writes; the caller owns failure isolation and must not reuse that state without
     /// recovery.
     /// </remarks>
@@ -84,6 +84,7 @@ public static partial class TrieUpdater
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(sharedReaders.AsSpan()))
         {
             memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
+            using IPbtConcurrentWriter storeWriter = store.CreateWriter();
             using ArrayPoolListRef<Frontier> zoneFrontiers = new(16, 16);
             Span<int> touchedZoneMasks = stackalloc int[16];
             touchedZoneMasks.Clear();
@@ -179,14 +180,14 @@ public static partial class TrieUpdater
                         FoldResult zoneRoot = Compose(ref sharedReader, sharedWriter, sharedPath, 0, metrics, ref zoneFrontiers.AsSpan()[slot],
                             ZoneResults(zoneResults, touchedZoneMasks, slot));
                         ValueHash256 groupHash = zoneRoot.Hash(rootPath, 4, metrics);
-                        long zoneDelta = PublishGroup(store, ref sharedReader, sharedWriter, sharedPath, groupHash);
+                        long zoneDelta = PublishGroup(storeWriter, ref sharedReader, sharedWriter, sharedPath, groupHash);
                         SetBoundary(ref rootFrontier, rootResults, slot, ref zoneRoot);
                         rootWriter.AddDescendantDelta(slot, zoneDelta);
                     }
                     FoldResult rootResult = Compose(ref rootReader, rootWriter, rootPath, 0, metrics, ref rootFrontier, rootResults);
                     TraversalSubtree result = rootResult.Borrow(rootPath);
                     ValueHash256 hash = rootWriter.Write(rootPath, PbtFourLevelGroupGeometry.RootPosition, 0, ref result, metrics);
-                    PublishGroup(store, ref rootReader, rootWriter, rootPath, hash);
+                    PublishGroup(storeWriter, ref rootReader, rootWriter, rootPath, hash);
                     return hash;
                 }
             }
@@ -255,9 +256,10 @@ public static partial class TrieUpdater
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
             {
                 using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider, prefixlessBranchOmission);
+                using IPbtConcurrentWriter concurrentWriter = store.CreateWriter();
                 TrieUpdater<TKey, TPath>.BoundaryNode current = TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(ref Current);
                 TrieUpdater<TKey, TPath>.FoldResult result = default;
-                TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, Metrics,
+                TrieUpdater<TKey, TPath>.FoldContext context = new(store, concurrentWriter, memoryProvider, Metrics,
                     foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
                 TrieUpdater<TKey, TPath>.ResolveAbsentGroup(ref reader, current, path, InheritedDescendantBytes);
                 // A group that cannot exist is never keyed, so a spanning branch is not re-anchored to hash it.
@@ -267,7 +269,7 @@ public static partial class TrieUpdater
                     operations.AsSpan(), ref path, 8, 4, new(table.AsSpan(), 8, false));
                 // The result is anchored at the zone cursor its boundary slot sits on, four bits above this group.
                 ValueHash256 groupHash = result.Hash(path.Truncated(sourceBuffer, 4), 8, Metrics);
-                result.SizeDelta = TrieUpdater<TKey, TPath>.PublishGroup(store, ref reader, writer, path, groupHash);
+                result.SizeDelta = TrieUpdater<TKey, TPath>.PublishGroup(concurrentWriter, ref reader, writer, path, groupHash);
                 Result = FoldResult.TakeFrom<TKey, TPath>(ref result);
             }
             foldTime?.Observe(Stopwatch.GetTimestamp() - start, foldLabel);

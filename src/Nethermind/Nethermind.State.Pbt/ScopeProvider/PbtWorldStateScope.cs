@@ -180,7 +180,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         {
             Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
             long updaterStart = Stopwatch.GetTimestamp();
-            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes, _foldQuota, _foldFanOut, _prefixlessBranchOmission, Metrics.PbtPartitionFoldTime, memoryProvider: _nodeGroupMemory);
+            using (PbtSnapshotStore store = new(Bundle))
+                _treeRoot = TrieUpdater.UpdateRoot(store, _treeRoot, changes, _foldQuota, _foldFanOut, _prefixlessBranchOmission, Metrics.PbtPartitionFoldTime, memoryProvider: _nodeGroupMemory);
             Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
             Bundle.CompleteLeafChanges();
         }

@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
@@ -16,7 +17,7 @@ namespace Nethermind.State.Pbt;
 
 /// <summary>One immutable-at-seal diff layer of flat values and canonical node groups.</summary>
 /// <remarks>
-/// Concurrent node-group replacements are supported; reads concurrent with same-path replacements require caller serialization.
+/// Node-group replacements require a single writer, and reads concurrent with them are unsupported.
 /// Sealed content supports concurrent readers while its snapshot is leased. Reset requires exclusive ownership.
 /// </remarks>
 public sealed class PbtSnapshotContent : IDisposable, IResettable
@@ -28,9 +29,9 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     internal readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
     // Partitioned like PbtTrieNodeCache: account and code groups key on the narrower PbtNodePath; only storage pays for PbtStorageNodePath.
-    internal readonly ConcurrentDictionary<PbtNodePath, RefCountingMemory?> AccountNodeGroups = new();
-    internal readonly ConcurrentDictionary<PbtNodePath, RefCountingMemory?> CodeNodeGroups = new();
-    internal readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> StorageNodeGroups = new();
+    internal readonly Dictionary<PbtNodePath, RefCountingMemory?> AccountNodeGroups = [];
+    internal readonly Dictionary<PbtNodePath, RefCountingMemory?> CodeNodeGroups = [];
+    internal readonly Dictionary<PbtStorageNodePath, RefCountingMemory?> StorageNodeGroups = [];
 
 
     /// <summary>Drops this layer's runs of <paramref name="addressHash"/> and marks its storage cleared.</summary>
@@ -78,26 +79,12 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         }
     }
 
-    private static void SetNodeGroup<TStored>(ConcurrentDictionary<TStored, RefCountingMemory?> partition, TStored groupKey, RefCountingMemory? payload) where TStored : struct, IPbtNodePath<TStored>
+    private static void SetNodeGroup<TStored>(Dictionary<TStored, RefCountingMemory?> partition, TStored groupKey, RefCountingMemory? payload) where TStored : struct, IPbtNodePath<TStored>
     {
         payload?.AcquireLease();
-        RefCountingMemory? previous;
-        try
-        {
-            while (true)
-            {
-                if (partition.TryGetValue(groupKey, out previous))
-                {
-                    if (partition.TryUpdate(groupKey, payload, previous)) break;
-                }
-                else if (partition.TryAdd(groupKey, payload)) break;
-            }
-        }
-        catch
-        {
-            ((IDisposable?)payload)?.Dispose();
-            throw;
-        }
+        ref RefCountingMemory? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(partition, groupKey, out _);
+        RefCountingMemory? previous = slot;
+        slot = payload;
         ((IDisposable?)previous)?.Dispose();
     }
 
@@ -126,10 +113,10 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         Reset(StorageNodeGroups);
     }
 
-    private static void Reset<TStored>(ConcurrentDictionary<TStored, RefCountingMemory?> partition) where TStored : struct, IPbtNodePath<TStored>
+    private static void Reset<TStored>(Dictionary<TStored, RefCountingMemory?> partition) where TStored : struct, IPbtNodePath<TStored>
     {
         foreach ((_, RefCountingMemory? payload) in partition) ((IDisposable?)payload)?.Dispose();
-        partition.NoLockClear();
+        partition.Clear();
     }
 
     internal PbtSnapshotPayloadSize GetPayloadSize()
@@ -142,7 +129,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         return new PbtSnapshotPayloadSize(leafBytes, NodeBytes(AccountNodeGroups) + NodeBytes(CodeNodeGroups) + NodeBytes(StorageNodeGroups));
     }
 
-    private static long NodeBytes<TStored>(ConcurrentDictionary<TStored, RefCountingMemory?> partition) where TStored : struct, IPbtNodePath<TStored>
+    private static long NodeBytes<TStored>(Dictionary<TStored, RefCountingMemory?> partition) where TStored : struct, IPbtNodePath<TStored>
     {
         long nodeBytes = 0;
         foreach ((TStored path, RefCountingMemory? payload) in partition)

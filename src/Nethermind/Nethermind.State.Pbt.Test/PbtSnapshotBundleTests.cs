@@ -113,22 +113,38 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void SnapshotContent_ConcurrentSameGroupReplacementsReleasePreviousPayloads([Values] bool tombstones)
+    public void SnapshotStore_ConcurrentWritersApplyOnDisposeAndReleasePreviousPayloads([Values] bool tombstones)
     {
-        using PbtSnapshotContent content = new();
         TrackingMemoryProvider memoryProvider = new();
+        PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
         PbtNodePath groupPath = new([], 0);
+        ValueHash256 groupHash = new(Value(1));
         byte[] encoding = EncodeGroup(groupPath, [new PbtNodeRecord(groupPath.ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
 
-        System.Threading.Tasks.Parallel.For(0, 1000, iteration =>
+        using (PbtSnapshotStore store = new(bundle))
         {
-            using RefCountingMemory payload = Memory(encoding, memoryProvider);
-            content.SetNodeGroup(groupPath, payload);
-            content.SetNodeGroup(groupPath, payload);
-            if (tombstones) content.SetNodeGroup(groupPath, null);
-        });
+            System.Threading.Tasks.Parallel.For(0, 1000, iteration =>
+            {
+                using IPbtConcurrentWriter writer = store.CreateWriter();
+                using RefCountingMemory payload = Memory(encoding, memoryProvider);
+                PbtTraversalPath path = new(Span<byte>.Empty);
+                writer.SetNodeGroup(path, groupHash, payload);
+                writer.SetNodeGroup(path, groupHash, payload);
+                if (tombstones) writer.SetNodeGroup(path, groupHash, null);
+            });
 
-        bool found = content.TryGetNodeGroup(groupPath, out RefCountingMemory? current);
+            using RefCountingMemory? pending = bundle.GetNodeGroup(groupPath, groupHash);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pending, Is.Null, "handed-off groups stay invisible until the store is disposed");
+                Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(1000));
+            }
+        }
+
+        PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default, out PbtTransientResource retired);
+        retired.ReleaseLease();
+        bool found = snapshot.Content.TryGetNodeGroup(groupPath, out RefCountingMemory? current);
         using (current)
         using (Assert.EnterMultipleScope())
         {
@@ -137,8 +153,7 @@ public class PbtSnapshotBundleTests
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(tombstones ? 0 : 1));
         }
 
-        content.Reset();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+        snapshot.Dispose();
     }
 
     [Test]
@@ -153,7 +168,7 @@ public class PbtSnapshotBundleTests
             long[] expectedNodeBytes = new long[groupCount];
             try
             {
-                System.Threading.Tasks.Parallel.For(0, groupCount, index =>
+                for (int index = 0; index < groupCount; index++)
                 {
                     PbtNodePath groupPath = new([(byte)(index << 4)], 4);
                     PbtStorageNodePath storagePath = groupPath.ToPath<PbtStorageNodePath>();
@@ -178,7 +193,7 @@ public class PbtSnapshotBundleTests
                         Assert.That(retained[index]!.GetSpan().ToArray(), Is.EqualTo(original));
                     }
                     expectedNodeBytes[index] = storagePath.ToPathArray().Length + (tombstone ? 0 : replacement.Length);
-                });
+                }
 
                 long nodeBytes = 0;
                 foreach (long size in expectedNodeBytes) nodeBytes += size;
@@ -382,22 +397,24 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(key, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
-        PbtSnapshotStore store = new(bundle);
         using PbtWriteBatchBuilder<PbtStorageTreeKey> initial = new(0);
         if (leafExists) initial.Set(key, new ValueHash256(Value(1)));
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, initial.Build());
+        ValueHash256 root;
+        using (PbtSnapshotStore store = new(bundle)) root = TrieUpdater.UpdateRoot(store, default, initial.Build());
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(flatValue.Bytes));
 
         using PbtWriteBatchBuilder<PbtStorageTreeKey> changes = new(0);
         if (delete) changes.Delete(key);
         else changes.Set(key, new ValueHash256(Value(2)));
-        ValueHash256 updatedRoot = TrieUpdater.UpdateRoot(store, root, changes.Build());
+        ValueHash256 updatedRoot;
+        using (PbtSnapshotStore store = new(bundle)) updatedRoot = TrieUpdater.UpdateRoot(store, root, changes.Build());
 
+        using PbtSnapshotStore reader = new(bundle);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1), Is.EqualTo(EvmWordSlot.FromStripped(flatValue.Bytes)));
             Assert.That(updatedRoot, Is.EqualTo(delete ? default : PbtNodeCodec.HashLeaf(key.Bytes, Value(2))));
-            Assert.That(store.GetNode(new PbtNodePath([], 0), updatedRoot), Is.EqualTo(delete ? null : PbtNodeCodec.EncodeLeaf(key)));
+            Assert.That(reader.GetNode(new PbtNodePath([], 0), updatedRoot), Is.EqualTo(delete ? null : PbtNodeCodec.EncodeLeaf(key)));
         }
     }
 
@@ -1496,7 +1513,9 @@ public class PbtSnapshotBundleTests
         PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         try
         {
-            ValueHash256 updated = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), root, changes, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+            ValueHash256 updated;
+            using (PbtSnapshotStore store = new(bundle))
+                updated = TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
             bundle.CompleteLeafChanges();
             return updated;
         }
@@ -1650,8 +1669,10 @@ public class PbtSnapshotBundleTests
         public void Dispose() { }
     }
 
-    private sealed class CountingStore(PbtSnapshotBundle bundle) : IPbtStore
+    private sealed class CountingStore(PbtSnapshotBundle bundle) : IPbtStore, IPbtNodeGroupSink
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         public int ApplyCount { get; private set; }
         public int? FailedZone { get; init; }
         public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash) => bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), groupHash);

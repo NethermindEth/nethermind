@@ -6,6 +6,21 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
+/// <summary>Destination of complete node-group replacements; stores accept them only through an <see cref="IPbtConcurrentWriter"/>.</summary>
+public interface IPbtNodeGroupSink
+{
+    /// <summary>Replaces or deletes the complete group identified by <paramref name="groupKey"/>.</summary>
+    /// <remarks>
+    /// The path is borrowed only for this call; retained identities must be immutable snapshots.
+    /// A null payload deletes the group. A non-null payload is borrowed for the call; the caller retains
+    /// its reference and must release it. Implementations retaining the immutable payload acquire their
+    /// own reference before replacing the previous payload. Invalid keys or payloads leave the group unchanged.
+    /// The new <paramref name="groupHash"/> uses the same boundary-anchored identity as reads, not the old hash.
+    /// A null payload can delete an empty physical group while its logical subtree survives compression.
+    /// </remarks>
+    void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload);
+}
+
 /// <summary>Backing store used by <see cref="TrieUpdater"/> for canonical complete-key mutations.</summary>
 public interface IPbtStore
 {
@@ -23,14 +38,22 @@ public interface IPbtStore
     /// </remarks>
     RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash);
 
-    /// <summary>Replaces or deletes the complete group identified by <paramref name="groupKey"/>.</summary>
+    /// <summary>Creates a writer for one worker; every group replacement reaches this store through one.</summary>
     /// <remarks>
-    /// The path is borrowed only for this call; retained identities must be immutable snapshots.
-    /// A null payload deletes the group. A non-null payload is borrowed for the call; the caller retains
-    /// its reference and must release it. Implementations retaining the immutable payload acquire their
-    /// own reference before replacing the previous payload. Invalid keys or payloads leave the group unchanged.
-    /// The new <paramref name="groupHash"/> uses the same boundary-anchored identity as reads, not the old hash.
-    /// A null payload can delete an empty physical group while its logical subtree survives compression.
+    /// A writer is not thread-safe, but any number of them may be used concurrently, and each may be created and
+    /// disposed on any thread. When a disposed writer's groups become visible through this store is up to the store.
     /// </remarks>
-    void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload);
+    IPbtConcurrentWriter CreateWriter();
+}
+
+/// <summary>A single-worker writer created by <see cref="IPbtStore.CreateWriter"/>; disposing it hands its writes to the store.</summary>
+public interface IPbtConcurrentWriter : IPbtNodeGroupSink, IDisposable;
+
+/// <summary>Forwards every write immediately, for stores whose own sink accepts concurrent writes.</summary>
+internal sealed class PbtPassThroughWriter(IPbtNodeGroupSink store) : IPbtConcurrentWriter
+{
+    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) =>
+        store.SetNodeGroup(groupKey, groupHash, payload);
+
+    public void Dispose() { }
 }

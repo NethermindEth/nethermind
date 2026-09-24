@@ -2427,8 +2427,10 @@ public class Eip8297CanonicalTreeTests
         Assert.That(TrackingMemoryProvider.CountUnreleased(storeProvider.Rented), Is.Zero);
     }
 
-    private sealed class FailingPublishStore(IPbtStore store, int failedDepth) : IPbtStore
+    private sealed class FailingPublishStore(IPbtStore store, int failedDepth) : IPbtStore, IPbtNodeGroupSink
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash) => store.GetNodeGroup(groupKey, hash);
         public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload)
         {
@@ -2688,8 +2690,10 @@ public class Eip8297CanonicalTreeTests
         Assert.That(store.UnreleasedMemoryCount, Is.Zero);
     }
 
-    private sealed class CountingPbtStore : IPbtStore
+    private sealed class CountingPbtStore : IPbtStore, IPbtNodeGroupSink
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         internal TrackingMemoryProvider MemoryProvider { get; } = new();
         internal PbtNodeGroupStore Inner { get; }
 

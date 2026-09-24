@@ -158,7 +158,7 @@ internal sealed class PbtTrieWarmupSession(
         return result;
     }
 
-    void IPbtStore.SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) => throw new NotSupportedException();
+    IPbtConcurrentWriter IPbtStore.CreateWriter() => throw new NotSupportedException();
 
     public void Dispose() => ExitOperation();
 

@@ -1775,8 +1775,10 @@ public class PbtNodeGroupTests
         }
     }
 
-    private sealed class PoisoningStore(PbtNodeGroupStore inner) : IPbtStore, IDisposable
+    private sealed class PoisoningStore(PbtNodeGroupStore inner) : IPbtStore, IPbtNodeGroupSink, IDisposable
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         private readonly ArrayPool<byte> _pool = ArrayPool<byte>.Create();
         internal PbtNodeGroupStore Inner { get; } = inner;
         internal List<int> ReleasedGroupDepths { get; } = [];
@@ -1813,8 +1815,10 @@ public class PbtNodeGroupTests
         }
     }
 
-    private sealed class PublishingStore : IPbtStore, IDisposable
+    private sealed class PublishingStore : IPbtStore, IPbtNodeGroupSink, IDisposable
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         internal PbtNodeGroupStore Inner { get; } = new();
         internal int Publishes { get; private set; }
 
@@ -2494,8 +2498,10 @@ public class PbtNodeGroupTests
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
     }
 
-    private sealed class WarmReadStore(IPbtStore store) : IPbtStore
+    private sealed class WarmReadStore(IPbtStore store) : IPbtStore, IPbtNodeGroupSink
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         internal List<PbtStorageNodePath> Reads { get; } = [];
         internal List<(PbtStorageNodePath Path, ValueHash256 Hash)> Hashes { get; } = [];
         internal RefCountingMemory? Payload { get; set; }

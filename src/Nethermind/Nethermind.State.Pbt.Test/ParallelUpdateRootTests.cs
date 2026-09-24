@@ -589,8 +589,10 @@ public class ParallelUpdateRootTests
         }
     }
 
-    private sealed class HashRecordingStore : IPbtStore, IDisposable
+    private sealed class HashRecordingStore : IPbtStore, IPbtNodeGroupSink, IDisposable
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         private readonly PbtNodeGroupStore _store = new();
         internal List<(PbtStorageNodePath Path, ValueHash256 Hash)> Reads { get; } = [];
         internal List<(PbtStorageNodePath Path, ValueHash256 Hash, bool IsNull)> Writes { get; } = [];
@@ -657,8 +659,10 @@ public class ParallelUpdateRootTests
         return [.. records];
     }
 
-    private sealed class CoordinatedStore : IPbtStore, IDisposable
+    private sealed class CoordinatedStore : IPbtStore, IPbtNodeGroupSink, IDisposable
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         private readonly Barrier _barrier = new(3);
         private readonly HashSet<PbtStorageNodePath> _writtenGroups = [];
         private int _arrivedWorkers;
@@ -710,8 +714,10 @@ public class ParallelUpdateRootTests
         }
     }
 
-    private sealed class OverlapCountingStore : IPbtStore, IDisposable
+    private sealed class OverlapCountingStore : IPbtStore, IPbtNodeGroupSink, IDisposable
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         private int _activeReads;
         private int _maxOverlappingReads;
         internal PbtNodeGroupStore Inner { get; } = new();
@@ -741,8 +747,10 @@ public class ParallelUpdateRootTests
 
     /// <summary>Counts the threads reading once observed; coordinating, the first two hold their first bucket-group read until both arrive.</summary>
     /// <remarks>Only reads below the zone frame take part, so the calling thread's reads before the fan-out cannot block on a worker that never starts.</remarks>
-    private sealed class BucketWorkerStore : IPbtStore, IDisposable
+    private sealed class BucketWorkerStore : IPbtStore, IPbtNodeGroupSink, IDisposable
     {
+        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+
         private const int BucketGroupBitDepth = 12;
         private readonly Barrier _barrier = new(2);
         private readonly HashSet<int> _readThreads = [];
