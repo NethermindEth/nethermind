@@ -226,6 +226,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(chain.BlockTree.Head!.ParentBeaconBlockRoot)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .TestObject;
 
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(invalidBlock);
@@ -278,6 +279,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .TestObject;
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
         executionPayload.BlockAccessList = Bytes.FromHexString("0xc0");
@@ -292,6 +294,7 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Result.Error, Does.StartWith("Block access list"));
         }
     }
 
@@ -304,6 +307,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .TestObject;
         block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
         block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests([]);
@@ -359,6 +363,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .TestObject;
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
         executionPayload.BlockAccessList = Bytes.FromHexString("0xc0");
@@ -372,6 +377,7 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Result.Error, Does.StartWith("Block access list"));
         }
     }
 
