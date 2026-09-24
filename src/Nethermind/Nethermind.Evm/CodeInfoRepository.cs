@@ -91,7 +91,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
 
-        if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
+        delegationAddress = codeInfo.DelegatedAddress;
+        if (delegationAddress is not null)
         {
             if (followDelegation)
             {
@@ -197,6 +198,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return false;
         }
 
-        return ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
+        delegatedAddress = InternalGetCodeInfo(address, spec).DelegatedAddress;
+        return delegatedAddress is not null;
     }
 }

@@ -17,6 +17,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using System;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
@@ -265,6 +266,92 @@ public class CodeInfoRepositoryTests
 
         CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
         Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(delegationCode));
+    }
+
+    [Test]
+    public void Cached_delegation_address_is_reused_and_tracks_code_replacement_and_restore()
+    {
+        Address firstTarget = TestItem.AddressB;
+        Address secondTarget = TestItem.AddressC;
+        byte[] firstDelegation = [.. Eip7702Constants.DelegationHeader, .. firstTarget.Bytes];
+        byte[] secondDelegation = [.. Eip7702Constants.DelegationHeader, .. secondTarget.Bytes];
+        byte[] ordinaryCode = [(byte)Instruction.STOP];
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.CreateAccount(firstTarget, 0);
+        stateProvider.CreateAccount(secondTarget, 0);
+        stateProvider.InsertCode(TestItem.AddressA, firstDelegation, _releaseSpec);
+        CacheCodeInfoRepository sut = new(stateProvider, NoPrecompiles(), new StaticCodeCache(64));
+
+        CodeInfo first = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? firstAddress);
+        CodeInfo repeated = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? repeatedAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repeated, Is.SameAs(first));
+            Assert.That(repeatedAddress, Is.SameAs(firstAddress));
+            Assert.That(firstAddress, Is.EqualTo(firstTarget));
+            Assert.That(first.CodeSpan.ToArray(), Is.EqualTo(firstDelegation));
+        }
+
+        Snapshot snapshot = stateProvider.TakeSnapshot();
+        stateProvider.InsertCode(TestItem.AddressA, secondDelegation, _releaseSpec);
+        sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? secondAddress);
+        Assert.That(secondAddress, Is.EqualTo(secondTarget));
+        Assert.That(secondAddress, Is.Not.SameAs(firstAddress));
+
+        stateProvider.InsertCode(TestItem.AddressA, ordinaryCode, _releaseSpec);
+        CodeInfo ordinary = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? noAddress);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(noAddress, Is.Null);
+            Assert.That(ordinary.CodeSpan.ToArray(), Is.EqualTo(ordinaryCode));
+        }
+
+        stateProvider.Restore(snapshot);
+        CodeInfo restored = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? restoredAddress);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored, Is.SameAs(first));
+            Assert.That(restoredAddress, Is.SameAs(firstAddress));
+            Assert.That(restoredAddress, Is.EqualTo(firstTarget));
+        }
+    }
+
+    [Test]
+    public void Noop_code_cache_resolves_delegation_code_from_world_state_each_time()
+    {
+        byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, delegation, _releaseSpec);
+        CountingWorldState countingState = new(stateProvider);
+        CacheCodeInfoRepository sut = new(countingState, NoPrecompiles(), NoopCodeCache.Instance);
+
+        CodeInfo first = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? firstAddress);
+        CodeInfo second = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? secondAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(countingState.CodeReads, Is.EqualTo(2));
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(secondAddress, Is.Not.SameAs(firstAddress));
+            Assert.That(secondAddress, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
+    private sealed class CountingWorldState(IWorldState state) : WorldStateDecorator(state)
+    {
+        public int CodeReads { get; private set; }
+
+        public override byte[]? GetCode(in ValueHash256 codeHash)
+        {
+            CodeReads++;
+            return base.GetCode(in codeHash);
+        }
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
