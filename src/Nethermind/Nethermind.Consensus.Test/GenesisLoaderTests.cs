@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -42,7 +43,7 @@ public class GenesisLoaderTests
 
         _worldState = Substitute.For<IWorldState>();
         _scopeDisposable = Substitute.For<IDisposable>();
-        _worldState.BeginScope(IWorldState.PreGenesis).Returns(_scopeDisposable);
+        _worldState.TryBeginScope(IWorldState.PreGenesis, out Arg.Any<IDisposable>()).Returns(call => call.Succeed(1, _scopeDisposable));
 
         _worldStateManager = Substitute.For<IWorldStateManager>();
 

@@ -51,6 +51,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // The low bit belongs to StorageChangeTrace.IsInitialValue; zero means never captured.
     private ulong _originalsRound = 2;
 
+    /// <summary>Detects cached storage that would shadow an overlay, since contract reads consult local changes before the backend.</summary>
+    internal bool HasCachedStorage(IStateReadOverlay overlay)
+    {
+        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
+            if ((storage.Value.EstimatedChanges != 0 || storage.Value.HasJournalledWrites) && overlay.HasStorage(storage.Key.Value)) return true;
+        return false;
+    }
+
     private void EndOriginalsRound()
     {
         _lastCapturedCell = default;
@@ -274,19 +282,28 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
         toUpdateRoots.Clear();
 
-        if (trace is not null)
+        try
         {
-            TraceOriginalValues(tracer, trace);
+            if (trace is not null)
+            {
+                TraceOriginalValues(tracer, trace);
+            }
+
+            base.CommitCore(tracer);
+            EndOriginalsRound();
+            _destroyedThisRound.ClearAndTrim();
+            if (tracer.IsTracingStorage)
+            {
+                foreach (StorageClearChange clear in _storageClearJournal) tracer.ReportStorageClear(clear.Address);
+            }
+            if (trace is not null)
+            {
+                ReportChanges(tracer, trace);
+            }
         }
-
-        base.CommitCore(tracer);
-        EndOriginalsRound();
-        _destroyedThisRound.ClearAndTrim();
-        _storageClearJournal.Clear();
-
-        if (trace is not null)
+        finally
         {
-            ReportChanges(tracer, trace);
+            _storageClearJournal.Clear();
         }
     }
 
@@ -315,6 +332,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
+        bool hasStorageClears = _storageClearJournal.Count != 0;
 
         // SaveChange and backend hints must not re-enter the journal while its heads are enumerated.
         foreach (HeadChange head in _intraBlockCache.Values)
@@ -342,7 +360,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             if (_originalValues.TryGetValue(change.StorageCell, out UInt256 initialValue) &&
-                initialValue == change.Value)
+                initialValue == change.Value && (!hasStorageClears || !WasCleared(change.StorageCell.Address)))
             {
                 // no need to update the tree if the value is the same
             }
@@ -607,7 +625,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     [SkipLocalsInit]
-    private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
+    private void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
     {
         Unsafe.SkipInit(out EvmWord beforeBuffer);
         Unsafe.SkipInit(out EvmWord afterBuffer);
@@ -620,7 +638,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 tracer.ReportStorageChange(address, before.IsZero ? StorageTree.ZeroBytes : before.ToMinimalBigEndian(ref beforeBuffer).ToArray(), after.IsZero ? StorageTree.ZeroBytes : after.ToMinimalBigEndian(ref afterBuffer).ToArray());
             }
+            else if (!after.IsZero && WasCleared(address.Address))
+            {
+                tracer.ReportStorageRestore(address, after.ToMinimalBigEndian(ref afterBuffer).ToArray());
+            }
         }
+    }
+
+    private bool WasCleared(Address address)
+    {
+        foreach (StorageClearChange clear in _storageClearJournal)
+            if (clear.Address == address) return true;
+        return false;
     }
 
     /// <summary>
@@ -704,11 +733,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         bool? rootUpdate = _toUpdateRoots.TryGetValue(address, out bool currentRootUpdate) ? currentRootUpdate : null;
         contractState ??= GetOrCreateStorage(address);
+        bool wasCleared = contractState.WasCleared;
         DefaultableDictionary.ClearSnapshot blockChange = contractState.ClearRevertibly();
         _toUpdateRoots[address] = true;
         if (contractState.TakeAccountWarmHint()) currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
         int journalIndex = _storageClearJournal.Count;
-        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate));
+        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate, wasCleared));
         PushStorageClear(journalIndex);
     }
 
@@ -737,7 +767,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return true;
         }
 
-        return CurrentScope.Get(address)?.HasStorage == true;
+        return !CurrentScope.StorageRootsAreAuthoritative || CurrentScope.Get(address)?.HasStorage == true;
     }
 
     protected override void RestoreStorageClear(int journalIndex)
@@ -750,7 +780,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         StorageClearChange change = _storageClearJournal[journalIndex];
         _storageClearJournal.RemoveAt(journalIndex);
-        GetOrCreateStorage(change.Address).RestoreClear(change.BlockChange);
+        GetOrCreateStorage(change.Address).RestoreClear(change.BlockChange, change.WasCleared);
 
         _lastCapturedCell = default;
         foreach (StorageCell cell in _originalValues.Keys)
@@ -780,7 +810,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Address Address,
         DefaultableDictionary.ClearSnapshot BlockChange,
         List<KeyValuePair<StorageCell, UInt256>>? OriginalValues,
-        bool? RootUpdate);
+        bool? RootUpdate,
+        bool WasCleared);
 
     private sealed class DefaultableDictionary()
     {
@@ -984,7 +1015,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             _backend = Provider.CurrentScope.CreateStorageTree(Address);
 
-            bool isEmpty = _backend.RootHash == Keccak.EmptyTreeHash;
+            bool isEmpty = Provider.CurrentScope.StorageRootsAreAuthoritative && _backend.RootHash == Keccak.EmptyTreeHash;
             if (!_storageRootSeen)
             {
                 _storageRootSeen = true;
@@ -1010,14 +1041,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public DefaultableDictionary.ClearSnapshot ClearRevertibly()
         {
             EnsureStorageTree();
-            // Stays set if the clear is reverted: a cache then drops slots it could have kept, never keeps stale ones.
             _wasCleared = true;
             ForgetLastRead();
             return BlockChange.ClearRevertibly();
         }
 
-        public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot)
+        public bool WasCleared => _wasCleared;
+
+        public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot, bool wasCleared)
         {
+            _wasCleared = wasCleared;
             ForgetLastRead();
             BlockChange.Restore(snapshot);
         }
@@ -1066,7 +1099,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                valueChanges = new StorageChangeTrace(valueChanges.Before, value);
+                valueChanges = valueChanges.IsInitialValue
+                    ? new StorageChangeTrace(value)
+                    : new StorageChangeTrace(valueChanges.Before, value);
             }
 
             EnsureStorageTree();
@@ -1141,6 +1176,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (BlockChange.HasClear)
             {
                 storageWriteBatch.Clear();
+                Db.Metrics.IncrementStorageCleared();
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 

@@ -56,7 +56,8 @@ public static class StatelessExecutor
             Transaction[] transactions = block.Transactions;
 
             if (transactions.Length == publicKeys.Length &&
-                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span))
+                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span) &&
+                HeaderValidator.ValidateHash(block.Header))
             {
                 ISpecProvider specProvider = payload.SpecProvider;
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
@@ -69,7 +70,8 @@ public static class StatelessExecutor
 
                 using Witness witness = payload.Witness.ToWitness();
 
-                success = Execute(block, witness, specProvider);
+                // Reconstruction derives body roots; the hash check above binds them to the declared block hash.
+                success = Execute(block, witness, specProvider, validateHashes: false);
             }
         }
         catch (Exception ex)
@@ -87,6 +89,9 @@ public static class StatelessExecutor
     }
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
+        => Execute(suggestedBlock, witness, specProvider, validateHashes: true);
+
+    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes)
     {
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
@@ -118,7 +123,7 @@ public static class StatelessExecutor
             NullLogManager.Instance
         );
 
-        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error))
+        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error, validateHashes))
         {
             Debug.WriteLine(error);
             return false;
@@ -127,8 +132,13 @@ public static class StatelessExecutor
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
 
-        using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
+        if (!blockProcessingEnv.WorldState.TryBeginScope(parentHeader, out IDisposable? scope))
+        {
+            Debug.WriteLine("The witness does not contain the parent state root.");
+            return false;
+        }
 
+        using IDisposable _ = scope;
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
         (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(

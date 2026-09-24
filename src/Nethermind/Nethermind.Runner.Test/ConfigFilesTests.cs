@@ -59,6 +59,23 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("archive")]
     public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
 
+    [Test]
+    public void Fast_sync_without_snap_stays_on_patricia()
+    {
+        int fastWithoutSnapConfigs = 0;
+        foreach (string configFile in AllConfigFiles())
+        {
+            ISyncConfig sync = GetConfigFromFile<ISyncConfig>(configFile);
+            if (!sync.FastSync || sync.SnapSync)
+                continue;
+
+            fastWithoutSnapConfigs++;
+            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).Enabled, Is.False, configFile);
+        }
+
+        Assert.That(fastWithoutSnapConfigs, Is.GreaterThan(0));
+    }
+
     [TestCase("archive", true)]
     [TestCase("fast", true)]
     [TestCase("spaceneth", false)]
@@ -365,6 +382,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IFlatDbConfig, bool>(configWildcard, static c => c.Enabled, false);
         Test<IInitConfig, INodeStorage.KeyScheme>(configWildcard, static c => c.StateDbKeyScheme, INodeStorage.KeyScheme.Hash);
     }
+
+    // NeedToWaitForHeader would hold state sync back until the reverse header sync reaches genesis. XdcStateSyncPivot
+    // already keeps the pivot pending until the pivot header and the gap blocks below it are in the block tree, so XDC
+    // needs only that bounded window rather than the whole chain.
+    [Test]
+    public void Xdc_configs_do_not_gate_state_sync_on_the_full_header_sync([Values("xdc.json", "xdc-testnet.json", "xdc_archive.json")] string configWildcard) =>
+        Test<ISyncConfig, bool>(configWildcard, static c => c.NeedToWaitForHeader, false);
 
     // XDC's base fee is a constant equal to the gas price floor its reference client demands, so a transaction paying
     // exactly that floor has no priority fee left. MinGasPriceTxFilter compares the priority fee, so any non-zero

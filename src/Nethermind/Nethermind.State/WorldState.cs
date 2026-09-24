@@ -159,6 +159,14 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
+        /// <summary>Refuses an overlay before changing accounts if locally cached storage would hide its values.</summary>
+        public bool TryApplyAccountOverlay(IStateReadOverlay overlay)
+        {
+            if (_persistentStorageProvider.HasCachedStorage(overlay)) return false;
+            _stateProvider.ApplyAccountOverlay(overlay);
+            return true;
+        }
+
         public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         {
             if (accessList?.IsEmpty == false)
@@ -263,20 +271,41 @@ namespace Nethermind.State
 
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
-        public IDisposable BeginScope(BlockHeader? baseBlock)
+        public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
+            return TryBeginScope(baseBlock, atTarget: false, out scopeCloser);
+        }
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        {
+            ArgumentNullException.ThrowIfNull(targetBlock);
+            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope for target {targetBlock.ToString(BlockHeader.Format.Short)}.");
+            return TryBeginScope(targetBlock, atTarget: true, out scopeCloser);
+        }
+
+        private bool TryBeginScope(BlockHeader? block, bool atTarget, [NotNullWhen(true)] out IDisposable? scopeCloser)
         {
             if (Interlocked.CompareExchange(ref _isInScope, true, false))
             {
                 throw new InvalidOperationException("Cannot create nested worldstate scope.");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
-
             try
             {
-                _currentScope = ScopeProvider.BeginScope(baseBlock, _localMetrics);
-                _stateProvider.SetScope(_currentScope);
-                _persistentStorageProvider.SetBackendScope(_currentScope);
+                bool acquired = atTarget
+                    ? ScopeProvider.TryBeginScopeAtTarget(block!, _localMetrics, out IWorldStateScopeProvider.IScope? scope)
+                    : ScopeProvider.TryBeginScope(block, _localMetrics, out scope);
+                if (!acquired)
+                {
+                    EndScope();
+                    scopeCloser = null;
+                    return false;
+                }
+
+                _currentScope = scope!;
+                _stateProvider.SetScope(scope);
+                _persistentStorageProvider.SetBackendScope(scope);
             }
             catch
             {
@@ -284,11 +313,12 @@ namespace Nethermind.State
                 throw;
             }
 
-            return new Reactive.AnonymousDisposable(() =>
+            scopeCloser = new Reactive.AnonymousDisposable(() =>
             {
                 EndScope();
-                if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
+                if (_logger.IsTrace) _logger.Trace($"WorldState scope for {(atTarget ? "target" : "baseblock")} {block?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
+            return true;
         }
 
         private void EndScope()
@@ -316,6 +346,12 @@ namespace Nethermind.State
 
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
+
+        public bool HasStateForTargetBlock(BlockHeader targetBlock)
+        {
+            ArgumentNullException.ThrowIfNull(targetBlock);
+            return ScopeProvider.HasStateForTargetBlock(targetBlock);
+        }
 
         public Task HintBal(ReadOnlyBlockAccessList bal)
         {
