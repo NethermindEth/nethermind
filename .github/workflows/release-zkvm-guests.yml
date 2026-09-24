@@ -19,6 +19,9 @@ jobs:
     name: Draft release on GitHub
     runs-on: ubuntu-latest
     needs: test
+    # Concurrent runs would claim the same release number
+    concurrency:
+      group: ${{ github.workflow }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -45,6 +48,7 @@ jobs:
           version=$version_prefix${version_suffix:+-$version_suffix}
           echo "Detected version $version"
           echo "version=$version" >> $GITHUB_OUTPUT
+          echo "suffix=$version_suffix" >> $GITHUB_OUTPUT
           echo "commit=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
 
       - name: Archive and sign
@@ -100,8 +104,8 @@ jobs:
       - name: Draft
         working-directory: ${{ env.PACKAGE_DIR }}
         env:
-          GIT_TAG: zkvm-guests-${{ steps.version.outputs.version }}-${{ steps.version.outputs.commit }}
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
+          TAG_BASE: zkvm-guests-${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
 
@@ -122,23 +126,41 @@ jobs:
           EOF
           )
 
-          if ! gh release view "$GIT_TAG" >/dev/null 2>&1; then
-            echo "Drafting release $GIT_TAG"
-            gh release create "$GIT_TAG" --target "$GITHUB_SHA" -d -p --latest=false \
-              -t "zkVM guests v${{ steps.version.outputs.version }}+${{ steps.version.outputs.commit }}" \
-              -F <(printf '%s' "$relnotes")
+          # Stable versions are released once, so they are not numbered
+          suffix="${{ steps.version.outputs.suffix }}"
+          export TAG_REST=$([[ -n "$suffix" ]] && echo '^\.[0-9]+$' || echo '^$')
+
+          # Drafts have no git tag yet, so releases are listed instead of tags
+          releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '
+            .[] | select(.tag_name | startswith(env.TAG_BASE))
+              | select(.tag_name | ltrimstr(env.TAG_BASE) | test(env.TAG_REST))
+              | "\(.tag_name) \(.draft) \(.target_commitish)"')
+          existing=$(awk -v sha="$GITHUB_SHA" '$3 == sha' <<< "$releases")
+
+          if [[ -z "$existing" ]]; then
+            if [[ -n "$suffix" ]]; then
+              last=$(cut -d ' ' -f 1 <<< "$releases" | sed 's/.*\.//' | sort -n | tail -n 1)
+              git_tag=$TAG_BASE.$((${last:-0} + 1))
+            else
+              [[ -z "$releases" ]] || \
+                { echo "::error::$TAG_BASE is already released from another commit"; exit 1; }
+              git_tag=$TAG_BASE
+            fi
+
+            echo "Drafting release $git_tag"
+            gh release create "$git_tag" --target "$GITHUB_SHA" -d -p --latest=false \
+              -t "zkVM guests v${git_tag#zkvm-guests-}" -F <(printf '%s' "$relnotes")
           else
-            release=$(gh release view "$GIT_TAG" --json isDraft,targetCommitish \
-              -q '"\(.isDraft) \(.targetCommitish)"')
-            [[ "$release" == "true $GITHUB_SHA" ]] || \
-              { echo "::error::Release $GIT_TAG already exists"; exit 1; }
+            read -r git_tag draft _ <<< "$existing"
+            [[ "$draft" == true ]] || \
+              { echo "::error::$GITHUB_SHA is already released as $git_tag"; exit 1; }
 
             # A re-run rebuilds the guests, so the notes must follow the new digests
-            echo "Refreshing the notes of $GIT_TAG"
-            gh release edit "$GIT_TAG" -F <(printf '%s' "$relnotes")
+            echo "Refreshing the notes of $git_tag"
+            gh release edit "$git_tag" -F <(printf '%s' "$relnotes")
           fi
 
           echo "Uploading assets"
-          gh release upload "$GIT_TAG" *.tar.gz *.tar.gz.asc --clobber
+          gh release upload "$git_tag" *.tar.gz *.tar.gz.asc --clobber
 
           echo "Drafting completed. Review and publish the release manually."
