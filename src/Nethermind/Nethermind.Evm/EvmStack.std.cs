@@ -23,16 +23,16 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsJumpDestination(int destination)
     {
+        Debug.Assert(_codeInfo is not null || CodeLength == 0, "A stack that executes code must carry that code's CodeInfo.");
         long[]? bitmap = _jumpDestinations;
         // Null only for a default-constructed stack, which has no code to jump into.
         return bitmap is not null && JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
     }
 
-    partial void InitializeJumpDestinations()
-    {
-        Debug.Assert(_codeInfo is not null || CodeLength == 0, "A stack that executes code must carry that code's CodeInfo.");
+    // A stack built over code without its CodeInfo (only some unit tests do that) gets the empty bitmap,
+    // as before; the Debug assertion stays on the jump itself.
+    partial void InitializeJumpDestinations() =>
         _jumpDestinations = CodeLength == 0
             ? JumpDestinationAnalyzer.EmptyBitmap
             : _codeInfo?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
-    }
 }

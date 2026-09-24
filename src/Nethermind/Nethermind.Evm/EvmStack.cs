@@ -34,7 +34,8 @@ public ref partial struct EvmStack
         _codeInfo = codeInfo;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
-        CodeLength = codeSpan.Length;        InitializeJumpDestinations();
+        CodeLength = codeSpan.Length;
+        InitializeJumpDestinations();
     }
 
     public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo)
@@ -44,7 +45,8 @@ public ref partial struct EvmStack
         _codeInfo = codeInfo;
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
-        CodeLength = codeSpan.Length;        InitializeJumpDestinations();
+        CodeLength = codeSpan.Length;
+        InitializeJumpDestinations();
     }
 
     // Null only for stacks whose compile-time tracing flag eliminates every tracer read.
