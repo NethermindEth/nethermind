@@ -19,9 +19,9 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// <summary>
 /// The Gloas block-body operations (<see cref="GloasBlockProcessing.ProcessOperations"/>), each
 /// exercised with real BLS signatures against the fixture chain, and - for every step the pinned
-/// spec left unchanged - differentially against the vector-tested Fulu pipeline. There are no
-/// Gloas operations vectors at the pinned consensus-specs tag, so these hand-written cases are the
-/// only oracle; each one asserts a state change the operation must make, never just the absence
+/// spec left unchanged - differentially against the vector-tested Fulu pipeline. The Gloas
+/// operations vectors run in Ethereum.ConsensusSpec.Test; these hand-written cases pin the rules
+/// directly, and each one asserts a state change the operation must make, never just the absence
 /// of a throw.
 /// </summary>
 public class GloasOperationsTests
@@ -512,10 +512,10 @@ public class GloasOperationsTests
         PayloadAttestationData data = new() { BeaconBlockRoot = parentRoot, Slot = 32, PayloadPresent = true, BlobDataAvailable = true };
         PayloadAttestation attestation = PtcAttestation(state, data, positions, sign: true);
 
-        Assert.DoesNotThrow(() => GloasBlockProcessing.ProcessPayloadAttestation(state, attestation, pubkeys, verifySignature: true));
+        Assert.DoesNotThrow(() => GloasBlockProcessing.ProcessPayloadAttestation(state, attestation, UpgradeEpochSpec(), pubkeys, verifySignature: true));
 
-        ulong[] ptc = state.GetPtc(32).Indices!;
-        IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation);
+        ulong[] ptc = state.GetPtc(32, UpgradeEpochSpec()).Indices!;
+        IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation, UpgradeEpochSpec());
         Assert.Multiple(() =>
         {
             Assert.That(indexed.AttestingIndices, Is.EqualTo(positions.Select(p => ptc[p]).Order()).AsCollection);
@@ -543,7 +543,7 @@ public class GloasOperationsTests
             attestation.Signature = Corrupt(attestation.Signature);
 
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            GloasBlockProcessing.ProcessPayloadAttestation(state, attestation, pubkeys, verifySignature: true))!;
+            GloasBlockProcessing.ProcessPayloadAttestation(state, attestation, UpgradeEpochSpec(), pubkeys, verifySignature: true))!;
 
         Assert.That(ex.Message, Does.Contain(expectedMessage));
     }
@@ -576,16 +576,55 @@ public class GloasOperationsTests
         Assert.That(GloasBlockProcessing.IsValidIndexedPayloadAttestation(state, attestation, pubkeys, verifySignature: true), Is.EqualTo(expected));
     }
 
-    [Test]
-    public void GetIndexedPayloadAttestation_resolves_a_vote_for_a_pre_fork_slot_against_the_default_committee_instead_of_crashing()
+    /// <summary>
+    /// Spec <c>is_valid_indexed_payload_attestation</c> refuses empty indices before any signature check, so the
+    /// rule must hold with signature verification off too; one index still passes, so the refusal is the rule's.
+    /// </summary>
+    [TestCase(0, false)]
+    [TestCase(1, true)]
+    public void IsValidIndexedPayloadAttestation_refuses_empty_indices_without_relying_on_the_signature(int indexCount, bool expected)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
-        Assert.That(state.GetPtc(31).Indices, Is.Null, "fixture bug: the upgrade leaves the pre-fork half unpopulated");
-        PayloadAttestation attestation = PtcAttestation(state, new PayloadAttestationData { BeaconBlockRoot = Hash(0x31), Slot = 31 }, [0, 1, 2], sign: false);
+        PubkeyCache pubkeys = InstallRealValidatorKeys(state);
+        IndexedPayloadAttestation attestation = new()
+        {
+            AttestingIndices = [.. Enumerable.Range(4, indexCount).Select(static i => (ulong)i)],
+            Data = new PayloadAttestationData { BeaconBlockRoot = Hash(0x31), Slot = 32, PayloadPresent = true, BlobDataAvailable = true },
+        };
 
-        IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation);
+        Assert.That(GloasBlockProcessing.IsValidIndexedPayloadAttestation(state, attestation, pubkeys, verifySignature: false), Is.EqualTo(expected));
+    }
 
-        Assert.That(indexed.AttestingIndices, Is.EqualTo(new ulong[] { 0, 0, 0 }).AsCollection);
+    /// <summary>
+    /// Spec <c>get_ptc</c> asserts <c>epoch &gt;= GLOAS_FORK_EPOCH</c>. The first Gloas block can only carry
+    /// votes for the last Fulu slot, whose window entry is the placeholder committee (validator 0 in every
+    /// seat), so without the assert validator 0 alone could vote for it; a vote one slot later must still pass.
+    /// </summary>
+    [TestCase(true, TestName = "ProcessBlock_refuses_a_first_gloas_block_whose_payload_attestation_names_the_last_fulu_slot")]
+    [TestCase(false, TestName = "ProcessBlock_accepts_a_payload_attestation_naming_the_first_gloas_slot")]
+    public void ProcessBlock_accepts_payload_attestations_only_for_gloas_slots(bool namesLastFuluSlot)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        // What a decoded upgrade state holds: initialize_ptc_window fills the pre-fork half with validator 0.
+        for (int i = 0; i < (int)SlotsPerEpoch; i++)
+            state.PtcWindow![i] = new PayloadTimelinessCommittee { Indices = new ulong[Presets.PtcSize] };
+        EpochCache cache = new();
+        if (!namesLastFuluSlot)
+        {
+            ApplyBlock(state, MinimalBlock(state, SelfBuildBid(state, state.LatestBlockHash!, Hash(0x99))), cache);
+            GloasSlotProcessing.ProcessSlots(state, BoundarySlot + 1, cache);
+        }
+
+        SignedBeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, state.LatestBlockHash!, Hash(0x9A)));
+        PayloadAttestationData data = new() { BeaconBlockRoot = block.Message!.ParentRoot, Slot = state.Slot - 1, PayloadPresent = true, BlobDataAvailable = true };
+        block.Message.Body!.PayloadAttestations = [PtcAttestation(state, data, [0, 1, 2], sign: false)];
+
+        Action apply = () => ApplyBlock(state, block, cache);
+
+        if (namesLastFuluSlot)
+            Assert.That(apply, Throws.TypeOf<BeaconStateException>().With.Message.Contains("GLOAS_FORK_EPOCH"));
+        else
+            Assert.That(apply, Throws.Nothing);
     }
 
     [Test]
@@ -597,11 +636,13 @@ public class GloasOperationsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(state.GetPtc(63), Is.SameAs(window[31]), "previous epoch: the first SLOTS_PER_EPOCH entries");
-            Assert.That(state.GetPtc(64), Is.SameAs(window[32]), "current epoch");
-            Assert.That(state.GetPtc(96), Is.SameAs(window[64]), "one epoch of lookahead");
-            Assert.That(() => state.GetPtc(31), Throws.TypeOf<BeaconStateException>(), "two epochs back is outside the window");
-            Assert.That(() => state.GetPtc(128), Throws.TypeOf<BeaconStateException>(), "beyond MIN_SEED_LOOKAHEAD is outside the window");
+            Assert.That(state.GetPtc(63, UpgradeEpochSpec()), Is.SameAs(window[31]), "previous epoch: the first SLOTS_PER_EPOCH entries");
+            Assert.That(state.GetPtc(64, UpgradeEpochSpec()), Is.SameAs(window[32]), "current epoch");
+            Assert.That(state.GetPtc(96, UpgradeEpochSpec()), Is.SameAs(window[64]), "one epoch of lookahead");
+            Assert.That(() => state.GetPtc(31, UpgradeEpochSpec()), Throws.TypeOf<BeaconStateException>(), "two epochs back is outside the window");
+            Assert.That(() => state.GetPtc(128, UpgradeEpochSpec()), Throws.TypeOf<BeaconStateException>(), "beyond MIN_SEED_LOOKAHEAD is outside the window");
+            Assert.That(() => state.GetPtc(63, SyntheticSpec(gloasForkEpoch: 2)), Throws.TypeOf<BeaconStateException>().With.Message.Contains("GLOAS_FORK_EPOCH"),
+                "a slot before GLOAS_FORK_EPOCH has no PTC even inside the window");
         });
     }
 

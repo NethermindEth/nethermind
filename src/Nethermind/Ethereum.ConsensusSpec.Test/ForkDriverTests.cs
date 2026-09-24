@@ -39,14 +39,14 @@ public class ForkDriverTests
         working.ProposerLookahead = Enumerable.Range(1, 64).Select(i => (ulong)i).ToArray();
 
         Hash256 electraRoot = ForkDriver.ElectraRoot(electra);
-        Hash256 fuluRoot = ForkDriver.ByName["fulu"].StateRoot(working);
-        Hash256 electraRootOfWorking = ForkDriver.ByName["electra"].StateRoot(working);
+        Hash256 fuluRoot = FuluPipeline("fulu").StateRoot(working);
+        Hash256 electraRootOfWorking = FuluPipeline("electra").StateRoot(working);
 
         Assert.Multiple(() =>
         {
             Assert.That(electraRootOfWorking, Is.EqualTo(electraRoot), "the Electra shape must not see proposer_lookahead");
             Assert.That(fuluRoot, Is.Not.EqualTo(electraRoot), "the Fulu shape does see it, so a Fulu-shaped root would fail every Electra vector");
-            Assert.That(ForkDriver.ElectraRoot((BeaconStateElectra)ForkDriver.ByName["electra"].ForDiff(working)), Is.EqualTo(electraRoot),
+            Assert.That(ForkDriver.ElectraRoot((BeaconStateElectra)FuluPipeline("electra").ForDiff(working)), Is.EqualTo(electraRoot),
                 "the diff view must be the same Electra state the root was taken over");
         });
     }
@@ -90,6 +90,8 @@ public class ForkDriverTests
         Assert.That(working.ProposerLookahead, Has.Length.EqualTo(64).And.All.EqualTo(ForkDriver.NoProposer),
             "a slot without a proposer must not name validator 0, which an operation reading it would then accept");
     }
+
+    private static ForkDriver<BeaconStateFulu> FuluPipeline(string fork) => (ForkDriver<BeaconStateFulu>)ForkDriver.ByName[fork];
 
     /// <summary>Null lists and fixed-size fields merkleize as zero, but the generated merkleizer rejects a null variable-size container.</summary>
     private static BeaconStateElectra MerkleizableElectra() => new() { LatestExecutionPayloadHeader = new ExecutionPayloadHeader() };

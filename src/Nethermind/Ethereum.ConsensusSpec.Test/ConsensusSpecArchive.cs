@@ -30,10 +30,12 @@ public static class ConsensusSpecArchive
     /// <summary>The consensus-specs release tag the preset archives are downloaded from.</summary>
     /// <remarks>
     /// Ahead of <see cref="SszConsensusTestLoader"/>'s pin, which cannot pass the last release that carries
-    /// ssz_generic. v1.7.0-alpha.14 is the first release whose <c>upgrade_to_gloas</c> sets every field of
-    /// the upgraded execution payload bid (consensus-specs #5550 and #5553), as <c>GloasForkTransition</c> does.
+    /// ssz_generic. The pin cannot go below v1.7.0-alpha.14, the first release whose <c>upgrade_to_gloas</c>
+    /// sets every field of the upgraded execution payload bid (consensus-specs #5550 and #5553), as
+    /// <c>GloasForkTransition</c> does. v1.7.0-beta.2 adds the <c>GLOAS_FORK_EPOCH</c> assert in <c>get_ptc</c>
+    /// (consensus-specs #5652), whose vectors carry their own <c>config.yaml</c> (see <see cref="FuluDriverSupport.CaseSpec"/>).
     /// </remarks>
-    public const string Version = "v1.7.0-alpha.14";
+    public const string Version = "v1.7.0-beta.2";
 
     /// <summary>
     /// Set NETHERMIND_CONSENSUS_SPEC_MAINNET=1 to include the mainnet-preset vectors. Off by default:
@@ -52,7 +54,7 @@ public static class ConsensusSpecArchive
     /// process_block/process_epoch pipeline. Phase0..Deneb have no state container in this repo at all,
     /// so their vectors are neither extracted (about 1 GB more of mainnet fixtures) nor enumerated.
     /// </summary>
-    public static readonly string[] StateTransitionForks = ["electra", "fulu"];
+    public static readonly string[] StateTransitionForks = ["electra", "fulu", "gloas"];
 
     /// <summary>
     /// The post-fork names whose <c>fork</c> vectors (a pre-fork <c>pre</c> state upgraded to the named

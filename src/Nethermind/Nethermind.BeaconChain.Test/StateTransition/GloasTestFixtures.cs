@@ -43,6 +43,9 @@ internal static class GloasTestFixtures
     private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
     private static readonly byte[] GloasVersion = Bytes.FromHexString("0x07000000");
 
+    /// <summary>The spec whose <c>GLOAS_FORK_EPOCH</c> is the epoch <see cref="CreateGloasState"/> upgrades at.</summary>
+    public static BeaconChainSpec UpgradeEpochSpec() => SyntheticSpec(BoundarySlot / Presets.SlotsPerEpoch);
+
     public static BeaconChainSpec SyntheticSpec(ulong gloasForkEpoch = 0) => new()
     {
         SecondsPerSlot = 12,
@@ -320,7 +323,6 @@ internal static class GloasTestFixtures
     /// </summary>
     public static PayloadAttestation PtcAttestation(BeaconStateGloas state, PayloadAttestationData data, int[] positions, bool sign)
     {
-        ulong[] ptc = state.GetPtc(data.Slot).Indices ?? new ulong[Presets.PtcSize];
         BitArray bits = new((int)Presets.PtcSize);
         foreach (int position in positions)
         {
@@ -330,6 +332,7 @@ internal static class GloasTestFixtures
         BlsSignature signature = default;
         if (sign)
         {
+            ulong[] ptc = state.GetPtc(data.Slot, UpgradeEpochSpec()).Indices!;
             Hash256 domain = state.GetDomain(DomainType.PtcAttester, BeaconStateAccessors.ComputeEpochAtSlot(data.Slot));
             signature = AggregateSignature(Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain), [.. positions.Select(p => (int)ptc[p])]);
         }
@@ -478,7 +481,7 @@ internal static class GloasTestFixtures
 
     /// <summary>Applies <paramref name="block"/> to <paramref name="state"/> through the real pipeline, signatures skipped (the fixtures' RANDAO reveal is unsigned).</summary>
     public static void ApplyBlock(BeaconStateGloas state, SignedBeaconBlockGloas block, EpochCache cache) =>
-        GloasBlockProcessing.ProcessBlock(state, block.Message!, cache, new PubkeyCache(), new AcceptingNotifier(), SyntheticSpec(), verifySignatures: false);
+        GloasBlockProcessing.ProcessBlock(state, block.Message!, cache, new PubkeyCache(), new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: false);
 
     /// <summary>A queued top-up for the validator already at <paramref name="validatorIndex"/>; a known pubkey is credited without a signature check.</summary>
     public static PendingDeposit TopUpDeposit(BeaconStateGloas state, int validatorIndex, ulong amount, ulong slot) => new()
