@@ -22,7 +22,9 @@ using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -312,6 +314,63 @@ public class StateProviderTests(bool useFlat)
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.Restore(Snapshot.Empty);
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.Zero));
+    }
+
+    [Test]
+    public void Sparse_intra_tx_cache_cleanup_handles_restore_and_reset([Values] bool resetBeforeCommit)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState state = ctx.WorldState;
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+
+        for (int i = 1; i <= 256; i++)
+        {
+            state.CreateAccount(new Address(Keccak.Compute(i.ToString())), (UInt256)i);
+        }
+        state.Commit(Frontier.Instance);
+
+        Snapshot snapshot = state.TakeSnapshot();
+        state.GetBalance(_address1);
+        state.AddToBalance(_address1, 1, Frontier.Instance);
+        state.Restore(snapshot);
+        state.AddToBalance(_address1, 1, Frontier.Instance);
+
+        if (resetBeforeCommit)
+        {
+            state.Reset(resetBlockChanges: false);
+            Assert.That(state.GetBalance(_address1), Is.EqualTo(UInt256.One));
+            state.AddToBalance(_address1, 1, Frontier.Instance);
+        }
+
+        state.Commit(Frontier.Instance);
+
+        Assert.That(state.GetBalance(_address1), Is.EqualTo((UInt256)2));
+    }
+
+    [Test]
+    public void Sparse_intra_tx_cache_cleanup_preserves_null_reads_in_state_trace()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState state = ctx.WorldState;
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+
+        for (int i = 1; i <= 256; i++)
+        {
+            state.CreateAccount(new Address(Keccak.Compute(i.ToString())), (UInt256)i);
+        }
+        state.Commit(Frontier.Instance);
+
+        Address missing = new(Keccak.Compute("missing"));
+        Assert.That(state.AccountExists(missing), Is.False);
+        Assert.That(state.AccountExists(_address1), Is.True);
+
+        IWorldStateTracer tracer = Substitute.For<IWorldStateTracer>();
+        tracer.IsTracingState.Returns(true);
+        state.Commit(Frontier.Instance, tracer);
+
+        tracer.Received(1).ReportAccountRead(missing);
+        tracer.Received(1).ReportAccountRead(_address1);
+        Assert.That(state.GetBalance(_address1), Is.EqualTo(UInt256.One));
     }
 
     [Test]

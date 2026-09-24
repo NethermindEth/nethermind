@@ -596,10 +596,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         InvalidateFrontCache();
+        ClearIntraTxCache();
         _changes.Clear();
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
-        _intraTxCache.ClearAndTrim();
 
         AwaitCodeFlush(codeFlushTask);
 
@@ -668,6 +668,21 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         [DoesNotReturn, StackTraceHidden]
         static void ThrowStartOfCommitIsNull(int currentPosition)
             => throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(StateProvider)}");
+    }
+
+    private void ClearIntraTxCache()
+    {
+        int capacity = _intraTxCache.Capacity;
+        if (capacity > Nethermind.Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity || _changes.Count > capacity / 8)
+        {
+            _intraTxCache.ClearAndTrim();
+            return;
+        }
+
+        foreach (ref readonly Change change in CollectionsMarshal.AsSpan(_changes))
+        {
+            if (!change.IsNull) _intraTxCache.Remove(change.Address);
+        }
     }
 
     private void CommitChanges<TStateTracing>(
@@ -1066,7 +1081,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _removedWithStorage.Clear();
             _codeBatch?.Clear();
         }
-        _intraTxCache.ClearAndTrim();
+        ClearIntraTxCache();
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
         InvalidateFrontCache();
