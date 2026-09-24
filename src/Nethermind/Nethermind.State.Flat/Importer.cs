@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Globalization;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -23,16 +24,18 @@ namespace Nethermind.State.Flat;
 public class Importer(
     INodeStorage nodeStorage,
     IPersistence persistence,
-    ILogManager logManager
+    ILogManager logManager,
+    TimeProvider? timeProvider = null
 )
 {
     private readonly ILogger _logger = logManager.GetClassLogger<Importer>();
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly AccountDecoder _accountDecoder = AccountDecoder.Instance;
     private long _totalNodes = 0;
     private const int BatchSize = 128_000;
     private const int FlushInterval = 50_000_000;
     private const int CheckCancelInterval = 100_000;
-    private static readonly TimeSpan ProgressHeartbeatInterval = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(60);
 
     private record struct Entry(Hash256? address, TreePath path, TrieNode node);
 
@@ -54,7 +57,7 @@ public class Importer(
         if (_logger.IsWarn) _logger.Warn("Starting import");
 
         int maxConcurrency = 8;
-        VisitorProgressTracker progressTracker = new("Flat Import", logManager, logLevel: LogLevel.Info, heartbeatInterval: ProgressHeartbeatInterval);
+        VisitorProgressTracker progressTracker = new("Flat Import", logManager);
 
         Task visitTask = Task.Run(() =>
         {
@@ -65,15 +68,10 @@ public class Importer(
                 {
                     MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount), // Tend to be faster with low thread
                 });
-
-                // Reports 100 %, so only on completion; a cancelled traversal can also return normally
-                if (!cancellationToken.IsCancellationRequested)
-                {
-                    visitor.Finish();
-                }
             }
             finally
             {
+                visitor.Finish();
                 channel.Writer.Complete();
             }
         }, cancellationToken);
@@ -85,19 +83,39 @@ public class Importer(
             await IngestLogic(from, channel.Reader, cancellationToken);
         }, cancellationToken)));
 
-        await Task.WhenAll(tasks.AsSpan());
+        // Timer-driven, so a line is written also while ingest is stalled and no node is visited.
+        // After the traversal the estimate can stay below 100 % on small tries, so report it as done.
+        ITimer progressTimer = _timeProvider.CreateTimer(
+            _ => LogProgress(visitTask.IsCompletedSuccessfully ? 1 : progressTracker.GetProgress(), channel.Reader),
+            null, ProgressInterval, ProgressInterval);
+        try
+        {
+            await Task.WhenAll(tasks.AsSpan());
 
-        // The ingest batches use DisableWAL and are only crash-durable once flushed. Flush before advancing the
-        // WAL-durable pointer, so a crash can't leave CurrentState at `to` over unflushed (holed) data, which
-        // FlatDb.DropPruningTrieState would then treat as a finished import and delete the trie it came from.
-        persistence.Flush();
+            // The ingest batches use DisableWAL and are only crash-durable once flushed. Flush before advancing the
+            // WAL-durable pointer, so a crash can't leave CurrentState at `to` over unflushed (holed) data, which
+            // FlatDb.DropPruningTrieState would then treat as a finished import and delete the trie it came from.
+            persistence.Flush();
 
-        // An empty write batch from→to advances the persisted state ID to `to` without writing any data entries.
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, to);
-        writeBatch.Dispose();
-        persistence.Flush();
+            // An empty write batch from→to advances the persisted state ID to `to` without writing any data entries.
+            IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(from, to);
+            writeBatch.Dispose();
+            persistence.Flush();
+        }
+        finally
+        {
+            // Waits for a running tick, so no progress line follows
+            await progressTimer.DisposeAsync();
+        }
 
         if (_logger.IsInfo) _logger.Info($"Flat db copy completed. Wrote {_totalNodes} nodes.");
+    }
+
+    private void LogProgress(double progress, ChannelReader<Entry> channelReader)
+    {
+        if (!_logger.IsInfo) return;
+
+        _logger.Info($"Flat Import {progress.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter((float)progress, 1)} written: {Interlocked.Read(ref _totalNodes):N0} queued: {channelReader.Count:N0}");
     }
 
     private async Task IngestLogic(StateId from, ChannelReader<Entry> channelReader, CancellationToken cancellationToken = default)

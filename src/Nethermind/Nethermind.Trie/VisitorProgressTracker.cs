@@ -4,6 +4,7 @@
 using System;
 using System.Globalization;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie;
@@ -17,74 +18,37 @@ public class VisitorProgressTracker
 {
     public const int Level3Depth = 4; // 4 nibbles
     private const int MaxNodes = 65536; // 16^4 possible 4-nibble prefixes
-    private const int ProgressScale = 10_000; // 0.01% precision
-    // Heartbeat check for storage nodes, which never reach the state-node triggers
-    private const long HeartbeatCheckMask = (1 << 16) - 1;
 
     private int _seenCount; // Count of level-3 nodes seen (or estimated from shallow leaves)
 
     private long _nodeCount;
-    private long _lastReportedProgress = -1; // Guarded by _reportLock; negative until the first line
-    private long _lastReportTimestamp; // Guarded by _reportLock
-    private readonly Lock _reportLock = new();
     private long _totalWorkDone; // Total work done (for display, separate from progress calculation)
-    private readonly TimeProvider _timeProvider;
-    private readonly long _startTimestamp;
-    private readonly Action<string>? _logAction;
+    private readonly DateTime _startTime;
+    private readonly ProgressLogger _logger;
     private readonly string _operationName;
     private readonly int _reportingInterval;
     private readonly bool _printNodes;
-    private readonly TimeSpan? _heartbeatInterval;
 
-    /// <summary>
-    /// Creates a tracker that logs the estimated traversal progress at <paramref name="logLevel"/>.
-    /// </summary>
-    /// <remarks>
-    /// With <paramref name="heartbeatInterval"/>, a line is written once the interval has passed, even without progress.
-    /// The clock is only checked when a node is visited.
-    /// </remarks>
-    /// <param name="operationName">Line prefix.</param>
-    /// <param name="reportingInterval">State nodes between extra progress re-evaluations.</param>
-    /// <param name="printNodes">Whether lines include the visited node count.</param>
-    /// <param name="heartbeatInterval">Minimum time between lines, except the final one; <c>null</c> reports every change.</param>
-    /// <param name="timeProvider">Defaults to <see cref="TimeProvider.System"/>.</param>
     public VisitorProgressTracker(
         string operationName,
         ILogManager logManager,
         int reportingInterval = 100_000,
-        bool printNodes = true,
-        LogLevel logLevel = LogLevel.Debug,
-        TimeSpan? heartbeatInterval = null,
-        TimeProvider? timeProvider = null)
+        bool printNodes = true)
     {
         ArgumentNullException.ThrowIfNull(logManager);
-        if (heartbeatInterval is { } interval)
-        {
-            ArgumentOutOfRangeException.ThrowIfLessThan(interval, TimeSpan.Zero, nameof(heartbeatInterval));
-        }
 
         _operationName = operationName;
         _printNodes = printNodes;
-        _heartbeatInterval = heartbeatInterval;
-        _timeProvider = timeProvider ?? TimeProvider.System;
-        ILogger logger = logManager.GetClassLogger<VisitorProgressTracker>();
-        InterfaceLogger underlying = logger.UnderlyingLogger;
-        _logAction = logLevel switch
-        {
-            LogLevel.Info when logger.IsInfo => underlying.Info,
-            LogLevel.Debug when logger.IsDebug => underlying.Debug,
-            LogLevel.Warn when logger.IsWarn => underlying.Warn,
-            LogLevel.Error when logger.IsError => s => underlying.Error(s),
-            LogLevel.Trace when logger.IsTrace => underlying.Trace,
-            _ => null,
-        };
+        _logger = new ProgressLogger(operationName, logManager, logLevel: LogLevel.Debug);
+        _logger.Reset(0, 10000); // Use 10000 for 0.01% precision
+        _logger.SetFormat(FormatProgress);
         _reportingInterval = reportingInterval;
-        _startTimestamp = _timeProvider.GetTimestamp();
+        _startTime = DateTime.UtcNow;
     }
 
-    private string FormatProgress(long progressValue)
+    private string FormatProgress(ProgressLogger logger)
     {
-        float percentage = Math.Clamp(progressValue / (float)ProgressScale, 0, 1);
+        float percentage = Math.Clamp(logger.CurrentValue / 10000f, 0, 1);
         long work = Interlocked.Read(ref _totalWorkDone);
         string workStr = work >= 1_000_000 ? $"{work / 1_000_000.0:F1}M" : $"{work:N0}";
         return _printNodes
@@ -102,12 +66,12 @@ public class VisitorProgressTracker
     public void OnNodeVisited(in TreePath path, bool isStorage = false, bool isLeaf = false)
     {
         // Always count the work done
-        long work = Interlocked.Increment(ref _totalWorkDone);
-        bool shouldLog = _heartbeatInterval is not null && (work & HeartbeatCheckMask) == 0;
+        Interlocked.Increment(ref _totalWorkDone);
 
         // Only track state nodes for progress estimation at level 3
         if (!isStorage)
         {
+            bool shouldLog = false;
             if (path.Length == Level3Depth)
             {
                 // Node at exactly level 3 (4 nibbles): count as 1 node
@@ -136,24 +100,19 @@ public class VisitorProgressTracker
             {
                 shouldLog = true;
             }
-        }
 
-        if (shouldLog)
-        {
-            LogProgress();
+            if (shouldLog)
+            {
+                LogProgress();
+            }
         }
     }
 
     private void LogProgress()
     {
-        if (_logAction is null)
-        {
-            return;
-        }
-
         // Skip logging for first 5 seconds OR until we've seen at least 1% of nodes
         // This avoids showing noisy early estimates
-        double elapsed = _timeProvider.GetElapsedTime(_startTimestamp).TotalSeconds;
+        double elapsed = (DateTime.UtcNow - _startTime).TotalSeconds;
         int seen = _seenCount;
         double progress = Math.Min((double)seen / MaxNodes, 1.0);
 
@@ -162,24 +121,10 @@ public class VisitorProgressTracker
             return;
         }
 
-        long progressValue = (long)(progress * ProgressScale);
+        ulong progressValue = (ulong)(progress * 10000);
 
-        // Decide and write under one lock: no duplicate or out-of-order lines
-        lock (_reportLock)
-        {
-            long now = _timeProvider.GetTimestamp();
-            bool isDue = _heartbeatInterval is { } interval
-                ? _lastReportedProgress < 0 || _timeProvider.GetElapsedTime(_lastReportTimestamp, now) >= interval
-                : progressValue > _lastReportedProgress;
-            if (!isDue)
-            {
-                return;
-            }
-
-            _lastReportedProgress = Math.Max(_lastReportedProgress, progressValue);
-            _lastReportTimestamp = now;
-            _logAction(FormatProgress(_lastReportedProgress));
-        }
+        _logger.Update(progressValue);
+        _logger.LogProgress();
     }
 
     /// <summary>
@@ -187,19 +132,9 @@ public class VisitorProgressTracker
     /// </summary>
     public void Finish()
     {
-        if (_logAction is null)
-        {
-            return;
-        }
-
-        lock (_reportLock)
-        {
-            if (_lastReportedProgress < ProgressScale)
-            {
-                _lastReportedProgress = ProgressScale;
-                _logAction(FormatProgress(ProgressScale));
-            }
-        }
+        _logger.Update(10000);
+        _logger.MarkEnd();
+        _logger.LogProgress();
     }
 
     /// <summary>

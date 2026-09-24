@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -114,54 +115,83 @@ public class ImporterTests
     }
 
     [Test]
-    public async Task Copy_ReportsFullProgressWhenTheTraversalCompletes()
+    public async Task Copy_WritesAProgressLineOnEveryTick()
     {
+        // 10 accounts keep the estimate below 100 %, so a full line after the traversal comes from the importer
         SeedTree(10);
-        (Importer importer, InterfaceLogger logger) = CreateImporterWithInfoLogger();
+        ManualTimer timer = new();
+        InterfaceLogger logger = CreateInfoLogger();
+        Importer importer = new(new NodeStorage(_trieDb), new OrderRecordingPersistence(_persistence, [], timer.Tick),
+            new OneLoggerLogManager(new ILogger(logger)), timer.TimeProvider);
+        // Two ticks with nothing visited in between: each still writes a line
+        int ticked = 0;
+        logger.When(l => l.Info(Arg.Is<string>(line => line.Contains("Ingest thread started")))).Do(_ =>
+        {
+            if (Interlocked.Exchange(ref ticked, 1) == 0)
+            {
+                timer.Tick();
+                timer.Tick();
+            }
+        });
 
         await importer.Copy(new StateId(0, _stateTree.RootHash));
 
-        logger.Received(1).Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("100.00 %")));
+        timer.TimeProvider.Received(1).CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+        logger.Received(4).Info(Arg.Is<string>(line => line.Contains("Flat Import")));
+        Received.InOrder(() =>
+        {
+            logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("written:") && line.Contains("queued:")));
+            logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("written:") && line.Contains("queued:")));
+            // One tick per final flush, after the traversal
+            logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("100.00 %")));
+            logger.Info(Arg.Is<string>(line => line.Contains("Flat Import") && line.Contains("100.00 %")));
+            _ = timer.Timer.DisposeAsync();
+            logger.Info(Arg.Is<string>(line => line.StartsWith("Flat db copy completed")));
+        });
     }
 
     [Test]
-    public async Task Copy_DoesNotReportFullProgressWhenTheTraversalFails()
+    public async Task Copy_StopsTheProgressTimerWhenTheImportFails()
     {
-        (Importer importer, InterfaceLogger logger) = CreateImporterWithInfoLogger();
+        ManualTimer timer = new();
+        Importer importer = new(new NodeStorage(_trieDb), _persistence, new OneLoggerLogManager(new ILogger(CreateInfoLogger())), timer.TimeProvider);
 
         // Unknown state root, so the traversal fails on its first node
         await Assert.ThatAsync(async () => await importer.Copy(new StateId(0, TestItem.KeccakA)),
             Throws.InstanceOf<TrieException>());
 
-        logger.DidNotReceive().Info(Arg.Is<string>(line => line.Contains("100.00 %")));
+        _ = timer.Timer.Received(1).DisposeAsync();
     }
 
-    [Test]
-    public async Task Copy_DoesNotReportFullProgressWhenCancelledDuringTheTraversal()
-    {
-        // Fixed addresses give depth-1 leaves, so a progress line is written mid-traversal
-        _stateTree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(1));
-        _stateTree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(2));
-        _stateTree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(3));
-        _stateTree.Commit();
-        using CancellationTokenSource cts = new();
-        (Importer importer, InterfaceLogger logger) = CreateImporterWithInfoLogger();
-        logger.When(l => l.Info(Arg.Is<string>(line => line.Contains("Flat Import")))).Do(_ => cts.Cancel());
-
-        await Assert.ThatAsync(async () => await importer.Copy(new StateId(0, _stateTree.RootHash), cts.Token),
-            Throws.InstanceOf<System.OperationCanceledException>());
-
-        logger.DidNotReceive().Info(Arg.Is<string>(line => line.Contains("100.00 %")));
-    }
-
-    private (Importer importer, InterfaceLogger logger) CreateImporterWithInfoLogger()
+    private static InterfaceLogger CreateInfoLogger()
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsInfo.Returns(true);
-        return (new Importer(new NodeStorage(_trieDb), _persistence, new OneLoggerLogManager(new ILogger(logger))), logger);
+        return logger;
     }
 
-    private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log) : IPersistence
+    // Captures the importer's timer callback so a test can fire it
+    private sealed class ManualTimer
+    {
+        private readonly TaskCompletionSource<TimerCallback> _callback = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ManualTimer() =>
+            TimeProvider.CreateTimer(Arg.Do<TimerCallback>(c => _callback.TrySetResult(c)), Arg.Any<object?>(), Arg.Any<TimeSpan>(), Arg.Any<TimeSpan>())
+                .Returns(Timer);
+
+        public TimeProvider TimeProvider { get; } = Substitute.For<TimeProvider>();
+
+        public ITimer Timer { get; } = Substitute.For<ITimer>();
+
+        // The timer is created after the ingest threads start, so a tick from one of them waits for it
+        public void Tick()
+        {
+            if (!_callback.Task.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("The importer did not create its progress timer");
+            _callback.Task.Result(null);
+        }
+    }
+
+    private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log, Action? onFlush = null) : IPersistence
     {
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
 
@@ -175,6 +205,7 @@ public class ImporterTests
         public void Flush()
         {
             log.Add("flush");
+            onFlush?.Invoke();
             inner.Flush();
         }
 
