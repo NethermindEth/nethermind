@@ -121,6 +121,7 @@ public partial class VirtualMachine<TGasPolicy>(
     private ReadOnlyMemory<byte> _returnDataBuffer;
     private const int MaxRetainedReturnDataScratch = 32 * 1024;
     private byte[] _returnDataScratch = [];
+    private byte[]? _stagedReturnData;
     private int _stagedReturnDataLength;
 
     /// <summary>Scratch for the big-endian words <see cref="TraceStack"/> hands a tracer.</summary>
@@ -144,6 +145,9 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <summary>The retained (per-instance) ID scratch length, which the inline ID fast path grows. Zero until
     /// that path runs, so a test can assert it to pin that the fast path was actually taken.</summary>
     internal int RetainedPrecompileScratchLength => _precompileScratch.Length;
+
+    /// <summary>The retained nested RETURN/REVERT scratch length. Zero until that path runs.</summary>
+    internal int RetainedReturnDataScratchLength => _returnDataScratch.Length;
 
     protected VmState<TGasPolicy> _currentState = null!;
     protected (Address? CreatedAddress, bool? Success) _previousCallResult;
@@ -170,7 +174,10 @@ public partial class VirtualMachine<TGasPolicy>(
         else if (returnData.Length <= MaxRetainedReturnDataScratch
             && !_currentState.IsTopLevel
             && !_currentState.ExecutionType.IsAnyCreate()
-            && !_txTracer.IsTracing)
+            && !_txTracer.IsTracingActions
+            && !_txTracer.IsTracingInstructions
+            && !_txTracer.IsTracingMemory
+            && !_txTracer.IsTracingReturnData)
         {
             byte[] scratch = _returnDataScratch;
             if (scratch.Length < returnData.Length)
@@ -188,6 +195,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         ReturnData = output;
+        _stagedReturnData = output;
     }
 
     public PoppedAddressCache AddressCache { get; } = new();
@@ -1459,6 +1467,7 @@ public partial class VirtualMachine<TGasPolicy>(
         where TCancelable : struct, IFlag
     {
         ReturnData = null;
+        _stagedReturnData = null;
         _stagedReturnDataLength = 0;
 
         // May not be zero when resuming after a call.
@@ -1511,11 +1520,15 @@ public partial class VirtualMachine<TGasPolicy>(
 
     DataReturn:
         Debug.Assert(ReturnData is byte[], "RETURN stages a byte array before stopping dispatch.");
-        return new CallResult(Unsafe.As<byte[]>(ReturnData).AsMemory(0, _stagedReturnDataLength), null);
+        byte[] dataReturn = Unsafe.As<byte[]>(ReturnData);
+        int dataReturnLength = ReferenceEquals(dataReturn, _stagedReturnData) ? _stagedReturnDataLength : dataReturn.Length;
+        return new CallResult(dataReturn.AsMemory(0, dataReturnLength), null);
 
     Revert:
         Debug.Assert(ReturnData is byte[], "REVERT stages a byte array before stopping dispatch.");
-        return new CallResult(Unsafe.As<byte[]>(ReturnData).AsMemory(0, _stagedReturnDataLength), null, shouldRevert: true, exceptionType);
+        byte[] revertData = Unsafe.As<byte[]>(ReturnData);
+        int revertDataLength = ReferenceEquals(revertData, _stagedReturnData) ? _stagedReturnDataLength : revertData.Length;
+        return new CallResult(revertData.AsMemory(0, revertDataLength), null, shouldRevert: true, exceptionType);
 
     ReturnFailure:
         if (exceptionType == EvmExceptionType.OutOfGas)
