@@ -37,6 +37,12 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
                 JsonSerializer.Serialize(writer, value.Code, options);
             }
 
+            if (value.CodeHash is not null)
+            {
+                writer.WritePropertyName("codeHash"u8);
+                JsonSerializer.Serialize(writer, value.CodeHash, options);
+            }
+
             ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
             if (value.Storage?.Count > 0)
             {

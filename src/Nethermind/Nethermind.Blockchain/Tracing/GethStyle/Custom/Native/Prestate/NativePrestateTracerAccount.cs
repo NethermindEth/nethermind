@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
@@ -24,6 +25,9 @@ public class NativePrestateTracerAccount
     public UInt256? Nonce { get; set; }
 
     public byte[]? Code { get; set; }
+
+    /// <summary>Gets or sets the account code hash included in the trace.</summary>
+    public ValueHash256? CodeHash { get; set; }
 
     public Dictionary<UInt256, UInt256>? Storage { get; set; }
 }
