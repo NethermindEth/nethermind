@@ -193,8 +193,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         using PbtNodeGroupWriter<TPath> writer = new(0, context.MemoryProvider, context.PrefixlessBranchOmission);
+        StoredGroupHashes hashes = default;
         FoldResult result = default;
-        FoldMutations(context, ref reader, writer, root, operations, ref path, 0, 0, plan, ref result);
+        FoldMutations(context, ref reader, ref hashes, writer, root, operations, ref path, 0, 0, plan, ref result);
         ValueHash256 hash = writer.WriteRoot(path, result, context.Metrics);
         PublishGroup(context.Writer, ref reader, writer, path, hash);
         return hash;
@@ -215,7 +216,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// past the groups it skips. Never deeper than <paramref name="bitDepth"/>.
     /// </param>
     [SkipLocalsInit]
-    private static void FoldMutations<TFrame>(FoldContext context, ref TFrame ownerReader, PbtNodeGroupWriter<TPath> ownerWriter,
+    private static void FoldMutations<TFrame>(FoldContext context, ref TFrame ownerReader, ref StoredGroupHashes ownerHashes, PbtNodeGroupWriter<TPath> ownerWriter,
         scoped in BoundaryNode input, Span<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int resultDepth, scoped BucketPlan plan,
         ref FoldResult result)
         where TFrame : struct, IGroupFrame<TKey, TPath>
@@ -330,11 +331,11 @@ internal static partial class TrieUpdater<TKey, TPath>
                 operations[..terminalIndex].CopyTo(operations[1..]);
                 operations[0] = operation;
                 FoldResult terminalResult = default;
-                FoldMutations(context, ref ownerReader, ownerWriter, terminal, operations[..1], ref path, bitDepth, resultDepth, plan, ref terminalResult);
+                FoldMutations(context, ref ownerReader, ref ownerHashes, ownerWriter, terminal, operations[..1], ref path, bitDepth, resultDepth, plan, ref terminalResult);
                 operations = operations[1..];
                 plan = plan.AfterFiltering(preservesOrder: true);
                 FoldResult descendantResult = default;
-                FoldMutations(context, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, resultDepth, plan, ref descendantResult);
+                FoldMutations(context, ref ownerReader, ref ownerHashes, ownerWriter, current, operations, ref path, bitDepth, resultDepth, plan, ref descendantResult);
                 if (!terminalResult.IsEmpty && !descendantResult.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
                 // Either fold may have removed groups below; the surviving result carries both size changes.
                 result = terminalResult.IsEmpty ? descendantResult : terminalResult;
@@ -345,7 +346,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 BoundaryNode descendants = default;
                 FoldResult descendantResult = default;
-                FoldMutations(context, ref ownerReader, ownerWriter, descendants, operations, ref path, bitDepth, resultDepth, plan, ref descendantResult);
+                FoldMutations(context, ref ownerReader, ref ownerHashes, ownerWriter, descendants, operations, ref path, bitDepth, resultDepth, plan, ref descendantResult);
                 if (!descendantResult.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
                 current.ToFoldResult(path, resultDepth, ref result);
                 result.SizeDelta = descendantResult.SizeDelta;
@@ -379,7 +380,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             // This can skip multiple four-bit groups at once, e.g. bitDepth 8 to groupDepth 24.
             // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
             path.AppendKey(firstKey.Bytes, groupDepth);
-            FoldMutations(context, ref ownerReader, ownerWriter, current, operations, ref path, groupDepth, resultDepth, partition.Plan.ForChild(), ref result);
+            FoldMutations(context, ref ownerReader, ref ownerHashes, ownerWriter, current, operations, ref path, groupDepth, resultDepth, partition.Plan.ForChild(), ref result);
             path.Truncate(bitDepth);
             // A jump out of the open frame's own partition bypasses SetBoundary, so its slot is charged here.
             if (ownerReader.BitDepth == bitDepth)
@@ -395,7 +396,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         // is stored in that parent group. Then this is false, as it is after a deeper prefix jump;
         // open the descendant group below. The code that opened each frame is responsible for flushing it.
         if (ownerReader.BitDepth == bitDepth)
-            FoldBoundaryFromPartition(context, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, resultDepth, partition, ref result);
+            FoldBoundaryFromPartition(context, ref ownerReader, ref ownerHashes, ownerWriter, current, operations, ref path, bitDepth, resultDepth, partition, ref result);
         else
             FoldInOwnFrame(context, ref ownerReader, current, operations, ref path, bitDepth, resultDepth, partition, ref result);
     }
@@ -433,7 +434,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         TrieUpdaterMetrics? metrics = context.Metrics;
         using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
-        FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, resultDepth, partition, ref result);
+        StoredGroupHashes hashes = default;
+        FoldBoundaryFromPartition(context, ref reader, ref hashes, writer, current, operations, ref path, bitDepth, resultDepth, partition, ref result);
         // The result is anchored where the caller places it, which a jump leaves above this frame.
         PbtTraversalPath resultCursor = path.Truncated(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)], resultDepth);
         ValueHash256 hash = result.Hash(resultCursor, bitDepth, metrics);
@@ -508,7 +510,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     [SkipLocalsInit]
     private static void FoldBoundaryFromPartition<TFrame>(
         FoldContext context,
-        ref TFrame reader,
+        ref TFrame reader, ref StoredGroupHashes hashes,
         PbtNodeGroupWriter<TPath> writer,
         BoundaryNode current,
         Span<PbtWriteOperation<TKey>> operations,
@@ -521,33 +523,33 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         Debug.Assert(path.BitDepth == bitDepth);
         Frontier frontier = new(partition.UsedMask);
-        Decompose(ref reader, path, ref current, bitDepth, ref frontier, partition.UsedMask);
+        Decompose(ref reader, ref hashes, path, ref current, bitDepth, ref frontier, partition.UsedMask);
 
         if (context.FoldQuota is not null
             && (partition.UsedMask & (partition.UsedMask - 1)) != 0
-            && TryFoldAndComposeInParallel(context, ref reader, writer, ref frontier, operations, path, bitDepth, resultDepth, partition, ref result))
+            && TryFoldAndComposeInParallel(context, ref reader, ref hashes, writer, ref frontier, operations, path, bitDepth, resultDepth, partition, ref result))
             return;
 
         BucketFolds folds = new(context, operations, bitDepth, partition);
-        Compose(ref reader, writer, path, resultDepth, context.Metrics, ref frontier, default, ref folds, ref result);
+        Compose(ref reader, ref hashes, writer, path, resultDepth, context.Metrics, ref frontier, default, ref folds, ref result);
     }
 
     /// <summary>Folds the touched buckets across threads and composes the group from their results, when they fill two runs.</summary>
     /// <remarks>Kept out of line so only a frame that may fan out reserves stack for every bucket's result.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
-    private static bool TryFoldAndComposeInParallel<TFrame>(FoldContext context, scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
+    private static bool TryFoldAndComposeInParallel<TFrame>(FoldContext context, scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
         scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth, int resultDepth,
         scoped PartitionOutcome partition, ref FoldResult result)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Span<FoldResult> results = stackalloc FoldResult[BitOperations.PopCount((uint)partition.UsedMask)];
-        if (!TryFoldBucketsInParallel(context, ref reader, writer, ref frontier, results, operations, path, bitDepth, partition))
+        if (!TryFoldBucketsInParallel(context, ref reader, ref hashes, writer, ref frontier, results, operations, path, bitDepth, partition))
         {
             result = default;
             return false;
         }
-        Compose(ref reader, writer, path, resultDepth, context.Metrics, ref frontier, results, ref result);
+        Compose(ref reader, ref hashes, writer, path, resultDepth, context.Metrics, ref frontier, results, ref result);
         return true;
     }
 
@@ -560,7 +562,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// </remarks>
     /// <returns>Whether the buckets were folded; false leaves them untouched when they cannot fill two runs.</returns>
     [SkipLocalsInit]
-    private static bool TryFoldBucketsInParallel<TFrame>(FoldContext context, scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
+    private static bool TryFoldBucketsInParallel<TFrame>(FoldContext context, scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
         scoped ref Frontier frontier, scoped Span<FoldResult> results, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth,
         scoped PartitionOutcome partition)
         where TFrame : struct, IGroupFrame<TKey, TPath>
@@ -579,13 +581,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         int runCount = PlanBucketRuns(partition.Counts, descendantBytes[..touched], fanOut, runEnds);
         if (runCount < 2) return false;
 
-        FoldBucketRuns(context, ref reader, writer, ref frontier, results, operations, path, bitDepth, partition, descendantBytes, runEnds[..runCount]);
+        FoldBucketRuns(context, ref reader, ref hashes, writer, ref frontier, results, operations, path, bitDepth, partition, descendantBytes, runEnds[..runCount]);
         return true;
     }
 
     /// <summary>Folds the planned runs of touched buckets, the part of <see cref="TryFoldBucketsInParallel"/> past its early exits.</summary>
     /// <remarks>Kept apart so the closure over the runs is allocated only once a frame is known to split.</remarks>
-    private static void FoldBucketRuns<TFrame>(FoldContext context, scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
+    private static void FoldBucketRuns<TFrame>(FoldContext context, scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
         scoped ref Frontier frontier, scoped Span<FoldResult> results, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth,
         scoped PartitionOutcome partition, scoped ReadOnlySpan<long> descendantBytes, scoped ReadOnlySpan<int> runEnds)
         where TFrame : struct, IGroupFrame<TKey, TPath>
@@ -598,7 +600,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             int slot = BitOperations.TrailingZeroCount(mask);
             int count = partition.Counts[bucketCount];
-            BoundaryNode boundary = TakeBoundary(ref reader, path, ref frontier, slot).Owned();
+            BoundaryNode boundary = TakeBoundary(ref reader, ref hashes, path, ref frontier, slot, context.Metrics).Owned();
             buckets[bucketCount] = new BucketFold(slot, offset, count, boundary, descendantBytes[bucketCount], context.Metrics is null ? context : context.WithMetrics(new()));
             bucketCount++;
             offset += count;
@@ -700,9 +702,10 @@ internal static partial class TrieUpdater<TKey, TPath>
             // A child below the boundary only reads the owner frame's depth and its slot's descendant size, so a stand-in
             // carrying that size replaces the parent's frame, which must not be shared across threads.
             AbsentGroupFrame<TKey, TPath> owner = new(bitDepth, Slot, descendantBytes, null);
+            StoredGroupHashes ownerHashes = default;
             using PbtNodeGroupWriter<TPath> ownerWriter = new(bitDepth, Context.MemoryProvider, Context.PrefixlessBranchOmission);
             using IPbtConcurrentWriter writer = Context.Store.CreateWriter();
-            FoldMutations(Context.WithWriter(writer), ref owner, ownerWriter, current, Context.Operations!.AsSpan(offset, count),
+            FoldMutations(Context.WithWriter(writer), ref owner, ref ownerHashes, ownerWriter, current, Context.Operations!.AsSpan(offset, count),
                 ref path, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, bitDepth, new BucketPlan(default, knownCommonPrefixLength, isSorted), ref Result);
         }
     }
@@ -744,18 +747,18 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     /// <summary>Takes the boundary node a fold is about to descend into, which <see cref="SetBoundary"/> then replaces with the fold's result.</summary>
     /// <remarks>A touched slot <see cref="Decompose"/> left unresolved is resolved here, as a block of its own.</remarks>
-    internal static BoundaryNode TakeBoundary<TFrame>(scoped ref TFrame reader, scoped in PbtTraversalPath path,
-        scoped ref Frontier frontier, int slot)
+    internal static BoundaryNode TakeBoundary<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, scoped in PbtTraversalPath path,
+        scoped ref Frontier frontier, int slot, TrieUpdaterMetrics? metrics)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         if ((frontier.Unresolved >> slot & 1) != 0)
         {
             frontier.Unresolved &= ~(1 << slot);
-            ResolveBlock(ref reader, path.BitDepth, frontier.Stored, frontier.Copies, slot, 1, ref frontier);
+            ResolveBlock(ref reader, ref hashes, path.BitDepth, frontier.Stored, frontier.Copies, slot, 1, ref frontier);
         }
         uint bit = 1u << BoundaryPosition(slot);
         if ((frontier.Mask & bit) == 0) return default;
-        return frontier.TakeBoundaryNode(ref reader, slot);
+        return frontier.TakeBoundaryNode(ref reader, ref hashes, slot, metrics);
     }
 
     /// <summary>Appends the node the frontier holds at <paramref name="position"/>, after the descendants the group keeps under it.</summary>
@@ -766,7 +769,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// this position only, and so hashed again. A position the group leaves implicit is rebuilt from the children it
     /// does store. Only the descendants are copied: the node itself may still be promoted by an updated sibling's deletion.
     /// </remarks>
-    internal static ComposedNode AppendHeld<TFrame>(scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
+    internal static ComposedNode AppendHeld<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
         scoped ref Frontier frontier, scoped Span<FoldResult> results, int position, TrieUpdaterMetrics? metrics)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
@@ -785,12 +788,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             case EntrySource.AtPosition when entry.SourcePosition != RootSource:
                 ReadOnlyMemory<byte> stored = reader.GetEncoding(entry.SourcePosition);
                 return stored.IsEmpty
-                    ? AppendImplicitBranch(ref reader, writer, position)
+                    ? AppendImplicitBranch(ref reader, ref hashes, writer, position, metrics)
                     : AppendReanchored(writer, position, local.Length - PbtFourLevelGroupGeometry.LocalPathOf(entry.SourcePosition).Length,
                         PbtNodeReader.FromValidated(stored.Span));
             default:
                 FoldResult boundary = default;
-                frontier.TakeBoundaryNode(ref reader, local.Slot).ToFoldResult(path, path.BitDepth, ref boundary);
+                frontier.TakeBoundaryNode(ref reader, ref hashes, local.Slot, metrics).ToFoldResult(path, path.BitDepth, ref boundary);
                 return AppendResult(writer, position, boundary);
         }
     }
@@ -845,7 +848,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// hash known and the branch left out again, its child hashes are only needed by <see cref="Land"/>, so they are
     /// resolved there instead, sparing the rehash of every unchanged node below it.
     /// </remarks>
-    private static ComposedNode AppendImplicitBranch<TFrame>(scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer, int position)
+    private static ComposedNode AppendImplicitBranch<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, int position,
+        TrieUpdaterMetrics? metrics)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         int width = PbtFourLevelGroupGeometry.WidthOf(position);
@@ -854,7 +858,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             int offset = writer.WrittenCount;
             int length = PbtNodeCodec.BranchLength(0, 0, 0);
             Span<byte> branch = writer.Append(position, length);
-            ValueHash256 seeded = reader.SeededHash(position);
+            ValueHash256 seeded = hashes.SeededHash(position);
             if (seeded != default)
             {
                 // The seeded hash only stands in for the child hashes, which omission does not look at.
@@ -863,7 +867,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 if (writer.Omits(position, branch)) return new(offset, length, seeded) { ChildHashesPending = true };
             }
 
-            reader.GetChildHashes(position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
+            hashes.GetChildHashes(ref reader, position - width, position - 1, metrics, out ValueHash256 left, out ValueHash256 right);
             if (left != default && right != default)
             {
                 PbtNodeCodec.CreateBranchEncoding(branch, 0, left, right);
@@ -891,12 +895,12 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// settled, while it is still the last entry, keeping only what its parent needs. The root is returned rather than
     /// kept, anchored at <paramref name="resultDepth"/>.
     /// </remarks>
-    internal static void Compose<TFrame>(scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth,
+    internal static void Compose<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth,
         TrieUpdaterMetrics? metrics, scoped ref Frontier frontier, scoped Span<FoldResult> results, ref FoldResult result)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         BucketFolds folded = default;
-        Compose(ref reader, writer, path, resultDepth, metrics, ref frontier, results, ref folded, ref result);
+        Compose(ref reader, ref hashes, writer, path, resultDepth, metrics, ref frontier, results, ref folded, ref result);
     }
 
     /// <inheritdoc cref="Compose{TFrame}(ref TFrame, PbtNodeGroupWriter{TPath}, PbtTraversalPath, int, TrieUpdaterMetrics?, ref Frontier, Span{FoldResult}, ref FoldResult)"/>
@@ -905,7 +909,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// appended straight away rather than held.
     /// </remarks>
     [SkipLocalsInit]
-    private static void Compose<TFrame>(scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth,
+    private static void Compose<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth,
         TrieUpdaterMetrics? metrics, scoped ref Frontier frontier, scoped Span<FoldResult> results, scoped ref BucketFolds folds, ref FoldResult result)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
@@ -934,21 +938,21 @@ internal static partial class TrieUpdater<TKey, TPath>
                     int copied = reader.CopyRange(writer, position - 2 * frame.Path.Width + 2, position + 1);
                     metrics?.AddBulkCopy(copied);
                     int length = reader.GetEncoding(position).Length;
-                    prevSubtree = new ComposedNode(writer.WrittenCount - length, length, reader.SeededHash(position));
+                    prevSubtree = new ComposedNode(writer.WrittenCount - length, length, hashes.SeededHash(position));
                     frameCount--;
                     continue;
                 }
                 if ((folds.Positions & (1u << position)) != 0)
                 {
                     FoldResult taken = default;
-                    folds.Take(ref reader, writer, ref path, ref frontier, frame.Path.Slot, ref taken);
+                    folds.Take(ref reader, ref hashes, writer, ref path, ref frontier, frame.Path.Slot, ref taken);
                     prevSubtree = taken.IsEmpty ? default : AppendResult(writer, position, taken);
                     frameCount--;
                     continue;
                 }
                 if ((frontierMask & (1u << position)) != 0)
                 {
-                    prevSubtree = AppendHeld(ref reader, writer, path, ref frontier, results, position, metrics);
+                    prevSubtree = AppendHeld(ref reader, ref hashes, writer, path, ref frontier, results, position, metrics);
                     frameCount--;
                     continue;
                 }
@@ -976,7 +980,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 // is settled; with no left node there is nothing to settle, and the walk finds out on its way back.
                 bool rightIsEmpty = ((frontierMask | copies) & rightMask) == 0
                     && ((folds.Positions & rightMask) == 0
-                        || (!prevSubtree.IsEmpty && !folds.TryFoldAhead(ref reader, writer, ref path, ref frontier, frame.Path.Right)));
+                        || (!prevSubtree.IsEmpty && !folds.TryFoldAhead(ref reader, ref hashes, writer, ref path, ref frontier, frame.Path.Right)));
                 if (rightIsEmpty)
                 {
                     if (!prevSubtree.IsEmpty) prevSubtree = prevSubtree.Rise(position - frame.Path.Width, 0);
@@ -992,7 +996,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 else
                 {
                     int leftPosition = position - frame.Path.Width;
-                    SettleLeft(writer, path, leftPosition, Land(ref reader, writer, prevSubtree, leftPosition), ref frame, metrics);
+                    SettleLeft(writer, path, leftPosition, Land(ref reader, ref hashes, writer, prevSubtree, leftPosition, metrics), ref frame, metrics);
                     frame.Stage = ComposeStage.AwaitingRight;
                 }
                 frames[frameCount] = new(frame.Path.Right);
@@ -1010,12 +1014,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 // Back up from the right child with both children present: settle the right one and append the branch
                 // over the two, returning it up to the parent frame.
-                prevSubtree = AppendBranch(writer, path, position, Land(ref reader, writer, prevSubtree, position - 1), ref frame, metrics);
+                prevSubtree = AppendBranch(writer, path, position, Land(ref reader, ref hashes, writer, prevSubtree, position - 1, metrics), ref frame, metrics);
                 frameCount--;
                 continue;
             }
         }
-        TakeRoot(writer, path, resultDepth, Land(ref reader, writer, prevSubtree, PbtFourLevelGroupGeometry.RootPosition), ref result);
+        TakeRoot(writer, path, resultDepth, Land(ref reader, ref hashes, writer, prevSubtree, PbtFourLevelGroupGeometry.RootPosition, metrics), ref result);
     }
 
     /// <summary>Moves the last entry, a node that rose over empty siblings, up to <paramref name="position"/>, where it lands.</summary>
@@ -1024,7 +1028,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// encoding does not depend on its position. An implicit branch appended without its child hashes has them resolved here.
     /// </remarks>
     [SkipLocalsInit]
-    private static ComposedNode Land<TFrame>(scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer, in ComposedNode node, int position)
+    private static ComposedNode Land<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, in ComposedNode node, int position,
+        TrieUpdaterMetrics? metrics)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         if (node.RiseBitCount == 0) return node;
@@ -1045,7 +1050,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (node.ChildHashesPending)
         {
             int width = PbtFourLevelGroupGeometry.WidthOf(childPosition);
-            reader.GetChildHashes(childPosition - width, childPosition - 1, out leftHash, out rightHash);
+            hashes.GetChildHashes(ref reader, childPosition - width, childPosition - 1, metrics, out leftHash, out rightHash);
         }
         CompressedPrefix prefix = stored.Prefix;
         int riseBitCount = node.RiseBitCount;
@@ -1272,18 +1277,18 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal uint Positions { get; private set; } = BoundaryPositions(partition.UsedMask);
 
         /// <summary>Takes the node at <paramref name="slot"/>, folding it unless it was folded ahead.</summary>
-        internal void Take<TFrame>(scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer, ref PbtTraversalPath path,
+        internal void Take<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, ref PbtTraversalPath path,
             scoped ref Frontier frontier, int slot, ref FoldResult result)
             where TFrame : struct, IGroupFrame<TKey, TPath>
         {
             Positions &= ~(1u << BoundaryPosition(slot));
             if ((Unfolded >> slot & 1) == 0) FoldResult.Move(ref _foldedAhead, ref result);
-            else FoldNext(ref reader, writer, ref path, ref frontier, slot, ref result);
+            else FoldNext(ref reader, ref hashes, writer, ref path, ref frontier, slot, ref result);
         }
 
         /// <summary>Folds the touched slots under <paramref name="subtree"/> until one returns a node, which is kept for <see cref="Take"/>.</summary>
         /// <returns>Whether a node was found; false when every touched slot under <paramref name="subtree"/> folded away.</returns>
-        internal bool TryFoldAhead<TFrame>(scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer, ref PbtTraversalPath path,
+        internal bool TryFoldAhead<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, ref PbtTraversalPath path,
             scoped ref Frontier frontier, NodeGroupPath subtree)
             where TFrame : struct, IGroupFrame<TKey, TPath>
         {
@@ -1291,14 +1296,14 @@ internal static partial class TrieUpdater<TKey, TPath>
             while ((Unfolded & slots) != 0)
             {
                 int slot = BitOperations.TrailingZeroCount(Unfolded);
-                FoldNext(ref reader, writer, ref path, ref frontier, slot, ref _foldedAhead);
+                FoldNext(ref reader, ref hashes, writer, ref path, ref frontier, slot, ref _foldedAhead);
                 if (!_foldedAhead.IsEmpty) return true;
                 Positions &= ~(1u << BoundaryPosition(slot));
             }
             return false;
         }
 
-        private void FoldNext<TFrame>(scoped ref TFrame reader, PbtNodeGroupWriter<TPath> writer, ref PbtTraversalPath path,
+        private void FoldNext<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, ref PbtTraversalPath path,
             scoped ref Frontier frontier, int slot, ref FoldResult result)
             where TFrame : struct, IGroupFrame<TKey, TPath>
         {
@@ -1307,9 +1312,9 @@ internal static partial class TrieUpdater<TKey, TPath>
             int count = _counts[_countIndex++];
             Span<PbtWriteOperation<TKey>> bucket = _operations[..count];
             _operations = _operations[count..];
-            BoundaryNode boundary = TakeBoundary(ref reader, path, ref frontier, slot);
+            BoundaryNode boundary = TakeBoundary(ref reader, ref hashes, path, ref frontier, slot, _context.Metrics);
             path.AppendMut(slot);
-            FoldMutations(_context, ref reader, writer, boundary, bucket, ref path,
+            FoldMutations(_context, ref reader, ref hashes, writer, boundary, bucket, ref path,
                 _bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, _bitDepth, new BucketPlan(default, _knownCommonPrefixLength, _isSorted), ref result);
             path.Truncate(_bitDepth);
             writer.AddDescendantDelta(slot, result.SizeDelta);
@@ -1333,7 +1338,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// touched positions alone, so only its link hash is seeded here.
     /// </remarks>
     [SkipLocalsInit]
-    internal static void Decompose<TFrame>(ref TFrame reader, scoped in PbtTraversalPath path, ref BoundaryNode input,
+    internal static void Decompose<TFrame>(ref TFrame reader, ref StoredGroupHashes hashes, scoped in PbtTraversalPath path, ref BoundaryNode input,
         int bitDepth, ref Frontier frontier, int touchedMask)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
@@ -1375,7 +1380,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                    && (slot & (2 * width - 1)) == 0
                    && (touchedMask & (((1 << (2 * width)) - 1) << slot)) == 0)
                 width <<= 1;
-            ResolveBlock(ref reader, bitDepth, stored, copies, slot, width, ref frontier);
+            ResolveBlock(ref reader, ref hashes, bitDepth, stored, copies, slot, width, ref frontier);
             slot += width;
         }
     }
@@ -1387,7 +1392,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// the block itself, holds the block's whole subtree as an inlined leaf, or names it through a link, whose hash is
     /// seeded at the level the link addresses rather than at the block's own.
     /// </remarks>
-    private static void ResolveBlock<TFrame>(ref TFrame reader, int bitDepth, uint stored, uint copies, int slot, int width, ref Frontier frontier)
+    private static void ResolveBlock<TFrame>(ref TFrame reader, ref StoredGroupHashes hashes, int bitDepth, uint stored, uint copies, int slot, int width, ref Frontier frontier)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         int level = PbtFourLevelGroupGeometry.LevelsPerGroup - BitOperations.Log2((uint)width);
@@ -1409,7 +1414,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             for (int bit = bitDepth; bit < bitDepth + entryLevel; bit++)
                 entrySlot = (entrySlot << 1) | (bit < node.AnchorDepth ? SlotBit(slot, bitDepth, bit) : GetBit(node.Prefix.Bytes, bit - node.AnchorDepth));
             entrySlot <<= PbtFourLevelGroupGeometry.LevelsPerGroup - entryLevel;
-            if (covering >= 0) SeedLinkHash(ref reader, bitDepth, stored, covering, ref frontier);
+            if (covering >= 0) SeedLinkHash(ref reader, ref hashes, bitDepth, stored, covering, ref frontier);
             frontier.Place(entrySlot, new NodeGroupPath(entrySlot, entryLevel).Position, EntrySource.AtPosition,
                 covering < 0 ? RootSource : covering);
             return;
@@ -1433,7 +1438,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         // and this block's position holds a node of its own. Only the link's own level carries the hash.
         int linkLevel = branchDepth + 1 - bitDepth;
         int linkPosition = new NodeGroupPath(slot & ~((PbtFourLevelGroupGeometry.BoundarySlots >> linkLevel) - 1), linkLevel).Position;
-        reader.SeedHash(linkPosition, side == 0 ? branch.LeftHash : branch.RightHash);
+        hashes.SeedHash(linkPosition, side == 0 ? branch.LeftHash : branch.RightHash);
         Debug.Assert(linkPosition == position || level < PbtFourLevelGroupGeometry.LevelsPerGroup,
             "A boundary node is never left implicit, so its link addresses it directly.");
         if ((copies & (1u << position)) == 0) frontier.Place(slot, position, EntrySource.AtPosition, position);
@@ -1444,16 +1449,16 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// A level left implicit carries no link, so a node below one keeps the single hash its own encoding needs, which
     /// the frame computes once on demand. Nothing is hashed here.
     /// </remarks>
-    private static void SeedLinkHash<TFrame>(ref TFrame reader, int bitDepth, uint stored, int position, ref Frontier frontier)
+    private static void SeedLinkHash<TFrame>(ref TFrame reader, ref StoredGroupHashes hashes, int bitDepth, uint stored, int position, ref Frontier frontier)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        if (reader.SeededHash(position) != default) return;
+        if (hashes.SeededHash(position) != default) return;
         NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
         SpineNode node = NodeAt(ref reader, frontier.Root, bitDepth, DeepestStoredAbove(stored, position));
         int linkDepth = bitDepth + local.Length;
         if (node.BranchDepth != linkDepth - 1) return;
         int side = local.GetBit(local.Length - 1);
-        reader.SeedHash(position, side == 0 ? node.Node.LeftHash : node.Node.RightHash);
+        hashes.SeedHash(position, side == 0 ? node.Node.LeftHash : node.Node.RightHash);
     }
 
     /// <summary>The stored positions below the group root with no touched slot under them, which composition copies unchanged.</summary>

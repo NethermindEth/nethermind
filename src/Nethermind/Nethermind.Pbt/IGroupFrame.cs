@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Pbt;
 
 /// <summary>The group a fold composes one frame against: a stored <see cref="GroupFrameReader{TKey, TPath}"/> or an <see cref="AbsentGroupFrame{TKey, TPath}"/>.</summary>
@@ -31,17 +29,8 @@ internal interface IGroupFrame<TKey, TPath>
     /// <summary>Copies the stored encodings from <paramref name="startPosition"/> up to <paramref name="endPosition"/> into <paramref name="writer"/>, returning how many were copied.</summary>
     int CopyRange(PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition);
 
-    /// <summary>Records the hash a parent node holds for <paramref name="position"/>, so composing it needs no rehash.</summary>
-    void SeedHash(int position, in ValueHash256 hash);
-
-    /// <summary>The hash a parent's link held for the node at <paramref name="position"/>, or default when no link named it.</summary>
-    ValueHash256 SeededHash(int position);
-
-    /// <summary>The hashes of the nodes at <paramref name="leftPosition"/> and <paramref name="rightPosition"/>, the children of an omitted branch.</summary>
-    void GetChildHashes(int leftPosition, int rightPosition, out ValueHash256 left, out ValueHash256 right);
-
-    /// <summary>Takes the boundary node stored at <paramref name="position"/>, whose hash decomposition already knows.</summary>
-    TrieUpdater<TKey, TPath>.BoundaryNode TakeBoundaryNode(int position);
+    /// <summary>Takes the boundary node stored at <paramref name="position"/>, its hash read from or computed into <paramref name="hashes"/>.</summary>
+    TrieUpdater<TKey, TPath>.BoundaryNode TakeBoundaryNode(int position, ref TrieUpdater<TKey, TPath>.StoredGroupHashes hashes, TrieUpdaterMetrics? metrics);
 
     /// <summary>Takes the leaf inlined in the branch at <paramref name="position"/>, which stores no node of its own.</summary>
     TrieUpdater<TKey, TPath>.BoundaryNode TakeInlineLeaf(int position, bool right);

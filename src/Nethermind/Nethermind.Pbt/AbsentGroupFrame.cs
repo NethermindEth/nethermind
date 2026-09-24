@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Pbt;
 
 /// <summary>A frame for a group that is not stored, which the fold composes from its boundary node alone.</summary>
@@ -48,13 +46,8 @@ internal readonly struct AbsentGroupFrame<TKey, TPath> : IGroupFrame<TKey, TPath
 
     public int CopyRange(PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition) => 0;
 
-    public void SeedHash(int position, in ValueHash256 hash) => throw NoStoredNode();
-
-    public ValueHash256 SeededHash(int position) => throw NoStoredNode();
-
-    public void GetChildHashes(int leftPosition, int rightPosition, out ValueHash256 left, out ValueHash256 right) => throw NoStoredNode();
-
-    public TrieUpdater<TKey, TPath>.BoundaryNode TakeBoundaryNode(int position) => throw NoStoredNode();
+    public TrieUpdater<TKey, TPath>.BoundaryNode TakeBoundaryNode(int position, ref TrieUpdater<TKey, TPath>.StoredGroupHashes hashes, TrieUpdaterMetrics? metrics) =>
+        throw NoStoredNode();
 
     public TrieUpdater<TKey, TPath>.BoundaryNode TakeInlineLeaf(int position, bool right) => throw NoStoredNode();
 
