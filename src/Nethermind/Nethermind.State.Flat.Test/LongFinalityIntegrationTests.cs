@@ -19,7 +19,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -384,12 +383,17 @@ public class LongFinalityIntegrationTests
     }
 
     // A settable finalized-state provider so a test can park finality at an arbitrary block/root.
-    private sealed class SettableFinalizedProvider : IFinalizedStateProvider
+    private sealed class SettableFinalizedProvider : IStateHeaderProvider
     {
         private readonly System.Collections.Generic.Dictionary<ulong, Hash256> _roots = [];
         public ulong FinalizedBlockNumber { get; set; }
         public void SetRoot(ulong block, Hash256 root) => _roots[block] = root;
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => _roots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber) =>
+            _roots.TryGetValue(blockNumber, out Hash256? root)
+                ? new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, Address.Zero, UInt256.Zero, blockNumber, 30_000_000, 0, []) { StateRoot = root }
+                : null;
+
+        public BlockHeader? FindParentHeader(BlockHeader target) => null;
     }
 
     // A real PersistenceManager over the container's real repository, so DetermineSnapshotAction runs its
@@ -404,7 +408,7 @@ public class LongFinalityIntegrationTests
         return new PersistenceManager(
             tier.Config,
             ScheduleHelper.CreateWithOffset(tier.Config, 0),
-            tier.Resolve<IFinalizedStateProvider>(),
+            tier.Resolve<IStateHeaderProvider>(),
             persistence,
             tier.Repository,
             NullStatePersistenceBarrier.Instance,
