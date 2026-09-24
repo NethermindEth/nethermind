@@ -254,12 +254,15 @@ namespace Nethermind.Facade
             // of the gas cap, so surfacing it instead of the affordability error would be misleading.
             error = err switch
             {
-                // Probe failed only because gas hint was below standard intrinsic: if estimation succeeds, clear the probe error.
-                null when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => null,
+                // Probe failed only because the gas hint was outside validity bounds (below standard
+                // intrinsic or above the EIP-8037 total cap): if estimation succeeds, clear the probe error.
+                null when tryCallResult.Error is TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
+                    or TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap => null,
                 null => error,
                 _ when error is null => err,
-                // Probe's low-gas failure is superseded by whatever the estimator found at full gas.
-                _ when tryCallResult.Error == TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => err,
+                // Probe's out-of-bounds-gas failure is superseded by whatever the estimator found at full gas.
+                _ when tryCallResult.Error is TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
+                    or TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap => err,
                 _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
                 GasEstimator.InsufficientBalance => err,
                 GasEstimator.InsufficientFundsForGas => err,

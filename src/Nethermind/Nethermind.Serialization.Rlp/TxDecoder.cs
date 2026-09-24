@@ -12,6 +12,7 @@ namespace Nethermind.Serialization.Rlp;
 [Rlp.SkipGlobalRegistration]
 public sealed class TxDecoder : TxDecoder<Transaction>
 {
+    private const int MaxRetainedTransactions = 2_048;
     public static readonly ObjectPool<Transaction> TxObjectPool;
 
     public static readonly TxDecoder Instance;
@@ -20,7 +21,9 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 
     static TxDecoder()
     {
-        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
+        // Retain reusable gossip and owned block-body transactions across receive/processing threads. This caps lazy retention, not preallocation;
+        // PoolPolicy clears payload references before retaining a transaction.
+        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), MaxRetainedTransactions);
         Instance = new TxDecoder(static () => TxObjectPool.Get());
     }
 
@@ -122,6 +125,8 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         decoderContext.Position = position;
 
         Transaction? decodedTransaction = transaction;
+        if (decodedTransaction is null && (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) != 0)
+            decodedTransaction = new T();
         GetDecoder(txType).Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
         transaction = (T?)decodedTransaction;
 

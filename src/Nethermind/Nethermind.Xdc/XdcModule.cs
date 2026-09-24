@@ -20,6 +20,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -140,6 +141,9 @@ public class XdcModule : Module
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
+
+            // Keeps eth_gasPrice from suggesting a price MinGasPriceFilter would then reject
+            .AddDecorator<IGasPriceOracle, XdcGasPriceOracle>()
 
             .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
             .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>()

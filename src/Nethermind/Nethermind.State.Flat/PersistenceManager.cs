@@ -58,6 +58,7 @@ public class PersistenceManager(
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
+    private StateId? _lastWarnedStall;
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -71,7 +72,7 @@ public class PersistenceManager(
         set => Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(value));
     }
 
-    public IPersistence.IPersistenceReader LeaseReader() => persistence.CreateReader();
+    public IPersistence.IPersistenceReader LeaseReader(ReaderFlags flags = ReaderFlags.None) => persistence.CreateReader(flags);
 
     public StateId GetCurrentPersistedStateId()
     {
@@ -103,7 +104,7 @@ public class PersistenceManager(
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
     ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
-    ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head.</item>
+    ///   <c>MinReorgDepth + CompactSize</c>) -> seed = the committed head.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
@@ -171,10 +172,18 @@ public class PersistenceManager(
         }
 
         // ---- Phase 2: conversion to the persisted-snapshot tier ----
-        if (!_enableLongFinality) return (null, null, null);
-        if (snapshotRepository.SnapshotCount <= _maxInMemoryBaseSnapshotCount) return (null, null, null);
+        ConversionCandidate? conversion = _enableLongFinality && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount
+            ? TryFindSnapshotToConvert(currentPersistedState) : null;
+        if (conversion is null && snapshotsDepth > _backstopReorgDepth && _logger.IsWarn
+            && _lastWarnedStall != currentPersistedState)
+        {
+            _lastWarnedStall = currentPersistedState;
+            _logger.Warn($"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}, " +
+                $"but neither persistence nor conversion found a candidate (persisted {currentPersistedState}, " +
+                $"latest {latestSnapshot}, finalized block {finalizedBlockNumber}).");
+        }
 
-        return (null, null, TryFindSnapshotToConvert(currentPersistedState));
+        return (null, null, conversion);
     }
 
     /// <summary>
@@ -250,6 +259,9 @@ public class PersistenceManager(
                 if (toPersist is not null)
                 {
                     using Snapshot _ = toPersist;
+                    // The span tells a per-block chunk from a multi-block one, which is what the history capture
+                    // walking on top of this can and cannot follow.
+                    if (_logger.IsDebug) _logger.Debug($"Persisting in-memory chunk {toPersist.From.BlockNumber}->{toPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                     CaptureHistory(toPersist.To, _cts.Token);
                     PersistSnapshot(toPersist);
@@ -259,6 +271,7 @@ public class PersistenceManager(
                 else if (persistedToPersist is not null)
                 {
                     using PersistedSnapshot _ = persistedToPersist;
+                    if (_logger.IsDebug) _logger.Debug($"Persisting persisted-tier chunk {persistedToPersist.From.BlockNumber}->{persistedToPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                     CaptureHistory(persistedToPersist.To, _cts.Token);
                     PersistPersistedSnapshot(persistedToPersist);
@@ -504,77 +517,74 @@ public class PersistenceManager(
         long sw = Stopwatch.GetTimestamp();
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+            try
             {
-                if (toSelfDestructStorage.Value)
+                foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
                 {
-                    continue;
-                }
-
-                batch.SelfDestruct(toSelfDestructStorage.Key.Key);
-            }
-
-            foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
-            {
-                batch.SetAccount(kv.Key.Key, kv.Value);
-            }
-
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
-            {
-                (Address addr, UInt256 slot) = kv.Key.Key;
-
-                batch.SetStorage(addr, slot, kv.Value);
-            }
-
-            // Compacted snapshots (the common case) enumerate nodes in key order, which makes the writes
-            // faster; the rare non-compacted persist enumerates unordered, which is still correct.
-            long stateNodesSize = 0;
-            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
-            {
-                TreePath path = kvp.Key.Key;
-                TrieNode node = kvp.Value;
-
-                if (node.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
+                    if (toSelfDestructStorage.Value)
                     {
                         continue;
                     }
+
+                    batch.SelfDestruct(toSelfDestructStorage.Key.Key);
                 }
 
-                stateNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
-
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
-            }
-
-            long storageNodesSize = 0;
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
-            {
-                (Hash256 address, TreePath path) = kvp.Key.Key;
-                TrieNode node = kvp.Value;
-
-                if (node.FullRlp.Length == 0)
+                foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
                 {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
+                    batch.SetAccount(kv.Key.Key, kv.Value);
                 }
 
-                storageNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
-            }
+                foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
+                {
+                    (Address addr, UInt256 slot) = kv.Key.Key;
 
-            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
-            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
+                    batch.SetStorage(addr, slot, kv.Value);
+                }
+
+                // Compacted snapshots (the common case) enumerate nodes in key order, which makes the writes
+                // faster; the rare non-compacted persist enumerates unordered, which is still correct.
+                long stateNodesSize = 0;
+                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
+                {
+                    TreePath path = kvp.Key.Key;
+                    TrieNode node = kvp.Value;
+
+                    // TODO: Need to double check this case. Does it need a rewrite or not?
+                    if (node.IsHashOnlyPlaceholder()) continue;
+
+                    stateNodesSize += node.FullRlp.Length;
+                    // Note: Even if the node already marked as persisted, we still re-persist it
+                    batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
+
+                    node.IsPersisted = true;
+                    node.PrunePersistedRecursively(1);
+                }
+
+                long storageNodesSize = 0;
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
+                {
+                    (Hash256 address, TreePath path) = kvp.Key.Key;
+                    TrieNode node = kvp.Value;
+
+                    // TODO: Need to double check this case. Does it need a rewrite or not?
+                    if (node.IsHashOnlyPlaceholder()) continue;
+
+                    storageNodesSize += node.FullRlp.Length;
+                    // Note: Even if the node already marked as persisted, we still re-persist it
+                    batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
+                    node.IsPersisted = true;
+                    node.PrunePersistedRecursively(1);
+                }
+
+                Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
+                Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
+            }
+            catch
+            {
+                if (batch is IAbortableWriteBatch abortable)
+                    abortable.Abandon();
+                throw;
+            }
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
@@ -597,28 +607,37 @@ public class PersistenceManager(
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
-            // same per-address inner table, so one outer pass + TryResolveAll resolves all
-            // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
-            // is preserved within the row; cross-address ordering is irrelevant to the
-            // write batch.
-            foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+            try
             {
-                if (entry.SelfDestructFlag is false)
-                    batch.SelfDestruct(entry.Address);
+                // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
+                // same per-address inner table, so one outer pass + TryResolveAll resolves all
+                // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
+                // is preserved within the row; cross-address ordering is irrelevant to the
+                // write batch.
+                foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+                {
+                    if (entry.SelfDestructFlag is false)
+                        batch.SelfDestruct(entry.Address);
 
-                if (entry.HasAccount)
-                    batch.SetAccount(entry.Address, entry.Account);
+                    if (entry.HasAccount)
+                        batch.SetAccount(entry.Address, entry.Account);
 
-                foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-                    batch.SetStorage(entry.Address, slot.Slot, slot.Value);
+                    foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
+                        batch.SetStorage(entry.Address, slot.Slot, slot.Value);
+                }
+
+                foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
+                    batch.SetStateTrieNode(entry.Path, entry.Rlp);
+
+                foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
+                    batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
             }
-
-            foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
-                batch.SetStateTrieNode(entry.Path, entry.Rlp);
-
-            foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
-                batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
+            catch
+            {
+                if (batch is IAbortableWriteBatch abortable)
+                    abortable.Abandon();
+                throw;
+            }
         }
 
         // The CompactSized is now in RocksDB — drop the prefetched base blob ranges from the

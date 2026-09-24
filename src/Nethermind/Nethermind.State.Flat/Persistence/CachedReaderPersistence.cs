@@ -57,7 +57,8 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        if ((flags & ReaderFlags.Sync) != 0)
+        // The cached reader is created flagless, so flagged requests must go to the inner persistence directly.
+        if ((flags & (ReaderFlags.Sync | ReaderFlags.FullScan)) != 0)
             return _inner.CreateReader(flags);
 
         RefCountingPersistenceReader? cachedReader = _cachedReader;
