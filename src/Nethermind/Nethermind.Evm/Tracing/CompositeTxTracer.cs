@@ -361,7 +361,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingStorage)
+            if (innerTracer.IsTracingInstructions)
             {
                 innerTracer.ReportStorageChange(key, value);
             }

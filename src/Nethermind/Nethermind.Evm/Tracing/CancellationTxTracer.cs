@@ -328,7 +328,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
         token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingStorage)
+        if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportStorageChange(key, value);
         }
