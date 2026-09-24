@@ -17,8 +17,26 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 {
     private readonly Dictionary<Address, CodeInfo> _codeOverrides = [];
     private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = [];
+    private readonly Dictionary<AddressAsKey, CodeInfo> _resolved = [];
+    private readonly HashSet<AddressAsKey> _codeWritten = [];
 
     public bool IsCodeOverridable => true;
+
+    /// <summary>
+    /// Remember, for the rest of the scope, the code each address resolved to through the inner repository.
+    /// </summary>
+    /// <remarks>
+    /// Set only by the single-call envs (eth_call, eth_estimateGas, eth_createAccessList), where a scope runs one
+    /// transaction, possibly re-run from the same state. There, an address's code can change only through
+    /// <see cref="InsertCode"/> (CREATE, CREATE2, a create transaction) or <see cref="SetDelegation"/> (EIP-7702);
+    /// both drop the address and keep it out of the memo for the scope. SELFDESTRUCT removes code only at the
+    /// end of the transaction, or, since Cancun, only from accounts created in it, which went through
+    /// InsertCode. Precompiles and delegation designators are never remembered. Every lookup the memo answers
+    /// skips the inner repository's code-hash read and cache probe, which a contract-heavy call repeats on every
+    /// CALL, STATICCALL and EXTCODE* to the same address. Cleared in <see cref="ResetOverrides"/>, which runs
+    /// when the scope opens and closes.
+    /// </remarks>
+    public bool MemoizeResolvedCode { get; set; }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
@@ -35,7 +53,22 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
                 : result;
         }
 
-        return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+        if (!MemoizeResolvedCode)
+            return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+
+        if (_resolved.TryGetValue(codeSource, out CodeInfo? remembered)) return remembered;
+
+        CodeInfo resolved = codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
+        if (delegationAddress is null &&
+            resolved.Precompile is null &&
+            !codeSource.CouldBePrecompile() &&
+            !ICodeInfoRepository.TryGetDelegatedAddress(resolved.CodeSpan, out _) &&
+            !_codeWritten.Contains(codeSource))
+        {
+            _resolved[codeSource] = resolved;
+        }
+
+        return resolved;
     }
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
@@ -43,13 +76,20 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         : _codeOverrides.TryGetValue(codeSource, out CodeInfo? result) ? result.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        ForgetResolved(codeOwner);
         codeInfoRepository.InsertCode(code, codeOwner, spec);
+    }
 
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value) => _codeOverrides[key] = value;
+        CodeInfo value)
+    {
+        _resolved.Remove(key);
+        _codeOverrides[key] = value;
+    }
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
@@ -57,8 +97,18 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverrides[precompileAddr] = new CodeInfo(worldState.GetCode(precompileAddr));
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    {
+        ForgetResolved(authority);
         codeInfoRepository.SetDelegation(codeSource, authority, spec);
+    }
+
+    private void ForgetResolved(Address address)
+    {
+        if (!MemoizeResolvedCode) return;
+        _codeWritten.Add(address);
+        _resolved.Remove(address);
+    }
 
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>
@@ -71,6 +121,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         _precompileOverrides.Clear();
         _codeOverrides.Clear();
+        _resolved.Clear();
+        _codeWritten.Clear();
     }
 
     public void ResetPrecompileOverrides()

@@ -701,10 +701,13 @@ namespace Nethermind.Facade
             // and turn burst override traffic into long-lived memory.
             IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner =
                 overridableScopeLifetime.Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+            IOverridableCodeInfoRepository codeInfoRepository = overridableScopeLifetime.Resolve<IOverridableCodeInfoRepository>();
+            // A scope here runs one transaction (re-run from the same state by estimateGas and createAccessList).
+            if (codeInfoRepository is OverridableCodeInfoRepository overridable) overridable.MemoizeResolvedCode = true;
             return new DisposableOverridableEnv(
                 inner,
                 overridableScopeLifetime,
-                overridableScopeLifetime.Resolve<IOverridableCodeInfoRepository>(),
+                codeInfoRepository,
                 overridableScopeLifetime.Resolve<ISpecProvider>());
         }
 
