@@ -1687,8 +1687,14 @@ public class TraceRpcModuleTests
         string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
 
         JToken bufferedTrace = JToken.Parse(buffered);
-        Assert.That(bufferedTrace["result"]![0]!["vmTrace"]!["ops"]![0]!["ex"]!["push"]![0]!.Value<string>(), Is.EqualTo("0x1"));
-        Assert.That(JToken.Parse(streamed), Is.EqualTo(bufferedTrace).Using(JToken.EqualityComparer));
+        JToken ops = bufferedTrace["result"]![0]!["vmTrace"]!["ops"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ops[0]!["ex"]!["push"]![0]!.Value<string>(), Is.EqualTo("0x1"));
+            Assert.That(ops[2]!["ex"]!["store"]!["key"]!.Value<string>(), Is.EqualTo("0x0"));
+            Assert.That(ops[2]!["ex"]!["store"]!["val"]!.Value<string>(), Is.EqualTo("0x1"));
+            Assert.That(JToken.Parse(streamed), Is.EqualTo(bufferedTrace).Using(JToken.EqualityComparer));
+        }
     }
 
     [Test]
