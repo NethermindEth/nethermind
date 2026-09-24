@@ -206,13 +206,15 @@ namespace Nethermind.Evm.TransactionProcessing
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
         }
 
-        // EIP-2780 self-transfer pricing depends on the signer, so resolve it before computing intrinsic gas.
+        // A sender still missing here is one the background recovery has not reached yet (blocks are
+        // processed while it runs); EIP-2780 self-transfer pricing additionally needs the actual signer,
+        // so both resolve before intrinsic gas.
         private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec)
         {
-            if (spec.IsEip2780Enabled
-                && tx.IsMessageCall
-                && tx.Signature is not null
-                && (tx.SenderAddress is null || !WorldState.AccountExists(tx.SenderAddress)))
+            if (tx.Signature is null) return;
+
+            if (tx.SenderAddress is null
+                || (spec.IsEip2780Enabled && tx.IsMessageCall && !WorldState.AccountExists(tx.SenderAddress)))
             {
                 tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
             }
@@ -399,6 +401,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     int count = destroyList.Count;
                     bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                     bool tracingRefunds = tracer.IsTracingRefunds;
+                    bool tracingLogs = tracer.IsTracingLogs;
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
                     if (count > 1)
                     {
@@ -407,26 +410,28 @@ namespace Nethermind.Evm.TransactionProcessing
                         buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
                         for (int i = 0; i < count; i++)
                         {
-                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn);
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn, tracer, tracingLogs);
                             if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                         }
                         SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                     else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, commit, removeSelfdestructBurn);
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, commit, removeSelfdestructBurn, tracer, tracingLogs);
                         if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
 
-                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool commit, bool removeSelfdestructBurn)
+                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool commit, bool removeSelfdestructBurn, ITxTracer tracer, bool tracingLogs)
                 {
                     UInt256 balance = worldState.GetBalance(toBeDestroyed);
                     // Post-fee path: the burn covers the whole balance incl. priority fees, hence a
                     // Burn (not SelfDestruct) log; EIP-8246 removes the burn and its log entirely.
                     if (!balance.IsZero && !removeSelfdestructBurn)
                     {
-                        substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
+                        LogEntry burnLog = TransferLog.CreateBurn(toBeDestroyed, balance);
+                        substate.Logs.Add(burnLog);
+                        if (tracingLogs) tracer.ReportLog(burnLog);
                     }
 
                     DestroyAccount(worldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
@@ -950,6 +955,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            // EIP-8037: tx.gas as a whole (both dimensions) is capped at TX_MAX_TOTAL_GAS_LIMIT.
+            if (spec.IsEip8037Enabled && tx.GasLimit > Eip8037Constants.TxMaxTotalGasLimit)
+            {
+                TraceLogInvalidTx(tx, $"TX_GAS_LIMIT_EXCEEDS_MAX_TOTAL {tx.GasLimit} > {Eip8037Constants.TxMaxTotalGasLimit}");
+                return TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap.WithDetail(
+                    TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip8037Constants.TxMaxTotalGasLimit));
+            }
+
             if (spec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
             {
                 TraceLogInvalidTx(tx, $"TX_INTRINSIC_GAS_EXCEEDS_CAP execution={execution} floor={floor} > {Eip7825Constants.DefaultTxGasLimitCap}");
@@ -1036,7 +1049,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
-                // EIP-2780 message calls were already recovered before intrinsic gas.
+                // Message calls under EIP-2780 were re-recovered against this state before intrinsic gas;
+                // repeating it here would only redo that work.
                 if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall))
                     tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
@@ -1073,7 +1087,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return opcodeGasPrice;
         }
 
-        protected bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
+        protected virtual bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
             tx.TryCalculatePremiumPerGas(baseFee, out premiumPerGas);
 
         protected virtual TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
@@ -1348,7 +1362,6 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
                 substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
-                TGasPolicy.ClearExecutionGas(ref gasAvailable);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
                 gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
                 goto Complete;
@@ -1399,7 +1412,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
                     substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                     gasAvailable = state.Gas;
-                    TGasPolicy.ClearExecutionGas(ref gasAvailable);
                     WorldState.Restore(snapshot);
                     TGasPolicy createStateOogIntrinsicGasStandard = gas.Standard;
                     gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in createStateOogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
@@ -1446,6 +1458,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
+                        bool tracingLogs = tracer.IsTracingLogs;
                         foreach (Address toBeDestroyed in destroyList)
                         {
                             if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
@@ -1455,7 +1468,9 @@ namespace Nethermind.Evm.TransactionProcessing
                             // EIP-7708 logs the burn; suppressed once EIP-8246 stops burning.
                             if (eip7708Enabled && !removeSelfdestructBurn && !balance.IsZero)
                             {
-                                substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                                LogEntry selfDestructLog = TransferLog.CreateSelfDestruct(toBeDestroyed, balance);
+                                substate.Logs.Add(selfDestructLog);
+                                if (tracingLogs) tracer.ReportLog(selfDestructLog);
                             }
 
                             DestroyAccount(WorldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
@@ -1486,10 +1501,6 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 ShouldRestoreRipemdTouch = shouldRestoreRipemdTouch,
             };
-            if (spec.ChargeForTopLevelCreate)
-            {
-                TGasPolicy.ClearExecutionGas(ref gasAvailable);
-            }
             WorldState.Restore(snapshot);
             VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, substate.ShouldRestoreRipemdTouch);
             TGasPolicy intrinsicGasStandard = gas.Standard;
@@ -1521,11 +1532,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        // Common EIP-8037 halt-prepare-then-restore sequence shared by FailContractCreate
-        // and the substate.IsError branch of Refund. AggressiveInlining keeps codegen
-        // identical to the prior inline form on both hot paths.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private GasConsumed CompleteEip8037Halt(
+        internal GasConsumed CompleteEip8037Halt(
             Transaction tx,
             IReleaseSpec spec,
             ExecutionOptions opts,
@@ -1548,7 +1556,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             RefundRevertedExecutionStateGas(spec, postHaltIntrinsicStateGas, ref gas);
-            // EIP-8037 restores the reservoir to its frame-entry value; any refilled spill is execution gas and burns on halt.
             long postHaltStateReservoir = postIntrinsicStateReservoir;
             if (refundedTopLevelCreateStateGas > 0)
             {
@@ -1556,6 +1563,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, postHaltIntrinsicStateGas);
+            // EIP-8037: burn execution gas after rollback, including any refilled state-gas spill.
+            TGasPolicy.ClearExecutionGas(ref gas);
             return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, codeInsertExecutionRefund);
         }
 
@@ -1951,6 +1960,7 @@ namespace Nethermind.Evm.TransactionProcessing
             BlockGasLimitExceeded,
             GasLimitBelowIntrinsicGas,
             GasLimitBelowFloorGas,
+            GasLimitExceedsMaxTotalCap,
             InsufficientMaxFeePerGasForSenderBalance,
             InsufficientSenderBalance,
             MalformedTransaction,

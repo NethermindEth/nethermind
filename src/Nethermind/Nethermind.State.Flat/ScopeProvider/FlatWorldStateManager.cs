@@ -22,6 +22,7 @@ public class FlatWorldStateManager(
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager)
     : IWorldStateManager, IDisposable
 {
@@ -31,6 +32,7 @@ public class FlatWorldStateManager(
         configuration,
         trieWarmer,
         ResourcePool.Usage.MainBlockProcessing,
+        stateHeaderProvider,
         logManager,
         isReadOnly: false);
 
@@ -53,6 +55,7 @@ public class FlatWorldStateManager(
             configuration,
             new NoopTrieWarmer(),
             ResourcePool.Usage.ReadOnlyProcessingEnv,
+            stateHeaderProvider,
             logManager,
             isReadOnly: true);
 
@@ -65,6 +68,8 @@ public class FlatWorldStateManager(
         _trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
+
+    public void DropStateNotReachableFrom(BlockHeader head) => flatDbManager.DropStateNotReachableFrom(new StateId(head));
 
     public void Dispose() => _mainWorldState.Dispose();
 }

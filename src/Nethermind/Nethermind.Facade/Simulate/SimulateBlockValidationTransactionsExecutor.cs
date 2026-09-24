@@ -30,6 +30,12 @@ public class SimulateBlockValidationTransactionsExecutor(
         );
     }
 
+    /// <inheritdoc/>
+    public void PublishTransactionProcessedEvents() => baseTransactionExecutor.PublishTransactionProcessedEvents();
+
+    /// <inheritdoc/>
+    public void ClearTransactionProcessedEvents() => baseTransactionExecutor.ClearTransactionProcessedEvents();
+
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
         CancellationToken token = default)
     {

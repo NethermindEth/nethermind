@@ -37,7 +37,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -212,7 +211,7 @@ public partial class EthRpcModule(
             _stateReader.GetStorage(header!, address, positionIndex, out UInt256 storage);
             return ResultWrapper<byte[]>.Success(storage.IsZero ? Bytes32.Zero.Unwrap() : storage.ToBigEndian());
         }
-        catch (MissingTrieNodeException e)
+        catch (MissingTrieNodeException e) when (e.InnerException is not StateNotRetainedException)
         {
             Hash256 hash = e.Hash;
             return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.ResourceNotFound);
@@ -872,7 +871,7 @@ public partial class EthRpcModule(
             case FilterType.LogFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id).ToArray())
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id))
                         : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
                 }
             default:
