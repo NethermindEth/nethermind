@@ -8,13 +8,11 @@ namespace Nethermind.JsonRpc.Test;
 
 internal static class TimeoutTest
 {
-    private const int TimeoutCancellationTokenPoolSize = 64;
-
     internal static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
     {
         JsonRpcConfig config = new();
-        List<CancellationTokenSource> rentedTimeouts = new(TimeoutCancellationTokenPoolSize);
-        for (int i = 0; i < TimeoutCancellationTokenPoolSize; i++)
+        List<CancellationTokenSource> rentedTimeouts = new(JsonRpcConfigExtension.MaxPoolSize);
+        for (int i = 0; i < JsonRpcConfigExtension.MaxPoolSize; i++)
         {
             rentedTimeouts.Add(config.BuildTimeoutCancellationToken());
         }
