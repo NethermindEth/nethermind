@@ -6,6 +6,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Reflection;
@@ -355,6 +356,7 @@ public class EthereumRunnerTests
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
         TempPath tempPath = TempPath.GetTempDirectory();
         Directory.CreateDirectory(tempPath.Path);
+        Stopwatch phase = Stopwatch.StartNew();
 
         Exception? exception = null;
         try
@@ -382,6 +384,7 @@ public class EthereumRunnerTests
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
             plugins.Add(new RunnerTestPlugin());
             EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+            LogPhase("setup", phase);
 
             using CancellationTokenSource cts = new();
 
@@ -397,6 +400,7 @@ public class EthereumRunnerTests
             }
             finally
             {
+                LogPhase("start", phase);
                 try
                 {
                     await runner.StopAsync().WaitAsync(RunnerTimeout);
@@ -411,6 +415,10 @@ public class EthereumRunnerTests
                     {
                         throw;
                     }
+                }
+                finally
+                {
+                    LogPhase("stop", phase);
                 }
             }
         }
@@ -433,6 +441,13 @@ public class EthereumRunnerTests
                 }
             }
         }
+    }
+
+    /// <summary>Reports how long a smoke test phase took, so a case over its <see cref="MaxTimeAttribute"/> names the phase that stalled.</summary>
+    private static void LogPhase(string name, Stopwatch phase)
+    {
+        TestContext.Out.WriteLine($"{name}: {phase.ElapsedMilliseconds} ms");
+        phase.Restart();
     }
 
     private class RunnerTestPlugin(bool forStepTest = false) : INethermindPlugin
