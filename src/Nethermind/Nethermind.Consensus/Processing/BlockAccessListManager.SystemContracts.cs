@@ -8,6 +8,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -32,7 +33,24 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
+        BlockhashStore blockhashStore = new(preExecution.WorldState);
+        if (!spec.IsEip8037Enabled)
+        {
+            blockhashStore.ApplyBlockhashStateChanges(header, spec);
+            return;
+        }
+
+        if (!blockhashStore.TryGetHistoryContract(header, spec, out Address? historyContract)) return;
+
+        // EIP-2935 runs whatever code the account holds; a direct storage write matches only the canonical bytecode.
+        SystemCall transaction = new()
+        {
+            GasLimit = Eip8037Constants.SystemCallGasLimit,
+            Data = header.ParentHash!.Bytes.ToArray(),
+            To = historyContract,
+            SenderAddress = Address.SystemUser,
+        };
+        preExecution.TxProcessor.Execute(transaction, NullTxTracer.Instance);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)

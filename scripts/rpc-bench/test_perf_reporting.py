@@ -23,6 +23,7 @@ START_NODE = ROOT / "scripts" / "rpc-bench" / "start-node.sh"
 STOP_NODE = ROOT / "scripts" / "rpc-bench" / "stop-node.sh"
 START_PROFILERS = ROOT / "scripts" / "rpc-bench" / "start-profilers.sh"
 RUN_JSONBENCH = ROOT / "scripts" / "rpc-bench" / "run-jsonbench.sh"
+SEQUENTIAL_DRIVER = ROOT / "scripts" / "expb" / "sequential_driver.py"
 PROFILE_ARTIFACT_GATE = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
 
 WORKFLOW_JOB_PATTERN = re.compile(
@@ -902,7 +903,7 @@ esac
         # through `bash <path>`, so a script committed 100644 dies with exit 126 wherever the
         # checkout's mode bits are honoured. The index mode is the only platform-independent record
         # of the bit — a Windows working tree reports nothing useful about it.
-        # rpc-bench plus the two perf-flow scripts one level up, which AGENTS.md documents as commands to
+        # rpc-bench plus the two perf-flow scripts one level up, which the benchmark skills document as commands to
         # run by path. Deliberately not the whole scripts/ tree: unrelated scripts there predate this flow.
         listing = subprocess.run(
             ["git", "ls-files", "-s", "--", "scripts/rpc-bench",
@@ -1367,19 +1368,12 @@ printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
         self.assertEqual(expb_workflow.count('artifact_prefix="dottrace"'), 2)
         self.assertEqual(expb_workflow.count('artifact_prefix="profiling"'), 2)
         self.assertIn("pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}", expb_workflow)
-        self.assertEqual(
-            expb_workflow.count(
-                "# Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard."
-            ),
-            2,
-        )
         for job_name in ("benchmark", "benchmark-multi"):
             job_body = workflow_job_body(expb_workflow, job_name)
             self.assertIn(
-                'if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then',
+                'capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"',
                 job_body,
             )
-            self.assertIn('expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)"', job_body)
         self.assertIn("bash scripts/validate-folded-profile.sh", rpc_workflow)
         self.assertIn("zip -9r \"${ARCHIVE}\" perf -x '*/perf.data'", rpc_workflow)
         self.assertIn("require_perf_access", rpc_workflow)
@@ -1457,7 +1451,7 @@ printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
             RPC_LIB.read_text(encoding="utf-8"),
         )
 
-        # Pinned collector: the rig pins expb and json-bench for the same reason.
+        # Pinned collector: the rig pins json-bench to keep profiling reproducible.
         start_node = START_NODE.read_text(encoding="utf-8")
         self.assertRegex(start_node, r'DOTNET_TRACE_VERSION="\$\{DOTNET_TRACE_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"')
         self.assertEqual(start_node.count('dotnet tool install --version "$DOTNET_TRACE_VERSION"'), 2)
@@ -1477,6 +1471,14 @@ printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
                 f"{job_name} must archive dotTrace/EventPipe data before failing invalid perf output",
             )
             self.assertIn("exit 1", collector[collector.index(deferred_failure) :])
+
+    def test_campaign_fail_fast_is_scoped_to_an_explicit_image_comparison(self) -> None:
+        # Retrospective sweeps bisect across many master builds, where the images that did run stay
+        # useful; an explicit `docker_images` A/B is invalid the moment one arm fails.
+        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
+        campaign = workflow_named_step_body(expb_workflow, "benchmark-multi", "Run sequential EXPB campaign")
+        self.assertIn("CAMPAIGN_FAIL_FAST: ${{ needs.resolve.outputs.docker_images != '' }}", campaign)
+        self.assertIn('fail_fast = get("CAMPAIGN_FAIL_FAST", "true") != "false"', SEQUENTIAL_DRIVER.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
