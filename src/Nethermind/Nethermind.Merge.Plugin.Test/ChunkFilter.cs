@@ -2,4 +2,3 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 [assembly: Nethermind.Core.Test.ChunkFilterAttribute]
-[assembly: Nethermind.Merge.Plugin.Test.UndisposedChainGuardAttribute]
