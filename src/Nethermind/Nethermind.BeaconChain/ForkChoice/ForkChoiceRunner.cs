@@ -78,7 +78,9 @@ public sealed class ForkChoiceRunner
     /// The post-states of Gloas blocks. Without it every Gloas block is refused, because none of its
     /// checkpoint states could ever be resolved.
     /// </param>
-    /// <exception cref="ForkChoiceException">The anchor block's state root does not match the anchor state.</exception>
+    /// <exception cref="ForkChoiceException">
+    /// The anchor block's state root does not match the anchor state, or the anchor block is in a Gloas epoch.
+    /// </exception>
     public ForkChoiceRunner(
         BeaconChainSpec spec,
         BeaconStateFulu anchorState,
@@ -86,30 +88,101 @@ public sealed class ForkChoiceRunner
         IForkChoiceStateProvider stateProvider,
         PubkeyCache pubkeys,
         IGloasBlockStateProvider? gloasStateProvider = null)
+        : this(spec, stateProvider, pubkeys, gloasStateProvider, FuluAnchor(spec, anchorState, anchorBlock))
     {
-        if (anchorBlock.StateRoot != SszRoots.HashTreeRoot(anchorState))
-            throw new ForkChoiceException("Anchor block state root does not match the anchor state");
+    }
 
+    /// <summary>
+    /// Creates the store from a Gloas anchor (the Gloas <c>get_forkchoice_store</c>): the anchor becomes the
+    /// justified and finalized checkpoint at its own epoch, and no payload is yet verified for it.
+    /// </summary>
+    /// <remarks>
+    /// The spec's <c>payloads={}</c>: finality says nothing about whether the anchor's payload was revealed,
+    /// so a child that builds on it waits for the anchor's envelope to be verified like any other. The anchor
+    /// node is <see cref="ExecutionStatus.Valid"/> and carries the committed bid's <c>block_hash</c>, the hash
+    /// every Gloas node carries; that hash need not exist on the execution layer when the payload was empty.
+    /// </remarks>
+    /// <param name="anchorState">The post-state of <paramref name="anchorBlock"/>; also supplies the genesis time.</param>
+    /// <param name="anchorBlock">The finalized Gloas block to root the block tree at.</param>
+    /// <param name="gloasStateProvider">The post-states of Gloas blocks, the anchor's included: its checkpoint state resolves through it.</param>
+    /// <exception cref="ForkChoiceException">
+    /// The anchor block's state root does not match the anchor state, or the anchor block is before the Gloas fork.
+    /// </exception>
+    public ForkChoiceRunner(
+        BeaconChainSpec spec,
+        BeaconStateGloas anchorState,
+        BeaconBlockGloas anchorBlock,
+        IForkChoiceStateProvider stateProvider,
+        PubkeyCache pubkeys,
+        IGloasBlockStateProvider gloasStateProvider)
+        : this(spec, stateProvider, pubkeys, gloasStateProvider, GloasAnchor(spec, anchorState, anchorBlock))
+    {
+    }
+
+    private ForkChoiceRunner(
+        BeaconChainSpec spec,
+        IForkChoiceStateProvider stateProvider,
+        PubkeyCache pubkeys,
+        IGloasBlockStateProvider? gloasStateProvider,
+        AnchorNode anchor)
+    {
         _spec = spec;
         _stateProvider = stateProvider;
         _gloasStateProvider = gloasStateProvider;
         _pubkeys = pubkeys;
-        GenesisTime = anchorState.GenesisTime;
-        Time = GenesisTime + spec.SecondsPerSlot * anchorState.Slot;
+        GenesisTime = anchor.GenesisTime;
+        Time = GenesisTime + spec.SecondsPerSlot * anchor.StateSlot;
 
-        Hash256 anchorRoot = SszRoots.HashTreeRoot(anchorBlock);
-        CheckpointRef anchorCheckpoint = new(anchorState.GetCurrentEpoch(), anchorRoot);
-        Hash256? payloadHash = anchorBlock.Body?.ExecutionPayload?.BlockHash;
-        _store = new ForkChoiceStore(spec.SlotsPerEpoch, anchorState.Slot, anchorCheckpoint, anchorCheckpoint);
+        CheckpointRef anchorCheckpoint = new(anchor.Epoch, anchor.Root);
+        _store = new ForkChoiceStore(spec.SlotsPerEpoch, anchor.StateSlot, anchorCheckpoint, anchorCheckpoint);
         _protoArray = new ProtoArrayForkChoice(
-            currentSlot: anchorState.Slot,
-            finalizedBlockSlot: anchorBlock.Slot,
-            finalizedBlockStateRoot: anchorBlock.StateRoot!,
+            currentSlot: anchor.StateSlot,
+            finalizedBlockSlot: anchor.BlockSlot,
+            finalizedBlockStateRoot: anchor.StateRoot,
             justifiedCheckpoint: anchorCheckpoint,
             finalizedCheckpoint: anchorCheckpoint,
-            executionStatus: payloadHash is null ? ExecutionStatus.Irrelevant : ExecutionStatus.Valid,
-            executionBlockHash: payloadHash,
+            executionStatus: anchor.ExecutionBlockHash is null ? ExecutionStatus.Irrelevant : ExecutionStatus.Valid,
+            executionBlockHash: anchor.ExecutionBlockHash,
             slotsPerEpoch: spec.SlotsPerEpoch);
+    }
+
+    /// <summary>The fork-independent parts of an anchor that <c>get_forkchoice_store</c> reads.</summary>
+    private readonly record struct AnchorNode(ulong GenesisTime, ulong StateSlot, ulong Epoch, ulong BlockSlot, Hash256 Root, Hash256 StateRoot, Hash256? ExecutionBlockHash);
+
+    private static AnchorNode FuluAnchor(BeaconChainSpec spec, BeaconStateFulu anchorState, BeaconBlock anchorBlock)
+    {
+        if (anchorBlock.StateRoot != SszRoots.HashTreeRoot(anchorState))
+            throw new ForkChoiceException("Anchor block state root does not match the anchor state");
+        // Every block state lookup picks the provider by slot, so a Gloas-epoch root must never be a Fulu node.
+        if (SignedBeaconBlockCodec.IsGloasSlot(anchorBlock.Slot, spec))
+            throw new ForkChoiceException($"Anchor block at slot {anchorBlock.Slot} is in a Gloas epoch; it must be a {nameof(BeaconBlockGloas)}");
+
+        return new AnchorNode(
+            anchorState.GenesisTime,
+            anchorState.Slot,
+            anchorState.GetCurrentEpoch(),
+            anchorBlock.Slot,
+            SszRoots.HashTreeRoot(anchorBlock),
+            anchorBlock.StateRoot!,
+            anchorBlock.Body?.ExecutionPayload?.BlockHash);
+    }
+
+    private static AnchorNode GloasAnchor(BeaconChainSpec spec, BeaconStateGloas anchorState, BeaconBlockGloas anchorBlock)
+    {
+        // specs/gloas/fork-choice.md get_forkchoice_store: assert anchor_block.state_root == hash_tree_root(anchor_state).
+        if (anchorBlock.StateRoot != SszRoots.HashTreeRoot(anchorState))
+            throw new ForkChoiceException("Anchor block state root does not match the anchor state");
+        if (!SignedBeaconBlockCodec.IsGloasSlot(anchorBlock.Slot, spec))
+            throw new ForkChoiceException($"Anchor block at slot {anchorBlock.Slot} is before the Gloas fork; it must be a {nameof(BeaconBlock)}");
+
+        return new AnchorNode(
+            anchorState.GenesisTime,
+            anchorState.Slot,
+            anchorState.GetCurrentEpoch(),
+            anchorBlock.Slot,
+            SszRoots.HashTreeRoot(anchorBlock),
+            anchorBlock.StateRoot!,
+            anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.BlockHash!);
     }
 
     /// <summary>The wall-clock time in seconds (the spec store's <c>time</c>).</summary>
