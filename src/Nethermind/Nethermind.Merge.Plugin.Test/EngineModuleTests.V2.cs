@@ -903,7 +903,6 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV2(executionPayload);
 
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        // VALID is answered before the state is committed; callers read the block's state next.
         await chain.WaitForCommitted(executionPayload.BlockHash);
 
         return executionPayload;
