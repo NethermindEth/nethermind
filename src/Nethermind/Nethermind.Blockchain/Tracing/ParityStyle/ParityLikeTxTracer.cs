@@ -421,8 +421,9 @@ public class ParityLikeTxTracer : TxTracer
     {
         ParityTraceAction action = RentAction();
         action.IsPrecompiled = isPrecompileCall;
-        // ignore pre compile calls with Zero value that originates from contracts
-        action.IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero);
+        // Like Geth's flatCallTracer, omit CALL/STATICCALL to precompiles whatever the value; DELEGATECALL and
+        // CALLCODE to a precompile, and a transaction sent to one, stay in the trace.
+        action.IncludeInTrace = !(isPrecompileCall && callType is ExecutionType.CALL or ExecutionType.STATICCALL);
         action.From = from;
         action.To = to;
         action.Value = value;

@@ -845,15 +845,31 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
             Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
-            // AddressC call - only one call
-            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
+            // AddressC call - both precompile calls, with and without value, are omitted
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1] subtraces");
             Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[1] type");
-
-            // Check the 2nd subtrace - a precompile call with value - must be included
-            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
-            Assert.That(trace.Action.Subtraces[0].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 1] type");
-            Assert.That(trace.Action.Subtraces[0].Subtraces[0].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
         }
+    }
+
+    private static IEnumerable<TestCaseData> PrecompileCallFilteringCases()
+    {
+        yield return new TestCaseData(Prepare.EvmCode.Call(IdentityPrecompile.Address, 50000), null).SetName("CALL is omitted");
+        yield return new TestCaseData(Prepare.EvmCode.CallWithValue(IdentityPrecompile.Address, 50000, 1), null).SetName("CALL with value is omitted");
+        yield return new TestCaseData(Prepare.EvmCode.StaticCall(IdentityPrecompile.Address, 50000), null).SetName("STATICCALL is omitted");
+        yield return new TestCaseData(Prepare.EvmCode.DelegateCall(IdentityPrecompile.Address, 50000), "delegatecall").SetName("DELEGATECALL is traced");
+        yield return new TestCaseData(Prepare.EvmCode.CallCode(IdentityPrecompile.Address, 50000), "callcode").SetName("CALLCODE is traced");
+    }
+
+    [TestCaseSource(nameof(PrecompileCallFilteringCases))]
+    public void Precompile_calls_are_filtered_by_call_type(Prepare call, string? tracedCallType)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, call.Op(Instruction.STOP).Done, Spec);
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(Prepare.EvmCode.Call(TestItem.AddressC, 100000).Op(Instruction.STOP).Done);
+
+        Assert.That(trace.Action.Subtraces[0].Subtraces.Select(static a => a.CallType),
+            Is.EqualTo(tracedCallType is null ? Array.Empty<string>() : new[] { tracedCallType }));
     }
 
     [Test]
