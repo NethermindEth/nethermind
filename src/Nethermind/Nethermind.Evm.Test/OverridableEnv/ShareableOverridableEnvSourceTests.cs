@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
@@ -115,11 +116,15 @@ public class ShareableOverridableEnvSourceTests
     {
         public bool IsDisposed { get; private set; }
 
-        public Scope<Marker> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null)
+        public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out Scope<Marker>? scope)
         {
             if (throwOnBuild) throw new InvalidOperationException("simulated build failure");
-            return new Scope<Marker>(new Marker(), new NoopDisposable());
+            scope = new Scope<Marker>(new Marker(), new NoopDisposable());
+            return true;
         }
+
+        public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<Marker>? scope) =>
+            TryBuildAndOverride(targetBlock, stateOverride, specOverride, null, out scope);
 
         public void Dispose() => IsDisposed = true;
     }

@@ -54,6 +54,21 @@ namespace Nethermind.State
             ComputeKey(index, out key);
         }
 
+        /// <summary>Looks up a slot key, returning its preimage on a cache miss.</summary>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool TryGetCachedKey(in UInt256 index, out ValueHash256 key, out ValueHash256 preimage)
+        {
+            Unsafe.SkipInit(out preimage);
+            if (index.IsUint64 && index.u0 < (uint)Lookup.Length)
+            {
+                key = Lookup[(int)index.u0];
+                return true;
+            }
+            index.ToBigEndian(preimage.BytesAsSpan);
+            return KeccakCache.TryGet(preimage.BytesAsSpan, out key);
+        }
+
         private static byte[] EncodeNonZeroValue(ReadOnlySpan<byte> value)
         {
             byte[] encoded = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));

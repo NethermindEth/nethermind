@@ -689,6 +689,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
                 SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
                 syncConfig.FastSync = true;
+                syncConfig.SnapSync = true;
 
                 await SetPivot(server, syncConfig, cancellationToken, HeadPivotDistance);
                 syncPivotNumber = syncConfig.PivotNumber;
@@ -777,6 +778,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
                 SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
                 syncConfig.FastSync = true;
+                syncConfig.SnapSync = true;
 
                 await SetPivot(server, syncConfig, cancellationToken, PartialBalSyncHeadPivotDistance);
                 syncPivotNumber = syncConfig.PivotNumber;
