@@ -208,14 +208,23 @@ public sealed partial class KeccakHash
     }
 
     /// <remarks>
-    /// AVX-512 rotates a 64-bit lane in one instruction; without it the rotate costs a shift pair
-    /// plus an or. The check folds at JIT time, so the unused arm is never emitted.
+    /// AVX-512 rotates a 64-bit lane directly; AVX2 byte shuffles handle aligned 8- and 56-bit
+    /// rotations, with shifts and ors for other counts. The constant choices fold at call sites.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector256<ulong> RotateLeft4(Vector256<ulong> value, [ConstantExpected] byte count) =>
         Avx512F.VL.IsSupported
             ? Avx512F.VL.RotateLeft(value, count)
-            : (value << count) | (value >> (64 - count));
+            : count switch
+            {
+                8 => Avx2.Shuffle(value.AsByte(), Vector256.Create(
+                    0x0605040302010007ul, 0x0e0d0c0b0a09080ful,
+                    0x0605040302010007ul, 0x0e0d0c0b0a09080ful).AsByte()).AsUInt64(),
+                56 => Avx2.Shuffle(value.AsByte(), Vector256.Create(
+                    0x0007060504030201ul, 0x080f0e0d0c0b0a09ul,
+                    0x0007060504030201ul, 0x080f0e0d0c0b0a09ul).AsByte()).AsUInt64(),
+                _ => (value << count) | (value >> (64 - count))
+            };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     // Offsets select the same rate lane in each of the four padded messages.
