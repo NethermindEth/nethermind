@@ -77,6 +77,36 @@ namespace Nethermind.TxPool
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);
         bool RemoveTransaction(Hash256? hash);
+
+        /// <summary>
+        /// Drops <paramref name="tx"/> as unbuildable, so later blocks stop re-burning its validation prefix.
+        /// </summary>
+        /// <remarks>
+        /// Everything <see cref="RemoveTransaction"/> does, plus: <see cref="EvictedPending"/> is raised after
+        /// <see cref="RemovedPending"/>, and the hash leaves the long-term known-hash cache so the same
+        /// transaction may be resubmitted. That last part is what makes this a drop rather than a verdict —
+        /// the reasons block production evicts for turn on head state and can reverse — so callers must not
+        /// use it to blacklist a transaction. For the same reason a frame transaction the pool still holds may
+        /// be granted a retry budget of <see cref="ITxPoolConfig.FrameTxEvictionRetryBudget"/> distinct chain
+        /// heads: it is kept while it has failed on fewer heads than that, and those calls report
+        /// <see langword="false"/> and retain it. The budget is counted per head, so repeated calls against the
+        /// same head spend a single unit; a budget of one (the default) drops on the first failed attempt. It is
+        /// also counted per pool residency, so a transaction resubmitted after this dropped it starts a fresh one.
+        /// Removal is atomic and the rest of the work follows it, so repeated calls are idempotent: only the
+        /// call that removes the transaction reports <see langword="true"/>, raises the events and counts the
+        /// eviction, and a call for a transaction the pool does not hold changes nothing.
+        /// Runs without the pool's head lock, so it may land at any point of a concurrent head update.
+        /// Required rather than defaulted, unlike its defaulted neighbours here, and neither candidate default
+        /// works: <c>RemoveTransaction(tx.Hash)</c> leaves the hash known, turning the drop into the blacklist this
+        /// contract forbids, and it ignores the retry budget and raises no <see cref="EvictedPending"/>, while
+        /// <c>false</c> is also the ordinary "retained, budget not yet spent" answer, so an
+        /// unimplemented member would read as a deliberate retention while every later block re-burns a prefix that
+        /// can never be paid. Declining is said outright, as <see cref="NullTxPool"/> does.
+        /// </remarks>
+        /// <param name="tx">The transaction to drop. The instance is what the events carry, so it must be the
+        /// pooled one rather than a re-decoded copy sharing its hash.</param>
+        /// <returns><see langword="true"/> if this call removed the transaction from the pool.</returns>
+        bool EvictTransaction(Transaction tx);
         Transaction? GetBestTx();
         IEnumerable<Transaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
