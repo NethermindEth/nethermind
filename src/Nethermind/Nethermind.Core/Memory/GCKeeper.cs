@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -49,13 +50,16 @@ public class GCKeeper : IDisposable
     public void Dispose()
     {
         NoGCRegion? region;
+        bool logSummary;
         lock (_lock)
         {
+            logSummary = !_disposed;
             _disposed = true;
             _pendingGcCts?.Cancel();
             region = _region;
         }
         region?.ForceRelease();
+        if (logSummary && _logger.IsInfo) _logger.Info(Metrics.CreateShutdownSummary());
     }
 
     /// <summary>Cancels the delayed collection if it has not yet been claimed for execution.</summary>
@@ -71,10 +75,15 @@ public class GCKeeper : IDisposable
     public IDisposable TryStartNoGCRegion()
     {
         bool eligible = _gcStrategy.CanStartNoGCRegion();
+        Metrics.RecordEligibility(eligible);
         NoGCRegion region = new(this, GCScheduler.MarkGCPaused(), eligible);
         lock (_lock)
         {
-            if (_disposed) return region;
+            if (_disposed)
+            {
+                if (eligible) Metrics.RecordSkipped();
+                return region;
+            }
             if (!eligible)
             {
                 if (_logger.IsDebug) _logger.Debug("No-GC region entry disallowed by strategy.");
@@ -86,7 +95,12 @@ public class GCKeeper : IDisposable
                 // A payload that starts while the previous one is still inside its region shares that region rather
                 // than running unprotected: it then ends when the last payload leaves, not when the first returns.
                 // The newcomer keeps a lease of its own so its scheduler pause and its collection stay its own.
-                if (_region.TryAddLease()) return new SharedRegionLease(_region, region);
+                if (_region.TryAddLease())
+                {
+                    Metrics.RecordShared();
+                    return new SharedRegionLease(_region, region);
+                }
+                Metrics.RecordSkipped();
                 if (_logger.IsDebug) _logger.Debug("No-GC region entry skipped: previous entry or region is still active.");
                 return region;
             }
@@ -95,10 +109,13 @@ public class GCKeeper : IDisposable
 
         try
         {
+            region.MarkQueued();
             _queue(region);
+            Metrics.RecordQueued();
         }
         catch
         {
+            Metrics.RecordQueueFailure();
             region.Dispose();
             throw;
         }
@@ -118,6 +135,9 @@ public class GCKeeper : IDisposable
         private readonly Lock _stateLock = new();
         private bool _released;
         private bool _starting;
+        private bool _queueWaitRecorded;
+        private bool _abandonedBeforeAdmission;
+        private long _queueStartedAt;
         private const int MaxLeases = 2;
         private bool _active;
         private int _leases = 1;
@@ -143,29 +163,64 @@ public class GCKeeper : IDisposable
             }
         }
 
+        public void MarkQueued() => _queueStartedAt = Stopwatch.GetTimestamp();
+
         public void Execute()
         {
+            bool start;
+            bool abandoned = false;
+            bool recordQueueWait;
             lock (_stateLock)
             {
-                if (_released) return;
-                _starting = true;
+                recordQueueWait = !_queueWaitRecorded;
+                _queueWaitRecorded = true;
+                start = !_released;
+                if (start) _starting = true;
+                else if (!_abandonedBeforeAdmission)
+                {
+                    _abandonedBeforeAdmission = true;
+                    abandoned = true;
+                }
             }
+            if (recordQueueWait) Metrics.RecordQueueWait(Stopwatch.GetTimestamp() - _queueStartedAt);
+            if (abandoned) Metrics.RecordAbandonedBeforeAdmission();
+            if (!start) return;
 
             bool started = false;
+            bool admissionThrew = false;
+            long admissionStartedAt = Stopwatch.GetTimestamp();
             try
             {
                 started = keeper._runtime.TryStart(_defaultSize, _lohSize);
-                if (!started && keeper._logger.IsDebug) keeper._logger.Debug("Runtime declined no-GC region entry.");
             }
             catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
             {
+                admissionThrew = true;
+                Metrics.RecordAdmissionException();
                 if (keeper._logger.IsDebug) keeper._logger.Debug($"No-GC region entry failed: {e.Message}");
             }
             catch (Exception e)
             {
+                admissionThrew = true;
+                Metrics.RecordAdmissionException();
                 if (keeper._logger.IsError) keeper._logger.Error("No-GC region entry failed.", e);
             }
+            finally
+            {
+                Metrics.RecordRuntimeAdmissionDuration(Stopwatch.GetTimestamp() - admissionStartedAt);
+            }
 
+            if (!admissionThrew)
+            {
+                if (started) Metrics.RecordAdmitted();
+                else
+                {
+                    Metrics.RecordRefused();
+                    if (keeper._logger.IsDebug) keeper._logger.Debug("Runtime declined no-GC region entry.");
+                }
+            }
+
+            bool lateAdmission = false;
             lock (_stateLock)
             {
                 _starting = false;
@@ -174,9 +229,14 @@ public class GCKeeper : IDisposable
                     _active = true;
                     return;
                 }
+                lateAdmission = started;
             }
 
-            if (started) EndRegion();
+            if (started)
+            {
+                if (lateAdmission) Metrics.RecordLateAdmission();
+                EndRegion();
+            }
             else keeper.ReleaseRegion(this);
         }
 
@@ -217,13 +277,16 @@ public class GCKeeper : IDisposable
                 {
                     keeper._runtime.End();
                 }
+                else Metrics.RecordBrokenAtEnd();
             }
             catch (InvalidOperationException e)
             {
+                Metrics.RecordCleanupException();
                 if (keeper._logger.IsDebug) keeper._logger.Debug($"No-GC region already ended: {e.Message}");
             }
             catch (Exception e)
             {
+                Metrics.RecordCleanupException();
                 if (keeper._logger.IsError) keeper._logger.Error("No-GC region cleanup failed.", e);
             }
             finally

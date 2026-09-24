@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Memory;
 using Nethermind.Logging;
 using NSubstitute;
@@ -18,6 +19,8 @@ public class GCKeeperTests
     [Test]
     public void Released_before_dispatch_skips_entry([Values] bool shutdown)
     {
+        long queuedBefore = Metrics.GcRegionQueuedTotal;
+        long abandonedBefore = Metrics.GcRegionAbandonedBeforeAdmissionTotal;
         List<IThreadPoolWorkItem> queued = [];
         RegionRuntime runtime = new();
         using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
@@ -30,10 +33,13 @@ public class GCKeeperTests
             Assert.That(queued, Has.Count.EqualTo(2));
         }
         queued[0].Execute();
+        queued[0].Execute();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runtime.Starts, Is.Zero);
             Assert.That(runtime.Ends, Is.Zero);
+            Assert.That(Metrics.GcRegionQueuedTotal - queuedBefore, Is.EqualTo(shutdown ? 1 : 2));
+            Assert.That(Metrics.GcRegionAbandonedBeforeAdmissionTotal - abandonedBefore, Is.EqualTo(1));
         }
     }
 
@@ -60,6 +66,8 @@ public class GCKeeperTests
     [Test]
     public async Task Blocked_entry_does_not_hold_up_release_or_queue_more_workers([Values] bool shutdown)
     {
+        long lateAdmissionsBefore = Metrics.GcRegionLateAdmissionsTotal;
+        long brokenBefore = Metrics.GcRegionBrokenAtEndTotal;
         using ManualResetEventSlim entering = new(false);
         using ManualResetEventSlim proceed = new(false);
         RegionRuntime runtime = new() { BeforeStart = () => { entering.Set(); proceed.Wait(); } };
@@ -94,12 +102,16 @@ public class GCKeeperTests
             Assert.That(runtime.Starts, Is.EqualTo(1));
             Assert.That(runtime.Ends, Is.EqualTo(1));
             Assert.That(runtime.IsActive, Is.False);
+            Assert.That(Metrics.GcRegionLateAdmissionsTotal - lateAdmissionsBefore, Is.EqualTo(1));
+            Assert.That(Metrics.GcRegionBrokenAtEndTotal - brokenBefore, Is.Zero);
         }
     }
 
     [Test]
     public void Failed_entry_releases_the_slot_without_ending_another_region([Values] bool throws)
     {
+        long refusedBefore = Metrics.GcRegionRefusedTotal;
+        long exceptionsBefore = Metrics.GcRegionAdmissionExceptionsTotal;
         List<IThreadPoolWorkItem> queued = [];
         RegionRuntime runtime = new() { Refuse = true, Throw = throws };
         using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
@@ -109,12 +121,16 @@ public class GCKeeperTests
         {
             Assert.That(runtime.Starts, Is.EqualTo(2));
             Assert.That(runtime.Ends, Is.Zero);
+            Assert.That(Metrics.GcRegionRefusedTotal - refusedBefore, Is.EqualTo(throws ? 0 : 2));
+            Assert.That(Metrics.GcRegionAdmissionExceptionsTotal - exceptionsBefore, Is.EqualTo(throws ? 2 : 0));
         }
     }
 
     [Test]
     public void Ending_a_region_logs_expected_failure_at_debug([Values] bool expected)
     {
+        long cleanupExceptionsBefore = Metrics.GcRegionCleanupExceptionsTotal;
+        long brokenBefore = Metrics.GcRegionBrokenAtEndTotal;
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsDebug.Returns(true);
         logger.IsError.Returns(true);
@@ -129,6 +145,11 @@ public class GCKeeperTests
         logger.Received(expected ? 1 : 0).Debug(Arg.Is<string>(message => message.StartsWith("No-GC region already ended:")));
         using IDisposable next = keeper.TryStartNoGCRegion();
         Assert.That(queued, Has.Count.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.GcRegionCleanupExceptionsTotal - cleanupExceptionsBefore, Is.EqualTo(1));
+            Assert.That(Metrics.GcRegionBrokenAtEndTotal - brokenBefore, Is.Zero);
+        }
     }
 
     [Test]
@@ -338,6 +359,105 @@ public class GCKeeperTests
         }
     }
 
+    [Test]
+    public void Pending_region_can_be_shared_before_admission([Values] bool executeBeforeRelease)
+    {
+        long sharedBefore = Metrics.GcRegionSharedTotal;
+        long refusedBefore = Metrics.GcRegionRefusedTotal;
+        long abandonedBefore = Metrics.GcRegionAbandonedBeforeAdmissionTotal;
+        List<IThreadPoolWorkItem> queued = [];
+        RegionRuntime runtime = new() { Refuse = true };
+        using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+        using IDisposable owner = keeper.TryStartNoGCRegion();
+        using IDisposable shared = keeper.TryStartNoGCRegion();
+
+        if (executeBeforeRelease) queued[0].Execute();
+        owner.Dispose();
+        shared.Dispose();
+        if (!executeBeforeRelease) queued[0].Execute();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.GcRegionSharedTotal - sharedBefore, Is.EqualTo(1));
+            Assert.That(Metrics.GcRegionRefusedTotal - refusedBefore, Is.EqualTo(executeBeforeRelease ? 1 : 0));
+            Assert.That(Metrics.GcRegionAbandonedBeforeAdmissionTotal - abandonedBefore, Is.EqualTo(executeBeforeRelease ? 0 : 1));
+            Assert.That(runtime.Starts, Is.EqualTo(executeBeforeRelease ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void Inline_admission_records_eligibility_sharing_skips_and_durations()
+    {
+        long eligibleBefore = Metrics.GcRegionEligibleTotal;
+        long ineligibleBefore = Metrics.GcRegionIneligibleTotal;
+        long queuedBefore = Metrics.GcRegionQueuedTotal;
+        long sharedBefore = Metrics.GcRegionSharedTotal;
+        long skippedBefore = Metrics.GcRegionSkippedTotal;
+        long admittedBefore = Metrics.GcRegionAdmittedTotal;
+        IMetricObserver previousQueueWait = Metrics.GcRegionQueueWaitSeconds;
+        IMetricObserver previousRuntimeAdmission = Metrics.GcRegionRuntimeAdmissionSeconds;
+        RecordingMetricObserver queueWait = new();
+        RecordingMetricObserver runtimeAdmission = new();
+        Metrics.GcRegionQueueWaitSeconds = queueWait;
+        Metrics.GcRegionRuntimeAdmissionSeconds = runtimeAdmission;
+        bool eligible = false;
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(_ => eligible);
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static item => item.Execute());
+
+        try
+        {
+            using (keeper.TryStartNoGCRegion()) { }
+            eligible = true;
+            using IDisposable owner = keeper.TryStartNoGCRegion();
+            using IDisposable shared = keeper.TryStartNoGCRegion();
+            using (keeper.TryStartNoGCRegion()) { }
+            keeper.Dispose();
+            using (keeper.TryStartNoGCRegion()) { }
+            owner.Dispose();
+            shared.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.GcRegionEligibleTotal - eligibleBefore, Is.EqualTo(4));
+                Assert.That(Metrics.GcRegionIneligibleTotal - ineligibleBefore, Is.EqualTo(1));
+                Assert.That(Metrics.GcRegionQueuedTotal - queuedBefore, Is.EqualTo(1));
+                Assert.That(Metrics.GcRegionSharedTotal - sharedBefore, Is.EqualTo(1));
+                Assert.That(Metrics.GcRegionSkippedTotal - skippedBefore, Is.EqualTo(2));
+                Assert.That(Metrics.GcRegionAdmittedTotal - admittedBefore, Is.EqualTo(1));
+                Assert.That(queueWait.Values, Has.Count.EqualTo(1));
+                Assert.That(runtimeAdmission.Values, Has.Count.EqualTo(1));
+            }
+        }
+        finally
+        {
+            Metrics.GcRegionQueueWaitSeconds = previousQueueWait;
+            Metrics.GcRegionRuntimeAdmissionSeconds = previousRuntimeAdmission;
+        }
+    }
+
+    [Test]
+    public void Runtime_inactive_at_lease_end_is_broken_without_counting_a_cleanup_exception()
+    {
+        long brokenBefore = Metrics.GcRegionBrokenAtEndTotal;
+        long cleanupExceptionsBefore = Metrics.GcRegionCleanupExceptionsTotal;
+        List<IThreadPoolWorkItem> queued = [];
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+        IDisposable lease = keeper.TryStartNoGCRegion();
+        queued[0].Execute();
+        runtime.BreakRegion();
+        lease.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.GcRegionBrokenAtEndTotal - brokenBefore, Is.EqualTo(1));
+            Assert.That(Metrics.GcRegionCleanupExceptionsTotal - cleanupExceptionsBefore, Is.Zero);
+        }
+    }
+
     // The chain of leases ends with the payload that admitted the region. A budget entered once and sized for one
     // payload cannot be stretched over a queue of them, and a chain that kept renewing itself would hold the
     // keeper's slot so that no region could be admitted again.
@@ -379,14 +499,20 @@ public class GCKeeperTests
     [Test]
     public void Shutdown_ends_a_shared_region()
     {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
         List<IThreadPoolWorkItem> queued = [];
         RegionRuntime runtime = new();
-        GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        using GCKeeper keeper = new(strategy, new OneLoggerLogManager(new ILogger(logger)), runtime, queued.Add);
 
         using IDisposable first = keeper.TryStartNoGCRegion();
         queued[0].Execute();
         using IDisposable second = keeper.TryStartNoGCRegion();
 
+        keeper.Dispose();
         keeper.Dispose();
 
         using (Assert.EnterMultipleScope())
@@ -394,6 +520,10 @@ public class GCKeeperTests
             Assert.That(runtime.IsActive, Is.False);
             Assert.That(runtime.Ends, Is.EqualTo(1));
         }
+        logger.Received(1).Info(Arg.Is<string>(message => message.StartsWith("GCKeeper lifecycle process totals at dispose")
+            && message.Contains("in-flight entry work may finish after this snapshot")
+            && message.Contains("queueWaitSamples=")
+            && message.Contains("runtimeAttempts=")));
     }
 
     private static GCKeeper CreateRegionKeeper(RegionRuntime runtime, Action<IThreadPoolWorkItem> queue)
@@ -422,6 +552,7 @@ public class GCKeeperTests
         public int Starts { get; private set; }
         public int Ends { get; private set; }
         public bool IsActive { get; private set; }
+        public void BreakRegion() => IsActive = false;
         public bool TryStart(long totalSize, long lohSize)
         {
             BeforeStart?.Invoke();
@@ -435,6 +566,12 @@ public class GCKeeperTests
             IsActive = false;
             if (EndFailure is not null) throw EndFailure;
         }
+    }
+
+    private sealed class RecordingMetricObserver : IMetricObserver
+    {
+        public List<double> Values { get; } = [];
+        public void Observe(double value, IMetricLabels? labels = null) => Values.Add(value);
     }
 
     [Test]
