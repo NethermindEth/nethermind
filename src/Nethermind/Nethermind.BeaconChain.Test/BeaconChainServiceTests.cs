@@ -11,10 +11,15 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.ForkChoice;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Test.Types;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -110,6 +115,74 @@ public class BeaconChainServiceTests
         Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
         Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
         Assert.That(logManager.Errors.Single().Exception?.Message, Does.Contain("anchor state"), "the driver went on to read the anchor");
+    }
+
+    /// <summary>
+    /// The orchestrator and importer still take only a Fulu anchor, so a Gloas checkpoint, fresh or resumed,
+    /// must stop the driver with one error that says why and what to do, before any pubkey work; a crash
+    /// deep in the Fulu decoder or a silent Fulu fallback leaves the operator nothing to act on.
+    /// </summary>
+    [Test]
+    public async Task Start_stops_with_one_actionable_error_on_a_gloas_anchor_both_fresh_and_resumed()
+    {
+        ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(first.PostState, new ForkedSignedBeaconBlock.OfGloas(first.Block));
+        BeaconChainConfig config = new() { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1" };
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using IContainer container = BuildContainer();
+
+        (TestErrorLogManager.Error[] fresh, int freshPubkeys) = await StartOnGloasSpecAsync(container, config, store);
+        bool anchored = store.TryGetAnchor(out Hash256? anchorRoot, out _);
+        (TestErrorLogManager.Error[] resumed, int resumedPubkeys) = await StartOnGloasSpecAsync(container, config, store);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(anchored, Is.True, "the fresh start checkpoint-synced the Gloas anchor");
+            Assert.That(anchorRoot, Is.EqualTo(first.Root));
+            AssertActionableGloasStop(fresh, freshPubkeys, "fresh");
+            AssertActionableGloasStop(resumed, resumedPubkeys, "resumed");
+        }
+    }
+
+    /// <summary>
+    /// A Fulu anchor state stored with a Gloas anchor block cannot seed the Fulu-only orchestrator either;
+    /// reporting it as a missing block sends the operator after a state-file bootstrap that never happened.
+    /// </summary>
+    [Test]
+    public async Task Start_stops_with_the_same_actionable_error_on_a_resumed_fulu_state_whose_anchor_block_is_gloas()
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        store.PutState(chain.AnchorRoot, BeaconStateFulu.Encode(chain.AnchorState));
+        store.PutForkedBlock(chain.AnchorRoot, new ForkedSignedBeaconBlock.OfGloas(chain.First.Block));
+        store.SetAnchor(chain.AnchorRoot, chain.AnchorState.Slot);
+        using IContainer container = BuildContainer();
+
+        (TestErrorLogManager.Error[] errors, int pubkeys) = await StartOnGloasSpecAsync(container, new BeaconChainConfig { CheckpointSyncUrl = "http://invalid.localhost:1" }, store);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertActionableGloasStop(errors, pubkeys, "resumed");
+        }
+    }
+
+    private static async Task<(TestErrorLogManager.Error[] Errors, int PubkeyCount)> StartOnGloasSpecAsync(IContainer container, BeaconChainConfig config, BeaconChainStore store)
+    {
+        TestErrorLogManager logManager = new();
+        PubkeyCache pubkeyCache = new();
+        using CheckpointSync checkpointSync = new(config, GloasCheckpointFiles.Spec, store, logManager);
+        using BeaconChainService service = new(config, GloasCheckpointFiles.Spec, store, pubkeyCache, checkpointSync,
+            container.Resolve<BeaconSyncOrchestrator>(), container.Resolve<ExternalClDetector>(), logManager);
+        await service.Start();
+        return ([.. logManager.Errors], pubkeyCache.Count);
+    }
+
+    private static void AssertActionableGloasStop(TestErrorLogManager.Error[] errors, int pubkeys, string start)
+    {
+        Assert.That(errors, Has.Length.EqualTo(1), start);
+        Assert.That(errors.Single().Exception, Is.Null, $"{start}: a named stop, not a crash");
+        Assert.That(errors.Single().Text, Does.Contain(nameof(BeaconFork.Gloas)).And.Contain("BeaconChain.Enabled"), start);
+        Assert.That(pubkeys, Is.Zero, $"{start}: stopped before the pubkey cache is built");
     }
 
     // Regression for gap 113: ServiceStopper.StopAllServices() resolves every registered

@@ -21,9 +21,8 @@ public static class BeaconStateCodec
 {
     /// <summary>Byte offset of <c>slot</c>: <c>genesis_time</c> (8) plus <c>genesis_validators_root</c> (32).</summary>
     /// <remarks>
-    /// Holds for the Electra and Fulu layouts, which is all this reader needs: a Gloas state's
-    /// progressive encoding is not assumed to put the slot here, and whatever is read from a
-    /// non-Fulu state resolves to a fork that is then refused.
+    /// Holds for the Electra, Fulu and Gloas layouts: EIP-7495 serializes a <c>ProgressiveContainer</c>
+    /// exactly as a <c>Container</c> of its active fields, and the fields before <c>slot</c> are fixed-size.
     /// </remarks>
     private const int SlotOffset = 40;
 
@@ -32,13 +31,7 @@ public static class BeaconStateCodec
     /// <exception cref="NotSupportedException">The state belongs to a fork this driver cannot process.</exception>
     public static BeaconStateFulu Decode(ReadOnlySpan<byte> ssz, BeaconChainSpec spec)
     {
-        if (ssz.Length < SlotOffset + sizeof(ulong))
-        {
-            throw new BeaconStateException($"Beacon state SSZ is {ssz.Length} bytes, too short to contain a slot");
-        }
-
-        ulong slot = BinaryPrimitives.ReadUInt64LittleEndian(ssz[SlotOffset..]);
-        BeaconFork fork = spec.ForkAtEpoch(spec.GetEpoch(slot));
+        BeaconFork fork = ForkOf(ssz, spec, out ulong slot);
         if (fork != BeaconFork.Fulu)
         {
             throw new NotSupportedException(
@@ -47,5 +40,42 @@ public static class BeaconStateCodec
 
         BeaconStateFulu.Decode(ssz, out BeaconStateFulu state);
         return state;
+    }
+
+    /// <summary>Decodes <paramref name="ssz"/> as the state layout of the fork its slot belongs to.</summary>
+    /// <remarks>
+    /// Only the slot selects the layout; a caller holding untrusted bytes must still check that the
+    /// decoded <c>fork.current_version</c> agrees. As in <see cref="SignedBeaconBlockCodec"/>, a malformed
+    /// body surfaces the SSZ decoder's <see cref="System.IO.InvalidDataException"/>.
+    /// </remarks>
+    /// <exception cref="BeaconStateException">The state is too short to carry a slot, or its slot predates Electra.</exception>
+    /// <exception cref="NotSupportedException">The state is an Electra state, which this driver cannot process.</exception>
+    /// <exception cref="System.IO.InvalidDataException">The body is malformed for the layout its slot selects.</exception>
+    public static ForkedBeaconState DecodeForked(ReadOnlySpan<byte> ssz, BeaconChainSpec spec)
+    {
+        BeaconFork fork = ForkOf(ssz, spec, out ulong slot);
+        switch (fork)
+        {
+            case BeaconFork.Fulu:
+                BeaconStateFulu.Decode(ssz, out BeaconStateFulu fulu);
+                return new ForkedBeaconState.OfFulu(fulu);
+            case BeaconFork.Gloas:
+                BeaconStateGloas.Decode(ssz, out BeaconStateGloas gloas);
+                return new ForkedBeaconState.OfGloas(gloas);
+            default:
+                throw new NotSupportedException(
+                    $"Beacon state at slot {slot} belongs to the {fork} fork; this driver can only process Fulu and Gloas states");
+        }
+    }
+
+    private static BeaconFork ForkOf(ReadOnlySpan<byte> ssz, BeaconChainSpec spec, out ulong slot)
+    {
+        if (ssz.Length < SlotOffset + sizeof(ulong))
+        {
+            throw new BeaconStateException($"Beacon state SSZ is {ssz.Length} bytes, too short to contain a slot");
+        }
+
+        slot = BinaryPrimitives.ReadUInt64LittleEndian(ssz[SlotOffset..]);
+        return spec.ForkAtEpoch(spec.GetEpoch(slot));
     }
 }
