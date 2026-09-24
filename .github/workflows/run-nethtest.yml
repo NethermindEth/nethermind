@@ -436,7 +436,7 @@ jobs:
           echo "Using $EEST_ARCHIVE @ $RESOLVED_EEST_VERSION"
 
       - name: Cache EEST fixtures
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/eest-fixtures
           key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}
