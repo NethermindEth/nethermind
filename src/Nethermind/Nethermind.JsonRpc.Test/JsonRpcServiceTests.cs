@@ -44,7 +44,6 @@ using NSubstitute.ExceptionExtensions;
 using NSubstitute.Extensions;
 using NUnit.Framework;
 using Testably.Abstractions;
-using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test;
 
