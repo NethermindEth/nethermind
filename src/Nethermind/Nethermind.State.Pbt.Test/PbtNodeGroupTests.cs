@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -1185,6 +1186,17 @@ public class PbtNodeGroupTests
         {
             root = reader.TakeRoot(groupPath);
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Decompose(ref reader, groupPath, ref root, 0, ref frontier, touchedMask);
+            Assert.That(frontier.Unresolved, Is.EqualTo(touchedMask), "touched slots are resolved only when their fold takes them");
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[] results = new TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[BitOperations.PopCount((uint)touchedMask)];
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[] taken = new TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[PbtFourLevelGroupGeometry.BoundarySlots];
+            for (int mask = touchedMask; mask != 0; mask &= mask - 1)
+            {
+                int slot = BitOperations.TrailingZeroCount(mask);
+                TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode boundary = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeBoundary(ref reader, groupPath, ref frontier, slot);
+                groupPath.AppendMut(slot);
+                taken[slot] = boundary.ToFoldResult(groupPath, 0);
+                groupPath.Truncate(0);
+            }
             uint stored = reader.StoredPositions(groupPath) & ~(1u << PbtFourLevelGroupGeometry.RootPosition);
             uint expectedFrontier = 0;
             int[] expectedPositions = new int[16];
@@ -1203,7 +1215,12 @@ public class PbtNodeGroupTests
                 Assert.That(frontier.Mask, Is.EqualTo(expectedFrontier));
                 Assert.That(actualFrontier, Is.EqualTo(expectedFrontier), "untouched siblings stay at their internal positions");
             }
-            composed = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier, []);
+            for (int mask = touchedMask; mask != 0; mask &= mask - 1)
+            {
+                int slot = BitOperations.TrailingZeroCount(mask);
+                TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, results, slot, ref taken[slot]);
+            }
+            composed = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier, results);
             ValueHash256 hash = writer.WriteRoot(groupPath, composed, null);
             Span<long> descendantBytes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
             for (int slot = 0; slot < descendantBytes.Length; slot++) descendantBytes[slot] = reader.DescendantBytes(slot);

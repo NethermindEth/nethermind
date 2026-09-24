@@ -13,8 +13,9 @@ internal static partial class TrieUpdater<TKey, TPath>
 {
     /// <summary>The boundary slots of the group being rebuilt.</summary>
     /// <remarks>
-    /// Entries are filled by <see cref="Decompose"/> as it resolves the existing node group, and by the folds that
-    /// replace its touched slots, then taken back by <see cref="Compose"/> as it rebuilds. A decomposed entry names
+    /// Untouched entries are filled by <see cref="Decompose"/> as it resolves the existing node group, a touched entry
+    /// when <see cref="TakeBoundary"/> hands its node to the fold that replaces it, then all are taken back by
+    /// <see cref="Compose"/> as it rebuilds. A decomposed entry names
     /// where its node is read from rather than holding it, so only the folds' own results are carried here. A stored
     /// node no touched slot lies under has no entry, since composition copies it without consulting the frontier.
     /// <see cref="Mask"/> marks the positions that hold a node. Taking one leaves its bit set: <see cref="SetBoundary"/>
@@ -27,6 +28,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal uint Mask;
         /// <summary>The stored positions with no touched slot under them, which <see cref="Compose"/> copies straight from the frame.</summary>
         internal uint Copies;
+        /// <summary>The positions below the group root that the group stores a node at.</summary>
+        internal uint Stored;
+        /// <summary>The touched slots whose entries are resolved only once their fold takes them.</summary>
+        internal int Unresolved;
         /// <summary>The input node, for the slots that resolve to the group's own root instead of a node inside it.</summary>
         internal BoundaryNode Root;
         private readonly uint _touchedMask = (uint)touchedMask;
