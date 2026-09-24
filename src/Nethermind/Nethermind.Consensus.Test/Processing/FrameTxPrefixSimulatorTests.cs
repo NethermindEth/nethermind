@@ -179,6 +179,18 @@ public class FrameTxPrefixSimulatorTests
         }
     }
 
+    [Test]
+    public void Simulate_HeadStateUnavailable_LeavesTheTransactionUndecided()
+    {
+        // A head whose state this node no longer holds (e.g. mid-resync) is the node's gap, not the peer's.
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out IReadOnlyTxProcessorSource source, out _);
+        source.TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(false);
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
+
+        Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
+    }
+
     [TestCaseSource(nameof(NodeFaults))]
     public void Simulate_ProcessorHitsNodeFault_LeavesTheTransactionUndecided(Exception fault)
     {
