@@ -100,7 +100,7 @@ public static class ForkedStateTransition
     /// implemented versus a declared, by-name gap.
     /// </remarks>
     /// <exception cref="BeaconStateException">
-    /// The block's fork does not match the state actually reached (e.g. a pre-Gloas block against a
+    /// The state is not behind the block's slot, the block's fork does not match the state actually reached (e.g. a pre-Gloas block against a
     /// state already carried past the boundary), the block was constructed with the wrong SSZ shape
     /// for the fork its slot targets, or the state carries a fork this dispatcher does not know how
     /// to advance further.
@@ -115,6 +115,10 @@ public static class ForkedStateTransition
         bool validateResult = true,
         bool verifySignatures = true)
     {
+        // process_slots asserts state.slot < block.slot before any slot is processed, whichever fork the block targets.
+        if (state.Slot >= signedBlock.Slot)
+            throw new BeaconStateException($"Cannot advance state at slot {state.Slot} to non-future slot {signedBlock.Slot}");
+
         ulong blockEpoch = spec.GetEpoch(signedBlock.Slot);
         BeaconFork targetFork = spec.ForkAtEpoch(blockEpoch);
 
@@ -181,12 +185,10 @@ public static class ForkedStateTransition
     /// runs <see cref="GloasBlockProcessing.ProcessBlock"/>, and validates the claimed post-state root.
     /// </summary>
     /// <remarks>
-    /// Skips slot advancement entirely when <c>state.Slot == block.Slot</c>: the very first Gloas
-    /// block sits at exactly the fork boundary slot <see cref="CrossBoundaryIfNeeded"/> already
-    /// advanced the state to, mirroring that method's own <c>fulu.Slot &lt; boundarySlot</c> guard
-    /// rather than requiring the strict inequality consensus-specs' own <c>process_slots</c> assert
-    /// would (this codebase's fork-crossing seam intentionally "spends" that slot advancement once,
-    /// in <see cref="CrossBoundaryIfNeeded"/>, rather than in the per-block call that follows it).
+    /// Skips slot advancement when <c>state.Slot == block.Slot</c>, which <see cref="Apply"/> admits only
+    /// for a block at the fork boundary slot that <see cref="CrossBoundaryIfNeeded"/> has just advanced
+    /// the state to: <see cref="Apply"/> has already asserted <c>process_slots</c>'s strict
+    /// <c>state.slot &lt; block.slot</c> against the state it was given.
     /// </remarks>
     private static ForkedBeaconState ApplyGloas(
         ForkedBeaconState.OfGloas gloas,
