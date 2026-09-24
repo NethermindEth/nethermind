@@ -39,11 +39,18 @@ jobs:
               /^\/ask\s+\S[\s\S]*$/i.test(body);
             if (!supported || context.payload.comment?.user?.type !== 'User') return;
 
-            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
-              ...context.repo,
-              username: context.payload.comment.user.login,
-            });
-            if (!['write', 'maintain', 'admin'].includes(data.permission)) {
+            let permission;
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                ...context.repo,
+                username: context.payload.comment.user.login,
+              });
+              permission = data.permission;
+            } catch (error) {
+              // A commenter who is not a collaborator gets 404; treat that as denied.
+              if (error.status !== 404) throw error;
+            }
+            if (!['write', 'maintain', 'admin'].includes(permission)) {
               core.info('AI review command ignored: repository write access is required.');
               return;
             }
