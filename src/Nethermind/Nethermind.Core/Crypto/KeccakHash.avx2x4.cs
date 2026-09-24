@@ -91,87 +91,121 @@ public sealed partial class KeccakHash
                 Vector256<ulong> c3 = Avx2.Xor(Avx2.Xor(Avx2.Xor(Avx2.Xor(a3, a8), a13), a18), a23);
                 Vector256<ulong> c4 = Avx2.Xor(Avx2.Xor(Avx2.Xor(Avx2.Xor(a4, a9), a14), a19), a24);
 
-                Vector256<ulong> d0 = Avx2.Xor(c4, RotateLeft4(c1, 1));
-                Vector256<ulong> d1 = Avx2.Xor(c0, RotateLeft4(c2, 1));
-                Vector256<ulong> d2 = Avx2.Xor(c1, RotateLeft4(c3, 1));
-                Vector256<ulong> d3 = Avx2.Xor(c2, RotateLeft4(c4, 1));
-                Vector256<ulong> d4 = Avx2.Xor(c3, RotateLeft4(c0, 1));
-                // Form one rho/pi row at a time to shorten temporary lifetimes before chi.
-                Vector256<ulong> b0 = Avx2.Xor(a0, d0);
-                Vector256<ulong> b1 = RotateLeft4(Avx2.Xor(a6, d1), 44);
-                Vector256<ulong> b2 = RotateLeft4(Avx2.Xor(a12, d2), 43);
-                Vector256<ulong> b3 = RotateLeft4(Avx2.Xor(a18, d3), 21);
-                Vector256<ulong> b4 = RotateLeft4(Avx2.Xor(a24, d4), 14);
-                Vector256<ulong> n0 = Avx2.Xor(b0, Avx2.AndNot(b1, b2));
-                Vector256<ulong> n1 = Avx2.Xor(b1, Avx2.AndNot(b2, b3));
-                Vector256<ulong> n2 = Avx2.Xor(b2, Avx2.AndNot(b3, b4));
-                Vector256<ulong> n3 = Avx2.Xor(b3, Avx2.AndNot(b4, b0));
-                Vector256<ulong> n4 = Avx2.Xor(b4, Avx2.AndNot(b0, b1));
-                Vector256<ulong> b5 = RotateLeft4(Avx2.Xor(a3, d3), 28);
-                Vector256<ulong> b6 = RotateLeft4(Avx2.Xor(a9, d4), 20);
-                Vector256<ulong> b7 = RotateLeft4(Avx2.Xor(a10, d0), 3);
-                Vector256<ulong> b8 = RotateLeft4(Avx2.Xor(a16, d1), 45);
-                Vector256<ulong> b9 = RotateLeft4(Avx2.Xor(a22, d2), 61);
-                Vector256<ulong> n5 = Avx2.Xor(b5, Avx2.AndNot(b6, b7));
-                Vector256<ulong> n6 = Avx2.Xor(b6, Avx2.AndNot(b7, b8));
-                Vector256<ulong> n7 = Avx2.Xor(b7, Avx2.AndNot(b8, b9));
-                Vector256<ulong> n8 = Avx2.Xor(b8, Avx2.AndNot(b9, b5));
-                Vector256<ulong> n9 = Avx2.Xor(b9, Avx2.AndNot(b5, b6));
-                Vector256<ulong> b10 = RotateLeft4(Avx2.Xor(a1, d1), 1);
-                Vector256<ulong> b11 = RotateLeft4(Avx2.Xor(a7, d2), 6);
-                Vector256<ulong> b12 = RotateLeft4(Avx2.Xor(a13, d3), 25);
-                Vector256<ulong> b13 = RotateLeft4(Avx2.Xor(a19, d4), 8);
-                Vector256<ulong> b14 = RotateLeft4(Avx2.Xor(a20, d0), 18);
-                Vector256<ulong> n10 = Avx2.Xor(b10, Avx2.AndNot(b11, b12));
-                Vector256<ulong> n11 = Avx2.Xor(b11, Avx2.AndNot(b12, b13));
-                Vector256<ulong> n12 = Avx2.Xor(b12, Avx2.AndNot(b13, b14));
-                Vector256<ulong> n13 = Avx2.Xor(b13, Avx2.AndNot(b14, b10));
-                Vector256<ulong> n14 = Avx2.Xor(b14, Avx2.AndNot(b10, b11));
-                Vector256<ulong> b15 = RotateLeft4(Avx2.Xor(a4, d4), 27);
-                Vector256<ulong> b16 = RotateLeft4(Avx2.Xor(a5, d0), 36);
-                Vector256<ulong> b17 = RotateLeft4(Avx2.Xor(a11, d1), 10);
-                Vector256<ulong> b18 = RotateLeft4(Avx2.Xor(a17, d2), 15);
-                Vector256<ulong> b19 = RotateLeft4(Avx2.Xor(a23, d3), 56);
-                Vector256<ulong> n15 = Avx2.Xor(b15, Avx2.AndNot(b16, b17));
-                Vector256<ulong> n16 = Avx2.Xor(b16, Avx2.AndNot(b17, b18));
-                Vector256<ulong> n17 = Avx2.Xor(b17, Avx2.AndNot(b18, b19));
-                Vector256<ulong> n18 = Avx2.Xor(b18, Avx2.AndNot(b19, b15));
-                Vector256<ulong> n19 = Avx2.Xor(b19, Avx2.AndNot(b15, b16));
-                Vector256<ulong> b20 = RotateLeft4(Avx2.Xor(a2, d2), 62);
-                Vector256<ulong> b21 = RotateLeft4(Avx2.Xor(a8, d3), 55);
-                Vector256<ulong> b22 = RotateLeft4(Avx2.Xor(a14, d4), 39);
-                Vector256<ulong> b23 = RotateLeft4(Avx2.Xor(a15, d0), 41);
-                Vector256<ulong> b24 = RotateLeft4(Avx2.Xor(a21, d1), 2);
-                Vector256<ulong> n20 = Avx2.Xor(b20, Avx2.AndNot(b21, b22));
-                Vector256<ulong> n21 = Avx2.Xor(b21, Avx2.AndNot(b22, b23));
-                Vector256<ulong> n22 = Avx2.Xor(b22, Avx2.AndNot(b23, b24));
-                Vector256<ulong> n23 = Avx2.Xor(b23, Avx2.AndNot(b24, b20));
-                Vector256<ulong> n24 = Avx2.Xor(b24, Avx2.AndNot(b20, b21));
-                a0 = Avx2.Xor(n0, Vector256.Create(Unsafe.Add(ref roundConstants, round)));
-                a1 = n1;
-                a2 = n2;
-                a3 = n3;
-                a4 = n4;
-                a5 = n5;
-                a6 = n6;
-                a7 = n7;
-                a8 = n8;
-                a9 = n9;
-                a10 = n10;
-                a11 = n11;
-                a12 = n12;
-                a13 = n13;
-                a14 = n14;
-                a15 = n15;
-                a16 = n16;
-                a17 = n17;
-                a18 = n18;
-                a19 = n19;
-                a20 = n20;
-                a21 = n21;
-                a22 = n22;
-                a23 = n23;
-                a24 = n24;
+                Vector256<ulong> d = Avx2.Xor(c4, RotateLeft4(c1, 1));
+                a0 = Avx2.Xor(a0, d);
+                a5 = Avx2.Xor(a5, d);
+                a10 = Avx2.Xor(a10, d);
+                a15 = Avx2.Xor(a15, d);
+                a20 = Avx2.Xor(a20, d);
+
+                d = Avx2.Xor(c0, RotateLeft4(c2, 1));
+                a1 = Avx2.Xor(a1, d);
+                a6 = Avx2.Xor(a6, d);
+                a11 = Avx2.Xor(a11, d);
+                a16 = Avx2.Xor(a16, d);
+                a21 = Avx2.Xor(a21, d);
+
+                d = Avx2.Xor(c1, RotateLeft4(c3, 1));
+                a2 = Avx2.Xor(a2, d);
+                a7 = Avx2.Xor(a7, d);
+                a12 = Avx2.Xor(a12, d);
+                a17 = Avx2.Xor(a17, d);
+                a22 = Avx2.Xor(a22, d);
+
+                d = Avx2.Xor(c2, RotateLeft4(c4, 1));
+                a3 = Avx2.Xor(a3, d);
+                a8 = Avx2.Xor(a8, d);
+                a13 = Avx2.Xor(a13, d);
+                a18 = Avx2.Xor(a18, d);
+                a23 = Avx2.Xor(a23, d);
+
+                d = Avx2.Xor(c3, RotateLeft4(c0, 1));
+                a4 = Avx2.Xor(a4, d);
+                a9 = Avx2.Xor(a9, d);
+                a14 = Avx2.Xor(a14, d);
+                a19 = Avx2.Xor(a19, d);
+                a24 = Avx2.Xor(a24, d);
+
+                // Rho + Pi: walk the 24-lane Pi cycle in place with source and displaced-lane temporaries.
+                Vector256<ulong> source = a1;
+                Vector256<ulong> displaced;
+                displaced = a10;
+                a10 = RotateLeft4(source, 1);
+                source = displaced;
+                displaced = a7;
+                a7 = RotateLeft4(source, 3);
+                source = displaced;
+                displaced = a11;
+                a11 = RotateLeft4(source, 6);
+                source = displaced;
+                displaced = a17;
+                a17 = RotateLeft4(source, 10);
+                source = displaced;
+                displaced = a18;
+                a18 = RotateLeft4(source, 15);
+                source = displaced;
+                displaced = a3;
+                a3 = RotateLeft4(source, 21);
+                source = displaced;
+                displaced = a5;
+                a5 = RotateLeft4(source, 28);
+                source = displaced;
+                displaced = a16;
+                a16 = RotateLeft4(source, 36);
+                source = displaced;
+                displaced = a8;
+                a8 = RotateLeft4(source, 45);
+                source = displaced;
+                displaced = a21;
+                a21 = RotateLeft4(source, 55);
+                source = displaced;
+                displaced = a24;
+                a24 = RotateLeft4(source, 2);
+                source = displaced;
+                displaced = a4;
+                a4 = RotateLeft4(source, 14);
+                source = displaced;
+                displaced = a15;
+                a15 = RotateLeft4(source, 27);
+                source = displaced;
+                displaced = a23;
+                a23 = RotateLeft4(source, 41);
+                source = displaced;
+                displaced = a19;
+                a19 = RotateLeft4(source, 56);
+                source = displaced;
+                displaced = a13;
+                a13 = RotateLeft4(source, 8);
+                source = displaced;
+                displaced = a12;
+                a12 = RotateLeft4(source, 25);
+                source = displaced;
+                displaced = a2;
+                a2 = RotateLeft4(source, 43);
+                source = displaced;
+                displaced = a20;
+                a20 = RotateLeft4(source, 62);
+                source = displaced;
+                displaced = a14;
+                a14 = RotateLeft4(source, 18);
+                source = displaced;
+                displaced = a22;
+                a22 = RotateLeft4(source, 39);
+                source = displaced;
+                displaced = a9;
+                a9 = RotateLeft4(source, 61);
+                source = displaced;
+                displaced = a6;
+                a6 = RotateLeft4(source, 20);
+                source = displaced;
+                a1 = RotateLeft4(source, 44);
+
+                ChiRowX4(ref a0, ref a1, ref a2, ref a3, ref a4);
+                ChiRowX4(ref a5, ref a6, ref a7, ref a8, ref a9);
+                ChiRowX4(ref a10, ref a11, ref a12, ref a13, ref a14);
+                ChiRowX4(ref a15, ref a16, ref a17, ref a18, ref a19);
+                ChiRowX4(ref a20, ref a21, ref a22, ref a23, ref a24);
+                a0 = Avx2.Xor(a0, Vector256.Create(Unsafe.Add(ref roundConstants, round)));
             }
 
             if (!TMultipleBlocks.IsActive) break;
@@ -216,6 +250,19 @@ public sealed partial class KeccakHash
         Avx512F.VL.IsSupported
             ? Avx512F.VL.RotateLeft(value, count)
             : (value << count) | (value >> (64 - count));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ChiRowX4(ref Vector256<ulong> a0, ref Vector256<ulong> a1, ref Vector256<ulong> a2,
+        ref Vector256<ulong> a3, ref Vector256<ulong> a4)
+    {
+        Vector256<ulong> b0 = a0;
+        Vector256<ulong> b1 = a1;
+        a0 = Avx2.Xor(a0, Avx2.AndNot(a1, a2));
+        a1 = Avx2.Xor(a1, Avx2.AndNot(a2, a3));
+        a2 = Avx2.Xor(a2, Avx2.AndNot(a3, a4));
+        a3 = Avx2.Xor(a3, Avx2.AndNot(a4, b0));
+        a4 = Avx2.Xor(a4, Avx2.AndNot(b0, b1));
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     // Offsets select the same rate lane in each of the four padded messages.
