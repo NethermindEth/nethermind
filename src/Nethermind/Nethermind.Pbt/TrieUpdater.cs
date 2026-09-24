@@ -523,8 +523,18 @@ internal static partial class TrieUpdater<TKey, TPath>
         int runCount = PlanBucketRuns(partition.Counts, descendantBytes[..touched], fanOut, runEnds);
         if (runCount < 2) return false;
 
+        FoldBucketRuns(context, ref reader, writer, ref frontier, results, operations, path, bitDepth, partition, descendantBytes, runEnds[..runCount]);
+        return true;
+    }
+
+    /// <summary>Folds the planned runs of touched buckets, the part of <see cref="TryFoldBucketsInParallel"/> past its early exits.</summary>
+    /// <remarks>Kept apart so the closure over the runs is allocated only once a frame is known to split.</remarks>
+    private static void FoldBucketRuns(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
+        scoped ref Frontier frontier, scoped Span<FoldResult> results, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth,
+        scoped PartitionOutcome partition, scoped ReadOnlySpan<long> descendantBytes, scoped ReadOnlySpan<int> runEnds)
+    {
         BucketFold[] buckets = ArrayPool<BucketFold>.Shared.Rent(partition.Counts.Length);
-        using ArrayPoolList<int> runs = new(runEnds[..runCount]);
+        using ArrayPoolList<int> runs = new(runEnds);
         int offset = OffsetOf(context.Operations!, operations);
         int bucketCount = 0;
         for (int mask = partition.UsedMask; mask != 0; mask &= mask - 1)
@@ -577,7 +587,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
         // The folds hold node encodings; clear so the pool does not keep them alive.
         ArrayPool<BucketFold>.Shared.Return(buckets, clearArray: true);
-        return true;
 
         void FoldRun(int run)
         {
