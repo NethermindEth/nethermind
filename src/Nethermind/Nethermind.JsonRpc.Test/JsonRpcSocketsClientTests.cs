@@ -234,12 +234,7 @@ public class JsonRpcSocketsClientTests
             using JsonRpcSuccessResponse nextResponse = new() { Result = "next" };
             Assert.ThrowsAsync<IOException>(async () => await next.WriteSingleAsync(nextResponse, default, CancellationToken.None));
             Assert.ThrowsAsync<IOException>(async () => await next.BeginBatchAsync(CancellationToken.None));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(partial.AsSpan().Count((byte)'\n'), Is.Zero);
-                Assert.That(Encoding.UTF8.GetString(partial), Does.Not.Contain("unsent-tail"));
-                Assert.That(stream.ToArray(), Is.EqualTo(partial));
-            }
+            AssertIncompleteMessageNotExtended(stream, partial);
         }
     }
 
@@ -254,11 +249,16 @@ public class JsonRpcSocketsClientTests
 
         using JsonRpcResult next = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "next" }, default);
         Assert.ThrowsAsync<IOException>(async () => await server.Client.SendJsonRpcResult(next));
+        AssertIncompleteMessageNotExtended(stream, partial);
+    }
+
+    private static void AssertIncompleteMessageNotExtended(MemoryMessageStream stream, byte[] partial)
+    {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(partial.AsSpan().Count((byte)'\n'), Is.Zero);
-            Assert.That(Encoding.UTF8.GetString(partial), Does.Not.Contain("unsent-tail"));
-            Assert.That(stream.ToArray(), Is.EqualTo(partial));
+            Assert.That(partial.AsSpan().Count((byte)'\n'), Is.Zero, "the failed message must not be terminated");
+            Assert.That(Encoding.UTF8.GetString(partial), Does.Not.Contain("unsent-tail"), "the failed tail must not be flushed");
+            Assert.That(stream.ToArray(), Is.EqualTo(partial), "later sends must not extend the failed message");
         }
     }
 

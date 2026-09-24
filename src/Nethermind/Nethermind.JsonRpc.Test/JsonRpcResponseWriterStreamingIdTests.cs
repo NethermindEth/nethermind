@@ -69,16 +69,7 @@ public class JsonRpcResponseWriterStreamingIdTests
     public async Task Validation_failure_replaces_only_uncommitted_response([Values(0, 1, 2)] int commitMode)
     {
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
-        using JsonRpcSuccessResponse response = new()
-        {
-            Id = new JsonRpcId(42L),
-            Result = new InvalidTransactionResult(commitMode),
-            StreamExceptionHandler = ex => new JsonRpcErrorResponse
-            {
-                Id = new JsonRpcId(42L),
-                Error = new Error { Code = ErrorCodes.InvalidInput, Message = ex.Message }
-            }
-        };
+        using JsonRpcSuccessResponse response = CreateInvalidTransactionResponse(commitMode);
 
         if (commitMode != 2)
         {
@@ -121,16 +112,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         using RecyclableMemoryStream stream = RecyclableStream.GetStream("test");
         RewindableStreamPipeWriter transport = new(stream, initialWrittenCount: initialWrittenCount);
         transport.Write("[1,"u8);
-        using JsonRpcSuccessResponse response = new()
-        {
-            Id = new JsonRpcId(42L),
-            Result = new InvalidTransactionResult(commitMode),
-            StreamExceptionHandler = ex => new JsonRpcErrorResponse
-            {
-                Id = new JsonRpcId(42L),
-                Error = new Error { Code = ErrorCodes.InvalidInput, Message = ex.Message }
-            }
-        };
+        using JsonRpcSuccessResponse response = CreateInvalidTransactionResponse(commitMode);
 
         await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, new JsonSerializerOptions(),
             isBatch: true, CancellationToken.None);
@@ -326,6 +308,17 @@ public class JsonRpcResponseWriterStreamingIdTests
             return inner.FlushAsync(cancellationToken);
         }
     }
+
+    private static JsonRpcSuccessResponse CreateInvalidTransactionResponse(int commitMode) => new()
+    {
+        Id = new JsonRpcId(42L),
+        Result = new InvalidTransactionResult(commitMode),
+        StreamExceptionHandler = ex => new JsonRpcErrorResponse
+        {
+            Id = new JsonRpcId(42L),
+            Error = new Error { Code = ErrorCodes.InvalidInput, Message = ex.Message }
+        }
+    };
 
     private sealed class InvalidTransactionResult(int commitMode, Action? beforeThrow = null) : IStreamableResult
     {
