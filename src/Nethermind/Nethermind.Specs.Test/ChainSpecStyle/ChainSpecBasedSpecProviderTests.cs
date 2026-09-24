@@ -925,8 +925,6 @@ public class ChainSpecBasedSpecProviderTests
         {
             Parameters = new ChainParameters
             {
-                Eip3529Transition = 0,
-                Eip8246TransitionTimestamp = eip8141Timestamp,
                 Eip8141TransitionTimestamp = eip8141Timestamp,
                 Eip8250TransitionTimestamp = eip8250Timestamp,
                 Eip8272TransitionTimestamp = eip8272Timestamp,
@@ -954,30 +952,6 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp - 1)).IsEip8037Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp)).IsEip8037Enabled, Is.True);
         }
-    }
-
-    [TestCase(0ul, 10ul, false, TestName = "EIP-8141 with EIP-8246 and EIP-3529 loads")]
-    [TestCase(0ul, 5ul, false, TestName = "EIP-8141 after EIP-8246 loads")]
-    [TestCase(0ul, null, true, TestName = "EIP-8141 without EIP-8246 is rejected")]
-    [TestCase(0ul, 20ul, true, TestName = "EIP-8141 before EIP-8246 is rejected")]
-    [TestCase(null, 10ul, true, TestName = "EIP-8141 without EIP-3529 is rejected")]
-    public void Eip8141_without_the_eips_its_self_destruct_finalization_assumes_is_rejected_at_load(
-        ulong? eip3529Block, ulong? eip8246Timestamp, bool rejected)
-    {
-        ChainSpec chainSpec = new()
-        {
-            Parameters = new ChainParameters
-            {
-                Eip3529Transition = eip3529Block,
-                Eip8246TransitionTimestamp = eip8246Timestamp,
-                Eip8141TransitionTimestamp = 10,
-            },
-            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
-        };
-
-        Action load = () => _ = new ChainSpecBasedSpecProvider(chainSpec);
-        if (rejected) Assert.That(load, Throws.ArgumentException.With.Message.Contains("EIP-8141"));
-        else Assert.That(load, Throws.Nothing);
     }
 
     [Test]

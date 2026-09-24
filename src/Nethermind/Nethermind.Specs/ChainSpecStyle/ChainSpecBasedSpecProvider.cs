@@ -185,7 +185,6 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (ulong releaseStartBlock in transitionBlockNumbers)
             {
                 IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, releaseStartBlock, chainSpec.Genesis?.Timestamp ?? 0);
-                ValidateEipDependencies(releaseSpec, (ForkActivation)releaseStartBlock);
                 transitions[index++] = ((ForkActivation)releaseStartBlock, releaseSpec);
             }
 
@@ -193,23 +192,10 @@ namespace Nethermind.Specs.ChainSpecStyle
             {
                 ForkActivation forkActivation = (biggestBlockTransition, releaseStartTimestamp);
                 IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, biggestBlockTransition, releaseStartTimestamp);
-                ValidateEipDependencies(releaseSpec, forkActivation);
                 transitions[index++] = (forkActivation, releaseSpec);
             }
 
             return transitions;
-        }
-
-        /// <summary>Rejects a transition that enables an EIP without the EIPs its implementation assumes.</summary>
-        /// <remarks>EIP-8141 finalizes frame self-destructs without a burn, burn log or refund, which holds only
-        /// under EIP-8246 and EIP-3529; a chainspec gates each independently, so a partial schedule fails here.</remarks>
-        /// <exception cref="ArgumentException">A dependency is not active by the same transition.</exception>
-        private static void ValidateEipDependencies(IReleaseSpec spec, ForkActivation activation)
-        {
-            if (spec.IsEip8141Enabled && !(spec.IsEip8246Enabled && spec.IsEip3529Enabled))
-            {
-                throw new ArgumentException($"EIP-8141, active at {activation}, requires EIP-8246 and EIP-3529 active by the same transition");
-            }
         }
 
         private static ForkActivation[] CreateTransitionActivations(SortedSet<ulong> transitionBlockNumbers, SortedSet<ulong> transitionTimestamps)
