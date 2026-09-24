@@ -1014,16 +1014,9 @@ public class ArchiveProofTests
         Address quiet = TestItem.AddressD;
         UInt256[] slots = AddQuietContract(quiet);
         BuildCommitments();
+        byte[]? epochStartRow = DepthTwoRowAtEpochStart(quiet, slots[0], out ulong epochStart);
 
-        ulong epochStart = 2 * EpochPolicy.EpochBlocks;
-        Assert.That(epochStart, Is.LessThanOrEqualTo(_chain.Head), "precondition: the chain crosses an epoch start after the contract stood still");
-        byte firstSlotByte = Keccak.Compute(slots[0].ToBigEndian()).Bytes[0];
-        TreePath depthTwo = TreePath.FromNibble([(byte)(firstSlotByte >> 4), (byte)(firstSlotByte & 0x0F)]);
-        CommitmentStore storages = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), EpochPolicy, CommitmentKeyLayout.IdentityLength);
-        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
-        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, Keccak.Compute(quiet.Bytes).Bytes[..CommitmentKeyLayout.IdentityLength], depthTwo, exact: false);
-
-        Assert.That(storages.TryGetExact(prefix.AsSpan(0, prefixLength), EpochPolicy.WindowClosingAt(epochStart)), Is.Not.Null,
+        Assert.That(epochStartRow, Is.Not.Null,
             "a contract that stands still gets no row from its changes; the epoch-start snapshot is the only anchor its checkpoint nodes have, so it must reach the record depth as the account snapshot does, or every drop re-composes them");
     }
 
@@ -1034,18 +1027,11 @@ public class ArchiveProofTests
         Address quiet = TestItem.AddressD;
         UInt256[] slots = AddQuietContract(quiet);
         BuildCommitments();
-
-        ulong epochStart = 2 * EpochPolicy.EpochBlocks;
-        Assert.That(epochStart, Is.LessThanOrEqualTo(_chain.Head), "precondition: the chain crosses an epoch start after the contract stood still");
-        byte firstSlotByte = Keccak.Compute(slots[0].ToBigEndian()).Bytes[0];
-        TreePath depthTwo = TreePath.FromNibble([(byte)(firstSlotByte >> 4), (byte)(firstSlotByte & 0x0F)]);
-        CommitmentStore storages = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), EpochPolicy, CommitmentKeyLayout.IdentityLength);
-        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
-        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, Keccak.Compute(quiet.Bytes).Bytes[..CommitmentKeyLayout.IdentityLength], depthTwo, exact: false);
+        byte[]? epochStartRow = DepthTwoRowAtEpochStart(quiet, slots[0], out ulong epochStart);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storages.TryGetExact(prefix.AsSpan(0, prefixLength), EpochPolicy.WindowClosingAt(epochStart)), Is.Null,
+            Assert.That(epochStartRow, Is.Null,
                 "a node that never drops an epoch has no carry to spare, so the checkpoint nodes below the root children get no epoch-start copy, which on mainnet is about 25GB per epoch");
             foreach (ulong block in (ulong[])[epochStart, _chain.Head])
             {
@@ -1123,6 +1109,18 @@ public class ArchiveProofTests
             Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 2) && SuffixOf(key) == carriedWindow), Is.False,
                 "the storage snapshot reaches the record depth like the account snapshot, so the checkpoint nodes below the root are anchored at the epoch start and the carry has nothing left to write for a walk-built epoch");
         }
+    }
+
+    private byte[]? DepthTwoRowAtEpochStart(Address contract, UInt256 slot, out ulong epochStart)
+    {
+        epochStart = 2 * EpochPolicy.EpochBlocks;
+        Assert.That(epochStart, Is.LessThanOrEqualTo(_chain.Head), "precondition: the chain crosses an epoch start after the contract stood still");
+        byte firstSlotByte = Keccak.Compute(slot.ToBigEndian()).Bytes[0];
+        TreePath depthTwo = TreePath.FromNibble([(byte)(firstSlotByte >> 4), (byte)(firstSlotByte & 0x0F)]);
+        CommitmentStore storages = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), EpochPolicy, CommitmentKeyLayout.IdentityLength);
+        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, Keccak.Compute(contract.Bytes).Bytes[..CommitmentKeyLayout.IdentityLength], depthTwo, exact: false);
+        return storages.TryGetExact(prefix.AsSpan(0, prefixLength), EpochPolicy.WindowClosingAt(epochStart));
     }
 
     private UInt256[] AddQuietContract(Address quiet, Action<ArchiveProofTestChain.BlockBuilder, ulong>? onLaterBlock = null)
