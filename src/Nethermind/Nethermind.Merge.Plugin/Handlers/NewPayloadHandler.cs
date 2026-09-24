@@ -252,8 +252,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
             // Compliance depends only on the block, the list and the state the block committed, so a
             // canonical block is answerable from that state alone. Re-executing it instead would replay
-            // the whole pruning window whenever a consensus client resends the recent chain.
-            if (_stateReader.HasStateForBlock(block.Header))
+            // the whole pruning window whenever a consensus client resends the recent chain. As above, a head
+            // whose re-execution is still committing is waited for before the state is read a second time.
+            if (_stateReader.HasStateForBlock(block.Header)
+                || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
             {
                 if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
                 return EvaluateInclusionListFromState(block);

@@ -1884,10 +1884,11 @@ public partial class EngineModuleTests
     /// <summary>Builds a node whose state for selected blocks can be hidden on demand.</summary>
     /// <param name="pruned">Hashes whose state <see cref="IStateReader"/> should pretend not to have.</param>
     /// <param name="configure">Further registrations for the node, applied after the state decorator.</param>
+    /// <param name="releaseSpec">The fork to run, London by default.</param>
     private async Task<MergeTestBlockchain> CreateBlockchainWithPrunableState(
-        ConcurrentDictionary<Hash256, byte> pruned, Action<ContainerBuilder>? configure = null)
+        ConcurrentDictionary<Hash256, byte> pruned, Action<ContainerBuilder>? configure = null, IReleaseSpec? releaseSpec = null)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { TerminalTotalDifficulty = "0" },
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec, new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder =>
             {
                 builder.AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned));

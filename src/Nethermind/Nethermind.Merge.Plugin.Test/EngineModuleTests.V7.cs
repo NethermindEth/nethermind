@@ -1,15 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
@@ -641,17 +647,24 @@ public partial class EngineModuleTests
     // judged against the state the block committed, so a canonical block is answerable without the
     // re-execution that would replay the whole pruning window on every resend - but only one this node ran:
     // the state root alone cannot tell the state a block committed from one it merely shares a root with. One the
-    // head descends from but this node never ran is answered SYNCING, neither from that root nor re-executed.
-    [Test]
-    public async Task NewPayloadV6_answers_an_inclusion_list_behind_head_from_its_state_only_when_run_here([Values] bool runHere)
+    // head descends from but this node never ran is answered SYNCING, neither from that root nor re-executed, and so
+    // is one this node ran whose state is gone: re-running a block already on the chain could delete the chain.
+    [TestCase(true, false, PayloadStatus.Valid)]
+    [TestCase(true, true, PayloadStatus.Syncing)]
+    [TestCase(false, false, PayloadStatus.Syncing)]
+    public async Task NewPayloadV6_answers_an_inclusion_list_behind_head_from_its_state_only_when_run_here(
+        bool runHere, bool statePruned, string expected)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned, releaseSpec: Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
-        await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3);
+        ExecutionPayloadV4 second = await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3);
+        ulong bestKnown = chain.BlockTree.BestKnownNumber;
         // What the pre-pivot header backfill leaves behind: on the main chain, never run by this node.
         if (!runHere) chain.BlockTree.GetInfo(first.BlockNumber, first.BlockHash).Info!.WasProcessed = false;
+        if (statePruned) pruned[first.BlockHash] = 0;
 
         // A different IL misses the (block, IL) cache, and the first block is now behind head.
         Transaction censoredTx = Build.A.Transaction
@@ -665,10 +678,82 @@ public partial class EngineModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resend.Data.Status, Is.EqualTo(runHere ? PayloadStatus.Valid : PayloadStatus.Syncing),
-                runHere ? "a block this node ran is answered from its state" : "a block never run here is not answered from a state root");
-            if (runHere) Assert.That(resend.Data.InclusionListSatisfied, Is.False);
+            Assert.That(resend.Data.Status, Is.EqualTo(expected),
+                runHere && !statePruned ? "a block this node ran is answered from its state" : "a block without its own state is not answered from a state root");
+            if (expected == PayloadStatus.Valid) Assert.That(resend.Data.InclusionListSatisfied, Is.False);
             Assert.That(processed, Is.Zero, "a block on the node's own chain is not re-executed");
+            Assert.That(chain.BlockTree.BestKnownNumber, Is.EqualTo(bestKnown));
+            foreach (ExecutionPayloadV4 block in new[] { first, second })
+            {
+                Assert.That(chain.BlockTree.FindBlock(block.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null, $"block {block.BlockNumber}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The inclusion-list counterpart of <c>newPayloadV1_answers_valid_for_a_head_resent_while_its_re_execution_commits</c>:
+    /// a head whose re-execution is still committing, sent again with a different list, must wait for that commit
+    /// and be judged against the state it restores, not answered SYNCING as no longer evaluable.
+    /// </summary>
+    [Test]
+    public async Task NewPayloadV6_judges_an_inclusion_list_for_a_head_resent_while_its_re_execution_commits()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        CommitWaitProbe probe = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned,
+            builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)),
+            Bogota.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 genesisHash = chain.BlockTree.HeadHash!;
+
+        // Built and made head without finalizing it, so the head can move back below it.
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(genesisHash, Keccak.Zero, Keccak.Zero),
+            BuildBogotaPayloadAttributes(inclusionList: [], timestamp: Timestamper.UnixTime.Seconds + 2, slotNumber: 2));
+        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 block = built.Data!.ExecutionPayload;
+        byte[][] requests = built.Data!.ExecutionRequests!;
+        Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [])).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(block.BlockHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
+
+        // The Hive shape: the head moves back, the block's state is pruned, and the block is sent again and re-executed.
+        await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(genesisHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
+        pruned[block.BlockHash] = 0;
+
+        // Holds the processing thread between the re-execution's verdict and its commit.
+        TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
+        {
+            if (e.BlockHash == block.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
+        };
+
+        Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [])).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            ResultWrapper<ForkchoiceUpdatedV2Result> toBlock = await rpc.engine_forkchoiceUpdatedV5(
+                new ForkchoiceStateV1(block.BlockHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
+            Assert.That(toBlock.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block.BlockHash));
+        }
+
+        // A different list misses the (block, IL) cache. The commit is released only once the re-send is parked on
+        // it, or has answered without waiting - the regression this pins. The bound is a backstop.
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        probe.Watch(block.BlockHash);
+        Task<ResultWrapper<PayloadStatusV2>> resent = rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [Rlp.Encode(censoredTx).Bytes]);
+        await Task.WhenAny(probe.WaitEntered.Task, resent, Task.Delay(TimeSpan.FromSeconds(20)));
+        bool waitedForCommit = probe.WaitEntered.Task.IsCompleted;
+        commit.SetResult();
+        ResultWrapper<PayloadStatusV2> result = await resent;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waitedForCommit, Is.True, "the re-send must wait for the head's committing re-execution");
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
+                "the head's own re-execution is committing, so its list can be judged against the state it restores");
+            Assert.That(result.Data.InclusionListSatisfied, Is.False);
         }
     }
 
