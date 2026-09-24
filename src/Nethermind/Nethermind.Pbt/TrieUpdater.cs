@@ -693,18 +693,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (((frontier.Mask | copies) & bit) == 0) return default;
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
         if ((copies & bit) != 0) return new TraversalSubtree(path, reader.TakeDirectCopy(path, position));
-        return TakeFrontierSubtree(ref reader, path, ref frontier, position);
-    }
 
-    /// <summary>The frontier's part of <see cref="TakeSubtree"/>.</summary>
-    /// <remarks>
-    /// Kept out of line: its node temporaries hold references, so the JIT zeroes their stack space on entry, which
-    /// inlined would be paid by every position composition probes, empty or not.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static TraversalSubtree TakeFrontierSubtree(scoped ref GroupFrameReader<TKey, TPath> reader, PbtTraversalPath path, scoped ref Frontier frontier, int position)
-    {
-        frontier.Mask &= ~(1u << position);
+        frontier.Mask &= ~bit;
         int slot = PbtFourLevelGroupGeometry.LocalPathOf(position).Slot;
         ref readonly DecompositionEntry entry = ref frontier.Entries[slot];
         switch (entry.Source)
@@ -715,14 +705,9 @@ internal static partial class TrieUpdater<TKey, TPath>
                 DirectCopySubtree copy = reader.TakeDirectCopy(path, entry.SourcePosition);
                 return copy.IsEmpty ? ImplicitBranch(ref reader, path, position) : new TraversalSubtree(path, copy);
             default:
-                return BoundarySubtree(path, frontier.TakeBoundaryNode(ref reader, path, slot));
+                return frontier.TakeBoundaryNode(ref reader, path, slot).ToFoldResult(path, path.BitDepth).Borrow(path);
         }
     }
-
-    /// <summary>A boundary node placed against the cursor, out of line for the same reason as <see cref="TakeFrontierSubtree"/>.</summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static TraversalSubtree BoundarySubtree(PbtTraversalPath path, scoped in BoundaryNode boundary) =>
-        boundary.ToFoldResult(path, path.BitDepth).Borrow(path);
 
     /// <summary>The branch at <paramref name="position"/> that the group leaves implicit, rebuilt from the children it stores.</summary>
     /// <remarks>
