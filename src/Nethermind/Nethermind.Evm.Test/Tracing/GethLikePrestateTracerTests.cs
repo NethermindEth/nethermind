@@ -133,42 +133,51 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(null)]
-    [TestCase("")]
-    [TestCase("00")]
-    [TestCase("ef01000000000000000000000000000000000000001234")]
-    public void Prestate_serializes_nonempty_code_hash(string? code)
+    [Test]
+    public void Prestate_serializes_nonempty_code_hash(
+        [Values(null, "", "00", "ef01000000000000000000000000000000000000001234")] string? code,
+        [Values] bool disableCode)
     {
         if (code is not null)
         {
             TestState.CreateAccount(TestItem.AddressB, 1);
             TestState.InsertCode(TestItem.AddressB, Bytes.FromHexString(code), Spec);
         }
-        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(),
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(JsonSerializer.Serialize(new { disableCode })),
             Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
 
         JsonElement result = JsonSerializer.SerializeToElement(tracer.BuildResult().CustomTracerResult!.Value, SerializerOptions);
         JsonElement account = result.GetProperty(TestItem.AddressB.ToString());
         bool hasCode = !string.IsNullOrEmpty(code);
-        Assert.That(account.TryGetProperty("codeHash", out JsonElement codeHash), Is.EqualTo(hasCode));
-        if (hasCode)
-            Assert.That(codeHash.GetString(), Is.EqualTo(Keccak.Compute(Bytes.FromHexString(code!)).ToString()));
+        bool hasHash = account.TryGetProperty("codeHash", out JsonElement codeHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.TryGetProperty("code", out _), Is.EqualTo(hasCode && !disableCode));
+            Assert.That(hasHash, Is.EqualTo(hasCode));
+            if (hasCode && hasHash)
+                Assert.That(codeHash.GetString(), Is.EqualTo(Keccak.Compute(Bytes.FromHexString(code!)).ToString()));
+        }
     }
 
-    [TestCase("00", "00")]
-    [TestCase("00", "6000")]
-    [TestCase("", "00")]
-    [TestCase("00", "")]
-    [TestCase("", "")]
-    [TestCase("00", null)]
-    [TestCase("", null)]
-    [TestCase("ef01000000000000000000000000000000000000001234", "")]
-    public void Diff_serializes_changed_code_and_hash(string before, string? after)
+    private static IEnumerable<TestCaseData> CodeChangeCases()
+    {
+        (string Before, string? After)[] cases =
+        [
+            ("00", "00"), ("00", "6000"), ("", "00"), ("00", ""), ("", ""),
+            ("00", null), ("", null), ("ef01000000000000000000000000000000000000001234", "")
+        ];
+        foreach ((string before, string? after) in cases)
+            foreach (bool disableCode in new[] { false, true })
+                yield return new TestCaseData(before, after, disableCode);
+    }
+
+    [TestCaseSource(nameof(CodeChangeCases))]
+    public void Diff_serializes_changed_code_and_hash(string before, string? after, bool disableCode)
     {
         byte[] beforeCode = Bytes.FromHexString(before);
         TestState.CreateAccount(TestItem.AddressB, 1);
         TestState.InsertCode(TestItem.AddressB, beforeCode, Spec);
-        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode),
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(JsonSerializer.Serialize(new { diffMode = true, disableCode })),
             Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
         if (after is null)
             TestState.DeleteAccount(TestItem.AddressB);
@@ -184,13 +193,14 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         JsonElement post = result.GetProperty("post").GetProperty(TestItem.AddressB.ToString());
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(pre.TryGetProperty("code", out _), Is.EqualTo(before.Length > 0 && !disableCode));
             Assert.That(pre.TryGetProperty("codeHash", out JsonElement preHash), Is.EqualTo(before.Length > 0));
             if (before.Length > 0)
                 Assert.That(preHash.GetString(), Is.EqualTo(Keccak.Compute(beforeCode).ToString()));
             Assert.That(post.TryGetProperty("codeHash", out JsonElement postHash), Is.EqualTo(before != after));
             if (before != after)
                 Assert.That(postHash.GetString(), Is.EqualTo((after is null ? Hash256.Zero : Keccak.Compute(Bytes.FromHexString(after))).ToString()));
-            bool codeChanged = before != (after ?? "");
+            bool codeChanged = !disableCode && before != (after ?? "");
             Assert.That(post.TryGetProperty("code", out JsonElement postCode), Is.EqualTo(codeChanged));
             if (codeChanged)
                 Assert.That(postCode.GetString(), Is.EqualTo("0x" + after));
