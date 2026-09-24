@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
@@ -19,6 +20,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = [];
     private readonly Dictionary<AddressAsKey, CodeInfo> _resolved = [];
     private readonly HashSet<AddressAsKey> _codeWritten = [];
+    // The gain comes from a few hot contracts; the cap and the trim on reset keep a pooled env from holding grown tables.
+    private const int MaxRemembered = 4096;
+    private const int RetainedCapacity = 256;
 
     public bool IsCodeOverridable => true;
 
@@ -63,7 +67,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
             resolved.Precompile is null &&
             !codeSource.CouldBePrecompile() &&
             !ICodeInfoRepository.TryGetDelegatedAddress(resolved.CodeSpan, out _) &&
-            !_codeWritten.Contains(codeSource))
+            !_codeWritten.Contains(codeSource) &&
+            _resolved.Count < MaxRemembered)
         {
             _resolved[codeSource] = resolved;
         }
@@ -121,8 +126,10 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         _precompileOverrides.Clear();
         _codeOverrides.Clear();
+        bool grown = _resolved.Count > RetainedCapacity;
         _resolved.Clear();
-        _codeWritten.Clear();
+        if (grown) _resolved.TrimExcess(RetainedCapacity);
+        _codeWritten.ClearAndTrim();
     }
 
     public void ResetPrecompileOverrides()
