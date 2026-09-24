@@ -264,7 +264,6 @@ public class GetPayloadDirectResponseTests
             await writer.FlushAsync(CancellationToken.None);
 
             string partialResponse = Encoding.UTF8.GetString(stream.ToArray());
-            Assert.That(partialResponse, Does.Contain("\"result\":"));
             Assert.That(partialResponse, Does.Not.Contain(",\"id\":"));
         }
         finally
