@@ -170,7 +170,9 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
 
     private static string Name(int item) => item < HistoryWalkRun.AccountPartitions ? $"accounts 0x{item:x2}" : $"storage 0x{item - HistoryWalkRun.AccountPartitions:x2}";
 
-    // Divides before multiplying and in double ticks: elapsed * remaining overflows TimeSpan days into a long walk.
+    /// <remarks>
+    /// Divides before multiplying and works in double ticks: <c>elapsed * remaining</c> overflows <see cref="TimeSpan"/> days into a long walk.
+    /// </remarks>
     internal static string Eta(TimeSpan elapsed, double remaining, double doneThisRun)
     {
         if (doneThisRun <= 0) return "n/a";
