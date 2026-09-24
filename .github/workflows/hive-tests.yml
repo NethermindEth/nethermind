@@ -2,7 +2,7 @@ name: Hive tests
 
 on:
   push:
-    tags: ['*', '!zisk-guest-*', '!bootnode-*']
+    tags: ['*', '!zkvm-guests-*', '!bootnode-*']
     branches: [master]
   workflow_dispatch:
     inputs:
