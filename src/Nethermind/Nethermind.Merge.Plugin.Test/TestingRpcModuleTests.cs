@@ -372,7 +372,7 @@ public class TestingRpcModuleTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockTree tree = blockTree ?? Substitute.For<IBlockTree>();
 
-        TestingRpcModule module = new(blockProducerEnvFactory, mainStateBlockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, tree, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+        TestingRpcModule module = new(blockProducerEnvFactory, mainStateBlockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, tree, Substitute.For<IProcessExitSource>(), Substitute.For<IBlockProcessingQueue>(), LimboLogs.Instance);
         _disposables.Add(module);
         return (module, tree, blockFinder, parentHeader);
     }
