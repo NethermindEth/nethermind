@@ -81,7 +81,7 @@ public class ExecutionPayloadV4Tests
     {
         string genesis = $$"""
             {
-              "config": { "chainId": 1, "homesteadBlock": 0, "amsterdamTime": 15, "{{label}}": 15 },
+              "config": { "chainId": 1, "homesteadBlock": 0, "londonBlock": 0, "amsterdamTime": 15, "{{label}}": 15 },
               "difficulty": "0x1",
               "gasLimit": "0x8000000",
               "alloc": {}
