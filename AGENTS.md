@@ -68,6 +68,10 @@ Before creating a pull request:
   ```
 - Follow the [pull_request_template.md](.github/pull_request_template.md) format: fill in the changes section, tick the appropriate type-of-change checkboxes, and complete the testing/documentation sections. The checkboxes drive automatic PR labeling.
 
+## Agent declaration
+
+- When creating a PR or commenting on GitHub under a human account, state that you are an AI agent acting on behalf of the user and name the harness and model, e.g. `🤖 AI agent (Claude Code / Opus 5) on behalf of @user` — this makes it easy to trace which configuration produced which behavior. Put it in the `Remarks` section of the PR body, or at the end of a comment. This does not apply to commit messages, nor to comments posted under a bot account, whose identity already discloses the agent.
+
 ## Benchmark workflows
 
 - [expb-benchmark](./.agents/skills/expb-benchmark/SKILL.md) — reproducible payload benchmarks (`run-expb-reproducible-benchmarks.yml`), profiling, and run-log checks.
