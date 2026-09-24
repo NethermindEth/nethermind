@@ -67,6 +67,18 @@ internal sealed class StatelessSpecProvider(
         // Unknown chains (e.g. devnets) fall back to Mainnet — for ProtocolFork.Current, to its schedule too.
         baseProvider ??= MainnetSpecProvider.Instance;
 
+        // A schema may pin a fork the chain has not scheduled yet: that is how devnets and spec fixtures
+        // replay future rules on a mainnet-shaped chain. Pinning one the chain has already left is the
+        // opposite case and would validate the payload under superseded rules, so reject it. Unreachable
+        // while the newest fork is the only pinnable one, but the schema id is chosen by the prover.
+        if (protocolFork != ProtocolFork.Current &&
+            ProtocolForkExtensions.TryGetByName(baseProvider.GetSpec(payloadActivation).Name, out ProtocolFork scheduledFork) &&
+            protocolFork < scheduledFork)
+        {
+            throw new InvalidDataException(
+                $"The input pins {protocolFork.GetName()}, superseded by {scheduledFork.GetName()} at this payload's activation");
+        }
+
         return new(baseProvider, chainId, payloadActivation, GetPayloadSpec(baseProvider, chainId, protocolFork, payloadActivation));
     }
 
