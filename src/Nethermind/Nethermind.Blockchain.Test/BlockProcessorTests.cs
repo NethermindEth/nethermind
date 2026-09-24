@@ -3013,7 +3013,7 @@ public class BlockProcessorTests
         GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
         Block block = BuildParallelValidationBlock(gasConsumed.Length);
         block.Header.GasLimit = 500_000;
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(new TestStateHeaderProvider { Parent = Build.A.BlockHeader.WithNumber(0).TestObject });
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
         RecordingTransactionProcessedEventHandler handler = new();
         ReceiptMetadataTransactionProcessorAdapter transactionProcessorAdapter = new(gasConsumed);
