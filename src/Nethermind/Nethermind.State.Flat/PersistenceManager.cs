@@ -72,7 +72,7 @@ public class PersistenceManager(
         set => Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(value));
     }
 
-    public IPersistence.IPersistenceReader LeaseReader() => persistence.CreateReader();
+    public IPersistence.IPersistenceReader LeaseReader(ReaderFlags flags = ReaderFlags.None) => persistence.CreateReader(flags);
 
     public StateId GetCurrentPersistedStateId()
     {
@@ -547,14 +547,8 @@ public class PersistenceManager(
                 TreePath path = kvp.Key.Key;
                 TrieNode node = kvp.Value;
 
-                if (node.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
+                // TODO: Need to double check this case. Does it need a rewrite or not?
+                if (node.IsHashOnlyPlaceholder()) continue;
 
                 stateNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
@@ -570,14 +564,8 @@ public class PersistenceManager(
                 (Hash256 address, TreePath path) = kvp.Key.Key;
                 TrieNode node = kvp.Value;
 
-                if (node.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
+                // TODO: Need to double check this case. Does it need a rewrite or not?
+                if (node.IsHashOnlyPlaceholder()) continue;
 
                 storageNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it

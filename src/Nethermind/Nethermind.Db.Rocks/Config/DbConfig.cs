@@ -47,6 +47,8 @@ public class DbConfig : IDbConfig
         // EXPERIMENTAL RocksDB option (default false upstream): enabled here to reduce foreground WAL rotation latency.
         // RocksDB sanitizes it off when WAL recycling is enabled.
         "async_wal_precreate=true;" +
+        // Defer eligible cleanup from latency-sensitive calling threads.
+        "avoid_unnecessary_blocking_io=true;" +
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         "target_file_size_base=64000000;" +
@@ -356,6 +358,10 @@ public class DbConfig : IDbConfig
         // Smaller
         "write_buffer_size=16000000;" +
         "max_write_buffer_number=4;" +
+        // Hashed account keys are 20-byte Keccak prefixes and are near-uniform. Auto selects interpolation when the
+        // key-gap coefficient of variation is below this dimensionless threshold, and otherwise uses binary search.
+        "block_based_table_factory.index_block_search_type=kAuto;" +
+        "block_based_table_factory.uniform_cv_threshold=0.2;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
@@ -433,9 +439,6 @@ public class DbConfig : IDbConfig
     // The replay-sized write buffers matter only for the two bulky value columns.
     public string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
     public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
-
-    public string? PreimageDbRocksDbOptions { get; set; } = "";
-    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 
     public string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; } = "";
     public string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
