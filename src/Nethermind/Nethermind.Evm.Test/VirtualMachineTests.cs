@@ -1144,6 +1144,25 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Cancellation_during_an_instruction_throws_at_its_completion_before_the_next_callback()
+    {
+        byte[] code = Prepare.EvmCode.PushData(1).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
+        using CancellationTokenSource cancellation = new();
+        // The observer runs before the cancellation tracer, so a throw deferred to the next callback lets it see a second start.
+        CountingGethLikeTxTracer observer = new();
+        CompositeTxTracer tracer = new(observer, new CancellationTxTracer(new CancelOnOperationStartTracer(cancellation), cancellation.Token));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<OperationCanceledException>(() =>
+                _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
+            Assert.That(observer.StartedOperations, Is.EqualTo(1), "next instruction was started");
+            Assert.That(observer.CompletedOperations, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Cancellation_after_exception_start_reports_completion_and_error()
     {
         byte[] code = [(byte)Instruction.INVALID];

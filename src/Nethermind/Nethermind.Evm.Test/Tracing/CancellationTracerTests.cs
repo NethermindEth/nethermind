@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -86,6 +87,22 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.Throws<OperationCanceledException>(() => tracer.MarkAsFailed(TestItem.AddressA, default, [], "error"));
             Assert.Throws<OperationCanceledException>(() => tracer.MarkAsSuccess(TestItem.AddressA, default, [], []));
+        }
+
+        [Test]
+        public void Throws_on_instruction_start_before_forwarding_it_when_cancelled([Values] bool previousStartNeverCompleted)
+        {
+            using CancellationTokenSource cancellationTokenSource = new();
+            CancellationTxTracer tracer = CancellableInstructionTracer(cancellationTokenSource.Token);
+
+            if (previousStartNeverCompleted)
+                tracer.StartOperation(0, Instruction.STOP, 1, default);
+            tracer.InnerTracer.ClearReceivedCalls();
+            cancellationTokenSource.Cancel();
+
+            Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(1, Instruction.STOP, 1, default));
+            Assert.That(tracer.InnerTracer.ReceivedCalls().Select(static call => call.GetMethodInfo().Name),
+                Does.Not.Contain(nameof(ITxTracer.StartOperation)));
         }
 
         private static CancellationTxTracer CancellableInstructionTracer(CancellationToken token)
