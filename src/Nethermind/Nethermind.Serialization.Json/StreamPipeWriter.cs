@@ -342,7 +342,11 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// <inheritdoc />
     public override long UnflushedBytes => _bytesBuffered;
 
-    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default) => FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
+    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default)
+    {
+        WrittenCount += source.Length;
+        return FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
+    }
 
     private void Cancel() => InternalTokenSource.Cancel();
 

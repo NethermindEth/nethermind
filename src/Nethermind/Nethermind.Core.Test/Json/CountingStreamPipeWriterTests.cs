@@ -45,6 +45,23 @@ public class CountingStreamPipeWriterTests
     }
 
     [Test]
+    public async Task WriteAsync_counts_written_bytes()
+    {
+        using MemoryStream stream = new();
+        CountingStreamPipeWriter writer = new(stream, Options, initialWrittenCount: 10);
+        writer.Write(new byte[3]);
+
+        await writer.WriteAsync(new byte[5]);
+        await writer.CompleteAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Length, Is.EqualTo(8));
+            Assert.That(writer.WrittenCount, Is.EqualTo(18));
+        }
+    }
+
+    [Test]
     public async Task Large_payload_round_trips([Values] bool useAsync)
     {
         string[] payload = Enumerable.Range(0, 100_000).Select(i => $"item-{i:D6}").ToArray();
