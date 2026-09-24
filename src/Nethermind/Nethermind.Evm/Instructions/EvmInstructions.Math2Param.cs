@@ -68,8 +68,10 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated &&
-            (typeof(TOpMath) == typeof(OpAdd) || typeof(TOpMath) == typeof(OpSub)))
+        // SUB takes the scalar limb path below even with Vector256: UInt256.Subtract reaches the
+        // out-of-line SubtractImpl, and that call makes the JIT save and restore the callee-saved
+        // registers on every SUB. UInt256.Add inlines fully, so ADD keeps the vector path.
+        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpAdd))
         {
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte arithmeticTopRef = ref stack.Pop1Peek32BytesUnchecked();
