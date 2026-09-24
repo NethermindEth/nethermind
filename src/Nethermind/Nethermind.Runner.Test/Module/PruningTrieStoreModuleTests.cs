@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
@@ -28,7 +29,9 @@ public class PruningTrieStoreModuleTests
         Drop = 1,
         Enabled = 2,
         FlatHasData = 4,
-        ImportFromPruningTrieState = 8
+        ImportFromPruningTrieState = 8,
+        Repaired = 16,
+        WipedForSync = 32
     }
 
     [TestCase(Flags.None, false, Description = "Flag off -> keep")]
@@ -37,11 +40,13 @@ public class PruningTrieStoreModuleTests
     [TestCase(Flags.Drop | Flags.FlatHasData, false, Description = "Flat DB disabled, node runs on patricia -> keep")]
     [TestCase(Flags.Drop | Flags.Enabled, false, Description = "Flat store still empty -> keep, or the node loses all state")]
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.ImportFromPruningTrieState, true, Description = "Import finished and left configured -> drop; the fallback boundary stops reading the trie once flat is populated")]
+    [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.Repaired, false, Description = "Repaired flat may be wiped on this start -> keep")]
+    [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.WipedForSync, false, Description = "Interrupted wipe is redone on this start -> keep")]
     public void Drops_only_when_flat_owns_a_populated_store(Flags flags, bool expected)
     {
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
             Config(flags),
-            () => Persistence(flags.HasFlag(Flags.FlatHasData)),
+            () => FlatDb(flags),
             () => LimboLogs.Instance,
             () => true);
 
@@ -55,7 +60,7 @@ public class PruningTrieStoreModuleTests
         // of IFlatDbConfig would break them, and nothing beyond the flag may be resolved until it is known to be set.
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
             configRegistered ? Config(Flags.Enabled | Flags.FlatHasData) : null,
-            () => throw new AssertionException("the flat persistence must not be resolved"),
+            () => throw new AssertionException("the flat DB must not be resolved"),
             () => throw new AssertionException("the log manager must not be resolved"),
             () => throw new AssertionException("the disk must not be touched"));
 
@@ -73,7 +78,7 @@ public class PruningTrieStoreModuleTests
 
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
             Config(Flags.Drop | Flags.Enabled | Flags.FlatHasData),
-            () => Persistence(true),
+            () => FlatDb(Flags.FlatHasData),
             () => new OneLoggerLogManager(new ILogger(logger)),
             () => hasTrieData);
 
@@ -84,6 +89,7 @@ public class PruningTrieStoreModuleTests
 
     [TestCase(Flags.Drop | Flags.Enabled, Description = "Flat store empty -> say why the trie is kept")]
     [TestCase(Flags.Drop | Flags.FlatHasData, Description = "Flat DB disabled -> say why the trie is kept")]
+    [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.Repaired, Description = "Flat DB repaired -> say why the trie is kept")]
     public void Declining_is_an_info_line_not_a_warning(Flags flags)
     {
         // The flag is opt-in, so an operator who set it is owed the reason nothing happened.
@@ -93,7 +99,7 @@ public class PruningTrieStoreModuleTests
 
         PruningTrieStoreModule.ShouldDropPruningTrieState(
             Config(flags),
-            () => Persistence(flags.HasFlag(Flags.FlatHasData)),
+            () => FlatDb(flags),
             () => new OneLoggerLogManager(new ILogger(logger)),
             () => throw new AssertionException("the disk must not be touched when declining"));
 
@@ -104,7 +110,7 @@ public class PruningTrieStoreModuleTests
     [Test]
     public void State_db_resolves_with_the_flat_gate_in_its_factory()
     {
-        // The state DB factory resolves the flat IPersistence to decide, so a real container is the only
+        // The state DB factory resolves the flat columns DB to decide, so a real container is the only
         // place a dependency cycle would show up. TestNethermindModule's flat store is empty, so the gate
         // declines here and nothing is dropped.
         using IContainer container = new ContainerBuilder()
@@ -176,7 +182,9 @@ public class PruningTrieStoreModuleTests
             cfg.Enabled = flags.HasFlag(Flags.Enabled);
             cfg.DropPruningTrieState = flags.HasFlag(Flags.Drop);
         })
-        .AddSingleton<IPersistence>(Persistence(flags.HasFlag(Flags.FlatHasData)))
+        .AddSingleton<IColumnsDb<FlatDbColumns>>(FlatDb(flags))
+        // Constructed before the activation policy wipes a repaired flat DB, it would latch the pre-wipe slot encoding.
+        .AddSingleton<IPersistence>(static _ => throw new AssertionException("opening the state DB must not construct the flat persistence"))
         .AddSingleton<IDbFactory>(dbFactory)
         .Build();
 
@@ -199,15 +207,13 @@ public class PruningTrieStoreModuleTests
         return config;
     }
 
-    private static IPersistence Persistence(bool hasData)
+    private static FlatStateActivationPolicyTests.SpyFlatColumnsDb FlatDb(Flags flags)
     {
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.CurrentState.Returns(hasData
-            ? new StateId(1, Nethermind.Core.Crypto.Keccak.Zero)
-            : StateId.PreGenesis);
-
-        IPersistence persistence = Substitute.For<IPersistence>();
-        persistence.CreateReader().Returns(reader);
-        return persistence;
+        FlatStateActivationPolicyTests.SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
+        if (flags.HasFlag(Flags.FlatHasData))
+            new RocksDbPersistence(flatDb, LimboLogs.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
+        if (flags.HasFlag(Flags.WipedForSync))
+            FlatStateActivationPolicyTests.MarkWipedForSync(flatDb);
+        return flatDb;
     }
 }
