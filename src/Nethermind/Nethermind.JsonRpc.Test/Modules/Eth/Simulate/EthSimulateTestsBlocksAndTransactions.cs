@@ -1357,7 +1357,7 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [Test]
-    public async Task eth_simulateV1_deliberately_rejects_state_free_call_clamped_below_intrinsic_gas()
+    public async Task eth_simulateV1_rejects_state_free_call_clamped_below_intrinsic_gas()
     {
         const ulong blockGasLimit = (ulong)GasCostOf.SSetState + GasCostOf.TransactionEip2780 - 1;
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);

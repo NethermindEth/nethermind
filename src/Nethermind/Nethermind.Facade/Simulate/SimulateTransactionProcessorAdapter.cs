@@ -68,8 +68,8 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         // The per-dimension budgets shrink as the block is processed.
         if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
         {
-            // State gas is known only after execution, so this conservative cap can reject a state-free
-            // transaction when the remaining state budget is below its intrinsic execution gas.
+            // EIP-8037 inclusion requires tx.gas <= remaining state budget whatever state gas the tx uses,
+            // so a defaulted limit clamps to it even for a state-free call.
             transaction.GasLimit = Math.Min(
                 Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable),
                 Math.Min(simulateRequestState.TotalGasLeft, _maxTotalGasLimit));

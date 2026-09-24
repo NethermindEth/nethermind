@@ -973,17 +973,18 @@ public class BlockchainBridgeTests
     [Test]
     public void Simulate_adapter_clamps_omitted_gas_to_remaining_state_budget()
     {
-        const ulong blockStateGasLimit = 200_000;
-        const ulong blockStateGasUsed = (ulong)GasCostOf.SSetState;
+        const ulong blockStateGasLimit = 300_000;
+        const ulong stateGasPerWrite = (ulong)GasCostOf.SSetState;
         SimulateRequestState simulateRequestState = new()
         {
-            TotalGasLeft = 500_000,
+            TotalGasLeft = 1_000_000,
             BlockGasLeft = 300_000,
             BlockStateGasLeft = blockStateGasLimit,
             Validate = false,
         };
         simulateRequestState.SetTxsWithExplicitGas(
             [
+                new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
                 new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
                 new() { HadGasLimitInRequest = false, Transaction = new Transaction() }
             ]);
@@ -997,20 +998,23 @@ public class BlockchainBridgeTests
                 executedGasLimits.Add(tx.GasLimit);
                 tx.SpentGas = 10_000;
                 tx.BlockGasUsed = 10_000;
-                ulong stateGasUsed = executedGasLimits.Count == 1 ? blockStateGasUsed : 0;
+                ulong stateGasUsed = executedGasLimits.Count <= 2 ? stateGasPerWrite : 0;
                 GasConsumed gasConsumed = new(10_000, 10_000, 10_000, stateGasUsed);
                 ci.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, gasConsumed, [], []);
                 return TransactionResult.Ok;
             });
 
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
-        Transaction first = new() { GasLimit = blockStateGasLimit };
-        Transaction second = new() { GasLimit = 500_000 };
-        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(first, second);
+        Transaction first = new() { GasLimit = 150_000 };
+        Transaction second = new() { GasLimit = 150_000 };
+        Transaction third = new() { GasLimit = 500_000 };
+        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(first, second, third);
         ExecuteWithReceiptsTracer(adapter, receiptsTracer, first);
         ExecuteWithReceiptsTracer(adapter, receiptsTracer, second);
+        ExecuteWithReceiptsTracer(adapter, receiptsTracer, third);
 
-        Assert.That(executedGasLimits, Is.EqualTo(new ulong[] { blockStateGasLimit, blockStateGasLimit - blockStateGasUsed }));
+        // Each write must deplete the state budget by its own state gas, not by the tracer's running total.
+        Assert.That(executedGasLimits, Is.EqualTo(new ulong[] { 150_000, 150_000, blockStateGasLimit - 2 * stateGasPerWrite }));
     }
 
     [Test]
