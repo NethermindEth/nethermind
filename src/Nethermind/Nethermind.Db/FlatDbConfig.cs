@@ -54,7 +54,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
     public bool EnableLongFinality { get; set; } = true;
     public ulong LongFinalityMaxReorgDepth { get; set; } = 90000;
-    public int MaxInMemoryBaseSnapshotCount { get; set; } = 160;
+    public int MaxInMemoryBaseSnapshotCount { get; set; } = 96;
     public long ArenaFileSizeBytes { get; set; } = 1.GiB;
     public long PersistedSnapshotDedicatedArenaThresholdBytes { get; set; } = 1.GiB;
     public long PersistedSnapshotArenaPageCacheBytes { get; set; } = 4.GiB;

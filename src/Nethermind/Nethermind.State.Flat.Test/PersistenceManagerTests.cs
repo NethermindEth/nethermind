@@ -64,18 +64,20 @@ public class PersistenceManagerTests
 
         _persistedSnapshotCompactor = Substitute.For<IPersistedSnapshotCompactor>();
 
-        _persistenceManager = new PersistenceManager(
-            _config,
-            _tier.Resolve<ICompactionSchedule>(),
-            _finalizedStateProvider,
-            _persistence,
-            _snapshotRepository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            _persistedSnapshotCompactor,
-            _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+        _persistenceManager = CreatePersistenceManager();
     }
+
+    private PersistenceManager CreatePersistenceManager() => new(
+        _config,
+        _tier.Resolve<ICompactionSchedule>(),
+        _finalizedStateProvider,
+        _persistence,
+        _snapshotRepository,
+        NullStatePersistenceBarrier.Instance,
+        LimboLogs.Instance,
+        _persistedSnapshotCompactor,
+        _tier.Loader,
+        Substitute.For<IProcessExitSource>());
 
     [TearDown]
     public async Task TearDown()
@@ -129,9 +131,11 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public async Task AddToPersistence_PinnedHead_RetainsUnfinalizedPersistedForks()
+    public async Task AddToPersistence_PinnedHead_RetainsUnfinalizedPersistedForks([Values(96, 160)] int maxInMemoryBaseSnapshotCount)
     {
         const int ForkCount = 400;
+        _config.MaxInMemoryBaseSnapshotCount = maxInMemoryBaseSnapshotCount;
+        using PersistenceManager persistenceManager = CreatePersistenceManager();
         StateId latest = Block0;
         for (int i = 1; i <= ForkCount; i++)
         {
@@ -139,16 +143,16 @@ public class PersistenceManagerTests
             latest = new(2, Keccak.Compute($"test-{i}"));
             CreateSnapshot(Block0, setup);
             _snapshotRepository.SetLastCommittedStateId(setup);
-            await _persistenceManager.AddToPersistence(setup);
+            await persistenceManager.AddToPersistence(setup);
             CreateSnapshot(setup, latest);
             _snapshotRepository.SetLastCommittedStateId(latest);
-            await _persistenceManager.AddToPersistence(latest);
+            await persistenceManager.AddToPersistence(latest);
         }
 
         using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(latest, Block0, 2);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0));
+            Assert.That(persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0));
             Assert.That(_snapshotRepository.SnapshotCount, Is.EqualTo(_config.MaxInMemoryBaseSnapshotCount));
             Assert.That(assembled.InMemory.Count + assembled.Persisted.Count, Is.EqualTo(2));
             Assert.That(_snapshotRepository.PersistedSnapshotCount,
