@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
@@ -1950,22 +1951,107 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
         }
 
-        await WaitForReadableState(chain, resubmitted.BlockHash);
+        await WaitForCommit(chain, resubmitted.BlockHash);
 
         Assert.That((await rpc.engine_newPayloadV1(child)).Data.Status, Is.EqualTo(PayloadStatus.Valid),
             "the child of a block the node just accepted must be executed, not answered SYNCING");
     }
 
+    /// <summary>Records when <see cref="NewPayloadHandler"/> starts waiting for a watched block's answered copy to leave the queue.</summary>
+    private sealed class CommitWaitProbe
+    {
+        private Hash256? _watched;
+
+        /// <summary>Completes when a wait for the watched block's committing copy begins.</summary>
+        public TaskCompletionSource WaitEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Starts recording waits for <paramref name="blockHash"/>; earlier ones are not the ones under test.</summary>
+        public void Watch(Hash256 blockHash) => Volatile.Write(ref _watched, blockHash);
+
+        public void OnWait(Hash256 blockHash)
+        {
+            if (blockHash == Volatile.Read(ref _watched)) WaitEntered.TrySetResult();
+        }
+    }
+
+    /// <summary>Passes every call through, reporting the handler's commit waits to a <see cref="CommitWaitProbe"/>.</summary>
+    /// <remarks>
+    /// The queue is resolved more than once, so the probe - not the decorator - holds what was seen. The engine RPC
+    /// module waits on the same commit after every newPayload answer, so only a wait entered from inside the handler
+    /// counts: one entered after the handler has answered would let a handler that never waits pass.
+    /// </remarks>
+    private sealed class CommitWaitObservingQueue(IBlockProcessingQueue inner, CommitWaitProbe probe) : IBlockProcessingQueue
+    {
+        public ValueTask WaitUntilExecutedCopyRemovedAsync(Hash256 blockHash)
+        {
+            if (IsCalledFromNewPayloadHandler()) probe.OnWait(blockHash);
+            return inner.WaitUntilExecutedCopyRemovedAsync(blockHash);
+        }
+
+        /// <summary>Whether the frame that asked for this wait belongs to <see cref="NewPayloadHandler"/>.</summary>
+        /// <remarks>
+        /// Only the immediate caller counts: deeper frames can include the handler merely because a continuation it
+        /// completed ran inline. Async methods run as state machines nested in their method's type, hence the
+        /// declaring-type check.
+        /// </remarks>
+        private static bool IsCalledFromNewPayloadHandler()
+        {
+            static bool IsIn(Type type, Type owner) => type == owner || type.DeclaringType == owner;
+
+            foreach (StackFrame frame in new StackTrace().GetFrames())
+            {
+                Type? type = frame.GetMethod()?.DeclaringType;
+                if (type is null
+                    || IsIn(type, typeof(CommitWaitObservingQueue))
+                    || IsIn(type, typeof(BlockProcessingQueueExtensions))
+                    || type.Namespace?.StartsWith("System", StringComparison.Ordinal) == true)
+                {
+                    continue;
+                }
+
+                return IsIn(type, typeof(NewPayloadHandler));
+            }
+
+            return false;
+        }
+
+        public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false) => inner.WaitUntilRemovedAsync(blockHash, executedOnly);
+
+        public void Start() => inner.Start();
+
+        public Task StopAsync(bool processRemainingBlocks = false) => inner.StopAsync(processRemainingBlocks);
+
+        public bool IsProcessingBlocks(ulong? maxProcessingInterval) => inner.IsProcessingBlocks(maxProcessingInterval);
+
+        public ValueTask Enqueue(Block block, ProcessingOptions processingOptions) => inner.Enqueue(block, processingOptions);
+
+        public int Count => inner.Count;
+
+        public event EventHandler ProcessingQueueEmpty { add => inner.ProcessingQueueEmpty += value; remove => inner.ProcessingQueueEmpty -= value; }
+
+        public event EventHandler<BlockEventArgs> BlockAdded { add => inner.BlockAdded += value; remove => inner.BlockAdded -= value; }
+
+        public event EventHandler<BlockVerdictEventArgs> BlockExecuted { add => inner.BlockExecuted += value; remove => inner.BlockExecuted -= value; }
+
+        public event EventHandler<BlockRemovedEventArgs> BlockRemoved { add => inner.BlockRemoved += value; remove => inner.BlockRemoved -= value; }
+
+        public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs> InvalidBlock { add => inner.InvalidBlock += value; remove => inner.InvalidBlock -= value; }
+
+        public event EventHandler<BlockStatistics> NewProcessingStatistics { add => inner.NewProcessingStatistics += value; remove => inner.NewProcessingStatistics -= value; }
+    }
+
     /// <summary>
     /// A block being re-executed is already marked processed from its first run, so it can be made head while the
-    /// re-execution that restores its state is still committing. Sent again in that window it must be answered from
-    /// that commit, not SYNCING as a block on the node's own chain whose state is gone.
+    /// re-execution that restores its state is still committing. Sent again in that window it must wait for that
+    /// commit and be answered VALID, not SYNCING as a block on the node's own chain whose state is gone.
     /// </summary>
     [Test]
     public async Task newPayloadV1_answers_valid_for_a_head_resent_while_its_re_execution_commits()
     {
         ConcurrentDictionary<Hash256, byte> pruned = new();
-        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        CommitWaitProbe probe = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned, builder =>
+            builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Hash256 genesisHash = chain.BlockTree.HeadHash!;
@@ -1979,7 +2065,7 @@ public partial class EngineModuleTests
         TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
         chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
         {
-            if (e.BlockHash == resubmitted.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(10));
+            if (e.BlockHash == resubmitted.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
         };
 
         Assert.That((await rpc.engine_newPayloadV1(resubmitted)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -1990,31 +2076,31 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
         }
 
-        // The commit is released only once the re-send has either answered or had time to reach its wait.
+        // The commit is released only once the re-send is parked on it, or has answered without waiting - the
+        // regression this pins. The bound is a backstop for a handler that does neither.
+        probe.Watch(resubmitted.BlockHash);
         Task<ResultWrapper<PayloadStatusV1>> resent = rpc.engine_newPayloadV1(resubmitted);
-        await Task.WhenAny(resent, Task.Delay(TimeSpan.FromSeconds(1)));
+        await Task.WhenAny(probe.WaitEntered.Task, resent, Task.Delay(TimeSpan.FromSeconds(20)));
+        bool waitedForCommit = probe.WaitEntered.Task.IsCompleted;
         commit.SetResult();
+        ResultWrapper<PayloadStatusV1> result = await resent;
 
-        Assert.That((await resent).Data.Status, Is.EqualTo(PayloadStatus.Valid),
-            "the head's own re-execution is committing, so its state is about to be readable");
-    }
-
-    /// <summary>Waits, briefly and without asserting, for the state a block committed to become readable.</summary>
-    /// <remarks>
-    /// <c>engine_newPayload</c> answers once the block is executed, so the state its child needs can arrive after
-    /// the answer. A block that is never re-executed never gains one, and the caller's own assertion says so.
-    /// </remarks>
-    private static async Task WaitForReadableState(MergeTestBlockchain chain, Hash256 blockHash)
-    {
-        BlockHeader? header = chain.BlockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        if (header is null) return;
-
-        long deadline = Environment.TickCount64 + 5_000;
-        while (!chain.StateReader.HasStateForBlock(header) && Environment.TickCount64 < deadline)
+        using (Assert.EnterMultipleScope())
         {
-            await Task.Delay(10);
+            Assert.That(waitedForCommit, Is.True, "the re-send must wait for the head's committing re-execution");
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
+                "the head's own re-execution is committing, so its state is about to be readable");
         }
     }
+
+    /// <summary>Waits for a block's answered copy to leave the processing queue, and with it to commit its state.</summary>
+    /// <remarks>
+    /// <c>engine_newPayload</c> answers once the block is executed, so the state its child needs can arrive after
+    /// the answer. Completes at once when no answered copy is in flight - a block that was never re-executed - and
+    /// the caller's own assertion then says so.
+    /// </remarks>
+    private static Task WaitForCommit(MergeTestBlockchain chain, Hash256 blockHash) =>
+        chain.BlockProcessingQueue.WaitForExecutedCopyAsync(blockHash, TimeSpan.FromSeconds(10)).AsTask();
 
     /// <summary>
     /// The canonical-chain shortcut must not answer from the chain-level marker alone: sync sets that marker for
