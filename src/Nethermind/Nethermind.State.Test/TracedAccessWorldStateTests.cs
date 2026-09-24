@@ -78,6 +78,33 @@ public class TracedAccessWorldStateTests(bool parallel)
         Assert.That(inner.GetNonce(TestItem.AddressA), Is.Zero);
     }
 
+    [Test]
+    public void Balance_create_returns_true_only_for_first_creation(
+        [Values] bool initiallyExists, [Values(0u, 1u)] uint balanceChange)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+        {
+            if (initiallyExists) ws.CreateAccount(TestItem.AddressA, 0);
+        });
+        using (scope)
+        {
+            bool created = tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out UInt256 oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.EqualTo(!initiallyExists));
+                Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+            }
+
+            created = tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.False);
+                Assert.That(oldBalance, Is.EqualTo((UInt256)balanceChange));
+                Assert.That(tws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)(2 * balanceChange)));
+            }
+        }
+    }
+
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
     [TestCase(false, 30u, 100u, 70u, TestName = "SubtractFromBalance")]
     public void BalanceOp_RecordsBalanceChange(
@@ -485,11 +512,12 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
-    [TestCase(true, true, TestName = "AddToBalance suppressed")]
-    [TestCase(true, false, TestName = "AddToBalanceAndCreateIfNotExists suppressed")]
-    [TestCase(false, true, TestName = "AddToBalance not suppressed")]
-    [TestCase(false, false, TestName = "AddToBalanceAndCreateIfNotExists not suppressed")]
-    public void Zero_balance_credit_to_system_user_recorded_only_outside_suppression(bool suppressed, bool plainAdd)
+    /// <summary>A zero-balance operation on <see cref="Address.SystemUser"/> that would create its BAL entry.</summary>
+    public enum SystemUserTouch { AddToBalance, AddToBalanceAndCreateIfNotExists, CreateAccount, CreateAccountIfNotExists }
+
+    [Test]
+    public void Zero_balance_touch_of_system_user_recorded_only_outside_suppression(
+        [Values] bool suppressed, [Values] SystemUserTouch touch)
     {
         (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
             ws.CreateAccount(Address.SystemUser, 0));
@@ -497,13 +525,20 @@ public class TracedAccessWorldStateTests(bool parallel)
         {
             using IDisposable? systemAccountReadSuppression = suppressed ? tws.BeginSystemAccountReadSuppression() : null;
 
-            if (plainAdd)
+            switch (touch)
             {
-                tws.AddToBalance(Address.SystemUser, 0u, Spec, out _);
-            }
-            else
-            {
-                tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
+                case SystemUserTouch.AddToBalance:
+                    tws.AddToBalance(Address.SystemUser, 0u, Spec, out _);
+                    break;
+                case SystemUserTouch.AddToBalanceAndCreateIfNotExists:
+                    tws.AddToBalanceAndCreateIfNotExists(Address.SystemUser, 0u, Spec, out _);
+                    break;
+                case SystemUserTouch.CreateAccount:
+                    tws.CreateAccount(Address.SystemUser, 0u);
+                    break;
+                case SystemUserTouch.CreateAccountIfNotExists:
+                    tws.CreateAccountIfNotExists(Address.SystemUser, 0u);
+                    break;
             }
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(Address.SystemUser);
