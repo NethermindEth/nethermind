@@ -133,7 +133,9 @@ jobs:
           existing=$(awk -v sha="$GITHUB_SHA" '$3 == sha' <<< "$releases")
 
           if [[ -z "$existing" ]]; then
-            last=$(cut -d ' ' -f 1 <<< "$releases" | sed 's/.*+//' | sort -n | tail -n 1)
+            # A deleted release can leave its tag behind, which a new one would reuse
+            last=$({ cut -d ' ' -f 1 <<< "$releases"; git ls-remote --tags origin "$TAG_BASE+*" | cut -f 2; } \
+              | sed -n 's/.*+\([0-9]\+\)$/\1/p' | sort -n | tail -n 1)
             git_tag=$TAG_BASE+$((${last:-0} + 1))
             echo "Drafting release $git_tag"
             gh release create "$git_tag" --target "$GITHUB_SHA" -d -p --latest=false \
