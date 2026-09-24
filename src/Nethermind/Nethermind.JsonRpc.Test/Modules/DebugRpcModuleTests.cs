@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Specs;
@@ -49,13 +50,13 @@ public partial class DebugRpcModuleTests
     public async Task TransactionTracing_WhenTargetSelected_ExecutesOnlyPrefix(
         string method, int targetIndex, bool stream, bool unsupportedValidationModule)
     {
-        List<Hash256?> executed = [];
+        List<Transaction> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { Timeout = -1, EnableTracingStreamMode = stream })
             .Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
-                    .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                    .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed));
                 if (unsupportedValidationModule) builder.AddSingleton<IBlockValidationModule, UnsupportedTraceValidationModule>();
             });
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
@@ -85,7 +86,7 @@ public partial class DebugRpcModuleTests
                 "an additional validation module without explicit prefix support must retain full replay");
         }
         for (int i = 0; i < executed.Count; i++)
-            Assert.That(executed[i], Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
+            Assert.That(executed[i].Hash, Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
     }
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
@@ -501,11 +502,36 @@ public partial class DebugRpcModuleTests
         });
     }
 
-    private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter
+    /// <summary>A signed transaction recovers its original signer after a <c>debug_traceCall</c> with its fields and signature.</summary>
+    /// <remarks>A fresh <c>from</c> is unfunded, an existing one is funded. Streamed, the trace runs while the response is written.</remarks>
+    [Test]
+    public async Task Debug_traceCall_recovers_the_original_signer_after_the_call([Values] bool fromExistingAccount, [Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(new TestSpecProvider(Cancun.Instance));
+
+        ulong chainId = chain.SpecProvider.ChainId;
+        (Transaction signedTx, Transaction receivedTx, Address signer) = SignedCallScenario.BuildSignedTypedTx(chain.EthereumEcdsa, chainId);
+        EIP1559TransactionForRpc rpcTx = SignedCallScenario.BuildCall(signedTx, fromExistingAccount ? TestItem.AddressA : TestItem.AddressF, chainId);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", rpcTx, "latest");
+
+        // Streamed, a failed trace is a result with `failed: true`; buffered, it is an error response.
+        if (fromExistingAccount)
+            Assert.That((bool?)JToken.Parse(response)["result"]?["failed"], Is.False, response);
+        else
+            Assert.That(response, Does.Contain("insufficient funds"));
+
+        SignedCallScenario.AssertRecoversSigner(chain.EthereumEcdsa, receivedTx, signer);
+    }
+
+    private sealed class ExecutedTransactionsAdapter(ITransactionProcessorAdapter inner, List<Transaction> executed) : ITransactionProcessorAdapter
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
         {
-            executed.Add(transaction.Hash);
+            executed.Add(transaction);
             return inner.Execute(transaction, txTracer);
         }
 

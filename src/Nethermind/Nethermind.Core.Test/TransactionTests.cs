@@ -5,6 +5,7 @@ using System;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -70,8 +71,10 @@ public class TransactionTests
         new PooledBlobBuffers(held).Return();
     }
 
+    public enum CopyKind { CopyTo, CopyToWithHash, ShallowCopy }
+
     [Test]
-    public void Returning_a_copied_transaction_keeps_shared_blob_data([Values] bool copyHash)
+    public void Returning_a_copied_transaction_keeps_shared_blob_data([Values] CopyKind kind)
     {
         byte[] data = new byte[PooledBlobBuffers.BlobSize];
         Array.Fill(data, (byte)0x11);
@@ -83,8 +86,16 @@ public class TransactionTests
                 PooledBuffers = new(blobs)
             }
         };
-        Transaction copy = new();
-        source.CopyTo(copy, copyHash);
+        Transaction copy;
+        if (kind == CopyKind.ShallowCopy)
+        {
+            copy = source.ShallowCopy();
+        }
+        else
+        {
+            copy = new();
+            source.CopyTo(copy, copyHash: kind == CopyKind.CopyToWithHash);
+        }
         new Transaction.PoolPolicy().Return(source);
 
         Array.Fill(data, (byte)0x22);
@@ -174,6 +185,28 @@ public class TransactionTests
         {
             Assert.That(transaction.DecodedMaxFeePerGas, Is.EqualTo(transaction.MaxFeePerGas));
             Assert.That(transaction.Supports1559, Is.EqualTo(expectedSupports1559));
+        }
+    }
+
+    [Test]
+    public void ShallowCopy_keeps_the_subclass_its_state_and_the_hash()
+    {
+        byte[] encoded = [0xc0];
+        NamedTransaction source = new() { Name = "subclass", Nonce = 5 };
+        source.SetPreHash(encoded);
+
+        Transaction copy = source.ShallowCopy();
+        bool preHashShared = !copy.PreHash.IsEmpty;
+        copy.Nonce = 6;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy, Is.Not.SameAs(source).And.TypeOf<NamedTransaction>());
+            Assert.That(((NamedTransaction)copy).Name, Is.EqualTo(source.Name));
+            Assert.That(preHashShared, Is.False, "the pre-hash memory has a single owner");
+            Assert.That(copy.Hash, Is.EqualTo(Keccak.Compute(encoded)));
+            Assert.That(source.Hash, Is.EqualTo(copy.Hash));
+            Assert.That(source.Nonce, Is.EqualTo(5UL));
         }
     }
 }

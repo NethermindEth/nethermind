@@ -18,6 +18,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.State;
@@ -50,6 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IJsonRpcConfig jsonRpcConfig,
         IBlockchainBridge blockchainBridge,
         ISpecProvider specProvider,
+        IEthereumEcdsa ethereumEcdsa,
         IBlocksConfig blocksConfig,
         IPrefixStateSeedSource prefixSeeds,
         ILogManager logManager,
@@ -86,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(headerSearch.Object!));
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
-                : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
+                : TraceTx(transaction, traceTypes, headerSearch.Object!, stateOverride);
         }
 
         /// <summary>
@@ -153,8 +155,20 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 RlpReader ctx = new(data);
                 Transaction tx = _txDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(BlockParameter.Latest);
+                if (headerSearch.IsError)
+                {
+                    return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
+                }
+
+                // The cap changes the signed content, so the sender is recovered first, as processing the block would.
+                if (tx.SenderAddress is null
+                    && ethereumEcdsa.TryRecoverAddress(tx, out Address? sender, !specProvider.GetSpec(headerSearch.Object!).ValidateChainId))
+                {
+                    tx.SenderAddress = sender;
+                }
                 tx.CapGasLimit(jsonRpcConfig.GasCap);
-                return TraceTx(tx, traceTypes, BlockParameter.Latest);
+                return TraceTx(tx, traceTypes, headerSearch.Object!);
             }
             catch (RlpException)
             {
@@ -162,18 +176,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
         }
 
-        private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
+        private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockHeader baseHeader,
             Dictionary<Address, AccountOverride>? stateOverride = null)
         {
-            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
-            if (headerSearch.IsError)
-            {
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
-            }
-
-            BlockHeader header = headerSearch.Object!.Clone();
+            BlockHeader header = baseHeader.Clone();
             Block block = new(header, [tx], []);
-            ParityTraceTypes parityTypes = GetParityTypes(traceTypes);
+            // Rewards belong to full blocks: here the reward of the block the call runs in would be a second trace.
+            ParityTraceTypes parityTypes = GetParityTypes(traceTypes) & ~ParityTraceTypes.Rewards;
 
             return BuildStreamingSingleResult(
                 runStreaming: (writer, pipeWriter, ct) =>
@@ -433,8 +442,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)
         {
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
-            List<ParityTxTraceFromStore> traces = ExtractPositionsFromTxTrace(positions, traceTransaction);
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+            if (!traceTransaction.Result) return traceTransaction;
+            using (traceTransaction)
+            {
+                List<ParityTxTraceFromStore> traces = ExtractPositionsFromTxTrace(positions, traceTransaction);
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+            }
         }
 
         public static List<ParityTxTraceFromStore> ExtractPositionsFromTxTrace(long[] positions, ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction)
@@ -444,7 +457,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             for (int index = 0; index < positions.Length; index++)
             {
                 long position = positions[index];
-                if (transactionTraces.Length > position + 1)
+                if (position >= -1 && position < transactionTraces.Length - 1)
                 {
                     ParityTxTraceFromStore tr = transactionTraces[position + 1];
                     traces.Add(tr);
@@ -558,7 +571,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (specOverride is not null)
             {
                 BlockHeader adjustedHeader = AdjustHeaderForSpec(block.Header, baseBlock, specOverride);
-                blockToExecute = block.WithReplacedHeader(adjustedHeader);
+                // Under another fork's rules the nonces loaded from state can differ, so replay copies.
+                blockToExecute = block.WithReplacedHeader(adjustedHeader).WithOwnTransactions();
             }
 
             using Scope<ITracer> env = tracerEnv.BuildAndOverrideAtTarget(blockToExecute.Header, specOverride: specOverride);
@@ -703,7 +717,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block blockToExecute = block;
             if (specOverride is not null)
             {
-                blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride));
+                // Under another fork's rules the nonces loaded from state can differ, so replay copies.
+                blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride)).WithOwnTransactions();
             }
             using Scope<ITracer> env = tracerEnv.BuildAndOverrideAtTarget(blockToExecute.Header, specOverride: specOverride);
             env.Component.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(ct), transactionHash, specOverride is null ? prefixSeeds : null));

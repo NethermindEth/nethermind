@@ -138,6 +138,7 @@ public class GethStyleTracer(
                       ?? throw new InvalidOperationException($"Cannot find block {blockHash}");
         if (block.IsGenesis) throw new GenesisNotTraceableException();
 
+        block = WithOwnTransactionsIfStateOverridden(block, options);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
         scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer.WithCancellation(cancellationToken), cancellationToken);
@@ -151,6 +152,7 @@ public class GethStyleTracer(
 
         Block block = blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
 
+        block = WithOwnTransactionsIfStateOverridden(block, options);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         GethLikeBlockFileTracer tracer = new(block, options, fileSystem, spec);
@@ -186,6 +188,12 @@ public class GethStyleTracer(
         if (options.BlockOverrides is not null || options.NoBaseFee)
         {
             block = block.WithReplacedBodyCloned(block.Body);
+        }
+
+        // The transaction of a single-call trace is the caller's own.
+        if (!useBlockAsBase)
+        {
+            block = WithOwnTransactionsIfAltered(block, options);
         }
 
         // The scope is opened before the block override lands on the header: the parent lookup keys on the
@@ -254,6 +262,7 @@ public class GethStyleTracer(
             return new GethLikeTxTraceCollection(parallel);
         }
 
+        block = WithOwnTransactionsIfStateOverridden(block, options);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
@@ -276,6 +285,17 @@ public class GethStyleTracer(
             throw;
         }
     }
+
+    /// <summary>The block to replay under <paramref name="options"/>: with state overrides, one with copies of its transactions.</summary>
+    private static Block WithOwnTransactionsIfStateOverridden(Block block, GethTraceOptions options) =>
+        options.StateOverrides is null ? block : block.WithOwnTransactions();
+
+    /// <summary>
+    /// The block a single-transaction trace replays: with state or block overrides, which can change what its earlier
+    /// transactions do, one with copies of its transactions.
+    /// </summary>
+    private static Block WithOwnTransactionsIfAltered(Block block, GethTraceOptions options) =>
+        options.StateOverrides is null && options.BlockOverrides is null ? block : block.WithOwnTransactions();
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
     private static bool IsJavaScriptTracer(GethTraceOptions options) =>

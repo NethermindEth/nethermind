@@ -13,6 +13,8 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -20,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
@@ -272,6 +275,59 @@ public class TraceRpcModuleTests
         {
             TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
         }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Trace_get_disposes_materialized_stream([Values] bool replayFails)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        IJsonRpcConfig config = blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.EnableTracingStreamMode = true;
+        // A zero timeout cancels the replay as soon as it starts.
+        if (replayFails) config.Timeout = 0;
+        using CancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        Hash256 txHash = blockchain.BlockTree.Head!.Transactions[0].Hash!;
+
+        if (replayFails)
+        {
+            Assert.That(() => context.TraceRpcModule.trace_get(txHash, [-1]), Throws.InstanceOf<OperationCanceledException>());
+        }
+        else
+        {
+            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_get(txHash, [-1]);
+            Assert.That(result.Data.Count(), Is.EqualTo(1));
+        }
+
+        Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+    }
+
+    [Test]
+    public async Task Trace_get_preserves_missing_transaction_error()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+
+        string expected = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_transaction", TestItem.KeccakA);
+        string actual = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", TestItem.KeccakA, new long[] { 0 });
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Trace_get_selects_valid_and_skips_out_of_range_positions(
+        [Values(0, 3)] int length,
+        [Values(long.MinValue, -2L, -1L, 0L, 1L, 2L, long.MaxValue)] long position)
+    {
+        ParityTxTraceFromStore[] traces = Enumerable.Range(0, length)
+            .Select(_ => ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace { Action = new ParityTraceAction() }).Single()).ToArray();
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+        ParityTxTraceFromStore[] expected = position >= -1 && position < length - 1 ? [traces[position + 1]] : [];
+
+        Assert.That(TraceRpcModule.ExtractPositionsFromTxTrace([position], result), Is.EqualTo(expected));
     }
 
     [Test]
@@ -1373,7 +1429,159 @@ public class TraceRpcModuleTests
         byte[] rlp = TxDecoder.Instance.Encode(transaction).Bytes;
         ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_rawTransaction(rlp, ["trace"]);
 
-        Assert.That(traces.Data.Action!.Gas, Is.LessThan(gasCap));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Data.Action!.Gas, Is.LessThan(gasCap));
+            Assert.That(traces.Data.Action!.From, Is.EqualTo(TestItem.AddressA), "the sender is recovered from the content as signed");
+        }
+    }
+
+    /// <summary><c>trace_rawTransaction</c> runs as the signer of the raw transaction, gas-capped or not, and the transaction recovers it after the call.</summary>
+    [Test]
+    public async Task Trace_rawTransaction_runs_as_the_signer_and_recovers_it_after_the_call([Values] bool gasCapped, [Values] bool streaming, [Values] bool unfundedSigner)
+    {
+        JsonRpcConfig config = new() { EnableTracingStreamMode = streaming };
+        // The signed gas limit is 100_000.
+        if (gasCapped) config.GasCap = 60_000;
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithConfig(config)
+            .Build(new TestSpecProvider(Cancun.Instance));
+
+        (Transaction signedTx, Transaction receivedTx, Address signer) = SignedCallScenario.BuildSignedTypedTx(
+            chain.EthereumEcdsa, chain.SpecProvider.ChainId, unfundedSigner: unfundedSigner);
+        byte[] raw = TxDecoder.Instance.Encode(signedTx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+        string response = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_rawTransaction", raw.ToHexString(true), new[] { "trace" });
+
+        JToken? from = JToken.Parse(response)["result"]?["trace"]?[0]?["action"]?["from"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(from is null ? null : new Address((string)from!), Is.EqualTo(signer), response);
+            Assert.That(SignedCallScenario.CachedSender(chain.EthereumEcdsa, receivedTx), Is.EqualTo(signer));
+        }
+
+        SignedCallScenario.AssertRecoversSigner(chain.EthereumEcdsa, receivedTx, signer);
+    }
+
+    /// <summary>
+    /// Regression: <c>trace_rawTransaction</c> recovers the sender of a legacy transaction signed for another chain as
+    /// processing the traced block does, by the chain id of its signature where the chain does not validate chain ids.
+    /// </summary>
+    [Test]
+    public async Task Trace_rawTransaction_recovers_the_sender_by_the_chain_id_rule_of_the_traced_block([Values] bool validateChainId)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .Build(new TestSpecProvider(new OverridableReleaseSpec(Cancun.Instance) { ValidateChainId = validateChainId }));
+
+        // Zero fees and value, so a sender with no account can run it too.
+        Transaction tx = Build.A.Transaction
+            .To(TestItem.AddressB)
+            .WithGasPrice(0)
+            .WithValue(0)
+            .Signed(new EthereumEcdsa(chain.SpecProvider.ChainId + 1), TestItem.PrivateKeyA)
+            .TestObject;
+        Address? processingSender = chain.EthereumEcdsa.RecoverAddress(tx, useSignatureChainId: !validateChainId);
+        byte[] raw = TxDecoder.Instance.Encode(tx).Bytes;
+
+        string response = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_rawTransaction", raw.ToHexString(true), new[] { "trace" });
+
+        JToken? from = JToken.Parse(response)["result"]?["trace"]?[0]?["action"]?["from"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(from is null ? null : new Address((string)from!), Is.EqualTo(processingSender), response);
+            if (!validateChainId)
+                Assert.That(processingSender, Is.EqualTo(TestItem.AddressA), "the signer, by the chain id of its signature");
+        }
+    }
+
+    /// <summary>Each signed call of <c>trace_callMany</c>, one request after another, runs as its <c>from</c>.</summary>
+    /// <remarks>Zero fees let the unfunded <c>from</c> run.</remarks>
+    [Test]
+    public async Task Trace_callMany_runs_each_signed_call_as_its_from([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Cancun.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        ulong chainId = blockchain.SpecProvider.ChainId;
+
+        foreach (PrivateKey signer in new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB })
+        {
+            Transaction signed = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(chainId)
+                .To(TestItem.AddressC)
+                .WithMaxFeePerGas(0)
+                .WithMaxPriorityFeePerGas(0)
+                .WithValue(0)
+                .WithGasLimit(100_000)
+                .SignedAndResolved(blockchain.EthereumEcdsa, signer)
+                .TestObject;
+            EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(signed, TestItem.AddressF, chainId);
+
+            string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany",
+                new[] { new object[] { call, new[] { "trace" } } }, "latest");
+
+            JToken? from = JToken.Parse(response)["result"]?[0]?["trace"]?[0]?["action"]?["from"];
+            Assert.That(from is null ? null : new Address((string)from!), Is.EqualTo(TestItem.AddressF), response);
+        }
+    }
+
+    public enum SingleCallChain { BlockRewards, NoBlockRewards, PostMerge }
+
+    /// <summary>
+    /// Regression: rewards apply to full blocks, so a single-call trace that selects <c>rewards</c> is the call's trace
+    /// alone. With block rewards, and after the merge, where the trace module reports a zero reward to the fee recipient,
+    /// the reward of the block the call runs in was traced as a second trace of the one result. Without block rewards, a
+    /// streamed <c>trace_call</c> that selects <c>rewards</c> but not <c>trace</c> was cut off: its trace, with no action
+    /// and no transaction hash, was taken for the block's reward trace and never written.
+    /// </summary>
+    [Test]
+    public async Task Trace_single_call_with_rewards_but_no_trace_is_written(
+        [Values("trace_call", "trace_rawTransaction")] string method, [Values] bool streaming, [Values] SingleCallChain chainType)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(builder =>
+            {
+                builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
+                if (chainType == SingleCallChain.NoBlockRewards)
+                    builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(static b => b.AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance));
+                if (chainType == SingleCallChain.PostMerge)
+                {
+                    IPoSSwitcher postMerge = Substitute.For<IPoSSwitcher>();
+                    postMerge.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
+                    builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(b => b.AddSingleton<IPoSSwitcher>(postMerge));
+                }
+            });
+
+        object call = method == "trace_call"
+            ? new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), value = "0x1", gas = "0x5208" }
+            : TxDecoder.Instance.Encode(Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(chain.SpecProvider.ChainId)
+                .To(TestItem.AddressB)
+                .WithValue(1)
+                .WithMaxFeePerGas(100_000_000_000UL)
+                .WithMaxPriorityFeePerGas(1_000_000_000UL)
+                .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+
+        string response = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, call, new[] { "stateDiff", "rewards" });
+        string withoutRewards = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, call, new[] { "stateDiff" });
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        JToken result = parsed["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["trace"], Is.Empty);
+            Assert.That(result["stateDiff"]![TestItem.AddressA.ToString().ToLowerInvariant()], Is.Not.Null, "the sender's state change");
+            Assert.That(result, Is.EqualTo(JToken.Parse(withoutRewards)["result"]).Using(JToken.EqualityComparer), "rewards apply to full blocks only");
+        }
     }
 
     [Test]
@@ -1705,6 +1913,7 @@ public class TraceRpcModuleTests
             new JsonRpcConfig(),
             Substitute.For<IBlockchainBridge>(),
             Substitute.For<ISpecProvider>(),
+            Substitute.For<IEthereumEcdsa>(),
             Substitute.For<IBlocksConfig>(),
             NullPrefixStateSeedSource.Instance,
             LimboLogs.Instance);
