@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;

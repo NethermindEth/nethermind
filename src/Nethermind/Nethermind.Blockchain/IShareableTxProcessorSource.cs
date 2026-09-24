@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.State;
 
