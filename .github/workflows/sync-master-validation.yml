@@ -207,11 +207,30 @@ jobs:
           sparse-checkout: scripts/sync-metrics
           ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
 
+      - name: Check for metrics data branch
+        id: data-branch
+        run: |
+          # ls-remote exits 2 when the ref is absent; any other failure is a real error
+          rc=0
+          git ls-remote --exit-code --heads origin sync-metrics > /dev/null || rc=$?
+          case "$rc" in
+            0) echo "exists=true" >> "$GITHUB_OUTPUT" ;;
+            2) echo "exists=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::git ls-remote failed with $rc"; exit "$rc" ;;
+          esac
+
       - name: Checkout metrics data branch
+        if: steps.data-branch.outputs.exists == 'true'
         uses: actions/checkout@v6
         with:
           ref: sync-metrics
           path: metrics-branch
+
+      # First publish: start an empty orphan branch. A worktree shares the repository
+      # checkout's credentials, so the push below works the same as for a cloned branch.
+      - name: Initialize metrics data branch
+        if: steps.data-branch.outputs.exists == 'false'
+        run: git worktree add --orphan -b sync-metrics metrics-branch
 
       - name: Download sync metrics artifacts
         uses: actions/download-artifact@v8
