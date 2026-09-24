@@ -17,7 +17,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// replace its touched slots, then taken back by <see cref="Compose"/> as it rebuilds. A decomposed entry names
     /// where its node is read from rather than holding it, so only the folds' own results are carried here. A stored
     /// node no touched slot lies under has no entry, since composition copies it without consulting the frontier.
-    /// <see cref="Mask"/> alone says which entries are live, so a taken entry is left in place rather than cleared.
+    /// <see cref="Mask"/> marks the positions that hold a node. Taking one leaves its bit set: <see cref="SetBoundary"/>
+    /// rewrites a folded slot's bit, and composition visits each position once.
     /// </remarks>
     internal struct Frontier
     {

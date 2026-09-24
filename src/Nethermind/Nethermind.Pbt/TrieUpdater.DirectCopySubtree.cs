@@ -43,6 +43,9 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         internal void CopyTo(Span<byte> destination) => _encoding.Span.CopyTo(destination);
 
+        /// <summary>The hash the node's link held, or default when it must still be hashed.</summary>
+        internal ValueHash256 KnownHash => _knownHash;
+
         /// <summary>The hash of the stored encoding.</summary>
         /// <remarks>A node below a level left implicit carries no link, so it is hashed here the once instead.</remarks>
         internal ValueHash256 Hash(TrieUpdaterMetrics? metrics)

@@ -204,18 +204,18 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         internal readonly ValueHash256 Encode(Span<byte> encoding, int depth, TrieUpdaterMetrics? metrics)
         {
-            ValueHash256 hash = EncodeDeferringHash(encoding, depth, metrics, out int preimageLength);
+            ValueHash256 hash = EncodeDeferringHash(encoding, depth, out int preimageLength);
             if (preimageLength == 0) return hash;
             metrics?.IncrementNodeHashes();
             return Blake3Hash.Hash(encoding[..preimageLength]);
         }
 
         /// <summary>
-        /// <see cref="Encode"/>, except that a branch whose hash is not yet known is left unhashed: the result is
+        /// <see cref="Encode"/>, except that a node whose hash is not yet known is left unhashed: the result is
         /// default and <paramref name="preimageLength"/> the length of its preimage at the start of
         /// <paramref name="encoding"/>, so the caller can hash it together with another node.
         /// </summary>
-        internal readonly ValueHash256 EncodeDeferringHash(Span<byte> encoding, int depth, TrieUpdaterMetrics? metrics, out int preimageLength)
+        internal readonly ValueHash256 EncodeDeferringHash(Span<byte> encoding, int depth, out int preimageLength)
         {
             preimageLength = 0;
             if (IsLeaf)
@@ -226,7 +226,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (!Copy.IsEmpty && depth == AnchorDepth)
             {
                 Copy.CopyTo(encoding);
-                return Copy.Hash(metrics);
+                if (Copy.KnownHash == default) preimageLength = Copy.Reader.Preimage.Length;
+                return Copy.KnownHash;
             }
 
             int bitCount = BranchDepth - depth;

@@ -173,14 +173,13 @@ public static partial class TrieUpdater
                         PbtTraversalPath sharedPath = new(sharedPathBuffer);
                         sharedPath.AppendMut(slot);
                         ref GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
-                        TraversalSubtree composed = Compose(ref sharedReader, sharedWriter, sharedPath, metrics, ref zoneFrontiers.AsSpan()[slot]);
-                        ValueHash256 groupHash = composed.Hash(4, metrics);
+                        FoldResult zoneRoot = Compose(ref sharedReader, sharedWriter, sharedPath, 0, metrics, ref zoneFrontiers.AsSpan()[slot]);
+                        ValueHash256 groupHash = zoneRoot.Borrow(rootPath).Hash(4, metrics);
                         long zoneDelta = PublishGroup(store, ref sharedReader, sharedWriter, sharedPath, groupHash);
-                        FoldResult zoneRoot = composed.Materialize(0);
                         SetBoundary(ref rootFrontier, slot, ref zoneRoot);
                         rootWriter.AddDescendantDelta(slot, zoneDelta);
                     }
-                    TraversalSubtree result = Compose(ref rootReader, rootWriter, rootPath, metrics, ref rootFrontier);
+                    TraversalSubtree result = Compose(ref rootReader, rootWriter, rootPath, 0, metrics, ref rootFrontier).Borrow(rootPath);
                     ValueHash256 hash = rootWriter.Write(rootPath, PbtFourLevelGroupGeometry.RootPosition, 0, ref result, metrics);
                     PublishGroup(store, ref rootReader, rootWriter, rootPath, hash);
                     return hash;
