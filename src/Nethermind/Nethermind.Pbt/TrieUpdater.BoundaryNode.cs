@@ -189,7 +189,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             if (IsEmpty || IsLeaf || depth == _anchorDepth) return _hash;
             FoldResult reAnchored = ToFoldResult(cursor, depth);
-            return reAnchored.Borrow(cursor).Hash(depth, metrics);
+            return reAnchored.Hash(cursor, depth, metrics);
         }
 
         /// <summary>This node as a composed result addressed at <paramref name="anchorDepth"/>, detached from its frame.</summary>

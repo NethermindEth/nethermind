@@ -123,16 +123,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             ? PbtNodeCodec.LeafLength(Node.LeafKey.Length)
             : PbtNodeCodec.BranchLength(BranchDepth - depth, Node.LeftLeafKeyLength, Node.RightLeafKeyLength);
 
-        // Encode writes every byte of the encoding it is given.
-        [SkipLocalsInit]
-        internal readonly ValueHash256 Hash(int depth, TrieUpdaterMetrics? metrics)
-        {
-            if (IsEmpty) return default;
-            if (IsLeaf) return Node.LeafHash;
-            Span<byte> encoding = stackalloc byte[EncodedLength(depth)];
-            return Encode(encoding, depth, metrics);
-        }
-
         internal readonly ValueHash256 Encode(Span<byte> encoding, int depth, TrieUpdaterMetrics? metrics)
         {
             ValueHash256 hash = EncodeDeferringHash(encoding, depth, out int preimageLength);
@@ -175,21 +165,23 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             // Promotion absorbs the source anchor's skipped bits into the relative compressed prefix.
             PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, left, right);
-            CopyBranchBits(depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
+            CopyBranchBits(GroupPath, LocalPath, LocalPrefix, depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
             return PbtNodeCodec.BranchPreimageLength(bitCount);
         }
 
-        private readonly void CopyBranchBits(int start, int count, Span<byte> destination)
+        internal static void CopyBranchBits(scoped in PbtTraversalPath groupPath, NodeGroupPath localPath, CompressedPrefix localPrefix,
+            int start, int count, Span<byte> destination)
         {
+            int anchorDepth = groupPath.BitDepth + localPath.Length;
             int end = start + count;
-            int groupEnd = Math.Min(end, GroupPath.BitDepth);
+            int groupEnd = Math.Min(end, groupPath.BitDepth);
             if (start < groupEnd)
-                PbtBitPrefix.CopyBits(GroupPath.Bytes, start, groupEnd - start, destination, 0);
-            for (int bit = Math.Max(start, GroupPath.BitDepth); bit < Math.Min(end, AnchorDepth); bit++)
-                destination[(bit - start) >> 3] |= (byte)(LocalPath.GetBit(bit - GroupPath.BitDepth) << (7 - ((bit - start) & 7)));
-            int prefixStart = Math.Max(start, AnchorDepth);
+                PbtBitPrefix.CopyBits(groupPath.Bytes, start, groupEnd - start, destination, 0);
+            for (int bit = Math.Max(start, groupPath.BitDepth); bit < Math.Min(end, anchorDepth); bit++)
+                destination[(bit - start) >> 3] |= (byte)(localPath.GetBit(bit - groupPath.BitDepth) << (7 - ((bit - start) & 7)));
+            int prefixStart = Math.Max(start, anchorDepth);
             if (prefixStart < end)
-                PbtBitPrefix.CopyBits(LocalPrefix.Bytes, prefixStart - AnchorDepth, end - prefixStart, destination, prefixStart - start);
+                PbtBitPrefix.CopyBits(localPrefix.Bytes, prefixStart - anchorDepth, end - prefixStart, destination, prefixStart - start);
         }
     }
 
@@ -265,6 +257,25 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly ValueHash256 LeafHash => LeftHash;
         internal readonly bool HasLeftLeaf => (LeafChildren & Subtree.LeftLeaf) != 0;
         internal readonly bool HasRightLeaf => (LeafChildren & Subtree.RightLeaf) != 0;
+        private readonly CompressedPrefix Prefix => Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(Encoding.Span);
+
+        /// <summary>The depth this branch splits at when read against <paramref name="cursor"/>.</summary>
+        internal readonly int BranchDepth(scoped in PbtTraversalPath cursor) => cursor.BitDepth + Path.Length + Prefix.BitCount;
+
+        /// <summary>The hash of this node written at <paramref name="depth"/> when read against <paramref name="cursor"/>.</summary>
+        [SkipLocalsInit]
+        internal readonly ValueHash256 Hash(scoped in PbtTraversalPath cursor, int depth, TrieUpdaterMetrics? metrics)
+        {
+            if (IsEmpty) return default;
+            if (IsLeaf) return LeafHash;
+            int bitCount = BranchDepth(cursor) - depth;
+            if (KnownHash != default && bitCount == KnownHashBitCount) return KnownHash;
+            Span<byte> preimage = stackalloc byte[PbtNodeCodec.BranchPreimageLength(bitCount)];
+            PbtNodeCodec.CreateBranchEncoding(preimage, bitCount, LeftHash, RightHash);
+            TraversalSubtree.CopyBranchBits(cursor, Path, Prefix, depth, bitCount, preimage.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
+            metrics?.IncrementNodeHashes();
+            return Blake3Hash.Hash(preimage);
+        }
 
         internal readonly TraversalSubtree Borrow(PbtTraversalPath cursor) => new(cursor, Kind switch
         {

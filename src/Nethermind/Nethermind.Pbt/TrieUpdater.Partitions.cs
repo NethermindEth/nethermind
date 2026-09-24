@@ -174,7 +174,7 @@ public static partial class TrieUpdater
                         sharedPath.AppendMut(slot);
                         ref GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                         FoldResult zoneRoot = Compose(ref sharedReader, sharedWriter, sharedPath, 0, metrics, ref zoneFrontiers.AsSpan()[slot]);
-                        ValueHash256 groupHash = zoneRoot.Borrow(rootPath).Hash(4, metrics);
+                        ValueHash256 groupHash = zoneRoot.Hash(rootPath, 4, metrics);
                         long zoneDelta = PublishGroup(store, ref sharedReader, sharedWriter, sharedPath, groupHash);
                         SetBoundary(ref rootFrontier, slot, ref zoneRoot);
                         rootWriter.AddDescendantDelta(slot, zoneDelta);
@@ -253,7 +253,7 @@ public static partial class TrieUpdater
                 result = TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, writer, current,
                     operations.AsSpan(), ref path, 8, 4, new(table.AsSpan(), 8, false));
                 // The result is anchored at the zone cursor its boundary slot sits on, four bits above this group.
-                ValueHash256 groupHash = result.Borrow(path.Truncated(sourceBuffer, 4)).Hash(8, Metrics);
+                ValueHash256 groupHash = result.Hash(path.Truncated(sourceBuffer, 4), 8, Metrics);
                 result.SizeDelta = TrieUpdater<TKey, TPath>.PublishGroup(store, ref reader, writer, path, groupHash);
                 Result = FoldResult.TakeFrom<TKey, TPath>(ref result);
             }

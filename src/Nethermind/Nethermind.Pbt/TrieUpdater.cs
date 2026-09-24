@@ -368,11 +368,11 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (!reader.IsResolved) reader.SetGroupHash(current.HashAt(path, bitDepth, metrics));
             FoldResult result = FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, resultDepth, partition);
             // The result is anchored where the caller places it, which a jump leaves above this frame.
-            TraversalSubtree resolved = result.Borrow(path.Truncated(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)], resultDepth));
-            ValueHash256 hash = resolved.Hash(bitDepth, metrics);
+            PbtTraversalPath resultCursor = path.Truncated(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)], resultDepth);
+            ValueHash256 hash = result.Hash(resultCursor, bitDepth, metrics);
             result.SizeDelta = PublishGroup(context.Store, ref reader, writer, path, hash);
             // The owner group writes this root at the same depth, so a composed root can reuse the hash just published.
-            if (result.Kind == NodeKind.Branch) result = result.WithKnownHash(hash, resolved.BranchDepth - bitDepth);
+            if (result.Kind == NodeKind.Branch) result = result.WithKnownHash(hash, result.BranchDepth(resultCursor) - bitDepth);
             return result;
         }
     }
