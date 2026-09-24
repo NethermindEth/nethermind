@@ -1816,13 +1816,14 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task trace_block_unknown_fork_returns_invalid_params_failure_listing_known_forks()
+    public async Task trace_block_unknown_fork_returns_invalid_params_failure_listing_known_forks(
+        [Values(BlockParameterType.Latest, BlockParameterType.Earliest)] BlockParameterType blockType)
     {
         Context context = new();
         await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
-            context.TraceRpcModule.trace_block(BlockParameter.Latest, "NonExistentFork");
+            context.TraceRpcModule.trace_block(new BlockParameter(blockType), "NonExistentFork");
 
         using (Assert.EnterMultipleScope())
         {
