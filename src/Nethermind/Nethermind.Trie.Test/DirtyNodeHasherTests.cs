@@ -34,7 +34,7 @@ public class DirtyNodeHasherTests
     private static readonly int[] ValueLengths = [1, 40, 150, 300, 450, 600];
 
     /// <summary>Entry counts that put group sizes below, at and above both kernel widths.</summary>
-    private static readonly int[] EntryCounts = [1, 2, 5, 9, 40, 200];
+    private static readonly int[] EntryCounts = [1, 2, 3, 4, 5, 9, 40, 200];
 
     [Test]
     public void Every_node_hash_matches_a_scalar_keccak(

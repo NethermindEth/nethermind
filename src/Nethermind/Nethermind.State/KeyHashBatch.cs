@@ -16,8 +16,8 @@ internal struct KeyHashBatch
     private const int MaximumBatchSize = 8;
     /// <summary>The AVX2 lane width, also the minimum account-batching threshold for both state backends.</summary>
     internal const int MinimumBatchSize = 4;
-    /// <summary>Below this, a batch kernel's setup and lane-clearing is not worth it over one scalar hash.</summary>
-    private const int MinimumBatchCount = 2;
+    /// <summary>Minimum partial-batch size on AVX-512-capable hosts.</summary>
+    private const int MinimumAvx512BatchCount = 2;
     private const int Rate = 136;
 
     [InlineArray(MaximumBatchSize)]
@@ -80,12 +80,13 @@ internal struct KeyHashBatch
         int hashed = 0;
         if (Avx2.IsSupported)
         {
+            int minimumBatchCount = Avx512F.IsSupported ? MinimumAvx512BatchCount : MinimumBatchSize;
             Unsafe.SkipInit(out Scratch scratch);
             Span<byte> buffer = MemoryMarshal.AsBytes((Span<ulong>)scratch);
             // A batch kernel costs the same whether its lanes are full or empty, so any remainder
             // meeting the entry threshold takes one and zero-fills the rest. The narrowest kernel
             // that covers the remainder is preferred: a wider one would permute empty lanes.
-            while (_count - hashed >= MinimumBatchCount)
+            while (_count - hashed >= minimumBatchCount)
             {
                 int remaining = _count - hashed;
                 int batchSize = Avx512F.IsSupported && remaining > MinimumBatchSize ? MaximumBatchSize : MinimumBatchSize;

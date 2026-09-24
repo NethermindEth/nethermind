@@ -38,7 +38,7 @@ internal static class DirtyNodeHasher
     private const int BranchChildCount = 16;
     private const int HashBatchSize = 8;
     private const int Avx2HashBatchSize = 4;
-    private const int MinimumBatchCount = 2;
+    private const int MinimumAvx512BatchCount = 2;
     private const int VectorByteLength = 32;
     private const int MaxPaddedClass = KeccakHash.MaxBatchablePaddedLength / KeccakHash.RateBlockLength;
 
@@ -292,7 +292,8 @@ internal static class DirtyNodeHasher
     /// <summary>Hashes nodes that share a padded length, or hashes a lone one on its own.</summary>
     private static void HashGroup(Span<TrieNode> group, int paddedClass, Span<byte> storage)
     {
-        if (group.Length < MinimumBatchCount)
+        int minimumBatchCount = Avx512F.IsSupported ? MinimumAvx512BatchCount : Avx2HashBatchSize;
+        if (group.Length < minimumBatchCount)
         {
             foreach (TrieNode node in group) node.ResolvePreparedKey();
             return;

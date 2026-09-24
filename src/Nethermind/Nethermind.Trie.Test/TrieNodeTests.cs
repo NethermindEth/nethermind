@@ -34,7 +34,7 @@ public class TrieNodeTests
     [Test]
     public void Reencoding_full_branch_matches_fresh_encoding(
         [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
-        [Values(0, 2, 3, 8, 15)] int dirtyBranchCount,
+        [Values(0, 2, 3, 4, 8, 15)] int dirtyBranchCount,
         [Values(0, 3, 4, 12, 15, 16)] int dirtyChildWidth,
         [Values(false, true)] bool mixChildKinds,
         [Values(false, true)] bool canBeParallel)

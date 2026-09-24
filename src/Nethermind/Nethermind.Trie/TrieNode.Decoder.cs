@@ -49,9 +49,8 @@ namespace Nethermind.Trie
             private const int HashPairSize = 2;
             private const int MinHashBatchSize = 3;
 
-            /// <summary>Fewest deferred children worth a batch kernel call at a single rate block.</summary>
-            /// <remarks>One four-lane call at this length beats two separate hashes, measured.</remarks>
-            private const int MinimumBatchCount = 2;
+            /// <summary>Minimum partial-batch size on AVX-512-capable hosts.</summary>
+            private const int MinimumAvx512BatchCount = 2;
             private const int HashBatchSize = 8;
             private const int Avx2HashBatchSize = 4;
             private const int VectorByteLength = 32;
@@ -346,7 +345,8 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             private static void HashPreparedPaddedBranches(TrieNode item, ushort candidateMask)
             {
-                if (!Avx2.IsSupported || BitOperations.PopCount((uint)candidateMask) < MinimumBatchCount)
+                int minimumBatchCount = Avx512F.IsSupported ? MinimumAvx512BatchCount : Avx2HashBatchSize;
+                if (!Avx2.IsSupported || BitOperations.PopCount((uint)candidateMask) < minimumBatchCount)
                 {
                     ResolvePreparedKeys(item, candidateMask);
                     return;
@@ -355,7 +355,7 @@ namespace Nethermind.Trie
                 Unsafe.SkipInit(out PaddedHashBuffer buffer);
                 Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
                 int widestBatch = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
-                while (BitOperations.PopCount((uint)candidateMask) >= MinimumBatchCount)
+                while (BitOperations.PopCount((uint)candidateMask) >= minimumBatchCount)
                 {
                     int paddedLength = PaddedLength(ChildRlpLength(item, BitOperations.TrailingZeroCount(candidateMask)));
                     ushort groupMask = 0;
@@ -370,7 +370,7 @@ namespace Nethermind.Trie
                     }
 
                     candidateMask ^= groupMask;
-                    if (groupCount < MinimumBatchCount)
+                    if (groupCount < minimumBatchCount)
                     {
                         // A length class on its own is not worth a kernel call.
                         ResolvePreparedKeys(item, groupMask);
