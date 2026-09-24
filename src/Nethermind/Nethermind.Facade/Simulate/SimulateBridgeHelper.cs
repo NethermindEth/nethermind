@@ -300,11 +300,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
         if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
-        // EIP-7843: the beacon slot of the block's overridden timestamp, else the parent's advanced, else a synthetic 0 so
-        // SLOTNUM stays executable; cleared pre-fork so the header is never encoded with a slot.
-        result.SlotNumber = spec.IsEip7843Enabled
-            ? DeriveSlot(specProvider, parent, block.BlockOverrides?.Time ?? result.Timestamp) ?? result.SlotNumber ?? (parent.SlotNumber + 1) ?? 0
-            : null;
+        result.SlotNumber = GetSlotNumber(spec, specProvider, parent, result.SlotNumber, block.BlockOverrides?.Time ?? result.Timestamp);
 
         // In non-validation mode base fee is set to 0 if it is not overridden.
         // This is because it creates an edge case in EVM where gasPrice < baseFee.
@@ -326,26 +322,43 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     }
 
     /// <summary>
-    /// Returns the beacon chain slot containing <paramref name="timestamp"/>, or <c>null</c> when it cannot be derived.
+    /// Returns the EIP-7843 slot number of a simulated block, or <c>null</c> when its spec predates EIP-7843.
     /// </summary>
+    /// <param name="spec">The spec resolved for the simulated block.</param>
+    /// <param name="specProvider">Supplies the beacon chain genesis timestamp, if known.</param>
+    /// <param name="parent">The block the simulated block builds on.</param>
+    /// <param name="childSlot">The slot <see cref="BlockHeader.CreateSimulatedChild"/> assigned: the parent's slot + 1, if any.</param>
+    /// <param name="timestamp">The simulated block's timestamp after <c>blockOverrides.time</c>.</param>
     /// <remarks>
+    /// Pre-fork the result is <c>null</c> whatever <paramref name="childSlot"/> is, so the header is never encoded with a slot.
+    /// Post-fork it is the beacon chain slot containing <paramref name="timestamp"/> where that can be derived, else
+    /// <paramref name="childSlot"/>, else a synthetic 0 so SLOTNUM stays executable.
+    /// <para>
     /// <c>slot = (timestamp - beacon genesis) / seconds per slot</c>, exact because every post-merge block sits on that grid.
     /// A slotless parent (normally the real base block) off the grid means the configured slot length or genesis is not this
-    /// chain's, so <c>null</c> lets the caller fall back. A parent carrying a slot may be a simulated block whose time override
-    /// fell between slots and was advanced, so its grid slot is only a floor. The result stays above the parent's slot (its
-    /// grid slot when it has none), as slots never repeat; that also caps a slot length too long for the chain at parent + 1.
+    /// chain's, so derivation falls back. A parent carrying a slot may be a simulated block whose time override fell between
+    /// slots and was advanced, so its grid slot is only a floor. The result stays above the parent's slot (its grid slot
+    /// when it has none), as slots never repeat; that also caps a slot length too long for the chain at parent + 1.
     /// A slotless simulated parent timed between slots, which a pre-fork block can be, also falls back: it cannot be told
-    /// apart from a base block on the wrong grid.
+    /// apart from a base block on the wrong grid. The grid check is a heuristic: a wrong slot length still passes for a
+    /// slotless parent on both grids (one Gnosis head in 12 with a 12 s slot length), and the slot is then wrong.
+    /// </para>
     /// </remarks>
-    private ulong? DeriveSlot(ISpecProvider specProvider, BlockHeader parent, ulong timestamp)
+    private ulong? GetSlotNumber(IReleaseSpec spec, ISpecProvider specProvider, BlockHeader parent, ulong? childSlot, ulong timestamp)
     {
+        if (!spec.IsEip7843Enabled)
+        {
+            return null;
+        }
+
+        ulong fallbackSlot = childSlot ?? 0;
         ulong secondsPerSlot = blocksConfig.SecondsPerSlot;
         if (specProvider.BeaconChainGenesisTimestamp is not { } genesis
             || secondsPerSlot == 0
             || parent.Timestamp < genesis
             || timestamp < genesis)
         {
-            return null;
+            return fallbackSlot;
         }
 
         ulong parentOffset = parent.Timestamp - genesis;
@@ -355,7 +368,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             : parentOffset % secondsPerSlot == 0;
         if (!parentFitsGrid)
         {
-            return null;
+            return fallbackSlot;
         }
 
         ulong previousSlot = parent.SlotNumber ?? parentGridSlot;

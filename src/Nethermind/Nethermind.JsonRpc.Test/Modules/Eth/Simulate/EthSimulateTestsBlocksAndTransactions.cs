@@ -1478,7 +1478,9 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     private const ulong SlotnumAmsterdamTimestamp = 2_000_000_000;
-    private const ulong SlotnumHeadBeaconSlot = 13_000_000;
+    private const ulong MainnetSecondsPerSlot = 12;
+    private const ulong SlotnumHeadBeaconSlot =
+        (MainnetSpecProvider.OsakaBlockTimestamp - MainnetSpecProvider.BeaconChainGenesisTimestampConst) / MainnetSecondsPerSlot;
 
     private static async Task<TestRpcBlockchain> BuildSlotnumChain(bool crossFork, bool withBeaconGenesis)
     {
@@ -1487,7 +1489,7 @@ public class EthSimulateTestsBlocksAndTransactions
             TestSpecProvider specProvider = new(Amsterdam.Instance) { AllowTestChainOverride = false };
             TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
             ulong secondsPerSlot = chain.Container.Resolve<IBlocksConfig>().SecondsPerSlot;
-            // Place the beacon genesis so the head sits on a realistic mainnet-scale slot.
+            // Place the beacon genesis so the head sits on mainnet's Osaka activation slot.
             specProvider.BeaconChainGenesisTimestamp = chain.BlockFinder.Head!.Header.Timestamp - SlotnumHeadBeaconSlot * secondsPerSlot;
             return chain;
         }
