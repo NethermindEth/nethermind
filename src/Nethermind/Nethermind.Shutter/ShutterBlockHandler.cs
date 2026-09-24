@@ -202,7 +202,13 @@ public class ShutterBlockHandler : IShutterBlockHandler
             return;
         }
 
-        using IReadOnlyTxProcessingScope scope = _txProcessorSource.Build(parent);
+        if (!_txProcessorSource.TryBuild(parent, out IReadOnlyTxProcessingScope? scope))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot check Shutter validator registration: no state available for block {parent.ToString(BlockHeader.Format.Short)}.");
+            return;
+        }
+
+        using IReadOnlyTxProcessingScope _ = scope;
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);
