@@ -815,6 +815,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private sealed class DefaultableDictionary()
     {
+        private const int MaxRetainedCapacity = 4_096;
         private bool _missingAreDefault;
         private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(UInt256Comparer.Instance);
         private Dictionary<UInt256, StorageChangeTrace>? _spare;
@@ -822,25 +823,38 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public int Count => _dictionary.Count;
         public bool HasClear => _missingAreDefault;
 
-        public void Reset(int capacity)
+        public bool CanRetainCapacity(int capacity)
+        {
+            Dictionary<UInt256, StorageChangeTrace> dictionary = DictionaryToReset;
+            return dictionary.Count > capacity && dictionary.Capacity <= MaxRetainedCapacity;
+        }
+
+        public void Reset(int capacity, bool retainCapacity)
         {
             _missingAreDefault = false;
-            if (_spare is not null && _spare.Capacity > _dictionary.Capacity)
-            {
-                _dictionary = _spare;
-            }
-
+            _dictionary = DictionaryToReset;
             _spare = null;
             if (_dictionary.Count > capacity)
             {
-                // These arrays will be discarded; clearing their entries first only adds writes.
-                _dictionary = new Dictionary<UInt256, StorageChangeTrace>(capacity, UInt256Comparer.Instance);
+                if (retainCapacity && _dictionary.Capacity <= MaxRetainedCapacity)
+                {
+                    _dictionary.Clear();
+                }
+                else
+                {
+                    // These arrays will be discarded; clearing their entries first only adds writes.
+                    _dictionary = new Dictionary<UInt256, StorageChangeTrace>(capacity, UInt256Comparer.Instance);
+                }
             }
             else
             {
                 _dictionary.ClearAndTrim(capacity, capacity);
             }
         }
+
+        private Dictionary<UInt256, StorageChangeTrace> DictionaryToReset =>
+            _spare is not null && _spare.Capacity > _dictionary.Capacity ? _spare : _dictionary;
+
         public void ClearAndSetMissingAsDefault()
         {
             _missingAreDefault = true;
@@ -929,6 +943,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private UInt256 _lastHintSlot;
         private PersistentStorageProvider? _provider;
         private Address? _address;
+        private bool _hasPooledLargeDictionary;
 
         private PerContractState(Address address, PersistentStorageProvider provider) => Initialize(address, provider);
 
@@ -1260,12 +1275,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             private static readonly ConcurrentQueue<PerContractState> _pool = [];
             private static int _poolCount;
+            private static int _pooledLargeDictionaryCount;
+            private const int PooledDictionaryCapacity = 512;
+            private const int MaxPooledLargeDictionaryCount = 64;
 
             public static PerContractState Rent(Address address, PersistentStorageProvider provider)
             {
                 if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out PerContractState? item))
                 {
                     Interlocked.Decrement(ref _poolCount);
+                    if (item._hasPooledLargeDictionary)
+                    {
+                        item._hasPooledLargeDictionary = false;
+                        ReleaseLargeDictionary();
+                    }
+
                     item.Initialize(address, provider);
                     return item;
                 }
@@ -1275,7 +1299,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             public static void Return(PerContractState item)
             {
-                const int PooledDictionaryCapacity = 512;
                 const int MaxPooledCount = 2048;
 
                 // shared pool fallback
@@ -1285,9 +1308,22 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     return;
                 }
 
-                item.BlockChange.Reset(PooledDictionaryCapacity);
+                bool retainCapacity = item.BlockChange.CanRetainCapacity(PooledDictionaryCapacity)
+                    && TryReserveLargeDictionary();
+                item.BlockChange.Reset(PooledDictionaryCapacity, retainCapacity);
+                item._hasPooledLargeDictionary = retainCapacity;
                 _pool.Enqueue(item);
             }
+
+            private static bool TryReserveLargeDictionary()
+            {
+                if (Interlocked.Increment(ref _pooledLargeDictionaryCount) <= MaxPooledLargeDictionaryCount) return true;
+
+                Interlocked.Decrement(ref _pooledLargeDictionaryCount);
+                return false;
+            }
+
+            private static void ReleaseLargeDictionary() => Interlocked.Decrement(ref _pooledLargeDictionaryCount);
         }
     }
 

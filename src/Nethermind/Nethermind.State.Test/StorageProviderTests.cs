@@ -248,11 +248,13 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Oversized_per_contract_state_dictionary_is_trimmed_on_reset([Values(1_024, 16_384)] int changeCount)
+    public void Oversized_per_contract_state_dictionary_is_trimmed_on_reset()
     {
+        const int ChangeCount = 16_384;
+
         using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
-        for (int i = 0; i < changeCount; i++)
+        for (int i = 0; i < ChangeCount; i++)
         {
             provider.Set(new StorageCell(ctx.Address1, (UInt256)i), new UInt256(_values[1], isBigEndian: true));
         }
@@ -262,14 +264,195 @@ public class StorageProviderTests(bool useFlat)
         int capacityBeforeReset = GetCapacity(blockChange);
 
         // Exercise the pool's reset while we still own the state; returned objects can be rented by background work.
-        blockChange.GetType().GetMethod(nameof(provider.Reset))!.Invoke(blockChange, [512]);
+        ResetBlockChange(blockChange, 512, retainCapacity: true);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(capacityBeforeReset, Is.GreaterThan(512));
+            Assert.That(capacityBeforeReset, Is.GreaterThan(4_096));
             Assert.That(GetCapacity(blockChange), Is.GreaterThan(0));
             Assert.That(GetCapacity(blockChange), Is.LessThan(capacityBeforeReset));
             Assert.That(((IDictionary)GetDictionary(blockChange)).Count, Is.Zero);
+        }
+    }
+
+    [TestCase(2_333, 16)]
+    [TestCase(4_861, 4_100)]
+    public void Per_contract_state_dictionary_shrinks_when_sparse_or_above_retention_limit(int capacity, int entryCount)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Set(new StorageCell(ctx.Address1, 1), (UInt256)1);
+        object blockChange = GetBlockChange(provider, ctx.Address1);
+        EnsureCapacity(GetDictionary(blockChange), capacity);
+        blockChange.GetType().GetMethod("ClearAndSetMissingAsDefault")!.Invoke(blockChange, null);
+        AddDefaultEntries(blockChange, entryCount);
+        int capacityBeforeReset = GetCapacity(blockChange);
+
+        ResetBlockChange(blockChange, 512, retainCapacity: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capacityBeforeReset, Is.GreaterThan(1_024));
+            Assert.That(GetCapacity(blockChange), Is.EqualTo(521));
+            Assert.That(((IDictionary)GetDictionary(blockChange)).Count, Is.Zero);
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Per_contract_state_pool_bounds_and_reuses_large_dictionaries()
+    {
+        Type perContractState = typeof(PersistentStorageProvider).GetNestedType("PerContractState", BindingFlags.NonPublic)!;
+        Type pool = perContractState.GetNestedType("Pool", BindingFlags.NonPublic)!;
+        FieldInfo queueField = pool.GetField("_pool", BindingFlags.NonPublic | BindingFlags.Static)!;
+        FieldInfo poolCountField = pool.GetField("_poolCount", BindingFlags.NonPublic | BindingFlags.Static)!;
+        FieldInfo largeDictionaryCountField = pool.GetField("_pooledLargeDictionaryCount", BindingFlags.NonPublic | BindingFlags.Static)!;
+        FieldInfo retainedFlagField = perContractState.GetField("_hasPooledLargeDictionary", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        int originalPoolCount = (int)poolCountField.GetValue(null)!;
+        int originalLargeDictionaryCount = (int)largeDictionaryCountField.GetValue(null)!;
+        object queue = queueField.GetValue(null)!;
+        MethodInfo tryDequeue = queue.GetType().GetMethod("TryDequeue")!;
+        MethodInfo enqueue = queue.GetType().GetMethod("Enqueue")!;
+        List<object> savedStates = [];
+        object[] dequeueArguments = [null!];
+        bool poolIsIsolated = false;
+
+        try
+        {
+            while ((bool)tryDequeue.Invoke(queue, dequeueArguments)!)
+            {
+                savedStates.Add(dequeueArguments[0]!);
+                dequeueArguments[0] = null!;
+            }
+
+            Assert.That(savedStates.Count, Is.EqualTo(originalPoolCount));
+            int savedLargeDictionaryCount = 0;
+            foreach (object state in savedStates)
+            {
+                if ((bool)retainedFlagField.GetValue(state)!) savedLargeDictionaryCount++;
+            }
+            Assert.That(savedLargeDictionaryCount, Is.EqualTo(originalLargeDictionaryCount));
+
+            poolCountField.SetValue(null, 0);
+            largeDictionaryCountField.SetValue(null, 0);
+            poolIsIsolated = true;
+
+            using Context ctx = new(useFlat, preBlockCaches: null);
+            WorldState provider = BuildStorageProvider(ctx);
+            PersistentStorageProvider persistentProvider = provider._persistentStorageProvider;
+            MethodInfo rent = perContractState.GetMethod("Rent", BindingFlags.NonPublic | BindingFlags.Static)!;
+            MethodInfo returnState = perContractState.GetMethod("Return", BindingFlags.Public | BindingFlags.Instance)!;
+            FieldInfo blockChangeField = perContractState.GetField("BlockChange", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            int maxRetainedCount = (int)pool.GetField("MaxPooledLargeDictionaryCount", BindingFlags.NonPublic | BindingFlags.Static)!.GetRawConstantValue()!;
+
+            object repeatedState = rent.Invoke(null, [ctx.Address1, persistentProvider])!;
+            object repeatedBlockChange = blockChangeField.GetValue(repeatedState)!;
+            PrepareLargeBlockChange(repeatedBlockChange);
+            returnState.Invoke(repeatedState, null);
+            Assert.That(GetCapacity(repeatedBlockChange), Is.EqualTo(1_103));
+            Assert.That(largeDictionaryCountField.GetValue(null), Is.EqualTo(1));
+
+            for (int cycle = 0; cycle < 2; cycle++)
+            {
+                object rented = rent.Invoke(null, [ctx.Address1, persistentProvider])!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(rented, Is.SameAs(repeatedState));
+                    Assert.That(largeDictionaryCountField.GetValue(null), Is.Zero);
+                    Assert.That(GetCapacity(blockChangeField.GetValue(rented)!), Is.EqualTo(1_103));
+                }
+
+                object blockChange = blockChangeField.GetValue(rented)!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(((IDictionary)GetDictionary(blockChange)).Count, Is.Zero);
+                    Assert.That(blockChange.GetType().GetProperty("HasClear")!.GetValue(blockChange), Is.False);
+                }
+
+                object[] arguments = [(UInt256)0, false];
+                object value = blockChange.GetType().GetMethod("GetValueRefOrAddDefault")!.Invoke(blockChange, arguments)!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(arguments[1], Is.False);
+                    Assert.That(value.GetType().GetField("Before")!.GetValue(value), Is.EqualTo(UInt256.Zero));
+                    Assert.That(value.GetType().GetField("After")!.GetValue(value), Is.EqualTo(UInt256.Zero));
+                }
+
+                PrepareLargeBlockChange(blockChange);
+                returnState.Invoke(rented, null);
+                Assert.That(largeDictionaryCountField.GetValue(null), Is.EqualTo(1));
+            }
+
+            object largerState = rent.Invoke(null, [ctx.Address1, persistentProvider])!;
+            PrepareLargeBlockChange(blockChangeField.GetValue(largerState)!, 2_333, 1_200);
+            returnState.Invoke(largerState, null);
+            Assert.That(GetCapacity(blockChangeField.GetValue(largerState)!), Is.EqualTo(2_333));
+
+            largerState = rent.Invoke(null, [ctx.Address1, persistentProvider])!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(largerState, Is.SameAs(repeatedState));
+                Assert.That(largeDictionaryCountField.GetValue(null), Is.Zero);
+                Assert.That(GetCapacity(blockChangeField.GetValue(largerState)!), Is.EqualTo(2_333));
+            }
+
+            List<object> states = [largerState];
+            for (int i = 1; i < maxRetainedCount + 1; i++)
+            {
+                states.Add(rent.Invoke(null, [ctx.Address1, persistentProvider])!);
+            }
+
+            foreach (object state in states)
+            {
+                object blockChange = blockChangeField.GetValue(state)!;
+                if (!ReferenceEquals(state, largerState)) PrepareLargeBlockChange(blockChange);
+                else PrepareLargeBlockChange(blockChange, 2_333, 1_200);
+            }
+            for (int i = 0; i < states.Count; i++)
+            {
+                object state = states[i];
+                returnState.Invoke(state, null);
+                Assert.That(largeDictionaryCountField.GetValue(null), Is.EqualTo(Math.Min(i + 1, maxRetainedCount)));
+                Assert.That(GetCapacity(blockChangeField.GetValue(state)!), Is.EqualTo(i == 0 ? 2_333 : i < maxRetainedCount ? 1_103 : 521));
+            }
+
+            for (int i = 0; i < states.Count; i++)
+            {
+                object state = rent.Invoke(null, [ctx.Address1, persistentProvider])!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(state, Is.SameAs(states[i]));
+                    Assert.That(largeDictionaryCountField.GetValue(null), Is.EqualTo(Math.Max(maxRetainedCount - i - 1, 0)));
+                    Assert.That(retainedFlagField.GetValue(state), Is.False);
+                    Assert.That(GetCapacity(blockChangeField.GetValue(state)!), Is.EqualTo(i == 0 ? 2_333 : i < maxRetainedCount ? 1_103 : 521));
+                }
+            }
+
+            foreach (object state in states) returnState.Invoke(state, null);
+            Assert.That(largeDictionaryCountField.GetValue(null), Is.Zero);
+        }
+        finally
+        {
+            dequeueArguments[0] = null;
+            while ((bool)tryDequeue.Invoke(queue, dequeueArguments)!)
+            {
+                if (!poolIsIsolated) savedStates.Add(dequeueArguments[0]!);
+                dequeueArguments[0] = null!;
+            }
+
+            poolCountField.SetValue(null, 0);
+            largeDictionaryCountField.SetValue(null, 0);
+            foreach (object state in savedStates)
+            {
+                enqueue.Invoke(queue, [state]);
+            }
+            poolCountField.SetValue(null, originalPoolCount);
+            largeDictionaryCountField.SetValue(null, originalLargeDictionaryCount);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(poolCountField.GetValue(null), Is.EqualTo(originalPoolCount));
+                Assert.That(largeDictionaryCountField.GetValue(null), Is.EqualTo(originalLargeDictionaryCount));
+            }
         }
     }
 
@@ -326,6 +509,23 @@ public class StorageProviderTests(bool useFlat)
     {
         object dictionary = GetDictionary(collection);
         return (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<,>.Capacity))!.GetValue(dictionary)!;
+    }
+
+    private static void ResetBlockChange(object blockChange, int capacity, bool retainCapacity) =>
+        blockChange.GetType().GetMethod("Reset", [typeof(int), typeof(bool)])!.Invoke(blockChange, [capacity, retainCapacity]);
+
+    private static void AddDefaultEntries(object blockChange, int count)
+    {
+        IDictionary dictionary = (IDictionary)GetDictionary(blockChange);
+        object value = Activator.CreateInstance(dictionary.GetType().GetGenericArguments()[1])!;
+        for (int i = 0; i < count; i++) dictionary.Add((UInt256)i, value);
+    }
+
+    private static void PrepareLargeBlockChange(object blockChange, int capacity = 1_103, int entryCount = 600)
+    {
+        EnsureCapacity(GetDictionary(blockChange), capacity);
+        blockChange.GetType().GetMethod("ClearAndSetMissingAsDefault")!.Invoke(blockChange, null);
+        AddDefaultEntries(blockChange, entryCount);
     }
 
     private static object GetDictionary(object collection)
