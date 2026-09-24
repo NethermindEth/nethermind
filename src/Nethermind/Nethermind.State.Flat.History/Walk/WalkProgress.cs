@@ -19,6 +19,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
     private readonly long _startedAt = Stopwatch.GetTimestamp();
     private readonly int[] _units = new int[items];
     private readonly string?[] _phases = new string?[items];
+    private readonly ulong[] _replayBlocks = new ulong[items];
     private readonly double[] _base = new double[items];
     private readonly double[] _scale = new double[items];
     private readonly Stack<(double Base, double Scale)>[] _frames = new Stack<(double Base, double Scale)>[items];
@@ -88,12 +89,14 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
     public void Replaying(int item, ulong block)
     {
         if (item < HistoryWalkRun.AccountPartitions) _units[item] = (int)((_base[item] + Fraction(block) * Scale(item)) * UnitsPerItem);
+        else Volatile.Write(ref _replayBlocks[item], block);
         _phases[item] = "replay";
     }
 
     public void ScanningKeySpace(int item, uint position, uint span)
     {
         _units[item] = (int)((ulong)position * UnitsPerItem / span);
+        Volatile.Write(ref _replayBlocks[item], 0);
         _phases[item] = "scan";
     }
 
@@ -102,6 +105,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
     public void Completed(int item)
     {
         _units[item] = UnitsPerItem;
+        Volatile.Write(ref _replayBlocks[item], 0);
         _phases[item] = null;
         Interlocked.Increment(ref _completed);
     }
@@ -138,7 +142,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
 
     private double Scale(int item) => _scale[item] == 0 ? 1 : _scale[item];
 
-    private string Report()
+    internal string Report()
     {
         long done = 0;
         StringBuilder inFlight = new();
@@ -149,6 +153,8 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
             if (phase is null) continue;
 
             inFlight.Append(inFlight.Length == 0 ? " | " : ", ").Append(Name(item)).Append(' ').Append(phase).Append(' ').Append((_units[item] / (UnitsPerItem / 100d)).ToString("F1", CultureInfo.InvariantCulture)).Append('%');
+            ulong replayBlock = Volatile.Read(ref _replayBlocks[item]);
+            if (replayBlock != 0) inFlight.Append(CultureInfo.InvariantCulture, $" (block {replayBlock:N0} / {to:N0})");
         }
 
         long total = (long)items * UnitsPerItem;
