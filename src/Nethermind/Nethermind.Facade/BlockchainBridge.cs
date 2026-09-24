@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -572,8 +573,8 @@ namespace Nethermind.Facade
         }
 
         public void UninstallFilter(int filterId) => filterStore.RemoveFilter(filterId);
-        public FilterLog[] GetLogFilterChanges(int filterId) => filterManager.PollLogs(filterId);
-        public Hash256[] GetBlockFilterChanges(int filterId) => filterManager.PollBlockHashes(filterId);
+        public ArrayPoolList<FilterLog> GetLogFilterChanges(int filterId) => filterManager.PollLogs(filterId);
+        public ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId) => filterManager.PollBlockHashes(filterId);
 
         public void RecoverTxSenders(Block block)
         {
@@ -597,7 +598,7 @@ namespace Nethermind.Facade
             }
         }
 
-        public Hash256[] GetPendingTransactionFilterChanges(int filterId) =>
+        public ArrayPoolList<Hash256> GetPendingTransactionFilterChanges(int filterId) =>
             filterManager.PollPendingTransactionHashes(filterId);
 
         public Address? RecoverTxSender(Transaction tx) =>
