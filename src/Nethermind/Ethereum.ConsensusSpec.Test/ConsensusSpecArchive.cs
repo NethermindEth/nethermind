@@ -65,8 +65,14 @@ public static class ConsensusSpecArchive
     public static readonly string[] ForkUpgradeForks = ["gloas"];
 
     /// <summary>
+    /// The post-fork names whose <c>transition</c> vectors (blocks applied across the fork boundary) are
+    /// extracted and enumerated: exactly the forks <c>ForkedStateTransition</c> can cross into.
+    /// </summary>
+    public static readonly string[] TransitionForks = ["gloas"];
+
+    /// <summary>
     /// The suite subtrees this driver knows how to run: ssz_static for every fork this repo models a
-    /// container for, the state-driven suites for <see cref="StateTransitionForks"/>, fork for <see cref="ForkUpgradeForks"/>, and fork_choice
+    /// container for, the state-driven suites for <see cref="StateTransitionForks"/>, fork for <see cref="ForkUpgradeForks"/>, transition for <see cref="TransitionForks"/>, and fork_choice
     /// for fulu only. fork_choice needs its full fixture set (steps.yaml plus the anchor/block/attestation
     /// SSZ files it references), not just manifest.yaml. <see cref="ExtractionTag"/> is derived from this
     /// same table, so widening it invalidates the cached extraction by itself.
@@ -79,6 +85,7 @@ public static class ConsensusSpecArchive
         ("sanity", StateTransitionForks),
         ("fork_choice", ["fulu"]),
         ("fork", ForkUpgradeForks),
+        ("transition", TransitionForks),
     ];
 
     /// <summary>
