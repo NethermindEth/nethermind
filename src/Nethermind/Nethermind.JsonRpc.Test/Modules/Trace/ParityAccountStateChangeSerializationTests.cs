@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ParityAccountStateChange result = new();
             result.Balance = new ParityStateChange<UInt256?>(null, 1);
 
-            TestToJson(result, "{\"balance\":{\"+\":\"0x1\"},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
+            TestToJson(result, "{\"balance\":{\"+\":\"0x1\"},\"code\":{\"+\":\"0x\"},\"nonce\":\"=\",\"storage\":{}}");
         }
 
         [Test]
