@@ -15,4 +15,7 @@ public class BlockExecutedEventArgs(Block block) : EventArgs
 {
     /// <summary>The block as it was suggested, which is what the processing queue answers for.</summary>
     public Block Block { get; } = block;
+
+    /// <summary>Whether a subscriber handed the verdict to a request waiting for it; see <see cref="BlockVerdictEventArgs.Answered"/>.</summary>
+    public bool Answered { get; set; }
 }

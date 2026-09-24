@@ -838,7 +838,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// canonical consensus-client/execution-client version-mismatch signal and -32602 means the CL sent a payload
     /// this node could not bind, both of which are the operator's problem and have to stay visible at default level.
     /// <para>
-    /// Server-side codes (-32603, -32000, timeouts, unsuppressed limits) keep WARN for every caller, and
+    /// Server-side codes (-32603, -32000, timeouts) keep WARN for every caller, and
     /// <see cref="Error.OperatorActionable"/> overrides the code: -32600 also carries "namespace X is disabled for
     /// this URL", which is a statement about this node's configuration.
     /// </para>
