@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -12,16 +13,16 @@ namespace Nethermind.Blockchain.Test;
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
-public class ReorgDepthFinalizedStateProviderTests
+public class ReorgDepthStateHeaderProviderTests
 {
     private IBlockTree _blockTree = null!;
-    private ReorgDepthFinalizedStateProvider _provider = null!;
+    private ReorgDepthStateHeaderProvider _provider = null!;
 
     [SetUp]
     public void Setup()
     {
         _blockTree = Substitute.For<IBlockTree>();
-        _provider = new ReorgDepthFinalizedStateProvider(_blockTree);
+        _provider = new ReorgDepthStateHeaderProvider(_blockTree);
     }
 
     [Test]
@@ -39,7 +40,7 @@ public class ReorgDepthFinalizedStateProviderTests
     }
 
     [Test]
-    public void GetFinalizedStateRootAt_ReturnsNull_WhenBlockNumberExceedsFinalizedBlock()
+    public void GetFinalizedHeader_ReturnsNull_WhenBlockNumberExceedsFinalizedBlock()
     {
         // Arrange
         ulong bestKnownNumber = 100;
@@ -47,7 +48,7 @@ public class ReorgDepthFinalizedStateProviderTests
         _blockTree.BestKnownNumber.Returns(bestKnownNumber);
 
         // Act
-        Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
+        BlockHeader? result = _provider.GetFinalizedHeader(blockNumber);
 
         // Assert
         Assert.That(result, Is.Null);
@@ -55,7 +56,7 @@ public class ReorgDepthFinalizedStateProviderTests
     }
 
     [Test]
-    public void GetFinalizedStateRootAt_ReturnsStateRoot_WhenBlockNumberIsFinalized()
+    public void GetFinalizedHeader_ReturnsHeader_WhenBlockNumberIsFinalized()
     {
         // Arrange
         ulong bestKnownNumber = 1000;
@@ -67,30 +68,53 @@ public class ReorgDepthFinalizedStateProviderTests
         _blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical).Returns(header);
 
         // Act
-        Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
+        BlockHeader? result = _provider.GetFinalizedHeader(blockNumber);
 
         // Assert
-        Assert.That(result, Is.EqualTo(expectedStateRoot));
+        Assert.That(result, Is.SameAs(header));
         _blockTree.Received(1).FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
     }
 
     [Test]
-    public void GetFinalizedStateRootAt_AtBoundary_ReturnsStateRoot()
+    public void GetFinalizedHeader_AtBoundary_ReturnsHeader()
     {
         // Arrange
         ulong bestKnownNumber = 1000;
-        ulong blockNumber = bestKnownNumber - Reorganization.MaxDepth; // Exactly at the boundary
-        Hash256 expectedStateRoot = TestItem.KeccakD;
-        BlockHeader header = Build.A.BlockHeader.WithStateRoot(expectedStateRoot).TestObject;
+        ulong blockNumber = 1000 - Reorganization.MaxDepth;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
         _blockTree.BestKnownNumber.Returns(bestKnownNumber);
         _blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical).Returns(header);
 
         // Act
-        Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
+        BlockHeader? result = _provider.GetFinalizedHeader(blockNumber);
 
         // Assert
-        Assert.That(result, Is.EqualTo(expectedStateRoot));
+        Assert.That(result, Is.SameAs(header));
         _blockTree.Received(1).FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+    }
+
+    [Test]
+    public void FindParentHeader_ReturnsNull_WhenParentHashIsNull()
+    {
+        BlockHeader target = Build.A.BlockHeader.TestObject;
+
+        Assert.That(_provider.FindParentHeader(target), Is.Null);
+        _blockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
+    }
+
+    [Test]
+    public void FindParentHeader_ResolvesByParentHashAndHeight_WithoutTotalDifficultyOrLevelCreation()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(9).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithNumber(10).WithParentHash(parent.Hash!).TestObject;
+        const BlockTreeLookupOptions readOnlyLookup = BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
+        _blockTree.FindHeader(target.ParentHash!, readOnlyLookup, target.Number - 1).Returns(parent);
+
+        BlockHeader? result = _provider.FindParentHeader(target);
+
+        Assert.That(result, Is.SameAs(parent));
+        _blockTree.Received(1).FindHeader(target.ParentHash!, readOnlyLookup, target.Number - 1);
     }
 }
