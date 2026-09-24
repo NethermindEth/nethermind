@@ -374,6 +374,7 @@ public partial class EngineModuleTests
         using CommitGate commit = new(chain.BranchProcessor, block.BlockHash);
         Task<ExecutionPayload> send = SendNewBlockV2(rpc, chain, withdrawals);
         await commit.VerdictGiven.WaitAsync(GateTimeout);
+        Assert.That(chain.BlockTree.WasProcessed(block.BlockNumber, block.BlockHash), Is.False, "precondition: the block is answered but not committed yet");
         Assert.That(await Task.WhenAny(send, Task.Delay(100)), Is.Not.SameAs(send), "the helper waits while the block is committing");
 
         commit.Release();
