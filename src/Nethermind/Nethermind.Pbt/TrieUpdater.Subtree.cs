@@ -14,179 +14,6 @@ internal static partial class TrieUpdater<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
-    /// <summary>A group-local node a fold composed, or a leaf.</summary>
-    /// <remarks>
-    /// Only the root leaf of a single-leaf tree is stored as a node; every other leaf is inlined in its parent branch,
-    /// so a leaf is only ever its key and hash. A branch carries the keys of its leaf children, flagged by
-    /// <see cref="LeafChildren"/> because fixed-length key types have no empty value. A branch reaching past its group
-    /// also carries the compressed prefix below it, so that it stays readable against the cursor that placed it rather
-    /// than against a group path of its own.
-    /// </remarks>
-    internal ref struct Subtree
-    {
-        internal const byte LeftLeaf = 1;
-        internal const byte RightLeaf = 2;
-
-        /// <summary>A leaf's hash, or a branch's left child hash.</summary>
-        internal readonly ValueHash256 HashOrLeft;
-        private readonly ValueHash256 _right;
-        /// <summary>The hash already computed for this node, or default when it must be computed.</summary>
-        internal readonly ValueHash256 KnownHash;
-        internal readonly NodeKind Kind;
-        internal readonly ReadOnlySpan<byte> Encoding;
-        /// <summary>A leaf's key, or a composed branch's left leaf key.</summary>
-        internal readonly TKey LeafKey;
-        private readonly TKey _rightLeafKey;
-        /// <summary>The compressed-prefix bit count of the encoding <see cref="KnownHash"/> is the hash of.</summary>
-        internal readonly ushort KnownHashBitCount;
-        /// <summary>Which children of a composed branch are leaves: <see cref="LeftLeaf"/> and <see cref="RightLeaf"/> bits.</summary>
-        internal readonly byte LeafChildren;
-
-        internal Subtree(TKey key, in ValueHash256 hash)
-        {
-            Kind = NodeKind.Leaf;
-            LeafKey = key;
-            HashOrLeft = hash;
-        }
-
-        /// <param name="prefix">The owned compressed prefix below this branch's anchor, empty when it branches at its anchor.</param>
-        internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
-            ReadOnlySpan<byte> prefix)
-        {
-            Kind = NodeKind.Branch;
-            Encoding = prefix;
-            HashOrLeft = left;
-            _right = right;
-            Path = path;
-            LeafKey = leftLeafKey;
-            _rightLeafKey = rightLeafKey;
-            LeafChildren = leafChildren;
-        }
-
-        /// <param name="knownHash">The hash of this branch's encoding with a <paramref name="knownHashBitCount"/>-bit prefix.</param>
-        internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
-            ReadOnlySpan<byte> prefix, in ValueHash256 knownHash, int knownHashBitCount)
-            : this(path, left, right, leftLeafKey, rightLeafKey, leafChildren, prefix)
-        {
-            KnownHash = knownHash;
-            KnownHashBitCount = (ushort)knownHashBitCount;
-        }
-
-        internal readonly NodeGroupPath Path { get; }
-        internal readonly bool IsEmpty => Kind == NodeKind.Empty;
-        internal readonly bool IsLeaf => Kind == NodeKind.Leaf;
-        internal readonly ValueHash256 LeafHash => HashOrLeft;
-        internal readonly CompressedPrefix Prefix => Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(Encoding);
-        internal readonly ValueHash256 LeftHash => HashOrLeft;
-        internal readonly ValueHash256 RightHash => _right;
-        internal readonly bool HasLeftLeaf => (LeafChildren & LeftLeaf) != 0;
-        internal readonly bool HasRightLeaf => (LeafChildren & RightLeaf) != 0;
-        internal readonly int LeftLeafKeyLength => HasLeftLeaf ? LeafKey.Length : 0;
-        internal readonly int RightLeafKeyLength => HasRightLeaf ? _rightLeafKey.Length : 0;
-
-        /// <summary>Writes the inline leaf keys that follow a branch's preimage.</summary>
-        internal readonly void WriteLeafKeys(Span<byte> trailer)
-        {
-            // Each key is copied in its own statement: the spans borrow defensive copies of the readonly fields, and two
-            // such same-typed temporaries in one call would share a slot.
-            int leftLength = LeftLeafKeyLength;
-            PbtNodeCodec.WriteBranchTrailer(trailer, leftLength, RightLeafKeyLength);
-            if (HasLeftLeaf) LeafKey.Bytes.CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
-            if (HasRightLeaf) _rightLeafKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftLength)..]);
-        }
-    }
-
-    /// <summary>A node paired with its borrowed source-group cursor, distinct from its eventual placement.</summary>
-    /// <remarks>The source prefix and encoding must remain valid until the view is consumed.</remarks>
-    internal ref struct TraversalSubtree
-    {
-        internal Subtree Node;
-        internal readonly PbtTraversalPath GroupPath;
-
-        internal TraversalSubtree(PbtTraversalPath groupPath, Subtree node)
-        {
-            GroupPath = groupPath;
-            Node = node;
-        }
-
-        internal readonly bool IsEmpty => Node.IsEmpty;
-        internal readonly bool IsLeaf => Node.IsLeaf;
-        internal readonly int AnchorDepth => GroupPath.BitDepth + LocalPath.Length;
-        internal readonly int BranchDepth => AnchorDepth + LocalPrefix.BitCount;
-
-        private readonly NodeGroupPath LocalPath => Node.Path;
-        private readonly CompressedPrefix LocalPrefix => Node.Prefix;
-
-        /// <summary>Clears this view once its node has been placed.</summary>
-        internal void Clear() => Node = default;
-
-        /// <summary>The stored length at <paramref name="depth"/>; a leaf is only stored as the tree root.</summary>
-        internal readonly int EncodedLength(int depth) => IsLeaf
-            ? PbtNodeCodec.LeafLength(Node.LeafKey.Length)
-            : PbtNodeCodec.BranchLength(BranchDepth - depth, Node.LeftLeafKeyLength, Node.RightLeafKeyLength);
-
-        internal readonly ValueHash256 Encode(Span<byte> encoding, int depth, TrieUpdaterMetrics? metrics)
-        {
-            ValueHash256 hash = EncodeDeferringHash(encoding, depth, out int preimageLength);
-            if (preimageLength == 0) return hash;
-            metrics?.IncrementNodeHashes();
-            return Blake3Hash.Hash(encoding[..preimageLength]);
-        }
-
-        /// <summary>
-        /// <see cref="Encode"/>, except that a node whose hash is not yet known is left unhashed: the result is
-        /// default and <paramref name="preimageLength"/> the length of its preimage at the start of
-        /// <paramref name="encoding"/>, so the caller can hash it together with another node.
-        /// </summary>
-        internal readonly ValueHash256 EncodeDeferringHash(Span<byte> encoding, int depth, out int preimageLength)
-        {
-            preimageLength = 0;
-            if (IsLeaf)
-            {
-                PbtNodeCodec.EncodeLeaf(encoding, Node.LeafKey);
-                return Node.LeafHash;
-            }
-
-            return EncodeBranch(encoding, depth, BranchDepth - depth, out preimageLength);
-        }
-
-        private readonly ValueHash256 EncodeBranch(Span<byte> encoding, int depth, int bitCount, out int preimageLength)
-        {
-            preimageLength = 0;
-            int branchPreimageLength = WriteBranchPreimage(encoding, depth, bitCount, Node.LeftHash, Node.RightHash);
-            Node.WriteLeafKeys(encoding[branchPreimageLength..]);
-            // An omitted branch rebuilt at its own anchor, or a published group root written into its parent
-            // group, is the node already hashed at this prefix length.
-            if (Node.KnownHash != default && bitCount == Node.KnownHashBitCount) return Node.KnownHash;
-            preimageLength = branchPreimageLength;
-            return default;
-        }
-
-        /// <summary>Writes the preimage of a branch over <paramref name="left"/> and <paramref name="right"/> addressed at <paramref name="depth"/>, returning its length.</summary>
-        private readonly int WriteBranchPreimage(Span<byte> encoding, int depth, int bitCount, in ValueHash256 left, in ValueHash256 right)
-        {
-            // Promotion absorbs the source anchor's skipped bits into the relative compressed prefix.
-            PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, left, right);
-            CopyBranchBits(GroupPath, LocalPath, LocalPrefix, depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
-            return PbtNodeCodec.BranchPreimageLength(bitCount);
-        }
-
-        internal static void CopyBranchBits(scoped in PbtTraversalPath groupPath, NodeGroupPath localPath, CompressedPrefix localPrefix,
-            int start, int count, Span<byte> destination)
-        {
-            int anchorDepth = groupPath.BitDepth + localPath.Length;
-            int end = start + count;
-            int groupEnd = Math.Min(end, groupPath.BitDepth);
-            if (start < groupEnd)
-                PbtBitPrefix.CopyBits(groupPath.Bytes, start, groupEnd - start, destination, 0);
-            for (int bit = Math.Max(start, groupPath.BitDepth); bit < Math.Min(end, anchorDepth); bit++)
-                destination[(bit - start) >> 3] |= (byte)(localPath.GetBit(bit - groupPath.BitDepth) << (7 - ((bit - start) & 7)));
-            int prefixStart = Math.Max(start, anchorDepth);
-            if (prefixStart < end)
-                PbtBitPrefix.CopyBits(localPrefix.Bytes, prefixStart - anchorDepth, end - prefixStart, destination, prefixStart - start);
-        }
-    }
-
     /// <summary>A detached result, read against the cursor of the caller it was materialized for.</summary>
     /// <remarks>
     /// The result owns everything below that cursor, so it survives traversal-buffer reuse and the release of the group
@@ -210,7 +37,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly ValueHash256 KnownHash;
         /// <summary>The compressed-prefix bit count of the encoding <see cref="KnownHash"/> is the hash of.</summary>
         internal readonly ushort KnownHashBitCount;
-        /// <summary>Which children of a branch are leaves: <see cref="Subtree.LeftLeaf"/> and <see cref="Subtree.RightLeaf"/> bits.</summary>
+        /// <summary>Which children of a branch are leaves: <see cref="LeftLeaf"/> and <see cref="RightLeaf"/> bits.</summary>
         internal readonly byte LeafChildren;
         internal readonly NodeGroupPath Path;
         /// <summary>The change in stored size across the groups this result was folded from, still owed to the caller's boundary slot.</summary>
@@ -271,8 +98,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly bool IsEmpty => Kind == NodeKind.Empty;
         internal readonly bool IsLeaf => Kind == NodeKind.Leaf;
         internal readonly ValueHash256 LeafHash => LeftHash;
-        internal readonly bool HasLeftLeaf => (LeafChildren & Subtree.LeftLeaf) != 0;
-        internal readonly bool HasRightLeaf => (LeafChildren & Subtree.RightLeaf) != 0;
+        internal readonly bool HasLeftLeaf => (LeafChildren & LeftLeaf) != 0;
+        internal readonly bool HasRightLeaf => (LeafChildren & RightLeaf) != 0;
+        private readonly int LeftLeafKeyLength => HasLeftLeaf ? LeafKey.Length : 0;
+        private readonly int RightLeafKeyLength => HasRightLeaf ? RightLeafKey.Length : 0;
         [UnscopedRef]
         private readonly CompressedPrefix Prefix => Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(Encoding);
 
@@ -288,19 +117,64 @@ internal static partial class TrieUpdater<TKey, TPath>
             int bitCount = BranchDepth(cursor) - depth;
             if (KnownHash != default && bitCount == KnownHashBitCount) return KnownHash;
             Span<byte> preimage = stackalloc byte[PbtNodeCodec.BranchPreimageLength(bitCount)];
-            PbtNodeCodec.CreateBranchEncoding(preimage, bitCount, LeftHash, RightHash);
-            TraversalSubtree.CopyBranchBits(cursor, Path, Prefix, depth, bitCount, preimage.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
+            WriteBranchPreimage(cursor, depth, bitCount, preimage);
             metrics?.IncrementNodeHashes();
             return Blake3Hash.Hash(preimage);
         }
 
-        [UnscopedRef]
-        internal readonly TraversalSubtree Borrow(PbtTraversalPath cursor) => new(cursor, Kind switch
+        /// <summary>The stored length of this node written at <paramref name="depth"/> when read against <paramref name="cursor"/>; a leaf is only stored as the tree root.</summary>
+        internal readonly int EncodedLength(scoped in PbtTraversalPath cursor, int depth) => IsLeaf
+            ? PbtNodeCodec.LeafLength(LeafKey.Length)
+            : PbtNodeCodec.BranchLength(BranchDepth(cursor) - depth, LeftLeafKeyLength, RightLeafKeyLength);
+
+        /// <summary>Writes this node at <paramref name="depth"/> when read against <paramref name="cursor"/>, returning its hash.</summary>
+        internal readonly ValueHash256 EncodeAt(scoped in PbtTraversalPath cursor, int depth, Span<byte> encoding, TrieUpdaterMetrics? metrics)
         {
-            NodeKind.Leaf => new Subtree(LeafKey, LeftHash),
-            NodeKind.Branch => new Subtree(Path, LeftHash, RightHash, LeafKey, RightLeafKey, LeafChildren, Encoding, KnownHash, KnownHashBitCount),
-            _ => default,
-        });
+            if (IsLeaf)
+            {
+                PbtNodeCodec.EncodeLeaf(encoding, LeafKey);
+                return LeafHash;
+            }
+
+            int bitCount = BranchDepth(cursor) - depth;
+            int preimageLength = WriteBranchPreimage(cursor, depth, bitCount, encoding);
+            Span<byte> trailer = encoding[preimageLength..];
+            int leftLength = LeftLeafKeyLength;
+            PbtNodeCodec.WriteBranchTrailer(trailer, leftLength, RightLeafKeyLength);
+            // Each key is copied in its own statement: the spans borrow defensive copies of the readonly fields, and two
+            // such same-typed temporaries in one call would share a slot.
+            if (HasLeftLeaf) LeafKey.Bytes.CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
+            if (HasRightLeaf) RightLeafKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftLength)..]);
+            // An omitted branch rebuilt at its own anchor, or a published group root written into its parent
+            // group, is the node already hashed at this prefix length.
+            if (KnownHash != default && bitCount == KnownHashBitCount) return KnownHash;
+            metrics?.IncrementNodeHashes();
+            return Blake3Hash.Hash(encoding[..preimageLength]);
+        }
+
+        /// <summary>Writes the preimage of this branch addressed at <paramref name="depth"/>, returning its length.</summary>
+        private readonly int WriteBranchPreimage(scoped in PbtTraversalPath cursor, int depth, int bitCount, Span<byte> encoding)
+        {
+            // Promotion absorbs the source anchor's skipped bits into the relative compressed prefix.
+            PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, LeftHash, RightHash);
+            CopyBranchBits(cursor, Path, Prefix, depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
+            return PbtNodeCodec.BranchPreimageLength(bitCount);
+        }
+
+        private static void CopyBranchBits(scoped in PbtTraversalPath groupPath, NodeGroupPath localPath, CompressedPrefix localPrefix,
+            int start, int count, Span<byte> destination)
+        {
+            int anchorDepth = groupPath.BitDepth + localPath.Length;
+            int end = start + count;
+            int groupEnd = Math.Min(end, groupPath.BitDepth);
+            if (start < groupEnd)
+                PbtBitPrefix.CopyBits(groupPath.Bytes, start, groupEnd - start, destination, 0);
+            for (int bit = Math.Max(start, groupPath.BitDepth); bit < Math.Min(end, anchorDepth); bit++)
+                destination[(bit - start) >> 3] |= (byte)(localPath.GetBit(bit - groupPath.BitDepth) << (7 - ((bit - start) & 7)));
+            int prefixStart = Math.Max(start, anchorDepth);
+            if (prefixStart < end)
+                PbtBitPrefix.CopyBits(localPrefix.Bytes, prefixStart - anchorDepth, end - prefixStart, destination, prefixStart - start);
+        }
 
         internal static FoldResult Move(ref FoldResult source)
         {

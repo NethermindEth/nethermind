@@ -185,8 +185,7 @@ public static partial class TrieUpdater
                         rootWriter.AddDescendantDelta(slot, zoneDelta);
                     }
                     FoldResult rootResult = Compose(ref rootReader, rootWriter, rootPath, 0, metrics, ref rootFrontier, rootResults);
-                    TraversalSubtree result = rootResult.Borrow(rootPath);
-                    ValueHash256 hash = rootWriter.Write(rootPath, PbtFourLevelGroupGeometry.RootPosition, 0, ref result, metrics);
+                    ValueHash256 hash = rootWriter.WriteRoot(rootPath, rootResult, metrics);
                     PublishGroup(storeWriter, ref rootReader, rootWriter, rootPath, hash);
                     return hash;
                 }

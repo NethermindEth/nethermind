@@ -22,6 +22,11 @@ public static partial class TrieUpdater
 
     internal enum NodeKind : byte { Empty, Leaf, Branch }
 
+    /// <summary>The bit flagging a composed branch's left child as a leaf.</summary>
+    internal const byte LeftLeaf = 1;
+    /// <summary>The bit flagging a composed branch's right child as a leaf.</summary>
+    internal const byte RightLeaf = 2;
+
     /// <summary>Where a boundary node's complete key is read from, which is also whether it is a leaf at all.</summary>
     internal enum LeafSource : byte
     {
@@ -179,8 +184,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             using PbtNodeGroupWriter<TPath> writer = new(0, context.MemoryProvider, context.PrefixlessBranchOmission);
             BoundaryNode root = reader.TakeRoot(path);
             FoldResult result = FoldMutations(context, ref reader, writer, root, operations, ref path, 0, 0, plan);
-            TraversalSubtree resolved = result.Borrow(path);
-            ValueHash256 hash = writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, 0, ref resolved, metrics);
+            ValueHash256 hash = writer.WriteRoot(path, result, metrics);
             PublishGroup(storeWriter, ref reader, writer, path, hash);
             return hash;
         }
@@ -239,7 +243,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                     return TwoLeafBranch(new FoldResult(leafKey, current.Hash), CreateLeaf(operation, metrics), divergenceDepth, resultDepth);
             }
         }
-        else if (operations.Length == 1 && current.LeafChildrenMask == (Subtree.LeftLeaf | Subtree.RightLeaf))
+        else if (operations.Length == 1 && current.LeafChildrenMask == (LeftLeaf | RightLeaf))
         {
             // A branch over two inlined leaves is its whole subtree, so a write to either leaf rewrites it in place.
             PbtWriteOperation<TKey> operation = operations[0];
@@ -429,7 +433,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>Whether <paramref name="current"/>'s whole subtree is the node itself, which its owner group stores.</summary>
     /// <remarks>LeafChildrenMask decodes the branch encoding, so the empty and leaf kinds are ruled out first.</remarks>
     private static bool OwnsNoGroup(scoped in BoundaryNode current) =>
-        current.IsEmpty || current.IsLeaf || current.LeafChildrenMask == (Subtree.LeftLeaf | Subtree.RightLeaf);
+        current.IsEmpty || current.IsLeaf || current.LeafChildrenMask == (LeftLeaf | RightLeaf);
 
     /// <summary>The boundary slot of the group at <paramref name="bitDepth"/> that <paramref name="current"/>'s prefix passes through.</summary>
     internal static int BranchSlot(scoped in BoundaryNode current, scoped in PbtTraversalPath path, int bitDepth)
@@ -683,7 +687,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             PbtBitPrefix.CopyBits(key.Bytes, anchorDepth + localLength, prefixBitCount, prefix[sizeof(ushort)..], 0);
         }
         return new FoldResult(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
-            left.LeafHash, right.LeafHash, left.LeafKey, right.LeafKey, Subtree.LeftLeaf | Subtree.RightLeaf, prefix);
+            left.LeafHash, right.LeafHash, left.LeafKey, right.LeafKey, LeftLeaf | RightLeaf, prefix);
     }
 
     /// <summary>Takes the boundary node a fold is about to descend into, which <see cref="SetBoundary"/> then replaces with the fold's result.</summary>
@@ -1066,7 +1070,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             root.LeftHash, root.RightHash,
             root.LeftKey.IsEmpty ? default : TKey.Create(root.LeftKey),
             root.RightKey.IsEmpty ? default : TKey.Create(root.RightKey),
-            (byte)((root.LeftKey.IsEmpty ? 0 : Subtree.LeftLeaf) | (root.RightKey.IsEmpty ? 0 : Subtree.RightLeaf)), ownedPrefix);
+            (byte)((root.LeftKey.IsEmpty ? 0 : LeftLeaf) | (root.RightKey.IsEmpty ? 0 : RightLeaf)), ownedPrefix);
     }
 
     /// <summary>Hashes the sibling preimages still pending, together when both are.</summary>

@@ -118,13 +118,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly bool HasRightLeaf => !Reader.RightKey.IsEmpty;
         internal readonly TKey LeftLeafKey => TKey.Create(Reader.LeftKey);
         internal readonly TKey RightLeafKey => TKey.Create(Reader.RightKey);
-        /// <summary>Which children are leaves: <see cref="Subtree.LeftLeaf"/> and <see cref="Subtree.RightLeaf"/> bits.</summary>
+        /// <summary>Which children are leaves: <see cref="LeftLeaf"/> and <see cref="RightLeaf"/> bits.</summary>
         internal readonly byte LeafChildrenMask
         {
             get
             {
                 PbtNodeReader reader = Reader;
-                return (byte)((reader.LeftKey.IsEmpty ? 0 : Subtree.LeftLeaf) | (reader.RightKey.IsEmpty ? 0 : Subtree.RightLeaf));
+                return (byte)((reader.LeftKey.IsEmpty ? 0 : LeftLeaf) | (reader.RightKey.IsEmpty ? 0 : RightLeaf));
             }
         }
 
