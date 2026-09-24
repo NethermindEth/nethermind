@@ -36,6 +36,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.TxPool;
 using Nethermind.Optimism.Precompiles;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.JsonRpc;
@@ -131,6 +133,8 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddSingleton<OptimismEthModuleFactory>()
                 .Bind<IRpcModuleFactory<IOptimismEthRpcModule>, OptimismEthModuleFactory>()
                 .Bind<IRpcModuleFactory<IEthRpcModule>, OptimismEthModuleFactory>()
+            .AddDecorator<IProofRpcModule>((ctx, inner) =>
+                new OptimismProofRpcModule(inner, ctx.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey)))
 
             .AddSingleton<IOptimismSignalSuperchainV1Handler, ILogManager>(logManager =>
                 new LoggingOptimismSignalSuperchainV1Handler(OptimismConstants.CurrentProtocolVersion, logManager))
