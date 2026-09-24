@@ -287,11 +287,17 @@ public class CodeInfoRepositoryTests
 
         CodeInfo first = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? firstAddress);
         CodeInfo repeated = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? repeatedAddress);
+        bool firstTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? firstTryAddress);
+        bool repeatedTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? repeatedTryAddress);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(repeated, Is.SameAs(first));
             Assert.That(repeatedAddress, Is.SameAs(firstAddress));
+            Assert.That(firstTryHasDelegation, Is.True);
+            Assert.That(repeatedTryHasDelegation, Is.True);
+            Assert.That(firstTryAddress, Is.SameAs(firstAddress));
+            Assert.That(repeatedTryAddress, Is.SameAs(firstAddress));
             Assert.That(firstAddress, Is.EqualTo(firstTarget));
             Assert.That(first.CodeSpan.ToArray(), Is.EqualTo(firstDelegation));
         }
@@ -299,22 +305,35 @@ public class CodeInfoRepositoryTests
         Snapshot snapshot = stateProvider.TakeSnapshot();
         stateProvider.InsertCode(TestItem.AddressA, secondDelegation, _releaseSpec);
         sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? secondAddress);
-        Assert.That(secondAddress, Is.EqualTo(secondTarget));
-        Assert.That(secondAddress, Is.Not.SameAs(firstAddress));
+        bool secondTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? secondTryAddress);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondTryHasDelegation, Is.True);
+            Assert.That(secondTryAddress, Is.SameAs(secondAddress));
+            Assert.That(secondAddress, Is.EqualTo(secondTarget));
+            Assert.That(secondAddress, Is.Not.SameAs(firstAddress));
+        }
 
         stateProvider.InsertCode(TestItem.AddressA, ordinaryCode, _releaseSpec);
         CodeInfo ordinary = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? noAddress);
+        bool ordinaryTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? ordinaryTryAddress);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(ordinaryTryHasDelegation, Is.False);
+            Assert.That(ordinaryTryAddress, Is.Null);
             Assert.That(noAddress, Is.Null);
             Assert.That(ordinary.CodeSpan.ToArray(), Is.EqualTo(ordinaryCode));
         }
 
         stateProvider.Restore(snapshot);
         CodeInfo restored = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? restoredAddress);
+        bool restoredTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? restoredTryAddress);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(restored, Is.SameAs(first));
+            Assert.That(restoredTryHasDelegation, Is.True);
+            Assert.That(restoredTryAddress, Is.SameAs(restoredAddress));
+            Assert.That(restoredTryAddress, Is.SameAs(firstAddress));
             Assert.That(restoredAddress, Is.SameAs(firstAddress));
             Assert.That(restoredAddress, Is.EqualTo(firstTarget));
         }
