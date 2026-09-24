@@ -8,7 +8,7 @@ namespace Nethermind.Db;
 public class FlatDbConfig : IFlatDbConfig
 {
     public bool Enabled { get; set; } = true;
-    public bool EnablePreimageRecording { get; set; } = false;
+    public FlatDbOnRepair OnRepair { get; set; } = FlatDbOnRepair.Resync;
     public bool HistoryEnabled { get; set; } = false;
     public HistoryRetentionMode HistoryRetention { get; set; } = HistoryRetentionMode.None;
     public ulong HistoryRetentionBlocks { get; set; } = 0;
@@ -46,6 +46,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong MinReorgDepth { get; set; } = 128;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
     public int TrieWarmerWorkerCount { get; set; } = -1;
+    public bool EnableCarryForwardCache { get; set; } = true;
     public int WarmReadConcurrency { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;

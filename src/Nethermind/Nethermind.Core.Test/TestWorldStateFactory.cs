@@ -14,44 +14,49 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null) =>
+        CreateForTest(UnavailableStateHeaderProvider.Instance, dbProvider, logManager);
+
+    public static IWorldState CreateForTest(IStateHeaderProvider stateHeaderProvider, IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
         TestRawTrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.GetDb<IDb>(DbNames.State), logManager);
-        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
+        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, stateHeaderProvider, logManager), logManager);
     }
 
-    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null, IStateHeaderProvider? stateHeaderProvider = null)
     {
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
+        stateHeaderProvider ??= UnavailableStateHeaderProvider.Instance;
 
         TestRawTrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.GetDb<IDb>(DbNames.State), logManager);
-        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
+        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, stateHeaderProvider, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
     }
 
-    public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider()
+    public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider(IStateHeaderProvider stateHeaderProvider)
     {
-        IContainer container = BuildFlatContainer();
+        IContainer container = BuildFlatContainer(stateHeaderProvider);
         IWorldStateManager wsm = container.Resolve<IWorldStateManager>();
         return (wsm.GlobalWorldState, container);
     }
 
-    public static (IWorldState worldState, IStateReader reader, IContainer container) CreateFlatForTestWithStateReader(ILogManager? logManager = null)
+    public static (IWorldState worldState, IStateReader reader, IContainer container) CreateFlatForTestWithStateReader(ILogManager? logManager = null, IStateHeaderProvider? stateHeaderProvider = null)
     {
         logManager ??= LimboLogs.Instance;
-        IContainer container = BuildFlatContainer();
+        IContainer container = BuildFlatContainer(stateHeaderProvider ?? UnavailableStateHeaderProvider.Instance);
         IWorldStateManager wsm = container.Resolve<IWorldStateManager>();
         return (new WorldState(wsm.GlobalWorldState, logManager), wsm.GlobalStateReader, container);
     }
 
-    private static IContainer BuildFlatContainer()
+    private static IContainer BuildFlatContainer(IStateHeaderProvider stateHeaderProvider)
     {
         ConfigProvider configProvider = new();
         configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
         return new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton(stateHeaderProvider)
             .Build();
     }
 

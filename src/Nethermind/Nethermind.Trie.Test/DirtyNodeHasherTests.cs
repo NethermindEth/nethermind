@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -87,21 +89,26 @@ public class DirtyNodeHasherTests
         AssertEveryNodeHashMatchesScalarKeccak(tree, 120);
     }
 
-    /// <remarks>Reads a process-wide counter, so it cannot share the run with the parallel cases.</remarks>
+    /// <remarks>Compares this trie's hash and RLP instances, not the process-wide hash counter, which
+    /// tests running at the same time also increment.</remarks>
     [Test]
-    [NonParallelizable]
     public void Second_call_rehashes_nothing_and_leaves_the_root_alone([Values] bool canBeParallel)
     {
         PatriciaTree tree = BuildDirtyTree(40, valueLength: 40, ScatteredKey);
         tree.UpdateRootHash(canBeParallel);
         Hash256 first = tree.RootHash;
-        long hashesAfterFirst = Metrics.TreeNodeHashCalculations;
+        List<(TrieNode Node, Hash256? Keccak, byte[]? Rlp)> afterFirst = SnapshotHashes(tree.RootRef!);
 
         tree.UpdateRootHash(canBeParallel);
 
-        Assert.That(Metrics.TreeNodeHashCalculations, Is.EqualTo(hashesAfterFirst), "a clean trie must not be hashed again");
-        Assert.That(tree.RootHash, Is.EqualTo(first));
-        AssertEveryNodeHashMatchesScalarKeccak(tree, 40);
+        // Hashing or encoding a node again allocates a new digest or buffer, so equal values are not enough.
+        int redone = afterFirst.Count(n => !ReferenceEquals(n.Node.Keccak, n.Keccak) || !ReferenceEquals(n.Node.FullRlp.UnderlyingArray, n.Rlp));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(redone, Is.Zero, "a clean trie must not be encoded or hashed again");
+            Assert.That(tree.RootHash, Is.EqualTo(first));
+            AssertEveryNodeHashMatchesScalarKeccak(tree, 40);
+        }
     }
 
     [Test]
@@ -147,6 +154,23 @@ public class DirtyNodeHasherTests
 
         Assert.That(DirtyNodeHasher.HashBelowRoot(tree.RootRef!, tree.TrieStore, null, canBeParallel: true),
             Is.False, "a root that already carries a hash has nothing below it left to do");
+    }
+
+    private static List<(TrieNode Node, Hash256? Keccak, byte[]? Rlp)> SnapshotHashes(TrieNode root)
+    {
+        List<(TrieNode, Hash256?, byte[]?)> nodes = [];
+        Collect(root);
+        return nodes;
+
+        void Collect(TrieNode node)
+        {
+            nodes.Add((node, node.Keccak, node.FullRlp.UnderlyingArray));
+            int childCount = ChildCount(node);
+            for (int i = 0; i < childCount; i++)
+            {
+                if (node.TryGetDirtyChild(i, out TrieNode? child)) Collect(child);
+            }
+        }
     }
 
     private static int CountHashedBelow(TrieNode node)

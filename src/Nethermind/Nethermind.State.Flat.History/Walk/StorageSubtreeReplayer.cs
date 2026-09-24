@@ -197,7 +197,7 @@ internal sealed class StorageSubtreeReplayer(
             bool published = slotPrefix.Length > 0 && publisher is not null;
             if (published) PublishView(block, emitter);
 
-            _changes.CollectAll(Tree!.RootRef, emitter.StorageRecordDepth, _store!);
+            _changes.CollectAll(Tree!.RootRef, emitter.StorageSnapshotDepth, _store!);
             _changes.RecordStorage(emitter, Identity, published ? slotPrefix.Length + 1 : slotPrefix.Length);
         }
 

@@ -185,9 +185,6 @@ public interface IDbConfig : IConfig
     /// <summary>Options appended after <see cref="FlatHistoryStorageClearsDbRocksDbOptions"/> for the StorageClears column. Unset by default.</summary>
     string? FlatHistoryStorageClearsDbAdditionalRocksDbOptions { get; set; }
 
-    string? PreimageDbRocksDbOptions { get; set; }
-    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
-
     string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; }
     string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
 }

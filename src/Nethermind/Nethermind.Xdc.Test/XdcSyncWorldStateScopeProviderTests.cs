@@ -74,7 +74,7 @@ internal class XdcSyncWorldStateScopeProviderTests
     }
 
     [Test]
-    public void BeginScope_RejectsMissingSyncRoot()
+    public void TryBeginScope_RefusesMissingSyncRoot()
     {
         (XdcSyncWorldStateScopeProvider provider, IPersistence.IPersistenceReader reader, BlockHeader header, _, MemDb codeDb) =
             CreateProvider();
@@ -83,13 +83,14 @@ internal class XdcSyncWorldStateScopeProviderTests
         using (provider)
         using (codeDb)
         {
-            Assert.That(() => provider.BeginScope(header, new LocalMetrics()), Throws.TypeOf<MissingTrieNodeException>());
+            Assert.That(provider.TryBeginScope(header, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
+            Assert.That(scope, Is.Null);
         }
         reader.Received(1).Dispose();
     }
 
     [Test]
-    public void BeginScope_RejectsIncorrectSyncRootContents()
+    public void TryBeginScope_RefusesIncorrectSyncRootContents()
     {
         (XdcSyncWorldStateScopeProvider provider, IPersistence.IPersistenceReader reader, BlockHeader header, _, MemDb codeDb) =
             CreateProvider();
@@ -98,7 +99,8 @@ internal class XdcSyncWorldStateScopeProviderTests
         using (provider)
         using (codeDb)
         {
-            Assert.That(() => provider.BeginScope(header, new LocalMetrics()), Throws.TypeOf<MissingTrieNodeException>());
+            Assert.That(provider.TryBeginScope(header, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
+            Assert.That(scope, Is.Null);
         }
         reader.Received(1).Dispose();
     }
@@ -131,9 +133,10 @@ internal class XdcSyncWorldStateScopeProviderTests
 
         IWorldStateScopeProvider normalProvider = Substitute.For<IWorldStateScopeProvider>();
         normalProvider.HasRoot(Arg.Any<BlockHeader?>()).Returns(false);
+        normalProvider.TryBeginScope(Arg.Any<BlockHeader?>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope?>()).Returns(false);
 
         MemDb codeDb = new();
-        XdcSyncWorldStateScopeProvider provider = new(normalProvider, persistence, codeDb, LimboLogs.Instance);
+        XdcSyncWorldStateScopeProvider provider = new(normalProvider, persistence, codeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
         BlockHeader header = new BlockHeaderBuilder().WithStateRoot(stateTree.RootHash).TestObject;
         return (provider, reader, header, address, codeDb);
     }

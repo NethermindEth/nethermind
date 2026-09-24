@@ -4,7 +4,6 @@
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -16,7 +15,6 @@ using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
@@ -43,8 +41,6 @@ public class WorldStateModule(IInitConfig initConfig) : Module
 
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
-
-            .AddSingleton<IFinalizedStateProvider, ReorgDepthFinalizedStateProvider>()
 
             // Register the backend-independent verify-trie admin RPC.
             .RegisterSingletonJsonRpcModule<IVerifyTrieAdminRpcModule, VerifyTrieAdminRpcModule>()

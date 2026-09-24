@@ -9,6 +9,10 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -17,10 +21,13 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
+using Nethermind.State.Flat;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Test
@@ -63,6 +70,105 @@ namespace Nethermind.Db.Test
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL)!;
             Assert.That(options.GetLowPriority(), Is.False);
             Assert.That(options.GetDisableWal(), Is.True);
+        }
+
+        [TestCase(null, "async_wal_precreate=true", TestName = "AsyncWalPrecreate_DefaultsToTrue")]
+        [TestCase("async_wal_precreate=false;", "async_wal_precreate=false", TestName = "AsyncWalPrecreate_CanBeDisabled")]
+        [TestCase("recycle_log_file_num=2;", "async_wal_precreate=false", TestName = "AsyncWalPrecreate_IsDisabledWhenWalRecyclingIsEnabled")]
+        public void AsyncWalPrecreate_IsPersistedAndReopened(string? additionalOptions, string expectedAsyncWalOption)
+        {
+            byte[] flushedKey = [1, 2, 3];
+            byte[] flushedValue = [4, 5, 6];
+            byte[] walKey = [7, 8, 9];
+            byte[] walValue = [10, 11, 12];
+            DbConfig config = new();
+            config.AdditionalRocksDbOptions = additionalOptions;
+            config.FlushOnExit = FlushOnExitMode.WalOnly;
+            long sstBytesAfterFlush = 0;
+            int sstFileCountAfterFlush = 0;
+
+            using (IContainer container = CreateRocksDbContainer(config))
+            {
+                using IDb db = container.Resolve<IDbFactory>().CreateDb(GetRocksDbSettings(DbPath, "Blocks"));
+                db.Set(flushedKey, flushedValue);
+
+                // Flush the first record to SST and rotate its WAL before adding the recovery-only record.
+                db.Flush();
+                sstBytesAfterFlush = SstBytes(DbPath);
+                sstFileCountAfterFlush = SstFileCount(DbPath);
+                Assert.That(sstBytesAfterFlush, Is.GreaterThan(0), "the first record must be materialized in SST");
+
+                db.Set(walKey, walValue);
+                db.SyncWal();
+
+                Assert.That(SstBytes(DbPath), Is.EqualTo(sstBytesAfterFlush),
+                    "syncing the WAL must not flush the newer record to SST");
+                Assert.That(SstFileCount(DbPath), Is.EqualTo(sstFileCountAfterFlush),
+                    "the newer record must remain WAL-backed before shutdown");
+
+                string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
+                string decoyOption = expectedAsyncWalOption == "async_wal_precreate=true"
+                    ? "async_wal_precreate=false"
+                    : "async_wal_precreate=true";
+                // A temporary OPTIONS file must not be selected; make its payload contradict the expected value.
+                File.WriteAllText(Path.Combine(fullPath, "OPTIONS-999999.dbtmp"), decoyOption);
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain(expectedAsyncWalOption));
+            }
+
+            long sstBytesBeforeReopen = SstBytes(DbPath);
+            Assert.That(sstBytesBeforeReopen, Is.EqualTo(sstBytesAfterFlush),
+                "WalOnly shutdown must not flush the newer record to SST");
+            Assert.That(SstFileCount(DbPath), Is.EqualTo(sstFileCountAfterFlush),
+                "WalOnly shutdown must leave the newer record WAL-backed");
+
+            using IContainer reopenedContainer = CreateRocksDbContainer(config);
+            using IDb reopened = reopenedContainer.Resolve<IDbFactory>().CreateDb(GetRocksDbSettings(DbPath, "Blocks"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(reopened, flushedKey), Is.EqualTo(flushedValue));
+                Assert.That(GetValue(reopened, walKey), Is.EqualTo(walValue),
+                    "the synced record must be recovered from the WAL after reopen");
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain(expectedAsyncWalOption));
+            }
+        }
+
+        [Test]
+        public void AvoidUnnecessaryBlockingIo_IsPersistedAndCanBeOverridden()
+        {
+            byte[] key = [1, 2, 3];
+            byte[] value = [4, 5, 6];
+            DbConfig config = new();
+            InitConfig initConfig = new() { BaseDbPath = DbPath };
+            ReceiptConfig receiptConfig = new();
+            SyncConfig syncConfig = new();
+
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new DbModule(initConfig, receiptConfig, syncConfig))
+                .AddSingleton<IDbConfig>(config)
+                .AddSingleton<IInitConfig>(initConfig)
+                .AddSingleton<IReceiptConfig>(receiptConfig)
+                .AddSingleton<ISyncConfig>(syncConfig)
+                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .Build();
+
+            IDbFactory dbFactory = container.Resolve<IDbFactory>();
+            using (IDb db = dbFactory.CreateDb(new DbSettings("Blocks", DbPath)))
+            {
+                db.Set(key, value);
+                db.Flush();
+
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain("avoid_unnecessary_blocking_io=true"));
+            }
+
+            config.AdditionalRocksDbOptions = "avoid_unnecessary_blocking_io=false;";
+            using IDb reopened = dbFactory.CreateDb(new DbSettings("Blocks", DbPath));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(reopened, key), Is.EqualTo(value));
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain("avoid_unnecessary_blocking_io=false"));
+            }
         }
 
         [Test]
@@ -157,6 +263,146 @@ namespace Nethermind.Db.Test
             {
                 Assert.That(act, Throws.InstanceOf<RocksDbException>());
             }
+        }
+
+        [Test]
+        public void FlatAccountColumn_UsesAutoIndexAndRoundTripsAfterReopen(
+            [Values(FlatLayout.Flat, FlatLayout.FlatInTrie)] FlatLayout layout,
+            [Values] bool writeLegacyBinarySst)
+        {
+            DbConfig config = new();
+            FlatDbConfig flatConfig = new() { Layout = layout, BlockCacheSizeBudget = 64UL.MiB };
+            using IContainer configContainer = CreateRocksDbContainer(config, flatConfig);
+            IRocksDbConfigFactory configFactory = configContainer.Resolve<IRocksDbConfigFactory>();
+            IDictionary<string, string> resolvedOptions = DbOnTheRocks.ExtractOptions(
+                configFactory.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account)).RocksDbOptions);
+
+            using (Assert.EnterMultipleScope())
+            {
+                string expectedIndexType = layout == FlatLayout.Flat ? "kBinarySearch" : "kTwoLevelIndexSearch";
+                Assert.That(resolvedOptions["block_based_table_factory.index_type"], Is.EqualTo(expectedIndexType));
+                Assert.That(resolvedOptions["block_based_table_factory.index_block_search_type"], Is.EqualTo("kAuto"));
+                Assert.That(resolvedOptions["block_based_table_factory.uniform_cv_threshold"], Is.EqualTo("0.2"));
+            }
+
+            byte[][] keys = CreateAccountKeys();
+            byte[][] values = new byte[keys.Length][];
+
+            DbConfig writerConfig = config;
+            if (writeLegacyBinarySst)
+            {
+                writerConfig = new DbConfig
+                {
+                    FlatAccountDbAdditionalRocksDbOptions =
+                        "block_based_table_factory.index_block_search_type=kBinary;" +
+                        "block_based_table_factory.uniform_cv_threshold=-1;"
+                };
+            }
+
+            using (IContainer writerContainer = CreateRocksDbContainer(writerConfig, flatConfig))
+            {
+                IDbFactory dbFactory = writerContainer.Resolve<IDbFactory>();
+                using IColumnsDb<FlatDbColumns> db = dbFactory.CreateColumnsDb<FlatDbColumns>(new(nameof(DbNames.Flat), DbNames.Flat));
+                IDb account = db.GetColumnDb(FlatDbColumns.Account);
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    values[i] = CreateAccountValue(i);
+                    account.PutSpan(keys[i], values[i], WriteFlags.None);
+                }
+
+                db.Flush();
+            }
+
+            using IContainer reopenedContainer = CreateRocksDbContainer(config, flatConfig);
+            using IColumnsDb<FlatDbColumns> reopened = reopenedContainer.Resolve<IDbFactory>()
+                .CreateColumnsDb<FlatDbColumns>(new(nameof(DbNames.Flat), DbNames.Flat));
+            IDb reopenedAccount = reopened.GetColumnDb(FlatDbColumns.Account);
+            for (int i = 0; i < keys.Length; i++)
+            {
+                Assert.That(reopenedAccount.Get(keys[i]), Is.EqualTo(values[i]), $"account key {i}");
+            }
+
+            Assert.That(reopenedAccount.Get(CreateMissingAccountKey()), Is.Null);
+
+            int index = 0;
+            using ISortedView view = ((ISortedKeyValueStore)reopenedAccount).GetViewBetween(keys[100], keys[110]);
+            while (view.MoveNext())
+            {
+                Assert.That(index, Is.LessThan(10), "bounded scan returned more rows than requested");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(keys[100 + index]));
+                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo(values[100 + index]));
+                }
+
+                index++;
+            }
+
+            Assert.That(index, Is.EqualTo(10));
+
+            long uniformBlocks = GetUniformBlockCount(reopened);
+            Assert.That(uniformBlocks, writeLegacyBinarySst ? Is.EqualTo(0) : Is.GreaterThan(0));
+        }
+
+        private static byte[][] CreateAccountKeys()
+        {
+            byte[][] keys = new byte[4096][];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                keys[i] = ValueKeccak.Compute(i.ToBigEndianByteArray()).Bytes[..20].ToArray();
+            }
+
+            Array.Sort(keys, Bytes.Comparer);
+            return keys;
+        }
+
+        private static byte[] CreateAccountValue(int index)
+        {
+            byte[] value = new byte[128];
+            for (int i = 0; i < value.Length; i++)
+            {
+                value[i] = (byte)(index + i);
+            }
+
+            return value;
+        }
+
+        private static byte[] CreateMissingAccountKey() => ValueKeccak.Compute("missing-flat-account").Bytes[..20].ToArray();
+
+        private IContainer CreateRocksDbContainer(DbConfig config, FlatDbConfig? flatConfig = null)
+        {
+            InitConfig initConfig = new() { BaseDbPath = DbPath };
+            flatConfig ??= new FlatDbConfig();
+            return new ContainerBuilder()
+                .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
+                .AddModule(new FlatWorldStateModule(flatConfig))
+                .AddSingleton<IDbConfig>(config)
+                .AddSingleton<IFlatDbConfig>(flatConfig)
+                .AddSingleton<IInitConfig>(initConfig)
+                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .Add<IDisposableStack, AutofacDisposableStack>()
+                .Build();
+        }
+
+        private static long GetUniformBlockCount(IColumnsDb<FlatDbColumns> db)
+        {
+            ColumnDb account = (ColumnDb)db.GetColumnDb(FlatDbColumns.Account);
+            string? properties = account._mainDb._db.GetProperty("rocksdb.aggregated-table-properties", account._columnFamily);
+            Assert.That(properties, Is.Not.Null);
+
+            const string propertyName = "# uniform blocks=";
+            int start = properties!.IndexOf(propertyName, StringComparison.Ordinal);
+            Assert.That(start, Is.GreaterThanOrEqualTo(0), properties);
+            start += propertyName.Length;
+
+            int end = start;
+            while (end < properties.Length && char.IsAsciiDigit(properties[end])) end++;
+
+            Assert.That(end, Is.GreaterThan(start), properties);
+            Assert.That(long.TryParse(properties.AsSpan(start, end - start), out long value), Is.True, properties);
+            return value;
         }
 
         [Test]
@@ -369,8 +615,9 @@ namespace Nethermind.Db.Test
             Assert.That(didShutDown, Is.True);
         }
 
-        [Test]
-        public void If_marker_exists_on_open_then_repair_before_open()
+        [TestCase(false, TestName = "Repair_does_not_write_repaired_marker_unless_it_persists_until_acknowledge")]
+        [TestCase(true, TestName = "Repair_writes_repaired_marker_when_it_persists_until_acknowledge")]
+        public void Repair_writes_repaired_marker_only_when_it_persists_until_acknowledge(bool persistUntilAcknowledged)
         {
             IDbConfig config = new DbConfig();
 
@@ -378,24 +625,112 @@ namespace Nethermind.Db.Test
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
             fileSystem.File.Returns(file);
 
-            string markerFile = Path.Join(Path.GetTempPath(), "test", "test", "corrupt.marker");
+            string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
+            string markerFile = Path.Join(fullPath, "corrupt.marker");
+            string repairedMarker = Path.Join(fullPath, "repaired.marker");
             file.Exists(markerFile).Returns(true);
 
+            DbSettings settings = GetRocksDbSettings(DbPath, "test");
+            settings.PersistRepairMarkerUntilAcknowledged = persistUntilAcknowledged;
+
             bool didRepair = false;
+            using RepairTrackingDbOnTheRocks db = new(DbPath, settings, config, _rocksdbConfigFactory,
+                LimboLogs.Instance,
+                fileSystem: fileSystem,
+                onRepair: () => didRepair = true);
 
-            try
+            using (Assert.EnterMultipleScope())
             {
-                _ = new RepairTrackingDbOnTheRocks(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
-                    LimboLogs.Instance,
-                    fileSystem: fileSystem,
-                    onRepair: () => didRepair = true);
+                Assert.That(didRepair, Is.True);
+                Assert.That(db.WasRepairedOnOpen, Is.True);
+                file.Received().Delete(markerFile);
+                // repaired.marker must be durable before corrupt.marker goes, or a crash in between forgets the repair.
+                if (persistUntilAcknowledged)
+                    Received.InOrder(() =>
+                    {
+                        file.WriteAllText(repairedMarker, Arg.Any<string>());
+                        file.Delete(markerFile);
+                    });
+                else
+                    file.DidNotReceive().WriteAllText(Arg.Is<string>(static path => path.Contains("repaired.marker")), Arg.Any<string>());
             }
-            catch (Exception)
+        }
+
+        [Test]
+        public void If_no_corrupt_marker_on_open_then_repaired_marker_is_not_written()
+        {
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            DbSettings settings = GetRocksDbSettings(DbPath, "test");
+            settings.PersistRepairMarkerUntilAcknowledged = true;
+
+            bool didRepair = false;
+            using RepairTrackingDbOnTheRocks db = new(DbPath, settings, new DbConfig(), _rocksdbConfigFactory,
+                LimboLogs.Instance, fileSystem, () => didRepair = true);
+
+            using (Assert.EnterMultipleScope())
             {
+                Assert.That(didRepair, Is.False);
+                Assert.That(db.WasRepairedOnOpen, Is.False);
+                file.DidNotReceive().WriteAllText(Arg.Is<string>(static path => path.Contains("repaired.marker")), Arg.Any<string>());
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Repaired_marker_survives_reopen_only_until_acknowledge(bool persistUntilAcknowledged)
+        {
+            IDbConfig config = new DbConfig();
+            string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
+            Directory.CreateDirectory(fullPath);
+            string corruptMarker = Path.Join(fullPath, "corrupt.marker");
+            string repairedMarker = Path.Join(fullPath, "repaired.marker");
+            File.WriteAllText(corruptMarker, "marker");
+
+            DbSettings settings = GetRocksDbSettings(DbPath, "test");
+            settings.PersistRepairMarkerUntilAcknowledged = persistUntilAcknowledged;
+            IFileSystem fileSystem = new RealFileSystem();
+
+            bool didRepair = false;
+            using (RepairTrackingDbOnTheRocks db = new(DbPath, settings, config, _rocksdbConfigFactory,
+                       LimboLogs.Instance, fileSystem, () => didRepair = true))
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(didRepair, Is.True);
+                    Assert.That(db.WasRepairedOnOpen, Is.True);
+                    Assert.That(File.Exists(corruptMarker), Is.False);
+                    Assert.That(File.Exists(repairedMarker), Is.EqualTo(persistUntilAcknowledged));
+                }
             }
 
-            Assert.That(didRepair, Is.True);
-            file.Received().Delete(markerFile);
+            didRepair = false;
+            using (RepairTrackingDbOnTheRocks reopened = new(DbPath, settings, config, _rocksdbConfigFactory,
+                       LimboLogs.Instance, fileSystem, () => didRepair = true))
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(didRepair, Is.False);
+                    Assert.That(reopened.WasRepairedOnOpen, Is.EqualTo(persistUntilAcknowledged));
+                    Assert.That(File.Exists(repairedMarker), Is.EqualTo(persistUntilAcknowledged));
+                }
+
+                if (!persistUntilAcknowledged)
+                    return;
+
+                ((IDbMeta)reopened).AcknowledgeRepair();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(reopened.WasRepairedOnOpen, Is.False);
+                    Assert.That(File.Exists(repairedMarker), Is.False);
+                }
+            }
+
+            using RepairTrackingDbOnTheRocks afterAcknowledge = new(DbPath, settings, config, _rocksdbConfigFactory,
+                LimboLogs.Instance, fileSystem, static () => { });
+            Assert.That(afterAcknowledge.WasRepairedOnOpen, Is.False);
         }
 
         [Test]
@@ -627,6 +962,10 @@ namespace Nethermind.Db.Test
                 "the exclusive bound is not in the range, so neither the tombstone nor the unlink may take it");
         }
 
+        private static int SstFileCount(string dbPath) => Directory
+            .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
+            .Count();
+
         private static long SstBytes(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
             .Sum(file => new FileInfo(file).Length);
@@ -674,11 +1013,52 @@ namespace Nethermind.Db.Test
             }
         }
 
-        private static byte[]? GetValue(DbOnTheRocks db, ReadOnlySpan<byte> key) => ((IReadOnlyKeyValueStore)db).Get(key);
+        private IContainer CreateRocksDbContainer(DbConfig config)
+        {
+            InitConfig initConfig = new() { BaseDbPath = DbPath };
+            return new ContainerBuilder()
+                .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
+                .AddSingleton<IDbConfig>(config)
+                .AddSingleton<IInitConfig>(initConfig)
+                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .Build();
+        }
+
+        private static byte[]? GetValue(IReadOnlyKeyValueStore db, ReadOnlySpan<byte> key) => db.Get(key);
 
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
+
+        private static string ReadOptionsFile(string dbPath)
+        {
+            string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, dbPath);
+            string? latestOptionsPath = null;
+            ulong latestOptionsNumber = 0;
+            // RocksDB writes a new OPTIONS file on every open, and deferred purge can retain older files.
+            foreach (string optionsPath in Directory.EnumerateFiles(fullPath, "OPTIONS-*"))
+            {
+                string fileName = Path.GetFileName(optionsPath);
+                if (!fileName.StartsWith("OPTIONS-", StringComparison.Ordinal) ||
+                    !ulong.TryParse(fileName.AsSpan("OPTIONS-".Length), out ulong optionsNumber))
+                {
+                    continue;
+                }
+
+                if (latestOptionsPath is null || optionsNumber > latestOptionsNumber)
+                {
+                    latestOptionsPath = optionsPath;
+                    latestOptionsNumber = optionsNumber;
+                }
+            }
+
+            if (latestOptionsPath is null)
+                throw new AssertionException($"No persisted RocksDB options file found in '{fullPath}'.");
+
+            return File.ReadAllText(latestOptionsPath).Replace(" ", string.Empty, StringComparison.Ordinal);
+        }
 
         [Test]
         public void GetViewBetween_on_a_prefix_extractor_database_honours_a_bound_that_crosses_prefixes()

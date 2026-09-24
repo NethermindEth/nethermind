@@ -130,7 +130,6 @@ public class FlatDbTests
                 "--FlatDb.BlockCacheSizeBudget", "1048576",
                 "--FlatDb.CompactSize", "2",
                 "--FlatDb.CompactionOffset", "0",
-                "--FlatDb.EnablePreimageRecording", "true",
                 "--FlatDb.InlineCompaction", "true",
                 "--FlatDb.MaxInFlightCompactJob", "1",
                 "--FlatDb.MaxReorgDepth", "16",
@@ -148,7 +147,6 @@ public class FlatDbTests
                     Assert.That(startupLogs, Does.Contain("FlatDb.BlockCacheSizeBudget = \"0x100000\""));
                     Assert.That(startupLogs, Does.Contain("FlatDb.CompactSize = \"0x2\""));
                     Assert.That(startupLogs, Does.Contain("FlatDb.CompactionOffset = \"0x0\""));
-                    Assert.That(startupLogs, Does.Contain("FlatDb.EnablePreimageRecording = true"));
                     Assert.That(startupLogs, Does.Contain("FlatDb.InlineCompaction = true"));
                     Assert.That(startupLogs, Does.Contain("FlatDb.MaxInFlightCompactJob = 1"));
                     Assert.That(startupLogs, Does.Contain("FlatDb.MaxReorgDepth = \"0x10\""));

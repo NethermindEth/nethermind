@@ -293,8 +293,10 @@ public class StatelessInputGeneratorTests
                 AddRequestsCode(Eip8282Constants.BuilderExitRequestPredeployAddress, new byte[ExecutionRequestExtensions.BuilderExitRequestsBytesSize]);
             }
             state.Commit(spec);
-            state.CommitTree(0);
-            parent = Build.A.BlockHeader.WithNumber(currentChainActivation ? 30_000_000 : 0)
+            // FlatDB keys committed state by block number, so the parent header must carry the committed number.
+            ulong parentNumber = currentChainActivation ? 30_000_000UL : 0UL;
+            state.CommitTree(parentNumber);
+            parent = Build.A.BlockHeader.WithNumber(parentNumber)
                 .WithTimestamp(currentChainActivation ? MainnetSpecProvider.OsakaBlockTimestamp : 1_000_000UL).WithStateRoot(state.StateRoot).TestObject;
         }
 

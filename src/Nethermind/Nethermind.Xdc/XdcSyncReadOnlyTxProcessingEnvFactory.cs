@@ -22,12 +22,13 @@ internal sealed class XdcSyncReadOnlyTxProcessingEnvFactory(
     IWorldStateManager worldStateManager,
     IPersistence persistence,
     [KeyFilter(DbNames.Code)] IDb codeDb,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager) : IReadOnlyTxProcessingEnvFactory
 {
     public IReadOnlyTxProcessorSource Create()
     {
         IWorldStateScopeProvider normalProvider = worldStateManager.CreateResettableWorldState();
-        XdcSyncWorldStateScopeProvider worldState = new(normalProvider, persistence, codeDb, logManager);
+        XdcSyncWorldStateScopeProvider worldState = new(normalProvider, persistence, codeDb, stateHeaderProvider, logManager);
 
         ILifetimeScope? childScope = null;
         try

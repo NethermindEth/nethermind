@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -23,6 +24,7 @@ internal sealed class XdcSyncWorldStateScopeProvider(
     IWorldStateScopeProvider normalProvider,
     IPersistence persistence,
     IDb codeDb,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager) : IWorldStateScopeProvider, IDisposable
 {
     private int _disposed;
@@ -31,45 +33,61 @@ internal sealed class XdcSyncWorldStateScopeProvider(
         normalProvider.HasRoot(baseBlock) ||
         baseBlock?.StateRoot is { } stateRoot && HasSyncRoot(stateRoot);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => this.HasRootForTarget(stateHeaderProvider, targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        this.TryBeginScopeAtBase(stateHeaderProvider, targetBlock, metrics, out scope);
+
+    // The normal provider is probed once, by opening it: a separate HasRoot call could not lend its answer to a later scope.
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        if (normalProvider.HasRoot(baseBlock))
-            return normalProvider.BeginScope(baseBlock, metrics);
+        if (normalProvider.TryBeginScope(baseBlock, metrics, out scope))
+            return true;
 
         if (baseBlock?.StateRoot is not { } stateRoot)
-            throw new InvalidOperationException("An XDC sync scope requires a state root.");
+        {
+            scope = null;
+            return false;
+        }
 
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         ReadOnlyDb? readOnlyCodeDb = null;
         try
         {
+            // Path-keyed sync nodes are hash-checked here, so a root the completed sync does not hold is refused.
             XdcSyncNodeStorage nodeStorage = new(reader);
-            if (!nodeStorage.HasRoot(stateRoot))
+            if (nodeStorage.HasRoot(stateRoot))
             {
-                throw new MissingTrieNodeException(
-                    $"The completed XDC sync state does not contain root {stateRoot}.",
-                    null,
-                    TreePath.Empty,
-                    stateRoot);
+                RawTrieStore trieStore = new(nodeStorage);
+                readOnlyCodeDb = new(codeDb, createInMemWriteStore: false);
+                TrieStoreScopeProvider scopeProvider = new(trieStore, readOnlyCodeDb, stateHeaderProvider, logManager, codeDbIsPersistent: false);
+                if (scopeProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? inner))
+                {
+                    scope = new OwnedSyncScope(inner, reader, readOnlyCodeDb);
+                    return true;
+                }
             }
-
-            RawTrieStore trieStore = new(nodeStorage);
-            readOnlyCodeDb = new(codeDb, createInMemWriteStore: false);
-            TrieStoreScopeProvider scopeProvider = new(trieStore, readOnlyCodeDb, logManager, codeDbIsPersistent: false);
-            IWorldStateScopeProvider.IScope scope = scopeProvider.BeginScope(baseBlock, metrics);
-            return new OwnedSyncScope(scope, reader, readOnlyCodeDb!);
         }
         catch
         {
-            try
-            {
-                readOnlyCodeDb?.Dispose();
-            }
-            finally
-            {
-                reader.Dispose();
-            }
+            DisposeSyncReader(reader, readOnlyCodeDb);
             throw;
+        }
+
+        DisposeSyncReader(reader, readOnlyCodeDb);
+        scope = null;
+        return false;
+    }
+
+    private static void DisposeSyncReader(IPersistence.IPersistenceReader reader, ReadOnlyDb? readOnlyCodeDb)
+    {
+        try
+        {
+            readOnlyCodeDb?.Dispose();
+        }
+        finally
+        {
+            reader.Dispose();
         }
     }
 

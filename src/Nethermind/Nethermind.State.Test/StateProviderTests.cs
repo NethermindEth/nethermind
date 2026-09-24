@@ -41,12 +41,12 @@ public class StateProviderTests(bool useFlat)
         public IWorldState WorldState { get; }
         private readonly IContainer? _container;
 
-        public Context(bool useFlat, ILogManager? logManager = null)
+        public Context(bool useFlat, IStateHeaderProvider stateHeaderProvider, ILogManager? logManager = null)
         {
             logManager ??= Logger;
             if (useFlat)
             {
-                (IWorldStateScopeProvider scopeProvider, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider();
+                (IWorldStateScopeProvider scopeProvider, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider(stateHeaderProvider);
                 _container = container;
                 WorldState = new WorldState(scopeProvider, logManager);
             }
@@ -62,7 +62,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void ApplyAccountOverlay_AfterBlockStartCommit_PreservesUnchangedFields()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState state = ctx.WorldState;
         using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
         state.CreateAccount(_address1, 7, 3);
@@ -80,7 +80,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void ApplyAccountOverlay_WhenMissingAccountWasCached_UsesCreatedAccount()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState state = ctx.WorldState;
         using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
         state.WarmUp(_address1);
@@ -95,7 +95,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void ApplyAccountOverlay_WhenBlockStartStorageOverlaps_RefusesWithoutChangingAccounts([Values] bool write)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState state = ctx.WorldState;
         using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
         state.CreateAccount(_address1, 7, 3);
@@ -116,7 +116,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void DeleteAccount_WhenTheBlockNeverReadTheAccount_RecordsTheRemovalWithItsStorage()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         WorldState state = (WorldState)ctx.WorldState;
         BlockHeader baseBlock;
         using (state.BeginScope(IWorldState.PreGenesis))
@@ -144,7 +144,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState frontierProvider = ctx.WorldState;
         BlockHeader baseBlock;
         using (IDisposable _ = frontierProvider.BeginScope(IWorldState.PreGenesis))
@@ -167,7 +167,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Cold_account_read_tracks_writes_and_rollback([Values] bool exists)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         BlockHeader baseBlock;
         using (provider.BeginScope(IWorldState.PreGenesis))
@@ -196,7 +196,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         Address systemUser = Address.SystemUser;
@@ -215,7 +215,7 @@ public class StateProviderTests(bool useFlat)
     public void Updating_code_hash_is_not_logged_at_debug()
     {
         TestLogger logger = new() { IsTrace = false };
-        using Context ctx = new(useFlat, new OneLoggerLogManager(new ILogger(logger)));
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance, new OneLoggerLogManager(new ILogger(logger)));
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
@@ -229,7 +229,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Empty_commit_restore()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.Commit(Frontier.Instance);
@@ -239,7 +239,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Update_balance_on_non_existing_account_throws()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether, Olympic.Instance));
@@ -248,7 +248,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Is_empty_account()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
@@ -260,7 +260,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         byte[] code = provider.GetCode(TestItem.AddressA)!;
@@ -270,7 +270,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Restore_update_restore()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
@@ -298,7 +298,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Keep_in_cache()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 0);
@@ -318,7 +318,7 @@ public class StateProviderTests(bool useFlat)
     {
         byte[] code = [1];
 
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 1);
@@ -354,7 +354,7 @@ public class StateProviderTests(bool useFlat)
     {
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
 
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -373,7 +373,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Does_not_allow_calling_stateroot_after_scope()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         Action action = () => { _ = provider.StateRoot; };
         {
@@ -390,7 +390,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void InsertCode_after_scope_disposal_throws()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         WorldState worldState = (WorldState)ctx.WorldState;
         IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
         scope.Dispose();
@@ -406,7 +406,7 @@ public class StateProviderTests(bool useFlat)
     [TestCase(true, Description = "code redeployed after the revert is still persisted")]
     public void Code_of_restored_deployment_is_persisted_only_when_redeployed(bool redeployAfterRestore)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -448,7 +448,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Code_staged_before_a_snapshot_survives_a_restore_dropping_later_code()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -476,7 +476,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Code_committed_before_a_restore_is_still_persisted()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -504,7 +504,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Code_committed_before_a_restore_is_still_persisted_when_the_insert_filter_evicted_it()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -536,7 +536,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Re_inserting_code_the_batch_already_holds_is_counted_once()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -569,7 +569,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Code_re_staged_for_an_account_already_carrying_the_hash_is_rolled_back([Values] bool warmAccountBeforeSnapshot)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -612,7 +612,7 @@ public class StateProviderTests(bool useFlat)
     [Test]
     public void Code_staged_by_discarded_changes_is_not_persisted()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
@@ -642,7 +642,7 @@ public class StateProviderTests(bool useFlat)
     {
         if (!useFlat) Assert.Ignore("The overridable world-state manager is provided by FlatDB.");
 
-        (IWorldStateScopeProvider _, IContainer containerToDispose) = TestWorldStateFactory.CreateFlatScopeProvider();
+        (IWorldStateScopeProvider _, IContainer containerToDispose) = TestWorldStateFactory.CreateFlatScopeProvider(UnavailableStateHeaderProvider.Instance);
         IWorldStateManager manager = containerToDispose.Resolve<IWorldStateManager>();
 
         try

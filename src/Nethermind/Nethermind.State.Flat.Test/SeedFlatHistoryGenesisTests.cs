@@ -7,14 +7,12 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat.History;
-using Nethermind.State.Flat.Persistence;
 using NSubstitute;
 using NUnit.Framework;
 

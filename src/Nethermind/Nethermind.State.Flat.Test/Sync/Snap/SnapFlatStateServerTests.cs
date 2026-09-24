@@ -122,7 +122,7 @@ public class SnapFlatStateServerTests
     public void GetStorageRanges_ReturnsEmpty_WhenIndexedStateIsConcurrentlyRemoved()
     {
         _flatDbManager.GatherReadOnlySnapshotBundle(_stateId)
-            .Returns(_ => throw new StateUnavailableException($"State {_stateId} no longer exists; concurrently removed."));
+            .Returns(_ => throw new StateNotRetainedException($"State {_stateId} no longer exists; concurrently removed."));
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
             _server.GetStorageRanges(_rootHash, [], null, null, 1, CancellationToken.None);

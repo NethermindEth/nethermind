@@ -292,6 +292,16 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
+    // FlatDb.Enabled=false is refused at startup, so no shipped config may pin it (fast sync without snap included).
+    [Test]
+    public void No_config_disables_flat_db()
+    {
+        foreach (string configFile in AllConfigFiles())
+        {
+            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).Enabled, Is.True, configFile);
+        }
+    }
+
     [Test]
     public void Archive_named_configs_enable_flat_history_in_all_runner_configs()
     {
