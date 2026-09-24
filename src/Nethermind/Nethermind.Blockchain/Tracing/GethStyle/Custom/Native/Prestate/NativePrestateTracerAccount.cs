@@ -3,8 +3,8 @@
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using Nethermind.Int256;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
@@ -26,7 +26,9 @@ public class NativePrestateTracerAccount
 
     public byte[]? Code { get; set; }
 
-    /// <summary>Gets or sets the account code hash included in the trace.</summary>
+    /// <summary>
+    /// Gets or sets the code hash. Null omits the field; poststate may contain the empty-code hash or zero for a deleted account.
+    /// </summary>
     public ValueHash256? CodeHash { get; set; }
 
     public Dictionary<UInt256, UInt256>? Storage { get; set; }
