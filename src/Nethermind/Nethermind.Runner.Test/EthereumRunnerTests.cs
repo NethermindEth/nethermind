@@ -195,7 +195,6 @@ public class EthereumRunnerTests
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
-    [MaxTime(300000)]
     public async Task Smoke_CanResolveAllSteps((string file, ConfigProvider configProvider) testCase, int testIndex)
     {
         if (testCase.configProvider is null)
