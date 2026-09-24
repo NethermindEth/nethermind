@@ -46,7 +46,15 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
                 while (!_stop.IsCancellationRequested)
                 {
                     await Task.Delay(Heartbeat, _stop.Token);
-                    logger.Info(Report());
+                    try
+                    {
+                        logger.Info(Report());
+                    }
+                    catch (Exception e) when (e is not OperationCanceledException)
+                    {
+                        // A progress line must never end the heartbeat, let alone the walk.
+                        if (logger.IsWarn) logger.Warn($"History walk progress report failed: {e}");
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -118,7 +126,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         double seconds = Stopwatch.GetElapsedTime(_foldLastReportAt, now).TotalSeconds;
         double blocksPerSecond = seconds > 0 ? (block - _foldLastBlock) / seconds : 0;
         ulong doneThisRun = block - _foldStartBlock;
-        string eta = doneThisRun == 0 ? "n/a" : Format(Stopwatch.GetElapsedTime(_foldStartedAt) * ((double)(to - block) / doneThisRun));
+        string eta = Eta(Stopwatch.GetElapsedTime(_foldStartedAt), to - block, doneThisRun);
         _foldLastReportAt = now;
         _foldLastBlock = block;
 
@@ -155,12 +163,21 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(_startedAt);
         long doneThisRun = done - _startingUnits;
-        string eta = doneThisRun <= 0 ? "n/a" : Format(elapsed * (total - done) / doneThisRun);
+        string eta = Eta(elapsed, total - done, doneThisRun);
 
         return $"{"History walk",ProgressLogger.PrefixAlignment}{Volatile.Read(ref _completed),ProgressLogger.BlockPaddingLength:N0} / {items,ProgressLogger.BlockPaddingLength:N0} ({fraction.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(fraction, 1)}| {stepsPerSecond,ProgressLogger.SpeedPaddingLength:N0} subtree steps/s (~{blocksPerSecond:N0} per subtree) | ETA {eta} | {GC.GetTotalMemory(false) >> 20:N0} MB managed{inFlight}";
     }
 
     private static string Name(int item) => item < HistoryWalkRun.AccountPartitions ? $"accounts 0x{item:x2}" : $"storage 0x{item - HistoryWalkRun.AccountPartitions:x2}";
+
+    // Divides before multiplying and in double ticks: elapsed * remaining overflows TimeSpan days into a long walk.
+    internal static string Eta(TimeSpan elapsed, double remaining, double doneThisRun)
+    {
+        if (doneThisRun <= 0) return "n/a";
+
+        double ticks = elapsed.Ticks * (remaining / doneThisRun);
+        return ticks < TimeSpan.MaxValue.Ticks ? Format(TimeSpan.FromTicks((long)ticks)) : "n/a";
+    }
 
     private static string Format(TimeSpan span) => span.TotalDays >= 1 ? $"{(int)span.TotalDays}d {span.Hours:D2}h" : $"{(int)span.TotalHours}h {span.Minutes:D2}m";
 
@@ -173,6 +190,11 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         }
         catch (OperationCanceledException)
         {
+        }
+        catch (Exception e)
+        {
+            // Disposal follows the walk's verdict; a reporter fault must not replace it.
+            if (logger.IsWarn) logger.Warn($"History walk progress reporter failed: {e}");
         }
 
         _stop.Dispose();
