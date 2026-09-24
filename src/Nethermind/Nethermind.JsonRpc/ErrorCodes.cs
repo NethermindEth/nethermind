@@ -175,5 +175,21 @@ namespace Nethermind.JsonRpc
         /// Error during EVM execution
         /// </summary>
         public const int VMError = -32015;
+
+        /// <summary>
+        /// True for errors whose volume a single unauthenticated caller controls, and which no operator
+        /// action would prevent: the JSON-RPC 2.0 pre-defined request errors
+        /// (<see cref="ParseError"/>, <see cref="InvalidRequest"/>, <see cref="MethodNotFound"/>,
+        /// <see cref="InvalidParams"/>) and the application guard rails (<see cref="ResourceUnavailable"/>,
+        /// <see cref="LimitExceeded"/>, <see cref="PrunedHistoryUnavailable"/>).
+        /// <para>
+        /// The code alone is not always enough: <see cref="InvalidRequest"/> is also returned for a namespace that
+        /// is disabled for the requested URL or endpoint, which is a condition of this node. Those errors set
+        /// <c>Error.OperatorActionable</c> and callers of this helper must honour it.
+        /// </para>
+        /// </summary>
+        public static bool IsRequestError(int code) =>
+            code is ParseError or InvalidRequest or MethodNotFound or InvalidParams
+                or ResourceUnavailable or LimitExceeded or PrunedHistoryUnavailable;
     }
 }

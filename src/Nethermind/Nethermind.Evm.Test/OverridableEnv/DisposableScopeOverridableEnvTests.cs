@@ -6,14 +6,17 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.OverridableEnv;
@@ -21,6 +24,26 @@ namespace Nethermind.Evm.Test.OverridableEnv;
 [Parallelizable(ParallelScope.All)]
 public class DisposableScopeOverridableEnvTests
 {
+    [Test]
+    public void Code_override_remains_available_to_execution_and_state([Values(0, 32, 1024)] int length)
+    {
+        using TestContext ctx = new();
+        byte[] code = new byte[length];
+        new Random(42).NextBytes(code);
+        using Scope<Components> scope = ctx.Env.BuildAndOverride(
+            Build.A.BlockHeader.TestObject,
+            new Dictionary<Address, AccountOverride>
+            {
+                { TestItem.AddressA, new AccountOverride { Code = code } }
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Component.WorldState.GetCodeHash(TestItem.AddressA), Is.EqualTo(Keccak.Compute(code)));
+            Assert.That(scope.Component.CodeInfoRepository.GetCachedCodeInfo(TestItem.AddressA, false, Prague.Instance, out _).Code.ToArray(), Is.EqualTo(code));
+        }
+    }
+
     [Test]
     public void Create_ReturnsEnvWithOverriddenComponents()
     {
@@ -47,6 +70,42 @@ public class DisposableScopeOverridableEnvTests
 
         Assert.That(ctx.ChildComponents.WorldState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
         Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+    }
+
+    [Test]
+    public void TryBuildAndOverrideAtTarget_OpensParentStateAndAppliesOverride()
+    {
+        using TestContext ctx = new();
+        IWorldState mainState = new WorldState(ctx.WorldStateManager.GlobalWorldState, LimboLogs.Instance);
+        Hash256 parentRoot;
+        using (mainState.BeginScope(IWorldState.PreGenesis))
+        {
+            mainState.CreateAccount(TestItem.AddressB, 50);
+            mainState.Commit(Prague.Instance);
+            mainState.CommitTree(0);
+            parentRoot = mainState.StateRoot;
+        }
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(parentRoot).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).TestObject;
+        Dictionary<Address, AccountOverride> stateOverride = new() { { TestItem.AddressA, new AccountOverride { Balance = 123 } } };
+
+        ctx.StateHeaderProvider.Parent = null;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Env.TryBuildAndOverrideAtTarget(target, stateOverride, null, out Scope<Components>? unavailable), Is.False);
+            Assert.That(unavailable, Is.Null);
+            Assert.That(() => ctx.Env.BuildAndOverrideAtTarget(target, stateOverride), Throws.TypeOf<StateNotRetainedException>());
+        }
+
+        ctx.StateHeaderProvider.Parent = parent;
+        Assert.That(ctx.Env.TryBuildAndOverrideAtTarget(target, stateOverride, null, out Scope<Components>? scope), Is.True);
+        using IDisposable _ = scope!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope!.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+            Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)50));
+            Assert.That(parent.StateRoot, Is.EqualTo(parentRoot), "the tree's parent header is never mutated");
+        }
     }
 
     [Test]
@@ -81,11 +140,13 @@ public class DisposableScopeOverridableEnvTests
         public IWorldStateManager WorldStateManager { get; }
         public Components ChildComponents { get; }
         public IOverridableEnv<Components> Env { get; }
+        public TestStateHeaderProvider StateHeaderProvider { get; } = new();
 
         public TestContext()
         {
             _container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule())
+                .AddSingleton<IStateHeaderProvider>(StateHeaderProvider)
                 .AddScoped<ITransactionProcessor, TestTransactionProcessor>()
                 .Add<Components>()
                 .Build();

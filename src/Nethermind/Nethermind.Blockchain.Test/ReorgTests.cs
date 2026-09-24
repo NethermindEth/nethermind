@@ -39,13 +39,15 @@ public class ReorgTests
 #pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockTree _blockTree = null!;
     private BlockHeader _genesis = null!;
+    private TestStateHeaderProvider _stateHeaderProvider = null!;
 
     [OneTimeSetUp]
     public void Setup()
     {
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance);
+        TestStateHeaderProvider stateHeaderProvider = _stateHeaderProvider = new();
+        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance, stateHeaderProvider);
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
@@ -68,6 +70,7 @@ public class ReorgTests
 
             _genesis = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
         }
+        stateHeaderProvider.Parent = _genesis;
 
         EthereumEcdsa ecdsa = new(1);
 
@@ -118,6 +121,7 @@ public class ReorgTests
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
+            specProvider,
             [new RecoverSignatures(
                 ecdsa,
                 specProvider,
@@ -143,6 +147,8 @@ public class ReorgTests
         Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
         Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(4).WithTotalDifficulty(5L).TestObject;
         Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(6).WithTotalDifficulty(11L).TestObject;
+        // The state system resolves each block's parent by hash, so the branch it processes must be known to it.
+        foreach (Block block in new[] { block0, block1, block2, block3, block1B, block2B }) _stateHeaderProvider.Add(block.Header);
 
         _blockTree.BlockAddedToMain += (_, args) =>
         {

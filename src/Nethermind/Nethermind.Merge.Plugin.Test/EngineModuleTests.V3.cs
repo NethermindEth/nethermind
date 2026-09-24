@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -19,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -29,7 +31,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
@@ -52,7 +53,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(
+        ExecutionPayload executionPayload = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
 
         ResultWrapper<PayloadStatusV1> result = version == 1
@@ -67,7 +68,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(
+        ExecutionPayload executionPayload = await CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [],
                 blobGasUsed: blobGasUsed, excessBlobGas: excessBlobGas, parentBeaconBlockRoot: parentBlockBeaconRoot);
 
@@ -81,7 +82,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
+        ExecutionPayloadV3 executionPayload = await CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(executionPayload, [], executionPayload.ParentBeaconBlockRoot);
@@ -288,18 +289,63 @@ public partial class EngineModuleTests
     }
 
     private async Task<(JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 correctExecutionPayload)>
-            PreparePayloadRequestEnv()
+            PreparePayloadRequestEnv(IReleaseSpec? releaseSpec = null)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec ?? Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { ModuleType.Engine } };
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), jsonRpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
-        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
+        ExecutionPayloadV3 executionPayload = await CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: [], blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem.KeccakA);
 
-        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig), new(RpcEndpoint.Http), new(), executionPayload);
+        return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, chain.Container.Resolve<GCKeeper>()), new(RpcEndpoint.Http), new(), executionPayload);
+    }
+
+    [Test]
+    public async Task NewPayload_should_reject_null_or_missing_required_fields(
+        [Values(3, 4, 5)] int version,
+        [Values("withdrawals", "blobGasUsed", "excessBlobGas")] string field,
+        [Values] bool omit)
+    {
+        IReleaseSpec releaseSpec = version switch { 3 => Cancun.Instance, 4 => Prague.Instance, _ => Amsterdam.Instance };
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
+            = await PreparePayloadRequestEnv(releaseSpec);
+
+        JsonObject payload = serializer.Deserialize<JsonObject>(serializer.Serialize(executionPayload))!;
+        if (version >= EngineApiVersions.NewPayload.V5)
+        {
+            payload["blockAccessList"] = "0xc0";
+            payload["slotNumber"] = "0x1";
+        }
+
+        if (omit)
+            payload.Remove(field);
+        else
+            payload[field] = null;
+
+        List<object> parameters = [serializer.Serialize(payload), serializer.Serialize(Array.Empty<byte[]>()), TestItem.KeccakA.ToString()];
+        if (version >= EngineApiVersions.NewPayload.V4) parameters.Add(serializer.Serialize(Array.Empty<byte[]>()));
+        JsonRpcRequest request = RpcTest.BuildJsonRequest($"engine_newPayloadV{version}", [.. parameters]);
+
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            // Omitted blob fields are rejected earlier by [JsonRequired] with a deserialization message.
+            if (!omit || field == "withdrawals")
+            {
+                string expectedMessage = field switch
+                {
+                    "withdrawals" => "Withdrawals must be set",
+                    "blobGasUsed" => "Blob gas used must be set",
+                    _ => "Excess blob gas must be set"
+                };
+                Assert.That(error.Message, Is.EqualTo(expectedMessage));
+            }
+        }
     }
 
     [Test]
@@ -419,7 +465,9 @@ public partial class EngineModuleTests
     {
         async Task<(MergeTestBlockchain blockchain, IEngineRpcModule engineRpcModule)> MockRpc()
         {
-            MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+            MergeTestBlockchain chain = await CreateBlockchain(
+                releaseSpec: Cancun.Instance,
+                configurer: builder => builder.AddSingleton<IGCStrategy>(NoGCStrategy.Instance));
             IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadHandlerMock =
                 Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>();
             newPayloadHandlerMock.HandleAsync(Arg.Any<ExecutionPayload>())
@@ -452,7 +500,8 @@ public partial class EngineModuleTests
                 Substitute.For<IEngineRequestsTracker>(),
                 Substitute.For<IBlobCustodyTracker>(),
                 chain.SpecProvider,
-                new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
+                chain.Container.Resolve<GCKeeper>(),
+                chain.BlockProcessingQueue,
                 Substitute.For<ILogManager>()));
         }
 
@@ -505,7 +554,7 @@ public partial class EngineModuleTests
         (MergeTestBlockchain blockchain, IEngineRpcModule engineRpcModule) = await MockRpc();
         (byte[][] blobVersionedHashes, Transaction[] transactions) = BuildTransactionsAndBlobVersionedHashesList(hashesFirstBytes, transactionsAndFirstBytesOfTheirHashes, blockchain.SpecProvider.ChainId);
 
-        ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
+        ExecutionPayloadV3 executionPayload = await CreateBlockRequestV3(
             blockchain, CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: [], 0, 0, transactions: transactions, parentBeaconBlockRoot: Keccak.Zero);
         ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, Array.ConvertAll(blobVersionedHashes, static h => new Hash256(h)), Keccak.Zero);
 

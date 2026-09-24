@@ -42,11 +42,13 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -557,6 +559,34 @@ public partial class EthRpcModuleTests
         }
     }
 
+    // HasStateForBlock passes but the read finds the node gone: state this node does not hold (a still-syncing flat
+    // node, #13603) is -32002, while a genuinely missing trie node keeps the Geth-parity -32000.
+    [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block")]
+    [TestCase(false, ErrorCodes.ResourceNotFound, "missing trie node")]
+    public async Task Eth_get_storage_at_missing_trie_node_maps_by_cause(bool stateNotRetained, int expectedCode, string expectedMessage)
+    {
+        using Context ctx = await Context.Create(configurer: builder =>
+            builder.AddDecorator<IStateReader>((_, inner) => new MissingStorageStateReader(inner, stateNotRetained)));
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
+
+        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
+        Assert.That(serialized, Does.Contain(expectedMessage));
+    }
+
+    private sealed class MissingStorageStateReader(IStateReader inner, bool stateNotRetained) : IStateReader
+    {
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) => inner.TryGetAccount(baseBlock, address, out account);
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) =>
+            throw new MissingTrieNodeException($"State for block {baseBlock?.Number} is unavailable", null, TreePath.Empty, Keccak.EmptyTreeHash,
+                stateNotRetained ? new StateNotRetainedException($"No state available for block {baseBlock?.Number}") : null);
+        public byte[]? GetCode(Hash256 codeHash) => inner.GetCode(codeHash);
+        public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
+            inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+        public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
+    }
+
     private static IEnumerable<TestCaseData> EthGetStorageValuesCases()
     {
         string addressA = TestItem.AddressA.Bytes.ToHexString(true);
@@ -1011,26 +1041,51 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
-    [TestCase(2, """{"fromBlock":"0x0","toBlock":"0x3"}""", true, TestName = "range 4 exceeds limit 2 -> rejected")]
-    [TestCase(4, """{"fromBlock":"0x0","toBlock":"0x3"}""", false, TestName = "range 4 within limit 4 -> allowed")]
-    [TestCase(0, """{"fromBlock":"0x0","toBlock":"0x3"}""", false, TestName = "limit disabled -> allowed")]
-    [TestCase(2, """{"toBlock":"0x3"}""", true, TestName = "fromBlock omitted -> Earliest (0x0), range 4 exceeds limit 2 -> rejected")]
-    [TestCase(4, """{"toBlock":"0x3"}""", false, TestName = "fromBlock omitted -> Earliest (0x0), range 4 within limit 4 -> allowed")]
-    [TestCase(2, """{"fromBlock":"0x0"}""", true, TestName = "toBlock omitted -> Latest (0x3), range 4 exceeds limit 2 -> rejected")]
-    [TestCase(4, """{"fromBlock":"0x0"}""", false, TestName = "toBlock omitted -> Latest (0x3), range 4 within limit 4 -> allowed")]
-    public async Task Eth_get_logs_enforces_max_block_depth(int maxBlockDepth, string parameter, bool shouldReject)
+    private static IEnumerable<TestCaseData> MaxBlockDepthCases()
+    {
+        foreach ((string name, int maxBlockDepth, string filter, bool shouldReject) in Cases())
+        {
+            yield return new TestCaseData("eth_getLogs", maxBlockDepth, filter, shouldReject).SetName($"{{m}}_getLogs_{name}");
+            yield return new TestCaseData("eth_getFilterLogs", maxBlockDepth, filter, shouldReject).SetName($"{{m}}_getFilterLogs_{name}");
+        }
+
+        static IEnumerable<(string Name, int MaxBlockDepth, string Filter, bool ShouldReject)> Cases()
+        {
+            const int range = TestBlockchain.HeadNumber + 1;
+            const int tooLow = range - 1;
+
+            string head = $"0x{TestBlockchain.HeadNumber:x}";
+            string wholeChain = $$"""{"fromBlock":"0x0","toBlock":"{{head}}"}""";
+            string fromOmitted = $$"""{"toBlock":"{{head}}"}""", toOmitted = """{"fromBlock":"0x0"}""";
+
+            yield return ($"range {range} exceeds limit {tooLow} -> rejected", tooLow, wholeChain, true);
+            yield return ($"range {range} within limit {range} -> allowed", range, wholeChain, false);
+            yield return ("limit disabled -> allowed", 0, wholeChain, false);
+            yield return ($"fromBlock omitted -> Earliest, range {range} exceeds limit {tooLow} -> rejected", tooLow, fromOmitted, true);
+            yield return ($"fromBlock omitted -> Earliest, range {range} within limit {range} -> allowed", range, fromOmitted, false);
+            yield return ($"toBlock omitted -> Latest, range {range} exceeds limit {tooLow} -> rejected", tooLow, toOmitted, true);
+            yield return ($"toBlock omitted -> Latest, range {range} within limit {range} -> allowed", range, toOmitted, false);
+        }
+    }
+
+    [TestCaseSource(nameof(MaxBlockDepthCases))]
+    public async Task Eth_logs_enforce_max_block_depth(string method, int maxBlockDepth, string filter, bool shouldReject)
     {
         using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-            .Returns([CreateTestFilterLog()]);
 
         ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: false)
-            .WithBlockchainBridge(bridge)
             .WithReceiptConfig(new ReceiptConfig { MaxBlockDepth = maxBlockDepth })
             .Build();
 
-        string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
+        string parameter = filter;
+
+        if (method == "eth_getFilterLogs")
+        {
+            using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
+            parameter = RpcTest.AssertSuccess<UInt256?>(newFilterResponse)?.ToString() ?? "0x0";
+        }
+
+        string serialized = await ctx.Test.TestEthRpc(method, parameter);
 
         if (shouldReject)
         {
@@ -1039,7 +1094,7 @@ public partial class EthRpcModuleTests
         }
         else
         {
-            Assert.That(serialized, Is.EqualTo(ExpectedFilterLogResponse));
+            Assert.That(serialized, Does.Not.Contain("\"error\""));
         }
     }
 
@@ -1549,7 +1604,8 @@ public partial class EthRpcModuleTests
     [TestCase("eth_getHeaderByNumber", "0x9999999", TestName = "UnknownNumber")]
     [TestCase("eth_getHeaderByNumber", "finalized", TestName = "FinalizedAbsent")]
     [TestCase("eth_getHeaderByNumber", "safe", TestName = "SafeAbsent")]
-    public async Task EthGetHeaderByX_WhenBlockUnknown_ReturnsNull(string method, string blockParam)
+    [TestCase("eth_getHeaderByNumber", "pending", TestName = "Pending")]
+    public async Task EthGetHeaderByX_WhenBlockUnknownOrPending_ReturnsNull(string method, string blockParam)
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc(method, blockParam);
@@ -1557,12 +1613,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task EthGetHeaderByNumber_WhenPending_NilsTransientFields([Values("hash", "nonce", "miner")] string field)
+    public async Task EthGetHeaderByHash_WhenPendingHash_ReturnsHeader()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByNumber", "pending");
-        JToken json = JToken.Parse(serialized);
-        Assert.That(json["result"]![field]!.Type, Is.EqualTo(JTokenType.Null));
+        // PendingHash resolves to the head hash, so a hash lookup of it must still return a full header.
+        Assert.That(ctx.Test.BlockTree.PendingHash, Is.EqualTo(ctx.Test.BlockTree.Head!.Hash));
+        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByHash", ctx.Test.BlockTree.Head!.Hash!.ToString());
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+        Assert.That(result["hash"]!.Value<string>(), Is.EqualTo(ctx.Test.BlockTree.Head!.Hash!.ToString()));
     }
 
     [Test]
@@ -2104,6 +2162,62 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task EthSendRawTransactionSync_WhenAlreadyMined_FastPathReturnsReceipt()
     {
+        (Hash256 txHash, string raw, TxReceipt receipt, ITxSender txSender) = CreateAcceptedSyncTransaction();
+
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(txHash)
+            .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
+
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+
+        string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
+
+        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
+        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+    }
+
+    [Test]
+    public async Task EthSendRawTransactionSync_WhenWokenBeforeTxIndexIsPublished_ReturnsReceiptOfSameBlock()
+    {
+        TimeSpan timeout = TimeSpan.FromSeconds(5);
+        (Hash256 txHash, string raw, TxReceipt receipt, ITxSender txSender) = CreateAcceptedSyncTransaction();
+
+        bool txIndexPublished = false;
+        using SemaphoreSlim receiptLookups = new(0);
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(txHash).Returns(_ =>
+        {
+            bool published = Volatile.Read(ref txIndexPublished);
+            receiptLookups.Release();
+            if (published) return (receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0);
+            return (null, 0UL, null, 0);
+        });
+
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+
+        Task<string> syncCall = test.TestEthRpc("eth_sendRawTransactionSync", raw, "5000");
+        Assert.That(await receiptLookups.WaitAsync(timeout), Is.True, "initial receipt lookup");
+        Task waiterSignal = test.HeadBlockSignal.NextHeadTask;
+
+        // Stands in for the receipt storage, which publishes the tx index in BlockAddedToMain. Worst-case
+        // scheduling: a waiter the signal has already released finishes its lookup before the index lands.
+        test.BlockTree.BlockAddedToMain += (_, _) =>
+        {
+            if (waiterSignal.IsCompleted) receiptLookups.Wait(timeout);
+            Volatile.Write(ref txIndexPublished, true);
+        };
+
+        await test.AddBlock();
+        string serialized = await syncCall;
+
+        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
+        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+    }
+
+    private static (Hash256 TxHash, string RawTx, TxReceipt Receipt, ITxSender TxSender) CreateAcceptedSyncTransaction()
+    {
         Transaction tx = Build.A.Transaction
             .WithNonce(3)
             .WithGasLimit(21_000)
@@ -2122,18 +2236,8 @@ public partial class EthRpcModuleTests
         txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
             .Returns((txHash, AcceptTxResult.Accepted));
 
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetTxReceiptInfo(txHash)
-            .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
-
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
-
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
-
-        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
-        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+        return (txHash, raw, receipt, txSender);
     }
 
     [Test]
@@ -2980,6 +3084,13 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
+        public static async Task<Context> CreateWithOsakaEnabled()
+        {
+            OverridableReleaseSpec releaseSpec = new(Osaka.Instance);
+            TestSpecProvider specProvider = new(releaseSpec);
+            return await Create(specProvider);
+        }
+
         public static async Task<Context> CreateWithAmsterdamEnabled()
         {
             OverridableReleaseSpec releaseSpec = new(Amsterdam.Instance);
@@ -3012,15 +3123,20 @@ public partial class EthRpcModuleTests
                 configurer?.Invoke(builder);
             };
 
+            TestRpcBlockchain.Builder<TestRpcBlockchain> testBlockchainBuilder = TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithBlockchainBridge(blockchainBridge!)
+                .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
+                .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false });
+
+            // Left unset, the chain follows the suite-wide backend selection.
+            if (useFlatDb is not null)
+            {
+                testBlockchainBuilder.WithFlatDb(useFlatDb.Value);
+            }
+
             return Task.FromResult(new Context
             {
-                TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-                    .WithBlockchainBridge(blockchainBridge!)
-                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
-                    .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
-                    .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
-                    .Build(wrappedConfigurer).Result,
-
+                TestFactory = () => testBlockchainBuilder.Build(wrappedConfigurer).Result,
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(wrappedConfigurer).Result
             });
@@ -3033,4 +3149,11 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Eth_getBlockByNumber_with_empty_string_block_parameter_returns_invalid_params()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "", false);
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"missing value for required argument 0"},"id":67}"""));
+    }
 }

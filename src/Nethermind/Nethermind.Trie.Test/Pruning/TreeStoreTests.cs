@@ -40,7 +40,7 @@ namespace Nethermind.Trie.Test.Pruning
             IKeyValueStoreWithBatching? kvStore = null,
             IPersistenceStrategy? persistenceStrategy = null,
             IPruningConfig? pruningConfig = null,
-            IFinalizedStateProvider? finalizedStateProvider = null
+            IStateHeaderProvider? finalizedStateProvider = null
         )
         {
             pruningStrategy ??= No.Pruning;
@@ -1133,7 +1133,7 @@ namespace Nethermind.Trie.Test.Pruning
                 });
 
             WorldState worldState = new(
-                new TrieStoreScopeProvider(fullTrieStore, memDbProvider.CodeDb, _logManager),
+                new TrieStoreScopeProvider(fullTrieStore, memDbProvider.CodeDb, UnavailableStateHeaderProvider.Instance, _logManager),
                 LimboLogs.Instance);
 
             // Simulate some kind of cache access which causes unresolved node to remain.
@@ -1155,10 +1155,10 @@ namespace Nethermind.Trie.Test.Pruning
             (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new(
-                    new TrieStoreScopeProvider(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, LimboLogs.Instance), LimboLogs.Instance);
+                    new TrieStoreScopeProvider(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
                 using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
-                worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
+                worldState.Set(new StorageCell(address, slot), new UInt256(TestItem.KeccakB.BytesToArray(), isBigEndian: true));
                 worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
                 worldState.CommitTree(1);
 
@@ -1786,6 +1786,80 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             Assert.That(persistedHashes.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Persisted_hash_recorder_marks_hashless_node_as_ambiguous([Values] bool deleteOldNodes, [Values] bool hashlessFirst)
+        {
+            ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes = new();
+            HashAndTinyPath key = new(TestItem.KeccakA, new TinyTreePath(TreePath.Empty));
+
+            if (hashlessFirst)
+            {
+                TrieStore.RecordPersistedHash(persistedHashes, key, null, deleteOldNodes);
+                TrieStore.RecordPersistedHash(persistedHashes, key, TestItem.KeccakB, deleteOldNodes);
+                Assert.That(persistedHashes[key], Is.Null);
+            }
+            else
+            {
+                TrieStore.RecordPersistedHash(persistedHashes, key, TestItem.KeccakB, deleteOldNodes);
+                TrieStore.RecordPersistedHash(persistedHashes, key, null, deleteOldNodes);
+                Assert.That(persistedHashes[key], deleteOldNodes ? Is.Null : Is.EqualTo(TestItem.KeccakB));
+            }
+
+            Assert.That(persistedHashes.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Persisting_inlined_storage_leaves_with_past_key_tracking_succeeds()
+        {
+            TestLogger testLogger = new();
+            TestMemDb memDb = new();
+            TestFinalizedStateProvider finalizedStateProvider = new(1);
+            using TrieStore trieStore = new(
+                new NodeStorage(memDb, INodeStorage.KeyScheme.HalfPath, requirePath: true),
+                new TestPruningStrategy(shouldPrune: true, deleteObsoleteKeys: true),
+                No.Persistence,
+                finalizedStateProvider,
+                new PruningConfig { TrackPastKeys = true, PruningBoundary = 1 },
+                new OneLoggerLogManager(new ILogger(testLogger)));
+            finalizedStateProvider.TrieStore = trieStore;
+
+            // The two keys share 10 leading nibbles, so the leaves under the shared branch keep 53 key nibbles and a
+            // one-byte value: 30-byte RLP, inlined in the branch and therefore without a Keccak of their own.
+            byte[] firstKey = Bytes.FromHexString("71bca44bf12bab744620327c7dea0fc036220606f8decd882140039eb0cd0402");
+            byte[] secondKey = Bytes.FromHexString("71bca44bf16df1e59d7ded5466f98ad11f75c35f75f909981efa9add30142bcd");
+            Hash256 storageAddress = TestItem.KeccakA;
+            PatriciaTree storageTree = new(trieStore.GetTrieStore(storageAddress), LimboLogs.Instance);
+            PatriciaTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            BlockHeader? baseBlock = null;
+            for (ulong blockNumber = 1; blockNumber <= 3; blockNumber++)
+            {
+                using (trieStore.BeginScope(baseBlock))
+                {
+                    using (trieStore.BeginBlockCommit(blockNumber))
+                    {
+                        if (blockNumber == 1)
+                        {
+                            storageTree.Set(firstKey, [1]);
+                            storageTree.Set(secondKey, [1]);
+                            storageTree.Commit();
+                            Account account = new(1, 1, storageTree.RootHash, Keccak.OfAnEmptyString);
+                            stateTree.Set(storageAddress.BytesToArray(), Rlp.Encode(account).Bytes);
+                        }
+
+                        stateTree.Commit();
+                    }
+
+                    baseBlock = Build.A.BlockHeader.WithParentOptional(baseBlock).WithStateRoot(stateTree.RootHash).TestObject;
+                }
+
+                trieStore.WaitForPruning();
+            }
+
+            Assert.That(testLogger.LogList.Where(m => m.Contains("Pruning failed")), Is.Empty);
+            Assert.That(trieStore.LastPersistedBlockNumber, Is.GreaterThanOrEqualTo(1UL));
         }
 
         [Test]

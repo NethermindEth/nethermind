@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,14 +30,18 @@ public partial class BlockProcessor
         IBlockAccessListManager balManager,
         ILogManager logManager,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
-        : IBlockProcessor.IBlockTransactionsExecutor
+        : IBlockProcessor.IBlockTransactionsExecutor,
+          BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
+        private readonly List<TxProcessedEventArgs>? _pendingTransactionProcessedEvents =
+            transactionProcessedEventHandler is null ? null : [];
         private IncrementalValidationWorkItem? _incrementalValidationWorkItem;
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
+        private int _pooledSlotsInUse;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -51,6 +56,8 @@ public partial class BlockProcessor
                 return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
             }
 
+            ClearTransactionProcessedEvents();
+            _pendingTransactionProcessedEvents?.EnsureCapacity(block.Transactions.Length);
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
@@ -109,6 +116,9 @@ public partial class BlockProcessor
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
                 if (shouldValidateBal) balManager.ValidateBlockAccessList(block, i + 1);
+
+                _pendingTransactionProcessedEvents?.Add(
+                    new TxProcessedEventArgs((int)i, currentTx, block.Header, receiptsTracer.TxReceipts[(int)i]));
             }
 
             return [.. receiptsTracer.TxReceipts];
@@ -128,14 +138,33 @@ public partial class BlockProcessor
                 gasResults[i].Reset();
             }
 
+            // Release the slots the previous block used but this one does not. Left alone they keep
+            // that block's receipts, the block itself and any InvalidBlockException in the gas slot;
+            // resetting them like the active ones would only swap the current block in. The pool
+            // never shrinks, so this runs once per shrink rather than every block.
+            for (int i = len; i < _pooledSlotsInUse; i++)
+            {
+                receiptsTracers[i].ReleaseForPooling();
+                gasResults[i].Reset();
+            }
+
+            _pooledSlotsInUse = len;
+
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
-            incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
             try
             {
                 try
                 {
+                    incrementalValidation.Schedule(
+                        balManager,
+                        block,
+                        gasResults,
+                        receiptsTracers,
+                        transactionProcessedEventHandler is null ? null : this,
+                        token);
+
                     // Iterations: 0 = ApplyStateChanges, 1..len = tx (scheduled order =
                     // _txExecutionOrder[i-1]; balIndex = scheduledTxIndex+1). Pre-execution
                     // (StoreBeaconRoot + ApplyBlockhashStateChanges) ran sequentially in
@@ -254,6 +283,32 @@ public partial class BlockProcessor
             }
         }
 
+        void BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler.OnTransactionProcessed(TxProcessedEventArgs args) =>
+            _pendingTransactionProcessedEvents?.Add(args);
+
+        /// <inheritdoc/>
+        public void PublishTransactionProcessedEvents()
+        {
+            inner.PublishTransactionProcessedEvents();
+
+            if (_pendingTransactionProcessedEvents is null)
+            {
+                return;
+            }
+
+            foreach (TxProcessedEventArgs pending in _pendingTransactionProcessedEvents)
+            {
+                transactionProcessedEventHandler!.OnTransactionProcessed(pending);
+            }
+        }
+
+        /// <inheritdoc/>
+        public void ClearTransactionProcessedEvents()
+        {
+            _pendingTransactionProcessedEvents?.Clear();
+            inner.ClearTransactionProcessedEvents();
+        }
+
         private void EnsureParallelBuffers(int length)
         {
             int currentLength = _receiptsTracerPool.Length;
@@ -266,15 +321,24 @@ public partial class BlockProcessor
             // GasValidationResultSlot instances already pooled in slots [0, currentLength);
             // freshly allocated arrays would force re-instantiation of every slot every block.
             int newLength = Math.Max(length, currentLength == 0 ? 4 : currentLength * 2);
-            Array.Resize(ref _receiptsTracerPool, newLength);
-            Array.Resize(ref _gasResultPool, newLength);
-            Array.Resize(ref _txExecutionOrder, newLength);
-            Array.Resize(ref _txExecutionSortKeys, newLength);
+            BlockReceiptsTracer[] receiptsTracerPool = _receiptsTracerPool;
+            GasValidationResultSlot[] gasResultPool = _gasResultPool;
+            int[] txExecutionOrder = _txExecutionOrder;
+            TxExecutionSortKey[] txExecutionSortKeys = _txExecutionSortKeys;
+            Array.Resize(ref receiptsTracerPool, newLength);
+            Array.Resize(ref gasResultPool, newLength);
+            Array.Resize(ref txExecutionOrder, newLength);
+            Array.Resize(ref txExecutionSortKeys, newLength);
             for (int i = currentLength; i < newLength; i++)
             {
-                _receiptsTracerPool[i] = new BlockReceiptsTracer(true);
-                _gasResultPool[i] = new GasValidationResultSlot();
+                receiptsTracerPool[i] = new BlockReceiptsTracer(true);
+                gasResultPool[i] = new GasValidationResultSlot();
             }
+
+            _receiptsTracerPool = receiptsTracerPool;
+            _gasResultPool = gasResultPool;
+            _txExecutionOrder = txExecutionOrder;
+            _txExecutionSortKeys = txExecutionSortKeys;
         }
 
         /// <summary>Canonical tx-execution lead: the prefix of the schedule that always runs in
@@ -349,6 +413,7 @@ public partial class BlockProcessor
                 ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
                 if (receipts.IsEmpty) continue;
                 TxReceipt receipt = receipts[0];
+                receipt.Index = i;
                 cumulativeGas += receipt.GasUsed;
                 receipt.GasUsedTotal = cumulativeGas;
                 outer.SetReceipt(i, receipt);

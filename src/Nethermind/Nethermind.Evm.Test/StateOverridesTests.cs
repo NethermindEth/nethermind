@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
@@ -104,7 +105,8 @@ public class StateOverridesTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_state.TryGetAccount(TestItem.AddressA, out _), Is.True);
-            Assert.That(_state.Get(new StorageCell(TestItem.AddressA, slot)).ToArray(), Is.EqualTo(new byte[] { 0x2a }));
+            _state.Get(new StorageCell(TestItem.AddressA, slot), out UInt256 storageValue1);
+            Assert.That(storageValue1.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x2a }));
         }
     }
 }
