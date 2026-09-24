@@ -113,6 +113,37 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
+    public async Task Buffered_failure_rewinds_to_current_response([Values(0, 1, 2)] int commitMode)
+    {
+        using MemoryStream stream = new();
+        CountingStreamPipeWriter transport = new(stream);
+        transport.Write("[1,"u8);
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = new JsonRpcId(42L),
+            Result = new InvalidTransactionResult(commitMode),
+            StreamExceptionHandler = ex => new JsonRpcErrorResponse
+            {
+                Id = new JsonRpcId(42L),
+                Error = new Error { Code = ErrorCodes.InvalidInput, Message = ex.Message }
+            }
+        };
+
+        await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, new JsonSerializerOptions(),
+            isBatch: true, CancellationToken.None, bufferResponse: true);
+        transport.Write("]"u8);
+        await transport.CompleteAsync();
+
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement[0].GetInt32(), Is.EqualTo(1));
+            Assert.That(document.RootElement[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(transport.WrittenCount, Is.EqualTo(stream.Length));
+        }
+    }
+
+    [Test]
     public async Task Stream_failure_propagates_without_handler_or_after_transport_cancellation([Values] bool cancelTransport)
     {
         using CancellationTokenSource cancellation = new();
@@ -237,14 +268,13 @@ public class JsonRpcResponseWriterStreamingIdTests
     [Test]
     public async Task Buffered_response_preserves_preceding_batch_byte_count([Values] bool bufferResponse)
     {
-        Pipe pipe = new();
-        CountingPipeWriter transport = new(pipe.Writer, initialWrittenCount: 1234);
+        using MemoryStream stream = new();
+        CountingStreamPipeWriter transport = new(stream, initialWrittenCount: 1234);
         CountingResult result = new();
         using JsonRpcSuccessResponse response = new() { Result = result };
         await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, new JsonSerializerOptions(),
             isBatch: true, CancellationToken.None, bufferResponse);
         await transport.CompleteAsync();
-        await pipe.Reader.CompleteAsync();
 
         Assert.That(result.InitialBytes, Is.EqualTo(1234 + "{\"jsonrpc\":\"2.0\",\"result\":"u8.Length));
     }

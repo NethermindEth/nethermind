@@ -493,13 +493,16 @@ public class StartupTests
     }
 
     [Test]
-    public async Task ProcessJsonRpcRequest_BufferedStreamedSuccessIsComplete([Values(0, 32 * 1024)] int payloadSize, [Values] bool batch)
+    public async Task ProcessJsonRpcRequest_BufferedStreamedResponseIsComplete(
+        [Values(0, 32 * 1024)] int payloadSize, [Values] bool batch, [Values] bool fail)
     {
         string payload = new('x', payloadSize);
-        ProbeBlobStreamableResult result = new((writer, _) =>
+        ProbeBlobStreamableResult result = new(async (writer, token) =>
         {
-            writer.Write(Encoding.UTF8.GetBytes("[\"" + payload + "\"]"));
-            return ValueTask.CompletedTask;
+            writer.Write(Encoding.UTF8.GetBytes("[\"" + payload + "\""));
+            await writer.FlushAsync(token);
+            if (fail) throw new InvalidOperationException("deferred execution failure");
+            writer.Write("]"u8);
         });
         Startup startup = CreateStreamingStartup(result, bufferResponse: true);
         JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
@@ -511,7 +514,15 @@ public class StartupTests
         string response = await host.PostAsync(request, deadline.Token);
 
         AssertJsonResponse(response, root =>
-            Assert.That((batch ? root[1] : root).GetProperty("result")[0].GetString(), Is.EqualTo(payload)));
+        {
+            JsonElement envelope = batch ? root[1] : root;
+            using (Assert.EnterMultipleScope())
+            {
+                if (batch) Assert.That(root[0].GetProperty("id").GetInt32(), Is.EqualTo(2));
+                if (fail) Assert.That(envelope.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+                else Assert.That(envelope.GetProperty("result")[0].GetString(), Is.EqualTo(payload));
+            }
+        });
     }
 
     [Test]

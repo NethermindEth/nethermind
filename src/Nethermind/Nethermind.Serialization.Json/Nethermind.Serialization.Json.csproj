@@ -9,4 +9,8 @@
     <PackageReference Include="Microsoft.ClearScript.V8" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.JsonRpc" />
+  </ItemGroup>
+
 </Project>
