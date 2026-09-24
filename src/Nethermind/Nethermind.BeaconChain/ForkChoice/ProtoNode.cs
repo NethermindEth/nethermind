@@ -14,9 +14,6 @@ public sealed class ProtoNode
     /// <summary>Not used by the proto-array itself; kept for upstream components (attestation verification).</summary>
     public required Hash256 StateRoot { get; init; }
 
-    /// <summary>The root used as <c>attestation.data.target.root</c> for an LMD vote cast for this block.</summary>
-    public required Hash256 TargetRoot { get; init; }
-
     public required Hash256 Root { get; init; }
 
     /// <summary>Index of the parent in <see cref="ProtoArray.Nodes"/>, or <c>null</c> for tree roots.</summary>
@@ -53,7 +50,6 @@ public sealed record ProtoBlock(
     Hash256 Root,
     Hash256? ParentRoot,
     Hash256 StateRoot,
-    Hash256 TargetRoot,
     CheckpointRef JustifiedCheckpoint,
     CheckpointRef FinalizedCheckpoint,
     ExecutionStatus ExecutionStatus,
