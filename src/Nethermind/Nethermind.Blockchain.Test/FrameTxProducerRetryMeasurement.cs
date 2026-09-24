@@ -49,6 +49,9 @@ public class FrameTxProducerRetryMeasurement
     /// <summary>The share of its granted budget a never-approving attempt must consume to count as a burn.</summary>
     private const double BudgetBurnFloor = 0.99;
 
+    /// <summary>How long a sweep waits for the pool to acknowledge an advanced chain head.</summary>
+    private static readonly TimeSpan HeadChangeTimeout = TimeSpan.FromSeconds(10);
+
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Beneficiary = TestItem.AddressE;
 
@@ -114,6 +117,46 @@ public class FrameTxProducerRetryMeasurement
             .Op(Instruction.APPROVE)
             .Done;
 
+    /// <summary>Builds the production executor under measurement over a counting adapter, so every sweep drives
+    /// the same stack and differs only in the pool it consults.</summary>
+    private BlockProcessor.BlockProductionTransactionsExecutor BuildExecutor(ITxPool txPool, out CountingAdapter adapter)
+    {
+        adapter = new CountingAdapter(new BuildUpTransactionProcessorAdapter(_transactionProcessor));
+        IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
+        balManager.Enabled.Returns(false);
+        return new BlockProcessor.BlockProductionTransactionsExecutor(
+            adapter, _stateProvider, new BlockProcessor.BlockProductionTransactionPicker(_specProvider),
+            LimboLogs.Instance, balManager, txPool);
+    }
+
+    /// <summary>Offers a block carrying only <paramref name="tx"/> to the producer's transaction executor.</summary>
+    /// <returns>The block the executor built. The executor rewrites its <c>TxRoot</c> from the transactions it
+    /// actually included, so an empty trie root is the producer saying it built a block without this one.</returns>
+    /// <param name="elapsed">Wall time inside <c>ProcessTransactions</c> alone, excluding tracer setup.</param>
+    private Block OfferBlock(
+        BlockProcessor.BlockProductionTransactionsExecutor executor, Transaction tx, ulong number, out TimeSpan elapsed)
+    {
+        Block block = Build.A.Block
+            .WithNumber(number)
+            .WithBaseFeePerGas(UInt256.Zero)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(BlockGasLimit)
+            .WithTransactions(tx)
+            .TestObject;
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
+        receiptsTracer.StartNewBlockTrace(block);
+        executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        long started = Stopwatch.GetTimestamp();
+        executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
+        elapsed = Stopwatch.GetElapsedTime(started);
+        receiptsTracer.EndBlockTrace();
+
+        return block;
+    }
+
     /// <summary>Measures producer-side retry behavior for a control that approves and a prefix that never does.</summary>
     /// <remarks>352,800 is soispoke's declared privacy-pool budget (their
     /// <c>activation_manifest.testbed.json</c>: an EIP-8272 recent-root <c>verify_frame_gas</c> 30,000 +
@@ -134,12 +177,8 @@ public class FrameTxProducerRetryMeasurement
     {
         await BuildChain(approves ? Approves() : NeverApproves());
 
-        CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(_transactionProcessor));
-        BlockProcessor.BlockProductionTransactionPicker picker = new(_specProvider);
-        IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
-        balManager.Enabled.Returns(false);
         BlockProcessor.BlockProductionTransactionsExecutor executor =
-            new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager, NullTxPool.Instance);
+            BuildExecutor(NullTxPool.Instance, out CountingAdapter adapter);
 
         Transaction tx = FrameTx(verifyGas);
         UInt256 beneficiaryBefore = _stateProvider.GetBalance(Beneficiary);
@@ -148,23 +187,7 @@ public class FrameTxProducerRetryMeasurement
         int included = 0;
         for (int i = 0; i < Attempts; i++)
         {
-            Block block = Build.A.Block
-                .WithNumber(1 + i)
-                .WithBaseFeePerGas(UInt256.Zero)
-                .WithBeneficiary(Beneficiary)
-                .WithGasLimit(BlockGasLimit)
-                .WithTransactions(tx)
-                .TestObject;
-
-            BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
-            receiptsTracer.StartNewBlockTrace(block);
-            executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
-            executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
-            receiptsTracer.EndBlockTrace();
-
-            // The executor rewrites TxRoot from the transactions it actually included, so an empty
-            // trie root is the producer saying it built a block without this transaction.
+            Block block = OfferBlock(executor, tx, (ulong)(1 + i), out _);
             if (block.Header.TxRoot != Keccak.EmptyTreeHash) included++;
         }
 
@@ -259,6 +282,9 @@ public class FrameTxProducerRetryMeasurement
     /// burn scales with K_retry times M, not K_retry alone. M is a modelled sweep input here, not a
     /// measured one. At <c>kRetry == 1</c>, M has no effect (eviction happens on the first attempt
     /// regardless), so those rows are a documented control rather than a distinct measurement.
+    /// Kept alongside <see cref="MeasuredProducerRetriesAgainstARealPool"/>, which sweeps the same grid against
+    /// the real pool, so the two emitted rows can be diffed; this one is the substituted-pool arm of that pair
+    /// and reports an eviction-call count the real pool exposes no counter for.
     /// </remarks>
     [Test]
     public async Task ProducerRetriesAreBoundedByKRetryAndAttemptsPerHead(
@@ -312,11 +338,6 @@ public class FrameTxProducerRetryMeasurement
 
         await BuildChain(NeverApproves());
 
-        CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(_transactionProcessor));
-        BlockProcessor.BlockProductionTransactionPicker picker = new(_specProvider);
-        IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
-        balManager.Enabled.Returns(false);
-
         // Reproduces the pool's real per-head bookkeeping: the failed-heads tally advances only the
         // first time a given head generation is seen, so repeated attempts against the same head spend
         // no further budget.
@@ -339,8 +360,7 @@ public class FrameTxProducerRetryMeasurement
             return headsFailed >= kRetry;
         });
 
-        BlockProcessor.BlockProductionTransactionsExecutor executor =
-            new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager, txPool);
+        BlockProcessor.BlockProductionTransactionsExecutor executor = BuildExecutor(txPool, out CountingAdapter adapter);
 
         Transaction tx = FrameTx(verifyGas);
         UInt256 beneficiaryBefore = _stateProvider.GetBalance(Beneficiary);
@@ -351,20 +371,7 @@ public class FrameTxProducerRetryMeasurement
         {
             // Block number advances every attempt; headGeneration below is the modelled quantity that
             // stays fixed across the mPerHead attempts spent against one head.
-            Block block = Build.A.Block
-                .WithNumber(1 + blocksOffered)
-                .WithBaseFeePerGas(UInt256.Zero)
-                .WithBeneficiary(Beneficiary)
-                .WithGasLimit(BlockGasLimit)
-                .WithTransactions(tx)
-                .TestObject;
-
-            BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
-            receiptsTracer.StartNewBlockTrace(block);
-            executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
-            executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
-            receiptsTracer.EndBlockTrace();
+            Block block = OfferBlock(executor, tx, (ulong)(1 + blocksOffered), out _);
             blocksOffered++;
             attemptsAtCurrentHead++;
 
@@ -413,8 +420,9 @@ public class FrameTxProducerRetryMeasurement
     /// Timings are taken with burn tracing on, which selects the instrumented EVM path, so they are named apart
     /// and are not comparable with the flood harness's <c>t_reject</c>. They are also tier-dependent: the runtime
     /// promotes the interpreter loop only after a stretch long enough that building the next case's chain stops
-    /// restarting its call-counting delay, and the promoted cost is some fourteen times the tier-0 one. Only rows
-    /// whose attempt count is in the hundreds report the steady state, so read the low ones as an upper bound.
+    /// restarting its call-counting delay, and the un-promoted attempt is the dearer of the two by a wide
+    /// margin. Only rows whose attempt count is in the hundreds report the steady state, so read the low ones
+    /// as an upper bound.
     /// The attempt count and the gas are unaffected, being counts rather than times.
     /// </remarks>
     [Test]
@@ -438,7 +446,7 @@ public class FrameTxProducerRetryMeasurement
         foreach (ulong b in adapter.BurnedPerAttempt) burned += b;
         ulong firstBurn = adapter.BurnedPerAttempt.Count > 0 ? adapter.BurnedPerAttempt[0] : 0;
 
-        Emit($"case=k_retry_measured k_retry={kRetry} k_basis=measured m_per_head={mPerHead} m_basis=measured "
+        Emit($"case=k_retry_measured k_retry={kRetry} k_basis=measured m_per_head={mPerHead} m_basis=scheduled "
              + $"m_effective={run.MaxAttemptsOnOneHead} budget={verifyGas} admission_basis=unresolved_admit "
              + $"blocks_offered={run.Attempts} execution_attempts={adapter.Attempts} "
              + $"heads_spent={run.HeadsAdvanced + 1} dropped_by_pool={run.Dropped} "
@@ -488,9 +496,11 @@ public class FrameTxProducerRetryMeasurement
         ulong totalBurn = 0;
         ulong firstBurn = 0;
         int admitted = 0;
+        AcceptTxResult lastAdmission = AcceptTxResult.Accepted;
         for (int residency = 0; residency < residencies; residency++)
         {
-            if (_pool!.SubmitTx(tx, TxHandlingOptions.None) != AcceptTxResult.Accepted) break;
+            lastAdmission = _pool!.SubmitTx(tx, TxHandlingOptions.None);
+            if (lastAdmission != AcceptTxResult.Accepted) break;
             admitted++;
 
             (ProducerLoopResult run, CountingAdapter adapter) = await OfferUntilDropped(tx, kRetry, mPerHead);
@@ -499,8 +509,8 @@ public class FrameTxProducerRetryMeasurement
             if (residency == 0 && adapter.BurnedPerAttempt.Count > 0) firstBurn = adapter.BurnedPerAttempt[0];
         }
 
-        Emit($"case=resubmit_measured k_retry={kRetry} k_basis=measured m_per_head={mPerHead} m_basis=measured "
-             + $"budget={verifyGas} residencies={residencies} readmitted={admitted} "
+        Emit($"case=resubmit_measured k_retry={kRetry} k_basis=measured m_per_head={mPerHead} m_basis=scheduled "
+             + $"budget={verifyGas} residencies={residencies} readmitted={admitted} last_admission={lastAdmission} "
              + $"execution_attempts={totalAttempts} burn_first_attempt={firstBurn} burn_total={totalBurn} "
              + $"amplification={(firstBurn == 0 ? 0 : (double)totalBurn / firstBurn):F2} amplification_basis=measured "
              + $"modelled_attempts={residencies * perResidency}");
@@ -508,7 +518,7 @@ public class FrameTxProducerRetryMeasurement
         using (Assert.EnterMultipleScope())
         {
             Assert.That(admitted, Is.EqualTo(residencies),
-                "a dropped frame transaction must be re-admittable, or the budget could not be refreshed by gossip");
+                $"a dropped frame transaction must be re-admittable, or the budget could not be refreshed by gossip; the pool answered {lastAdmission}");
             Assert.That(totalAttempts, Is.EqualTo(residencies * perResidency),
                 "each residency must be granted a full budget again, which is what makes the burn unbounded in re-gossip");
         }
@@ -529,12 +539,7 @@ public class FrameTxProducerRetryMeasurement
     {
         int offerCap = kRetry * mPerHead + 1;
 
-        CountingAdapter adapter = new(new BuildUpTransactionProcessorAdapter(_transactionProcessor));
-        IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
-        balManager.Enabled.Returns(false);
-        BlockProcessor.BlockProductionTransactionsExecutor executor = new(
-            adapter, _stateProvider, new BlockProcessor.BlockProductionTransactionPicker(_specProvider),
-            LimboLogs.Instance, balManager, _pool!);
+        BlockProcessor.BlockProductionTransactionsExecutor executor = BuildExecutor(_pool!, out CountingAdapter adapter);
 
         List<double> micros = [];
         double totalMicros = 0;
@@ -546,26 +551,10 @@ public class FrameTxProducerRetryMeasurement
 
         while (attempts < offerCap)
         {
-            Block block = Build.A.Block
-                .WithNumber(_poolHeadNumber + 1)
-                .WithBaseFeePerGas(UInt256.Zero)
-                .WithBeneficiary(Beneficiary)
-                .WithGasLimit(BlockGasLimit)
-                .WithTransactions(tx)
-                .TestObject;
+            Block block = OfferBlock(executor, tx, _poolHeadNumber + 1, out TimeSpan elapsed);
 
-            BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
-            receiptsTracer.StartNewBlockTrace(block);
-            executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
-
-            long started = Stopwatch.GetTimestamp();
-            executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
-            double elapsed = Stopwatch.GetElapsedTime(started).TotalMicroseconds;
-            receiptsTracer.EndBlockTrace();
-
-            micros.Add(elapsed);
-            totalMicros += elapsed;
+            micros.Add(elapsed.TotalMicroseconds);
+            totalMicros += elapsed.TotalMicroseconds;
             attempts++;
             attemptsOnCurrentHead++;
             if (attemptsOnCurrentHead > maxAttemptsOnOneHead) maxAttemptsOnOneHead = attemptsOnCurrentHead;
@@ -606,7 +595,12 @@ public class FrameTxProducerRetryMeasurement
         _pool = new TxPool.TxPool(
             new EthereumEcdsa(_specProvider.ChainId),
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(new ChainHeadSpecProvider(_specProvider, _poolHeadTree), _poolHeadTree, poolState),
+            new ChainHeadInfoProvider(new ChainHeadSpecProvider(_specProvider, _poolHeadTree), _poolHeadTree, poolState)
+            {
+                // The pool raises TxPoolHeadChanged only while it considers itself synced, and AdvancePoolHead
+                // waits on that event, so pin it rather than leaving it to the pinned head's block number.
+                HasSynced = true
+            },
             new TxPoolConfig
             {
                 GasLimit = BlockGasLimit,
@@ -620,6 +614,8 @@ public class FrameTxProducerRetryMeasurement
             ShouldGossip.Instance);
     }
 
+    /// <remarks>The wait is bounded so that a pool that stops raising the event surfaces as a failed case
+    /// rather than as a hung fixture.</remarks>
     private async Task AdvancePoolHead()
     {
         _poolHeadNumber++;
@@ -632,8 +628,9 @@ public class FrameTxProducerRetryMeasurement
             e => e.Number == block.Number);
 
         _poolHeadTree.Head = block;
+        _poolHeadTree.BestSuggestedHeader = block.Header;
         _poolHeadTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(block));
-        await waitTask;
+        await waitTask.WaitAsync(HeadChangeTimeout);
     }
 
     private Block BuildPoolHead() =>
