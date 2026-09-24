@@ -233,7 +233,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             {
                 UInt256 nonce = account.Nonce;
                 byte[]? code = _worldState.GetCode(addr);
-                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code));
+                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code)
+                {
+                    CodeHash = account.CodeHash != default(ValueHash256) && account.CodeHash != Keccak.OfAnEmptyString.ValueHash256
+                        ? account.CodeHash : (ValueHash256?)null
+                });
             }
             else
             {
@@ -283,10 +287,16 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.Nonce = poststateAccount.Nonce;
             }
+            ValueHash256 postCodeHash = _worldState.AccountExists(addr) ? poststateAccountStruct.CodeHash : default;
+            if (postCodeHash != (prestateAccount.CodeHash ?? Keccak.OfAnEmptyString.ValueHash256))
+            {
+                modified = true;
+                diffAccount.CodeHash = postCodeHash;
+            }
             if (!Bytes.NullableEqualityComparer.Equals(poststateAccount.Code, prestateAccount.Code))
             {
                 modified = true;
-                diffAccount.Code = poststateAccount.Code;
+                diffAccount.Code = poststateAccount.Code ?? [];
             }
 
             if (prestateAccount.Storage is not null)

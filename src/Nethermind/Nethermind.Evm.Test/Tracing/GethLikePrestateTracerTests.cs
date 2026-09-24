@@ -133,6 +133,70 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("00")]
+    [TestCase("ef01000000000000000000000000000000000000001234")]
+    public void Prestate_serializes_nonempty_code_hash(string? code)
+    {
+        if (code is not null)
+        {
+            TestState.CreateAccount(TestItem.AddressB, 1);
+            TestState.InsertCode(TestItem.AddressB, Bytes.FromHexString(code), Spec);
+        }
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(),
+            Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+
+        JsonElement result = JsonSerializer.SerializeToElement(tracer.BuildResult().CustomTracerResult!.Value, SerializerOptions);
+        JsonElement account = result.GetProperty(TestItem.AddressB.ToString());
+        bool hasCode = !string.IsNullOrEmpty(code);
+        Assert.That(account.TryGetProperty("codeHash", out JsonElement codeHash), Is.EqualTo(hasCode));
+        if (hasCode)
+            Assert.That(codeHash.GetString(), Is.EqualTo(Keccak.Compute(Bytes.FromHexString(code!)).ToString()));
+    }
+
+    [TestCase("00", "00")]
+    [TestCase("00", "6000")]
+    [TestCase("", "00")]
+    [TestCase("00", "")]
+    [TestCase("", "")]
+    [TestCase("00", null)]
+    [TestCase("", null)]
+    [TestCase("ef01000000000000000000000000000000000000001234", "")]
+    public void Diff_serializes_changed_code_and_hash(string before, string? after)
+    {
+        byte[] beforeCode = Bytes.FromHexString(before);
+        TestState.CreateAccount(TestItem.AddressB, 1);
+        TestState.InsertCode(TestItem.AddressB, beforeCode, Spec);
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode),
+            Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        if (after is null)
+            TestState.DeleteAccount(TestItem.AddressB);
+        else
+        {
+            TestState.InsertCode(TestItem.AddressB, Bytes.FromHexString(after), Spec);
+            TestState.SubtractFromBalance(TestItem.AddressB, 1, Spec, out _);
+        }
+        tracer.MarkAsSuccess(TestItem.AddressB, default, [], []);
+
+        JsonElement result = JsonSerializer.SerializeToElement(tracer.BuildResult().CustomTracerResult!.Value, SerializerOptions);
+        JsonElement pre = result.GetProperty("pre").GetProperty(TestItem.AddressB.ToString());
+        JsonElement post = result.GetProperty("post").GetProperty(TestItem.AddressB.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pre.TryGetProperty("codeHash", out JsonElement preHash), Is.EqualTo(before.Length > 0));
+            if (before.Length > 0)
+                Assert.That(preHash.GetString(), Is.EqualTo(Keccak.Compute(beforeCode).ToString()));
+            Assert.That(post.TryGetProperty("codeHash", out JsonElement postHash), Is.EqualTo(before != after));
+            if (before != after)
+                Assert.That(postHash.GetString(), Is.EqualTo((after is null ? Hash256.Zero : Keccak.Compute(Bytes.FromHexString(after))).ToString()));
+            bool codeChanged = before != (after ?? "");
+            Assert.That(post.TryGetProperty("code", out JsonElement postCode), Is.EqualTo(codeChanged));
+            if (codeChanged)
+                Assert.That(postCode.GetString(), Is.EqualTo("0x" + after));
+        }
+    }
+
     private static void AssertTrace(GethLikeTxTrace trace, string expectedTrace) =>
         Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions),
             Is.EqualTo(expectedTrace.ReplaceLineEndings(SerializerOptions.NewLine)));
@@ -182,6 +246,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x56bc75e2d63100001",
               "code": "0x7f0000000000000000000000000000000000000000000000000000000000a012346000557f0000000000000000000000000000000000000000000000000000000000b1567860205500",
+              "codeHash": "0x3e7b60198c46be6d3baf6996b6b0699d2750bb35ce4e9f495eefe94dd40c1525",
               "storage": {
                 "0x0000000000000000000000000000000000000000000000000000000000000000": "0x0000000000000000000000000000000000000000000000000000000000a01234",
                 "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000b15678"
@@ -222,7 +287,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
           },
           "0x76e68a8696537e4141926f3e528733af9e237d69": {
             "balance": "0xde0b6b3a7640000",
-            "code": "0x7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000"
+            "code": "0x7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000",
+            "codeHash": "0xed25a1b0948283ea4844073b1cdb8e1bc6624420c646ad850059b2b8086faaa9"
           },
           "0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3": {
             "balance": "0x0"
@@ -248,11 +314,13 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x56bc75e2d63100001",
               "nonce": 1,
-              "code": "0x60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400"
+              "code": "0x60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400",
+              "codeHash": "0xf0a0df4051fb30bcef4898ac511f8cf40e2f6fb5279ef80ce84d13051ab2138e"
             },
             "0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3": {
               "nonce": 1,
-              "code": "0x000000"
+              "code": "0x000000",
+              "codeHash": "0x99ff0d9125e1fc9531a11262e15aeb2c60509a078c4cc4c64cefdfb06ff68647"
             }
           }
         }
@@ -303,7 +371,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
           },
           "0x76e68a8696537e4141926f3e528733af9e237d69": {
             "balance": "0xde0b6b3a7640000",
-            "code": "0x7f7f010203000000000000000000000000000000000000000000000000000000006000527f0060005260036000f3000000000000000000000000000000000000000000000060205262040506602960006000f5"
+            "code": "0x7f7f010203000000000000000000000000000000000000000000000000000000006000527f0060005260036000f3000000000000000000000000000000000000000000000060205262040506602960006000f5",
+            "codeHash": "0xb2139a4067bf64811bda94f4d73a4a9fdb7d5015e57a92274e9e009e48354dc5"
           },
           "0x02caaf71b895896a4d9159943eae74efb6a58238": {
             "balance": "0x0"
@@ -322,7 +391,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             },
             "0x76e68a8696537e4141926f3e528733af9e237d69": {
               "balance": "0xde0b6b3a7640000",
-              "code": "0x7f7f010203000000000000000000000000000000000000000000000000000000006000527f0060005260036000f3000000000000000000000000000000000000000000000060205262040506602960006000f5"
+              "code": "0x7f7f010203000000000000000000000000000000000000000000000000000000006000527f0060005260036000f3000000000000000000000000000000000000000000000060205262040506602960006000f5",
+              "codeHash": "0xb2139a4067bf64811bda94f4d73a4a9fdb7d5015e57a92274e9e009e48354dc5"
             }
           },
           "post": {
@@ -332,14 +402,16 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             },
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x56bc75e2d63100001",
-              "code": "0x600060006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f1"
+              "code": "0x600060006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f1",
+              "codeHash": "0x446a918ac490932cbcc6ed9f50fedcaef0b253ba7b36185cfffcdb291e642b2b"
             },
             "0x76e68a8696537e4141926f3e528733af9e237d69": {
               "nonce": 1
             },
             "0x02caaf71b895896a4d9159943eae74efb6a58238": {
               "nonce": 1,
-              "code": "0x010203"
+              "code": "0x010203",
+              "codeHash": "0xf1885eda54b7a053318cd41e2093220dab15d65381b1157a3633a83bfd5c9239"
             }
           }
         }
@@ -408,7 +480,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             },
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x56bc75e2d63100001",
-              "code": "0x7f00000000000000000000000076e68a8696537e4141926f3e528733af9e237d693100"
+              "code": "0x7f00000000000000000000000076e68a8696537e4141926f3e528733af9e237d693100",
+              "codeHash": "0xbe804ee80a769a2c28b7749b62bac22da8bfa2ec1a64f5bc091233d588838a78"
             }
           }
         }
@@ -455,12 +528,24 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
           "pre": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x0"
+            },
+            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
+              "balance": "0x0"
+            },
+            "0x76e68a8696537e4141926f3e528733af9e237d69": {
+              "balance": "0x0"
             }
           },
           "post": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630fa3cc",
               "nonce": 1
+            },
+            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
+              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "0x76e68a8696537e4141926f3e528733af9e237d69": {
+              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
             }
           }
         }
@@ -506,6 +591,9 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x0"
             },
+            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
+              "balance": "0x0"
+            },
             "0x76e68a8696537e4141926f3e528733af9e237d69": {
               "balance": "0x0"
             }
@@ -514,6 +602,9 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630f2e9c",
               "nonce": 1
+            },
+            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
+              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
             }
           }
         }

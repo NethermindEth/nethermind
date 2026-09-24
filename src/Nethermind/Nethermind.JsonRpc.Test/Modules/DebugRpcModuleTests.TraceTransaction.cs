@@ -267,7 +267,8 @@ public partial class DebugRpcModuleTests
                     "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
                         "balance": "0x3635c9adc5de9f09e5",
                         "nonce": 3,
-                        "code": "0xabcd"
+                        "code": "0xabcd",
+                        "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                     },
                     "0x0000000000000000000000000000000000000000": {
                         "balance": "0x0"
@@ -403,7 +404,8 @@ public partial class DebugRpcModuleTests
                     "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
                         "balance": "0x3635c9adc5de9f09e5",
                         "nonce": 3,
-                        "code": "0xabcd"
+                        "code": "0xabcd",
+                        "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                     },
                     "0x0ffd3e46594919c04bcfd4e146203c8255670828": {
                         "balance": "0x0",
