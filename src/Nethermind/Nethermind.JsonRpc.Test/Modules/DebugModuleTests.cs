@@ -694,7 +694,7 @@ public class DebugModuleTests
                     bridge.HasStateForBlock(Arg.Is(header)).Returns(true);
                     bridge.HasStateForBlock(Arg.Is(parent)).Returns(false);
                 }),
-                "No state available for the parent of block")
+                "No state available for block")
             { TestName = $"{name}_parent_state_missing" };
         }
     }

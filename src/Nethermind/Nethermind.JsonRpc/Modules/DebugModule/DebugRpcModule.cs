@@ -192,15 +192,27 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
-        TryGetHeaderAndCheckTraceBaseState(blockhash, out ResultWrapper<GethLikeTxTrace>? headerError);
-        return headerError ?? TraceTransactionAtIndex(blockhash, index, options, nameof(debug_traceTransactionByBlockhashAndIndex));
+        BlockHeader? header = TryGetHeader(blockhash, out ResultWrapper<GethLikeTxTrace>? error);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        error = CheckTraceBaseState<GethLikeTxTrace>(header!);
+        return error ?? TraceTransactionAtIndex(blockhash, index, options, nameof(debug_traceTransactionByBlockhashAndIndex));
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
-        BlockHeader? header = TryGetHeaderAndCheckTraceBaseState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
+        BlockHeader? header = TryGetHeader(blockParameter, out ResultWrapper<GethLikeTxTrace>? error);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        error = CheckTraceBaseState<GethLikeTxTrace>(header!);
         // Trace the block that was resolved, not the canonical one at its height: a block hash parameter need not be canonical
-        return headerError ?? TraceTransactionAtIndex(header!.Hash!, index, options, nameof(debug_traceTransactionByBlockAndIndex));
+        return error ?? TraceTransactionAtIndex(header!.Hash!, index, options, nameof(debug_traceTransactionByBlockAndIndex));
     }
 
     private ResultWrapper<GethLikeTxTrace> TraceTransactionAtIndex(Hash256 blockHash, int index, GethTraceOptions? options, string method)
@@ -910,40 +922,6 @@ public class DebugRpcModule(
     }
 
     /// <summary>
-    /// Resolves the header for <paramref name="blockParameter"/> and checks that the state a whole-block
-    /// replay of it would start from is available.
-    /// </summary>
-    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
-    private BlockHeader? TryGetHeaderAndCheckTraceBaseState<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
-    {
-        BlockHeader? header = TryGetHeader<TResult>(blockParameter, out error);
-        if (header is null)
-        {
-            return null;
-        }
-
-        error = CheckTraceBaseState<TResult>(header);
-        return error is null ? header : null;
-    }
-
-    /// <summary>
-    /// Resolves the header for <paramref name="blockHash"/> and checks that the state a whole-block replay
-    /// of it would start from is available.
-    /// </summary>
-    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
-    private BlockHeader? TryGetHeaderAndCheckTraceBaseState<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
-    {
-        BlockHeader? header = TryGetHeader<TResult>(blockHash, out error);
-        if (header is null)
-        {
-            return null;
-        }
-
-        error = CheckTraceBaseState<TResult>(header);
-        return error is null ? header : null;
-    }
-
-    /// <summary>
     /// Checks that the state a whole-block replay of <paramref name="header"/> starts from is available.
     /// </summary>
     /// <returns>The failure to return to the caller, or <see langword="null"/> when the state is available.</returns>
@@ -969,11 +947,7 @@ public class DebugRpcModule(
                 ErrorCodes.ResourceUnavailable);
         }
 
-        return blockchainBridge.HasStateForBlock(parent)
-            ? null
-            : ResultWrapper<TResult>.Fail(
-                $"No state available for the parent of block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
-                ErrorCodes.ResourceUnavailable);
+        return blockchainBridge.HasStateForBlock(parent) ? null : GetStateFailureResult<TResult>(parent);
     }
 
     private Block? TryGetBlockAndCheckState<TResult>(Rlp blockRlp, out ResultWrapper<TResult>? error)
