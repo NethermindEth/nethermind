@@ -778,7 +778,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// Only an interior prefixless branch is ever left out (<see cref="PbtNodeGroupCodec.ShouldOmit"/>), so a
     /// boundary position or the root with nothing stored, or a child missing, is a corrupt group. The link hash
     /// decomposition seeded is kept, so the branch is only hashed again if a sibling's deletion promotes it. With that
-    /// hash known and the branch left out again, its child hashes are only needed by <see cref="Rise"/>, so they are
+    /// hash known and the branch left out again, its child hashes are only needed by <see cref="Land"/>, so they are
     /// resolved there instead, sparing the rehash of every unchanged node below it.
     /// </remarks>
     private static ComposedNode AppendImplicitBranch(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
@@ -821,7 +821,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// The walk is post-order, and the writer's buffer is its stack memory: every node is appended at its own position
     /// as soon as it is produced, and what moves up the walk is only where it sits. The parent reads it back from there.
-    /// A node that rises over an empty sibling is always the last entry, so it is rewritten in place one level up; a
+    /// A node that rises over an empty sibling is always the last entry, so it only records the side bits it gains and
+    /// is rewritten in place once, at the position it lands on (<see cref="Land"/>); a
     /// node that must not stay in the group, an inlined leaf or an omitted branch, is dropped as soon as its position is
     /// settled, while it is still the last entry, keeping only what its parent needs. The root is returned rather than
     /// kept, anchored at <paramref name="resultDepth"/>.
@@ -884,7 +885,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 uint rightMask = ((1u << (frame.Path.Width - 1)) - 1) << (position - frame.Path.Width + 1);
                 if (((frontierMask | copies) & rightMask) == 0)
                 {
-                    if (!prevSubtree.IsEmpty) prevSubtree = Rise(ref reader, writer, path, prevSubtree, position - frame.Path.Width, position, 0);
+                    if (!prevSubtree.IsEmpty) prevSubtree = prevSubtree.Rise(position - frame.Path.Width, 0);
                     frameCount--;
                     continue;
                 }
@@ -896,7 +897,8 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
                 else
                 {
-                    SettleLeft(writer, path, position - frame.Path.Width, prevSubtree, ref frame, metrics);
+                    int leftPosition = position - frame.Path.Width;
+                    SettleLeft(writer, path, leftPosition, Land(ref reader, writer, path, prevSubtree, leftPosition), ref frame, metrics);
                     frame.Stage = ComposeStage.AwaitingRight;
                 }
                 frames[frameCount] = new(frame.Path.Right);
@@ -906,7 +908,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (frame.Stage == ComposeStage.AwaitingOnlyRight)
             {
                 // Back up from the right child of a position with no left node: its node rises to this position.
-                prevSubtree = Rise(ref reader, writer, path, prevSubtree, position - 1, position, 1);
+                prevSubtree = prevSubtree.Rise(position - 1, 1);
                 frameCount--;
                 continue;
             }
@@ -914,23 +916,25 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 // Back up from the right child with both children present: settle the right one and append the branch
                 // over the two, returning it up to the parent frame.
-                prevSubtree = AppendBranch(writer, path, position, prevSubtree, ref frame, metrics);
+                prevSubtree = AppendBranch(writer, path, position, Land(ref reader, writer, path, prevSubtree, position - 1), ref frame, metrics);
                 frameCount--;
                 continue;
             }
         }
-        return TakeRoot(writer, path, resultDepth, prevSubtree);
+        return TakeRoot(writer, path, resultDepth, Land(ref reader, writer, path, prevSubtree, PbtFourLevelGroupGeometry.RootPosition));
     }
 
-    /// <summary>Moves the last entry, the node at <paramref name="childPosition"/> on <paramref name="side"/> of <paramref name="position"/>, up to <paramref name="position"/>.</summary>
+    /// <summary>Moves the last entry, a node that rose over empty siblings, up to <paramref name="position"/>, where it lands.</summary>
     /// <remarks>
-    /// A branch gains the side bit in front of its compressed prefix, and so needs hashing again; a leaf's encoding does
-    /// not depend on its position. An implicit branch appended without its child hashes has them resolved here.
+    /// A branch gains the side bits it rose over in front of its compressed prefix, and so needs hashing again; a leaf's
+    /// encoding does not depend on its position. An implicit branch appended without its child hashes has them resolved here.
     /// </remarks>
     [SkipLocalsInit]
-    private static ComposedNode Rise(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
-        in ComposedNode node, int childPosition, int position, int side)
+    private static ComposedNode Land(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
+        in ComposedNode node, int position)
     {
+        if (node.RiseBitCount == 0) return node;
+        int childPosition = node.EntryPosition;
         // The entry is rewritten over itself, so it is read from a copy.
         Span<byte> previous = stackalloc byte[node.Length];
         writer.Entry(node.Offset, node.Length).Span.CopyTo(previous);
@@ -939,7 +943,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (stored.IsLeaf)
         {
             previous.CopyTo(writer.Append(position, node.Length));
-            return node;
+            return new(node.Offset, node.Length, node.Hash);
         }
 
         ValueHash256 leftHash = stored.LeftHash;
@@ -950,12 +954,13 @@ internal static partial class TrieUpdater<TKey, TPath>
             reader.GetChildHashes(path, childPosition - width, childPosition - 1, out leftHash, out rightHash);
         }
         CompressedPrefix prefix = stored.Prefix;
-        int bitCount = prefix.BitCount + 1;
+        int riseBitCount = node.RiseBitCount;
+        int bitCount = prefix.BitCount + riseBitCount;
         int length = PbtNodeCodec.BranchLength(bitCount, stored.LeftKey.Length, stored.RightKey.Length);
         Span<byte> encoding = writer.Append(position, length);
         PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, leftHash, rightHash);
-        encoding[3] |= (byte)(side << 7);
-        PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, encoding[3..], 1);
+        encoding[3] |= (byte)(node.RiseBits << (8 - riseBitCount));
+        PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, encoding[3..], riseBitCount);
         PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..], stored.LeftKey, stored.RightKey);
         return new(node.Offset, length, default);
     }
@@ -1117,9 +1122,26 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly int Length = length;
         /// <summary>The node's hash, or default while its preimage waits in the writer to be hashed with its sibling's.</summary>
         internal readonly ValueHash256 Hash = hash;
-        /// <summary>Whether the encoding is an omitted implicit branch whose child hashes were not resolved, which only <see cref="Rise"/> needs.</summary>
+        /// <summary>Whether the encoding is an omitted implicit branch whose child hashes were not resolved, which only <see cref="Land"/> needs.</summary>
         internal bool ChildHashesPending { get; init; }
+        /// <summary>The position the entry is appended at, while it has risen above it.</summary>
+        internal int EntryPosition { get; private init; }
+        /// <summary>The side bits the node rose over, the last one highest, still to be put in front of its compressed prefix.</summary>
+        internal byte RiseBits { get; private init; }
+        internal byte RiseBitCount { get; private init; }
         internal bool IsEmpty => Length == 0;
+
+        /// <summary>Records a rise from <paramref name="childPosition"/> over an empty sibling, with the node on <paramref name="side"/>, which <see cref="Land"/> applies.</summary>
+        internal ComposedNode Rise(int childPosition, int side)
+        {
+            Debug.Assert(RiseBitCount < PbtFourLevelGroupGeometry.LevelsPerGroup, "A node rises at most to the group root.");
+            return this with
+            {
+                EntryPosition = RiseBitCount == 0 ? childPosition : EntryPosition,
+                RiseBits = (byte)((side << RiseBitCount) | RiseBits),
+                RiseBitCount = (byte)(RiseBitCount + 1)
+            };
+        }
     }
 
     [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup + 1)]
