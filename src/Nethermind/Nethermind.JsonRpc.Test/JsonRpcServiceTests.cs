@@ -39,6 +39,7 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Testably.Abstractions;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -966,6 +967,40 @@ public class JsonRpcServiceTests
             .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
+    }
+
+    [TestCaseSource(nameof(StateUnavailableShapes))]
+    public void State_unavailable_exception_is_resource_unavailable_only_for_state_not_retained(Exception thrown, int expectedCode, string expectedMessage, bool warns)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(thrown);
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode, expectedMessage);
+
+        logger.Received(warns ? 1 : 0).Warn(Arg.Is<string>(static text => text.StartsWith("Missing trie node during eth_getLogs")));
+    }
+
+    private static IEnumerable<TestCaseData> StateUnavailableShapes()
+    {
+        StateNotRetainedException notRetained = new("State for block 1 is unavailable");
+        yield return new TestCaseData(notRetained, ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, bare)");
+        yield return new TestCaseData(new TargetInvocationException(notRetained), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, wrapped)");
+        yield return new TestCaseData(MissingTrieNode(notRetained), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, missing-trie wrap)");
+        yield return new TestCaseData(new TargetInvocationException(MissingTrieNode(notRetained)), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, wrapped missing-trie wrap)");
+
+        // A history row that cannot be trusted keeps the pre-existing mapping: -32000 with the WARN that is the
+        // operator's only sign of corruption at the default log level, or an internal error when nothing wrapped it.
+        StateUnavailableException untrusted = new("The flat history rows below that path do not reproduce the proven state root");
+        yield return new TestCaseData(MissingTrieNode(untrusted), ErrorCodes.ResourceNotFound, "State proof at historical block 1 is unavailable", true).SetName("{m}(untrusted, missing-trie wrap)");
+        yield return new TestCaseData(untrusted, ErrorCodes.InternalError, "Internal error", false).SetName("{m}(untrusted, bare)");
+        yield return new TestCaseData(new TargetInvocationException(untrusted), ErrorCodes.InternalError, "Internal error", false).SetName("{m}(untrusted, wrapped)");
+
+        static MissingTrieNodeException MissingTrieNode(StateUnavailableException inner) =>
+            new("State proof at historical block 1 is unavailable", null, TreePath.Empty, TestItem.KeccakA, inner);
     }
 
     [RpcModule(ModuleType.Eth)]
