@@ -16,11 +16,11 @@ using Nethermind.Db.FullPruning;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test.FullPruning;
 

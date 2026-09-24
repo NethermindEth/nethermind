@@ -38,7 +38,6 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
-using Nethermind.Trie.Pruning;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -166,7 +165,7 @@ public class BaseMergePluginModule : Module
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
 
-            .AddDecorator<IFinalizedStateProvider, MergeFinalizedStateProvider>()
+            .AddDecorator<IStateHeaderProvider, MergeFinalizedStateProvider>()
 
             // Engine rpc related
             .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()
