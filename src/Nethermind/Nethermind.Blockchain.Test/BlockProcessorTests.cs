@@ -66,6 +66,8 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
 using System.Linq;
 using Nethermind.Trie;
+using Nethermind.State.Proofs;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -1488,26 +1490,44 @@ public class BlockProcessorTests
             yield return RuntimeInformation.ProcessorCount + 1;
     }
 
-    [Test]
-    public async Task Block_processing_preserves_receipt_logs_without_a_log_tracer()
+    [TestCase(1, 1)]
+    [TestCase(1, 64)]
+    [TestCase(16, 1)]
+    [TestCase(65, 1)]
+    public async Task Block_processing_preserves_receipt_logs_without_a_log_tracer(int count, int logCount)
     {
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
-        Transaction tx = Build.A.Transaction.WithTo(null)
-            .WithCode(Prepare.EvmCode.Log(32, 0, [TestItem.KeccakA]).STOP().Done)
-            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[] code = Enumerable.Repeat(Prepare.EvmCode.Log(32, 0, [TestItem.KeccakA]).Done, logCount)
+            .SelectMany(bytes => bytes).ToArray();
+        Transaction[] transactions = Enumerable.Range(0, count).Select(i => Build.A.Transaction.WithTo(null)
+            .WithNonce((ulong)i).WithCode(code)
+            .WithGasLimit(logCount > 1 ? 250_000ul : 100_000ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray();
 
-        Block block = await chain.AddBlock(tx);
+        Block block = await chain.AddBlock(transactions);
 
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
-        Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].Logs, Has.Length.EqualTo(1));
+        Assert.That(receipts, Has.Length.EqualTo(count));
+        Bloom expectedBloom = new();
+        foreach (TxReceipt receipt in receipts)
+        {
+            Assert.That(receipt.Logs, Has.Length.EqualTo(logCount));
+            Bloom expectedReceiptBloom = new(receipt.Logs);
+            expectedBloom.Accumulate(expectedReceiptBloom);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+                Assert.That(receipt.Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
+                Assert.That(receipt.Bloom, Is.EqualTo(expectedReceiptBloom));
+            }
+        }
+        using TrackingCappedArrayPool pool = new();
+        Hash256 expectedRoot = new ReceiptTrie(Prague.Instance, receipts, new ReceiptMessageDecoder(), pool,
+            canBeParallel: false).RootHash;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(receipts[0].Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
-            Assert.That(receipts[0].Bloom, Is.Not.EqualTo(Bloom.Empty));
-            Assert.That(block.Header.Bloom, Is.Not.EqualTo(Bloom.Empty));
+            Assert.That(block.Header.Bloom, Is.EqualTo(expectedBloom));
+            Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(expectedRoot));
         }
     }
 
@@ -1920,9 +1940,10 @@ public class BlockProcessorTests
 
     [Test]
     [MaxTime(Timeout.MaxTestTime)]
-    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event([Values(2, 3)] int transactionCount)
+    public void BranchProcessor_cancels_and_drains_prewarmer_before_clearing_caches(
+        [Values(2, 3)] int transactionCount, [Values] bool startSession)
     {
-        TokenCapturingPreWarmer preWarmer = new();
+        TokenCapturingPreWarmer preWarmer = new() { StartSession = startSession };
         (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -1934,8 +1955,14 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True,
-            "prewarmer CancellationToken should be cancelled via TransactionsExecuted event after tx processing");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True);
+            Assert.That(preWarmer.Starts, Is.EqualTo(1), "a skipped pass must not prepare the caches twice");
+            Assert.That(preWarmer.SessionDisposals, Is.EqualTo(startSession ? 1 : 0));
+            Assert.That(preWarmer.Clears, Is.EqualTo(1));
+            Assert.That(preWarmer.ClearedBeforeDrain, Is.False);
+        }
     }
 
     /// <param name="mispredictedSlot">
@@ -2157,15 +2184,31 @@ public class BlockProcessorTests
     private class TokenCapturingPreWarmer : IBlockCachePreWarmer
     {
         public CancellationToken CapturedToken { get; private set; }
+        public bool StartSession { get; init; }
+        public int Starts { get; private set; }
+        public int SessionDisposals { get; private set; }
+        public int Clears { get; private set; }
+        public bool ClearedBeforeDrain { get; private set; }
 
-        public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
+        public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
             CancellationToken cancellationToken = default)
         {
             CapturedToken = cancellationToken;
-            return Task.CompletedTask;
+            Starts++;
+            return StartSession ? new Session(this) : null;
         }
 
-        public CacheType ClearCaches() => default;
+        private sealed class Session(TokenCapturingPreWarmer owner) : IDisposable
+        {
+            public void Dispose() => owner.SessionDisposals++;
+        }
+
+        public CacheType ClearCaches()
+        {
+            Clears++;
+            ClearedBeforeDrain |= StartSession && SessionDisposals == 0;
+            return default;
+        }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Dispose() { }

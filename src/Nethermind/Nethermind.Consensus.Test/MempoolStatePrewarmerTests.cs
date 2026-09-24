@@ -207,7 +207,7 @@ public class MempoolStatePrewarmerTests
     {
         public readonly TaskCompletionSource<BlockHeader> CapturedHeader = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
         public CacheType ClearCaches() => default;
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
