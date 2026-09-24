@@ -21,6 +21,8 @@ public interface IStorageTracer
     /// Controls
     /// - <see cref="ReportStorageChange(in StorageCell, byte[], byte[])"/>
     /// - <see cref="ReportStorageRead"/>
+    /// - <see cref="ReportStorageClear"/>
+    /// - <see cref="ReportStorageRestore"/>
     /// </remarks>
     bool IsTracingStorage { get; }
 
