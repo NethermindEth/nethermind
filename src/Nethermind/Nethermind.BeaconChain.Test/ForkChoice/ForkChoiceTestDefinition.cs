@@ -130,7 +130,6 @@ public sealed class ForkChoiceTestDefinition
                         Root: processBlock.Root,
                         ParentRoot: processBlock.ParentRoot,
                         StateRoot: Hash256.Zero,
-                        TargetRoot: Hash256.Zero,
                         JustifiedCheckpoint: processBlock.JustifiedCheckpoint,
                         FinalizedCheckpoint: processBlock.FinalizedCheckpoint,
                         ExecutionStatus: ExecutionStatus.Optimistic,

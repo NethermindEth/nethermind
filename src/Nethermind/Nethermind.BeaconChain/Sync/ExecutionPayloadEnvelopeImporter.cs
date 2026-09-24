@@ -85,6 +85,7 @@ public sealed class ExecutionPayloadEnvelopeImporter(
     private readonly ILogger _logger = logManager.GetClassLogger<ExecutionPayloadEnvelopeImporter>();
 
     /// <summary>Verifies <paramref name="signedEnvelope"/> against the post-state of the block it names and returns the verdict.</summary>
+    /// <exception cref="InvalidOperationException">The engine notifier returned no verdict (<see cref="ExecutionStatus.Irrelevant"/>), which is a local fault and not a rejection.</exception>
     public ExecutionPayloadEnvelopeImportResult Import(SignedExecutionPayloadEnvelope signedEnvelope)
     {
         Hash256? blockRoot = signedEnvelope.Message!.BeaconBlockRoot;
@@ -115,6 +116,11 @@ public sealed class ExecutionPayloadEnvelopeImporter(
         {
             if (_logger.IsWarn) _logger.Warn($"Deferring envelope for beacon block {blockRoot}: {e.Message}");
             return ExecutionPayloadEnvelopeImportResult.EngineUnavailable;
+        }
+        catch (BeaconStateException e) when (verdict.Status is ExecutionStatus.Irrelevant)
+        {
+            // The notifier is called last, so this is its no-verdict refusal: our bug, never the sender's.
+            throw new InvalidOperationException($"Envelope for beacon block {blockRoot} got no execution verdict from the notifier", e);
         }
         catch (BeaconStateException e)
         {
