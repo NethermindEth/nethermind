@@ -470,7 +470,10 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             FinalizePendingOp(closeWithNullSub: true);
         }
-        return base.BuildResult();
+        ParityTraceAction? action = _trace.Action;
+        ParityLikeTxTrace result = base.BuildResult();
+        if (action is not null && result.Action is null) ReturnActionTree(action);
+        return result;
     }
 
     private void FinalizePendingOp(bool closeWithNullSub)
