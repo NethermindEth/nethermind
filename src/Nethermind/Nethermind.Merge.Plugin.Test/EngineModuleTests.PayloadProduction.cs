@@ -743,6 +743,8 @@ public partial class EngineModuleTests
             }
 
             Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid), $"iteration {iteration}");
+            // The forkchoice update on this block below waits only briefly for its commit and answers SYNCING otherwise.
+            await chain.WaitForCommitted(getPayloadResult.BlockHash);
 
 
             // starting building on block X
