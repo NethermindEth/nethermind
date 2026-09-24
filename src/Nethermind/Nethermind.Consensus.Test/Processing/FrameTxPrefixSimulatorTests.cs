@@ -13,6 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Evm.State;
@@ -114,7 +115,7 @@ public class FrameTxPrefixSimulatorTests
         // Not the caller's token and not the tracer's abort, so it is this node stopping: a malfunction
         // rather than a bound it chose to spend, and the peer must not be charged for it.
         using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out IReadOnlyTxProcessorSource source, out _);
-        source.Build(Arg.Any<BlockHeader?>()).Throws(new OperationCanceledException());
+        source.TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Throws(new OperationCanceledException());
 
         FrameTxSimulationResult result = simulator.Simulate(FrameTx());
 
@@ -167,7 +168,7 @@ public class FrameTxPrefixSimulatorTests
     public void Simulate_ScopeBuildHitsNodeFault_LeavesTheTransactionUndecided(Exception fault)
     {
         using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out IReadOnlyTxProcessorSource source, out _);
-        source.Build(Arg.Any<BlockHeader?>()).Throws(fault);
+        source.TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Throws(fault);
 
         FrameTxSimulationResult result = simulator.Simulate(FrameTx());
 
@@ -441,7 +442,7 @@ public class FrameTxPrefixSimulatorTests
         scope.WorldState.Returns(Substitute.For<IWorldState>());
 
         source = Substitute.For<IReadOnlyTxProcessorSource>();
-        source.Build(Arg.Any<BlockHeader?>()).Returns(scope);
+        source.TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(call => call.Succeed(1, scope));
 
         IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         envFactory.Create().Returns(source);

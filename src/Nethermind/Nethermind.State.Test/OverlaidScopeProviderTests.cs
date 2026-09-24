@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -34,7 +35,7 @@ public class OverlaidScopeProviderTests
         _innerTree.When(t => t.Get(Arg.Any<UInt256>(), out Arg.Any<UInt256>())).Do(c => c[1] = (UInt256)99);
         _inner.CreateStorageTree(TestItem.AddressA).Returns(_innerTree);
         IWorldStateScopeProvider provider = Substitute.For<IWorldStateScopeProvider>();
-        provider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(_inner);
+        provider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, _inner));
         _slot = new StateReadOverlaySlot();
         _scope = new OverlaidScopeProvider(provider, _slot).BeginScope(null, new LocalMetrics());
     }

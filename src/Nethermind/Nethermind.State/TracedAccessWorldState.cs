@@ -67,19 +67,24 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (_generatingBlockAccessList is null) return base.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
 
-        bool? currentlyExists = AccountExistsCurrent(address);
-        UInt256? currentBalance = GetBalanceCurrent(address);
-        bool res = base.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
+        // Single probe: a miss in GetAccountChanges is not memoized, so re-deriving existence and
+        // balance from the address would be three full dictionary misses on first touch.
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        bool? currentlyExists = accountChanges?.AccountExists ?? AccountExistsCurrent(accountChanges);
+        UInt256? currentBalance = accountChanges?.BalanceChange?.Value;
+        bool wasCreated = base.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
-        res = currentlyExists ?? res;
+        wasCreated = currentlyExists.HasValue ? !currentlyExists.Value : wasCreated;
 
         UInt256 newBalance = oldBalance + balanceChange;
         if (!ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange))
         {
+            // Skip the GetOrAddAccountChanges probe when physical existence is already recorded.
+            if (accountChanges?.AccountExists is not true) _generatingBlockAccessList.RecordAccountExistence(address, true);
             _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
 
-        return res;
+        return wasCreated;
     }
 
     public override IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
@@ -253,6 +258,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         _generatingBlockAccessList?.DeleteAccount(address, GetBalanceInternal(address));
         base.DeleteAccount(address);
+        GeneratingBlockAccessList.RecordAccountExistence(address, false);
     }
 
     public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
@@ -290,6 +296,19 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     private bool ShouldSuppressSystemUserZeroBalanceChange(Address address, in UInt256 balanceChange)
         => _systemAccountReadSuppressionDepth != 0 && address == Address.SystemUser && balanceChange.IsZero;
+
+    /// <summary>Records physical existence, honoring SystemUser suppression.</summary>
+    /// <remarks>
+    /// Unlike a read, this creates the account's BAL entry, so an unguarded call would put a
+    /// suppressed <see cref="Address.SystemUser"/> into the generated BAL and change its hash.
+    /// </remarks>
+    private void RecordAccountExistence(Address address, bool exists)
+    {
+        if (_systemAccountReadSuppressionDepth == 0 || address != Address.SystemUser)
+        {
+            GeneratingBlockAccessList.RecordAccountExistence(address, exists);
+        }
+    }
 
     /// <summary>Records the account read (honoring SystemUser suppression) and returns its change entry in one probe.</summary>
     /// <remarks>Only reached from members that have already established a live slice.</remarks>
@@ -454,8 +473,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         => AccountExistsCurrent(address) ?? base.AccountExists(address);
 
     private bool? AccountExistsCurrent(Address address)
+        => AccountExistsCurrent(GeneratingBlockAccessList.GetAccountChanges(address));
+
+    private static bool? AccountExistsCurrent(AccountChangesAtIndex? accountChanges)
     {
-        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList?.GetAccountChanges(address);
         if (accountChanges is not null && (accountChanges.NonceChange is not null || accountChanges.BalanceChange is not null))
         {
             // if nonce or balance is changed in this tx must exist (could have been created this tx)
@@ -474,6 +495,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private void RecordCreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         AddAccountRead(address);
+        RecordAccountExistence(address, true);
         if (!balance.IsZero)
         {
             _generatingBlockAccessList?.AddBalanceChange(address, 0, balance);
