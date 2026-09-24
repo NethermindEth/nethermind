@@ -36,6 +36,7 @@ public class PowForwardHeaderProvider(
     private ulong _currentNumber;
     private readonly Random _rnd = new();
     private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
+    private readonly Guid _sealValidationBatchGuid = Guid.NewGuid();
 
     protected const int MinCachedHeaderBatchSize = 32;
 
@@ -288,6 +289,7 @@ public class PowForwardHeaderProvider(
     protected void ValidateSeals(IReadOnlyList<BlockHeader?> headers, CancellationToken cancellation)
     {
         if (_logger.IsTrace) _logger.Trace("Starting seal validation");
+        HintBatchRange(headers);
         ConcurrentQueue<Exception> exceptions = new();
         int randomNumberForValidation = _rnd.Next(Math.Max(0, headers.Count - 2));
         Parallel.For(0, headers.Count, (i, state) =>
@@ -340,6 +342,27 @@ public class PowForwardHeaderProvider(
             throw new AggregateException(exceptions);
         }
         cancellation.ThrowIfCancellationRequested();
+    }
+
+    // Ethash refuses to validate an epoch it was not hinted for, so the hint has to sit next to the validation:
+    // subclasses call ValidateSeals without going through RequestHeaders. A dedicated guid keeps this exact
+    // range from evicting the wider pre-warm hint RequestHeaders issues.
+    private void HintBatchRange(IReadOnlyList<BlockHeader?> headers)
+    {
+        ulong min = ulong.MaxValue;
+        ulong max = 0;
+        for (int i = 0; i < headers.Count; i++)
+        {
+            BlockHeader? header = headers[i];
+            if (header is null) continue;
+            if (header.Number < min) min = header.Number;
+            if (header.Number > max) max = header.Number;
+        }
+
+        if (min <= max)
+        {
+            sealValidator.HintValidationRange(_sealValidationBatchGuid, min, max);
+        }
     }
 
     protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty ?? UInt256.Zero) > (blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero);

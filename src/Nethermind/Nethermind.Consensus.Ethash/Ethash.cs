@@ -210,6 +210,13 @@ namespace Nethermind.Consensus.Ethash
 
         public bool Validate(BlockHeader header)
         {
+            // Mirror the ceiling HintBasedCache enforces, so a number whose epoch only fits uint once truncated
+            // cannot alias onto a legitimately cached epoch.
+            if (header.Number / EpochLength > MaxEpoch)
+            {
+                return false;
+            }
+
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet? dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
