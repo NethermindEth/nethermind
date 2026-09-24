@@ -251,6 +251,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
+            ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
+
+            // Genesis has no parent to replay from, and no transactions or rewards to trace.
+            if (block.IsGenesis)
+            {
+                return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success([]);
+            }
+
             SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
             if (parentSearch.IsError)
             {
@@ -262,7 +270,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(parentSearch.Object);
             }
 
-            ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             BlockHeader parentHeader = parentSearch.Object!;
 
             return BuildStreamingMultiResult<ParityTxTraceFromReplay>(

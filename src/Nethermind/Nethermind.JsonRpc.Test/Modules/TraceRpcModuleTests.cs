@@ -120,6 +120,47 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_replayBlockTransactions_returns_no_traces_for_genesis([Values("earliest", "0x0")] string blockParameter, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_replayBlockTransactions", blockParameter, new[] { "trace" });
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","result":[],"id":67}"""));
+    }
+
+    [Test]
+    public async Task Trace_replayBlockTransactions_rejects_unknown_trace_type_for_genesis()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_replayBlockTransactions", "earliest", new[] { "unknown" });
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [Test]
+    public async Task Trace_replayBlockTransactions_returns_error_for_missing_block_or_parent([Values] bool parentMissing)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Block head = blockchain.BlockTree.Head!;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true,
+            new MissingHeaderBlockTree(blockchain.BlockTree, head.ParentHash!));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+        ulong blockNumber = parentMissing ? head.Number : head.Number + 1;
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_replayBlockTransactions", $"0x{blockNumber:x}", new[] { "trace" });
+        Assert.That(response, Is.EqualTo(
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.ResourceNotFound},\"message\":\"{BlockFinderExtensions.HeaderNotFound}\"}},\"id\":67}}"));
+    }
+
+    [Test]
     public async Task Trace_filter_returns_error_for_missing_state(
         [Values] bool streaming, [Values(0, 1, 2)] int missingStateOffset)
     {
