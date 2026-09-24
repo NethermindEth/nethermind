@@ -391,6 +391,15 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         if (_hasPendingOp) _pendingUsed = gasAvailable;
     }
 
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, bool isPrecompileCall = false)
+    {
+        // Mirrors the base tracer, which adds the gas forwarded to a CREATE/CREATE2 frame to the operation's cost.
+        if (_streamVmTrace && _hasPendingOp && callType.IsAnyCreate()) _pendingCost += gas;
+
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+    }
+
     protected override void OnEnterVmFrame(ParityTraceAction action)
     {
         if (!_streamVmTrace) { base.OnEnterVmFrame(action); return; }

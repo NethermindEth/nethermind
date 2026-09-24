@@ -1680,6 +1680,23 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task VmTrace_create_cost_includes_forwarded_gas([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        // PUSH1 0 (size), PUSH1 0 (offset), PUSH1 0 (value), CREATE, STOP: the empty-initcode CREATE is ops[3].
+        string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"0x600060006000f000\",\"gas\":\"0xf4240\"}},[\"vmTrace\",\"trace\"]]]";
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+        JToken result = JToken.Parse(response)["result"]![0]!;
+
+        ulong forwardedGas = Convert.ToUInt64(result["trace"]![1]!["action"]!["gas"]!.Value<string>(), 16);
+        Assert.That(result["vmTrace"]!["ops"]![3]!["cost"]!.Value<ulong>(), Is.EqualTo(GasCostOf.Create + forwardedGas), response);
+    }
+
+    [Test]
     public async Task Streaming_vmTrace_matches_buffered_across_nested_call_frame()
     {
         Context context = new();
