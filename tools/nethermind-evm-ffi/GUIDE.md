@@ -88,11 +88,11 @@ dotnet tool install --global dotnet-trace
 
 ## 3. Get the source
 
-The work is on the branch **`feat/nethermind-evm-ffi`**. The submodules (`src/tests`,
+The work is on the branch **`feature/nethermind-evm-ffi`**. The submodules (`src/tests`,
 `src/bench_precompiles`) are not needed, so a shallow clone without them is enough:
 
 ```bash
-git clone --depth 1 --branch feat/nethermind-evm-ffi \
+git clone --depth 1 --branch feature/nethermind-evm-ffi \
   https://github.com/NethermindEth/nethermind.git ~/nethermind
 cd ~/nethermind
 ```
@@ -101,7 +101,7 @@ cd ~/nethermind
 > a Windows checkout is reachable under `/mnt/c`:
 >
 > ```bash
-> git clone --depth 1 --branch feat/nethermind-evm-ffi \
+> git clone --depth 1 --branch feature/nethermind-evm-ffi \
 >   file:///mnt/c/Users/<you>/Documents/GitHub/nethermind ~/nethermind
 > ```
 >
@@ -225,7 +225,7 @@ the host — which proves the engine is reading *your* state rather than its own
 nethermind-evm-sys = { path = "/home/<you>/nethermind/tools/nethermind-evm-ffi/rust/nethermind-evm-sys" }
 ```
 
-(or a `git = …, branch = "feat/nethermind-evm-ffi"` dependency once the branch is pushed.)
+(or a `git = …, branch = "feature/nethermind-evm-ffi"` dependency once the branch is pushed.)
 
 ### 6.2 Add a build script — this is required
 
