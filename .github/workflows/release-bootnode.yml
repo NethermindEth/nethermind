@@ -46,6 +46,7 @@ jobs:
           # The same derivation that feeds the image's OCI version label, so the tag and the label
           # cannot diverge. version.sh fails on a missing VersionPrefix or an unusable result.
           if ! version=$(scripts/version.sh tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj); then
+            echo "Bootnode version must produce valid Docker and Git tags."
             exit 1
           fi
 
