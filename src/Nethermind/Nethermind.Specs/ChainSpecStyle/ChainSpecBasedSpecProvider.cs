@@ -208,7 +208,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             if (spec.IsEip8141Enabled && !(spec.IsEip8246Enabled && spec.IsEip3529Enabled))
             {
-                throw new ArgumentException($"EIP-8141, active at {activation}, requires EIP-8246 and EIP-3529 active by the same transition");
+                string missing = spec.IsEip8246Enabled ? "EIP-3529" : spec.IsEip3529Enabled ? "EIP-8246" : "EIP-8246 and EIP-3529";
+                throw new ArgumentException($"EIP-8141, active at {activation}, requires {missing} active by the same transition");
             }
         }
 

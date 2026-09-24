@@ -956,13 +956,14 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    [TestCase(0ul, 10ul, false, TestName = "EIP-8141 with EIP-8246 and EIP-3529 loads")]
-    [TestCase(0ul, 5ul, false, TestName = "EIP-8141 after EIP-8246 loads")]
-    [TestCase(0ul, null, true, TestName = "EIP-8141 without EIP-8246 is rejected")]
-    [TestCase(0ul, 20ul, true, TestName = "EIP-8141 before EIP-8246 is rejected")]
-    [TestCase(null, 10ul, true, TestName = "EIP-8141 without EIP-3529 is rejected")]
+    [TestCase(0ul, 10ul, null, TestName = "EIP-8141 with EIP-8246 and EIP-3529 loads")]
+    [TestCase(0ul, 5ul, null, TestName = "EIP-8141 after EIP-8246 loads")]
+    [TestCase(0ul, null, "EIP-8246", TestName = "EIP-8141 without EIP-8246 is rejected")]
+    [TestCase(0ul, 20ul, "EIP-8246", TestName = "EIP-8141 before EIP-8246 is rejected")]
+    [TestCase(null, 10ul, "EIP-3529", TestName = "EIP-8141 without EIP-3529 is rejected")]
+    [TestCase(null, null, "EIP-8246 and EIP-3529", TestName = "EIP-8141 without either is rejected")]
     public void Eip8141_without_the_eips_its_self_destruct_finalization_assumes_is_rejected_at_load(
-        ulong? eip3529Block, ulong? eip8246Timestamp, bool rejected)
+        ulong? eip3529Block, ulong? eip8246Timestamp, string? missing)
     {
         ChainSpec chainSpec = new()
         {
@@ -976,7 +977,7 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         Action load = () => _ = new ChainSpecBasedSpecProvider(chainSpec);
-        if (rejected) Assert.That(load, Throws.ArgumentException.With.Message.Contains("EIP-8141"));
+        if (missing is not null) Assert.That(load, Throws.ArgumentException.With.Message.Contains($"requires {missing} active"));
         else Assert.That(load, Throws.Nothing);
     }
 
