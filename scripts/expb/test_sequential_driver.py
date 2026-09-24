@@ -27,6 +27,15 @@ sys.modules["sequential_driver"] = driver
 _spec.loader.exec_module(driver)
 
 
+def write_smt_topology(root: Path, cores: int) -> None:
+    """Lay out sysfs thread siblings for a CPU whose SMT sibling of cpuN is cpuN+cores."""
+    for cpu in range(2 * cores):
+        core = cpu % cores
+        path = root / f"cpu{cpu}" / "topology"
+        path.mkdir(parents=True)
+        (path / "thread_siblings_list").write_text(f"{core},{core + cores}\n", encoding="utf-8")
+
+
 @contextlib.contextmanager
 def environment(**values: str):
     """Run with exactly these driver variables set; everything else is cleared."""
@@ -37,6 +46,7 @@ def environment(**values: str):
         "CLIENT",
         "CLIENT_ENV",
         "CLIENT_SNAPSHOT_DIR",
+        "CPU_TOPOLOGY_DIR",
         "DELAY_SECONDS",
         "EXPB_CAMPAIGN_DIR",
         "EXPB_DATA_DIR",
@@ -306,12 +316,16 @@ class RenderTests(unittest.TestCase):
         with environment(CLIENT="erigon"), self.assertRaises(ValueError):
             driver.render(self.BASE, self.IMAGE, 1)
 
-    def test_render_disables_cpu_quota_and_preserves_affinity(self) -> None:
+    def test_render_replaces_the_cpu_quota_with_whole_core_affinity(self) -> None:
+        # A CFS quota throttles the client in bursts; the same CPU budget as an affinity mask does not.
         resources = {"cpu": 8, "cpuset": "2-7,10-15", "infra_cpuset": "0-1,8-9", "mem": "64g"}
         base = {"resources": dict(resources), **self.BASE}
-        with environment():
+        with tempfile.TemporaryDirectory() as topology, environment(CPU_TOPOLOGY_DIR=topology):
+            write_smt_topology(Path(topology), cores=8)
             config, _ = driver.render(base, self.IMAGE, 1)
-        self.assertEqual(config["resources"], {**resources, "cpu": 0})
+            with self.subTest(case="an odd count splits a core"), self.assertRaises(ValueError):
+                driver.render({"resources": {**resources, "cpu": 7}, **self.BASE}, self.IMAGE, 1)
+        self.assertEqual(config["resources"], {**resources, "cpu": 0, "cpuset": "2,3,4,5,10,11,12,13"})
         self.assertEqual(base["resources"], resources)
 
     def test_a_config_without_the_nethermind_scenario_is_rejected(self) -> None:

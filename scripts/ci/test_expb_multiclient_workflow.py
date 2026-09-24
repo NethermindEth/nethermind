@@ -139,7 +139,7 @@ class ExpbWorkflowTests(unittest.TestCase):
             )
             return proc, parse_output(output), temp_path
 
-    def test_render_disables_cpu_quota_and_preserves_affinity(self):
+    def test_render_replaces_the_cpu_quota_with_whole_core_affinity(self):
         yq = os.environ.get("YQ") or shutil.which("yq")
         if not yq:
             self.skipTest("Mike Farah yq is required (set YQ or add it to PATH)")
@@ -147,6 +147,12 @@ class ExpbWorkflowTests(unittest.TestCase):
         self.assertEqual(1, len(renderers))
         for index, renderer in enumerate(renderers):
             with self.subTest(renderer=index), tempfile.TemporaryDirectory() as directory:
+                topology = Path(directory) / "cpu"
+                for cpu in range(16):
+                    (topology / f"cpu{cpu}" / "topology").mkdir(parents=True)
+                    (topology / f"cpu{cpu}" / "topology" / "thread_siblings_list").write_text(
+                        f"{cpu % 8},{cpu % 8 + 8}\n", encoding="utf-8"
+                    )
                 source = Path(directory) / "source.yaml"
                 rendered = Path(directory) / "rendered.yaml"
                 original = (
@@ -168,6 +174,7 @@ class ExpbWorkflowTests(unittest.TestCase):
                     "FLAT_SNAPSHOT_DIR": "/data/snapshot",
                     "FLAT_SNAPSHOT_BLOCK_DIR": "/data/snapshot-block",
                     "SCENARIO_NAME": "test",
+                    "CPU_TOPOLOGY_DIR": to_bash(topology),
                 })
                 self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
                 result = subprocess.run(
@@ -175,7 +182,7 @@ class ExpbWorkflowTests(unittest.TestCase):
                     capture_output=True, text=True, check=True,
                 )
                 self.assertEqual({
-                    "cpu": 0, "cpuset": "2-7,10-15",
+                    "cpu": 0, "cpuset": "2,3,4,5,10,11,12,13",
                     "infra_cpuset": "0-1,8-9", "mem": "64g",
                 }, json.loads(result.stdout))
                 self.assertEqual(original, source.read_text(encoding="utf-8"))
