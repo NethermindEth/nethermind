@@ -1451,7 +1451,7 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void ApplyStateChanges_uses_parent_state_without_prestate_sentinels()
+    public void ApplyBal_uses_parent_state_without_prestate_sentinels()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -1462,7 +1462,7 @@ public class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100),
             assertState: stateProvider =>
@@ -1479,7 +1479,7 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void ApplyStateChanges_creates_missing_account_from_balance_change()
+    public void ApplyBal_creates_missing_account_from_balance_change()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -1488,7 +1488,7 @@ public class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: null,
             assertState: stateProvider =>
@@ -1626,7 +1626,7 @@ public class BlockProcessorTests
         balManager.ReturnTxProcessor(1);
     }
 
-    private static void ApplyStateChangesInParentScope(
+    private static void ApplyBalInParentScope(
         ReadOnlyBlockAccessList bal,
         Action<IWorldState>? genesisSetup,
         Action<IWorldState> assertState)
@@ -1644,7 +1644,7 @@ public class BlockProcessorTests
         BlockHeader parent = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
         using (stateProvider.BeginScope(parent))
         {
-            BlockAccessListManager.ApplyStateChanges(bal, stateProvider, Amsterdam.Instance, shouldComputeStateRoot: false);
+            stateProvider.ApplyBal(bal, Amsterdam.Instance);
             assertState(stateProvider);
         }
     }

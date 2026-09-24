@@ -406,17 +406,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override ArrayPoolList<AddressAsKey> GetAccountChanges()
     {
         CheckInitialized();
-
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = _suggestedBlockAccessList.AccountChanges.AsSpan();
-        ArrayPoolList<AddressAsKey> result = new(accounts.Length);
-        foreach (ReadOnlyAccountChanges accountChanges in accounts)
-        {
-            if (accountChanges.HasStateChanges)
-            {
-                result.Add(new AddressAsKey(accountChanges.Address));
-            }
-        }
-        return result;
+        return _suggestedBlockAccessList.GetStateChangedAddresses();
     }
 
     public override void GetTransientState(in StorageCell storageCell, out UInt256 value)

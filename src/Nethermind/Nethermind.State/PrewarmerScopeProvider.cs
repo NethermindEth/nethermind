@@ -9,6 +9,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -109,6 +110,9 @@ public class PrewarmerScopeProvider(
         private long _writeBatchTime = 0;
         // Root of the state the next commit starts from: the base block's, then each committed root in turn.
         private Hash256? _committedStateRoot = baseStateRoot;
+        // Set once the block's state came from a BAL. The caches still describe the pre-block state the parallel
+        // workers read, so this scope must neither read nor backfill them until the write-back moves them forward.
+        private ReadOnlyBlockAccessList? _appliedBal;
 
         public void Dispose()
         {
@@ -147,6 +151,7 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             IWorldStateScopeProvider.IStorageTree baseTree = baseScope.CreateStorageTree(address);
+            if (_appliedBal is not null) return baseTree;
             return storageReadCapture is not null
                 ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address)
                 : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics);
@@ -184,6 +189,8 @@ public class PrewarmerScopeProvider(
         // Only the consumer's commits become state, and they are what the caches must reflect for the next block.
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot)
         {
+            ReadOnlyBlockAccessList? appliedBal = _appliedBal;
+            _appliedBal = null;
             if (isPrewarmer) return;
 
             Hash256 stateRoot = baseScope.RootHash;
@@ -193,8 +200,32 @@ public class PrewarmerScopeProvider(
 
             Hash256? baseStateRoot = _committedStateRoot;
             _committedStateRoot = stateRoot;
+            if (appliedBal is not null) takeSnapshot = WithAppliedBal(appliedBal, takeSnapshot);
             preBlockCaches.WriteBackInBackground(baseStateRoot, stateRoot, takeSnapshot, _logger);
         }
+
+        // The world state never saw the BAL's writes, so its snapshot is preceded by the BAL's final values, read back
+        // from the committed scope while the snapshot is still being taken on the calling thread.
+        private Func<IWorldStateScopeProvider.IBlockChangeSnapshot> WithAppliedBal(
+            ReadOnlyBlockAccessList bal,
+            Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => () =>
+        {
+            ArrayPoolList<(ReadOnlyAccountChanges Changes, Account? Account)> accounts = new(bal.AccountChanges.Count);
+            try
+            {
+                foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+                {
+                    if (accountChanges.HasStateChanges) accounts.Add((accountChanges, baseScope.Get(accountChanges.Address)));
+                }
+
+                return new AppliedBalChangeSnapshot(accounts, takeSnapshot());
+            }
+            catch
+            {
+                accounts.Dispose();
+                throw;
+            }
+        };
 
         public Hash256 RootHash => baseScope.RootHash;
 
@@ -213,6 +244,8 @@ public class PrewarmerScopeProvider(
 
         public Account? Get(Address address)
         {
+            if (_appliedBal is not null) return baseScope.Get(address);
+
             AddressAsKey addressAsKey = address;
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
@@ -263,6 +296,12 @@ public class PrewarmerScopeProvider(
             return baseScope.HintBal(bal, sink);
         }
 
+        public void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec)
+        {
+            baseScope.ApplyBal(bal, spec);
+            _appliedBal = bal;
+        }
+
         private sealed class CacheSink(
             SeqlockCache<AddressAsKey, Account> stateCache,
             SeqlockCache<StorageCell, UInt256> storageCache
@@ -288,6 +327,51 @@ public class PrewarmerScopeProvider(
         }
 
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
+    }
+
+    /// <inheritdoc cref="IWorldStateScopeProvider.IBlockChangeSnapshot"/>
+    private sealed class AppliedBalChangeSnapshot(
+        ArrayPoolList<(ReadOnlyAccountChanges Changes, Account? Account)> accounts,
+        IWorldStateScopeProvider.IBlockChangeSnapshot worldStateChanges) : IWorldStateScopeProvider.IBlockChangeSnapshot
+    {
+        public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+        {
+            foreach ((ReadOnlyAccountChanges changes, Account? account) in accounts)
+            {
+                writeBatch.Set(changes.Address, account);
+                if (!writeBatch.AcceptsStorageWrites) continue;
+
+                if (account is null)
+                {
+                    // The removed account's former slots are unknown here, so its storage cannot be dropped selectively.
+                    using IWorldStateScopeProvider.IStorageWriteBatch clearBatch = writeBatch.CreateStorageWriteBatch(changes.Address, 0);
+                    clearBatch.Clear();
+                    continue;
+                }
+
+                if (changes.StorageChanges.Length == 0) continue;
+
+                using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(changes.Address, changes.StorageChanges.Length);
+                foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
+                {
+                    if (slotChanges.Changes.Length > 0) storageWriteBatch.Set(slotChanges.Key, slotChanges.Changes[^1].Value);
+                }
+            }
+
+            worldStateChanges.WriteTo(writeBatch);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                accounts.Dispose();
+            }
+            finally
+            {
+                worldStateChanges.Dispose();
+            }
+        }
     }
 
     private sealed class StorageTreeWrapper(

@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -186,6 +187,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public void HintGet(Address address, Account? account) => _snapshotBundle.PromoteAccount(address, account);
+
+    public void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec) => ScopeBalApplier.Apply(this, bal, spec);
 
     // Not reentrant: cancels and replaces the previous hint task unguarded; call only from the block-processing thread.
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)

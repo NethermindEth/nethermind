@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Eip2930;
@@ -165,7 +166,7 @@ public partial class BlockProcessor
                         transactionProcessedEventHandler is null ? null : this,
                         token);
 
-                    // Iterations: 0 = ApplyStateChanges, 1..len = tx (scheduled order =
+                    // Iterations: 0 = ApplyBal, 1..len = tx (scheduled order =
                     // _txExecutionOrder[i-1]; balIndex = scheduledTxIndex+1). Pre-execution
                     // (StoreBeaconRoot + ApplyBlockhashStateChanges) ran sequentially in
                     // BlockProcessor.ProcessBlock before this method was called.
@@ -192,7 +193,11 @@ public partial class BlockProcessor
                                 if (i == 0)
                                 {
                                     state.balManager.WaitForBalWarmup();
-                                    BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                    ReadOnlyBlockAccessList bal = state.block.BlockAccessList;
+                                    // The world state never sees the BAL's writes, so its account changes would miss them.
+                                    if (state.isBlockProcessingThread) state.block.AccountChanges = bal.GetStateChangedAddresses();
+                                    state.stateProvider.ApplyBal(bal, state.specProvider.GetSpec(state.block.Header));
+                                    state.stateProvider.RecalculateStateRoot();
                                     return state;
                                 }
 

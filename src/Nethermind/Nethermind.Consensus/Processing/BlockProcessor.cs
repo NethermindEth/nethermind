@@ -378,7 +378,7 @@ public partial class BlockProcessor(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void SetAccountChanges(Block block)
-        => block.AccountChanges = _stateProvider.GetAccountChanges();
+        => block.AccountChanges ??= _stateProvider.GetAccountChanges();
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {

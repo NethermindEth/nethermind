@@ -15,6 +15,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -108,6 +109,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         }
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
+
+        public void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec) => ScopeBalApplier.Apply(this, bal, spec);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {

@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -60,6 +61,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => innerScope.HintBal(bal, sink);
+
+        public void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec)
+            => innerScope.ApplyBal(bal, spec);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 

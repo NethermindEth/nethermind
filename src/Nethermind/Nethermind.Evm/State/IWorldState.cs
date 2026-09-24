@@ -27,6 +27,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     IDisposable BeginScope(BlockHeader? baseBlock);
     Task HintBal(ReadOnlyBlockAccessList bal);
+
+    /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
+    void ApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);

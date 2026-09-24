@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -58,6 +59,89 @@ public class StateProviderTests(bool useFlat)
         }
 
         public void Dispose() => _container?.Dispose();
+    }
+
+    [Test]
+    public void ApplyBal_MatchesTheSameChangesMadeThroughTheWorldState()
+    {
+        byte[] code = Bytes.FromHexString("0x60006000");
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(1, 120), new BalanceChange(2, 150))
+                    .WithNonceChanges(new NonceChange(1, 3))
+                    .WithStorageChanges(1, new StorageChange(1, 0x2A))
+                    .WithStorageChanges(2, new StorageChange(1, 0))
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressB)
+                    .WithBalanceChanges(new BalanceChange(1, 0))
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressC)
+                    .WithNonceChanges(new NonceChange(1, 1))
+                    .WithCodeChanges(new CodeChange(1, code))
+                    .WithStorageChanges(5, new StorageChange(1, 7))
+                    .TestObject)
+            .TestObject;
+
+        using Context executed = new(useFlat);
+        Hash256 executedRoot = CommitBlockOverGenesis(executed.WorldState, state =>
+        {
+            state.AddToBalance(TestItem.AddressA, 50, Amsterdam.Instance);
+            state.SetNonce(TestItem.AddressA, 3);
+            state.Set(new StorageCell(TestItem.AddressA, 1), 0x2A);
+            state.Set(new StorageCell(TestItem.AddressA, 2), 0);
+            state.SubtractFromBalance(TestItem.AddressB, 5, Amsterdam.Instance);
+            state.CreateAccount(TestItem.AddressC, 0, 1);
+            state.InsertCode(TestItem.AddressC, code, Amsterdam.Instance);
+            state.Set(new StorageCell(TestItem.AddressC, 5), 7);
+        }, readBack: static _ => { });
+
+        using Context applied = new(useFlat);
+        Hash256 appliedRoot = CommitBlockOverGenesis(applied.WorldState, state =>
+        {
+            state.ApplyBal(bal, Amsterdam.Instance);
+            state.RecalculateStateRoot();
+        }, readBack: state =>
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(state.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)150));
+                Assert.That(state.GetNonce(TestItem.AddressA), Is.EqualTo(3ul));
+                state.Get(new StorageCell(TestItem.AddressA, 1), out UInt256 changedSlot);
+                Assert.That(changedSlot, Is.EqualTo((UInt256)0x2A));
+                state.Get(new StorageCell(TestItem.AddressA, 2), out UInt256 zeroedSlot);
+                Assert.That(zeroedSlot, Is.EqualTo(UInt256.Zero));
+                state.Get(new StorageCell(TestItem.AddressA, 3), out UInt256 untouchedSlot);
+                Assert.That(untouchedSlot, Is.EqualTo((UInt256)0x33));
+                Assert.That(state.AccountExists(TestItem.AddressB), Is.False, "an account left empty is removed under EIP-158");
+                Assert.That(state.GetCode(TestItem.AddressC), Is.EqualTo(code));
+                state.Get(new StorageCell(TestItem.AddressC, 5), out UInt256 newSlot);
+                Assert.That(newSlot, Is.EqualTo((UInt256)7));
+            }
+        });
+
+        Assert.That(appliedRoot, Is.EqualTo(executedRoot));
+
+        static Hash256 CommitBlockOverGenesis(IWorldState state, Action<IWorldState> changeBlock, Action<IWorldState> readBack)
+        {
+            using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+            state.CreateAccount(TestItem.AddressA, 100, 1);
+            state.Set(new StorageCell(TestItem.AddressA, 1), 0x11);
+            state.Set(new StorageCell(TestItem.AddressA, 2), 0x22);
+            state.Set(new StorageCell(TestItem.AddressA, 3), 0x33);
+            state.CreateAccount(TestItem.AddressB, 5);
+            state.Commit(Amsterdam.Instance, isGenesis: true);
+            state.CommitTree(0);
+
+            changeBlock(state);
+            state.Commit(Amsterdam.Instance);
+            state.CommitTree(1);
+            readBack(state);
+            return state.StateRoot;
+        }
     }
 
     [Test]

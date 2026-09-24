@@ -557,6 +557,43 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_ApplyBal_BypassesTheCachesInScope_AndWritesTheBalsFinalValuesBack()
+    {
+        using Context ctx = new(useFlat);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(1, 400))
+                .WithStorageChanges(SlotA1.Index, new StorageChange(1, 7))
+                .TestObject)
+            .TestObject;
+
+        UInt256 balanceReadInScope = default;
+        UInt256 slotReadInScope = default;
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            ws.ApplyBal(bal, Cancun.Instance);
+            ws.RecalculateStateRoot();
+            balanceReadInScope = ws.GetBalance(TestItem.AddressA);
+            ws.Get(in SlotA1, out slotReadInScope);
+        });
+
+        bool carried = caches.PrepareFor(newRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(balanceReadInScope, Is.EqualTo((UInt256)400), "the pre-block cached account must not hide the applied one");
+            Assert.That(slotReadInScope, Is.EqualTo((UInt256)7), "the pre-block cached slot must not hide the applied one");
+            Assert.That(carried, Is.True, "the caches describe the committed state");
+            Assert.That(CachedAccount(caches, TestItem.AddressA).Balance, Is.EqualTo((UInt256)400));
+            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(CachedAccount(caches, TestItem.AddressC).Balance, Is.EqualTo((UInt256)300), "untouched entries survive");
+        }
+    }
+
+    [Test]
     public void Test_StorageOnlyChange_CachesTheAccountWithItsNewStorageRoot()
     {
         using Context ctx = new(useFlat);
