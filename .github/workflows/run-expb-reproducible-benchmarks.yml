@@ -938,7 +938,7 @@ jobs:
       - name: Restore cached master metrics
         id: restore-master-metrics
         if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
           key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
@@ -1715,7 +1715,7 @@ jobs:
 
       - name: Upload metrics artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: expb-single-metrics-${{ matrix.payload_set }}-run${{ matrix.run }}
           path: ${{ steps.analyze.outputs.metrics_file }}
@@ -1731,7 +1731,7 @@ jobs:
 
       - name: Save master metrics cache
         if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
           key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.run_id }}
@@ -1846,7 +1846,7 @@ jobs:
 
       - name: Upload profiling artifact
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.collect-profiling.outputs.artifact_name }}
           path: ${{ steps.collect-profiling.outputs.archive }}
@@ -1889,7 +1889,7 @@ jobs:
 
       - name: Upload benchmark logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
           path: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
@@ -1932,7 +1932,7 @@ jobs:
       - name: Restore master metrics (superblocks)
         id: restore-master-superblocks
         continue-on-error: true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-superblocks
           key: expb-master-metrics-v4-superblocks-${{ github.event.pull_request.base.sha }}
@@ -1942,7 +1942,7 @@ jobs:
       - name: Restore master metrics (realblocks)
         id: restore-master-realblocks
         continue-on-error: true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-realblocks
           key: expb-master-metrics-v4-realblocks-${{ github.event.pull_request.base.sha }}
@@ -1952,7 +1952,7 @@ jobs:
       - name: Restore master metrics (fusaka)
         id: restore-master-fusaka
         continue-on-error: true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-fusaka
           key: expb-master-metrics-v4-fusaka-${{ github.event.pull_request.base.sha }}
@@ -2602,7 +2602,7 @@ jobs:
 
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dottrace-reports
           path: reports/
@@ -2904,7 +2904,7 @@ jobs:
       - name: Upload campaign artifact
         id: upload-campaign
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: expb-campaign-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
@@ -3016,7 +3016,7 @@ jobs:
 
       - name: Upload profiling artifact
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.collect-profiling.outputs.artifact_name }}
           path: ${{ steps.collect-profiling.outputs.archive }}
