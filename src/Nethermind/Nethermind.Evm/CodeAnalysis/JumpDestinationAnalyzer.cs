@@ -77,6 +77,8 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
 
         return Vector512.IsHardwareAccelerated && code.Length >= Vector512<sbyte>.Count ?
             PopulateJumpDestinationBitmap_Vector512(bitmap, code) :
+            Vector256.IsHardwareAccelerated && code.Length >= Vector256<sbyte>.Count ?
+            PopulateJumpDestinationBitmap_Vector256(bitmap, code) :
             Vector128.IsHardwareAccelerated && code.Length >= Vector128<sbyte>.Count ?
             PopulateJumpDestinationBitmap_Vector128(bitmap, code) :
             PopulateJumpDestinationBitmap_Scalar(bitmap, code);
@@ -160,6 +162,75 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
         {
             // Scalar tail for the final (length % 64) bytes
             ProcessJumpDestinationBitmap_Byte(skip, bitmap.AsSpan((int)programCounter >> BitShiftPerInt64), code.Slice((int)programCounter));
+        }
+
+        return bitmap;
+    }
+
+    [SkipLocalsInit]
+    internal static long[] PopulateJumpDestinationBitmap_Vector256(long[] bitmap, ReadOnlySpan<byte> code)
+    {
+        Debug.Assert(code.Length > 0);
+
+        ref byte baseRef = ref MemoryMarshal.GetReference(code);
+        nuint programCounter = 0;
+        ulong carryMask = 0UL;
+
+        nint vectorizedLength = code.Length - Vector256<sbyte>.Count;
+        while ((nint)programCounter <= vectorizedLength)
+        {
+            Vector256<sbyte> opCodes = Unsafe.As<byte, Vector256<sbyte>>(ref Unsafe.Add(ref baseRef, programCounter));
+            ulong pushMask = Vector256.ExtractMostSignificantBits(
+                Vector256.GreaterThan(opCodes, Vector256.Create((sbyte)PUSHx)));
+            ulong jmpMask = Vector256.ExtractMostSignificantBits(
+                Vector256.Equals(opCodes, Vector256.Create((sbyte)JUMPDEST)));
+
+            if (carryMask != 0)
+            {
+                pushMask &= ~carryMask;
+                jmpMask &= ~carryMask;
+                carryMask = 0;
+            }
+
+            while (pushMask != 0)
+            {
+                int lane = BitOperations.TrailingZeroCount(pushMask);
+                int op = Unsafe.AddByteOffset(ref baseRef, programCounter + (nuint)lane);
+                int size = op - PUSH1 + 2;
+                int inThis = Math.Min(size, Vector256<sbyte>.Count - lane);
+                int overflow = size - inThis;
+
+                ulong clearThis = (Bmi2.X64.IsSupported ?
+                        Bmi2.X64.ZeroHighBits(ulong.MaxValue, (uint)inThis) :
+                        ((1UL << inThis) - 1UL))
+                    << lane;
+
+                pushMask &= ~clearThis;
+                jmpMask &= ~clearThis;
+
+                if (overflow > 0)
+                {
+                    carryMask = Bmi2.X64.IsSupported ?
+                        Bmi2.X64.ZeroHighBits(ulong.MaxValue, (uint)overflow) :
+                        ((1UL << overflow) - 1UL);
+                    break;
+                }
+            }
+
+            if (jmpMask != 0)
+            {
+                nuint wordOffset = programCounter & 63;
+                MarkJumpDestinations(bitmap, programCounter, (long)(jmpMask << (int)wordOffset));
+            }
+
+            programCounter += (nuint)Vector256<sbyte>.Count;
+        }
+
+        nuint skip = (nuint)BitOperations.PopCount(carryMask);
+        if (programCounter + skip < (nuint)code.Length)
+        {
+            // A 32-byte chunk can end halfway through a bitmap word, so the tail must retain absolute offsets.
+            ProcessJumpDestinationBitmap_Byte(programCounter + skip, bitmap, code);
         }
 
         return bitmap;

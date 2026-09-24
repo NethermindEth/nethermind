@@ -289,9 +289,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                 long[] scalar = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Scalar(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
                 long[] vector512 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector512(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
+                long[] vector256 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector256(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
                 long[] vector128 = JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector128(JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
 
                 Assert.That(vector512, Is.EqualTo(scalar));
+                Assert.That(vector256, Is.EqualTo(scalar));
                 Assert.That(vector128, Is.EqualTo(scalar));
             }
         }
@@ -324,6 +326,29 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                         test.TestName = $"Code_Run{run}_{(Instruction)marker}";
                         yield return test;
                     }
+                }
+
+                foreach (int start in new[] { 0, 31, 32, 63, 64 })
+                {
+                    for (int push = 1; push <= 32; push++)
+                    {
+                        code = new byte[start + push + 2];
+                        code.AsSpan().Fill((byte)Instruction.JUMPDEST);
+                        code[start] = (byte)((int)Instruction.PUSH1 + push - 1);
+                        code[start + push + 1] = (byte)Instruction.JUMPDEST;
+                        test = new TestCaseData(code);
+                        test.TestName = $"Code_PUSH{push:00}_At{start}";
+                        yield return test;
+                    }
+                }
+
+                foreach (int length in new[] { 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 256 })
+                {
+                    code = new byte[length];
+                    new Random(0x5eed + length).NextBytes(code);
+                    test = new TestCaseData(code);
+                    test.TestName = $"Code_DeterministicRandom_Length{length}";
+                    yield return test;
                 }
 
                 code = new byte[1024];
