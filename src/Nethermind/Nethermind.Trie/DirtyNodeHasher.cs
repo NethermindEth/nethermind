@@ -305,13 +305,14 @@ internal static class DirtyNodeHasher
         int paddedLength = paddedClass * KeccakHash.RateBlockLength;
         Span<byte> inputs = storage[..(batchSize * paddedLength)];
         Span<byte> hashes = storage.Slice(batchSize * paddedLength, batchSize * Hash256.Size);
-        inputs.Clear();
+        inputs[(group.Length * paddedLength)..].Clear();
         for (int i = 0; i < group.Length; i++)
         {
             ReadOnlySpan<byte> rlp = group[i].FullRlp.AsSpan();
             if (PaddedClass(rlp.Length) != paddedClass) ThrowUnexpectedLength();
             Span<byte> input = inputs.Slice(i * paddedLength, paddedLength);
             rlp.CopyTo(input);
+            input[rlp.Length..].Clear();
             // Both padding bytes land on the same byte at the maximum length, so they merge.
             input[rlp.Length] |= 0x01;
             input[^1] |= 0x80;
