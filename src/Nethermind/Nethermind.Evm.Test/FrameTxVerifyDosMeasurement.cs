@@ -185,7 +185,10 @@ public class FrameTxVerifyDosMeasurement
     /// per-attempt multiplicand for the pool-retention count measured in the TxPool tests.</summary>
     /// <remarks>The largest prefix the pool can retain is <see cref="Eip8141Constants.MaxVerifyGas"/>; the
     /// soispoke case sits above it and only sizes what raising MAX_VERIFY_GAS to that budget would cost,
-    /// since block execution applies no cap.</remarks>
+    /// since block execution applies no cap. That case declares the whole budget as one frame's execution gas
+    /// with no signatures, so its row reports the declared number as EVM burn; the shape it stands in for
+    /// spends 2,800 of it on secp256k1 recovery, which never enters the interpreter, and so burns at most
+    /// 350,000 there.</remarks>
     [TestCase(100_000L, TestName = "burn at the spec default budget")]
     [TestCase((long)Eip8141Constants.MaxVerifyGas, TestName = "burn at the retainable ceiling")]
     [TestCase(352_800L, TestName = "burn at soispoke's declared privacy-pool budget")]

@@ -12,6 +12,21 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
+/// <summary>The declared verify-gas ceilings this assembly's frame-transaction measurement fixtures sweep.</summary>
+internal static class Eip8141MeasurementCeilings
+{
+    /// <summary>soispoke's declared privacy-pool verify budget, from their
+    /// <c>activation_manifest.testbed.json</c>: an EIP-8272 recent-root <c>verify_frame_gas</c> 30,000 +
+    /// a pool <c>verify_frame_gas</c> 320,000 + <c>signature_gas</c> 2,800. Admission gates on this sum, so it
+    /// is the number a sweep must declare to stand in for that pool.</summary>
+    public const ulong SoispokeDeclaredBudget = 352_800;
+
+    /// <summary>Two interior points below the stock <see cref="Eip8141Constants.MaxVerifyGas"/>, that cap
+    /// itself, <see cref="SoispokeDeclaredBudget"/>, and one point well above it.</summary>
+    public static readonly ulong[] Swept =
+        [100_000ul, 236_285ul, 300_000ul, SoispokeDeclaredBudget, 500_000ul];
+}
+
 /// <summary>Skips runs whose requested ceiling would be clamped by the compiled EIP-8141 limit.</summary>
 internal static class Eip8141MeasurementGuards
 {
