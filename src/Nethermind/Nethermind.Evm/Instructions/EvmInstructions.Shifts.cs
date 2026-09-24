@@ -26,7 +26,7 @@ public static partial class EvmInstructions
 
         /// <summary>
         /// Performs the shift operation.
-        /// The lower 8 bits of <paramref name="a"/> (accessed as a.u0) are used as the shift amount.
+        /// An amount of 256 or more (including any amount above 64 bits) yields zero.
         /// </summary>
         /// <remarks>The value operand and result may alias. A zero shift must preserve the value.</remarks>
         /// <param name="a">The shift amount.</param>
@@ -146,7 +146,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// Performs a left shift: shifts <paramref name="b"/> left by the number of bits specified in <paramref name="a"/>.
         /// </summary>
-        /// <param name="a">The shift amount, where only the lower 8 bits are used.</param>
+        /// <param name="a">The shift amount; 256 or more yields zero.</param>
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the left shift operation.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -171,7 +171,7 @@ public static partial class EvmInstructions
         /// <summary>
         /// Performs a logical right shift: shifts <paramref name="b"/> right by the number of bits specified in <paramref name="a"/>.
         /// </summary>
-        /// <param name="a">The shift amount, where only the lower 8 bits are used.</param>
+        /// <param name="a">The shift amount; 256 or more yields zero.</param>
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the right shift operation.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
