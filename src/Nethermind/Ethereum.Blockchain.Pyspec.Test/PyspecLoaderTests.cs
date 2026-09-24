@@ -74,7 +74,8 @@ public class PyspecLoaderTests
     [Test]
     public void Stateless_cases_load_without_engine_fixtures()
     {
-        bool wasCreated = ZkEvmFixtures.ZkEvmMutatedWitnessIndex.MutatedWitnessesByTest.IsValueCreated;
+        // The index is process-wide, so a zkEVM witness or engine test earlier in the run leaves nothing to check.
+        Assume.That(ZkEvmFixtures.ZkEvmMutatedWitnessIndex.MutatedWitnessesByTest.IsValueCreated, Is.False, "engine-fixture index already built");
 
         TestCaseData testCase = PyspecLoader.LoadZkEvmStatelessCases(_strategy, "blockchain_tests").Single();
         (string input, string output) = PyspecLoader.LoadZkEvmStatelessBytes((PyspecStatelessRef)testCase.Arguments[0]);
@@ -84,7 +85,7 @@ public class PyspecLoaderTests
             Assert.That(testCase.TestName, Is.EqualTo("sample_stateless_block_0"));
             Assert.That(input, Is.EqualTo("0x01"));
             Assert.That(output, Is.EqualTo("0x02"));
-            Assert.That(ZkEvmFixtures.ZkEvmMutatedWitnessIndex.MutatedWitnessesByTest.IsValueCreated, Is.EqualTo(wasCreated));
+            Assert.That(ZkEvmFixtures.ZkEvmMutatedWitnessIndex.MutatedWitnessesByTest.IsValueCreated, Is.False, "engine-fixture index built");
         }
     }
 
