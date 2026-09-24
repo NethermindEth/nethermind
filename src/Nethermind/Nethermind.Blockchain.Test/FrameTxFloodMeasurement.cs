@@ -32,6 +32,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 
 using static Nethermind.Blockchain.Test.MeasurementEnvironment;
+using static Nethermind.Blockchain.Test.MeasurementStatistics;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -1105,15 +1106,6 @@ public class FrameTxFloodMeasurement
         }
 
         return root!;
-    }
-
-    private static double Percentile(List<double> values, double quantile)
-    {
-        if (values.Count == 0) return double.NaN;
-        List<double> sorted = [.. values];
-        sorted.Sort();
-        int rank = (int)Math.Ceiling(quantile * sorted.Count);
-        return sorted[Math.Clamp(rank, 1, sorted.Count) - 1];
     }
 
     /// <summary>Configures the pool's declared-gas precheck for the ceiling being measured.</summary>

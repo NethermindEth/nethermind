@@ -14,6 +14,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using NUnit.Framework;
 using static Nethermind.Blockchain.Test.MeasurementEnvironment;
+using static Nethermind.Blockchain.Test.MeasurementStatistics;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -77,6 +78,10 @@ public class FrameTxStorageProducerMeasurement
 
     /// <summary>Independent ladders, each on a fresh rig over a never-read slot range.</summary>
     private const int LadderRepeats = 20;
+
+    /// <summary>A later attempt within this fraction of the first is charged the same work, so the reads
+    /// were re-done rather than served from a cache the first attempt filled.</summary>
+    private const double ReadsRepeatFloor = 0.90;
 
     private static readonly UInt256 AttackerBalance = 1_000.Ether;
 
@@ -189,6 +194,12 @@ public class FrameTxStorageProducerMeasurement
                 byAttempt[attempt].Add(rig.ProduceOnce());
                 readBytesByAttempt[attempt] += StorageResidency.ProcessReadBytes() - readBefore;
             }
+
+            Assert.That(rig.FailingExecutions, Is.EqualTo(LadderAttempts),
+                $"{shape}/{range} repeat {repeat} ran {rig.FailingExecutions} executions for {LadderAttempts} "
+                + "build attempts, so the producer was not re-executing the frame transaction on every "
+                + "attempt; every ratio_to_first_attempt below would then read as a cache hit rather than "
+                + "as the absent work it is");
         }
 
         double firstAttempt = Percentile(byAttempt[0], 0.50);
@@ -216,10 +227,6 @@ public class FrameTxStorageProducerMeasurement
     }
 
     private int ColdSloadsFor(string shape) => shape == "sload-cold" ? _slotsPerTx : 0;
-
-    /// <summary>A later attempt within this fraction of the first is charged the same work, so the reads
-    /// were re-done rather than served from a cache the first attempt filled.</summary>
-    private const double ReadsRepeatFloor = 0.90;
 
     /// <summary>The resolved settings and CPU affinity every row of this fixture carries after the fields
     /// older rows already had.</summary>
@@ -319,7 +326,10 @@ public class FrameTxStorageProducerMeasurement
             StorageResidency.SyncAll();
         }
 
-        long readBefore = StorageResidency.ProcessReadBytes();
+        // Read bytes are bracketed per sample rather than over the whole loop: DropPageCache walks the
+        // database directory and opens every file in it, and that walk's own reads would otherwise be
+        // reported as reads the prefix performed.
+        long readBytes = 0;
         int fadvisedFiles = 0;
         int fadvisedFilesTotal = 0;
         List<double> micros = new(Samples);
@@ -331,10 +341,10 @@ public class FrameTxStorageProducerMeasurement
                 fadvisedFilesTotal += fadvisedFiles;
             }
 
+            long readBefore = StorageResidency.ProcessReadBytes();
             micros.Add(rig.ProduceOnce());
+            readBytes += StorageResidency.ProcessReadBytes() - readBefore;
         }
-
-        long readBytes = StorageResidency.ProcessReadBytes() - readBefore;
 
         Assert.That(rig.FailingExecutions, Is.EqualTo(Samples),
             $"{shape}/{rotation} ran {rig.FailingExecutions} executions for {Samples} build attempts, so the "
@@ -351,7 +361,7 @@ public class FrameTxStorageProducerMeasurement
             : $" {ColdRung.Fields(readBytesPerSample, fileSystem, usPerKgas / warmUsPerKgas)}";
 
         Emit($"case=production_cost shape={shape} rotation={rotation} storage_backend={_chain.StorageBackend} "
-             + $"ceiling={_ceiling} cold_sloads={(shape == "sload-cold" ? _slotsPerTx : 0)} samples={Samples} "
+             + $"ceiling={_ceiling} cold_sloads={ColdSloadsFor(shape)} samples={Samples} "
              + $"build_p50_us={p50:F1} build_p90_us={Percentile(micros, 0.90):F1} "
              + $"build_p99_us={Percentile(micros, 0.99):F1} build_min_us={Min(micros):F1} "
              + $"us_per_kgas={usPerKgas:F3} us_per_Mgas_basis=declared "
@@ -433,16 +443,6 @@ public class FrameTxStorageProducerMeasurement
             if (value < min) min = value;
         }
         return min;
-    }
-
-    // Nearest-rank keeps every reported percentile tied to an observed sample.
-    private static double Percentile(List<double> values, double quantile)
-    {
-        if (values.Count == 0) return double.NaN;
-        List<double> sorted = [.. values];
-        sorted.Sort();
-        int rank = (int)Math.Ceiling(quantile * sorted.Count);
-        return sorted[Math.Clamp(rank, 1, sorted.Count) - 1];
     }
 
     private static void Emit(string line)

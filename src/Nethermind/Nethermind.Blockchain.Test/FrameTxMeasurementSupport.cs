@@ -105,6 +105,23 @@ internal static class MeasurementEnvironment
 }
 
 /// <summary>Skips runs whose requested ceiling would be clamped by the compiled EIP-8141 limit.</summary>
+/// <summary>Summary statistics shared by the frame-transaction measurement harnesses.</summary>
+internal static class MeasurementStatistics
+{
+    /// <summary>Nearest-rank percentile, which keeps every reported figure tied to an observed sample.</summary>
+    /// <remarks>Sorts a copy, so callers need not pass a sorted list and a call site moved between harnesses
+    /// cannot silently read the wrong rank.</remarks>
+    public static double Percentile(List<double> values, double quantile)
+    {
+        if (values.Count == 0) return double.NaN;
+
+        List<double> sorted = [.. values];
+        sorted.Sort();
+        int rank = (int)Math.Ceiling(quantile * sorted.Count);
+        return sorted[Math.Clamp(rank, 1, sorted.Count) - 1];
+    }
+}
+
 internal static class Eip8141MeasurementGuards
 {
     public static void SkipIfCeilingUnreachable(ulong ceiling)
@@ -189,10 +206,6 @@ internal sealed class ProducerRig : IDisposable
     public int EvictionsInWindow => Evictions - _evictionsAtWindowStart;
 
     public int ExecutionsInWindow => FailingExecutions - _executionsAtWindowStart;
-
-    /// <summary>The block the next <c>ProduceOnce</c> will build on, so a caller can align state seeding
-    /// with the rotation.</summary>
-    public int BlockCursor => _blockCursor;
 
     public void MarkWindowStart()
     {
