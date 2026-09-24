@@ -32,8 +32,8 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 }
 
 /// <summary>
-/// Decorates a scope provider with the shared <see cref="PreBlockCaches"/>. A miss always backfills, and consumer
-/// commits clear the caches rather than carrying values over to the next block.
+/// Decorates a scope provider with the shared <see cref="PreBlockCaches"/>. A miss always backfills, and committed
+/// values carry over until the driver keeps or clears the caches before the next block's populators run.
 /// </summary>
 /// <param name="prewarmerState">
 /// Carries the shared caches and <see cref="IPrewarmerState.IsPrewarmer"/>. On a cache hit a consumer seeds the
@@ -92,7 +92,7 @@ public class PrewarmerScopeProvider(
                 }
                 // The consumer reads the state at the opened root through the caches, which may still describe another state.
                 preBlockCaches.EnsureNotStaleFor(stateRoot, logger);
-                return new ScopeWrapper(scope, preBlockCaches, isPrewarmer, null, null, metrics);
+                return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, null, null, metrics, stateRoot);
             }
             catch
             {
@@ -120,7 +120,7 @@ public class PrewarmerScopeProvider(
                 trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
             }
             PreBlockCaches.StorageReadCapture? storageReadCapture = preBlockCaches.CurrentStorageReadCapture;
-            return new ScopeWrapper(scope, preBlockCaches, isPrewarmer, trieWarmupSession, storageReadCapture, metrics);
+            return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics, stateRoot);
         }
         catch
         {
@@ -139,10 +139,12 @@ public class PrewarmerScopeProvider(
     private sealed class ScopeWrapper(
         IWorldStateScopeProvider.IScope baseScope,
         PreBlockCaches preBlockCaches,
+        ILogManager logManager,
         bool isPrewarmer,
         IWorldStateScopeProvider.ITrieWarmupSession? trieWarmupSession,
         PreBlockCaches.StorageReadCapture? storageReadCapture,
-        LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+        LocalMetrics metrics,
+        Hash256? baseStateRoot) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
@@ -155,7 +157,10 @@ public class PrewarmerScopeProvider(
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+        private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
+        // Root of the state the next commit starts from: the base block's, then each committed root in turn.
+        private Hash256? _committedStateRoot = baseStateRoot;
 
         public void Dispose()
         {
@@ -255,9 +260,19 @@ public class PrewarmerScopeProvider(
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
         }
 
+        // Only the consumer's commits become state, and they are what the caches must reflect for the next block.
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot)
         {
-            if (!isPrewarmer) preBlockCaches.ClearCaches();
+            if (isPrewarmer) return;
+
+            Hash256 stateRoot = baseScope.RootHash;
+            // An unchanged root means the block changed nothing, or the scope computes no roots (a trieless one) and its
+            // committed values would be tagged with the pre-block root: either way there is nothing to bring forward.
+            if (stateRoot == _committedStateRoot) return;
+
+            Hash256? baseStateRoot = _committedStateRoot;
+            _committedStateRoot = stateRoot;
+            preBlockCaches.WriteBackInBackground(baseStateRoot, stateRoot, takeSnapshot, _logger);
         }
 
         public Hash256 RootHash => baseScope.RootHash;
