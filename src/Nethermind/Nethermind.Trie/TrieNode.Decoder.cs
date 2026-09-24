@@ -354,7 +354,7 @@ namespace Nethermind.Trie
 
                 Unsafe.SkipInit(out PaddedHashBuffer buffer);
                 Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
-                int widestBatch = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
+                int widestBatch = Avx512F.IsSupported && Vector512.IsHardwareAccelerated ? HashBatchSize : Avx2HashBatchSize;
                 while (BitOperations.PopCount((uint)candidateMask) >= MinimumBatchCount)
                 {
                     int paddedLength = PaddedLength(ChildRlpLength(item, BitOperations.TrailingZeroCount(candidateMask)));
@@ -379,7 +379,7 @@ namespace Nethermind.Trie
 
                     // The narrowest kernel that covers the group, so a small one does not permute
                     // eight lanes to hash two nodes.
-                    int batchSize = Avx512F.IsSupported && groupCount > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
+                    int batchSize = Avx512F.IsSupported && Vector512.IsHardwareAccelerated && groupCount > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
                     Span<byte> inputs = storage[..(batchSize * paddedLength)];
                     Span<byte> hashes = storage.Slice(batchSize * paddedLength, batchSize * Hash256.Size);
                     inputs.Clear();
@@ -451,7 +451,7 @@ namespace Nethermind.Trie
 
             private static void HashPreparedFullBranches(TrieNode item, ushort candidateMask)
             {
-                if ((Avx512F.IsSupported && BitOperations.PopCount((uint)candidateMask) >= MinHashBatchSize)
+                if ((Avx512F.IsSupported && Vector512.IsHardwareAccelerated && BitOperations.PopCount((uint)candidateMask) >= MinHashBatchSize)
                     || (Avx2.IsSupported && !Avx512F.VL.IsSupported && BitOperations.PopCount((uint)candidateMask) >= Avx2HashBatchSize))
                 {
                     HashPreparedBranchBatches(item, candidateMask);
@@ -498,12 +498,13 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             private static void HashPreparedBranchBatches(TrieNode item, ushort candidateMask)
             {
-                int batchSize = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
-                int inputLength = Avx512F.IsSupported ? FullBranchRlpLength : KeccakHash.Hash532PaddedLength;
-                int minimumBatch = Avx512F.IsSupported ? MinHashBatchSize : Avx2HashBatchSize;
+                bool useWideBatch = Avx512F.IsSupported && Vector512.IsHardwareAccelerated;
+                int batchSize = useWideBatch ? HashBatchSize : Avx2HashBatchSize;
+                int inputLength = useWideBatch ? FullBranchRlpLength : KeccakHash.Hash532PaddedLength;
+                int minimumBatch = useWideBatch ? MinHashBatchSize : Avx2HashBatchSize;
                 Unsafe.SkipInit(out BranchHashBuffer wideBuffer);
                 Unsafe.SkipInit(out Avx2BranchHashBuffer narrowBuffer);
-                Span<byte> storage = Avx512F.IsSupported
+                Span<byte> storage = useWideBatch
                     ? MemoryMarshal.AsBytes((Span<Vector256<byte>>)wideBuffer)
                     : MemoryMarshal.AsBytes((Span<Vector256<byte>>)narrowBuffer);
                 Span<byte> inputs = storage[..(batchSize * inputLength)];
@@ -522,7 +523,7 @@ namespace Nethermind.Trie
                             throw new TrieException("A prepared full branch changed before batched hashing.");
                         Span<byte> input = inputs.Slice(i * inputLength, inputLength);
                         rlp.AsSpan().CopyTo(input);
-                        if (!Avx512F.IsSupported)
+                        if (!useWideBatch)
                         {
                             input[FullBranchRlpLength..].Clear();
                             input[FullBranchRlpLength] = 1;
@@ -530,7 +531,7 @@ namespace Nethermind.Trie
                         }
                     }
 
-                    if (Avx512F.IsSupported)
+                    if (useWideBatch)
                         KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
                     else
                         KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], inputLength, ref hashes[0]);

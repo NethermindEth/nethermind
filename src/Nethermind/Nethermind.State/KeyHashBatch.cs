@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -43,7 +44,7 @@ internal struct KeyHashBatch
     private int _count;
     private int _length;
 
-    internal readonly bool IsFull => _count == (Avx512F.IsSupported ? MaximumBatchSize : MinimumBatchSize);
+    internal readonly bool IsFull => _count == (Avx512F.IsSupported && Vector512.IsHardwareAccelerated ? MaximumBatchSize : MinimumBatchSize);
 
     internal void Initialize(int length)
     {
@@ -88,7 +89,7 @@ internal struct KeyHashBatch
             while (_count - hashed >= MinimumBatchCount)
             {
                 int remaining = _count - hashed;
-                int batchSize = Avx512F.IsSupported && remaining > MinimumBatchSize ? MaximumBatchSize : MinimumBatchSize;
+                int batchSize = Avx512F.IsSupported && Vector512.IsHardwareAccelerated && remaining > MinimumBatchSize ? MaximumBatchSize : MinimumBatchSize;
                 int batchCount = Math.Min(batchSize, remaining);
                 Span<byte> inputs = buffer[..(batchSize * Rate)];
                 Span<byte> hashes = buffer.Slice(batchSize * Rate, batchSize * Hash256.Size);

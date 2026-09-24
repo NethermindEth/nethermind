@@ -148,7 +148,7 @@ internal static class DirtyNodeHasher
         BuildDeepestFirstOrder(nodes, orderSpan);
 
         // The kernel width is fixed by the hardware, so a group must never grow past it.
-        int widestBatch = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
+        int widestBatch = Avx512F.IsSupported && Vector512.IsHardwareAccelerated ? HashBatchSize : Avx2HashBatchSize;
         Unsafe.SkipInit(out HashBuffer buffer);
         Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
         TrieNode[] byClass = new TrieNode[MaxPaddedClass * HashBatchSize];
@@ -299,7 +299,7 @@ internal static class DirtyNodeHasher
         }
 
         // The narrowest kernel that covers the group, so a small one does not permute eight lanes.
-        int batchSize = Avx512F.IsSupported && group.Length > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
+        int batchSize = Avx512F.IsSupported && Vector512.IsHardwareAccelerated && group.Length > Avx2HashBatchSize ? HashBatchSize : Avx2HashBatchSize;
         if (group.Length > batchSize) ThrowGroupWiderThanKernel();
 
         int paddedLength = paddedClass * KeccakHash.RateBlockLength;
