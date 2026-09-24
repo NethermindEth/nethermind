@@ -200,7 +200,6 @@ public class KademliaSimulation
         internal ConcurrentDictionary<ValueHash256, ILifetimeScope> _nodes = new();
         // Bootstrapped in creation order: _nodes iterates in process-seeded hash order.
         private readonly List<ILifetimeScope> _nodesInCreationOrder = [];
-        private readonly ValueHashKeyOperator<TestNode> _nodeHashProvider = new(static node => node.Hash, new Random(0));
         private readonly Random _random = new(0);
 
         private bool TryGetReceiver(TestNode receiverHash, out ReceiverForNode contentKademliaMessageReceiver)
@@ -224,7 +223,7 @@ public class KademliaSimulation
                 .AddModule(new KademliaModule<ValueHash256, TestNode, ValueHash256>())
                 .AddSingleton<ITimestamper>(new ManualTimestamper(new DateTime(2025, 5, 13, 21, 0, 0, DateTimeKind.Utc)))
                 .AddSingleton<IKademliaDistance<ValueHash256>>(ValueHash256KademliaDistance.Instance)
-                .AddSingleton<IKeyOperator<ValueHash256, TestNode, ValueHash256>>(_nodeHashProvider)
+                .AddSingleton<IKeyOperator<ValueHash256, TestNode, ValueHash256>>(new ValueHashKeyOperator<TestNode>(static node => node.Hash, _random))
                 .AddSingleton(new KademliaConfig<TestNode>
                 {
                     CurrentNodeId = nodeIDTestNode,
