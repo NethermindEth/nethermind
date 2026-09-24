@@ -1007,9 +1007,10 @@ public class ArchiveProofTests
     }
 
     [Test]
-    public void An_epoch_start_snapshot_anchors_storage_nodes_down_to_the_record_depth()
+    public void With_pruning_an_epoch_start_snapshot_anchors_storage_nodes_down_to_the_record_depth()
     {
         _policy = EpochPolicy;
+        _recentEpochs = 1;
         Address quiet = TestItem.AddressD;
         UInt256[] slots = AddQuietContract(quiet);
         BuildCommitments();
@@ -1024,6 +1025,34 @@ public class ArchiveProofTests
 
         Assert.That(storages.TryGetExact(prefix.AsSpan(0, prefixLength), EpochPolicy.WindowClosingAt(epochStart)), Is.Not.Null,
             "a contract that stands still gets no row from its changes; the epoch-start snapshot is the only anchor its checkpoint nodes have, so it must reach the record depth as the account snapshot does, or every drop re-composes them");
+    }
+
+    [Test]
+    public void Without_pruning_an_epoch_start_snapshot_stops_at_the_root_children_and_proofs_still_resolve()
+    {
+        _policy = EpochPolicy;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet);
+        BuildCommitments();
+
+        ulong epochStart = 2 * EpochPolicy.EpochBlocks;
+        Assert.That(epochStart, Is.LessThanOrEqualTo(_chain.Head), "precondition: the chain crosses an epoch start after the contract stood still");
+        byte firstSlotByte = Keccak.Compute(slots[0].ToBigEndian()).Bytes[0];
+        TreePath depthTwo = TreePath.FromNibble([(byte)(firstSlotByte >> 4), (byte)(firstSlotByte & 0x0F)]);
+        CommitmentStore storages = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), EpochPolicy, CommitmentKeyLayout.IdentityLength);
+        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, Keccak.Compute(quiet.Bytes).Bytes[..CommitmentKeyLayout.IdentityLength], depthTwo, exact: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storages.TryGetExact(prefix.AsSpan(0, prefixLength), EpochPolicy.WindowClosingAt(epochStart)), Is.Null,
+                "a node that never drops an epoch has no carry to spare, so the checkpoint nodes below the root children get no epoch-start copy, which on mainnet is about 25GB per epoch");
+            foreach (ulong block in (ulong[])[epochStart, _chain.Head])
+            {
+                AssertStorageProofsMatch(ProveFromArchive(quiet, block, maxScannedRows: 192, slots[..4]), _chain.ExpectedProof(quiet, block, slots[..4]),
+                    $"at block {block}: without the epoch-start copy the checkpoint nodes resolve through the chain of the epoch they last changed in, inside a budget a subtree rebuild would exceed");
+            }
+        }
     }
 
     [Test]
