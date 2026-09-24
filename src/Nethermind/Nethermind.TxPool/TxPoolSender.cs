@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.TxPool
 {
@@ -29,9 +30,13 @@ namespace Nethermind.TxPool
                 tx.SenderAddress = senderAddress;
             }
 
-            AcceptTxResult result = manageNonce
-                ? SubmitTxWithManagedNonce(tx, txHandlingOptions)
-                : SubmitTxWithNonce(tx, txHandlingOptions);
+            // An EIP-8250 keyed sequence lives in NONCE_MANAGER, not the sender's account nonce: there is nothing to
+            // reserve, and recording one would push the managed reservation past a nonce the sender never consumes.
+            AcceptTxResult result = KeyedNonceManager.UsesKeyedNonce(tx)
+                ? SubmitTx(tx, txHandlingOptions)
+                : manageNonce
+                    ? SubmitTxWithManagedNonce(tx, txHandlingOptions)
+                    : SubmitTxWithNonce(tx, txHandlingOptions);
 
             return new ValueTask<(Hash256, AcceptTxResult?)>((tx.Hash!, result)); // The sealer calculates the hash
         }
@@ -52,10 +57,7 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult SubmitTx(NonceLocker locker, Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            if (!_sealer.TrySeal(tx, txHandlingOptions))
-                return AcceptTxResult.SignFailed;
-
-            AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
+            AcceptTxResult result = SubmitTx(tx, txHandlingOptions);
 
             if (result == AcceptTxResult.Accepted)
             {
@@ -64,5 +66,10 @@ namespace Nethermind.TxPool
 
             return result;
         }
+
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) =>
+            _sealer.TrySeal(tx, txHandlingOptions)
+                ? _txPool.SubmitTx(tx, txHandlingOptions)
+                : AcceptTxResult.SignFailed;
     }
 }

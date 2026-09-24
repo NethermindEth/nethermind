@@ -34,8 +34,8 @@ namespace Nethermind.Consensus.Processing;
 /// </summary>
 /// <remarks>
 /// Parent-state fallbacks (for slots the suggested BAL doesn't cover) flow through a pooled
-/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: each parallel worker rents a snapshot scoped
-/// to the state root captured in <see cref="PrepareForProcessing"/>. Passing <c>null</c>
+/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: each parallel worker rents a snapshot at the
+/// parent of the block being processed. Passing <c>null</c>
 /// disables this and thus parallel execution.
 /// </remarks>
 public partial class BlockAccessListManager(
@@ -71,8 +71,8 @@ public partial class BlockAccessListManager(
         (prewarmerEnvFactory is not null && preBlockCaches is not null)
         || readOnlyTxProcessingEnvFactory is not null;
 
-    // Snapshot point for parallel workers' parent-reader scopes. Set only when
-    // ParallelExecutionEnabled; null on the sequential path so a stray scope opens fail fast.
+    // Pre-state root of the block being processed, captured before any consensus-specific pre-processing
+    // touches the state; the parallel workers' parent readers are checked against it.
     private Hash256? _parentStateRoot;
 
     // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
@@ -88,6 +88,9 @@ public partial class BlockAccessListManager(
     // _gasRemaining instead of re-walking the whole BAL.
     private ulong _suggestedChargeableStorageReads;
     private ulong _generatedChargeableStorageReads;
+    // EIP-7928: post-execution system calls read storage without spending block gas, so the
+    // surplus-reads budget must leave room for what their own execution grant can read.
+    private ulong _postExecutionReadAllowance;
     private bool _hasGeneratedValidationIndexUpdates;
     // for tests
     internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
@@ -225,6 +228,9 @@ public partial class BlockAccessListManager(
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
             _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot, _readPlan);
+            _postExecutionReadAllowance = _suggestedChargeableStorageReads > 0ul
+                ? PostExecutionReadAllowance(_blockExecutionContext.Value.Spec)
+                : 0ul;
         }
     }
 
@@ -320,6 +326,7 @@ public partial class BlockAccessListManager(
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
         _suggestedChargeableStorageReads = 0ul;
         _generatedChargeableStorageReads = 0ul;
+        _postExecutionReadAllowance = 0ul;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
         _currentGeneratedBlockAccessList = null;

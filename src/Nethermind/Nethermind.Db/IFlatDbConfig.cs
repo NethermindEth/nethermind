@@ -19,8 +19,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
-    bool EnablePreimageRecording { get; set; }
+    [ConfigItem(Description = "What happens after a RocksDB repair of the flat DB. Resync wipes flat columns (headers, bodies, and receipts are kept) and re-enters state sync. Ignore keeps the repaired DB (escape hatch; may diverge). Ignore acknowledges the repair on the first start, so switching to Resync afterwards has no effect; a resync then requires wiping the flat DB directory. Resync refills state only through snap/state sync (Sync.FastSync with peers that serve it); a node that cannot state-sync, e.g. an archive synced from genesis, is left without state for its head, so set Ignore there or plan a resync from scratch. The flatHistory DB is not wiped: with HistoryEnabled and a windowed HistoryRetention (Rolling or SinceBlock), the resync fails to finish when its pivot falls inside the already-captured history window, so wipe the flatHistory directory too.", DefaultValue = "Resync")]
+    FlatDbOnRepair OnRepair { get; set; }
 
     [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
@@ -103,6 +103,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Import from pruning trie state db. When enabled, the node runs the import and exits instead of starting, as with the `import-flat-db` command.", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 
+    [ConfigItem(Description = "Delete the patricia-trie state DB on start once the flat DB owns the state, reclaiming its disk space. The kept trie is what a switch back to the patricia backend restarts from, replaying from the conversion block, so this is irreversible: switching back afterwards requires a resync.", DefaultValue = "false")]
+    bool DropPruningTrieState { get; set; }
+
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 
@@ -129,6 +132,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
+
+    [ConfigItem(Description = "Cache flat account and slot reads across heads in the persistence layer, so a new head does not re-read the working set from the database. `false` reads every persistence miss from the database.", DefaultValue = "true")]
+    bool EnableCarryForwardCache { get; set; }
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }

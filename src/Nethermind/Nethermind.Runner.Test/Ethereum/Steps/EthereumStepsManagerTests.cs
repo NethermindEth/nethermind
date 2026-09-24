@@ -59,6 +59,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             SyncConfig syncConfig = new()
             {
                 FastSync = true,
+                SnapSync = true,
                 PivotNumber = hasPivot ? pivot.Number : 0,
                 PivotHash = hasPivotHash ? pivot.Hash!.ToString() : null
             };
@@ -97,7 +98,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             BlockHeader pivot = CoreBuild.A.BlockHeader.WithNumber(25_000_000)
                 .WithTimestamp(MainnetSpecProvider.OsakaBlockTimestamp).TestObject;
-            SyncConfig syncConfig = new() { FastSync = true, PivotNumber = pivot.Number, PivotHash = pivot.Hash!.ToString() };
+            SyncConfig syncConfig = new() { FastSync = true, SnapSync = true, PivotNumber = pivot.Number, PivotHash = pivot.Hash!.ToString() };
             using IContainer container = CreateWarmupEnvironment(syncConfig, MainnetSpecProvider.BPO2BlockTimestamp);
             EvmWarmer warmer = container.Resolve<EvmWarmer>();
             container.Resolve<IHeaderStore>().Insert(pivot);

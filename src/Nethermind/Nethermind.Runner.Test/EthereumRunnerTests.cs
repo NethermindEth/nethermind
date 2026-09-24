@@ -6,6 +6,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Reflection;
@@ -386,6 +387,7 @@ public class EthereumRunnerTests
 
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
     {
+        Stopwatch phaseTimer = Stopwatch.StartNew();
         Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
         TempPath tempPath = TempPath.GetTempDirectory();
@@ -417,6 +419,7 @@ public class EthereumRunnerTests
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
             plugins.Add(new RunnerTestPlugin());
             EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+            LogPhase("setup", phaseTimer);
 
             using CancellationTokenSource cts = new();
 
@@ -432,6 +435,7 @@ public class EthereumRunnerTests
             }
             finally
             {
+                LogPhase("start", phaseTimer);
                 try
                 {
                     await runner.StopAsync().WaitAsync(RunnerTimeout);
@@ -446,6 +450,10 @@ public class EthereumRunnerTests
                     {
                         throw;
                     }
+                }
+                finally
+                {
+                    LogPhase("stop", phaseTimer);
                 }
             }
         }
@@ -467,7 +475,16 @@ public class EthereumRunnerTests
                     throw;
                 }
             }
+
+            LogPhase("teardown", phaseTimer);
         }
+    }
+
+    /// <summary>Reports how long a smoke test phase took, so a case over its <see cref="MaxTimeAttribute"/> names the phase that stalled.</summary>
+    private static void LogPhase(string name, Stopwatch phaseTimer)
+    {
+        TestContext.Out.WriteLine($"{name}: {phaseTimer.ElapsedMilliseconds} ms");
+        phaseTimer.Restart();
     }
 
     private class RunnerTestPlugin(bool forStepTest = false) : INethermindPlugin

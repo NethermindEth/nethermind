@@ -312,6 +312,32 @@ public class DebugRpcModule(
 
     public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
     {
+        // EIP-8141: a frame transaction always executes at least one frame and always settles on a payer,
+        // so a receipt missing either is malformed. The codec refuses both; rejecting them here answers
+        // invalid params rather than an internal error.
+        for (int i = 0; i < receiptForRpc.Length; i++)
+        {
+            ReceiptForRpc receipt = receiptForRpc[i];
+            if (receipt is null)
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail($"Receipt at index {i} is null", ErrorCodes.InvalidParams));
+            }
+
+            if (receipt.Type == TxType.FrameTx && receipt.FrameReceipts is not { Length: > 0 })
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail(
+                    $"Receipt at index {i} is a frame transaction receipt carrying no frame receipts",
+                    ErrorCodes.InvalidParams));
+            }
+
+            if (receipt.Type == TxType.FrameTx && receipt.Payer is null)
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail(
+                    $"Receipt at index {i} is a frame transaction receipt carrying no payer",
+                    ErrorCodes.InvalidParams));
+            }
+        }
+
         debugBridge.InsertReceipts(blockParameter, receiptForRpc.Select(static r => r.ToReceipt()).ToArray());
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
@@ -680,7 +706,7 @@ public class DebugRpcModule(
     {
         if (CanStreamStructLogs(options))
         {
-            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(BuildStreamingBundleResult(bundles, blockParameter, options));
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(BuildStreamingBundleResult(bundles, blockParameter, options, header));
         }
 
         CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -707,7 +733,8 @@ public class DebugRpcModule(
     private GethLikeTxTraceStreamingBundleResult BuildStreamingBundleResult(
         TransactionBundle[] bundles,
         BlockParameter blockParameter,
-        GethTraceOptions? options)
+        GethTraceOptions? options,
+        BlockHeader header)
     {
         CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
         try
@@ -720,7 +747,10 @@ public class DebugRpcModule(
                 jsonRpcConfig.GasCap,
                 effective,
                 timeoutCts,
-                _logger);
+                _logger)
+            {
+                Spec = specProvider.GetSpec(header)
+            };
         }
         catch
         {
@@ -748,18 +778,6 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
-        ulong? defaultGas = jsonRpcConfig.GasCap.IsGasCapped() ? jsonRpcConfig.GasCap : null;
-        foreach (TransactionBundle bundle in bundles)
-        {
-            foreach (TransactionForRpc call in bundle.Transactions)
-            {
-                if (!call.Gas.IsGasCapped())
-                {
-                    call.Gas = defaultGas;
-                }
-            }
-        }
-
         SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
@@ -771,15 +789,21 @@ public class DebugRpcModule(
         };
 
         // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
-        // Pre-compute the block number each bundle targets so we can drop fillers from the result and
-        // keep a 1:1 mapping to the input bundles.
+        // Pre-compute the block each bundle targets so we can drop fillers from the result, keeping a 1:1
+        // mapping to the input bundles, and cap its default gas by that block's spec.
         HashSet<ulong> bundleBlockNumbers = new(bundles.Length);
         ulong lastBlockNumber = header.Number;
+        ulong lastBlockTime = header.Timestamp;
         foreach (TransactionBundle bundle in bundles)
         {
             ulong number = bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
+            // SimulateTxExecutor's clock: each filler and the bundle's own block advance one slot. Out-of-order
+            // numbers make this meaningless, but SimulateTxExecutor rejects those before anything runs.
+            ulong time = bundle.BlockOverride?.Time ?? lastBlockTime + (number - lastBlockNumber) * _secondsPerSlot;
             bundleBlockNumbers.Add(number);
+            FillOmittedGas(bundle, specProvider.GetSpec(number, time));
             lastBlockNumber = number;
+            lastBlockTime = time;
         }
 
         BlockParameter concreteBlockParameter = new(header.Number);
@@ -808,6 +832,26 @@ public class DebugRpcModule(
             .Select(blockResult => blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+    }
+
+    /// <summary>Defaults each omitted or zero gas in <paramref name="bundle"/> to the RPC gas cap.</summary>
+    /// <remarks>
+    /// The fill-in makes the gas look caller-supplied to <see cref="SimulateTxExecutor{TTrace}"/>, which then skips
+    /// both gas-less clamps, so cap it here as the gas-less arm of <c>ToTransaction</c> does, by the spec of the
+    /// block the bundle actually runs in rather than its parent's.
+    /// </remarks>
+    private void FillOmittedGas(TransactionBundle bundle, IReleaseSpec spec)
+    {
+        ulong? defaultGas = jsonRpcConfig.GasCap.IsGasCapped()
+            ? Math.Min(jsonRpcConfig.GasCap!.Value, spec.GetProcessorEnforcedTxGasLimitCap())
+            : null;
+        foreach (TransactionForRpc call in bundle.Transactions)
+        {
+            if (!call.Gas.IsGasCapped())
+            {
+                call.Gas = defaultGas;
+            }
+        }
     }
 
     private ResultWrapper<byte[]> GetBlockRlpOrFail(BlockParameter blockParameter)
