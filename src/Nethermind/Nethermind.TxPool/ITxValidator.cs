@@ -11,6 +11,10 @@ namespace Nethermind.TxPool
     {
         None = 0,
         SkipBlobProofs = 1,
+        /// <summary>Allows validators to return a shared error message instead of formatting diagnostic values.</summary>
+        SkipErrorDetails = 2,
+        /// <summary>Calculates intrinsic gas without caching it on the transaction.</summary>
+        SkipIntrinsicGasMemo = 4,
     }
 
     public interface ITxValidator

@@ -59,6 +59,13 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
             return false;
         }
 
+        // Nothing to prove: a bundle without blobs (e.g. a block with no blob transactions) is valid, and the
+        // batch verifier below cannot be handed empty inputs.
+        if (wrapper.Blobs.Length == 0)
+        {
+            return wrapper.Commitments.Length == 0 && wrapper.Proofs.Length == 0;
+        }
+
         if (wrapper.Blobs.Length is 1 && wrapper.Commitments.Length is 1 && wrapper.Proofs.Length is 1)
         {
             try

@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -54,6 +57,27 @@ public partial class DebugRpcModuleTests
         await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
 
         Assert.That(header.BaseFeePerGas, Is.EqualTo(baseFee), "block override must not write into the block-tree-cached header");
+    }
+
+    // Zero is the case where the overridden target would pass for genesis and open pre-genesis state; a cold
+    // header cache is the case where the parent lookup keys on the overridden number and misses the store.
+    [Test]
+    public async Task Debug_traceTransaction_with_block_number_override_traces_against_the_original_parent_state([Values(0ul, 1000ul)] ulong numberOverride)
+    {
+        using Context context = await Context.Create();
+
+        Transaction transaction = await AddBlockWithTransfer(context);
+        ((IClearableCache)context.Blockchain.Container.Resolve<IHeaderStore>()).ClearCache();
+
+        GethTraceOptions options = new() { BlockOverrides = new BlockOverride { Number = numberOverride } };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
+
+        JToken result = JToken.Parse(response)["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]?.Value<bool>(), Is.False, response);
+            Assert.That(result["gas"]?.Value<ulong>(), Is.EqualTo(GasCostOf.Transaction));
+        }
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]

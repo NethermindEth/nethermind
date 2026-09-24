@@ -73,16 +73,22 @@ jobs:
           # A hung test host is killed with a dump of every thread instead of running into the job
           # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
-          test_args=(--no-build --no-restore --hangdump --hangdump-timeout 8m --hangdump-type Mini)
+          # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
+          # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
+          test_args=(--no-build --no-restore
+            --hangdump --hangdump-timeout 8m --hangdump-type Mini
+            --crashdump --crashdump-type Mini --crash-report-if-supported)
           if [ -n "${{ matrix.filter }}" ]; then test_args+=(--filter "${{ matrix.filter }}"); fi
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
 
-      - name: Upload hang dump
+      - name: Upload dumps
         if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.project }}-hang-dump
-          path: src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+          name: ${{ matrix.project }}-dumps
+          path: |
+            src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+            src/Nethermind/${{ matrix.project }}/TestResults/*_crash.*
           if-no-files-found: ignore
           retention-days: 3
 

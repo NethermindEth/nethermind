@@ -212,7 +212,7 @@ public partial class EthRpcModule(
             _stateReader.GetStorage(header!, address, positionIndex, out UInt256 storage);
             return ResultWrapper<byte[]>.Success(storage.IsZero ? Bytes32.Zero.Unwrap() : storage.ToBigEndian());
         }
-        catch (MissingTrieNodeException e)
+        catch (MissingTrieNodeException e) when (e.InnerException is not StateNotRetainedException)
         {
             Hash256 hash = e.Hash;
             return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.ResourceNotFound);
