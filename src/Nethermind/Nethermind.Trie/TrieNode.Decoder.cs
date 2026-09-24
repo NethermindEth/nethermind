@@ -229,7 +229,7 @@ namespace Nethermind.Trie
                 // walk for one bounded copy. The walk is kept where it does something else as well:
                 // spreading the children over cores, or collecting branch pairs for batched hashing.
                 bool useParallel = UseParallel(canBeParallel, item);
-                if (useParallel || (Avx512F.VL.IsSupported && HasBatchableChildPair(item)))
+                if (useParallel || (Avx2.IsSupported && HasBatchableChildPair(item)))
                 {
                     contentLength = valueRlpLength + (useParallel
                         ? GetChildrenRlpLengthForBranchParallel(tree, ref path, item, pool, canBeParallel)
@@ -631,7 +631,7 @@ namespace Nethermind.Trie
                             TreePath path = state.rootPath;
                             path.AppendMut(i);
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
+                            if (Avx2.IsSupported && childNode is { Keccak: null })
                             {
                                 CappedArray<byte> rlp = childNode.PrepareRlp(state.tree, ref path, state.bufferPool, state.canBeParallel);
                                 if (IsBatchableBranchRlp(rlp.Length))
@@ -688,7 +688,7 @@ namespace Nethermind.Trie
                     {
                         path.AppendMut(i);
                         TrieNode childNode = Unsafe.As<TrieNode>(data);
-                        if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
+                        if (Avx2.IsSupported && childNode is { Keccak: null })
                         {
                             CappedArray<byte> rlp = childNode.PrepareRlp(tree, ref path, bufferPool, canBeParallel);
                             if (IsBatchableBranchRlp(rlp.Length))
@@ -749,7 +749,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
+                            if (Avx2.IsSupported && childNode is { Keccak: null })
                             {
                                 CappedArray<byte> rlp = childNode.PrepareRlp(state.tree, ref path, state.bufferPool, state.canBeParallel);
                                 if (IsBatchableBranchRlp(rlp.Length))
@@ -817,7 +817,7 @@ namespace Nethermind.Trie
                             path.AppendMut(i);
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            if (Avx512F.VL.IsSupported && childNode is { Keccak: null })
+                            if (Avx2.IsSupported && childNode is { Keccak: null })
                             {
                                 CappedArray<byte> rlp = childNode.PrepareRlp(tree, ref path, bufferPool, canBeParallel);
                                 if (IsBatchableBranchRlp(rlp.Length))
