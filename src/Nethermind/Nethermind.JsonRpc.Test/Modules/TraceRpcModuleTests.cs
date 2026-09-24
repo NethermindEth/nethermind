@@ -1567,7 +1567,9 @@ public class TraceRpcModuleTests
         config.EnableTracingStreamMode = true;
         string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
 
-        Assert.That(JToken.Parse(streamed), Is.EqualTo(JToken.Parse(buffered)).Using(JToken.EqualityComparer));
+        JToken bufferedTrace = JToken.Parse(buffered);
+        Assert.That(bufferedTrace["result"]![0]!["vmTrace"]!["ops"]![0]!["ex"]!["push"]![0]!.Value<string>(), Is.EqualTo("0x1"));
+        Assert.That(JToken.Parse(streamed), Is.EqualTo(bufferedTrace).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -1587,7 +1589,9 @@ public class TraceRpcModuleTests
         config.EnableTracingStreamMode = true;
         string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
 
-        Assert.That(JToken.Parse(streamed), Is.EqualTo(JToken.Parse(buffered)).Using(JToken.EqualityComparer));
+        JToken bufferedTrace = JToken.Parse(buffered);
+        Assert.That(bufferedTrace["result"]![0]!["vmTrace"]!["ops"]![7]!["ex"]!["push"]![0]!.Value<string>(), Is.EqualTo("0x1"));
+        Assert.That(JToken.Parse(streamed), Is.EqualTo(bufferedTrace).Using(JToken.EqualityComparer));
     }
 
     private static IEnumerable<TestCaseData> StreamingResourceSafetyCases()
