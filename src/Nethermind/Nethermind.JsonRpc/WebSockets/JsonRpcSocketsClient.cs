@@ -26,7 +26,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly long? _maxBatchResponseBodySize;
     private readonly JsonRpcContext _jsonRpcContext;
 
-    private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
+    private readonly SocketSendLock _sendSemaphore = new();
     private readonly Channel<ProcessRequest> _processChannel;
 
     private sealed record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
@@ -156,8 +156,13 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         try
         {
             JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
-            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
+            (long responseSize, _) = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
             return (int)responseSize;
+        }
+        catch
+        {
+            _sendSemaphore.Fault();
+            throw;
         }
         finally
         {

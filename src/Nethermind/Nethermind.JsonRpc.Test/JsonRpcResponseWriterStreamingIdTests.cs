@@ -10,6 +10,8 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.IO;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
@@ -116,8 +118,8 @@ public class JsonRpcResponseWriterStreamingIdTests
     public async Task Buffered_failure_rewinds_to_current_response(
         [Values(0, 1, 2)] int commitMode, [Values(0, 1234)] int initialWrittenCount)
     {
-        using MemoryStream stream = new();
-        CountingStreamPipeWriter transport = new(stream, initialWrittenCount: initialWrittenCount);
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("test");
+        RewindableStreamPipeWriter transport = new(stream, initialWrittenCount: initialWrittenCount);
         transport.Write("[1,"u8);
         using JsonRpcSuccessResponse response = new()
         {
@@ -131,7 +133,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         };
 
         await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, new JsonSerializerOptions(),
-            isBatch: true, CancellationToken.None, bufferResponse: true);
+            isBatch: true, CancellationToken.None);
         transport.Write("]"u8);
         await transport.CompleteAsync();
 
@@ -269,12 +271,14 @@ public class JsonRpcResponseWriterStreamingIdTests
     [Test]
     public async Task Buffered_response_preserves_preceding_batch_byte_count([Values] bool bufferResponse)
     {
-        using MemoryStream stream = new();
-        CountingStreamPipeWriter transport = new(stream, initialWrittenCount: 1234);
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("test");
+        CountingWriter transport = bufferResponse
+            ? new RewindableStreamPipeWriter(stream, initialWrittenCount: 1234)
+            : new CountingStreamPipeWriter(stream, initialWrittenCount: 1234);
         CountingResult result = new();
         using JsonRpcSuccessResponse response = new() { Result = result };
         await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, new JsonSerializerOptions(),
-            isBatch: true, CancellationToken.None, bufferResponse);
+            isBatch: true, CancellationToken.None);
         await transport.CompleteAsync();
 
         Assert.That(result.InitialBytes, Is.EqualTo(1234 + "{\"jsonrpc\":\"2.0\",\"result\":"u8.Length));

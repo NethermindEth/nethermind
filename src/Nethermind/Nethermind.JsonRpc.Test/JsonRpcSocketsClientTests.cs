@@ -76,12 +76,12 @@ public class JsonRpcSocketsClientTests
     private static SocketSinkFixture CreateSocketSink(RpcEndpoint endpoint = RpcEndpoint.Ws, long maxBatchResponseBodySize = 10_000)
     {
         MemoryMessageStream stream = new();
-        SemaphoreSlim sendSemaphore = new(1, 1);
+        SocketSendLock sendSemaphore = new();
         SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), maxBatchResponseBodySize, sendSemaphore, new JsonRpcContext(endpoint));
         return new SocketSinkFixture(stream, sendSemaphore, sink);
     }
 
-    private readonly record struct SocketSinkFixture(MemoryMessageStream Stream, SemaphoreSlim SendSemaphore, SocketJsonRpcResponseSink<MemoryMessageStream> Sink) : IDisposable
+    private readonly record struct SocketSinkFixture(MemoryMessageStream Stream, SocketSendLock SendSemaphore, SocketJsonRpcResponseSink<MemoryMessageStream> Sink) : IDisposable
     {
         public void Dispose()
         {
@@ -105,6 +105,10 @@ public class JsonRpcSocketsClientTests
         using WebSocket serverWebSocket = WebSocket.CreateFromStream(new NetworkStream(serverSocket, ownsSocket: true), isServer: true, subProtocol: null, TimeSpan.Zero);
         IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
         int requests = 0;
+        TaskCompletionSource prefixWritten = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource failWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource failureObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource allowTeardown = new(TaskCreationOptions.RunContinuationsAsynchronously);
         processor.ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>(), Arg.Any<IJsonRpcResponseSink>(),
             Arg.Any<JsonRpcProcessingOptions>(), Arg.Any<CancellationToken>()).Returns(Respond);
         async ValueTask Respond(CallInfo call)
@@ -113,7 +117,12 @@ public class JsonRpcSocketsClientTests
             using JsonRpcSuccessResponse response = new()
             {
                 Id = requests,
-                Result = requests == 1 ? new TimedOutStreamable(committed) : "ok",
+                Result = requests == 1 ? new TimedOutStreamable(committed, committed ? async () =>
+                {
+                    prefixWritten.SetResult();
+                    await failWrite.Task.WaitAsync(deadline.Token);
+                }
+                : null) : "ok",
                 StreamExceptionHandler = _ => new JsonRpcErrorResponse
                 {
                     Id = requests,
@@ -122,13 +131,24 @@ public class JsonRpcSocketsClientTests
             };
             IJsonRpcResponseSink sink = call.Arg<IJsonRpcResponseSink>();
             CancellationToken token = call.Arg<CancellationToken>();
-            if (batch)
+            try
             {
-                await sink.BeginBatchAsync(token);
-                await sink.WriteBatchItemAsync(response, new RpcReport("trace_call", 0, true), token);
-                await sink.EndBatchAsync(token);
+                if (batch)
+                {
+                    await sink.BeginBatchAsync(token);
+                    await sink.WriteBatchItemAsync(response, new RpcReport("trace_call", 0, true), token);
+                    await sink.EndBatchAsync(token);
+                }
+                else await sink.WriteSingleAsync(response, new RpcReport("trace_call", 0, true), token);
             }
-            else await sink.WriteSingleAsync(response, new RpcReport("trace_call", 0, true), token);
+            catch (OperationCanceledException) when (committed)
+            {
+                // Hold worker teardown back after releasing the send lock to expose queued senders.
+                ((IDisposable)sink).Dispose();
+                failureObserved.SetResult();
+                await allowTeardown.Task.WaitAsync(deadline.Token);
+                throw;
+            }
         }
         using TestClient<WebSocketMessageStream> server = new(new WebSocketMessageStream(serverWebSocket, LimboLogs.Instance), RpcEndpoint.Ws, processor);
         Task receiveLoop = server.Client.ReceiveLoopAsync(deadline.Token);
@@ -137,6 +157,15 @@ public class JsonRpcSocketsClientTests
             await clientWebSocket.SendAsync("{}"u8.ToArray().AsMemory(), WebSocketMessageType.Text, true, deadline.Token);
             if (committed)
             {
+                await prefixWritten.Task.WaitAsync(deadline.Token);
+                using JsonRpcResult notification = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "notification" }, default);
+                Task<int> queuedSend = server.Client.SendJsonRpcResult(notification, deadline.Token);
+                Assert.That(queuedSend.IsCompleted, Is.False);
+                failWrite.SetResult();
+                await failureObserved.Task.WaitAsync(deadline.Token);
+                Assert.ThrowsAsync<IOException>(async () => await queuedSend.WaitAsync(deadline.Token));
+                Assert.ThrowsAsync<IOException>(async () => await server.Client.SendJsonRpcResult(notification, deadline.Token));
+                allowTeardown.SetResult();
                 Assert.CatchAsync<OperationCanceledException>(async () => await receiveLoop.WaitAsync(deadline.Token));
                 Assert.That(deadline.IsCancellationRequested, Is.False, "the execution timeout must fail the worker, not the test deadline");
                 serverWebSocket.Abort();
@@ -177,7 +206,7 @@ public class JsonRpcSocketsClientTests
     public async Task Socket_sink_reports_deferred_failure([Values] bool committed, [Values] bool batch)
     {
         using MemoryMessageStream stream = new();
-        using SemaphoreSlim semaphore = new(1, 1);
+        using SocketSendLock semaphore = new();
         IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
         stats.IsEnabled.Returns(true);
         using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, stats, null, semaphore, new JsonRpcContext(RpcEndpoint.Ws));
@@ -197,15 +226,50 @@ public class JsonRpcSocketsClientTests
             if (batch) await sink.EndBatchAsync(CancellationToken.None);
         }
         stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == "trace_call" && !report.Success), Arg.Any<long>(), Arg.Any<long?>());
-        if (committed) Assert.That(stream.ToArray().AsSpan().Count((byte)'\n'), Is.Zero);
+        if (committed)
+        {
+            sink.Dispose();
+            byte[] partial = stream.ToArray();
+            using SocketJsonRpcResponseSink<MemoryMessageStream> next = new(stream, stats, null, semaphore, new JsonRpcContext(RpcEndpoint.Ws));
+            using JsonRpcSuccessResponse nextResponse = new() { Result = "next" };
+            Assert.ThrowsAsync<IOException>(async () => await next.WriteSingleAsync(nextResponse, default, CancellationToken.None));
+            Assert.ThrowsAsync<IOException>(async () => await next.BeginBatchAsync(CancellationToken.None));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(partial.AsSpan().Count((byte)'\n'), Is.Zero);
+                Assert.That(Encoding.UTF8.GetString(partial), Does.Not.Contain("unsent-tail"));
+                Assert.That(stream.ToArray(), Is.EqualTo(partial));
+            }
+        }
     }
 
-    private sealed class TimedOutStreamable(bool committed) : IStreamableResult
+    [Test]
+    public void Failed_notification_prevents_further_sends()
+    {
+        using MemoryMessageStream stream = new();
+        using TestClient<MemoryMessageStream> server = new(stream);
+        using JsonRpcResult failed = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = new TimedOutStreamable(true) }, default);
+        Assert.CatchAsync<OperationCanceledException>(async () => await server.Client.SendJsonRpcResult(failed));
+        byte[] partial = stream.ToArray();
+
+        using JsonRpcResult next = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "next" }, default);
+        Assert.ThrowsAsync<IOException>(async () => await server.Client.SendJsonRpcResult(next));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(partial.AsSpan().Count((byte)'\n'), Is.Zero);
+            Assert.That(Encoding.UTF8.GetString(partial), Does.Not.Contain("unsent-tail"));
+            Assert.That(stream.ToArray(), Is.EqualTo(partial));
+        }
+    }
+
+    private sealed class TimedOutStreamable(bool committed, Func<Task>? beforeFailure = null) : IStreamableResult
     {
         public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         {
             writer.Write(Encoding.UTF8.GetBytes("[\"" + new string('x', committed ? 32 * 1024 : 0)));
             await writer.FlushAsync(cancellationToken);
+            if (beforeFailure is not null) await beforeFailure();
+            writer.Write("unsent-tail"u8);
             throw new OperationCanceledException();
         }
     }
@@ -827,7 +891,7 @@ public class JsonRpcSocketsClientTests
         CancellationToken cancellationToken = default)
         where TStream : Stream, IMessageBorderPreservingStream
     {
-        using SemaphoreSlim sendSemaphore = new(1, 1);
+        using SocketSendLock sendSemaphore = new();
         using SocketJsonRpcResponseSink<TStream> sink = new(
             stream,
             new NullJsonRpcLocalStats(),

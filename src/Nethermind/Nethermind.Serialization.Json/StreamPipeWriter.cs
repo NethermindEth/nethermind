@@ -117,17 +117,6 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// </summary>
     public Stream InnerStream { get; }
 
-    /// <summary>Discards everything written after <paramref name="writtenCount"/> was reached.</summary>
-    /// <remarks>The inner stream must be seekable and positioned at its end, as a buffering memory stream is.</remarks>
-    internal async ValueTask RewindAsync(long writtenCount)
-    {
-        await FlushAsync(CancellationToken.None);
-        long length = InnerStream.Length - (WrittenCount - writtenCount);
-        InnerStream.SetLength(length);
-        InnerStream.Position = length;
-        WrittenCount = writtenCount;
-    }
-
     /// <inheritdoc />
     public override void Advance(int bytes)
     {

@@ -16,7 +16,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     TStream stream,
     IJsonRpcLocalStats jsonRpcLocalStats,
     long? maxBatchResponseBodySize,
-    SemaphoreSlim sendSemaphore,
+    SocketSendLock sendSemaphore,
     JsonRpcContext jsonRpcContext) : IJsonRpcResponseSink, IDisposable
     where TStream : Stream, IMessageBorderPreservingStream
 {
@@ -37,9 +37,8 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         try
         {
             long startTimestamp = _reportCalls ? Stopwatch.GetTimestamp() : 0;
-            (long responseBytes, JsonRpcResponseWriteOutcome outcome) = await SocketJsonRpcResponseWriter.WriteAsync(
-                stream, response, isBatch: false, initialWrittenCount: 0, cancellationToken);
-            responseBytes += await stream.WriteEndOfMessageAsync();
+            (long responseBytes, JsonRpcResponseWriteOutcome outcome) = await SocketJsonRpcResponseWriter.WriteMessageAsync(
+                stream, response, cancellationToken);
             report = outcome.ApplyTo(report);
 
             BytesWritten += responseBytes;
@@ -51,6 +50,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         }
         catch
         {
+            sendSemaphore.Fault();
             if (_reportCalls) jsonRpcLocalStats.ReportCall(report with { Success = false });
             throw;
         }
@@ -91,6 +91,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         }
         catch
         {
+            sendSemaphore.Fault();
             if (_reportCalls) jsonRpcLocalStats.ReportCall(report with { Success = false });
             throw;
         }
@@ -121,13 +122,22 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
                 jsonRpcLocalStats.ReportCall(new RpcReport(RpcReport.CollectionSerialization, handlingTimeMicroseconds, true), handlingTimeMicroseconds, _topLevelResponseBytes);
             }
         }
+        catch
+        {
+            sendSemaphore.Fault();
+            throw;
+        }
         finally
         {
             ReleaseSemaphore();
         }
     }
 
-    public void Dispose() => ReleaseSemaphore();
+    public void Dispose()
+    {
+        if (_holdsSemaphore) sendSemaphore.Fault();
+        ReleaseSemaphore();
+    }
 
     private void ReleaseSemaphore()
     {
@@ -145,17 +155,18 @@ internal static class SocketJsonRpcResponseWriter
 {
     private static readonly StreamPipeWriterOptions ResponsePipeWriterOptions = new(minimumBufferSize: 32 * 1024, leaveOpen: true);
 
-    public static async ValueTask<long> WriteMessageAsync<TStream>(TStream stream, JsonRpcResponse response, CancellationToken cancellationToken)
+    public static async ValueTask<(long BytesWritten, JsonRpcResponseWriteOutcome Outcome)> WriteMessageAsync<TStream>(TStream stream, JsonRpcResponse response, CancellationToken cancellationToken)
         where TStream : Stream, IMessageBorderPreservingStream
     {
-        (long responseBytes, _) = await WriteAsync(stream, response, isBatch: false, initialWrittenCount: 0, cancellationToken);
-        return responseBytes + await stream.WriteEndOfMessageAsync();
+        (long responseBytes, JsonRpcResponseWriteOutcome outcome) = await WriteAsync(stream, response, isBatch: false, initialWrittenCount: 0, cancellationToken);
+        return (responseBytes + await stream.WriteEndOfMessageAsync(), outcome);
     }
 
     public static async ValueTask<(long BytesWritten, JsonRpcResponseWriteOutcome Outcome)> WriteAsync(
         Stream stream, JsonRpcResponse response, bool isBatch, long initialWrittenCount, CancellationToken cancellationToken)
     {
         CountingStreamPipeWriter writer = new(stream, ResponsePipeWriterOptions, initialWrittenCount);
+        Exception? failure = null;
         try
         {
             JsonRpcResponseWriteOutcome outcome = await JsonRpcResponseWriter.WriteWithOutcomeAsync(
@@ -163,9 +174,14 @@ internal static class SocketJsonRpcResponseWriter
             await writer.FlushAsync(cancellationToken);
             return (writer.WrittenCount - initialWrittenCount, outcome);
         }
+        catch (Exception ex)
+        {
+            failure = ex;
+            throw;
+        }
         finally
         {
-            await writer.CompleteAsync();
+            await writer.CompleteAsync(failure);
         }
     }
 }

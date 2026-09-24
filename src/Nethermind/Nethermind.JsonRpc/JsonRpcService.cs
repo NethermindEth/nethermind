@@ -616,6 +616,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
             // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
+            ModuleRentalTimeoutException or { InnerException: ModuleRentalTimeoutException } =>
+                GetErrorResponse(methodName, ErrorCodes.ModuleTimeout, "Timeout", null, in request.IdRef, returnAction, suppressWarning: true),
+
             LimitExceededException or ConcurrencyLimitReachedException
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>

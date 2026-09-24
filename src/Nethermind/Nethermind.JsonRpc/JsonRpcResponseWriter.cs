@@ -57,7 +57,7 @@ public static class JsonRpcResponseWriter
 
     internal static async ValueTask<JsonRpcResponseWriteOutcome> WriteWithOutcomeAsync(
         PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch,
-        CancellationToken cancellationToken, bool bufferResponse = false)
+        CancellationToken cancellationToken)
     {
         if (!response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
@@ -68,7 +68,7 @@ public static class JsonRpcResponseWriter
         bool success = false;
         try
         {
-            JsonRpcResponseWriteOutcome outcome = bufferResponse && writer is CountingStreamPipeWriter buffered
+            JsonRpcResponseWriteOutcome outcome = writer is RewindableStreamPipeWriter buffered
                 ? await WriteRewindableStreamableAsync(buffered, response, streamable, options, isBatch, cancellationToken)
                 : await WriteStreamableWithErrorHandlingAsync(writer, response, streamable, options, isBatch, cancellationToken);
             success = outcome.Success;
@@ -134,7 +134,7 @@ public static class JsonRpcResponseWriter
     /// response is not staged a second time.
     /// </remarks>
     private static async ValueTask<JsonRpcResponseWriteOutcome> WriteRewindableStreamableAsync(
-        CountingStreamPipeWriter writer,
+        RewindableStreamPipeWriter writer,
         JsonRpcResponse response,
         IStreamableResult streamable,
         JsonSerializerOptions options,
@@ -148,7 +148,7 @@ public static class JsonRpcResponseWriter
         }
         catch (Exception ex) when (CanReplaceFailure(response, cancellationToken))
         {
-            await writer.RewindAsync(checkpoint);
+            writer.Rewind(checkpoint);
             return WriteReplacementError(writer, response, ex, options);
         }
         return JsonRpcResponseWriteOutcome.Of(response);

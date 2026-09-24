@@ -3,10 +3,10 @@
 
 using System.Diagnostics;
 using System.IO;
-using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.IO;
 using Microsoft.Extensions.Primitives;
 using Nethermind.Core.Resettables;
 using Nethermind.JsonRpc;
@@ -26,12 +26,10 @@ internal sealed class HttpJsonRpcResponseSink(
     private const string JsonContentType = "application/json";
     private const int BufferedResponseInitialCapacity = 16 * 1024;
     private static readonly StringValues JsonContentTypeHeader = new(JsonContentType);
-    private static readonly StreamPipeWriterOptions BufferedResponsePipeWriterOptions =
-        new(minimumBufferSize: BufferedResponseInitialCapacity, leaveOpen: true);
 
     private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
     private CountingWriter? _writer;
-    private Stream? _bufferedStream;
+    private RecyclableMemoryStream? _bufferedStream;
     private bool _isFirstBatchItem = true;
     private bool _completed;
 
@@ -50,8 +48,7 @@ internal sealed class HttpJsonRpcResponseSink(
         try
         {
             outcome = await JsonRpcResponseWriter.WriteWithOutcomeAsync(
-                _writer!, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken,
-                bufferResponse: _bufferedStream is not null);
+                _writer!, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
         }
         catch
         {
@@ -224,7 +221,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
         bool bufferResponse = jsonRpcConfig.BufferResponses && !(jsonRpcUrl.IsAuthenticated && !isCollection);
         _bufferedStream = bufferResponse ? RecyclableStream.GetStream("http", BufferedResponseInitialCapacity) : null;
-        _writer = _bufferedStream is not null ? new CountingStreamPipeWriter(_bufferedStream, BufferedResponsePipeWriterOptions) : new CountingPipeWriter(context.Response.BodyWriter);
+        _writer = _bufferedStream is not null ? new RewindableStreamPipeWriter(_bufferedStream) : new CountingPipeWriter(context.Response.BodyWriter);
 
         context.Response.Headers.ContentType = JsonContentTypeHeader;
         context.Response.StatusCode = isCollection
