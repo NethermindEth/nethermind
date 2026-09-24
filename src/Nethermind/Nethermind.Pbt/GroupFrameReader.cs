@@ -246,6 +246,51 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         right = GetHash(path, rightPosition);
     }
 
+    /// <summary><see cref="GetChildHashes"/> that also pairs the hashing of every omitted level below the two children.</summary>
+    /// <remarks>
+    /// An omitted child is rebuilt from its own children first, so siblings at every level are hashed together
+    /// rather than only the stored ones at the bottom.
+    /// </remarks>
+    internal void GetChildHashesPaired(scoped in PbtTraversalPath path, int leftPosition, int rightPosition, out ValueHash256 left, out ValueHash256 right)
+    {
+        Span<byte> leftBuffer = stackalloc byte[PbtNodeCodec.BranchPreimageLength(0)];
+        Span<byte> rightBuffer = stackalloc byte[PbtNodeCodec.BranchPreimageLength(0)];
+        ReadOnlySpan<byte> leftPreimage = PendingPreimage(path, leftPosition, leftBuffer);
+        ReadOnlySpan<byte> rightPreimage = PendingPreimage(path, rightPosition, rightBuffer);
+        if (!leftPreimage.IsEmpty && !rightPreimage.IsEmpty)
+        {
+            _metrics?.AddNodeHashes(2);
+            Blake3Hash.HashTwo(leftPreimage, rightPreimage, out _hashes[leftPosition], out _hashes[rightPosition]);
+        }
+        else if (!leftPreimage.IsEmpty)
+        {
+            _metrics?.IncrementNodeHashes();
+            _hashes[leftPosition] = Blake3Hash.Hash(leftPreimage);
+        }
+        else if (!rightPreimage.IsEmpty)
+        {
+            _metrics?.IncrementNodeHashes();
+            _hashes[rightPosition] = Blake3Hash.Hash(rightPreimage);
+        }
+        _hashed |= (1u << leftPosition) | (1u << rightPosition);
+        left = _hashes[leftPosition];
+        right = _hashes[rightPosition];
+    }
+
+    /// <summary>The preimage <paramref name="position"/> still needs hashing, or empty when its hash is known or it holds no node.</summary>
+    private ReadOnlySpan<byte> PendingPreimage(scoped in PbtTraversalPath path, int position, Span<byte> buffer)
+    {
+        if ((_hashed & (1u << position)) != 0) return default;
+        ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
+        if (!encoding.IsEmpty) return PbtNodeReader.FromValidated(encoding.Span).Preimage;
+        _hashes[position] = default;
+        if (PbtFourLevelGroupGeometry.WidthOf(position) is not (int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)) return default;
+        GetChildHashesPaired(path, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
+        if (left == default || right == default) return default;
+        PbtNodeCodec.CreateBranchEncoding(buffer, 0, left, right);
+        return buffer;
+    }
+
     public void Dispose()
     {
         ((IDisposable?)_lease)?.Dispose();
