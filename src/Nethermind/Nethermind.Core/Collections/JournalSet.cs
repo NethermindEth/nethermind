@@ -60,8 +60,19 @@ namespace Nethermind.Core.Collections
 
         public void Clear()
         {
+            if (_items.Count <= _set.Capacity / 8)
+            {
+                foreach (T item in _items)
+                {
+                    _set.Remove(item);
+                }
+            }
+            else
+            {
+                _set.Clear();
+            }
+
             _items.Clear();
-            _set.Clear();
         }
 
         public HashSet<T>.Enumerator GetEnumerator() => _set.GetEnumerator();
