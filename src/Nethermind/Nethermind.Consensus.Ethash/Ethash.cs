@@ -66,9 +66,16 @@ namespace Nethermind.Consensus.Ethash
         }
 
         /// <summary>
-        /// The largest epoch whose cache size is representable; above it the <see cref="GetCacheSize"/>
-        /// arithmetic overflows and the resulting size is arbitrary rather than merely large.
+        /// The largest epoch for which <see cref="GetCacheSize"/>'s growth term stays within <see cref="uint"/>;
+        /// one epoch higher it wraps to zero and no cache size can be derived at all.
         /// </summary>
+        /// <remarks>
+        /// A sanity ceiling on a caller-supplied epoch, not a bound on cache size: the final
+        /// <c>cacheItems * HashBytes</c> multiplication is also unsigned and already wraps from epoch ~32_640, so
+        /// sizes reported above that are arbitrary rather than merely large. Keeping block numbers in a plausible
+        /// range is the caller's responsibility — for peer-supplied numbers that is the batch-consistency check in
+        /// the forward header provider.
+        /// </remarks>
         public static uint MaxEpoch => (uint.MaxValue - CacheBytesInit / (uint)HashBytes) / (CacheBytesGrowth / (uint)HashBytes);
 
         /// <summary>

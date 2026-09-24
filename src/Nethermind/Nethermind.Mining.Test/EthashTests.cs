@@ -851,6 +851,17 @@ public class EthashTests
         }
     }
 
+    [Test]
+    public void Max_epoch_is_the_last_epoch_with_a_derivable_cache_size()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(() => Ethash.GetCacheSize(Ethash.MaxEpoch));
+            // One epoch higher the growth term wraps to zero, leaving FindLargestPrime nothing to search.
+            Assert.Throws<ArgumentException>(() => Ethash.GetCacheSize(Ethash.MaxEpoch + 1));
+        }
+    }
+
     private static EthashSealValidator CreateSealValidator() =>
         new(LimboLogs.Instance, new EthashDifficultyCalculator(MainnetSpecProvider.Instance), new CryptoRandom(), new Ethash(LimboLogs.Instance), Timestamper.Default);
 

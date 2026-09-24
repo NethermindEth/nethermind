@@ -41,7 +41,12 @@ namespace Nethermind.Consensus.Ethash
             ulong startEpoch = start / Ethash.EpochLength;
             ulong endEpoch = end / Ethash.EpochLength;
 
-            if (endEpoch < startEpoch || endEpoch - startEpoch > 10)
+            if (endEpoch < startEpoch)
+            {
+                throw new InvalidOperationException($"Hint range is inverted: {startEpoch} > {endEpoch}");
+            }
+
+            if (endEpoch - startEpoch > 10)
             {
                 throw new InvalidOperationException("Hint too wide");
             }
