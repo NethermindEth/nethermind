@@ -4,7 +4,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
@@ -145,7 +144,7 @@ public static class PbtNodeGroupCodec
             descendantBytes[slot] = (descendantMask & (1 << slot)) == 0 ? 0 : ReadDescendantBytes(payload, descendantMask, slot);
     }
 
-    private static long ReadDescendantBytes(ReadOnlySpan<byte> payload, ushort descendantMask, int slot)
+    internal static long ReadDescendantBytes(ReadOnlySpan<byte> payload, ushort descendantMask, int slot)
     {
         int fieldsAfter = BitOperations.PopCount((uint)(descendantMask >> (slot + 1)));
         ReadOnlySpan<byte> field = payload[^(DescendantMaskLength + (fieldsAfter + 1) * DescendantBytesLength)..];
@@ -218,12 +217,10 @@ public static class PbtNodeGroupCodec
 public readonly ref struct PbtNodeGroupReader
 {
     private readonly int _groupDepth;
-    private readonly int _payloadLength;
     private readonly ReadOnlySpan<byte> _payload;
-    private readonly OffsetBuffer _offsets;
-    private readonly LengthBuffer _lengths;
+    private readonly int _entriesLength;
     private readonly uint _availability;
-    private readonly DescendantBuffer _descendantBytes;
+    private readonly ushort _descendantMask;
     private readonly bool _initialized;
 
     /// <summary>Validates and borrows a complete node-group payload.</summary>
@@ -231,45 +228,25 @@ public readonly ref struct PbtNodeGroupReader
     /// The payload must remain valid and immutable for the lifetime of the reader and its enumerators.</remarks>
     public PbtNodeGroupReader(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload) : this(path, payload, validated: false) { }
 
-    /// <summary>Borrows a payload a store has already validated, parsing only its offset table.</summary>
+    /// <summary>Borrows a payload a store has already validated, reading only its footer's fixed fields.</summary>
     internal static PbtNodeGroupReader FromValidated(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload) => new(path, payload, validated: true);
 
-    [SkipLocalsInit]
+    // Nodes and descendant sizes are located on access by ranking their bit in the availability or descendant mask,
+    // since a traversal reads only a few positions of each group it passes through.
     private PbtNodeGroupReader(scoped PbtTraversalPath path, ReadOnlySpan<byte> payload, bool validated)
     {
         int groupDepth = path.BitDepth;
         if (!validated) PbtNodeGroupCodec.ValidateNodes(path, payload);
         Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(groupDepth));
-        DescendantBuffer descendantBytes = default;
-        PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantBytes);
-        int payloadLength = payload.Length;
         payload = payload[PbtNodeGroupCodec.HeaderLength..];
+        ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
         uint availability = PbtNodeGroupCodec.ReadAvailability(payload);
-        int entriesLength = payload.Length - PbtNodeGroupCodec.GetTrailerLength(availability, PbtNodeGroupCodec.ReadDescendantMask(payload));
-        ReadOnlySpan<byte> footer = payload[entriesLength..];
-
-        OffsetBuffer offsets = default;
-        LengthBuffer lengths = default;
-        int previousPosition = -1;
-        int offsetIndex = 0;
-        for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
-        {
-            if ((availability & (1u << position)) == 0) continue;
-            ushort offset = BinaryPrimitives.ReadUInt16LittleEndian(footer[offsetIndex..]);
-            offsetIndex += sizeof(ushort);
-            offsets[position] = offset;
-            if (previousPosition >= 0) lengths[previousPosition] = offset - offsets[previousPosition];
-            previousPosition = position;
-        }
-        if (previousPosition >= 0) lengths[previousPosition] = entriesLength - offsets[previousPosition];
 
         _groupDepth = groupDepth;
         _payload = payload;
-        _offsets = offsets;
-        _lengths = lengths;
+        _entriesLength = payload.Length - PbtNodeGroupCodec.GetTrailerLength(availability, descendantMask);
         _availability = availability;
-        _descendantBytes = descendantBytes;
-        _payloadLength = payloadLength;
+        _descendantMask = descendantMask;
         _initialized = true;
     }
 
@@ -278,7 +255,7 @@ public readonly ref struct PbtNodeGroupReader
     {
         EnsureInitialized();
         if ((uint)slot >= PbtNodeGroupCodec.DescendantSlots) throw new ArgumentOutOfRangeException(nameof(slot));
-        return _descendantBytes[slot];
+        return (_descendantMask & (1 << slot)) == 0 ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(_payload, _descendantMask, slot);
     }
     /// <summary>Gets the number of nodes in this group.</summary>
     public int Count { get { EnsureInitialized(); return BitOperations.PopCount(_availability); } }
@@ -286,7 +263,7 @@ public readonly ref struct PbtNodeGroupReader
     public ReadOnlySpan<byte> GetNode(int position)
     {
         ValidatePosition(position);
-        return (_availability & (1u << position)) == 0 ? [] : _payload.Slice(_offsets[position], _lengths[position]);
+        return (_availability & (1u << position)) == 0 ? [] : NodeAt(position);
     }
     /// <summary>Gets a borrowed canonical node encoding at a position.</summary>
     public ReadOnlySpan<byte> this[int position] => GetNode(position);
@@ -295,8 +272,16 @@ public readonly ref struct PbtNodeGroupReader
     {
         ValidatePosition(position);
         if ((_availability & (1u << position)) == 0) { encoding = default; return false; }
-        encoding = _payload.Slice(_offsets[position], _lengths[position]);
+        encoding = NodeAt(position);
         return true;
+    }
+
+    private ReadOnlySpan<byte> NodeAt(int position)
+    {
+        ReadOnlySpan<byte> offsets = _payload[(_entriesLength + BitOperations.PopCount(_availability & ((1u << position) - 1)) * sizeof(ushort))..];
+        int start = BinaryPrimitives.ReadUInt16LittleEndian(offsets);
+        int end = _availability >> (position + 1) == 0 ? _entriesLength : BinaryPrimitives.ReadUInt16LittleEndian(offsets[sizeof(ushort)..]);
+        return _payload[start..end];
     }
 
     /// <summary>Gets an allocation-free positional enumerator.</summary>
@@ -400,7 +385,4 @@ public readonly ref struct PbtNodeGroupReader
             Current = default; CurrentPosition = -1; return false;
         }
     }
-    [InlineArray(PbtNodeGroupCodec.PositionCount)] private struct OffsetBuffer { private ushort _element; }
-    [InlineArray(PbtNodeGroupCodec.PositionCount)] private struct LengthBuffer { private int _element; }
-    [InlineArray(PbtNodeGroupCodec.DescendantSlots)] private struct DescendantBuffer { private long _element; }
 }

@@ -31,6 +31,7 @@ internal sealed class PbtTrieWarmupSession(
     private static readonly StringLabel _addressJobLabel = new(Metrics.TrieWarmerAddressKind);
     private static readonly StringLabel _storageJobLabel = new(Metrics.TrieWarmerStorageKind);
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer> _storageWarmers = [];
+    private readonly PbtPinnedGroups _pinnedGroups = new();
     // The owner's lease, each borrow and each in-flight warm-up hold one count; the last to leave releases the frozen layers.
     private long _accessors = RefCountingLease.Single;
     private bool _isStopped;
@@ -122,7 +123,7 @@ internal sealed class PbtTrieWarmupSession(
         try
         {
             long start = _recordJobTimes ? Stopwatch.GetTimestamp() : 0;
-            if (PbtTrieWarmer.WarmUpPath(this, TreeRoot, key, minSubtreeBytes)) Metrics.IncrementPbtTrieWarmerStoppedBySmallSubtree();
+            if (PbtTrieWarmer.WarmUpPath(this, TreeRoot, key, minSubtreeBytes, _pinnedGroups)) Metrics.IncrementPbtTrieWarmerStoppedBySmallSubtree();
             if (_recordJobTimes) Metrics.PbtTrieWarmerJobTime.Observe(Stopwatch.GetTimestamp() - start, jobLabel);
             return true;
         }
@@ -166,6 +167,7 @@ internal sealed class PbtTrieWarmupSession(
     {
         try
         {
+            _pinnedGroups.Dispose();
             transientResource.ReleaseLease();
         }
         finally

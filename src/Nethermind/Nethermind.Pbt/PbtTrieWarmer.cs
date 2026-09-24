@@ -13,9 +13,10 @@ internal static class PbtTrieWarmer
     /// <summary>Reads the groups on a complete key's path without changing the tree, and returns whether it stopped before the leaf.</summary>
     /// <remarks>The store must represent one immutable state for the entire traversal.</remarks>
     /// <param name="minSubtreeBytes">The stored size below the next node group under which warming stops instead of fetching it; zero or less warms the whole path.</param>
-    internal static bool WarmUpPath<TKey>(IPbtStore store, in ValueHash256 root, in TKey key, long minSubtreeBytes) where TKey : unmanaged, IPbtKey<TKey>
+    /// <param name="pinnedGroups">Top groups of the same state shared across warm-ups; null fetches every group from the store.</param>
+    internal static bool WarmUpPath<TKey>(IPbtStore store, in ValueHash256 root, in TKey key, long minSubtreeBytes, PbtPinnedGroups? pinnedGroups) where TKey : unmanaged, IPbtKey<TKey>
     {
-        PbtNodeTraverser.GetLeafHash(store, root, key, minSubtreeBytes, out bool stoppedAtSmallSubtree);
+        PbtNodeTraverser.GetLeafHash(store, root, key, minSubtreeBytes, pinnedGroups, out bool stoppedAtSmallSubtree);
         return stoppedAtSmallSubtree;
     }
 }
