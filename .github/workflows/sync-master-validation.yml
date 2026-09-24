@@ -192,14 +192,11 @@ jobs:
     permissions:
       contents: write
       actions: read
-      pages: write
-      id-token: write
     concurrency:
       group: sync-metrics-publish
       cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      publish: ${{ steps.append.outputs.publish }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -243,6 +240,8 @@ jobs:
         id: append
         env:
           GH_TOKEN: ${{ github.token }}
+          # The commit the synced image was built from; empty on manual dispatch
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           shopt -s nullglob
           files=(metrics/*.json)
@@ -270,11 +269,16 @@ jobs:
               pushed=true
               break
             fi
-            git -C metrics-branch fetch origin sync-metrics
-            git -C metrics-branch reset --hard FETCH_HEAD
+            # Stay in the loop under bash -e so the summary below is reported. Stop
+            # rather than retry without a reset: the next pass would see the unpushed
+            # commit as "no new records" and wrongly count it as published.
+            if ! { git -C metrics-branch fetch origin sync-metrics && git -C metrics-branch reset --hard FETCH_HEAD; }; then
+              echo "::warning::Could not refresh sync-metrics after a failed push."
+              break
+            fi
           done
           if [ "$pushed" != true ]; then
-            echo "::error::Failed to push sync metrics after 3 attempts."
+            echo "::error::Failed to push sync metrics to the sync-metrics branch."
             exit 1
           fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
@@ -286,20 +290,37 @@ jobs:
           cp scripts/sync-metrics/index.html _site/index.html
           cp metrics-branch/history.jsonl _site/history.jsonl
 
-      - name: Configure GitHub Pages
-        if: steps.append.outputs.publish == 'true'
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
       - name: Upload Pages artifact
         if: steps.append.outputs.publish == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
+  # Kept apart from publish-metrics so the github-pages environment's protection rules
+  # (default branch only) gate just the deploy, never the data-branch push, and runs with
+  # nothing new create no deployment. The site arrives as publish-metrics' github-pages artifact.
+  deploy-dashboard:
+    needs: [publish-metrics]
+    if: ${{ !cancelled() && needs.publish-metrics.outputs.publish == 'true' }}
+    continue-on-error: true
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: sync-metrics-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Deploy to GitHub Pages
-        if: steps.append.outputs.publish == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
 

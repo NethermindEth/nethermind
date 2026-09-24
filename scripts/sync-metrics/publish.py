@@ -4,7 +4,7 @@ Idempotent: existing records for the same (run_id, network, mode) are replaced,
 so a retried push loop can re-run this script safely.
 
 Usage: publish.py <metrics_dir> <history.jsonl>
-Env: GITHUB_REPOSITORY, GITHUB_RUN_ID, GH_TOKEN
+Env: GITHUB_REPOSITORY, GITHUB_RUN_ID, GH_TOKEN; TRIGGER_SHA (optional, see below)
 """
 
 import json
@@ -53,6 +53,11 @@ def main():
             break
         page += 1
 
+    # A workflow_run run's own head_sha is master's tip when the Docker publish finished,
+    # not the commit that publish built (and setup-matrix pinned the image to), so prefer
+    # the triggering run's SHA. Manual dispatches have none and fall back to the run's.
+    commit = (os.environ.get("TRIGGER_SHA") or run["head_sha"])[:10]
+
     records = []
     for name in sorted(os.listdir(metrics_dir)):
         if not name.endswith(".json"):
@@ -64,7 +69,7 @@ def main():
             "run_attempt": attempt,
             "date": run["created_at"],
             "event": run["event"],
-            "commit": run["head_sha"][:10],
+            "commit": commit,
             **record,
             "source": "ci",
         }

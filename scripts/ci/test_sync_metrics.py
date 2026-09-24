@@ -106,8 +106,8 @@ class PublishTests(unittest.TestCase):
     def job(self, name, conclusion="success", end="2026-09-16T12:20:00Z"):
         return {"name": name, "conclusion": conclusion, "started_at": "2026-09-16T12:00:00Z", "completed_at": end}
 
-    def execute(self, pages):
-        env = {"GITHUB_REPOSITORY": "owner/repo", "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
+    def execute(self, pages, trigger_sha=""):
+        env = {"GITHUB_REPOSITORY": "owner/repo", "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2", "TRIGGER_SHA": trigger_sha}
         with patch.dict(os.environ, env), patch("sys.argv", ["publish.py", str(self.metrics), str(self.history)]), patch.object(publish, "api", side_effect=[self.run, *pages]) as api, redirect_stdout(io.StringIO()):
             publish.main()
         return api.call_args_list
@@ -119,6 +119,12 @@ class PublishTests(unittest.TestCase):
                 row = json.loads(self.history.read_text())
                 self.assertEqual(20, row["job_min"])
                 self.assertEqual(2, row["run_attempt"])
+
+    def test_commit_is_the_triggering_sha_not_the_later_master_tip(self):
+        self.execute([{"jobs": []}], trigger_sha="b" * 40)
+        self.assertEqual("b" * 10, json.loads(self.history.read_text())["commit"])
+        self.execute([{"jobs": []}])
+        self.assertEqual("a" * 10, json.loads(self.history.read_text())["commit"])
 
     def test_job_api_is_paginated_and_scoped_to_current_attempt(self):
         calls = self.execute([
