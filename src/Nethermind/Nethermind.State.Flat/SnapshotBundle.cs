@@ -410,7 +410,7 @@ public sealed class SnapshotBundle : IDisposable
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         // Note: Hot path
-        _trieChanged = true;
+        if (!_trieChanged) _trieChanged = true;
         _changedStateNodes[path] = newNode;
         _transientResource.UpdateStateNode(path, newNode);
     }
@@ -445,7 +445,7 @@ public sealed class SnapshotBundle : IDisposable
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         // Note: Hot path
-        _trieChanged = true;
+        if (!_trieChanged) _trieChanged = true;
         nodes.Set(path, newNode);
         _transientResource.UpdateStorageNode(addr, path, newNode);
     }
