@@ -691,9 +691,15 @@ internal static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>Takes the boundary node a fold is about to descend into, which <see cref="SetBoundary"/> then replaces with the fold's result.</summary>
+    /// <remarks>A touched slot <see cref="Decompose"/> left unresolved is resolved here, as a block of its own.</remarks>
     internal static BoundaryNode TakeBoundary(scoped ref GroupFrameReader<TKey, TPath> reader, scoped in PbtTraversalPath path,
         scoped ref Frontier frontier, int slot)
     {
+        if ((frontier.Unresolved >> slot & 1) != 0)
+        {
+            frontier.Unresolved &= ~(1 << slot);
+            ResolveBlock(ref reader, path, path.BitDepth, frontier.Stored, frontier.Copies, slot, 1, ref frontier);
+        }
         uint bit = 1u << BoundaryPosition(slot);
         if ((frontier.Mask & bit) == 0) return default;
         return frontier.TakeBoundaryNode(ref reader, path, slot);
@@ -829,6 +835,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     internal static FoldResult Compose(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth,
         TrieUpdaterMetrics? metrics, scoped ref Frontier frontier, scoped Span<FoldResult> results)
     {
+        Debug.Assert(frontier.Unresolved == 0, "Every touched slot is taken by its fold before composition.");
         uint copies = frontier.Copies;
         uint frontierMask = frontier.Mask;
         writer.ReserveFirstBuffer(reader.PayloadLength);
@@ -1128,7 +1135,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         private ComposeFrame _element;
     }
 
-    /// <summary>Resolves the input into touched boundary nodes and opaque untouched siblings.</summary>
+    /// <summary>Resolves the input into opaque untouched siblings, leaving each touched slot for <see cref="TakeBoundary"/> to resolve.</summary>
     /// <remarks>
     /// Every entry is resolved from its own position upwards, against the deepest node the group stores above that
     /// position, or against the input when it stores none. That node's link is what both names the entry and holds its
@@ -1164,15 +1171,21 @@ internal static partial class TrieUpdater<TKey, TPath>
         uint stored = reader.StoredPositions(path) & ~(1u << PbtFourLevelGroupGeometry.RootPosition);
         uint copies = DirectCopyPositions(stored, touchedMask);
         frontier.Copies = copies;
+        frontier.Stored = stored;
+        frontier.Unresolved = touchedMask;
         for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots;)
         {
-            // A touched slot is resolved on its own; everything else in the widest aligned untouched block it starts.
+            // A touched slot is resolved when its fold takes it; everything else in the widest aligned untouched block it starts.
+            if ((touchedMask >> slot & 1) != 0)
+            {
+                slot++;
+                continue;
+            }
             int width = 1;
-            if ((touchedMask >> slot & 1) == 0)
-                while (width < PbtFourLevelGroupGeometry.BoundarySlots
-                       && (slot & (2 * width - 1)) == 0
-                       && (touchedMask & (((1 << (2 * width)) - 1) << slot)) == 0)
-                    width <<= 1;
+            while (width < PbtFourLevelGroupGeometry.BoundarySlots
+                   && (slot & (2 * width - 1)) == 0
+                   && (touchedMask & (((1 << (2 * width)) - 1) << slot)) == 0)
+                width <<= 1;
             ResolveBlock(ref reader, path, bitDepth, stored, copies, slot, width, ref frontier);
             slot += width;
         }
