@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Types;
@@ -52,15 +53,15 @@ public class RangeSyncFailureReportingTests
         StubPeer goodPeer = new("good", headSlot: TargetSlot, (startSlot, count) => [.. chain.Where(b => b.Message!.Slot >= startSlot && b.Message.Slot < startSlot + count)]);
         RangeSync sync = new(new StubPool(badPeer, goodPeer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet);
 
-        List<SignedBeaconBlock> imported = [];
-        await foreach (SignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
+        List<ForkedSignedBeaconBlock> imported = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
         {
             imported.Add(block);
         }
 
         Assert.Multiple(() =>
         {
-            Assert.That(imported.Select(b => b.Message!.Slot), Is.EqualTo(chain.Select(b => b.Message!.Slot)), "the good peer still completes the range");
+            Assert.That(imported.Select(b => b.Slot), Is.EqualTo(chain.Select(b => b.Message!.Slot)), "the good peer still completes the range");
             Assert.That(badPeer.TypedReports, Is.Not.Empty.And.All.EqualTo(expected), "the bad peer is penalized under the reason that describes what it did");
             Assert.That(goodPeer.TypedReports, Is.Empty);
         });
@@ -74,14 +75,23 @@ public class RangeSyncFailureReportingTests
 
         public ulong HeadSlot => headSlot;
 
-        public Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
-            Task.FromResult<IReadOnlyList<SignedBeaconBlock>>(handler(startSlot, count));
+        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([.. handler(startSlot, count).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))]);
 
-        public Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
-            Task.FromResult<IReadOnlyList<SignedBeaconBlock>>([]);
+        public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<ForkedSignedBeaconBlock>>([]);
 
         public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<DataColumnSidecar>>([]);
+
+        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token) =>
+            throw new NotSupportedException();
 
         public void ReportFailure(PeerFailureReason reason, string? detail = null) => TypedReports.Add(reason);
     }

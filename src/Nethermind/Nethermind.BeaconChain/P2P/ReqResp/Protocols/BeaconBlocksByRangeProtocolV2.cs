@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -22,13 +23,13 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// the requested range.
 /// </remarks>
 public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconChainStore store) : BlocksProtocolBase(spec),
-    ISessionProtocol<BeaconBlocksByRangeRequest, IReadOnlyList<SignedBeaconBlock>>
+    ISessionProtocol<BeaconBlocksByRangeRequest, IReadOnlyList<ForkedSignedBeaconBlock>>
 {
     private const int RequestLength = 3 * sizeof(ulong);
 
     public string Id => "/eth2/beacon_chain/req/beacon_blocks_by_range/2/ssz_snappy";
 
-    public async Task<IReadOnlyList<SignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, BeaconBlocksByRangeRequest request)
+    public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, BeaconBlocksByRangeRequest request)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
         using (CancellationTokenSource cts = StartTimeout(RespTimeout))
@@ -36,11 +37,11 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
             await WriteRequestAndEofAsync(downChannel, stream, BeaconBlocksByRangeRequest.Encode(request), cts.Token);
         }
 
-        IReadOnlyList<SignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, (int)Math.Min(request.Count, MaxRequestBlocks), Id);
+        IReadOnlyList<ForkedSignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, (int)Math.Min(request.Count, MaxRequestBlocks), Id);
         ulong? previousSlot = null;
-        foreach (SignedBeaconBlock block in blocks)
+        foreach (ForkedSignedBeaconBlock block in blocks)
         {
-            ulong slot = block.Message!.Slot;
+            ulong slot = block.Slot;
             if (slot < request.StartSlot || slot >= request.StartSlot + request.Count || slot <= previousSlot)
             {
                 RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
@@ -87,7 +88,7 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
             ulong count = Math.Min(request.Count, MaxRequestBlocks);
             for (ulong slot = request.StartSlot; slot < request.StartSlot + count; slot++)
             {
-                if (store.TryGetCanonicalRoot(slot, out Hash256? root) && store.TryGetBlock(root, out SignedBeaconBlock? block))
+                if (store.TryGetCanonicalRoot(slot, out Hash256? root) && store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
                 {
                     await WriteBlockChunkAsync(stream, block, cts);
                 }
