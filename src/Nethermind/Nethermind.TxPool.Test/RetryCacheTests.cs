@@ -1679,14 +1679,24 @@ public class RetryCacheTests
         Assert.That(AnnounceBurst(), Is.EqualTo(resourceCount));
         Assert.That(AnnounceBurst(), Is.Zero);
 
-        for (int burst = 0; burst < 4; burst++)
+        bool measuresAllocation = resourceCount < 32768;
+        int bursts = 4;
+        int measuredBursts = 0;
+        for (int burst = 0; burst < bursts; burst++)
         {
             timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
+            TimeSpan pausedBefore = GC.GetTotalPauseDuration();
             long before = GC.GetAllocatedBytesForCurrentThread();
             cache.ProcessRetryTick();
             int retainedAfterExpiry = cache.OverflowRetainedCapacity;
             int requested = AnnounceBurst();
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            // A background GC pausing this thread can add up to one 8 KB allocation buffer to its counter without any
+            // allocation, so a paused window only rules out regrowth and another burst takes its place.
+            bool paused = GC.GetTotalPauseDuration() != pausedBefore;
+            bool measured = measuresAllocation && burst > 0 && !paused;
+            if (measured) measuredBursts++;
+            else if (measuresAllocation && burst > 0 && bursts < 16) bursts++;
 
             using (Assert.EnterMultipleScope())
             {
@@ -1695,10 +1705,13 @@ public class RetryCacheTests
                 if (resourceCount == 32768)
                     Assert.That(retainedAfterExpiry, Is.LessThanOrEqualTo(1024), "repeated oversized bursts must not bypass the retention cap");
                 else if (burst > 0)
-                    Assert.That(allocated, Is.LessThan(4_000), "repeated bursts should reuse the grown set after the warm spare proves useful");
+                    Assert.That(allocated, Is.LessThan(paused ? 16_000 : 4_000), "repeated bursts should reuse the grown set after the warm spare proves useful");
             }
             Assert.That(AnnounceBurst(), Is.Zero);
         }
+
+        if (measuresAllocation)
+            Assert.That(measuredBursts, Is.EqualTo(3), "GC pauses interrupted too many allocation measurements");
 
         timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * idlePeriods));
         cache.ProcessRetryTick();
