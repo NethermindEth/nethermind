@@ -90,15 +90,16 @@ public static class ParityReplayEnvelopeWriter
         writer.WritePropertyName("action"u8);
         ParityTraceActionConverter.Instance.Write(writer, action, options);
 
-        if (action.Error is null)
-        {
-            writer.WritePropertyName("result"u8);
-            JsonSerializer.Serialize(writer, action.Result, options);
-        }
-        else
+        // Selfdestruct frames carry no result, as in Geth's flatCallTracer.
+        if (action.Error is not null)
         {
             writer.WritePropertyName("error"u8);
             JsonSerializer.Serialize(writer, action.Error, options);
+        }
+        else if (action.Type != "suicide")
+        {
+            writer.WritePropertyName("result"u8);
+            JsonSerializer.Serialize(writer, action.Result, options);
         }
 
         writer.WriteNumber("subtraces"u8, action.Subtraces.Count);

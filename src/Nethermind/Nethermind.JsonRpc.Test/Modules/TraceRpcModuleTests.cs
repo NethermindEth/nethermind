@@ -1639,6 +1639,23 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_call_selfdestruct_frame_has_no_result([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        string selfDestructing = "0x000000000000000000000000000000000000c0de";
+        string call = $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{selfDestructing}\",\"gas\":\"0xf4240\"}}";
+        string overrides = $"{{\"{selfDestructing}\":{{\"balance\":\"0x64\",\"code\":\"{Prepare.EvmCode.PushData(TestItem.AddressB).Op(Instruction.SELFDESTRUCT).Done.ToHexString(true)}\"}}}}";
+        string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
+            JsonSerializer.Deserialize<object>(call), new[] { "trace" }, "latest", JsonSerializer.Deserialize<object>(overrides));
+
+        JToken suicide = JToken.Parse(serialized)["result"]!["trace"]!.Single(static frame => frame["type"]!.Value<string>() == "suicide");
+        Assert.That(((JObject)suicide).ContainsKey("result"), Is.False);
+    }
+
+    [Test]
     public async Task Streaming_rejected_transaction_keeps_response_well_formed(
         [Values("[\"trace\"]", "[\"vmTrace\",\"trace\",\"stateDiff\"]")] string traceTypes)
     {

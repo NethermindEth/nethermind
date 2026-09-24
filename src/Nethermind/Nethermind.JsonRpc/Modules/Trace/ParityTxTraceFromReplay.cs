@@ -78,15 +78,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("action"u8);
             ParityTraceActionConverter.Instance.Write(writer, value, options);
 
-            if (value.Error is null)
-            {
-                writer.WritePropertyName("result"u8);
-                JsonSerializer.Serialize(writer, value.Result, options);
-            }
-            else
+            // Selfdestruct frames carry no result, as in Geth's flatCallTracer.
+            if (value.Error is not null)
             {
                 writer.WritePropertyName("error"u8);
                 JsonSerializer.Serialize(writer, value.Error, options);
+            }
+            else if (value.Type != "suicide")
+            {
+                writer.WritePropertyName("result"u8);
+                JsonSerializer.Serialize(writer, value.Result, options);
             }
 
             writer.WriteNumber("subtraces"u8, value.Subtraces.Count);
