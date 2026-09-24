@@ -1322,35 +1322,14 @@ public class EthSimulateTestsBlocksAndTransactions
     [TestCase(false, true, TestName = "slotnum_derived_from_the_beacon_genesis")]
     public async Task eth_simulateV1_slotnum_returns_a_slot_advancing_per_block(bool crossFork, bool withBeaconGenesis)
     {
-        const ulong amsterdamTimestamp = 2_000_000_000;
-        const ulong headBeaconSlot = 13_000_000;
         const int blockCount = 3;
 
-        TestRpcBlockchain chain;
-        ulong? firstBlockTime = null;
-        ulong firstSlot = 0;
-        if (withBeaconGenesis)
+        using TestRpcBlockchain chain = await BuildSlotnumChain(crossFork, withBeaconGenesis);
+        ulong? firstBlockTime = crossFork ? SlotnumAmsterdamTimestamp : null;
+        ulong firstSlot = withBeaconGenesis ? SlotnumHeadBeaconSlot + 1 : 0;
+        if (crossFork)
         {
-            TestSpecProvider specProvider = new(Amsterdam.Instance) { AllowTestChainOverride = false };
-            chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
-            ulong secondsPerSlot = chain.Container.Resolve<IBlocksConfig>().SecondsPerSlot;
-            // Place the beacon genesis so the head sits on a realistic mainnet-scale slot.
-            specProvider.BeaconChainGenesisTimestamp = chain.BlockFinder.Head!.Header.Timestamp - headBeaconSlot * secondsPerSlot;
-            firstSlot = headBeaconSlot + 1;
-        }
-        else if (crossFork)
-        {
-            CustomSpecProvider specProvider = new(
-                ((ForkActivation)0, Prague.Instance),
-                (ForkActivation.TimestampOnly(amsterdamTimestamp), Amsterdam.Instance));
-            specProvider.UpdateMergeTransitionInfo(0, 0);
-            chain = await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(specProvider);
-            Assert.That(chain.BlockFinder.Head!.Header.Timestamp, Is.LessThan(amsterdamTimestamp));
-            firstBlockTime = amsterdamTimestamp;
-        }
-        else
-        {
-            chain = await BuildAmsterdamBalChain();
+            Assert.That(chain.BlockFinder.Head!.Header.Timestamp, Is.LessThan(SlotnumAmsterdamTimestamp));
         }
 
         // The residual case #13683 is about: there is no slot on the head for the simulation to inherit.
@@ -1391,5 +1370,32 @@ public class EthSimulateTestsBlocksAndTransactions
             UInt256 returnedSlot = new(call.ReturnData!, isBigEndian: true);
             Assert.That((ulong)returnedSlot, Is.EqualTo(firstSlot + (ulong)i), $"SLOTNUM in simulated block {i}");
         }
+    }
+
+    private const ulong SlotnumAmsterdamTimestamp = 2_000_000_000;
+    private const ulong SlotnumHeadBeaconSlot = 13_000_000;
+
+    private static async Task<TestRpcBlockchain> BuildSlotnumChain(bool crossFork, bool withBeaconGenesis)
+    {
+        if (withBeaconGenesis)
+        {
+            TestSpecProvider specProvider = new(Amsterdam.Instance) { AllowTestChainOverride = false };
+            TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+            ulong secondsPerSlot = chain.Container.Resolve<IBlocksConfig>().SecondsPerSlot;
+            // Place the beacon genesis so the head sits on a realistic mainnet-scale slot.
+            specProvider.BeaconChainGenesisTimestamp = chain.BlockFinder.Head!.Header.Timestamp - SlotnumHeadBeaconSlot * secondsPerSlot;
+            return chain;
+        }
+
+        if (crossFork)
+        {
+            CustomSpecProvider specProvider = new(
+                ((ForkActivation)0, Prague.Instance),
+                (ForkActivation.TimestampOnly(SlotnumAmsterdamTimestamp), Amsterdam.Instance));
+            specProvider.UpdateMergeTransitionInfo(0, 0);
+            return await TestRpcBlockchain.ForTest(new GenesisOnlyRpcBlockchain()).Build(specProvider);
+        }
+
+        return await BuildAmsterdamBalChain();
     }
 }
