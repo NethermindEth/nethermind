@@ -25,7 +25,7 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests-glamsterdam-devnet@v8.1.4
+        default: tests@v21.0.0
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
@@ -76,7 +76,7 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: tests-glamsterdam-devnet@v8.1.4
+        default: tests@v21.0.0
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
@@ -109,12 +109,11 @@ env:
   TERM: xterm
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
-  # Fixture source: the glamsterdam-devnet releases of ethereum/execution-specs. They ship
-  # fixtures for all forks (Frontier..Amsterdam) with the devnet-8 Amsterdam semantics
-  # this branch implements. Pass an exact tag (e.g. tests-glamsterdam-devnet@v8.1.4) to pin.
+  # Fixture source: the mainnet tests releases of ethereum/execution-specs. They ship
+  # fixtures for all forks (Frontier..Amsterdam). Pass an exact tag (e.g. tests@v21.0.0) to pin.
   EEST_REPOSITORY: ethereum/execution-specs
-  EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v8.1.4' }}
-  EEST_ARCHIVE: fixtures_glamsterdam-devnet.tar.gz
+  EEST_VERSION: ${{ inputs.eest_version || 'tests@v21.0.0' }}
+  EEST_ARCHIVE: fixtures.tar.gz
   # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
   # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to the release whose stateless
   # input/output schemas this branch implements.
@@ -237,10 +236,10 @@ jobs:
                     emit "$type" batchread    amsterdam '' false true  4 2
                     emit "$type" parallelfull amsterdam '' true  true  1 4
                   else
-                    emit "$type" sequential   full      '' false false 4 4
-                    emit "$type" parallel     amsterdam '' true  false 1 1
-                    emit "$type" batchread    amsterdam '' false true  4 1
-                    emit "$type" parallelfull amsterdam '' true  true  1 1
+                    emit "$type" sequential   full      '' false false 4 6
+                    emit "$type" parallel     amsterdam '' true  false 1 2
+                    emit "$type" batchread    amsterdam '' false true  4 2
+                    emit "$type" parallelfull amsterdam '' true  true  1 2
                   fi
                 fi
                 if run_flat; then
@@ -437,7 +436,7 @@ jobs:
           echo "Using $EEST_ARCHIVE @ $RESOLVED_EEST_VERSION"
 
       - name: Cache EEST fixtures
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/eest-fixtures
           key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}
@@ -516,17 +515,20 @@ jobs:
           # rest. Patterns match the test id with everything up to `.py::` stripped, so they scope by
           # fork and parameterisation but cannot tell apart two fixture files that define the same
           # test. An explicit `filter` input overrides this.
-          KNOWN_FAILURES=(
-            # These ported_static fixtures give the block a synthetic gas limit above 2^32 and a
-            # transaction that spends all of it, so EIP-8037 rule 1 (tx.gas <= TX_MAX_TOTAL_GAS_LIMIT)
-            # rejects a transaction they expect to be accepted. Merged upstream as
-            # ethereum/execution-specs#3582; drop once a fixture release carries it (v8.1.4 predates it).
-            # Only --g2 diverges, but stCallCreateCallCodeTest and stDelegatecallTestHomestead share the
-            # test name, so its passing sibling goes with it. ecrecover_short_buff has one
-            # parameterisation per fork and format, so the fork prefix already pins it exactly.
-            'test_callcode_lose_gas_oog\[fork_(Amsterdam|Bogota)-[^]]*--g2\]'
-            'test_ecrecover_short_buff\[fork_(Amsterdam|Bogota)-'
-          )
+          KNOWN_FAILURES=()
+          if [ "$TEST_TYPE" = "zkevmTest" ] || [ "$TEST_TYPE" = "focilTest" ]; then
+            KNOWN_FAILURES+=(
+              # These ported_static fixtures give the block a synthetic gas limit above 2^32 and a
+              # transaction that spends all of it, so EIP-8037 rule 1 (tx.gas <= TX_MAX_TOTAL_GAS_LIMIT)
+              # rejects a transaction they expect to be accepted. Fixed upstream as
+              # ethereum/execution-specs#3582, which the zkEVM v0.8.4 and FOCIL v0.2.0 releases predate.
+              # Only --g2 diverges, but stCallCreateCallCodeTest and stDelegatecallTestHomestead share the
+              # test name, so its passing sibling goes with it. ecrecover_short_buff has one
+              # parameterisation per fork and format, so the fork prefix already pins it exactly.
+              'test_callcode_lose_gas_oog\[fork_(Amsterdam|Bogota)-[^]]*--g2\]'
+              'test_ecrecover_short_buff\[fork_(Amsterdam|Bogota)-'
+            )
+          fi
           if [ "$TEST_TYPE" = "focilTest" ]; then
             KNOWN_FAILURES+=(
               # The inclusion-list variant keeps rlp_modifier while clearing header_verify, so header
@@ -551,8 +553,10 @@ jobs:
               'test_block_with_failing_included_il_tx_is_valid.*scenario_creation_address_collision'
             )
           fi
-          EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
-          echo "extra_filter=(?!(?:$EXCLUSIONS)).*" >> "$GITHUB_OUTPUT"
+          if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then
+            EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
+            echo "extra_filter=(?!(?:$EXCLUSIONS)).*" >> "$GITHUB_OUTPUT"
+          fi
 
           echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
           echo "runner_flag=$RUNNER_FLAG" >> "$GITHUB_OUTPUT"

@@ -333,7 +333,16 @@ public abstract partial class BaseEngineModuleTests
         {
             TestBlockchain bc = await base.Build(configurer);
             _lazyEngineRpcModule = bc.Container.Resolve<Lazy<IEngineRpcModule>>();
+            UndisposedChainGuardAttribute.Track(this);
             return bc;
+        }
+
+        internal bool IsDisposed { get; private set; }
+
+        public override void Dispose()
+        {
+            IsDisposed = true;
+            base.Dispose();
         }
 
         public IBlockImprovementContextFactory BlockImprovementContextFactory =>
