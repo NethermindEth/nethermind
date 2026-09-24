@@ -44,7 +44,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>Takes the boundary node at <paramref name="slot"/>, resolving it against the frame it was read from.</summary>
-        internal BoundaryNode TakeBoundaryNode(scoped ref GroupFrameReader<TKey, TPath> reader, scoped in PbtTraversalPath path, int slot)
+        internal BoundaryNode TakeBoundaryNode<TFrame>(scoped ref TFrame reader, int slot)
+            where TFrame : struct, IGroupFrame<TKey, TPath>
         {
             ref readonly DecompositionEntry entry = ref Entries[slot];
             bool fromRoot = entry.SourcePosition == RootSource;
@@ -52,23 +53,23 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 case EntrySource.AtPosition:
                     // The root stays: a touched slot resolved after this take still reads its links from it.
-                    return fromRoot ? Root : reader.TakeBoundaryNode(path, entry.SourcePosition);
+                    return fromRoot ? Root : reader.TakeBoundaryNode(entry.SourcePosition);
                 case EntrySource.LeftLeafOf:
                 case EntrySource.RightLeafOf:
                     bool right = entry.Source == EntrySource.RightLeafOf;
-                    return fromRoot ? Root.InlineLeaf(right) : reader.TakeInlineLeaf(path, entry.SourcePosition, right);
+                    return fromRoot ? Root.InlineLeaf(right) : reader.TakeInlineLeaf(entry.SourcePosition, right);
                 default:
                     throw new InvalidOperationException("A composed result is not read back as a boundary node.");
             }
         }
 
         /// <summary>Takes the fold's result at <paramref name="slot"/>.</summary>
-        internal readonly FoldResult TakeResult(scoped Span<FoldResult> results, int slot) => FoldResult.Move(ref results[ResultIndex(slot)]);
+        internal readonly void TakeResult(scoped Span<FoldResult> results, int slot, ref FoldResult result) => FoldResult.Move(ref results[ResultIndex(slot)], ref result);
 
         internal void Set(scoped Span<FoldResult> results, int slot, ref FoldResult result)
         {
             Entries[slot] = default;
-            results[ResultIndex(slot)] = FoldResult.Move(ref result);
+            FoldResult.Move(ref result, ref results[ResultIndex(slot)]);
         }
 
         private readonly int ResultIndex(int slot)

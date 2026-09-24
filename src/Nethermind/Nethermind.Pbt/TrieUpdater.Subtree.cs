@@ -34,21 +34,14 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly ValueHash256 LeftHash;
         internal readonly ValueHash256 RightHash;
         /// <summary>The hash already computed for this branch, or default when it must be computed.</summary>
-        internal readonly ValueHash256 KnownHash;
+        internal ValueHash256 KnownHash;
         /// <summary>The compressed-prefix bit count of the encoding <see cref="KnownHash"/> is the hash of.</summary>
-        internal readonly ushort KnownHashBitCount;
+        internal ushort KnownHashBitCount;
         /// <summary>Which children of a branch are leaves: <see cref="LeftLeaf"/> and <see cref="RightLeaf"/> bits.</summary>
         internal readonly byte LeafChildren;
         internal readonly NodeGroupPath Path;
         /// <summary>The change in stored size across the groups this result was folded from, still owed to the caller's boundary slot.</summary>
         internal long SizeDelta;
-
-        private FoldResult(in FoldResult source, in ValueHash256 knownHash, int knownHashBitCount)
-        {
-            this = source;
-            KnownHash = knownHash;
-            KnownHashBitCount = (ushort)knownHashBitCount;
-        }
 
         internal FoldResult(TKey key, in ValueHash256 hash)
         {
@@ -92,8 +85,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
         }
 
-        /// <summary>This result carrying the hash of its encoding with a <paramref name="bitCount"/>-bit prefix, so that encoding is not hashed again.</summary>
-        internal readonly FoldResult WithKnownHash(in ValueHash256 hash, int bitCount) => new(this, hash, bitCount);
+        /// <summary>Carries the hash of this result's encoding with a <paramref name="bitCount"/>-bit prefix, so that encoding is not hashed again.</summary>
+        internal void SetKnownHash(in ValueHash256 hash, int bitCount)
+        {
+            KnownHash = hash;
+            KnownHashBitCount = (ushort)bitCount;
+        }
 
         internal readonly bool IsEmpty => Kind == NodeKind.Empty;
         internal readonly bool IsLeaf => Kind == NodeKind.Leaf;
@@ -176,18 +173,17 @@ internal static partial class TrieUpdater<TKey, TPath>
                 PbtBitPrefix.CopyBits(localPrefix.Bytes, prefixStart - anchorDepth, end - prefixStart, destination, prefixStart - start);
         }
 
-        internal static FoldResult Move(ref FoldResult source)
+        internal static void Move(ref FoldResult source, ref FoldResult destination)
         {
-            FoldResult result = source;
+            destination = source;
             source = default;
-            return result;
         }
 
-        internal static FoldResult TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.FoldResult source)
+        internal static void TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.FoldResult source, ref FoldResult result)
             where TSourceKey : unmanaged, IPbtKey<TSourceKey>
             where TSourcePath : struct, IPbtNodePath<TSourcePath>
         {
-            FoldResult result = default;
+            result = default;
             if (!source.IsEmpty)
             {
                 if (source.IsLeaf)
@@ -203,7 +199,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
             result.SizeDelta = source.SizeDelta;
             source = default;
-            return result;
         }
     }
 
