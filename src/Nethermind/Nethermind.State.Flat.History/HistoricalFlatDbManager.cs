@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 
@@ -19,8 +20,11 @@ public sealed class HistoricalFlatDbManager(
     ITrieNodeCache trieNodeCache,
     IResourcePool resourcePool,
     bool enableDetailedMetrics,
-    HistoryScopeGate scopeGate) : IFlatDbManager
+    HistoryScopeGate scopeGate,
+    ILogManager logManager) : IFlatDbManager
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<HistoricalFlatDbManager>();
+
     private enum HistoricalReadMode
     {
         NotHistorical,
@@ -39,8 +43,11 @@ public sealed class HistoricalFlatDbManager(
         // blocks on that mix produces a corrupt state root and cascades into invalid-block deletions.
         if (usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing)
         {
-            throw new InvalidOperationException(
-                $"Main block processing requested a writable scope at historical state {baseBlock}; history serves read-only execution.");
+            // The callers map this to a plain "state unavailable", so the reason - a wiring bug, not pruning - is
+            // only ever seen if it is logged where it is decided.
+            string reason = $"Main block processing requested a writable scope at historical state {baseBlock}; history serves read-only execution.";
+            if (_logger.IsError) _logger.Error(reason);
+            throw new StateUnavailableException(reason);
         }
 
         ReadOnlySnapshotBundle bundle = BuildHistoricalBundle(baseBlock, mode);

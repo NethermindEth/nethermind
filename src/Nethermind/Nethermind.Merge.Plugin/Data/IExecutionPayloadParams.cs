@@ -193,6 +193,24 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     private ValidationResult ValidateEngineApiVersionParams(IReleaseSpec spec, int version, out string? error)
     {
+        if (spec.WithdrawalsEnabled && executionPayload.Withdrawals is null)
+        {
+            error = "Withdrawals must be set";
+            return ValidationResult.Fail;
+        }
+
+        if (spec.IsEip4844Enabled && executionPayload.BlobGasUsed is null)
+        {
+            error = "Blob gas used must be set";
+            return ValidationResult.Fail;
+        }
+
+        if (spec.IsEip4844Enabled && executionPayload.ExcessBlobGas is null)
+        {
+            error = "Excess blob gas must be set";
+            return ValidationResult.Fail;
+        }
+
         if (version < EngineApiVersions.NewPayload.V4 && executionPayload.BlockAccessList is not null)
         {
             error = "Block access list must not be set before engine_newPayloadV4";
