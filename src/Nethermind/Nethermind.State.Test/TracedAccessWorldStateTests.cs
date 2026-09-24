@@ -92,17 +92,28 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
-    [Test]
-    public void Mutation_without_generating_block_access_list_delegates_without_recording()
+    [TestCase("SetNonce")]
+    [TestCase("CreateAccount")]
+    [TestCase("CreateAccountIfNotExists")]
+    [TestCase("DeleteAccount")]
+    public void Mutation_without_generating_block_access_list_delegates_without_recording(string member)
     {
         (TracedAccessWorldState tws, IWorldState inner, IDisposable scope) = CreateIdleState();
         using (scope)
         {
-            tws.SetNonce(TestItem.AddressA, 1);
+            (Action mutate, Func<bool> applied) = member switch
+            {
+                "SetNonce" => ((Action)(() => tws.SetNonce(TestItem.AddressA, 1)), (Func<bool>)(() => inner.GetNonce(TestItem.AddressA) == 1)),
+                "CreateAccount" => (() => tws.CreateAccount(TestItem.AddressB, 5), () => inner.GetBalance(TestItem.AddressB) == 5),
+                "CreateAccountIfNotExists" => (() => tws.CreateAccountIfNotExists(TestItem.AddressB, 5), () => inner.GetBalance(TestItem.AddressB) == 5),
+                _ => (() => tws.DeleteAccount(TestItem.AddressA), () => !inner.AccountExists(TestItem.AddressA))
+            };
+
+            mutate();
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(inner.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+                Assert.That(applied(), Is.True);
                 Assert.That(tws.GetGeneratingBlockAccessList(), Is.Null);
             }
         }

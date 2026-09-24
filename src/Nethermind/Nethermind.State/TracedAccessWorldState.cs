@@ -258,7 +258,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         _generatingBlockAccessList?.DeleteAccount(address, GetBalanceInternal(address));
         base.DeleteAccount(address);
-        GeneratingBlockAccessList.RecordAccountExistence(address, false);
+        _generatingBlockAccessList?.RecordAccountExistence(address, false);
     }
 
     public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
@@ -306,7 +306,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (_systemAccountReadSuppressionDepth == 0 || address != Address.SystemUser)
         {
-            GeneratingBlockAccessList.RecordAccountExistence(address, exists);
+            _generatingBlockAccessList?.RecordAccountExistence(address, exists);
         }
     }
 
@@ -473,7 +473,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         => AccountExistsCurrent(address) ?? base.AccountExists(address);
 
     private bool? AccountExistsCurrent(Address address)
-        => AccountExistsCurrent(GeneratingBlockAccessList.GetAccountChanges(address));
+        => AccountExistsCurrent(_generatingBlockAccessList?.GetAccountChanges(address));
 
     private static bool? AccountExistsCurrent(AccountChangesAtIndex? accountChanges)
     {
