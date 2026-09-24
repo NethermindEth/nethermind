@@ -14,7 +14,7 @@ internal static partial class StackPool
     // A retiring thread abandons its slots rather than returning them, so thread churn also costs fresh
     // pinned allocations, and a parked slot is unreachable to a busy thread with a dry shared tier. Every
     // abandoned array is the size of its replacement, so both stay a Gen2 and footprint cost.
-    private const int LocalStacksPooled = 8;
+    private const int LocalStacksPooled = 2;
 
     private static readonly EvmObjectPool<StackItem> _stackPool = new(LocalStacksPooled, MaxStacksPooled);
 
