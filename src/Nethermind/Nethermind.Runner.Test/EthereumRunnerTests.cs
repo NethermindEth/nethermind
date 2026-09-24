@@ -352,11 +352,11 @@ public class EthereumRunnerTests
 
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
     {
+        Stopwatch phase = Stopwatch.StartNew();
         Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
         TempPath tempPath = TempPath.GetTempDirectory();
         Directory.CreateDirectory(tempPath.Path);
-        Stopwatch phase = Stopwatch.StartNew();
 
         Exception? exception = null;
         try
@@ -440,6 +440,8 @@ public class EthereumRunnerTests
                     throw;
                 }
             }
+
+            LogPhase("teardown", phase);
         }
     }
 
