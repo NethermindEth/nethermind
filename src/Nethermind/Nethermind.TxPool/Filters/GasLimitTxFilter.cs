@@ -19,7 +19,24 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             ulong gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? ulong.MaxValue, _configuredGasLimit);
-            if (tx.GasLimit > gasLimit)
+
+            bool exceedsLimit;
+            ulong rejectedBudget;
+            if (tx.SupportsFrames)
+            {
+                // The spec pinned for the submission, not the head's: a head that moves mid-pipeline would
+                // otherwise price this transaction under rules no other filter, nor AddCore, judged it by.
+                bool calculated = FrameTxValidation.TryCalculateBlockGasReservations(tx, state.HeadSpec, out ulong executionReservation, out ulong stateReservation);
+                rejectedBudget = calculated ? Math.Max(executionReservation, stateReservation) : ulong.MaxValue;
+                exceedsLimit = !calculated || executionReservation > gasLimit || stateReservation > gasLimit;
+            }
+            else
+            {
+                rejectedBudget = tx.GasLimit;
+                exceedsLimit = rejectedBudget > gasLimit;
+            }
+
+            if (exceedsLimit)
             {
                 Metrics.PendingTransactionsGasLimitTooHigh++;
 
@@ -31,7 +48,7 @@ namespace Nethermind.TxPool.Filters
                 bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
                 return isNotLocal ?
                     AcceptTxResult.GasLimitExceeded :
-                    AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {tx.GasLimit}");
+                    AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {rejectedBudget}");
             }
 
             return AcceptTxResult.Accepted;

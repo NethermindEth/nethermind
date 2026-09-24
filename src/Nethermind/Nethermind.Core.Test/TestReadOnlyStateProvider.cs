@@ -14,6 +14,7 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
 {
     private Dictionary<Address, AccountStruct> _accounts = [];
     private Dictionary<ValueHash256, byte[]> _codes = [];
+    private readonly Dictionary<StorageCell, UInt256> _storage = [];
 
     public bool TryGetAccount(Address address, out AccountStruct account) => _accounts.TryGetValue(address, out account);
 
@@ -31,6 +32,10 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
     public bool AccountExists(Address address) => TryGetAccount(address, out AccountStruct _);
 
     public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
+
+    public void Get(in StorageCell storageCell, out UInt256 value) => _storage.TryGetValue(storageCell, out value);
+
+    public void Set(in StorageCell storageCell, in UInt256 value) => _storage[storageCell] = value;
 
     public void CreateAccount(Address address, UInt256 wei, ulong nonce = default) => _accounts[address] = new AccountStruct(nonce, wei);
 
