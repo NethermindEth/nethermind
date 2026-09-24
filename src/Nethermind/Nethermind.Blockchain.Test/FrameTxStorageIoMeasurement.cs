@@ -17,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using static Nethermind.Blockchain.Test.MeasurementEnvironment;
+using static Nethermind.Blockchain.Test.MeasurementStatistics;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -244,7 +245,10 @@ public class FrameTxStorageIoMeasurement
             StorageResidency.SyncAll();
         }
 
-        long readBytesBefore = StorageResidency.ProcessReadBytes();
+        // Read bytes are bracketed per sample rather than over the whole loop: DropPageCache walks the
+        // database directory and opens every file in it, and that walk's own reads would otherwise be
+        // reported as reads the prefix performed.
+        long readBytes = 0;
         int fadvisedFiles = 0;
         int fadvisedFilesTotal = 0;
         List<double> submitMicros = new(Samples);
@@ -257,9 +261,11 @@ public class FrameTxStorageIoMeasurement
             }
 
             Transaction tx = FrameTx(coldSlots ? salt : 0, salt);
+            long readBefore = StorageResidency.ProcessReadBytes();
             long start = Stopwatch.GetTimestamp();
             AcceptTxResult result = _chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
             submitMicros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
+            readBytes += StorageResidency.ProcessReadBytes() - readBefore;
 
             if (result != AcceptTxResult.FrameSimulationFailed)
             {
@@ -268,7 +274,6 @@ public class FrameTxStorageIoMeasurement
         }
 
         _nextSalt = salt;
-        long readBytes = StorageResidency.ProcessReadBytes() - readBytesBefore;
         submitMicros.Sort();
         double p50 = Percentile(submitMicros, 0.50);
         double usPerKgas = p50 * 1_000 / _ceiling;
@@ -357,14 +362,6 @@ public class FrameTxStorageIoMeasurement
     /// </summary>
     private Transaction FrameTx(int slotSalt, int uniqueSalt = 0) =>
         ColdSloadStorageFixture.FrameTx(Attacker, _ceiling, slotSalt * _saltStride, uniqueSalt);
-
-    // Nearest-rank keeps every reported percentile tied to an observed sample.
-    private static double Percentile(List<double> sorted, double quantile)
-    {
-        if (sorted.Count == 0) return double.NaN;
-        int rank = (int)Math.Ceiling(quantile * sorted.Count);
-        return sorted[Math.Clamp(rank, 1, sorted.Count) - 1];
-    }
 
     private static void Emit(string line)
     {
