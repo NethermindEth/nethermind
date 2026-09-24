@@ -4,7 +4,8 @@
 
 # Prints the version an MSBuild project file declares: <VersionPrefix>, with -<VersionSuffix>
 # appended when that property is present and not empty. This is the version that goes into the
-# OCI version label of the images we publish.
+# OCI version label of the images we publish, and release-bootnode.yml also tags the Bootnode
+# release with it.
 #
 # release.yml reads the same two properties with xmlstarlet and is deliberately left alone: its
 # value also names the Git tag and the GitHub release, so rewiring it belongs in its own change.

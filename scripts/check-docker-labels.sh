@@ -11,13 +11,14 @@
 #
 # The version, revision and created labels are checked self-referentially: this script supplies
 # the build args and asserts the same values came back. That proves each Dockerfile wires the args
-# into its labels; it does not prove the publishing workflows pass them.
+# into its labels. That the publishing workflows pass them is checked separately, and only
+# textually: every file that builds a published image must mention each --build-arg.
 #
 # By default only the final stage is built: the `build` stage is replaced by a stub context, which
 # takes seconds instead of a full .NET compile and is enough to check the labels. Pass --full to
 # build the image the way the release workflow does and check that instead.
 #
-# Requires Docker with buildx, jq, and GNU date and find (this uses `date -d` and `find -printf`).
+# Requires git, Docker with buildx, jq, and GNU date (this uses `date -d`).
 #
 # Usage:
 #   scripts/check-docker-labels.sh [--full] [--dockerfile PATH]...
@@ -34,7 +35,7 @@ usage: check-docker-labels.sh [--full] [--dockerfile PATH]...
   --full             Build the whole image instead of only its final stage.
   --dockerfile PATH  Check this Dockerfile (repeatable). Defaults to every published image.
 
-Requires Docker with buildx, jq, and GNU date and find.
+Requires git, Docker with buildx, jq, and GNU date.
 EOF
 }
 
@@ -81,10 +82,10 @@ not_published=(
 )
 
 if [[ ${#dockerfiles[@]} -eq 0 ]]; then
+  # Tracked files only, so build output or a local Dockerfile cannot trip the check. mapfile does
+  # not see a failure inside the process substitution, hence the empty guard below.
   mapfile -t discovered < <(
-    cd "$repo_root" &&
-      find . -type f \( -name Dockerfile -o -name 'Dockerfile.*' \) -not -path './.git/*' -printf '%P\n' |
-      sort
+    git -C "$repo_root" ls-files -- 'Dockerfile' 'Dockerfile.*' '*/Dockerfile' '*/Dockerfile.*' | sort
   )
 
   for candidate in "${discovered[@]}"; do
@@ -101,9 +102,31 @@ if [[ ${#dockerfiles[@]} -eq 0 ]]; then
       dockerfiles+=("$candidate")
     fi
   done
+
+  if [[ ${#dockerfiles[@]} -eq 0 ]]; then
+    echo "error: found no Dockerfile to check" >&2
+    exit 1
+  fi
 fi
 
-# The same values the release workflows pass, so what is checked here is what gets published.
+# With the Dockerfiles' defaults, a builder that stops passing one of these args publishes
+# "unknown" instead of failing, and the self-referential check below cannot see it.
+builders=(
+  .github/actions/publish-docker/action.yaml
+  .github/workflows/release.yml
+  .github/workflows/release-bootnode.yml
+)
+
+for builder in "${builders[@]}"; do
+  for arg in COMMIT_HASH VERSION BUILD_TIMESTAMP; do
+    if ! grep -q -- "--build-arg $arg=" "$repo_root/$builder"; then
+      echo "error: $builder does not pass --build-arg $arg" >&2
+      exit 1
+    fi
+  done
+done
+
+# Derived the way the release workflows derive them, so what is checked here is what gets published.
 commit_hash=$(git -C "$repo_root" rev-parse HEAD)
 source_date_epoch=$(git -C "$repo_root" log -1 --format=%ct)
 build_timestamp=$(date -u -d "@$source_date_epoch" +%Y-%m-%dT%H:%M:%SZ)
@@ -116,7 +139,17 @@ fi
 # A stand-in for the build stage's /publish, so the final stage's COPY --from=build resolves
 # without compiling anything.
 stub_context=$(mktemp -d)
-trap 'rm -rf "$stub_context"' EXIT
+built_tags=()
+
+cleanup() {
+  rm -rf "$stub_context"
+
+  if [[ ${#built_tags[@]} -gt 0 ]]; then
+    docker image rm "${built_tags[@]}" > /dev/null 2>&1 || true
+  fi
+}
+
+trap cleanup EXIT
 mkdir "$stub_context/publish"
 : > "$stub_context/publish/nethermind"
 
@@ -142,6 +175,7 @@ for dockerfile in "${dockerfiles[@]}"; do
     tools/Bootnode/Dockerfile)
       title='Nethermind Bootnode'
       description='Standalone discovery bootnode for discv4 and discv5.'
+      url='https://github.com/NethermindEth/nethermind/tree/master/tools/Bootnode'
       documentation='https://github.com/NethermindEth/nethermind/blob/master/tools/Bootnode/README.md'
       # release-bootnode.yml versions the Bootnode from its own project file, not the client's.
       version_file=tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj
@@ -149,6 +183,7 @@ for dockerfile in "${dockerfiles[@]}"; do
     Dockerfile | Dockerfile.chiseled)
       title='Nethermind'
       description='A robust execution client for Ethereum node operators.'
+      url='https://nethermind.io/nethermind-client'
       documentation='https://docs.nethermind.io'
       version_file=src/Nethermind/Directory.Build.props
       ;;
@@ -175,6 +210,7 @@ for dockerfile in "${dockerfiles[@]}"; do
   fi
 
   echo "Building $dockerfile as $tag"
+  built_tags+=("$tag")
   "${build[@]}"
 
   labels=$(docker image inspect --format '{{json .Config.Labels}}' "$tag")
@@ -184,7 +220,7 @@ for dockerfile in "${dockerfiles[@]}"; do
   check_label org.opencontainers.image.description "$description"
   check_label org.opencontainers.image.vendor 'Demerzel Solutions Limited'
   check_label org.opencontainers.image.licenses 'LGPL-3.0-only'
-  check_label org.opencontainers.image.url 'https://nethermind.io/nethermind-client'
+  check_label org.opencontainers.image.url "$url"
   check_label org.opencontainers.image.documentation "$documentation"
   check_label org.opencontainers.image.source 'https://github.com/NethermindEth/nethermind'
   check_label org.opencontainers.image.version "$version"

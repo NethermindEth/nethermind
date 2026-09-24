@@ -39,19 +39,21 @@ jobs:
 
       - name: Detect version
         id: version
-        working-directory: tools/Bootnode/Nethermind.Bootnode
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_PUBLISH_LATEST: ${{ inputs.publish_latest }}
         run: |
-          sudo apt-get update && sudo apt-get install xmlstarlet -y --no-install-recommends
-          version_prefix=$(xmlstarlet sel -t -v "//Project/PropertyGroup/VersionPrefix" Nethermind.Bootnode.csproj)
-          version=$version_prefix
+          # The same derivation that feeds the image's OCI version label, so the tag and the label
+          # cannot diverge. version.sh fails on a missing VersionPrefix or an unusable result.
+          if ! version=$(scripts/version.sh tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj); then
+            exit 1
+          fi
+
           release_tag=bootnode-$version
           release_name="Nethermind Bootnode $version"
           package_prefix=nethermind-bootnode-$version
 
-          if [[ -z "$version_prefix" || ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || ! git check-ref-format --allow-onelevel "refs/tags/$release_tag"; then
+          if [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || ! git check-ref-format --allow-onelevel "refs/tags/$release_tag"; then
             echo "Bootnode version '$version' must produce valid Docker and Git tags."
             exit 1
           fi
