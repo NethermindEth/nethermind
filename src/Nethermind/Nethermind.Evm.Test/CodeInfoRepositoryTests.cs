@@ -17,6 +17,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using System;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
@@ -39,6 +40,7 @@ public class CodeInfoRepositoryTests
     /// contract is covered against the real spec in <c>ReleaseSpecTests</c>; the substitute here answers
     /// <c>IsPrecompile</c> from its own arrangement, so it could not tell us anything about it.</remarks>
     private static readonly long[] PrecompileNumbers = [1, 2, 9, 0x11, 0x100, 0x101, 0x10001, 0x10002, 0x8000_0000];
+    private const int MemoCapacityForTests = 4;
 
     [TestCaseSource(nameof(PrecompileNumbers))]
     public void Precompile_is_resolved_whatever_its_number(long number)
@@ -68,12 +70,46 @@ public class CodeInfoRepositoryTests
         return provider;
     }
 
-    /// <summary>Replacing an account's code must be visible immediately, not answered from the memo.</summary>
+    private sealed class CountingCodeCache : ICodeCache
+    {
+        private readonly StaticCodeCache _inner = new(64);
+
+        public int GetCount { get; private set; }
+
+        public CodeInfo? Get(in ValueHash256 codeHash)
+        {
+            GetCount++;
+            return _inner.Get(in codeHash);
+        }
+
+        public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
+            => _inner.Set(in codeHash, codeInfo);
+
+        public void Clear() => _inner.Clear();
+    }
+
+    private sealed class CountingWorldState(IWorldState state) : WorldStateDecorator(state)
+    {
+        public int CodeReads { get; private set; }
+        public int BytecodeAccesses { get; private set; }
+
+        public override byte[]? GetCode(in ValueHash256 codeHash)
+        {
+            CodeReads++;
+            return base.GetCode(in codeHash);
+        }
+
+        public override void RecordBytecodeAccess(Address address)
+        {
+            BytecodeAccesses++;
+            base.RecordBytecodeAccess(address);
+        }
+    }
+
+    /// <summary>Replacing or restoring an account's code must select the entry matching its current hash.</summary>
     /// <remarks>
-    /// <see cref="CacheCodeInfoRepository"/> remembers the code it last resolved so a repeated query skips
-    /// the shared cache's probe. The memo is keyed on the code hash, which is re-read from the world state
-    /// on every call, so a changed or reverted deployment misses it — this pins that, since a stale hit
-    /// would run the wrong bytecode.
+    /// <see cref="CacheCodeInfoRepository"/> validates each memo entry against the hash re-read from world
+    /// state on every call, so replacement and restore cannot answer with the wrong bytecode.
     /// </remarks>
     [Test]
     public void Changed_code_is_not_answered_from_the_last_resolved_code()
@@ -92,9 +128,14 @@ public class CodeInfoRepositoryTests
         Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(first));
         Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(first));
 
+        Snapshot original = stateProvider.TakeSnapshot();
         stateProvider.InsertCode(TestItem.AddressA, second, _releaseSpec);
 
         Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(second));
+
+        stateProvider.Restore(original);
+
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(first));
     }
 
     /// <summary>Two accounts sharing a code hash share its body; a different one must not be confused.</summary>
@@ -123,15 +164,115 @@ public class CodeInfoRepositoryTests
             Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
             Assert.That(repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(shared));
             Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
-            // Alternating never produces a memo hit; repeating the last address is what pins that a hit
-            // answers for the right address rather than only that a miss is not confused.
+            // Repeat after alternating to pin that a hit still answers for the right code hash.
             Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
         }
     }
 
+    [Test]
+    public void Recent_code_info_memo_keeps_four_hashes_and_evicts_round_robin()
+    {
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE];
+        byte[][] codes =
+        [
+            [(byte)Instruction.STOP],
+            [(byte)Instruction.JUMPDEST, (byte)Instruction.STOP],
+            [(byte)Instruction.PUSH1, 1, (byte)Instruction.STOP],
+            [(byte)Instruction.PUSH1, 2, (byte)Instruction.STOP],
+            [(byte)Instruction.PUSH1, 3, (byte)Instruction.STOP],
+        ];
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        CountingCodeCache cache = new();
+        CacheCodeInfoRepository repository = new(stateProvider, NoPrecompiles(), cache);
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            stateProvider.CreateAccount(addresses[i], 0);
+            stateProvider.InsertCode(addresses[i], codes[i], _releaseSpec);
+        }
+
+        for (int i = 0; i < MemoCapacityForTests; i++)
+        {
+            Assert.That(repository.GetCachedCodeInfo(addresses[i], false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(codes[i]));
+        }
+        Assert.That(cache.GetCount, Is.EqualTo(4));
+
+        for (int i = 0; i < MemoCapacityForTests; i++)
+        {
+            Assert.That(repository.GetCachedCodeInfo(addresses[i], false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(codes[i]));
+        }
+        Assert.That(cache.GetCount, Is.EqualTo(4));
+
+        Assert.That(repository.GetCachedCodeInfo(addresses[4], false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(codes[4]));
+        Assert.That(cache.GetCount, Is.EqualTo(5));
+        Assert.That(repository.GetCachedCodeInfo(addresses[0], false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(codes[0]));
+        Assert.That(cache.GetCount, Is.EqualTo(6));
+        Assert.That(repository.GetCachedCodeInfo(addresses[4], false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(codes[4]));
+        Assert.That(cache.GetCount, Is.EqualTo(6));
+    }
+
+    [Test]
+    public void Alternating_memo_entries_refresh_their_shared_cache_tickers_independently()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        byte[][] alternatingCodes =
+        [
+            [(byte)Instruction.STOP],
+            [(byte)Instruction.JUMPDEST, (byte)Instruction.STOP],
+        ];
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.CreateAccount(TestItem.AddressB, 0);
+        stateProvider.InsertCode(TestItem.AddressA, alternatingCodes[0], _releaseSpec);
+        stateProvider.InsertCode(TestItem.AddressB, alternatingCodes[1], _releaseSpec);
+
+        CountingCodeCache cache = new();
+        CacheCodeInfoRepository repository = new(stateProvider, NoPrecompiles(), cache);
+        repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _);
+        repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _);
+
+        for (int i = 0; i < 32; i++)
+        {
+            repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _);
+            repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _);
+        }
+        Assert.That(cache.GetCount, Is.EqualTo(2));
+
+        for (int i = 0; i < 32; i++)
+        {
+            repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _);
+            repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _);
+        }
+        Assert.That(cache.GetCount, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void Noop_code_cache_keeps_recording_each_world_state_code_read()
+    {
+        CountingWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        byte[] code = [(byte)Instruction.STOP];
+        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
+
+        CacheCodeInfoRepository repository = new(stateProvider, NoPrecompiles(), NoopCodeCache.Instance);
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(),
+                Is.EqualTo(code));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateProvider.CodeReads, Is.EqualTo(2));
+            Assert.That(stateProvider.BytecodeAccesses, Is.EqualTo(2));
+        }
+    }
+
     /// <summary>A cached instance must not be re-pointed at a different code hash.</summary>
-    /// <remarks>The last-resolved memo decides which bytecode executes from the stamped hash alone, so a
-    /// stamp that is not the keccak of the body would serve the wrong contract with no diagnostic.</remarks>
+    /// <remarks>Memo lookup trusts the stamped hash, so a stamp that is not the keccak of the body could
+    /// serve the wrong contract with no diagnostic.</remarks>
     [Test]
     public void Cached_code_cannot_be_re_stamped_with_another_hash()
     {
