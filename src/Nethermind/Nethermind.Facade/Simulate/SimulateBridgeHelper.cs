@@ -332,8 +332,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     /// <c>slot = (timestamp - beacon genesis) / seconds per slot</c>, exact because every post-merge block sits on that grid.
     /// A slotless parent (normally the real base block) off the grid means the configured slot length or genesis is not this
     /// chain's, so <c>null</c> lets the caller fall back. A parent carrying a slot may be a simulated block whose time override
-    /// fell between slots and was advanced, so its grid slot is only a floor. The result stays above the parent's slot, as
-    /// slots never repeat; that also caps a slot length too long for the chain at the parent's slot + 1.
+    /// fell between slots and was advanced, so its grid slot is only a floor. The result stays above the parent's slot (its
+    /// grid slot when it has none), as slots never repeat; that also caps a slot length too long for the chain at parent + 1.
+    /// A slotless simulated parent timed between slots, which a pre-fork block can be, also falls back: it cannot be told
+    /// apart from a base block on the wrong grid.
     /// </remarks>
     private ulong? DeriveSlot(ISpecProvider specProvider, BlockHeader parent, ulong timestamp)
     {
@@ -347,16 +349,18 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         }
 
         ulong parentOffset = parent.Timestamp - genesis;
+        ulong parentGridSlot = parentOffset / secondsPerSlot;
         bool parentFitsGrid = parent.SlotNumber is { } parentSlot
-            ? parentSlot >= parentOffset / secondsPerSlot
+            ? parentSlot >= parentGridSlot
             : parentOffset % secondsPerSlot == 0;
         if (!parentFitsGrid)
         {
             return null;
         }
 
+        ulong previousSlot = parent.SlotNumber ?? parentGridSlot;
         ulong slot = (timestamp - genesis) / secondsPerSlot;
-        return parent.SlotNumber is { } previousSlot && slot <= previousSlot ? previousSlot + 1 : slot;
+        return slot <= previousSlot ? previousSlot + 1 : slot;
     }
 
     private static ForkActivation GetSimulatedActivation(BlockOverride? overrides, BlockHeader header) =>

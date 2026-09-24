@@ -90,19 +90,20 @@ public class SimulateBridgeHelperTests
     }
 
     /// <summary>
-    /// A time override that falls between slots must neither repeat the parent's slot nor switch derivation off for the
-    /// blocks after it: each block still reports the beacon slot of its time, kept above its parent's.
+    /// A time override that falls between slots must neither repeat the head's slot nor switch derivation off for the
+    /// blocks after it, whether or not the head carries a slot: each block reports the beacon slot of its time, kept above
+    /// its parent's.
     /// </summary>
-    [TestCase(null, ExpectedResult = new[] { MainnetHeadSlot, MainnetHeadSlot + 3 }, TestName = "an off-grid override keeps later blocks derived")]
-    [TestCase(MainnetHeadSlot, ExpectedResult = new[] { MainnetHeadSlot + 1, MainnetHeadSlot + 3 }, TestName = "an off-grid override advances past the parent's slot and keeps later blocks derived")]
-    public ulong[] Off_grid_time_override_keeps_slots_derived_and_increasing(ulong? headSlot)
+    [Test]
+    public void Off_grid_time_override_keeps_slots_derived_and_increasing([Values(null, MainnetHeadSlot)] ulong? headSlot)
     {
         TestSpecProvider specProvider = new(Amsterdam.Instance) { BeaconChainGenesisTimestamp = MainnetBeaconGenesis };
         BlockHeader head = Build.A.BlockHeader.WithNumber(10).WithTimestamp(MainnetHeadTime).WithSlotNumber(headSlot).TestObject;
 
         BlockHeader first = GetCallHeader(specProvider, MainnetSlotLength, head, MainnetHeadTime + 1);
         BlockHeader second = GetCallHeader(specProvider, MainnetSlotLength, first, MainnetHeadTime + 1 + 3 * MainnetSlotLength);
-        return [first.SlotNumber!.Value, second.SlotNumber!.Value];
+
+        Assert.That(new[] { first.SlotNumber, second.SlotNumber }, Is.EqualTo(new ulong?[] { MainnetHeadSlot + 1, MainnetHeadSlot + 3 }));
     }
 
     private static ulong? GetCallHeaderSlot(ISpecProvider specProvider, ulong secondsPerSlot, BlockHeader parent, ulong? overrideTime) =>
