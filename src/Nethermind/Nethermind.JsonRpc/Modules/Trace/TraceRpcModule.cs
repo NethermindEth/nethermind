@@ -60,8 +60,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly ILogger _logger = logManager.GetClassLogger<TraceRpcModule>();
 
-        public static ParityTraceTypes GetParityTypes(string[] types) =>
-            types.Select(static s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate(static (t1, t2) => t1 | t2);
+        public static ParityTraceTypes GetParityTypes(string[] types)
+        {
+            // A JSON null per-call selection in trace_callMany reaches here; ArgumentException maps to invalid params.
+            ArgumentNullException.ThrowIfNull(types);
+            ParityTraceTypes result = ParityTraceTypes.None;
+            foreach (string type in types)
+            {
+                result |= FastEnum.Parse<ParityTraceTypes>(type, true);
+            }
+            return result;
+        }
 
         /// <summary>
         /// Traces one transaction. Doesn't charge fees.
