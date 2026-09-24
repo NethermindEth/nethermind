@@ -54,7 +54,7 @@ public class Importer(
         };
 
         Channel<Entry> channel = Channel.CreateBounded<Entry>(2_000_000);
-        if (_logger.IsWarn) _logger.Warn("Starting import");
+        if (_logger.IsWarn) _logger.Warn($"Starting flat DB import. It can take hours; progress is logged every {ProgressInterval.TotalSeconds:0} s.");
 
         int maxConcurrency = 8;
         VisitorProgressTracker progressTracker = new("Flat Import", logManager);
@@ -86,7 +86,7 @@ public class Importer(
         // Timer-driven, so a line is written also while ingest is stalled and no node is visited.
         // After the traversal the estimate can stay below 100 % on small tries, so report it as done.
         ITimer progressTimer = _timeProvider.CreateTimer(
-            _ => LogProgress(visitTask.IsCompletedSuccessfully ? 1 : progressTracker.GetProgress(), channel.Reader),
+            _ => LogProgress(visitTask.IsCompletedSuccessfully && !cancellationToken.IsCancellationRequested ? 1 : progressTracker.GetProgress(), channel.Reader),
             null, ProgressInterval, ProgressInterval);
         try
         {

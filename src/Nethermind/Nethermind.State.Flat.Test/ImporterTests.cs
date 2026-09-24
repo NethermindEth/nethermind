@@ -123,7 +123,7 @@ public class ImporterTests
         InterfaceLogger logger = CreateInfoLogger();
         Importer importer = new(new NodeStorage(_trieDb), new OrderRecordingPersistence(_persistence, [], timer.Tick),
             new OneLoggerLogManager(new ILogger(logger)), timer.TimeProvider);
-        // Two ticks with nothing visited in between: each still writes a line
+        // Two back-to-back ticks: each writes a line
         int ticked = 0;
         logger.When(l => l.Info(Arg.Is<string>(line => line.Contains("Ingest thread started")))).Do(_ =>
         {
@@ -137,6 +137,7 @@ public class ImporterTests
         await importer.Copy(new StateId(0, _stateTree.RootHash));
 
         timer.TimeProvider.Received(1).CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+        logger.Received(1).Warn(Arg.Is<string>(line => line.Contains("flat DB import") && line.Contains("every 60 s")));
         logger.Received(4).Info(Arg.Is<string>(line => line.Contains("Flat Import")));
         Received.InOrder(() =>
         {
@@ -148,6 +149,29 @@ public class ImporterTests
             _ = timer.Timer.DisposeAsync();
             logger.Info(Arg.Is<string>(line => line.StartsWith("Flat db copy completed")));
         });
+    }
+
+    [Test]
+    public async Task Copy_DoesNotReportFullProgressAfterACancelledTraversal()
+    {
+        // Fixed addresses give depth-1 leaves, so the tracker writes a Debug line mid-traversal
+        _stateTree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(1));
+        _stateTree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(2));
+        _stateTree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(3));
+        _stateTree.Commit();
+        using CancellationTokenSource cts = new();
+        ManualTimer timer = new();
+        InterfaceLogger logger = CreateInfoLogger();
+        logger.IsDebug.Returns(true);
+        logger.When(l => l.Debug(Arg.Is<string>(line => line.Contains("Flat Import")))).Do(_ => cts.Cancel());
+        Importer importer = new(new NodeStorage(_trieDb), _persistence, new OneLoggerLogManager(new ILogger(logger)), timer.TimeProvider);
+
+        await Assert.ThatAsync(async () => await importer.Copy(new StateId(0, _stateTree.RootHash), cts.Token),
+            Throws.InstanceOf<System.OperationCanceledException>());
+
+        // The cancelled traversal returned normally, so only the token tells it from a completed one
+        timer.Tick();
+        logger.DidNotReceive().Info(Arg.Is<string>(line => line.Contains("100.00 %")));
     }
 
     [Test]
@@ -167,6 +191,7 @@ public class ImporterTests
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsInfo.Returns(true);
+        logger.IsWarn.Returns(true);
         return logger;
     }
 
