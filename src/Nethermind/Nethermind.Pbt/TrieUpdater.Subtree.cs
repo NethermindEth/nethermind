@@ -117,16 +117,10 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (HasRightLeaf) _rightLeafKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftLength)..]);
         }
 
-        /// <summary>Copies this branch's children into a composed branch anchored at <paramref name="path"/>, over <paramref name="prefix"/>.</summary>
-        internal readonly Subtree CopyBranch(NodeGroupPath path, ReadOnlyMemory<byte> prefix) =>
+        /// <summary>Copies this branch's children into a fold result anchored at <paramref name="path"/>, over <paramref name="prefix"/>.</summary>
+        internal readonly FoldResult CopyBranch(NodeGroupPath path, ReadOnlyMemory<byte> prefix) =>
             new(path, LeftHash, RightHash, HasLeftLeaf ? LeftLeafKey : default, HasRightLeaf ? RightLeafKey : default, LeafChildrenMask, prefix);
 
-        internal static Subtree Move(ref Subtree source)
-        {
-            Subtree result = source;
-            source = default;
-            return result;
-        }
     }
 
     /// <summary>A node paired with its borrowed source-group cursor, distinct from its eventual placement.</summary>
@@ -298,7 +292,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             Debug.Assert(anchorDepth % PbtFourLevelGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
             if (IsEmpty) return default;
-            if (IsLeaf) return new(Node);
+            if (IsLeaf) return new(Node.LeafKey, Node.LeafHash);
 
             int splitDepth = BranchDepth;
             Debug.Assert(splitDepth >= anchorDepth, "A result branches at or below the cursor that addresses it.");
@@ -308,13 +302,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             NodeGroupPath path = new(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength);
             ReadOnlyMemory<byte> prefix = OwnedPrefix(anchorDepth + localLength, splitDepth);
             if (!Copy.IsEmpty) return ReanchoredCopy(path, prefix);
-            return new(new Subtree(path, Node.LeftHash, Node.RightHash, Node.HasLeftLeaf ? Node.LeftLeafKey : default,
-                Node.HasRightLeaf ? Node.RightLeafKey : default, Node.LeafChildrenMask, prefix));
+            return Node.CopyBranch(path, prefix);
         }
 
         /// <summary>The untouched stored branch as a composed branch at <paramref name="path"/>, out of line for the same reason as <see cref="EncodeReanchoredCopy"/>.</summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private readonly FoldResult ReanchoredCopy(NodeGroupPath path, ReadOnlyMemory<byte> prefix) => new(Copy.ToBranch().CopyBranch(path, prefix));
+        private readonly FoldResult ReanchoredCopy(NodeGroupPath path, ReadOnlyMemory<byte> prefix) => Copy.ToBranch().CopyBranch(path, prefix);
 
         /// <summary>The bits from <paramref name="anchorDepth"/> to <paramref name="splitDepth"/> as a standalone compressed prefix.</summary>
         private readonly ReadOnlyMemory<byte> OwnedPrefix(int anchorDepth, int splitDepth)
@@ -332,15 +325,89 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>A detached result, read against the cursor of the caller it was materialized for.</summary>
     /// <remarks>
     /// The result owns everything below that cursor, so it survives traversal-buffer reuse and the release of the group
-    /// it was read from, but it is only meaningful paired with a cursor at its anchor depth.
+    /// it was read from, but it is only meaningful paired with a cursor at its anchor depth. A leaf is only its key and
+    /// hash; a branch carries the keys of its leaf children, flagged by <see cref="LeafChildren"/>.
     /// </remarks>
-    internal struct FoldResult(Subtree node)
+    internal struct FoldResult
     {
-        internal Subtree Node = node;
+        internal readonly NodeKind Kind;
+        /// <summary>A branch's owned compressed prefix below its anchor, empty when it branches at its anchor.</summary>
+        internal readonly ReadOnlyMemory<byte> Encoding;
+        /// <summary>A leaf's key, or a branch's left leaf key.</summary>
+        internal readonly TKey LeafKey;
+        internal readonly TKey RightLeafKey;
+        /// <summary>A leaf's hash, or a branch's left child hash.</summary>
+        internal readonly ValueHash256 LeftHash;
+        internal readonly ValueHash256 RightHash;
+        /// <summary>The hash already computed for this branch, or default when it must be computed.</summary>
+        internal readonly ValueHash256 KnownHash;
+        /// <summary>The compressed-prefix bit count of the encoding <see cref="KnownHash"/> is the hash of.</summary>
+        internal readonly ushort KnownHashBitCount;
+        /// <summary>Which children of a branch are leaves: <see cref="Subtree.LeftLeaf"/> and <see cref="Subtree.RightLeaf"/> bits.</summary>
+        internal readonly byte LeafChildren;
+        internal readonly NodeGroupPath Path;
         /// <summary>The change in stored size across the groups this result was folded from, still owed to the caller's boundary slot.</summary>
         internal long SizeDelta;
-        internal readonly bool IsEmpty => Node.IsEmpty;
-        internal readonly TraversalSubtree Borrow(in PbtTraversalPath cursor) => new(cursor, Node);
+
+        private FoldResult(in FoldResult source, in ValueHash256 knownHash, int knownHashBitCount)
+        {
+            this = source;
+            KnownHash = knownHash;
+            KnownHashBitCount = (ushort)knownHashBitCount;
+        }
+
+        internal FoldResult(TKey key, in ValueHash256 hash)
+        {
+            Kind = NodeKind.Leaf;
+            LeafKey = key;
+            LeftHash = hash;
+        }
+
+        /// <param name="prefix">The owned compressed prefix below this branch's anchor, empty when it branches at its anchor.</param>
+        internal FoldResult(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
+            ReadOnlyMemory<byte> prefix)
+        {
+            Kind = NodeKind.Branch;
+            Encoding = prefix;
+            LeftHash = left;
+            RightHash = right;
+            Path = path;
+            LeafKey = leftLeafKey;
+            RightLeafKey = rightLeafKey;
+            LeafChildren = leafChildren;
+        }
+
+        /// <param name="knownHash">The hash of this branch's encoding with a <paramref name="knownHashBitCount"/>-bit prefix.</param>
+        internal FoldResult(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
+            ReadOnlyMemory<byte> prefix, in ValueHash256 knownHash, int knownHashBitCount)
+            : this(path, left, right, leftLeafKey, rightLeafKey, leafChildren, prefix)
+        {
+            KnownHash = knownHash;
+            KnownHashBitCount = (ushort)knownHashBitCount;
+        }
+
+        /// <summary>This result carrying the hash of its encoding with a <paramref name="bitCount"/>-bit prefix, so that encoding is not hashed again.</summary>
+        internal readonly FoldResult WithKnownHash(in ValueHash256 hash, int bitCount) => new(this, hash, bitCount);
+
+        internal readonly bool IsEmpty => Kind == NodeKind.Empty;
+        internal readonly bool IsLeaf => Kind == NodeKind.Leaf;
+        internal readonly ValueHash256 LeafHash => LeftHash;
+        internal readonly bool HasLeftLeaf => (LeafChildren & Subtree.LeftLeaf) != 0;
+        internal readonly bool HasRightLeaf => (LeafChildren & Subtree.RightLeaf) != 0;
+
+        internal readonly TraversalSubtree Borrow(PbtTraversalPath cursor) => new(cursor, Kind switch
+        {
+            NodeKind.Leaf => new Subtree(LeafKey, LeftHash),
+            NodeKind.Branch => new Subtree(Path, LeftHash, RightHash, LeafKey, RightLeafKey, LeafChildren, Encoding, KnownHash, KnownHashBitCount),
+            _ => default,
+        });
+
+        internal static FoldResult Move(ref FoldResult source)
+        {
+            FoldResult result = source;
+            source = default;
+            return result;
+        }
 
         internal static FoldResult TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.FoldResult source)
             where TSourceKey : struct, IPbtKey<TSourceKey>
@@ -349,15 +416,15 @@ internal static partial class TrieUpdater<TKey, TPath>
             FoldResult result = default;
             if (!source.IsEmpty)
             {
-                if (source.Node.IsLeaf)
-                    result.Node = new(TKey.Create(source.Node.LeafKey.Bytes), source.Node.LeafHash);
+                if (source.IsLeaf)
+                    result = new(TKey.Create(source.LeafKey.Bytes), source.LeafHash);
                 else
                 {
-                    Debug.Assert(source.Node.Kind == NodeKind.Branch);
-                    result = new(new Subtree(source.Node.Path, source.Node.LeftHash, source.Node.RightHash,
-                        source.Node.HasLeftLeaf ? TKey.Create(source.Node.LeftLeafKey.Bytes) : default,
-                        source.Node.HasRightLeaf ? TKey.Create(source.Node.RightLeafKey.Bytes) : default,
-                        source.Node.LeafChildrenMask, source.Node.Encoding));
+                    Debug.Assert(source.Kind == NodeKind.Branch);
+                    result = new(source.Path, source.LeftHash, source.RightHash,
+                        source.HasLeftLeaf ? TKey.Create(source.LeafKey.Bytes) : default,
+                        source.HasRightLeaf ? TKey.Create(source.RightLeafKey.Bytes) : default,
+                        source.LeafChildren, source.Encoding);
                 }
             }
             result.SizeDelta = source.SizeDelta;

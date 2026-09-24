@@ -201,7 +201,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             Debug.Assert(anchorDepth % PbtFourLevelGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
             if (IsEmpty) return default;
-            if (IsLeaf) return new FoldResult(new Subtree(LeafKey, _hash));
+            if (IsLeaf) return new FoldResult(LeafKey, _hash);
 
             int splitDepth = BranchDepth;
             Debug.Assert(splitDepth >= anchorDepth, "A result branches at or below the cursor that addresses it.");
@@ -209,12 +209,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             int slot = 0;
             for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | PrefixBit(cursor, bit);
             PbtNodeReader reader = Reader;
-            return new FoldResult(new Subtree(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
+            return new FoldResult(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
                 reader.LeftHash, reader.RightHash,
                 reader.LeftKey.IsEmpty ? default : TKey.Create(reader.LeftKey),
                 reader.RightKey.IsEmpty ? default : TKey.Create(reader.RightKey),
                 LeafChildrenMask,
-                OwnedPrefix(cursor, anchorDepth + localLength, splitDepth), _hash, splitDepth - _anchorDepth));
+                OwnedPrefix(cursor, anchorDepth + localLength, splitDepth), _hash, splitDepth - _anchorDepth);
         }
 
         /// <summary>The bits from <paramref name="from"/> to <paramref name="splitDepth"/> as a standalone compressed prefix.</summary>

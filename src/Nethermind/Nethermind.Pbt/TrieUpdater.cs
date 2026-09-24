@@ -216,7 +216,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (current.IsEmpty)
         {
             if (operations.Length == 1)
-                return operations[0].Value == default ? default : new FoldResult(CreateLeaf(operations[0], metrics));
+                return operations[0].Value == default ? default : CreateLeaf(operations[0], metrics);
         }
         else if (current.IsLeaf)
         {
@@ -228,14 +228,14 @@ internal static partial class TrieUpdater<TKey, TPath>
                 {
                     if (operation.Value == default) return default;
                     // The stored leaf has no value; an unchanged value shows as an unchanged hash.
-                    Subtree leaf = CreateLeaf(operation, metrics);
-                    return leaf.LeafHash == current.Hash ? current.ToFoldResult(path, resultDepth) : new FoldResult(leaf);
+                    FoldResult leaf = CreateLeaf(operation, metrics);
+                    return leaf.LeafHash == current.Hash ? current.ToFoldResult(path, resultDepth) : leaf;
                 }
                 if (operation.Value == default) return current.ToFoldResult(path, resultDepth);
                 // An insert beside a leaf is a branch over the two, which owns no group, so no frame is opened for it.
                 int divergenceDepth = leafKey.FirstDifferingBit(operation.Key, bitDepth);
                 if (divergenceDepth < Math.Min(leafKey.BitLength, operation.Key.BitLength))
-                    return TwoLeafBranch(new Subtree(leafKey, current.Hash), CreateLeaf(operation, metrics), divergenceDepth, resultDepth);
+                    return TwoLeafBranch(new FoldResult(leafKey, current.Hash), CreateLeaf(operation, metrics), divergenceDepth, resultDepth);
             }
         }
         else if (operations.Length == 1 && current.LeafChildrenMask == (Subtree.LeftLeaf | Subtree.RightLeaf))
@@ -246,12 +246,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (right || operation.Key.Equals(current.LeftLeafKey))
             {
                 if (operation.Value == default)
-                    return new FoldResult(right ? new Subtree(current.LeftLeafKey, current.LeftHash) : new Subtree(current.RightLeafKey, current.RightHash));
-                Subtree leaf = CreateLeaf(operation, metrics);
+                    return right ? new FoldResult(current.LeftLeafKey, current.LeftHash) : new FoldResult(current.RightLeafKey, current.RightHash);
+                FoldResult leaf = CreateLeaf(operation, metrics);
                 if (leaf.LeafHash == (right ? current.RightHash : current.LeftHash)) return current.ToFoldResult(path, resultDepth);
-                Subtree branch = current.ToFoldResult(path, resultDepth).Node;
-                return new FoldResult(new Subtree(branch.Path, right ? branch.LeftHash : leaf.LeafHash, right ? leaf.LeafHash : branch.RightHash,
-                    branch.LeftLeafKey, branch.RightLeafKey, branch.LeafChildrenMask, branch.Encoding));
+                FoldResult branch = current.ToFoldResult(path, resultDepth);
+                return new FoldResult(branch.Path, right ? branch.LeftHash : leaf.LeafHash, right ? leaf.LeafHash : branch.RightHash,
+                    branch.LeafKey, branch.RightLeafKey, branch.LeafChildren, branch.Encoding);
             }
             if (operation.Value == default) return current.ToFoldResult(path, resultDepth);
         }
@@ -372,7 +372,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             ValueHash256 hash = resolved.Hash(bitDepth, metrics);
             result.SizeDelta = PublishGroup(context.Store, ref reader, writer, path, hash);
             // The owner group writes this root at the same depth, so a composed root can reuse the hash just published.
-            if (result.Node.Kind == NodeKind.Branch) result.Node = result.Node.WithKnownHash(hash, resolved.BranchDepth - bitDepth);
+            if (result.Kind == NodeKind.Branch) result = result.WithKnownHash(hash, resolved.BranchDepth - bitDepth);
             return result;
         }
     }
@@ -637,7 +637,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     internal static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
 
     /// <summary>Creates the leaf an insert produces, hashing it once for its parent.</summary>
-    private static Subtree CreateLeaf(in PbtWriteOperation<TKey> operation, TrieUpdaterMetrics? metrics)
+    private static FoldResult CreateLeaf(in PbtWriteOperation<TKey> operation, TrieUpdaterMetrics? metrics)
     {
         metrics?.IncrementNodeHashes();
         TKey key = operation.Key;
@@ -646,12 +646,12 @@ internal static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>The branch over two leaves whose keys first differ at <paramref name="branchDepth"/>, read against the cursor at <paramref name="anchorDepth"/>.</summary>
-    private static FoldResult TwoLeafBranch(in Subtree first, in Subtree second, int branchDepth, int anchorDepth)
+    private static FoldResult TwoLeafBranch(in FoldResult first, in FoldResult second, int branchDepth, int anchorDepth)
     {
         TKey key = first.LeafKey;
         bool firstIsLeft = key.GetBit(branchDepth) == 0;
-        ref readonly Subtree left = ref firstIsLeft ? ref first : ref second;
-        ref readonly Subtree right = ref firstIsLeft ? ref second : ref first;
+        ref readonly FoldResult left = ref firstIsLeft ? ref first : ref second;
+        ref readonly FoldResult right = ref firstIsLeft ? ref second : ref first;
         int localLength = Math.Min(branchDepth - anchorDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
         int slot = 0;
         for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | key.GetBit(bit);
@@ -664,8 +664,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             PbtBitPrefix.CopyBits(key.Bytes, anchorDepth + localLength, prefixBitCount, owned.AsSpan(sizeof(ushort)), 0);
             prefix = owned;
         }
-        return new FoldResult(new Subtree(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
-            left.LeafHash, right.LeafHash, left.LeafKey, right.LeafKey, Subtree.LeftLeaf | Subtree.RightLeaf, prefix));
+        return new FoldResult(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
+            left.LeafHash, right.LeafHash, left.LeafKey, right.LeafKey, Subtree.LeftLeaf | Subtree.RightLeaf, prefix);
     }
 
     /// <summary>Takes the boundary node a fold is about to descend into, leaving its slot free for the result.</summary>
@@ -710,7 +710,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         switch (entry.Source)
         {
             case EntrySource.Node:
-                return new TraversalSubtree(path, frontier.TakeResult(slot));
+                return frontier.TakeResult(slot).Borrow(path);
             case EntrySource.AtPosition when entry.SourcePosition != RootSource:
                 DirectCopySubtree copy = reader.TakeDirectCopy(path, entry.SourcePosition);
                 return copy.IsEmpty ? ImplicitBranch(ref reader, path, position) : new TraversalSubtree(path, copy);
@@ -722,7 +722,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>A boundary node placed against the cursor, out of line for the same reason as <see cref="TakeFrontierSubtree"/>.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static TraversalSubtree BoundarySubtree(PbtTraversalPath path, scoped in BoundaryNode boundary) =>
-        new(path, boundary.ToFoldResult(path, path.BitDepth).Node);
+        boundary.ToFoldResult(path, path.BitDepth).Borrow(path);
 
     /// <summary>The branch at <paramref name="position"/> that the group leaves implicit, rebuilt from the children it stores.</summary>
     /// <remarks>

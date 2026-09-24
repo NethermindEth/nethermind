@@ -28,7 +28,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <summary>The input node, for the slots that resolve to the group's own root instead of a node inside it.</summary>
         internal BoundaryNode Root;
         /// <summary>The folds' results by slot, rented on the first one so a frame does not carry a node per slot.</summary>
-        private Subtree[]? _results;
+        private FoldResult[]? _results;
 
         /// <summary>Records that <paramref name="slot"/> is read from <paramref name="source"/>, occupying <paramref name="position"/>.</summary>
         internal void Place(int slot, int position, EntrySource source, int sourcePosition)
@@ -56,19 +56,19 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>Takes the fold's result at <paramref name="slot"/>.</summary>
-        internal Subtree TakeResult(int slot) => Subtree.Move(ref _results![slot]);
+        internal FoldResult TakeResult(int slot) => FoldResult.Move(ref _results![slot]);
 
         internal void Set(int slot, ref FoldResult result)
         {
             Entries[slot] = default;
-            (_results ??= ArrayPool<Subtree>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots))[slot] = Subtree.Move(ref result.Node);
+            (_results ??= ArrayPool<FoldResult>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots))[slot] = FoldResult.Move(ref result);
         }
 
         /// <summary>Returns the results' array once composition has taken every live one, which leaves it clear.</summary>
         internal void ReturnResults()
         {
             if (_results is null) return;
-            ArrayPool<Subtree>.Shared.Return(_results);
+            ArrayPool<FoldResult>.Shared.Return(_results);
             _results = null;
         }
     }

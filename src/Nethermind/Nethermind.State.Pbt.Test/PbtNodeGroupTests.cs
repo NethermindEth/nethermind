@@ -971,7 +971,7 @@ public class PbtNodeGroupTests
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree borrowed = leaf
-                ? new(groupPath, reader.TakeRoot(groupPath).ToFoldResult(groupPath, 0).Node)
+                ? reader.TakeRoot(groupPath).ToFoldResult(groupPath, 0).Borrow(groupPath)
                 : new(groupPath, reader.TakeDirectCopy(groupPath, PbtFourLevelGroupGeometry.RootPosition));
             materialized = borrowed.Materialize(groupKey.BitDepth);
             Assert.That(store.ReleasedGroupDepths, Is.Empty);
@@ -1066,8 +1066,8 @@ public class PbtNodeGroupTests
         int anchoredLength = Math.Min(splitDepth - groupDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(owned.Node.Path.Length, Is.EqualTo(anchoredLength));
-            Assert.That(owned.Node.Encoding.IsEmpty, Is.EqualTo(splitDepth - groupDepth == anchoredLength));
+            Assert.That(owned.Path.Length, Is.EqualTo(anchoredLength));
+            Assert.That(owned.Encoding.IsEmpty, Is.EqualTo(splitDepth - groupDepth == anchoredLength));
             Assert.That(detached.AnchorDepth, Is.EqualTo(groupDepth + anchoredLength));
             Assert.That(detached.BranchDepth, Is.EqualTo(splitDepth));
         }
@@ -1235,7 +1235,7 @@ public class PbtNodeGroupTests
         {
             if (scenario == 2)
             {
-                TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult folded = new(new TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree(new PbtStorageTreeKey(new byte[32]), new ValueHash256(Value(3))));
+                TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult folded = new(new PbtStorageTreeKey(new byte[32]), new ValueHash256(Value(3)));
                 TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, 0, ref folded);
                 Assert.That(folded.IsEmpty, Is.True, "the frontier consumes the result");
             }
@@ -1391,7 +1391,7 @@ public class PbtNodeGroupTests
             subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
             Assert.That(subtree.IsEmpty, Is.True);
 
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult folded = new(new TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1))));
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult folded = new(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1)));
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref folded);
             Assert.That(frontier.Mask, Is.EqualTo(1u << TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(slot)));
             folded = default;
@@ -1403,7 +1403,7 @@ public class PbtNodeGroupTests
                 Assert.That(subtree.IsEmpty, Is.True);
             }
 
-            folded = new(new TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1))));
+            folded = new(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1)));
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref folded);
             subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier);
             Assert.That(writer.Write(groupPath, 30, 0, ref subtree, null), Is.EqualTo(expected.ApplyBatch([(key, Value(1))])));
