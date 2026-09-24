@@ -5,6 +5,7 @@ using System;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -68,16 +69,29 @@ public abstract class ForkedSignedBeaconBlock
 
     public abstract ulong Slot { get; }
 
+    public abstract Hash256 ParentRoot { get; }
+
+    public abstract ulong ProposerIndex { get; }
+
+    /// <summary>Computes the block root: <c>hash_tree_root</c> of the unsigned <c>message</c>, never of the signed container.</summary>
+    public abstract Hash256 ComputeMessageRoot();
+
     public sealed class OfFulu(SignedBeaconBlock block) : ForkedSignedBeaconBlock
     {
         public SignedBeaconBlock Block { get; } = block;
         public override ulong Slot => Block.Message!.Slot;
+        public override Hash256 ParentRoot => Block.Message!.ParentRoot!;
+        public override ulong ProposerIndex => Block.Message!.ProposerIndex;
+        public override Hash256 ComputeMessageRoot() => SszRoots.HashTreeRoot(Block.Message!);
     }
 
     public sealed class OfGloas(SignedBeaconBlockGloas block) : ForkedSignedBeaconBlock
     {
         public SignedBeaconBlockGloas Block { get; } = block;
         public override ulong Slot => Block.Message!.Slot;
+        public override Hash256 ParentRoot => Block.Message!.ParentRoot!;
+        public override ulong ProposerIndex => Block.Message!.ProposerIndex;
+        public override Hash256 ComputeMessageRoot() => SszRoots.HashTreeRoot(Block.Message!);
     }
 }
 

@@ -10,6 +10,7 @@ using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -79,11 +80,11 @@ public class BeaconP2PLoopbackTests
             AssertStatus(statusSeenByClient, serverStatus);
             AssertStatus(statusSeenByServer, client.StatusHolder.CurrentStatus);
 
-            IReadOnlyList<SignedBeaconBlock> blocks = await client.P2P.RequestBlocksByRangeAsync(toServer, AnchorSlot + 1, 8, token);
-            Assert.That(blocks.Select(b => SszRoots.HashTreeRoot(b.Message!)), Is.EqualTo(chainRoots), "blocks by range roots");
+            IReadOnlyList<ForkedSignedBeaconBlock> blocks = await client.P2P.RequestBlocksByRangeAsync(toServer, AnchorSlot + 1, 8, token);
+            Assert.That(blocks.Select(b => b.ComputeMessageRoot()), Is.EqualTo(chainRoots), "blocks by range roots");
 
-            IReadOnlyList<SignedBeaconBlock> byRoot = await client.P2P.RequestBlocksByRootAsync(toServer, [chainRoots[1]], token);
-            Assert.That(byRoot.Select(b => SszRoots.HashTreeRoot(b.Message!)), Is.EqualTo(new[] { chainRoots[1] }), "blocks by root");
+            IReadOnlyList<ForkedSignedBeaconBlock> byRoot = await client.P2P.RequestBlocksByRootAsync(toServer, [chainRoots[1]], token);
+            Assert.That(byRoot.Select(b => b.ComputeMessageRoot()), Is.EqualTo(new[] { chainRoots[1] }), "blocks by root");
 
             Assert.That(await client.P2P.PingAsync(toServer, token), Is.EqualTo(42ul), "ping returns the server metadata seq");
 

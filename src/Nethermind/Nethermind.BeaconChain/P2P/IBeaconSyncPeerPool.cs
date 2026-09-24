@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
@@ -32,11 +33,21 @@ public interface IBeaconSyncPeer
     /// <summary>The head slot last advertised by the peer over <c>status</c>.</summary>
     ulong HeadSlot { get; }
 
-    Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token);
+    /// <summary>Each block has the SSZ shape of the fork its slot belongs to.</summary>
+    Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token);
 
-    Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token);
+    /// <summary>Each block has the SSZ shape of the fork its slot belongs to.</summary>
+    Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token);
 
+    /// <summary>Fulu-shaped sidecars; the window must lie wholly before the Gloas fork.</summary>
     Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token);
+
+    /// <summary>Gloas-shaped sidecars; the window must lie wholly in Gloas epochs.</summary>
+    Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token);
+
+    Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token);
+
+    Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token);
 
     /// <summary>Records a protocol violation or failure with a closed-cardinality reason; repeated
     /// reports get the peer pruned.</summary>

@@ -10,10 +10,10 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.SszRest;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.BeaconChain.Sync;
@@ -64,7 +64,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <param name="anchorRoot">The block root the first yielded block must link to.</param>
     /// <param name="anchorSlot">The slot of the anchor block.</param>
     /// <param name="targetHeadSlot">Re-evaluated each batch, so the target may move while syncing.</param>
-    public async IAsyncEnumerable<SignedBeaconBlock> Run(
+    public async IAsyncEnumerable<ForkedSignedBeaconBlock> Run(
         Hash256 anchorRoot,
         ulong anchorSlot,
         Func<ulong> targetHeadSlot,
@@ -89,7 +89,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
 
             IBeaconSyncPeer peer = peers[peerCursor++ % peers.Count];
-            (IReadOnlyList<SignedBeaconBlock> Blocks, Hash256 LastRoot)? batch = await FetchAndVerifyBatchAsync(peer, nextSlot, count, lastRoot, token);
+            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot)? batch = await FetchAndVerifyBatchAsync(peer, nextSlot, count, lastRoot, token);
             if (batch is null)
             {
                 consecutiveFailures++;
@@ -109,10 +109,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             consecutiveFailures = 0;
             batchSize = DefaultBatchSize;
             await FetchColumnsForBatchAsync(peer, batch.Value.Blocks, token);
-            foreach (SignedBeaconBlock block in batch.Value.Blocks)
+            foreach (ForkedSignedBeaconBlock block in batch.Value.Blocks)
             {
                 yield return block;
-                lastSlot = block.Message!.Slot;
+                lastSlot = block.Slot;
             }
 
             if (batch.Value.Blocks.Count > 0)
@@ -125,14 +125,14 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     }
 
     /// <returns>The verified batch and its last block's root, or <c>null</c> when the request failed or the batch did not link up.</returns>
-    private async Task<(IReadOnlyList<SignedBeaconBlock> Blocks, Hash256 LastRoot)?> FetchAndVerifyBatchAsync(
+    private async Task<(IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot)?> FetchAndVerifyBatchAsync(
         IBeaconSyncPeer peer,
         ulong startSlot,
         ulong count,
         Hash256 parentRoot,
         CancellationToken token)
     {
-        IReadOnlyList<SignedBeaconBlock> batch;
+        IReadOnlyList<ForkedSignedBeaconBlock> batch;
         try
         {
             batch = await peer.RequestBlocksByRangeAsync(startSlot, count, token);
@@ -146,15 +146,15 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
         // Slot bounds and ordering are already enforced at the protocol layer; verify parent linkage here.
         Hash256 expectedParent = parentRoot;
-        foreach (SignedBeaconBlock block in batch)
+        foreach (ForkedSignedBeaconBlock block in batch)
         {
-            if (block.Message!.ParentRoot != expectedParent)
+            if (block.ParentRoot != expectedParent)
             {
-                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Block at slot {block.Message.Slot} has parent {block.Message.ParentRoot}, expected {expectedParent}");
+                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Block at slot {block.Slot} has parent {block.ParentRoot}, expected {expectedParent}");
                 return null;
             }
 
-            expectedParent = SszRoots.HashTreeRoot(block.Message);
+            expectedParent = block.ComputeMessageRoot();
         }
 
         return (batch, expectedParent);
@@ -168,15 +168,27 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// an unverifiable sidecar only penalizes the peer, mirroring <see cref="FetchAndVerifyBatchAsync"/>'s
     /// parent-linkage handling.
     /// </summary>
-    private async Task FetchColumnsForBatchAsync(IBeaconSyncPeer peer, IReadOnlyList<SignedBeaconBlock> blocks, CancellationToken token)
+    /// <remarks>
+    /// Only Fulu-shaped blocks are considered and the request window spans only them: a Gloas block's
+    /// commitments are in its bid and its sidecars have the Gloas shape, so it has no part in a Fulu request.
+    /// </remarks>
+    private async Task FetchColumnsForBatchAsync(IBeaconSyncPeer peer, IReadOnlyList<ForkedSignedBeaconBlock> blocks, CancellationToken token)
     {
         Dictionary<Hash256, BeaconBlock> blobBlocksByRoot = [];
-        foreach (SignedBeaconBlock block in blocks)
+        ulong startSlot = ulong.MaxValue;
+        ulong endSlot = 0;
+        foreach (ForkedSignedBeaconBlock block in blocks)
         {
-            SszKzgCommitment[]? commitments = block.Message!.Body?.BlobKzgCommitments;
-            if (commitments is { Length: > 0 })
+            if (block is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { } message })
             {
-                blobBlocksByRoot[SszRoots.HashTreeRoot(block.Message)] = block.Message;
+                continue;
+            }
+
+            startSlot = Math.Min(startSlot, message.Slot);
+            endSlot = Math.Max(endSlot, message.Slot);
+            if (message.Body?.BlobKzgCommitments is { Length: > 0 })
+            {
+                blobBlocksByRoot[SszRoots.HashTreeRoot(message)] = message;
             }
         }
 
@@ -197,8 +209,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             sampledColumns[i] = custody.SampledColumns[i];
         }
 
-        ulong startSlot = blocks[0].Message!.Slot;
-        ulong count = blocks[^1].Message!.Slot - startSlot + 1;
+        ulong count = endSlot - startSlot + 1;
 
         IReadOnlyList<DataColumnSidecar> sidecars;
         try

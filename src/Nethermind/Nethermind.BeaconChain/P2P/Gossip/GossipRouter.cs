@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
@@ -57,9 +58,11 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     private Func<string, ITopic>? _getTopic;
     private byte[] _currentForkDigest = [];
+    private bool _gloasDigest;
     private bool _gloasActive;
 
-    public event Action<SignedBeaconBlock>? BeaconBlockReceived;
+    /// <summary>Raised with the block decoded as the SSZ shape of its topic's fork.</summary>
+    public event Action<ForkedSignedBeaconBlock>? BeaconBlockReceived;
     public event Action<SignedAggregateAndProof>? AggregateAndProofReceived;
     public event Action<SignedVoluntaryExit>? VoluntaryExitReceived;
     public event Action<ProposerSlashing>? ProposerSlashingReceived;
@@ -103,6 +106,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private void SubscribeTopics(byte[] forkDigest)
     {
         _currentForkDigest = forkDigest;
+        _gloasDigest = IsGloasDigest(forkDigest);
         foreach (string name in CurrentTopicNames())
         {
             ITopic topic = _getTopic!(GossipTopics.Topic(forkDigest, name));
@@ -157,7 +161,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     /// <summary>The raw-payload handler for an eth2 gossip topic name.</summary>
     public Action<byte[]> HandlerFor(string name) => name switch
     {
-        GossipTopics.BeaconBlock => HandleBeaconBlock,
+        GossipTopics.BeaconBlock => BeaconBlockHandler(_gloasDigest),
         GossipTopics.BeaconAggregateAndProof => HandleAggregateAndProof,
         GossipTopics.VoluntaryExit => HandleVoluntaryExit,
         GossipTopics.ProposerSlashing => HandleProposerSlashing,
@@ -167,10 +171,16 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown gossip topic name"),
     };
 
-    public void HandleBeaconBlock(byte[] message) =>
+    /// <summary>Handles a <c>beacon_block</c> message on the currently subscribed digest's topic.</summary>
+    public void HandleBeaconBlock(byte[] message) => HandleBeaconBlock(message, _gloasDigest);
+
+    // The fork is bound at subscription, so a message still in flight on a rotated-out topic keeps that topic's type.
+    private Action<byte[]> BeaconBlockHandler(bool gloasTopic) => message => HandleBeaconBlock(message, gloasTopic);
+
+    private void HandleBeaconBlock(byte[] message, bool gloasTopic) =>
         Handle(GossipTopics.BeaconBlock, message,
-            static payload => { SignedBeaconBlock.Decode(payload, out SignedBeaconBlock block); return block; },
-            ValidateBlockSlot,
+            payload => SignedBeaconBlockCodec.Decode(payload, spec),
+            block => ValidateBlockFork(block, gloasTopic) ?? ValidateBlockSlot(block),
             block => BeaconBlockReceived?.Invoke(block));
 
     public void HandleAggregateAndProof(byte[] message) =>
@@ -277,9 +287,13 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         raise(value);
     }
 
-    private GossipDropReason? ValidateBlockSlot(SignedBeaconBlock block)
+    // The topic's fork fixes the message type (phase0 p2p: MUST reject messages containing an incorrect type).
+    private static GossipDropReason? ValidateBlockFork(ForkedSignedBeaconBlock block, bool gloasTopic) =>
+        (block is ForkedSignedBeaconBlock.OfGloas) == gloasTopic ? null : GossipDropReason.InvalidSsz;
+
+    private GossipDropReason? ValidateBlockSlot(ForkedSignedBeaconBlock block)
     {
-        ulong slot = block.Message!.Slot;
+        ulong slot = block.Slot;
         if (ValidateNotFromFuture(slot) is { } future)
         {
             return future;
@@ -301,6 +315,20 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         return slot == currentSlot + 1 && slotClock.MillisecondsToNextSlot <= MaximumGossipClockDisparityMs
             ? null
             : GossipDropReason.FutureSlot;
+    }
+
+    /// <summary>Whether <paramref name="digest"/> is one of the digests in effect from the Gloas fork onward.</summary>
+    private bool IsGloasDigest(byte[] digest)
+    {
+        foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, spec.GloasForkEpoch))
+        {
+            if (ForkDigest.Compute(spec, epoch).AsSpan().SequenceEqual(digest))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Drop(string name, GossipDropReason reason)

@@ -82,10 +82,10 @@ public sealed class BeaconSyncOrchestrator(
     private readonly LruKeyCache<(ulong Slot, ulong Proposer)> _seenProposals = new(1024, "beacon gossip proposals");
 
     /// <summary>Gossip blocks waiting for their parent, keyed by the unknown parent root.</summary>
-    private readonly Dictionary<Hash256, List<SignedBeaconBlock>> _pendingByParent = [];
+    private readonly Dictionary<Hash256, List<ForkedSignedBeaconBlock>> _pendingByParent = [];
 
     /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/> or <see cref="BlockImportResult.EngineUnavailable"/>, keyed by block root, awaiting a slot-tick retry.</summary>
-    private readonly Dictionary<Hash256, SignedBeaconBlock> _pendingRetry = [];
+    private readonly Dictionary<Hash256, ForkedSignedBeaconBlock> _pendingRetry = [];
 
     private readonly ConcurrentDictionary<string, byte> _dialedPeerIds = new();
     private readonly Stopwatch _progressStopwatch = new();
@@ -103,12 +103,13 @@ public sealed class BeaconSyncOrchestrator(
     private (ulong Epoch, byte[] Digest)? _nextRotation;
     private ulong _nextProgressLogSlot;
     private long _blocksSinceProgressLog;
+    private long _droppedGloasBlocks;
 
     private sealed record Tip(Hash256 Root, ulong Slot);
 
     internal abstract record WorkItem;
-    internal sealed record RangeBlockItem(SignedBeaconBlock Block) : WorkItem;
-    internal sealed record GossipBlockItem(SignedBeaconBlock Block) : WorkItem;
+    internal sealed record RangeBlockItem(ForkedSignedBeaconBlock Block) : WorkItem;
+    internal sealed record GossipBlockItem(ForkedSignedBeaconBlock Block) : WorkItem;
     internal sealed record GossipAggregateItem(SignedAggregateAndProof Aggregate) : WorkItem;
     internal sealed record GossipAttesterSlashingItem(AttesterSlashing Slashing) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
@@ -121,6 +122,9 @@ public sealed class BeaconSyncOrchestrator(
     internal (Hash256 Root, ulong Slot) SyncTip => (_syncTip.Root, _syncTip.Slot);
 
     internal ChannelWriter<WorkItem> WorkWriter => _work.Writer;
+
+    /// <summary>Gloas-shaped blocks dropped unimported because <see cref="IBlockImporter"/> takes only Fulu blocks.</summary>
+    internal long DroppedGloasBlocks => _droppedGloasBlocks;
 
     /// <summary>Runs the full sync flow from the given anchor until cancelled.</summary>
     public async Task RunAsync(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token)
@@ -292,17 +296,27 @@ public sealed class BeaconSyncOrchestrator(
     /// <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry —
     /// wiring it in at only one call site would leave the other three silently dropping it.
     /// </summary>
-    internal async Task<BlockImportResult> ImportBlockAsync(SignedBeaconBlock block, CancellationToken token)
+    /// <remarks>
+    /// A Gloas-shaped block is dropped as <see cref="BlockImportResult.Invalid"/> without calling the
+    /// importer, so it is never queued for a retry and no peer is penalized for serving it.
+    /// </remarks>
+    internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token)
     {
-        Hash256 root = SszRoots.HashTreeRoot(block.Message!);
+        Hash256 root = block.ComputeMessageRoot();
+        if (block is not ForkedSignedBeaconBlock.OfFulu { Block: { } fulu })
+        {
+            DropGloasBlock(block, root);
+            return BlockImportResult.Invalid;
+        }
+
         long startMs = Environment.TickCount64;
-        BlockImportResult result = _importer!.Import(block, root, verifySignatures: true);
+        BlockImportResult result = _importer!.Import(fulu, root, verifySignatures: true);
         if (result == BlockImportResult.Imported)
         {
             Metrics.BeaconChainBlocksImported++;
             Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
             _pendingRetry.Remove(root);
-            await OnImportedAsync(root, block.Message!.Slot, token);
+            await OnImportedAsync(root, block.Slot, token);
         }
         else if (result is BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable)
         {
@@ -317,7 +331,7 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Remembers a block for <see cref="DrainPendingRetriesAsync"/>; silently drops it once <see cref="MaxPendingRetryBlocks"/> is reached, same as <see cref="QueuePendingGossipBlock"/> does for its list.</summary>
-    private void QueuePendingRetry(Hash256 root, SignedBeaconBlock block)
+    private void QueuePendingRetry(Hash256 root, ForkedSignedBeaconBlock block)
     {
         if (_pendingRetry.ContainsKey(root) || _pendingRetry.Count >= MaxPendingRetryBlocks)
         {
@@ -342,10 +356,10 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         ulong finalizedSlot = _lastHead is { } head ? BeaconStateAccessors.ComputeStartSlotAtEpoch(head.Finalized.Epoch) : 0;
-        List<KeyValuePair<Hash256, SignedBeaconBlock>> retries = [.. _pendingRetry];
-        foreach ((Hash256 root, SignedBeaconBlock block) in retries)
+        List<KeyValuePair<Hash256, ForkedSignedBeaconBlock>> retries = [.. _pendingRetry];
+        foreach ((Hash256 root, ForkedSignedBeaconBlock block) in retries)
         {
-            if (block.Message!.Slot <= finalizedSlot)
+            if (block.Slot <= finalizedSlot)
             {
                 _pendingRetry.Remove(root);
                 continue;
@@ -365,10 +379,10 @@ public sealed class BeaconSyncOrchestrator(
         _importedSinceHeadStep = true;
         LogSyncProgress(slot);
 
-        if (_pendingByParent.Remove(root, out List<SignedBeaconBlock>? children))
+        if (_pendingByParent.Remove(root, out List<ForkedSignedBeaconBlock>? children))
         {
             _pendingCount -= children.Count;
-            foreach (SignedBeaconBlock child in children)
+            foreach (ForkedSignedBeaconBlock child in children)
             {
                 await ImportBlockAsync(child, token);
             }
@@ -385,36 +399,42 @@ public sealed class BeaconSyncOrchestrator(
     /// finalized slot, first block per (slot, proposer), expected proposer per the lookahead.
     /// The proposer signature is verified by the state transition during the immediate import
     /// (the import runs with <c>verifySignatures: true</c> right below), so no separate
-    /// pre-verification pass is needed.
+    /// pre-verification pass is needed. A Gloas-shaped block is dropped before any of these, so it
+    /// neither marks its (slot, proposer) as seen nor starts a by-root backfill.
     /// </summary>
-    internal async Task ProcessGossipBlockAsync(SignedBeaconBlock block, CancellationToken token)
+    internal async Task ProcessGossipBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token)
     {
         IBlockImporter importer = _importer!;
-        BeaconBlock message = block.Message!;
-        Hash256 root = SszRoots.HashTreeRoot(message);
+        Hash256 root = block.ComputeMessageRoot();
+        if (block is not ForkedSignedBeaconBlock.OfFulu { Block: { } fulu })
+        {
+            DropGloasBlock(block, root);
+            return;
+        }
+
         if (importer.IsKnown(root))
         {
             return;
         }
 
-        if (_lastHead is { } head && message.Slot <= BeaconStateAccessors.ComputeStartSlotAtEpoch(head.Finalized.Epoch))
+        if (_lastHead is { } head && block.Slot <= BeaconStateAccessors.ComputeStartSlotAtEpoch(head.Finalized.Epoch))
         {
             return;
         }
 
-        if (!_seenProposals.Set((message.Slot, message.ProposerIndex)))
+        if (!_seenProposals.Set((block.Slot, block.ProposerIndex)))
         {
-            if (_logger.IsDebug) _logger.Debug($"Ignoring repeat gossip proposal for slot {message.Slot} by proposer {message.ProposerIndex}");
+            if (_logger.IsDebug) _logger.Debug($"Ignoring repeat gossip proposal for slot {block.Slot} by proposer {block.ProposerIndex}");
             return;
         }
 
-        if (!importer.IsExpectedProposer(block))
+        if (!importer.IsExpectedProposer(fulu))
         {
-            if (_logger.IsWarn) _logger.Warn($"Dropping gossip block at slot {message.Slot} with unexpected proposer {message.ProposerIndex}");
+            if (_logger.IsWarn) _logger.Warn($"Dropping gossip block at slot {block.Slot} with unexpected proposer {block.ProposerIndex}");
             return;
         }
 
-        if (!importer.IsKnown(message.ParentRoot!))
+        if (!importer.IsKnown(block.ParentRoot))
         {
             // While far behind, range sync will deliver the parent chain anyway — just hold the
             // block; in steady state fetch the missing ancestors by root.
@@ -433,15 +453,15 @@ public sealed class BeaconSyncOrchestrator(
         await ImportBlockAsync(block, token);
     }
 
-    private void QueuePendingGossipBlock(SignedBeaconBlock block)
+    private void QueuePendingGossipBlock(ForkedSignedBeaconBlock block)
     {
         if (_pendingCount >= MaxPendingGossipBlocks)
         {
             return;
         }
 
-        Hash256 parent = block.Message!.ParentRoot!;
-        if (!_pendingByParent.TryGetValue(parent, out List<SignedBeaconBlock>? siblings))
+        Hash256 parent = block.ParentRoot;
+        if (!_pendingByParent.TryGetValue(parent, out List<ForkedSignedBeaconBlock>? siblings))
         {
             _pendingByParent[parent] = siblings = [];
         }
@@ -451,28 +471,28 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Fetches the unknown parent chain of a gossip block by root (bounded depth), then imports oldest-first.</summary>
-    private async Task BackfillAndImportAsync(SignedBeaconBlock block, CancellationToken token)
+    private async Task BackfillAndImportAsync(ForkedSignedBeaconBlock block, CancellationToken token)
     {
         IBlockImporter importer = _importer!;
-        List<SignedBeaconBlock> chain = [block];
-        Hash256 parent = block.Message!.ParentRoot!;
+        List<ForkedSignedBeaconBlock> chain = [block];
+        Hash256 parent = block.ParentRoot;
         while (!importer.IsKnown(parent))
         {
             if (chain.Count > MaxBackfillDepth)
             {
-                if (_logger.IsDebug) _logger.Debug($"Giving up on gossip block at slot {block.Message.Slot}: ancestor chain exceeds {MaxBackfillDepth} unknown blocks");
+                if (_logger.IsDebug) _logger.Debug($"Giving up on gossip block at slot {block.Slot}: ancestor chain exceeds {MaxBackfillDepth} unknown blocks");
                 return;
             }
 
-            SignedBeaconBlock? fetched = await FetchBlockByRootAsync(parent, token);
+            ForkedSignedBeaconBlock? fetched = await FetchBlockByRootAsync(parent, token);
             if (fetched is null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Giving up on gossip block at slot {block.Message.Slot}: no peer returned ancestor {parent}");
+                if (_logger.IsDebug) _logger.Debug($"Giving up on gossip block at slot {block.Slot}: no peer returned ancestor {parent}");
                 return;
             }
 
             chain.Add(fetched);
-            parent = fetched.Message!.ParentRoot!;
+            parent = fetched.ParentRoot;
         }
 
         for (int i = chain.Count - 1; i >= 0; i--)
@@ -484,13 +504,13 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    private async Task<SignedBeaconBlock?> FetchBlockByRootAsync(Hash256 root, CancellationToken token)
+    private async Task<ForkedSignedBeaconBlock?> FetchBlockByRootAsync(Hash256 root, CancellationToken token)
     {
         IReadOnlyList<IBeaconSyncPeer> peers = peerPool.GetBestPeers(0);
         for (int i = 0; i < peers.Count && i < MaxBackfillPeersPerRequest; i++)
         {
             IBeaconSyncPeer peer = peers[i];
-            IReadOnlyList<SignedBeaconBlock> blocks;
+            IReadOnlyList<ForkedSignedBeaconBlock> blocks;
             try
             {
                 blocks = await peer.RequestBlocksByRootAsync([root], token);
@@ -502,9 +522,9 @@ public sealed class BeaconSyncOrchestrator(
                 continue;
             }
 
-            foreach (SignedBeaconBlock block in blocks)
+            foreach (ForkedSignedBeaconBlock block in blocks)
             {
-                if (SszRoots.HashTreeRoot(block.Message!) == root)
+                if (block.ComputeMessageRoot() == root)
                 {
                     return block;
                 }
@@ -645,16 +665,9 @@ public sealed class BeaconSyncOrchestrator(
     {
         while (!token.IsCancellationRequested)
         {
-            Tip tip = _syncTip;
             try
             {
-                if (slotClock.CurrentSlot > tip.Slot)
-                {
-                    await foreach (SignedBeaconBlock block in rangeSync.Run(tip.Root, tip.Slot, () => slotClock.CurrentSlot, token))
-                    {
-                        await _work.Writer.WriteAsync(new RangeBlockItem(block), token);
-                    }
-                }
+                await FeedRangeSyncRoundAsync(token);
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
@@ -665,6 +678,43 @@ public sealed class BeaconSyncOrchestrator(
             // Caught up (or briefly stalled): in steady state gossip keeps the tip moving and this
             // loop only re-checks for gaps once per slot.
             await Task.Delay(TimeSpan.FromSeconds(spec.SecondsPerSlot), token);
+        }
+    }
+
+    /// <summary>Runs one range-sync round from the sync tip into the work channel.</summary>
+    /// <remarks>
+    /// The round ends after the first Gloas-shaped block: <see cref="ImportBlockAsync"/> drops it, so the
+    /// tip cannot pass it, and fetching further would only download blocks the next round fetches again.
+    /// </remarks>
+    internal async Task FeedRangeSyncRoundAsync(CancellationToken token)
+    {
+        Tip tip = _syncTip;
+        if (slotClock.CurrentSlot <= tip.Slot)
+        {
+            return;
+        }
+
+        await foreach (ForkedSignedBeaconBlock block in rangeSync.Run(tip.Root, tip.Slot, () => slotClock.CurrentSlot, token))
+        {
+            await _work.Writer.WriteAsync(new RangeBlockItem(block), token);
+            if (block is ForkedSignedBeaconBlock.OfGloas)
+            {
+                break;
+            }
+        }
+    }
+
+    /// <summary>Counts and logs a Gloas-shaped block that the Fulu-only <see cref="IBlockImporter"/> cannot take.</summary>
+    private void DropGloasBlock(ForkedSignedBeaconBlock block, Hash256 root)
+    {
+        // Warn once so a node past the fork says why its head stopped, then keep the per-block log at Debug.
+        if (++_droppedGloasBlocks == 1)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Dropping Gloas block {root} at slot {block.Slot}: this node cannot import Gloas blocks yet, so its head will not advance past the fork");
+        }
+        else if (_logger.IsDebug)
+        {
+            _logger.Debug($"Dropping Gloas block {root} at slot {block.Slot}: Gloas block import is not supported");
         }
     }
 
