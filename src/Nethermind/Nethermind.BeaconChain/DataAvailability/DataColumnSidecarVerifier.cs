@@ -18,6 +18,8 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// <c>verify_data_column_sidecar_inclusion_proof</c> (p2p-interface.md). A sidecar whose cells are
 /// internally consistent but whose commitments were never included in the claimed block is still an
 /// attack, so both the KZG check and the inclusion-proof check are required before trusting a sidecar.
+/// Also the Gloas <c>verify_data_column_sidecar</c> / <c>verify_data_column_sidecar_kzg_proofs</c>
+/// (gloas/p2p-interface.md), which take the commitments from the block's committed bid instead.
 /// </summary>
 public static class DataColumnSidecarVerifier
 {
@@ -103,9 +105,39 @@ public static class DataColumnSidecarVerifier
             return false;
         }
 
-        SszKzgCommitment[] commitments = sidecar.KzgCommitments!;
-        SszBlobCell[] cells = sidecar.Column!;
-        SszKzgCommitment[] proofs = sidecar.KzgProofs!;
+        return VerifyCellBatch(sidecar.Index, sidecar.KzgCommitments!, sidecar.Column!, sidecar.KzgProofs!);
+    }
+
+    /// <summary>
+    /// Gloas <c>verify_data_column_sidecar</c>: index range, non-empty, and column, proofs and
+    /// <paramref name="kzgCommitments"/> all the same length.
+    /// </summary>
+    /// <param name="sidecar">The sidecar under check.</param>
+    /// <param name="kzgCommitments">The <c>blob_kzg_commitments</c> of the bid committed by the block at <c>sidecar.beacon_block_root</c>.</param>
+    /// <remarks>
+    /// There is no blob-count bound here: <c>process_execution_payload_bid</c> already bounds the bid's
+    /// commitments by <c>max_blobs_per_block</c>, and the column must match their count exactly.
+    /// </remarks>
+    public static bool VerifyStructure(DataColumnSidecarGloas sidecar, SszKzgCommitment[] kzgCommitments) =>
+        sidecar.Index < (ulong)Eip7594DasConstants.NumberOfColumns
+        && sidecar.Column is { Length: > 0 } column
+        && column.Length == kzgCommitments.Length
+        && sidecar.KzgProofs is { } proofs
+        && proofs.Length == column.Length;
+
+    /// <summary>Gloas <c>verify_data_column_sidecar_kzg_proofs</c>: batch-verifies every cell against <paramref name="kzgCommitments"/> and the sidecar's proofs.</summary>
+    /// <param name="sidecar">The sidecar under check.</param>
+    /// <param name="kzgCommitments">The <c>blob_kzg_commitments</c> of the bid committed by the block at <c>sidecar.beacon_block_root</c>.</param>
+    /// <remarks>
+    /// Runs <see cref="VerifyStructure(DataColumnSidecarGloas, SszKzgCommitment[])"/> first, so a pass is the full pair
+    /// gloas/fork-choice.md <c>is_data_available</c> requires: the arrays are indexed in lockstep and an empty batch verifies vacuously.
+    /// </remarks>
+    public static bool VerifyKzgProofs(DataColumnSidecarGloas sidecar, SszKzgCommitment[] kzgCommitments) =>
+        VerifyStructure(sidecar, kzgCommitments)
+        && VerifyCellBatch(sidecar.Index, kzgCommitments, sidecar.Column!, sidecar.KzgProofs!);
+
+    private static bool VerifyCellBatch(ulong columnIndex, SszKzgCommitment[] commitments, SszBlobCell[] cells, SszKzgCommitment[] proofs)
+    {
         int count = commitments.Length;
 
         using ArrayPoolSpan<byte> flatCommitments = new(count * Ckzg.BytesPerCommitment);
@@ -119,7 +151,7 @@ public static class DataColumnSidecarVerifier
             proofs[i].AsSpan().CopyTo(flatProofs.Slice(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
             cells[i].AsSpan().CopyTo(flatCells.Slice(i * Ckzg.BytesPerCell, Ckzg.BytesPerCell));
             // The column index also represents the cell index for every row in this sidecar.
-            cellIndices[i] = sidecar.Index;
+            cellIndices[i] = columnIndex;
         }
 
         try
