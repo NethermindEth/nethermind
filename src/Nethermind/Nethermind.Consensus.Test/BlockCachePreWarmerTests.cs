@@ -2257,7 +2257,7 @@ public class BlockCachePreWarmerTests
     public void Prewarming_session_disposed_before_dispatch_does_not_start_work()
     {
         using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(1);
-        using PrewarmingSession session = new(CancellationToken.None);
+        using PrewarmingSession session = new(CancellationToken.None, LimboLogs.Instance.GetClassLogger<PrewarmingSession>());
         SessionResources resources = new();
         bool ran = false;
         CancellationToken token = session.Token;
@@ -2280,7 +2280,7 @@ public class BlockCachePreWarmerTests
         using ManualResetEventSlim entered = new(false);
         using ManualResetEventSlim cancelled = new(false);
         using ManualResetEventSlim release = new(false);
-        using PrewarmingSession session = new(CancellationToken.None);
+        using PrewarmingSession session = new(CancellationToken.None, LimboLogs.Instance.GetClassLogger<PrewarmingSession>());
         SessionResources resources = new();
         CancellationToken token = session.Token;
         int timeouts = 0;
@@ -2311,6 +2311,24 @@ public class BlockCachePreWarmerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(timeouts, Is.Zero);
+            Assert.That(resources.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Prewarming_session_logs_a_failed_pass_and_still_releases_resources()
+    {
+        TestLogger testLogger = new();
+        SessionResources resources = new();
+        using (PrewarmingSession session = new(CancellationToken.None, new ILogger(testLogger)))
+        {
+            session.Start(static () => throw new InvalidOperationException("warming failed"), resources);
+            session.WaitForCompletion();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testLogger.LogList, Has.One.Contains("Error pre-warming caches"), "Disposal cannot report the fault, so it must be logged.");
             Assert.That(resources.DisposeCount, Is.EqualTo(1));
         }
     }

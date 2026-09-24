@@ -46,7 +46,7 @@ public partial class BlockProcessor(
     IBlockAccessListManager balManager)
     : IBlockProcessor
 {
-    private static readonly ParallelOptions _smallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
+    private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockAccessListManager _balManager = balManager;
@@ -296,7 +296,7 @@ public partial class BlockProcessor(
     {
         long started = ExecutionMetricsFlag.IsActive ? Stopwatch.GetTimestamp() : 0;
         ParallelOptions options = receipts.Length <= Environment.ProcessorCount
-            ? _smallBloomOptions : ParallelUnbalancedWork.DefaultOptions;
+            ? SmallBloomOptions : ParallelUnbalancedWork.DefaultOptions;
         return ParallelUnbalancedWork.BackgroundFor(0, receipts.Length, options,
             i => receipts[i].CalculateBloom(), () =>
             {

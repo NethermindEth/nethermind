@@ -178,6 +178,16 @@ public partial class ParallelUnbalancedWork
         private partial BackgroundWork ContinueWithCore(int fromInclusive, int toExclusive, ParallelOptions options,
             Action<int> action, Action? completed);
 
+        /// <summary>Runs one queued part of this stage on the caller if one is ready, without waiting.</summary>
+        /// <remarks>
+        /// Lets an owner that must stay responsive to other work help this stage before joining it.
+        /// Returns <see langword="false"/> when nothing is queued; outside a parallel scope, and in the zkEVM
+        /// implementation, queued parts cannot be taken back, so it always returns <see langword="false"/>.
+        /// Call from the owner, outside callbacks, before joining or disposal.
+        /// </remarks>
+        /// <returns><see langword="true"/> if a queued part was taken and run.</returns>
+        public partial bool TryHelp();
+
         /// <summary>Helps execute outstanding iterations, waits for completion, and reports faults or cancellation.</summary>
         public partial void WaitForCompletion();
 

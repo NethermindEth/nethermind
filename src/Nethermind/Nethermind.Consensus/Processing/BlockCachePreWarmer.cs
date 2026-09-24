@@ -185,7 +185,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         // Asked once, up front: a recovery that ends before the block is done is still the one every wait below rests on.
         ISenderRecoveryProgress? recovery = _senderRecovery?.GetInFlight(suggestedBlock.Transactions);
-        PrewarmingSession session = new(cancellationToken);
+        PrewarmingSession session = new(cancellationToken, _logger);
         try
         {
             CancellationToken token = session.Token;
@@ -544,6 +544,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
     {
         int cellCount = discoveredCells.Count;
+        if (cellCount == 0) return true;
         StorageCell[] cells = ArrayPool<StorageCell>.Shared.Rent(cellCount);
         try
         {
@@ -1512,7 +1513,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 RunWorker(0);
                 // The caller must assist late helpers before joining the initial workers: those workers can
                 // still be busy while a helper needs the caller's otherwise idle share of the budget.
-                WaitForHelpers();
+                WaitForHelpers(workers);
                 workers.WaitForCompletion();
             }
             finally
@@ -1701,26 +1702,38 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         /// <summary>
-        /// Joins helpers through their work handles so the caller can assist when the shared budget is full.
-        /// The count is checked under the gate
-        /// the last helper pulses, and <see cref="Monitor.Wait(object)"/> releases it atomically, so the pulse cannot
-        /// fall between the check and the wait.
+        /// Joins late helpers, and runs initial worker slots still queued, until the initial workers and every helper
+        /// are done.
         /// </summary>
-        private void WaitForHelpers()
+        /// <remarks>
+        /// Helpers are joined through their work handles, so the caller runs them when the shared budget is full.
+        /// The state is rechecked under the gate that helper submission, the last helper and
+        /// <see cref="WorkersCompleted"/> pulse, and <see cref="Monitor.Wait(object)"/> releases it atomically, so no
+        /// pulse falls between the check and the wait.
+        /// </remarks>
+        /// <param name="initialWorkers">The initial worker slots to help while no helper is queued, if any.</param>
+        private void WaitForHelpers(ParallelUnbalancedWork.BackgroundWork? initialWorkers = null)
         {
             while (true)
             {
-                ParallelUnbalancedWork.BackgroundWork work;
+                ParallelUnbalancedWork.BackgroundWork? work;
                 lock (_helpersGate)
                 {
-                    while (!_helperWork.TryDequeue(out work))
-                    {
-                        if (_initialWorkersComplete && Volatile.Read(ref _helpers) == 0) return;
-                        Monitor.Wait(_helpersGate);
-                    }
+                    if (!_helperWork.TryDequeue(out work) && _initialWorkersComplete && Volatile.Read(ref _helpers) == 0) return;
                 }
-                // Joining executes queued helpers on this thread when the shared budget is full.
-                using (work) work.WaitForCompletion();
+                if (work is not null)
+                {
+                    // Joining executes a queued helper on this thread when the shared budget is full.
+                    using (work) work.WaitForCompletion();
+                    continue;
+                }
+                // A slot queued behind other warming would otherwise wait while this thread sleeps.
+                if (initialWorkers?.TryHelp() == true) continue;
+                lock (_helpersGate)
+                {
+                    if (_helperWork.Count == 0 && !(_initialWorkersComplete && Volatile.Read(ref _helpers) == 0))
+                        Monitor.Wait(_helpersGate);
+                }
             }
         }
 

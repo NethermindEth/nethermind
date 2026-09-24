@@ -420,6 +420,8 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             }
         }
 
+        public partial bool TryHelp() => !_joined && _scope is not null && _scope.TryExecute(_queue!);
+
         public partial void WaitForCompletion()
         {
             Join();

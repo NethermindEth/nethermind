@@ -115,6 +115,24 @@ public partial class ParallelUnbalancedWorkTests
     }
 
     [Test]
+    public void Background_work_owner_can_run_its_queued_part_before_joining([Values] bool scoped)
+    {
+        // Runner requests are dropped: nothing but the owner can run the queued part.
+        using ParallelUnbalancedWork.WorkerScope? scope = scoped ? new(2, static _ => { }) : null;
+        int[] calls = new int[64];
+        using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, calls.Length,
+            new ParallelOptions { MaxDegreeOfParallelism = 2 }, i => Interlocked.Increment(ref calls[i]));
+        if (scoped)
+        {
+            Assert.That(work.TryHelp(), Is.True, "An owner waiting on other work must be able to run its own queued part.");
+            Assert.That(calls, Is.All.EqualTo(1));
+        }
+        Assert.That(work.TryHelp(), Is.False, scoped ? "Nothing is left to help." : "Thread-pool callbacks cannot be taken back.");
+        work.WaitForCompletion();
+        Assert.That(calls, Is.All.EqualTo(1));
+    }
+
+    [Test]
     public void Worker_scope_submits_runners_outside_the_queue_lock()
     {
         Task? runner = null;
