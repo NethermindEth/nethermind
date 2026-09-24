@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -107,6 +108,41 @@ public class NodeRecordProviderTests
 
         Assert.That(currentRecord, Is.SameAs(initialRecord));
         Assert.That(currentRecord.EnrSequence, Is.EqualTo(initialRecord.EnrSequence));
+    }
+
+    [Test]
+    public async Task Resolver_address_change_refreshes_the_signed_record()
+    {
+        IIPResolver.NethermindIp initialIp = new(
+            IPAddress.IPv6Any,
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("2001:db8::1"));
+        IIPResolver.NethermindIp changedIp = new(
+            IPAddress.IPv6Any,
+            IPAddress.Parse("192.0.2.2"),
+            IPAddress.Parse("192.0.2.2"),
+            IPAddress.Parse("2001:db8::2"));
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(initialIp));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new NetworkConfig { LocalIp = "::" }))
+            .AddSingleton(ipResolver)
+            .Build();
+        container.Resolve<IBlockTree>().SuggestBlock(Build.A.Block.Genesis.TestObject);
+        NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
+        listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+        listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+        INodeRecordProvider provider = container.Resolve<INodeRecordProvider>();
+
+        NodeRecord initialRecord = await provider.GetCurrentAsync();
+        AssertEndpointEntries(initialRecord, "192.0.2.1", "2001:db8::1");
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(changedIp));
+        ipResolver.Changed += Raise.Event();
+        NodeRecord changedRecord = await provider.GetCurrentAsync();
+
+        Assert.That(changedRecord.EnrSequence, Is.EqualTo(initialRecord.EnrSequence + 1));
+        AssertEndpointEntries(changedRecord, "192.0.2.2", "2001:db8::2");
     }
 
     [Test]
