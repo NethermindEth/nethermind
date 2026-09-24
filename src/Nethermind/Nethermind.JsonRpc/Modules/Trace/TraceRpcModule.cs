@@ -427,31 +427,45 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 });
         }
 
-        /// <summary>
-        /// Traces one transaction. As it replays existing transaction will charge gas
-        /// </summary>
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)
-        {
-            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
-            List<ParityTxTraceFromStore> traces = ExtractPositionsFromTxTrace(positions, traceTransaction);
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
-        }
+        public ResultWrapper<ParityTxTraceFromStore?> trace_get(Hash256 txHash, long[] positions) =>
+            FindTraceByAddress(positions, trace_transaction(txHash));
 
-        public static List<ParityTxTraceFromStore> ExtractPositionsFromTxTrace(long[] positions, ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction)
+        /// <summary>
+        /// Selects the trace whose <c>traceAddress</c> equals <paramref name="traceAddress"/> from a <c>trace_transaction</c> result.
+        /// </summary>
+        /// <returns>The matching trace, <c>null</c> when none matches, or the lookup failure.</returns>
+        /// <remarks>
+        /// The indices are a path through the call tree, as in OpenEthereum, Erigon and Reth: <c>[]</c> is the root call,
+        /// <c>[1, 0]</c> the first call made by the root's second call.
+        /// </remarks>
+        public static ResultWrapper<ParityTxTraceFromStore?> FindTraceByAddress(long[] traceAddress, ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction)
         {
-            List<ParityTxTraceFromStore> traces = [];
-            ParityTxTraceFromStore[] transactionTraces = traceTransaction.Data.ToArray();
-            for (int index = 0; index < positions.Length; index++)
+            if (traceTransaction.Result.ResultType != Core.ResultType.Success)
             {
-                long position = positions[index];
-                if (transactionTraces.Length > position + 1)
+                return ResultWrapper<ParityTxTraceFromStore?>.Fail(traceTransaction.Result.Error ?? "trace not found", traceTransaction.ErrorCode);
+            }
+
+            foreach (ParityTxTraceFromStore trace in traceTransaction.Data)
+            {
+                if (HasTraceAddress(trace, traceAddress))
                 {
-                    ParityTxTraceFromStore tr = transactionTraces[position + 1];
-                    traces.Add(tr);
+                    return ResultWrapper<ParityTxTraceFromStore?>.Success(trace);
                 }
             }
 
-            return traces;
+            return ResultWrapper<ParityTxTraceFromStore?>.Success(null);
+        }
+
+        private static bool HasTraceAddress(ParityTxTraceFromStore trace, long[] traceAddress)
+        {
+            ReadOnlySpan<int> address = trace.TraceAddress.AsSpan();
+            if (address.Length != traceAddress.Length) return false;
+            for (int i = 0; i < address.Length; i++)
+            {
+                if (address[i] != traceAddress[i]) return false;
+            }
+
+            return true;
         }
 
         /// <summary>

@@ -297,7 +297,7 @@ public class TraceStoreRpcModuleTests
                 .Returns(nonDbFromStoreWrapper);
 
             InnerModule.trace_get(nonDbTransaction, new[] { 0L })
-                .Returns(nonDbFromStoreWrapper);
+                .Returns(ResultWrapper<ParityTxTraceFromStore?>.Success(nonDbFromStoreWrapper.Data.FirstOrDefault()));
 
             InnerModule.trace_transaction(nonDbTransaction)
                 .Returns(nonDbFromStoreWrapper);

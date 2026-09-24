@@ -609,8 +609,8 @@ public class TraceRpcModuleTests
         Assert.That(traces.Data!.Select(static trace => trace.TransactionHash), Is.EqualTo(new[] { transaction.Hash }));
 
         long[] positions = { 0 };
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
-        Assert.That(traceGet.Data, Is.Empty);
+        ResultWrapper<ParityTxTraceFromStore?> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
+        Assert.That(traceGet.Data, Is.Null);
     }
 
     [Test]
@@ -626,8 +626,8 @@ public class TraceRpcModuleTests
         await blockchain.AddBlock(transaction);
 
         long[] positions = { 0 };
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
-        Assert.That(traces.Data, Is.Empty);
+        ResultWrapper<ParityTxTraceFromStore?> traces = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
+        Assert.That(traces.Data, Is.Null);
     }
 
     [Test]
@@ -671,10 +671,58 @@ public class TraceRpcModuleTests
         Assert.That(traces.Data.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash!));
 
         long[] positions = { 0 };
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> tracesGet = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
+        ResultWrapper<ParityTxTraceFromStore?> tracesGet = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
         Assert.That(traces.Data.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash));
         EthereumJsonSerializer serializer = new();
-        Assert.That(JToken.Parse(serializer.Serialize(traces.Data.ElementAt(1))), Is.EqualTo(JToken.Parse(serializer.Serialize(tracesGet.Data.ElementAt(0)))).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(serializer.Serialize(traces.Data.ElementAt(1))), Is.EqualTo(JToken.Parse(serializer.Serialize(tracesGet.Data))).Using(JToken.EqualityComparer));
+    }
+
+    [TestCase(new long[0], 0)]
+    [TestCase(new long[] { 0 }, 1)]
+    [TestCase(new long[] { 0, 0 }, 2)]
+    [TestCase(new long[] { 1 }, 3)]
+    [TestCase(new long[] { 2 }, null)]
+    [TestCase(new long[] { 1, 0 }, null)]
+    public async Task Trace_get_selects_by_trace_address(long[] traceAddress, int? expectedFlatIndex)
+    {
+        Context context = new();
+        await context.Build();
+        TestRpcBlockchain blockchain = context.Blockchain;
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        await blockchain.AddFunds(TestItem.AddressA, 10000.Ether);
+
+        Address leaf = TestItem.AddressC;
+        Address caller = ContractAddress.From(TestItem.AddressA, nonce);
+        byte[] callerCode = Prepare.EvmCode.Call(leaf, 50000).Op(Instruction.STOP).Done;
+        Transaction deploy = Build.A.Transaction.WithNonce(nonce++).WithTo(null)
+            .WithData(Prepare.EvmCode.ForInitOf(callerCode).Done)
+            .WithGasLimit(200000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        await blockchain.AddBlock(deploy);
+
+        // Root calls the caller contract (which calls the leaf), then the leaf: [], [0], [0, 0], [1].
+        Transaction transaction = Build.A.Transaction.WithNonce(nonce).WithTo(null)
+            .WithData(Prepare.EvmCode.Call(caller, 100000).Call(leaf, 50000).Op(Instruction.STOP).Done)
+            .WithGasLimit(300000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        await blockchain.AddBlock(transaction);
+
+        ParityTxTraceFromStore[] traces = context.TraceRpcModule.trace_transaction(transaction.Hash!).Data.ToArray();
+        ResultWrapper<ParityTxTraceFromStore?> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, traceAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Select(static t => t.TraceAddress.AsSpan().ToArray()),
+                Is.EqualTo(new[] { Array.Empty<int>(), [0], [0, 0], [1] }));
+            if (expectedFlatIndex is null)
+            {
+                Assert.That(traceGet.Data, Is.Null);
+            }
+            else
+            {
+                EthereumJsonSerializer serializer = new();
+                Assert.That(JToken.Parse(serializer.Serialize(traceGet.Data)),
+                    Is.EqualTo(JToken.Parse(serializer.Serialize(traces[expectedFlatIndex.Value]))).Using(JToken.EqualityComparer));
+            }
+        }
     }
 
     [Test]
