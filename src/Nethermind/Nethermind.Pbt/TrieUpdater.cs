@@ -752,7 +752,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             Span<byte> leftPreimage = pendingPreimages.Slice((frameCount - 1) * PbtNodeCodec.MaxBranchPreimageLength, PbtNodeCodec.MaxBranchPreimageLength);
             int position = frame.Path.Position;
             int width = frame.Path.Width;
-            if (frame.Stage == ComposeStage.LeftCompleted)
+            if (frame.Stage == ComposeStage.AwaitingLeft)
             {
                 // Back up from the left child, whose node is in prevSubtree. With no right child, that node rises to
                 // this position. Otherwise the walk goes down the right child, after writing the left node; with no
@@ -768,7 +768,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 if (prevSubtree.IsEmpty)
                 {
                     // With no left node, the right child's node rises to this position.
-                    frame.Stage = ComposeStage.OnlyRightCompleted;
+                    frame.Stage = ComposeStage.AwaitingOnlyRight;
                 }
                 else
                 {
@@ -776,19 +776,19 @@ internal static partial class TrieUpdater<TKey, TPath>
                     frame.LeftIsLeaf = prevSubtree.IsLeaf;
                     if (prevSubtree.IsLeaf) frame.LeftKey = prevSubtree.Node.LeafKey;
                     frame.LeftHash = writer.Write(path, position - width, reader.BitDepth + frame.Path.Length + 1, ref prevSubtree, metrics, leftPreimage, out frame.LeftPreimageLength);
-                    frame.Stage = ComposeStage.RightCompleted;
+                    frame.Stage = ComposeStage.AwaitingRight;
                 }
                 frames[frameCount] = new(frame.Path.Right);
                 frameCount++;
                 continue;
             }
-            if (frame.Stage == ComposeStage.OnlyRightCompleted)
+            if (frame.Stage == ComposeStage.AwaitingOnlyRight)
             {
                 // Back up from the right child of a position with no left node: its node returns up to the parent frame as it is.
                 frameCount--;
                 continue;
             }
-            if (frame.Stage == ComposeStage.RightCompleted)
+            if (frame.Stage == ComposeStage.AwaitingRight)
             {
                 // Back up from the right child with both children present: write the right one and return the branch
                 // over the two up to the parent frame.
@@ -824,7 +824,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
 
             // Nothing is held here, so keep going down the left child.
-            frame.Stage = ComposeStage.LeftCompleted;
+            frame.Stage = ComposeStage.AwaitingLeft;
             frames[frameCount] = new(frame.Path.Left);
             frameCount++;
         }
@@ -853,7 +853,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted, OnlyRightCompleted }
+    /// <summary>What a frame waits for: set before its child is pushed, and handled once that child returns up.</summary>
+    private enum ComposeStage : byte { Descend, AwaitingLeft, AwaitingRight, AwaitingOnlyRight }
 
     private struct ComposeFrame(NodeGroupPath path)
     {
