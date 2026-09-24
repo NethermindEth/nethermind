@@ -66,6 +66,10 @@ public class BlockchainProcessorTests
 
             private readonly HashSet<Hash256> _rootProcessed = [];
 
+            // Blocks that raise BlockExecuted as soon as they reach the processor and then wait for Allow, which
+            // stands for the commit still ahead of a block that has had its verdict.
+            private readonly ConcurrentHashSet<Hash256> _executeBeforeAllowed = [];
+
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
             public BranchProcessorMock(ILogManager logManager, IStateReader stateReader)
@@ -80,6 +84,15 @@ public class BlockchainProcessorTests
                 lock (_gate)
                 {
                     _allowed.Add(hash);
+                    Monitor.PulseAll(_gate);
+                }
+            }
+
+            public void ExecuteBeforeAllowed(Hash256 hash)
+            {
+                lock (_gate)
+                {
+                    _executeBeforeAllowed.Add(hash);
                     Monitor.PulseAll(_gate);
                 }
             }
@@ -123,6 +136,7 @@ public class BlockchainProcessorTests
                                 Block suggestedBlock = suggestedBlocks[i];
                                 BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                                 Hash256 hash = suggestedBlock.Hash!;
+                                if (_executeBeforeAllowed.TryRemove(hash)) BlockExecuted?.Invoke(this, new BlockExecutedEventArgs(suggestedBlock));
                                 if (!_allowed.Contains(hash))
                                 {
                                     if (_allowedToFail.TryRemove(hash))
@@ -169,7 +183,7 @@ public class BlockchainProcessorTests
 
             public event EventHandler<BlockEventArgs>? BlockProcessing;
 
-            public event EventHandler<BlockExecutedEventArgs>? BlockExecuted { add { } remove { } }
+            public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
             public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         }
@@ -187,6 +201,15 @@ public class BlockchainProcessorTests
                 lock (_gate)
                 {
                     _allowed[hash] = new object();
+                    Monitor.PulseAll(_gate);
+                }
+            }
+
+            public void AllowToFail(Hash256 hash)
+            {
+                lock (_gate)
+                {
+                    _allowedToFail[hash] = new object();
                     Monitor.PulseAll(_gate);
                 }
             }
@@ -460,6 +483,45 @@ public class BlockchainProcessorTests
 
         public Task WaitUntilRemoved(Block block) => _processor.WaitUntilRemovedAsync(block.Hash!).AsTask();
 
+        public Task WaitUntilExecutedCopyRemoved(Block block) => _processor.WaitUntilExecutedCopyRemovedAsync(block.Hash!).AsTask();
+
+        /// <summary>Lets the queued block have its verdict and holds it there, before its commit, until it is processed.</summary>
+        public ProcessingTestContext HeldAfterVerdict(Block block)
+        {
+            using ManualResetEventSlim executed = new(false);
+            void OnExecuted(object? sender, BlockHashEventArgs args)
+            {
+                if (args.BlockHash == block.Hash) executed.Set();
+            }
+
+            _processor.BlockExecuted += OnExecuted;
+            try
+            {
+                _branchProcessor.ExecuteBeforeAllowed(block.Hash!);
+                Assert.That(executed.Wait(ProcessingWait), Is.True, $"{block.ToString(Block.Format.Short)} never had its verdict");
+            }
+            finally
+            {
+                _processor.BlockExecuted -= OnExecuted;
+            }
+
+            return this;
+        }
+
+        /// <summary>Queues another copy of a block that is already in the queue, as sync can.</summary>
+        public ProcessingTestContext EnqueuedAgain(Block copy)
+        {
+            Task enqueue = Task.Run(async () => await _processor.Enqueue(copy, ProcessingOptions.None));
+            Assert.That(enqueue.Wait(ProcessingWait), Is.True, $"{copy.ToString(Block.Format.Short)} was not queued");
+            return this;
+        }
+
+        public ProcessingTestContext RecoveryFails(Block block)
+        {
+            _recoveryStep.AllowToFail(block.Hash!);
+            return this;
+        }
+
         public ProcessingTestContext OnBlockRemoved(EventHandler<BlockRemovedEventArgs> handler)
         {
             _processor.BlockRemoved += handler;
@@ -682,6 +744,74 @@ public class BlockchainProcessorTests
 
         context.Processed(_block2D4).BecomesNewHead();
         await second.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>
+    /// With a second copy of a block queued behind the one that had its verdict, the executed-copy wait is released
+    /// when that copy commits, while the wait for every copy holds until the second one is gone too.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_executed_copy_removed_does_not_wait_for_another_copy_behind_it()
+    {
+        Block secondCopy = UnrecoveredCopy(_block1D2);
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .Suggested(_block1D2)
+            .Recovered(_block1D2)
+            .HeldAfterVerdict(_block1D2)
+            .EnqueuedAgain(secondCopy);
+
+        Task executedCopy = context.WaitUntilExecutedCopyRemoved(_block1D2);
+        Task everyCopy = context.WaitUntilRemoved(_block1D2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executedCopy.IsCompleted, Is.False, "the copy with its verdict is still committing");
+            Assert.That(everyCopy.IsCompleted, Is.False, "both copies are in the queue");
+        }
+
+        context.Processed(_block1D2).BecomesNewHead();
+        await executedCopy.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(everyCopy.IsCompleted, Is.False, "the second copy is still waiting for its recovery");
+
+        context.Recovered(secondCopy);
+        await everyCopy.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>
+    /// A second copy that fails before it reaches the processor is removed by the recovery loop while the first copy
+    /// is still committing; that removal is not the committing copy's, so its waiters stay until the commit.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_executed_copy_removed_is_not_released_by_another_copy_failing_recovery()
+    {
+        Block secondCopy = UnrecoveredCopy(_block1D2);
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .Suggested(_block1D2)
+            .Recovered(_block1D2)
+            .HeldAfterVerdict(_block1D2);
+
+        Task executedCopy = context.WaitUntilExecutedCopyRemoved(_block1D2);
+        TaskCompletionSource secondCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.OnBlockRemoved((_, args) =>
+        {
+            if (args.BlockHash == _block1D2.Hash && args.ProcessingResult == ProcessingResult.Exception) secondCopyRemoved.TrySetResult();
+        });
+
+        context.RecoveryFails(secondCopy).EnqueuedAgain(secondCopy);
+        await secondCopyRemoved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(executedCopy.IsCompleted, Is.False, "the committing copy is still committing");
+
+        context.Processed(_block1D2).BecomesNewHead();
+        await executedCopy.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    // Same hash, but a header of its own without the author recovery sets, so the recovery step sees it afresh.
+    private static Block UnrecoveredCopy(Block block)
+    {
+        BlockHeader header = block.Header.Clone();
+        header.Author = null;
+        return new Block(header, block.Body);
     }
 
     // A subscriber that throws must not make the loop report the removal a second time: a second report takes a copy
