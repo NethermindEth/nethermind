@@ -40,8 +40,6 @@ public interface IBranchProcessor
     /// through the chain yet: the block tree marks it processed and moves the head only after this, and a consumer
     /// that needs the committed block waits for the processing queue to remove it. Handlers run synchronously on
     /// the block-processing thread, ahead of the commit: whatever they do is on the block's critical path.
-    /// </remarks>
-    /// <remarks>
     /// Defaulted so an implementation outside this repository keeps compiling. One that does not raise it leaves
     /// every consumer waiting for <see cref="IBlockProcessingQueue.BlockRemoved"/>, which is where the answer came
     /// from before this event existed.
