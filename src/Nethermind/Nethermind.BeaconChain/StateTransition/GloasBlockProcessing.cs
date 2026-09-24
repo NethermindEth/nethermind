@@ -23,14 +23,11 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// Gloas <c>process_block</c> (EIP-7732's ePBS split) over <see cref="BeaconStateGloas"/>.
 /// </summary>
 /// <remarks>
-/// Ported from ethereum/consensus-specs commit <c>a8475719ce77cb269191e327e1f4175c295851ee</c> on
-/// the <c>master</c> branch (<c>specs/gloas/beacon-chain.md</c>, fetched 2026-09-20; also
-/// cross-referenced against <c>specs/gloas/fork-choice.md</c> at the same commit for
-/// <c>on_execution_payload_envelope</c>). That commit postdates the <c>v1.7.0-beta.0</c> tag (no
-/// <c>v1.7.0-beta.1</c> exists yet), consistent with <c>GloasContainers.cs</c>'s own pin. The
-/// spec is explicitly work in progress; this file documents every place its text was ambiguous or
-/// (as found for the block-processing step order) inconsistent with a paraphrase, and the reading
-/// taken, rather than picking silently.
+/// Ported from ethereum/consensus-specs <c>v1.7.0-beta.2</c> (<c>specs/gloas/beacon-chain.md</c>,
+/// cross-referenced against <c>specs/gloas/fork-choice.md</c> at the same tag for
+/// <c>on_execution_payload_envelope</c>). The spec is explicitly work in progress; this file
+/// documents every place its text was ambiguous or (as found for the block-processing step order)
+/// inconsistent with a paraphrase, and the reading taken, rather than picking silently.
 /// <para/>
 /// <b>Block-processing step order.</b> A short prose summary of this task described the order as
 /// header, RANDAO, Eth1 data, operations, bid, withdrawals. The pinned spec's actual
@@ -87,12 +84,20 @@ public static class GloasBlockProcessing
     }
 
     /// <summary>Verifies a Gloas block's outer proposer signature - not part of <c>process_block</c> itself, called once by the top-level state transition.</summary>
+    /// <exception cref="BeaconStateException">The proposer index is not a validator of <paramref name="state"/>, or <paramref name="pubkeys"/> has no key for it.</exception>
     public static bool VerifyProposerSignature(BeaconStateGloas state, SignedBeaconBlockGloas signedBlock, PubkeyCache pubkeys)
     {
         BeaconBlockGloas block = signedBlock.Message!;
+        // verify_block_signature indexes state.validators with the untrusted proposer_index (p2p beacon_block: [REJECT] a valid validator index).
+        ulong proposerIndex = block.ProposerIndex;
+        if (proposerIndex >= (ulong)state.Validators!.Length)
+            throw new BeaconStateException($"Block proposer index {proposerIndex} is not a validator index (registry size {state.Validators.Length})");
+        // Epoch processing inside process_slots can grow the registry past the cache.
+        if (proposerIndex >= (ulong)pubkeys.Count)
+            throw new BeaconStateException($"Block proposer index {proposerIndex} has no cached public key ({pubkeys.Count} cached)");
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block), domain);
-        return BlsSigner.Verify(pubkeys.GetPublicKey((int)block.ProposerIndex), signedBlock.Signature.Bytes, signingRoot.Bytes);
+        return BlsSigner.Verify(pubkeys.GetPublicKey((int)proposerIndex), signedBlock.Signature.Bytes, signingRoot.Bytes);
     }
 
     /// <summary>Spec <c>process_block_header</c>: unchanged from Fulu except for the Gloas block/body types.</summary>

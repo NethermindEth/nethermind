@@ -56,6 +56,12 @@ public sealed class ForkChoiceRunner
     /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attesting interval, keyed by block root.</summary>
     private readonly Dictionary<Hash256, bool> _blockTimeliness = [];
 
+    /// <summary>The spec's <c>store.payloads</c>, as roots only: the Gloas blocks whose execution payload envelope was delivered and verified.</summary>
+    private readonly HashSet<Hash256> _payloads = [];
+
+    /// <summary>The committed bid's <c>parent_block_hash</c> of each Gloas block, keyed by block root.</summary>
+    private readonly Dictionary<Hash256, Hash256> _parentBlockHashes = [];
+
     /// <summary>Committee shufflings only; safe to share across forks (keyed by decision root). The balance memo is never used through this instance.</summary>
     private readonly EpochCache _committees = new();
 
@@ -155,8 +161,8 @@ public sealed class ForkChoiceRunner
 
     /// <summary>
     /// Prunes fork-choice state below the finalized checkpoint: the proto-array block tree (subject
-    /// to its prune threshold) and the cached checkpoint states and justified balances of epochs
-    /// before the finalized one.
+    /// to its prune threshold), the cached checkpoint states and justified balances of epochs
+    /// before the finalized one, and the per-block records of every block the tree no longer holds.
     /// </summary>
     public void Prune()
     {
@@ -164,16 +170,22 @@ public sealed class ForkChoiceRunner
         _protoArray.MaybePrune(finalized.Root);
         PruneCheckpointCache(_checkpointStates, finalized.Epoch);
         PruneCheckpointCache(_justifiedBalances, finalized.Epoch);
+        PruneUnknownRoots(_blockTimeliness);
+        PruneUnknownRoots(_parentBlockHashes);
+        _payloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
+    }
 
-        List<Hash256>? staleTimeliness = null;
-        foreach (Hash256 root in _blockTimeliness.Keys)
+    private void PruneUnknownRoots<TValue>(Dictionary<Hash256, TValue> byRoot)
+    {
+        List<Hash256>? stale = null;
+        foreach (Hash256 root in byRoot.Keys)
         {
-            if (!_protoArray.ContainsBlock(root)) (staleTimeliness ??= []).Add(root);
+            if (!_protoArray.ContainsBlock(root)) (stale ??= []).Add(root);
         }
 
-        if (staleTimeliness is not null)
+        if (stale is not null)
         {
-            foreach (Hash256 root in staleTimeliness) _blockTimeliness.Remove(root);
+            foreach (Hash256 root in stale) byRoot.Remove(root);
         }
     }
 
@@ -282,10 +294,12 @@ public sealed class ForkChoiceRunner
     /// There is no availability argument because the Gloas <c>on_block</c> no longer calls
     /// <c>is_data_available</c>. The body replay contract is the one the Fulu overload documents, through
     /// the <see cref="AttestationGloas"/> and <see cref="AttesterSlashingGloas"/> overloads.
+    /// A block that builds on its parent's full payload (<see cref="IsParentNodeFull"/>) is refused until
+    /// that payload is recorded through <see cref="OnExecutionPayloadVerified"/>; the refusal leaves the store untouched.
     /// </remarks>
     /// <exception cref="ForkChoiceException">
     /// The block's slot is before the Gloas fork, this runner has no <see cref="IGloasBlockStateProvider"/>,
-    /// or the block violates an <c>on_block</c> assertion.
+    /// or the block violates an <c>on_block</c> assertion, including a full parent whose payload is not verified.
     /// </exception>
     public void OnBlock(SignedBeaconBlockGloas signedBlock, BeaconStateGloas postState)
     {
@@ -296,10 +310,14 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"Block at slot {block.Slot} is a Gloas block, but no {nameof(IGloasBlockStateProvider)} was supplied to resolve its checkpoint states");
         Hash256 parentRoot = block.ParentRoot!;
         ValidateOnBlock(block.Slot, parentRoot);
+        // specs/gloas/fork-choice.md on_block: if is_parent_node_full, assert is_payload_verified(parent_root).
+        if (IsParentNodeFull(block) && !IsPayloadVerified(parentRoot))
+            throw new ForkChoiceException($"Block at slot {block.Slot} builds on the full payload of {parentRoot}, which is not verified");
 
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
         ExtendPubkeys(postState.Validators!);
 
+        ExecutionPayloadBid bid = block.Body!.SignedExecutionPayloadBid!.Message!;
         RegisterBlock(
             block.Slot,
             blockRoot,
@@ -309,8 +327,51 @@ public sealed class ForkChoiceRunner
             CheckpointRef.From(postState.FinalizedCheckpoint!),
             GloasEpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache()),
             ExecutionStatus.Optimistic,
-            block.Body!.SignedExecutionPayloadBid!.Message!.BlockHash!);
+            bid.BlockHash!);
+        _parentBlockHashes[blockRoot] = bid.ParentBlockHash!;
     }
+
+    /// <summary>
+    /// The spec's <c>is_payload_verified</c>: whether the execution payload of <paramref name="blockRoot"/>
+    /// has been delivered and verified.
+    /// </summary>
+    /// <remarks>
+    /// A known pre-Gloas block counts as verified: its payload came inside the block and went through
+    /// <c>newPayload</c> at import, and <c>upgrade_to_gloas</c> seeds <c>latest_block_hash</c> from it, so the
+    /// first Gloas block always builds on it full. The spec does not define this boundary case; a literal
+    /// <c>root in store.payloads</c> would refuse every first Gloas block. A Gloas block counts once
+    /// <see cref="OnExecutionPayloadVerified"/> recorded it, and an unknown block never does.
+    /// </remarks>
+    public bool IsPayloadVerified(Hash256 blockRoot) =>
+        _protoArray.GetBlockSlot(blockRoot) is ulong slot && (!IsGloasSlot(slot) || _payloads.Contains(blockRoot));
+
+    /// <summary>
+    /// The spec's <c>is_parent_node_full</c>: whether <paramref name="block"/>'s bid builds on its parent's
+    /// execution payload rather than on the payload before it.
+    /// </summary>
+    /// <remarks>
+    /// The spec's <c>get_parent_payload_status</c> compares the bid's <c>parent_block_hash</c> with the parent's
+    /// bid <c>block_hash</c>, which is the execution block hash a Gloas node is registered with; a Fulu parent's is
+    /// its own payload's hash. An unknown parent is not full.
+    /// </remarks>
+    public bool IsParentNodeFull(BeaconBlockGloas block) =>
+        block.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash == _protoArray.GetExecutionBlockHash(block.ParentRoot!);
+
+    /// <summary>
+    /// Records that the execution payload envelope of <paramref name="blockRoot"/> was delivered and verified:
+    /// the spec's <c>store.payloads</c> write in <c>on_execution_payload_envelope</c>. Idempotent.
+    /// </summary>
+    /// <exception cref="ForkChoiceException">The block is unknown to fork choice (the spec asserts it is in <c>store.block_states</c>), or is a pre-Gloas block, which has no envelope.</exception>
+    public void OnExecutionPayloadVerified(Hash256 blockRoot)
+    {
+        ulong slot = _protoArray.GetBlockSlot(blockRoot) ?? throw new ForkChoiceException($"Block {blockRoot} is unknown to fork choice");
+        if (!IsGloasSlot(slot))
+            throw new ForkChoiceException($"Block {blockRoot} at slot {slot} is before the Gloas fork; its payload has no envelope");
+        _payloads.Add(blockRoot);
+    }
+
+    /// <summary>The committed bid's <c>parent_block_hash</c> of the Gloas block <paramref name="blockRoot"/>; <see langword="null"/> for a pre-Gloas or unknown block.</summary>
+    public Hash256? GetParentBlockHash(Hash256 blockRoot) => _parentBlockHashes.GetValueOrDefault(blockRoot);
 
     /// <summary>The fork-independent <c>on_block</c> assertions: a known parent whose payload is not invalid, not from the future, after the finalized slot and descending from the finalized checkpoint.</summary>
     private void ValidateOnBlock(ulong slot, Hash256 parentRoot)
@@ -431,6 +492,8 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"Attestation head block {beaconBlockRoot} is unknown to fork choice");
         if (blockSlot > data.Slot)
             throw new ForkChoiceException($"Attestation for slot {data.Slot} votes for the newer block at slot {blockSlot}");
+        if (gloasContainer || IsGloasSlot(data.Slot))
+            ValidatePayloadStatusVote(data, blockSlot);
         // The LMD vote must be consistent with the FFG vote target.
         if (GetCheckpointBlock(beaconBlockRoot, target.Epoch) != target.Root)
             throw new ForkChoiceException($"Attestation target {target.Root} is not the head block's ancestor at the target epoch start");
@@ -460,6 +523,21 @@ public sealed class ForkChoiceRunner
         }
 
         ApplyVotes(attestingIndices, beaconBlockRoot, target.Epoch);
+    }
+
+    /// <summary>
+    /// The Gloas <c>validate_on_attestation</c> rules on <c>data.index</c>, which votes for the head block's
+    /// payload status (specs/gloas/fork-choice.md, EIP-7732): 0 or 1, 0 for a vote in the block's own slot,
+    /// and 1 only for a block whose payload is verified.
+    /// </summary>
+    private void ValidatePayloadStatusVote(AttestationData data, ulong blockSlot)
+    {
+        if (data.Index > 1)
+            throw new ForkChoiceException($"Attestation index {data.Index} is not a payload status (0 or 1)");
+        if (blockSlot == data.Slot && data.Index != 0)
+            throw new ForkChoiceException($"Attestation for slot {data.Slot} votes for the payload of a block from its own slot");
+        if (data.Index == 1 && !IsPayloadVerified(data.BeaconBlockRoot!))
+            throw new ForkChoiceException($"Attestation votes for the payload of {data.BeaconBlockRoot}, which is not verified");
     }
 
     /// <summary>

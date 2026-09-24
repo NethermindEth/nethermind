@@ -180,9 +180,10 @@ public static class ForkedStateTransition
     }
 
     /// <summary>
-    /// The Gloas analogue of <see cref="StateTransition.Apply"/>: advances slots (refusing to cross
-    /// an epoch boundary - see <see cref="GloasSlotProcessing"/>), verifies the proposer signature,
-    /// runs <see cref="GloasBlockProcessing.ProcessBlock"/>, and validates the claimed post-state root.
+    /// The Gloas analogue of <see cref="StateTransition.Apply"/>: advances slots through
+    /// <see cref="GloasSlotProcessing.ProcessSlots(BeaconStateGloas, ulong, EpochCache)"/> with the caller's
+    /// <paramref name="cache"/>, running epoch processing at every boundary crossed, verifies the proposer
+    /// signature, runs <see cref="GloasBlockProcessing.ProcessBlock"/>, and validates the claimed post-state root.
     /// </summary>
     /// <remarks>
     /// Skips slot advancement when <c>state.Slot == block.Slot</c>, which <see cref="Apply"/> admits only
@@ -204,7 +205,7 @@ public static class ForkedStateTransition
         BeaconBlockGloas block = signedBlock.Message!;
 
         if (state.Slot < block.Slot)
-            GloasSlotProcessing.ProcessSlots(state, block.Slot);
+            GloasSlotProcessing.ProcessSlots(state, block.Slot, cache);
 
         if (verifySignatures && !GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, pubkeys))
             throw new BeaconStateException($"Invalid proposer signature for the block at slot {block.Slot}");
