@@ -113,10 +113,11 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
-    public async Task Buffered_failure_rewinds_to_current_response([Values(0, 1, 2)] int commitMode)
+    public async Task Buffered_failure_rewinds_to_current_response(
+        [Values(0, 1, 2)] int commitMode, [Values(0, 1234)] int initialWrittenCount)
     {
         using MemoryStream stream = new();
-        CountingStreamPipeWriter transport = new(stream);
+        CountingStreamPipeWriter transport = new(stream, initialWrittenCount: initialWrittenCount);
         transport.Write("[1,"u8);
         using JsonRpcSuccessResponse response = new()
         {
@@ -139,7 +140,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         {
             Assert.That(document.RootElement[0].GetInt32(), Is.EqualTo(1));
             Assert.That(document.RootElement[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(transport.WrittenCount, Is.EqualTo(stream.Length));
+            Assert.That(transport.WrittenCount, Is.EqualTo(initialWrittenCount + stream.Length));
         }
     }
 

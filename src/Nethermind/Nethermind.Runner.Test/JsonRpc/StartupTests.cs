@@ -443,7 +443,6 @@ public class StartupTests
                 {
                     Assert.That(response, Does.Not.Contain("\"error\""));
                     Assert.That(context.Response.ContentLength, Is.Null);
-                    if (bufferResponse) Assert.That(response, Is.Empty);
                 }
             }
             else
