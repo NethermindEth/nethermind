@@ -1228,9 +1228,8 @@ public class PbtNodeGroupTests
         if (scenario != 3) store.SetNode(rootPath, PbtNodeCodec.EncodeBranch(Bytes.FromHexString("A0"), 4, new ValueHash256(Value(1)), new ValueHash256(Value(2))), provider);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], rootPath);
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, rootPath.BitDepth, store.GetGroupHash(rootPath), null);
-        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath.BitDepth, provider, PbtPrefixlessBranchOmission.Interior);
+        PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath.BitDepth, provider, PbtPrefixlessBranchOmission.Interior);
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier frontier = default;
-        scoped TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree result = default;
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             if (scenario == 2)
@@ -1252,7 +1251,7 @@ public class PbtNodeGroupTests
                     InvalidDataException? failure = null;
                     try
                     {
-                        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, 0, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
+                        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.AppendHeld(ref reader, writer, groupPath, ref frontier, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0), null);
                     }
                     catch (InvalidDataException exception)
                     {
@@ -1262,17 +1261,17 @@ public class PbtNodeGroupTests
                 }
                 else
                 {
-                    result = scenario == 0 ? default : TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, 0, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
-                    using (Assert.EnterMultipleScope())
-                    {
-                        Assert.That(result.IsEmpty, Is.EqualTo(scenario == 0));
-                        Assert.That(result.Copy.IsEmpty, Is.EqualTo(scenario != 1), "a stored node is taken as its bytes");
-                        Assert.That(result.IsLeaf, Is.EqualTo(scenario == 2), "a fold's result is taken as composed");
-                    }
+                    if (scenario != 0)
+                        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.AppendHeld(ref reader, writer, groupPath, ref frontier, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0), null);
+                    Assert.That(writer.WrittenCount == 0, Is.EqualTo(scenario == 0));
+                    if (scenario != 0)
+                        Assert.That(PbtNodeReader.FromValidated(writer.Entry(0, writer.WrittenCount).Span).IsLeaf, Is.EqualTo(scenario == 2),
+                            "a fold's result is appended as composed, a stored node from its own encoding");
                 }
             }
 
         }
+        writer.Dispose();
         store.Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
     }

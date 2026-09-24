@@ -677,50 +677,102 @@ internal static partial class TrieUpdater<TKey, TPath>
         return frontier.TakeBoundaryNode(ref reader, path, slot);
     }
 
-    /// <summary>Takes the node composition holds at <paramref name="position"/>, which <paramref name="copies"/> or the frontier must mark.</summary>
+    /// <summary>Appends the node the frontier holds at <paramref name="position"/>, after the descendants the group keeps under it.</summary>
     /// <remarks>
-    /// A position in <paramref name="copies"/> is a stored node with no touched slot under it, copied straight from the
-    /// frame. Otherwise the frontier hands out a boundary node, a fold's result or a direct copy; this is where each
-    /// becomes a node placed against the cursor. A boundary node is the only one anchored above the cursor, so it is the
-    /// only one that owns the compressed prefix below the cursor that places it. A stored node is copied, and a position
-    /// the group leaves implicit is rebuilt from the children it does store.
+    /// The frontier hands out a fold's result, a boundary node or an untouched block. A fold's result and a boundary node
+    /// are anchored at the position that holds them, so each is written with the compressed prefix it owns. An untouched
+    /// block is read from the deepest node the group stores above it, which is written with its compressed prefix past
+    /// this position only, and so hashed again. A position the group leaves implicit is rebuilt from the children it
+    /// does store. Only the descendants are copied: the node itself may still be promoted by an updated sibling's deletion.
     /// </remarks>
-    internal static TraversalSubtree TakeSubtree(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
-        scoped ref Frontier frontier, uint copies, int position)
+    internal static ComposedNode AppendHeld(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
+        scoped ref Frontier frontier, int position, TrieUpdaterMetrics? metrics)
     {
-        uint bit = 1u << position;
-        Debug.Assert(((frontier.Mask | copies) & bit) != 0, "Only a held position is taken.");
+        Debug.Assert((frontier.Mask & (1u << position)) != 0, "Only a held position is taken.");
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
-        if ((copies & bit) != 0) return new TraversalSubtree(path, reader.TakeDirectCopy(path, position));
-
-        int slot = PbtFourLevelGroupGeometry.LocalPathOf(position).Slot;
-        ref readonly DecompositionEntry entry = ref frontier.Entries[slot];
+        NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
+        int copied = reader.CopyRange(path, writer, position - 2 * local.Width + 2, position);
+        if (copied != 0) metrics?.AddBulkCopy(copied);
+        ref readonly DecompositionEntry entry = ref frontier.Entries[local.Slot];
         switch (entry.Source)
         {
             case EntrySource.Node:
-                return frontier.TakeResult(slot).Borrow(path);
+                return AppendResult(writer, position, frontier.TakeResult(local.Slot));
             case EntrySource.AtPosition when entry.SourcePosition != RootSource:
-                DirectCopySubtree copy = reader.TakeDirectCopy(path, entry.SourcePosition);
-                return copy.IsEmpty ? ImplicitBranch(ref reader, path, position) : new TraversalSubtree(path, copy);
+                ReadOnlyMemory<byte> stored = reader.GetEncoding(path, entry.SourcePosition);
+                return stored.IsEmpty
+                    ? AppendImplicitBranch(ref reader, writer, path, position)
+                    : AppendReanchored(writer, position, local.Length - PbtFourLevelGroupGeometry.LocalPathOf(entry.SourcePosition).Length,
+                        PbtNodeReader.FromValidated(stored.Span));
             default:
-                return frontier.TakeBoundaryNode(ref reader, path, slot).ToFoldResult(path, path.BitDepth).Borrow(path);
+                return AppendResult(writer, position, frontier.TakeBoundaryNode(ref reader, path, local.Slot).ToFoldResult(path, path.BitDepth));
         }
     }
 
-    /// <summary>The branch at <paramref name="position"/> that the group leaves implicit, rebuilt from the children it stores.</summary>
+    /// <summary>Appends a fold's result anchored at <paramref name="position"/>, with the compressed prefix it owns.</summary>
+    private static ComposedNode AppendResult(PbtNodeGroupWriter<TPath> writer, int position, in FoldResult node)
+    {
+        int offset = writer.WrittenCount;
+        TKey leftKey = node.LeafKey;
+        if (node.IsLeaf)
+        {
+            int leafLength = PbtNodeCodec.LeafLength(leftKey.Length);
+            PbtNodeCodec.EncodeLeaf(writer.Append(position, leafLength), leftKey);
+            return new(offset, leafLength, node.LeafHash);
+        }
+
+        Debug.Assert(node.Path.Length == PbtFourLevelGroupGeometry.LocalPathOf(position).Length, "A held result is anchored at the position that holds it.");
+        CompressedPrefix prefix = node.Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(node.Encoding.Span);
+        TKey rightKey = node.RightLeafKey;
+        int leftKeyLength = node.HasLeftLeaf ? leftKey.Length : 0;
+        int rightKeyLength = node.HasRightLeaf ? rightKey.Length : 0;
+        int length = PbtNodeCodec.BranchLength(prefix.BitCount, leftKeyLength, rightKeyLength);
+        Span<byte> branch = writer.Append(position, length);
+        PbtNodeCodec.CreateBranchEncoding(branch, prefix.BitCount, node.LeftHash, node.RightHash);
+        prefix.Bytes.CopyTo(branch[3..]);
+        Span<byte> trailer = branch[PbtNodeCodec.BranchPreimageLength(prefix.BitCount)..];
+        PbtNodeCodec.WriteBranchTrailer(trailer, leftKeyLength, rightKeyLength);
+        if (node.HasLeftLeaf) leftKey.Bytes.CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
+        if (node.HasRightLeaf) rightKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftKeyLength)..]);
+        bool hashKnown = node.KnownHash != default && prefix.BitCount == node.KnownHashBitCount;
+        return new(offset, length, hashKnown ? node.KnownHash : default);
+    }
+
+    /// <summary>Appends a stored branch anchored <paramref name="skippedBits"/> above <paramref name="position"/>, with the rest of its compressed prefix.</summary>
+    private static ComposedNode AppendReanchored(PbtNodeGroupWriter<TPath> writer, int position, int skippedBits, PbtNodeReader stored)
+    {
+        int offset = writer.WrittenCount;
+        int bitCount = stored.Prefix.BitCount - skippedBits;
+        int length = PbtNodeCodec.BranchLength(bitCount, stored.LeftKey.Length, stored.RightKey.Length);
+        Span<byte> branch = writer.Append(position, length);
+        PbtNodeCodec.CreateBranchEncoding(branch, bitCount, stored.LeftHash, stored.RightHash);
+        PbtBitPrefix.CopyBits(stored.Prefix.Bytes, skippedBits, bitCount, branch[3..], 0);
+        PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(bitCount)..], stored.LeftKey, stored.RightKey);
+        return new(offset, length, default);
+    }
+
+    /// <summary>Appends the branch at <paramref name="position"/> that the group leaves implicit, rebuilt from the children it stores.</summary>
     /// <remarks>
     /// Only an interior prefixless branch is ever left out (<see cref="PbtNodeGroupCodec.ShouldOmit"/>), so a
     /// boundary position or the root with nothing stored, or a child missing, is a corrupt group. The link hash
     /// decomposition seeded is kept, so the branch is only hashed again if a sibling's deletion promotes it.
     /// </remarks>
-    private static TraversalSubtree ImplicitBranch(scoped ref GroupFrameReader<TKey, TPath> reader, PbtTraversalPath path, int position)
+    private static ComposedNode AppendImplicitBranch(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
+        int position)
     {
         int width = PbtFourLevelGroupGeometry.WidthOf(position);
         if (width is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
         {
             reader.GetChildHashes(path, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
             if (left != default && right != default)
-                return new TraversalSubtree(path, new Subtree(PbtFourLevelGroupGeometry.LocalPathOf(position), left, right, reader.SeededHash(position)));
+            {
+                int offset = writer.WrittenCount;
+                int length = PbtNodeCodec.BranchLength(0, 0, 0);
+                Span<byte> branch = writer.Append(position, length);
+                PbtNodeCodec.CreateBranchEncoding(branch, 0, left, right);
+                PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(0)..], 0, 0);
+                return new(offset, length, reader.SeededHash(position));
+            }
         }
         throw new InvalidDataException("A referenced PBT node is missing.");
     }
@@ -761,18 +813,19 @@ internal static partial class TrieUpdater<TKey, TPath>
                 // or a frontier entry (a boundary node, a fold's result, or an untouched block). Its node is then the
                 // whole subtree, returned up as it is. A node the group stores above a touched slot is never held, so
                 // the walk goes down past it and rebuilds it from its children.
-                if (((frontierMask | copies) & (1u << position)) != 0)
+                if ((copies & (1u << position)) != 0)
                 {
-                    TraversalSubtree held = TakeSubtree(ref reader, writer, path, ref frontier, copies, position);
-                    Debug.Assert(!held.IsEmpty, "A held position always has a node.");
-                    // An internal frontier entry is an unchanged subtree reached from the original input.
-                    // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
-                    if (!held.IsLeaf)
-                    {
-                        int copied = reader.CopyRange(path, writer, position - 2 * frame.Path.Width + 2, position);
-                        if (copied != 0) metrics?.AddBulkCopy(copied);
-                    }
-                    prevSubtree = AppendHeld(writer, position, reader.BitDepth + frame.Path.Length, ref held);
+                    // A direct copy is stored with its descendants as one contiguous range, ending at the node itself.
+                    int copied = reader.CopyRange(path, writer, position - 2 * frame.Path.Width + 2, position + 1);
+                    metrics?.AddBulkCopy(copied);
+                    int length = reader.GetEncoding(path, position).Length;
+                    prevSubtree = new ComposedNode(writer.WrittenCount - length, length, reader.SeededHash(position));
+                    frameCount--;
+                    continue;
+                }
+                if ((frontierMask & (1u << position)) != 0)
+                {
+                    prevSubtree = AppendHeld(ref reader, writer, path, ref frontier, position, metrics);
                     frameCount--;
                     continue;
                 }
@@ -835,16 +888,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
         frontier.ReturnResults();
         return TakeRoot(writer, path, resultDepth, prevSubtree);
-    }
-
-    /// <summary>Appends a held node at <paramref name="position"/>, encoded at that position's <paramref name="depth"/>.</summary>
-    private static ComposedNode AppendHeld(PbtNodeGroupWriter<TPath> writer, int position, int depth, scoped ref TraversalSubtree node)
-    {
-        int offset = writer.WrittenCount;
-        int length = node.EncodedLength(depth);
-        ValueHash256 hash = node.EncodeDeferringHash(writer.Append(position, length), depth, out _);
-        node.Clear();
-        return new(offset, length, hash);
     }
 
     /// <summary>Moves the last entry, the node at <paramref name="childPosition"/> on <paramref name="side"/> of <paramref name="position"/>, up to <paramref name="position"/>.</summary>
@@ -999,7 +1042,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>A node composition has appended to the writer, read back from there by its parent.</summary>
-    private readonly struct ComposedNode(int offset, int length, in ValueHash256 hash)
+    internal readonly struct ComposedNode(int offset, int length, in ValueHash256 hash)
     {
         internal readonly int Offset = offset;
         internal readonly int Length = length;
