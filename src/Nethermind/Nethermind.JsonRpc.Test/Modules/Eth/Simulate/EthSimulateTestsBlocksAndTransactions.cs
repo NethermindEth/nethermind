@@ -1024,7 +1024,7 @@ public class EthSimulateTestsBlocksAndTransactions
     [TestCase(false, TestName = "block gasUsed includes the EIP-8037 state dimension (validation=false)")]
     public async Task eth_simulateV1_block_gas_used_is_max_of_execution_and_state_dimensions(bool validation)
     {
-        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
 
         SimulatePayload<TransactionForRpc> payload = new()
         {
@@ -1067,7 +1067,7 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         // Default chain is Berlin: neither EIP-7778 nor EIP-8037, so the funded transfer costs exactly
         // the 21k intrinsic while the call asks for 300k.
-        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build();
 
         // Pin the pre-EIP-7778 premise so a default-spec change can't silently invert this test.
         Assert.That(chain.SpecProvider.GetSpec(chain.BlockFinder.Head!.Header).IsEip7778Enabled, Is.False);
