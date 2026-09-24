@@ -125,7 +125,7 @@ jobs:
           if ! gh release view "$GIT_TAG" >/dev/null 2>&1; then
             echo "Drafting release $GIT_TAG"
             gh release create "$GIT_TAG" --target "$GITHUB_SHA" -d -p --latest=false \
-              -t "zkVM guests ${{ steps.version.outputs.version }} (${{ steps.version.outputs.commit }})" \
+              -t "zkVM guests v${{ steps.version.outputs.version }}+${{ steps.version.outputs.commit }}" \
               -F <(printf '%s' "$relnotes")
           else
             release=$(gh release view "$GIT_TAG" --json isDraft,targetCommitish \
