@@ -22,6 +22,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using NSubstitute;
@@ -80,6 +81,197 @@ public class TraceRpcModuleTests
         public IJsonRpcConfig JsonRpcConfig { get; private set; } = null!;
         public TestRpcBlockchain Blockchain { get; set; } = null!;
 
+    }
+
+    [Test]
+    public async Task Trace_filter_from_genesis_skips_only_genesis(
+        [Values("earliest", "0x0")] string fromBlock, [Values] bool streaming, [Values] bool genesisOnly)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        string toBlock = genesisOnly ? "0x0" : "latest";
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", new { fromBlock, toBlock });
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result), Is.True, response);
+        if (genesisOnly) Assert.That(result.GetArrayLength(), Is.Zero);
+        else
+        {
+            string expected = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", new { fromBlock = "0x1", toBlock });
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Is.EqualTo(expected));
+                Assert.That(result.GetArrayLength(), Is.GreaterThan(0));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Trace_filter_returns_error_for_missing_state(
+        [Values] bool streaming, [Values(0, 1, 2)] int missingStateOffset)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        long headNumber = (long)blockchain.BlockTree.Head!.Number;
+        long missingStateNumber = headNumber - missingStateOffset;
+        using ILifetimeScope scope = WithStateAvailability(blockchain,
+            header => header.Number != (ulong)missingStateNumber);
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        // Cover unavailable state at either end of the range and at its initial parent.
+        string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
+            new { fromBlock = $"0x{headNumber - 1:x}", toBlock = $"0x{headNumber:x}" });
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error), Is.True, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain($"No state available for block {missingStateNumber} "));
+            Assert.That(document.RootElement.TryGetProperty("result", out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Trace_filter_reports_reversed_range_before_missing_state()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong headNumber = blockchain.BlockTree.Head!.Number;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => false);
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
+            new { fromBlock = $"0x{headNumber:x}", toBlock = $"0x{headNumber - 2:x}" });
+        Assert.That(response, Is.EqualTo(
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidInput},\"message\":\"From block number: {headNumber} is greater than to block number {headNumber - 2}\"}},\"id\":67}}"));
+    }
+
+    [Test]
+    public async Task Trace_filter_returns_error_for_missing_parent_header([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Block head = blockchain.BlockTree.Head!;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true,
+            new MissingHeaderBlockTree(blockchain.BlockTree, head.ParentHash!));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
+            new { fromBlock = $"0x{head.Number:x}", toBlock = "latest" });
+        Assert.That(response, Is.EqualTo(
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.ResourceNotFound},\"message\":\"{BlockFinderExtensions.HeaderNotFound}\"}},\"id\":67}}"));
+    }
+
+    private static ILifetimeScope WithStateAvailability(TestRpcBlockchain blockchain, Func<BlockHeader, bool> hasState, IBlockFinder? blockFinder = null)
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(call => hasState(call.Arg<BlockHeader>()));
+        return blockchain.Container.BeginLifetimeScope(builder =>
+        {
+            builder.AddSingleton<IBlockchainBridge>(bridge).AddSingleton<TraceModuleFactory>();
+            if (blockFinder is not null) builder.AddSingleton<IBlockFinder>(blockFinder);
+        });
+    }
+
+    private sealed class MissingHeaderBlockTree(IBlockTree inner, Hash256 missingHash) : BlockTreeTestDouble(inner)
+    {
+        public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == missingHash ? null : base.FindHeader(blockHash, options, blockNumber);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Trace_filter_observes_timeout_during_state_preflight([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        int stateChecks = 0;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ =>
+        {
+            stateChecks++;
+            timeout.Cancel();
+            return true;
+        });
+        try
+        {
+            ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+            Assert.Throws<OperationCanceledException>(() => module.trace_filter(new TraceFilterForRpc
+            {
+                FromBlock = new BlockParameter(1),
+                ToBlock = BlockParameter.Latest
+            }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stateChecks, Is.EqualTo(1));
+                Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Trace_filter_keeps_preflight_timeout_for_deferred_execution()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        try
+        {
+            using (ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_filter(new TraceFilterForRpc
+            {
+                FromBlock = new BlockParameter(1),
+                ToBlock = BlockParameter.Latest
+            }))
+            {
+                Assert.That(timeout.DisposeCount, Is.Zero);
+                timeout.Cancel();
+                Assert.Throws<OperationCanceledException>(() => result.Data.ToArray());
+            }
+            Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Trace_filter_disposes_timeout_after_buffered_execution()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = false;
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        try
+        {
+            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_filter(new TraceFilterForRpc
+            {
+                FromBlock = new BlockParameter(1),
+                ToBlock = BlockParameter.Latest
+            });
+            Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
     }
 
     [Test]
@@ -882,7 +1074,7 @@ public class TraceRpcModuleTests
             "trace_callMany", calls);
 
         string expected =
-            "{\"jsonrpc\":\"2.0\",\"result\":[{\"vmTrace\":null,\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2d\",\"to\":\"0x2e\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e5\",\"to\":\"0x3635c9adc5de9f09e4\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x3\",\"to\":\"0x4\"}},\"storage\":{}}},\"trace\":[]},{\"vmTrace\":null,\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2e\",\"to\":\"0x2f\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e4\",\"to\":\"0x3635c9adc5de9f09e3\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x4\",\"to\":\"0x5\"}},\"storage\":{}}},\"trace\":[]}],\"id\":67}";
+            "{\"jsonrpc\":\"2.0\",\"result\":[{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2d\",\"to\":\"0x2e\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e5\",\"to\":\"0x3635c9adc5de9f09e4\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x3\",\"to\":\"0x4\"}},\"storage\":{}}},\"trace\":[]},{\"vmTrace\":null,\"output\":\"0x\",\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2e\",\"to\":\"0x2f\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e4\",\"to\":\"0x3635c9adc5de9f09e3\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x4\",\"to\":\"0x5\"}},\"storage\":{}}},\"trace\":[]}],\"id\":67}";
 
         Assert.That(serialized, Is.EqualTo(expected), serialized.Replace("\"", "\\\""));
     }
@@ -971,28 +1163,28 @@ public class TraceRpcModuleTests
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","gas":"0xf4240"}""",
         "stateDiff",
         """{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"nonce":"0x123"}}""",
-        """{"jsonrpc":"2.0","result":{"output":null,"stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"=","code":"=","nonce":{"*":{"from":"0x123","to":"0x124"}},"storage":{}}},"trace":[],"vmTrace":null},"id":67}"""
+        """{"jsonrpc":"2.0","result":{"output":"0x","stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"=","code":"=","nonce":{"*":{"from":"0x123","to":"0x124"}},"storage":{}}},"trace":[],"vmTrace":null},"id":67}"""
     )]
     [TestCase(
         "Uses account balance from state override",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f","value":"0x100","gas":"0xf4240"}""",
         "stateDiff",
         """{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"0x100"}}""",
-        """{"jsonrpc":"2.0","result":{"output":null,"stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"*":{"from":"0x100","to":"0x0"}},"code":"=","nonce":{"*":{"from":"0x0","to":"0x1"}},"storage":{}},"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f":{"balance":{"\u002B":"0x100"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x0"},"storage":{}}},"trace":[],"vmTrace":null},"id":67}"""
+        """{"jsonrpc":"2.0","result":{"output":"0x","stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"*":{"from":"0x100","to":"0x0"}},"code":"=","nonce":{"*":{"from":"0x0","to":"0x1"}},"storage":{}},"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f":{"balance":{"\u002B":"0x100"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x0"},"storage":{}}},"trace":[],"vmTrace":null},"id":67}"""
     )]
     [TestCase(
         "Executes code from state override",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0x60fe47b1112233445566778899001122334455667788990011223344556677889900112233445566778899001122","gas":"0xf4240"}""",
         "stateDiff",
         """{"0xc200000000000000000000000000000000000000":{"code":"0x6080604052348015600e575f80fd5b50600436106030575f3560e01c80632a1afcd914603457806360fe47b114604d575b5f80fd5b603b5f5481565b60405190815260200160405180910390f35b605c6058366004605e565b5f55565b005b5f60208284031215606d575f80fd5b503591905056fea2646970667358221220fd4e5f3894be8e57fc7460afebb5c90d96c3486d79bf47b00c2ed666ab2f82b364736f6c634300081a0033"}}""",
-        """{"jsonrpc":"2.0","result":{"output":null,"stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"\u002B":"0x0"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x1"},"storage":{}},"0xc200000000000000000000000000000000000000":{"balance":"=","code":"=","nonce":"=","storage":{"0x0000000000000000000000000000000000000000000000000000000000000000":{"*":{"from":"0x0000000000000000000000000000000000000000000000000000000000000000","to":"0x1122334455667788990011223344556677889900112233445566778899001122"}}}}},"trace":[],"vmTrace":null},"id":67}"""
+        """{"jsonrpc":"2.0","result":{"output":"0x","stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"\u002B":"0x0"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x1"},"storage":{}},"0xc200000000000000000000000000000000000000":{"balance":"=","code":"=","nonce":"=","storage":{"0x0000000000000000000000000000000000000000000000000000000000000000":{"*":{"from":"0x0000000000000000000000000000000000000000000000000000000000000000","to":"0x1122334455667788990011223344556677889900112233445566778899001122"}}}}},"trace":[],"vmTrace":null},"id":67}"""
     )]
     [TestCase(
         "Uses storage from state override",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0x60fe47b1112233445566778899001122334455667788990011223344556677889900112233445566778899001122","gas":"0xf4240"}""",
         "stateDiff",
         """{"0xc200000000000000000000000000000000000000":{"state": {"0x0000000000000000000000000000000000000000000000000000000000000000": "0x0000000000000000000000000000000000000000000000000000000000123456"}, "code":"0x6080604052348015600e575f80fd5b50600436106030575f3560e01c80632a1afcd914603457806360fe47b114604d575b5f80fd5b603b5f5481565b60405190815260200160405180910390f35b605c6058366004605e565b5f55565b005b5f60208284031215606d575f80fd5b503591905056fea2646970667358221220fd4e5f3894be8e57fc7460afebb5c90d96c3486d79bf47b00c2ed666ab2f82b364736f6c634300081a0033"}}""",
-        """{"jsonrpc":"2.0","result":{"output":null,"stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"\u002B":"0x0"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x1"},"storage":{}},"0xc200000000000000000000000000000000000000":{"balance":"=","code":"=","nonce":"=","storage":{"0x0000000000000000000000000000000000000000000000000000000000000000":{"*":{"from":"0x0000000000000000000000000000000000000000000000000000000000123456","to":"0x1122334455667788990011223344556677889900112233445566778899001122"}}}}},"trace":[],"vmTrace":null},"id":67}"""
+        """{"jsonrpc":"2.0","result":{"output":"0x","stateDiff":{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":{"\u002B":"0x0"},"code":{"\u002B":"0x"},"nonce":{"\u002B":"0x1"},"storage":{}},"0xc200000000000000000000000000000000000000":{"balance":"=","code":"=","nonce":"=","storage":{"0x0000000000000000000000000000000000000000000000000000000000000000":{"*":{"from":"0x0000000000000000000000000000000000000000000000000000000000123456","to":"0x1122334455667788990011223344556677889900112233445566778899001122"}}}}},"trace":[],"vmTrace":null},"id":67}"""
     )]
     [TestCase(
         "Executes precompile using overridden address",
@@ -1232,6 +1424,77 @@ public class TraceRpcModuleTests
         ResultWrapper<ParityTxTraceFromReplay> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"], traceNonCanonical: true);
 
         Assert.That(result.Result.Error, Does.Not.Contain("not canonical"), "traceNonCanonical=true must bypass the canonical block check");
+    }
+
+    [Test]
+    public async Task Trace_call_preserves_output_without_action_traces(
+        [Values] bool streaming, [Values] bool revert, [Values] bool stateDiff)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        string terminalOpcode = revert ? "fd" : "f3";
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"{{TestItem.AddressC}}","gas":"0x186a0"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{TestItem.AddressC}}}":{"code":"0x602a60005260206000{{{terminalOpcode}}}"}}""");
+
+        string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
+            "trace_call", transaction, stateDiff ? new[] { "stateDiff" } : [], "latest", stateOverride);
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("output").GetString(), Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            Assert.That(result.GetProperty("trace").GetArrayLength(), Is.Zero);
+            Assert.That(result.GetProperty("vmTrace").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(result.GetProperty("stateDiff").ValueKind,
+                Is.EqualTo(stateDiff ? JsonValueKind.Object : JsonValueKind.Null));
+        }
+    }
+
+    [Test]
+    public async Task Trace_callMany_accepts_empty_trace_selection([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        object? calls = JsonSerializer.Deserialize<object>(
+            $$"""[[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000004","data":"0x1234","gas":"0x186a0"},[]],[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000004","data":"0x5678","gas":"0x186a0"},[]]]""");
+
+        string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
+            "trace_callMany", calls, "latest");
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement result = document.RootElement.GetProperty("result");
+        Assert.That(result.GetArrayLength(), Is.EqualTo(2));
+        string[] expectedOutputs = ["0x1234", "0x5678"];
+        for (int i = 0; i < expectedOutputs.Length; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[i].GetProperty("output").GetString(), Is.EqualTo(expectedOutputs[i]));
+                Assert.That(result[i].GetProperty("trace").GetArrayLength(), Is.Zero);
+                Assert.That(result[i].GetProperty("stateDiff").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(result[i].GetProperty("vmTrace").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Trace_callMany_rejects_null_trace_selection_as_invalid_params()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        object? calls = JsonSerializer.Deserialize<object>(
+            $$"""[[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000004","data":"0x1234","gas":"0x186a0"},null]]""");
+
+        string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
+            "trace_callMany", calls, "latest");
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     [Test]
