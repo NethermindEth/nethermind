@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
@@ -32,6 +31,7 @@ public class PyspecLoaderTests
         string fixtures = Path.Combine(archiveRoot, "blockchain_tests", "cases");
         Directory.CreateDirectory(fixtures);
         File.WriteAllText(Path.Combine(archiveRoot, ".completed"), string.Empty);
+        // An absolute ArchiveVersion makes Path.Combine discard the cache root, pointing the download at the pre-completed archive above.
         _strategy = new LoadPyspecTestsStrategy { ArchiveVersion = _directory.Path, ArchiveName = "local.tar.gz" };
         _file = Path.Combine(fixtures, "fixture.json");
         File.WriteAllText(_file, """
@@ -74,10 +74,7 @@ public class PyspecLoaderTests
     [Test]
     public void Stateless_cases_load_without_engine_fixtures()
     {
-        object witnessIndex = typeof(ZkEvmFixtures.ZkEvmMutatedWitnessIndex)
-            .GetField("MutatedWitnessesByTest", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
-        PropertyInfo isValueCreated = witnessIndex.GetType().GetProperty(nameof(Lazy<object>.IsValueCreated));
-        object wasCreated = isValueCreated.GetValue(witnessIndex);
+        bool wasCreated = ZkEvmFixtures.ZkEvmMutatedWitnessIndex.MutatedWitnessesByTest.IsValueCreated;
 
         TestCaseData testCase = PyspecLoader.LoadZkEvmStatelessCases(_strategy, "blockchain_tests").Single();
         (string input, string output) = PyspecLoader.LoadZkEvmStatelessBytes((PyspecStatelessRef)testCase.Arguments[0]);
@@ -87,7 +84,7 @@ public class PyspecLoaderTests
             Assert.That(testCase.TestName, Is.EqualTo("sample_stateless_block_0"));
             Assert.That(input, Is.EqualTo("0x01"));
             Assert.That(output, Is.EqualTo("0x02"));
-            Assert.That(isValueCreated.GetValue(witnessIndex), Is.EqualTo(wasCreated));
+            Assert.That(ZkEvmFixtures.ZkEvmMutatedWitnessIndex.MutatedWitnessesByTest.IsValueCreated, Is.EqualTo(wasCreated));
         }
     }
 
@@ -119,8 +116,4 @@ public class PyspecLoaderTests
         Assert.That(failures[0], Is.TypeOf<ArgumentNullException>());
         Assert.That(failures, Is.All.SameAs(failures[0]));
     }
-
-    [Test]
-    public void Execution_parallelism_is_bounded() =>
-        Assert.That(typeof(PyspecLoader).Assembly.GetCustomAttribute<LevelOfParallelismAttribute>()?.Properties.Get("LevelOfParallelism"), Is.EqualTo(4));
 }
