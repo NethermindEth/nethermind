@@ -13,6 +13,14 @@ namespace Nethermind.Network;
 
 public static class NetworkHelper
 {
+    /// <summary>Formats an IP endpoint as a TCP multiaddress.</summary>
+    public static string ToTcpMultiaddress(IPAddress address, int port)
+    {
+        IPAddress normalized = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+        string protocol = normalized.AddressFamily == AddressFamily.InterNetworkV6 ? "ip6" : "ip4";
+        return $"/{protocol}/{normalized}/tcp/{port}";
+    }
+
     /// <summary>
     /// Selects the address to bind inbound listeners to.
     /// </summary>
