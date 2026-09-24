@@ -193,7 +193,7 @@ public class TraceRpcModuleTests
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
-        TimeoutTest.TrackingCancellationTokenSource timeout = TimeoutTest.RentTrackingTimeoutSourceForNextRequest();
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
         int stateChecks = 0;
         using ILifetimeScope scope = WithStateAvailability(blockchain, _ =>
         {
@@ -217,7 +217,7 @@ public class TraceRpcModuleTests
         }
         finally
         {
-            TimeoutTest.DisposeIfNotAlreadyObserved(timeout);
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
         }
     }
 
@@ -229,7 +229,7 @@ public class TraceRpcModuleTests
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
-        TimeoutTest.TrackingCancellationTokenSource timeout = TimeoutTest.RentTrackingTimeoutSourceForNextRequest();
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
         try
         {
             using (ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_filter(new TraceFilterForRpc
@@ -246,7 +246,7 @@ public class TraceRpcModuleTests
         }
         finally
         {
-            TimeoutTest.DisposeIfNotAlreadyObserved(timeout);
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
         }
     }
 
@@ -258,7 +258,7 @@ public class TraceRpcModuleTests
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = false;
-        TimeoutTest.TrackingCancellationTokenSource timeout = TimeoutTest.RentTrackingTimeoutSourceForNextRequest();
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
         try
         {
             using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_filter(new TraceFilterForRpc
@@ -270,7 +270,7 @@ public class TraceRpcModuleTests
         }
         finally
         {
-            TimeoutTest.DisposeIfNotAlreadyObserved(timeout);
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
         }
     }
 

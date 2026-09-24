@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace Nethermind.JsonRpc.Test;
 
-internal static class TimeoutTest
+internal static class TimeoutTestHelper
 {
     private const int TimeoutCancellationTokenPoolSize = 64;
 
@@ -53,5 +53,4 @@ internal static class TimeoutTest
             base.Dispose(disposing);
         }
     }
-
 }
