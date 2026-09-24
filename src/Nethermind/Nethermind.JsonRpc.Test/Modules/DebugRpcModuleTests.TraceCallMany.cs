@@ -411,9 +411,9 @@ public partial class DebugRpcModuleTests
 
         Assert.That(result.ErrorCode, Is.Zero, result.Result.Error);
         GethLikeTxTrace[] traces = [.. result.Data.Select(static bundle => bundle.Single())];
+        Assert.That(traces, Has.Length.EqualTo(2));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(traces, Has.Length.EqualTo(2));
             Assert.That(traces.Select(static trace => trace.Failed), Is.All.False);
             Assert.That(traces[0].ReturnValue.ToUInt256(), Is.GreaterThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap),
                 "pre-fork bundle must not be clamped by EIP-7825's execution cap, which the processor never enforces");
