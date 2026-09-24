@@ -81,28 +81,28 @@ namespace Nethermind.Core.Test.Collections
                 switch (cycle)
                 {
                     case 0:
-                    {
-                        int[] copied = Enumerable.Repeat(-1, expected.Length + 1).ToArray();
-                        journalSet.CopyTo(copied, 1);
-                        Assert.That(copied, Is.EqualTo([-1, .. expected]));
-                        break;
-                    }
+                        {
+                            int[] copied = Enumerable.Repeat(-1, expected.Length + 1).ToArray();
+                            journalSet.CopyTo(copied, 1);
+                            Assert.That(copied, Is.EqualTo([-1, .. expected]));
+                            break;
+                        }
                     case 1:
                         Assert.That(EnumerateConcrete(journalSet), Is.EqualTo(expected));
                         break;
                     default:
-                    {
-                        IEnumerable<int> enumerable = journalSet;
-                        using IEnumerator<int> enumerator = enumerable.GetEnumerator();
-                        List<int> enumerated = [];
-                        while (enumerator.MoveNext())
                         {
-                            enumerated.Add(enumerator.Current);
-                        }
+                            IEnumerable<int> enumerable = journalSet;
+                            using IEnumerator<int> enumerator = enumerable.GetEnumerator();
+                            List<int> enumerated = [];
+                            while (enumerator.MoveNext())
+                            {
+                                enumerated.Add(enumerator.Current);
+                            }
 
-                        Assert.That(enumerated, Is.EqualTo(expected));
-                        break;
-                    }
+                            Assert.That(enumerated, Is.EqualTo(expected));
+                            break;
+                        }
                 }
             }
         }
