@@ -9,13 +9,10 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -185,6 +182,7 @@ public class TransactionsMessageSerializerTests
         {
             Assert.That(deserialized.Transactions[0].Hash, Is.EqualTo(validTxBefore.Hash), "the tx before the skip should decode unaffected");
             Assert.That(deserialized.Transactions[1].Hash, Is.EqualTo(validTxAfter.Hash), "cursor should have resynchronised on the tx after the skip");
+            Assert.That(deserialized.SkippedCount, Is.EqualTo(1), "the oversized item should be counted as skipped");
         }
     }
 
@@ -208,45 +206,28 @@ public class TransactionsMessageSerializerTests
         Assert.That(deserialized.Transactions.Count, Is.EqualTo(1), "a tx exactly at the cap must be kept, not skipped");
     }
 
-    [TestCaseSource(nameof(BlobCapCases))]
-    public void Measures_a_blob_tx_against_the_blob_cap(IReleaseSpec spec, long? maxTxSize, long maxBlobTxSize, int expectedCount)
+    [Test]
+    public void Never_skips_a_blob_tx_even_when_its_size_exceeds_the_cap()
     {
+        // A blob tx's mempool-form sidecar is far above this cap, but eth/68 forbids broadcasting one and a
+        // pooled one is already policed by announced size and ValidateSizeAndType, so this guard must not skip it.
         Transaction blobTx = Build.A.Transaction
             .WithTo(TestItem.AddressA)
             .WithShardBlobTxTypeAndFields(1)
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
             .TestObject;
-        TxPoolConfig config = new() { MaxTxSize = maxTxSize, MaxBlobTxSize = maxBlobTxSize };
-        ISpecProvider specProvider = new TestSpecProvider(spec);
-        TransactionsMessageSerializer serializer = new(config, specProvider);
+        TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = 500 });
 
         using TransactionsMessage message = new(new[] { blobTx }.ToPooledList());
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
         serializer.Serialize(buffer, message);
         using TransactionsMessage deserialized = serializer.Deserialize(buffer);
 
-        Assert.That(deserialized.Transactions.Count, Is.EqualTo(expectedCount));
-    }
-
-    [TestCaseSource(nameof(MaxBlobCountCases))]
-    public void Keeps_a_blob_tx_sitting_exactly_on_the_pool_size_boundary(IReleaseSpec spec)
-    {
-        Transaction blobTx = Build.A.Transaction
-            .WithTo(TestItem.AddressA)
-            .WithShardBlobTxTypeAndFields((int)spec.MaxBlobCount, spec: spec)
-            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-            .TestObject;
-        // SizeTxFilter accepts a blob tx whose consensus encoding is at most MaxBlobTxSize, so a tx of the
-        // largest blob count sitting exactly on that boundary is the tightest case the guard must let through.
-        TxPoolConfig config = new() { MaxBlobTxSize = blobTx.GetLength(shouldCountBlobs: false) };
-        TransactionsMessageSerializer serializer = new(config, new TestSpecProvider(spec));
-
-        using TransactionsMessage message = new(new[] { blobTx }.ToPooledList());
-        using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out _)).AsDisposable();
-        serializer.Serialize(buffer, message);
-        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
-
-        Assert.That(deserialized.Transactions.Count, Is.EqualTo(1), "a blob tx the pool would accept must never be skipped");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Transactions.Count, Is.EqualTo(1));
+            Assert.That(deserialized.SkippedCount, Is.EqualTo(0));
+        }
     }
 
     // Each prefix declares 55 content bytes the buffer does not carry: 0xb7 as a byte string, 0xf7 as a
@@ -274,7 +255,11 @@ public class TransactionsMessageSerializerTests
         serializer.Serialize(buffer, message);
         using TransactionsMessage deserialized = serializer.Deserialize(buffer);
 
-        Assert.That(deserialized.Transactions.Count, Is.EqualTo(transactions.Count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Transactions.Count, Is.EqualTo(transactions.Count));
+            Assert.That(deserialized.SkippedCount, Is.EqualTo(0));
+        }
     }
 
     internal static Transaction SimpleSignedTx(ulong nonce = 0) =>
@@ -328,33 +313,6 @@ public class TransactionsMessageSerializerTests
         // content exactly at the cap is already over it.
         yield return new TestCaseData(maxTxSize, EncodeOversizedSequenceItem(maxTxSize))
             .SetName("Skips a sequence item its RLP prefix pushes over the cap");
-    }
-
-    private static IEnumerable<TestCaseData> BlobCapCases()
-    {
-        // A one-blob tx's mempool-form size (~128 KiB of sidecar) is far above either cap below, so whether
-        // it survives turns on the blob cap alone - which Cancun's sidecar allowance raises past it, while
-        // Shanghai's, allowing no blobs, does not.
-        yield return new TestCaseData(Cancun.Instance, 500L, 500L, 1)
-            .SetName("Keeps a blob tx above MaxTxSize but within the blob cap");
-        yield return new TestCaseData(Shanghai.Instance, null, 500L, 0)
-            .SetName("Skips a blob tx above the blob cap with no MaxTxSize configured");
-        // MaxBlobTxSize is unvalidated, so an absurd value has to leave the blob cap effectively absent rather
-        // than wrap the sidecar allowance past either end of the range and collapse the cap onto its floor.
-        yield return new TestCaseData(Cancun.Instance, null, long.MaxValue, 1)
-            .SetName("Keeps a blob tx when MaxBlobTxSize would overflow the sidecar allowance");
-        yield return new TestCaseData(Cancun.Instance, null, long.MinValue, 1)
-            .SetName("Keeps a blob tx when MaxBlobTxSize is negative");
-    }
-
-    private static IEnumerable<TestCaseData> MaxBlobCountCases()
-    {
-        yield return new TestCaseData(Cancun.Instance)
-            .SetName("Keeps a six-blob tx at the boundary, one proof per blob");
-        yield return new TestCaseData(Prague.Instance)
-            .SetName("Keeps a nine-blob tx at the boundary, one proof per blob");
-        yield return new TestCaseData(Osaka.Instance)
-            .SetName("Keeps a nine-blob tx at the boundary, one EIP-7594 cell proof per cell");
     }
 
     /// <summary>Concatenates already-encoded RLP items behind a single outer sequence (list) prefix.</summary>

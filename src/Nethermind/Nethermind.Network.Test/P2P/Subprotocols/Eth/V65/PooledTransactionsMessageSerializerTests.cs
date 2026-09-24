@@ -13,7 +13,6 @@ using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using Nethermind.Serialization.Rlp;
-using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65;
@@ -113,8 +112,11 @@ public class PooledTransactionsMessageSerializerTests
     }
 
     [Test]
-    public void Skips_an_oversized_item_instead_of_decoding_it()
+    public void Does_not_skip_an_oversized_item_before_decoding_it()
     {
+        // PooledTransactions carries no pre-decode size guard - Eth68ProtocolHandler.ValidateSizeAndType polices
+        // size against the announcement instead. A placeholder item past its type byte is not a real oversized
+        // tx, so a full decode attempt fails as an ordinary RLP error rather than being silently skipped.
         const int maxTxSize = 500;
         Transaction validTxBefore = TransactionsMessageSerializerTests.SimpleSignedTx();
         Transaction validTxAfter = TransactionsMessageSerializerTests.SimpleSignedTx(1);
@@ -124,15 +126,9 @@ public class PooledTransactionsMessageSerializerTests
         byte[] wireBytes = TransactionsMessageSerializerTests.EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes);
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(wireBytes).AsDisposable();
 
-        PooledTransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = maxTxSize });
-        using PooledTransactionsMessage deserialized = serializer.Deserialize(buffer);
+        PooledTransactionsMessageSerializer serializer = new();
 
-        Assert.That(deserialized.Transactions.Count, Is.EqualTo(2), "only the two well-formed txs should survive");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(deserialized.Transactions[0].Hash, Is.EqualTo(validTxBefore.Hash), "the tx before the skip should decode unaffected");
-            Assert.That(deserialized.Transactions[1].Hash, Is.EqualTo(validTxAfter.Hash), "cursor should have resynchronised on the tx after the skip");
-        }
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
     }
 
     private static IEnumerable<PooledTransactionsMessage> GetTransactionMessages() =>
