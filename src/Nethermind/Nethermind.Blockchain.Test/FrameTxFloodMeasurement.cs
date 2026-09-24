@@ -244,7 +244,9 @@ public class FrameTxFloodMeasurement
     /// (300,000), so of the methods this array feeds, only the signature-stuffed ones — refused before they
     /// ever reach that cap — produce a row at that point; every keccak-wide arm is gated by it and
     /// Assert.Ignores instead. The cap bounds mempool validation only, so the signature-stuffed production
-    /// arm runs its recoveries at that ceiling too.</remarks>
+    /// arm runs its recoveries at that ceiling too. <see cref="StuffedSignatureCount"/> floors, and the frame
+    /// keeps <see cref="MinimalFrameGas"/> for itself, so a stuffed row exercises up to one signature less
+    /// validation work than its <c>ceiling=</c> label names: 352,800 runs 350,400.</remarks>
     private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 352_800ul, 500_000ul];
 
     private static readonly int[] AdmissionRates = [50, 100, 150, 200, 250, 300, 350, 400];
@@ -272,8 +274,11 @@ public class FrameTxFloodMeasurement
     /// <see cref="FloodOutcome.MaxLagUs"/> is a running maximum over every submission-lag sample in the
     /// window, so a single scheduling outlier can fail an otherwise-sustained point and forfeit the rest of
     /// the ramp. One retry absorbs a transient outlier without letting the ramp run past a genuine ceiling.
-    /// This changes acceptance from one successful measurement to at least one of two; the summary reports
-    /// how many retries were used so consumers can reject retried ramps.
+    /// This changes acceptance from one successful measurement to at least one of two, which is one-sided:
+    /// a point whose true pass probability is p is accepted with p + (1 - p)p, so a marginal point is
+    /// accepted more often than it holds and the reported capacity is biased up by at most one grid step.
+    /// The summary carries <c>retries_used</c> and <c>capacity_from_retry</c> so a consumer can reject the
+    /// ramps this applies to rather than inferring it.
     /// </summary>
     private const int MaxRatePointRetries = 1;
 
@@ -724,8 +729,12 @@ public class FrameTxFloodMeasurement
         // every row in the ramp needs the after-baseline that only exists once the ramp is over. Rows are
         // still flushed below even if the ramp loop or the after-baseline re-measurement throws, and a
         // throw from the latter can no longer erase a ramp failure already caught below (see `failure`).
-        List<string> rowLines = [];
+        // Each row carries its rate point's verdict, resolved once that point's attempts are over: a retried
+        // point emits a `sustained=no` row at a rate the ramp went on to accept, so `sustained` alone no
+        // longer locates the break. A row whose rate threw mid-attempt keeps `unknown`.
+        List<(string Line, string Accepted)> rowLines = [];
         int retriesUsed = 0;
+        bool capacityFromRetry = false;
 
         Exception? failure = null;
         try
@@ -734,9 +743,12 @@ public class FrameTxFloodMeasurement
             {
                 FloodOutcome outcome = default;
                 bool sustained = false;
+                int attemptsUsed = 0;
+                int firstRowOfRate = rowLines.Count;
 
                 for (int attempt = 1; attempt <= MaxRatePointRetries + 1; attempt++)
                 {
+                    attemptsUsed = attempt;
                     if (attempt > 1) retriesUsed++;
                     outcome = measureAtRate(rate);
 
@@ -746,11 +758,12 @@ public class FrameTxFloodMeasurement
 
                     bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
                     sustained = rateHeld && lagBounded;
-                    // Keep the plan's no-backlog condition separate from the existing sustained metric.
+                    // The plan's no-backlog condition, kept separate from `sustained` above because every
+                    // published capacity figure rests on `sustained`'s current meaning.
                     bool sustainedNoBacklog = sustained && pendingPoolStable;
                     double w = Percentile(outcome.ProcessMicros, 0.50);
 
-                    rowLines.Add($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
+                    rowLines.Add(($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
                          + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
                          + $"attempt={attempt} "
                          + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
@@ -761,7 +774,7 @@ public class FrameTxFloodMeasurement
                          + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
                          + $"shed_pct={ShedPct(outcome):F1} "
                          + $"pending_pool_growth={outcome.PendingPoolGrowth} "
-                         + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
+                         + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}", "unknown"));
 
                     Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
                         $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
@@ -772,9 +785,15 @@ public class FrameTxFloodMeasurement
                     if (sustained) break;
                 }
 
+                for (int i = firstRowOfRate; i < rowLines.Count; i++)
+                {
+                    rowLines[i] = (rowLines[i].Line, sustained ? "yes" : "no");
+                }
+
                 if (sustained)
                 {
                     lastSustained = outcome.AchievedRate;
+                    capacityFromRetry = attemptsUsed > 1;
                 }
                 else
                 {
@@ -822,7 +841,7 @@ public class FrameTxFloodMeasurement
             }
         }
 
-        foreach (string rowLine in rowLines) Emit($"{rowLine} {driftFields}");
+        foreach ((string line, string accepted) in rowLines) Emit($"{line} accepted={accepted} {driftFields}");
 
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
 
@@ -836,6 +855,7 @@ public class FrameTxFloodMeasurement
              + $"capacity_upper={(censored ? "unbounded" : capacityUpper.ToString("F1"))} "
              + $"censored={(censored ? "yes" : "no")} "
              + $"basis=bounded_submission_lag retries_used={retriesUsed} "
+             + $"capacity_from_retry={(capacityFromRetry ? "yes" : "no")} "
              + $"max_rate_point_retries={MaxRatePointRetries} note=B_not_fixed {driftFields}");
 
         using (Assert.EnterMultipleScope())
