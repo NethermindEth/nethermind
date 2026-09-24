@@ -25,6 +25,7 @@ This repository contains a dedicated workflow for reproducible payload benchmark
   - replacing `<<DELAY>>`
   - renaming scenario key `nethermind:` to a detailed scenario name
   - appending user-provided extra flags under `extra_flags:`
+  - replacing the Docker CPU quota with affinity: `cpuset` keeps `resources.cpu` of its CPUs as whole cores (SMT siblings read from sysfs), then `resources.cpu=0` removes the quota, because quota throttling adds run-to-run variance; these runs use a separate master metrics cache from earlier quota-limited runs
 - Installs `expb` via `uv tool install --force --from ... expb`.
 - Runs `expb execute-scenarios` with per-payload metrics and logs.
 - Handles termination gracefully with cleanup grace period.
