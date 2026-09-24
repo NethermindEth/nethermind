@@ -742,17 +742,21 @@ internal static partial class TrieUpdater<TKey, TPath>
         writer.ReserveFirstBuffer(reader.PayloadLength);
         ComposeFrameBuffer frames = default;
         // A left child's preimage waits here, one slice per frame, until its sibling is written and both can be hashed at once.
-        Span<byte> pendingPreimages = stackalloc byte[(PbtFourLevelGroupGeometry.LevelsPerGroup + 1) * PbtNodeCodec.MaxBranchPreimageLength];
+        Span<byte> pendingPreimages = stackalloc byte[(PbtFourLevelGroupGeometry.LevelsPerGroup + 2) * PbtNodeCodec.MaxBranchPreimageLength];
         int frameCount = 1;
-        TraversalSubtree result = default;
+        TraversalSubtree prevSubtree = default;
         while (frameCount != 0)
         {
+            // The top of the stack: the position being visited, which is prevSubtree's parent when one of its children has just completed.
             ref ComposeFrame frame = ref frames[frameCount - 1];
             Span<byte> leftPreimage = pendingPreimages.Slice((frameCount - 1) * PbtNodeCodec.MaxBranchPreimageLength, PbtNodeCodec.MaxBranchPreimageLength);
             int position = frame.Path.Position;
             int width = frame.Path.Width;
             if (frame.Stage == ComposeStage.LeftCompleted)
             {
+                // Back up from the left child, whose node is in prevSubtree. With no right child, that node rises to
+                // this position. Otherwise the walk goes down the right child, after writing the left node; with no
+                // left node, the right one rises here instead.
                 // Establish right occupancy without decoding it, so the left root can be emitted first.
                 uint rightMask = ((1u << (width - 1)) - 1) << (position - width + 1);
                 if (((frontier.Mask | copies) & rightMask) == 0)
@@ -761,44 +765,50 @@ internal static partial class TrieUpdater<TKey, TPath>
                     continue;
                 }
 
-                bool promoteRight = result.IsEmpty;
-                if (!promoteRight)
+                if (prevSubtree.IsEmpty)
+                {
+                    // With no left node, the right child's node rises to this position.
+                    frame.Stage = ComposeStage.OnlyRightCompleted;
+                }
+                else
                 {
                     // A leaf child is not written; the branch composed below inlines its key.
-                    frame.LeftIsLeaf = result.IsLeaf;
-                    if (result.IsLeaf) frame.LeftKey = result.Node.LeafKey;
-                    frame.LeftHash = writer.Write(path, position - width, reader.BitDepth + frame.Path.Length + 1, ref result, metrics, leftPreimage, out frame.LeftPreimageLength);
+                    frame.LeftIsLeaf = prevSubtree.IsLeaf;
+                    if (prevSubtree.IsLeaf) frame.LeftKey = prevSubtree.Node.LeafKey;
+                    frame.LeftHash = writer.Write(path, position - width, reader.BitDepth + frame.Path.Length + 1, ref prevSubtree, metrics, leftPreimage, out frame.LeftPreimageLength);
                     frame.Stage = ComposeStage.RightCompleted;
                 }
-                if (width == 2)
-                {
-                    result = TakeSubtree(ref reader, writer, path, ref frontier, copies, BoundaryPosition(frame.Path.Slot + 1));
-                    if (promoteRight) frameCount--;
-                }
-                else if (promoteRight)
-                    frame = new(frame.Path.Right);
-                else
-                    frames[frameCount++] = new(frame.Path.Right);
+                frames[frameCount] = new(frame.Path.Right);
+                frameCount++;
+                continue;
+            }
+            if (frame.Stage == ComposeStage.OnlyRightCompleted)
+            {
+                // Back up from the right child of a position with no left node: its node returns up to the parent frame as it is.
+                frameCount--;
                 continue;
             }
             if (frame.Stage == ComposeStage.RightCompleted)
             {
-                bool rightIsLeaf = result.IsLeaf;
-                TKey rightKey = rightIsLeaf ? result.Node.LeafKey : default;
+                // Back up from the right child with both children present: write the right one and return the branch
+                // over the two up to the parent frame.
+                bool rightIsLeaf = prevSubtree.IsLeaf;
+                TKey rightKey = rightIsLeaf ? prevSubtree.Node.LeafKey : default;
                 Span<byte> rightPreimage = pendingPreimages[^PbtNodeCodec.MaxBranchPreimageLength..];
-                ValueHash256 rightHash = writer.Write(path, position - 1, reader.BitDepth + frame.Path.Length + 1, ref result, metrics, rightPreimage, out int rightPreimageLength);
+                ValueHash256 rightHash = writer.Write(path, position - 1, reader.BitDepth + frame.Path.Length + 1, ref prevSubtree, metrics, rightPreimage, out int rightPreimageLength);
                 HashPending(leftPreimage[..frame.LeftPreimageLength], ref frame.LeftHash, rightPreimage[..rightPreimageLength], ref rightHash, metrics);
                 byte leafChildren = (byte)((frame.LeftIsLeaf ? Subtree.LeftLeaf : 0) | (rightIsLeaf ? Subtree.RightLeaf : 0));
-                result = new TraversalSubtree(path, new Subtree(frame.Path, frame.LeftHash, rightHash, frame.LeftKey, rightKey, leafChildren));
+                prevSubtree = new TraversalSubtree(path, new Subtree(frame.Path, frame.LeftHash, rightHash, frame.LeftKey, rightKey, leafChildren));
                 frameCount--;
                 continue;
             }
-            result = TakeSubtree(ref reader, writer, path, ref frontier, copies, position);
-            if (!result.IsEmpty)
+            // First visit, going down: a node held at this position is the whole subtree, returned up as it is.
+            prevSubtree = TakeSubtree(ref reader, writer, path, ref frontier, copies, position);
+            if (!prevSubtree.IsEmpty)
             {
                 // An internal frontier entry is an unchanged subtree reached from the original input.
                 // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
-                if (!result.IsLeaf)
+                if (!prevSubtree.IsLeaf)
                 {
                     int copied = reader.CopyRange(path, writer, position - 2 * width + 2, position);
                     if (copied != 0) metrics?.AddBulkCopy(copied);
@@ -806,15 +816,20 @@ internal static partial class TrieUpdater<TKey, TPath>
                 frameCount--;
                 continue;
             }
+            // A boundary slot has no children to go down into, so it returns up empty.
+            if (frame.Path.Length == PbtFourLevelGroupGeometry.LevelsPerGroup)
+            {
+                frameCount--;
+                continue;
+            }
 
+            // Nothing is held here, so keep going down the left child.
             frame.Stage = ComposeStage.LeftCompleted;
-            if (width == 2)
-                result = TakeSubtree(ref reader, writer, path, ref frontier, copies, BoundaryPosition(frame.Path.Slot));
-            else
-                frames[frameCount++] = new(frame.Path.Left);
+            frames[frameCount] = new(frame.Path.Left);
+            frameCount++;
         }
         frontier.ReturnResults();
-        return result;
+        return prevSubtree;
     }
 
     /// <summary>Hashes the sibling preimages left pending by <see cref="PbtNodeGroupWriter{TPath}.Write{TKey}(in PbtTraversalPath, int, int, ref TraversalSubtree, TrieUpdaterMetrics?, scoped Span{byte}, out int)"/>, together when both are pending.</summary>
@@ -838,7 +853,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted }
+    private enum ComposeStage : byte { Descend, LeftCompleted, RightCompleted, OnlyRightCompleted }
 
     private struct ComposeFrame(NodeGroupPath path)
     {
@@ -851,7 +866,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal bool LeftIsLeaf;
     }
 
-    [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup)]
+    [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup + 1)]
     private struct ComposeFrameBuffer
     {
         private ComposeFrame _element;
