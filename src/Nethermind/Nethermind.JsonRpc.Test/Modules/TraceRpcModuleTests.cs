@@ -84,19 +84,28 @@ public class TraceRpcModuleTests
 
     [Test]
     [NonParallelizable]
-    public async Task Trace_get_disposes_materialized_stream()
+    public async Task Trace_get_disposes_materialized_stream([Values] bool replayFails)
     {
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         IJsonRpcConfig config = blockchain.Container.Resolve<IJsonRpcConfig>();
         config.EnableTracingStreamMode = true;
+        // A zero timeout cancels the replay as soon as it starts.
+        if (replayFails) config.Timeout = 0;
         using CancellationTokenSource timeout = TimeoutTest.RentTrackingTimeoutSourceForNextRequest();
+        Hash256 txHash = blockchain.BlockTree.Head!.Transactions[0].Hash!;
 
-        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_get(
-            blockchain.BlockTree.Head!.Transactions[0].Hash!, [-1]);
+        if (replayFails)
+        {
+            Assert.That(() => context.TraceRpcModule.trace_get(txHash, [-1]), Throws.InstanceOf<OperationCanceledException>());
+        }
+        else
+        {
+            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_get(txHash, [-1]);
+            Assert.That(result.Data.Count(), Is.EqualTo(1));
+        }
 
-        Assert.That(result.Data.Count(), Is.EqualTo(1));
         Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
     }
 
@@ -114,12 +123,14 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public void Trace_get_selects_valid_positions([Values(long.MinValue, -2L, -1L, 0L, 1L, 2L, long.MaxValue)] long position)
+    public void Trace_get_selects_valid_and_skips_out_of_range_positions(
+        [Values(0, 3)] int length,
+        [Values(long.MinValue, -2L, -1L, 0L, 1L, 2L, long.MaxValue)] long position)
     {
-        ParityTxTraceFromStore[] traces = Enumerable.Range(0, 3)
+        ParityTxTraceFromStore[] traces = Enumerable.Range(0, length)
             .Select(_ => ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace { Action = new ParityTraceAction() }).Single()).ToArray();
         using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
-        ParityTxTraceFromStore[] expected = position is >= -1 and < 2 ? [traces[position + 1]] : [];
+        ParityTxTraceFromStore[] expected = position >= -1 && position < length - 1 ? [traces[position + 1]] : [];
 
         Assert.That(TraceRpcModule.ExtractPositionsFromTxTrace([position], result), Is.EqualTo(expected));
     }

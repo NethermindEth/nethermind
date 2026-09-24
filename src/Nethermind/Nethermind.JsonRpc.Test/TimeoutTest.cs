@@ -53,5 +53,4 @@ internal static class TimeoutTest
             base.Dispose(disposing);
         }
     }
-
 }
