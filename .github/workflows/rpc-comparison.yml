@@ -42,6 +42,16 @@ on:
         description: "APIs to exclude from rpc_int (-x), comma-separated. Empty to exclude nothing."
         default: "erigon_,bor_,ots_,parity_,eth_protocolVersion"
         required: false
+      include_apis:
+        type: string
+        description: "Only run APIs matching these patterns (rpc_int -a), comma-separated, e.g. 'trace_'. Empty to run all."
+        default: ""
+        required: false
+      rpc_tests_ref:
+        type: string
+        description: "Git ref (branch/tag/SHA) of NethermindEth/rpc-tests to run the fixtures from."
+        default: "main"
+        required: false
       max_failures:
         type: string
         description: "Stop rpc_int after this many failures (-M); 0 = unlimited."
@@ -586,7 +596,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: NethermindEth/rpc-tests
-          ref: main
+          ref: ${{ inputs.rpc_tests_ref }}
 
       - name: Setup Go environment
         uses: actions/setup-go@v6
@@ -599,6 +609,8 @@ jobs:
         run: make rpc_int
 
       - name: Run rpc_int
+        # Bounded so a stalled request still leaves time for the results upload below.
+        timeout-minutes: 240
         env:
           NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
           # Resolved reference: spawned Geth / spawned reference Nethermind / provided URL.
@@ -606,6 +618,7 @@ jobs:
           RPC_FLAG: ${{ needs.verify_correctness_of_setup.outputs.rpc_flag }}
           NETWORK: ${{ inputs.network }}
           EXCLUDE_APIS: ${{ inputs.exclude_apis }}
+          INCLUDE_APIS: ${{ inputs.include_apis }}
           MAX_FAILURES: ${{ inputs.max_failures }}
           IGNORE_ERROR_MESSAGES: ${{ inputs.ignore_error_messages }}
         run: |
@@ -625,6 +638,8 @@ jobs:
           # Exclude APIs only when a non-empty list is provided.
           exclude=()
           [ -n "$EXCLUDE_APIS" ] && exclude=(-x "$EXCLUDE_APIS")
+          include=()
+          [ -n "$INCLUDE_APIS" ] && include=(-a "$INCLUDE_APIS")
 
           # Ignore error-message text only when comparing against a live reference node.
           # Regression mode (no reference, comparing against the committed fixtures) always
@@ -635,7 +650,7 @@ jobs:
           # Default pass: historical (non-latest) tests, which pin explicit block numbers.
           set +e
           ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
-            "${exclude[@]}" "${err_opt[@]}" -M "$MAX_FAILURES" -c -f -R rpc-results/report.csv | tee rpc-results/output.txt
+            "${exclude[@]}" "${include[@]}" "${err_opt[@]}" -M "$MAX_FAILURES" -c -f -R rpc-results/report.csv | tee rpc-results/output.txt
           rc=${PIPESTATUS[0]}
           set -e
           echo "rpc_int exit code: $rc"
@@ -650,7 +665,7 @@ jobs:
           if [ -n "$REFERENCE_URL" ]; then
             set +e
             ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
-              "${exclude[@]}" "${err_opt[@]}" -L -M "$MAX_FAILURES" -c -f -R rpc-results/report-latest.csv | tee rpc-results/output-latest.txt
+              "${exclude[@]}" "${include[@]}" "${err_opt[@]}" -L -M "$MAX_FAILURES" -c -f -R rpc-results/report-latest.csv | tee rpc-results/output-latest.txt
             rc_latest=${PIPESTATUS[0]}
             set -e
             echo "rpc_int (latest) exit code: $rc_latest"
