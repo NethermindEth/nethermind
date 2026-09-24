@@ -37,7 +37,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -872,7 +871,7 @@ public partial class EthRpcModule(
             case FilterType.LogFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id).ToArray())
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id))
                         : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
                 }
             default:
