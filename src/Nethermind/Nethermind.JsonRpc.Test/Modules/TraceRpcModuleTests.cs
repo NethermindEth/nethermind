@@ -108,6 +108,18 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_block_returns_no_traces_for_genesis([Values("earliest", "0x0")] string blockParameter, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_block", blockParameter);
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","result":[],"id":67}"""));
+    }
+
+    [Test]
     public async Task Trace_filter_returns_error_for_missing_state(
         [Values] bool streaming, [Values(0, 1, 2)] int missingStateOffset)
     {
