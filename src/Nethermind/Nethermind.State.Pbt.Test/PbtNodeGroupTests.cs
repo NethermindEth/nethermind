@@ -1262,16 +1262,13 @@ public class PbtNodeGroupTests
                 }
                 else
                 {
-                    result = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, 0, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
+                    result = scenario == 0 ? default : TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, 0, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
                     using (Assert.EnterMultipleScope())
                     {
-                        Assert.That(frontier.Mask & (1u << TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0)), Is.Zero, "a taken entry leaves the mask");
                         Assert.That(result.IsEmpty, Is.EqualTo(scenario == 0));
                         Assert.That(result.Copy.IsEmpty, Is.EqualTo(scenario != 1), "a stored node is taken as its bytes");
                         Assert.That(result.IsLeaf, Is.EqualTo(scenario == 2), "a fold's result is taken as composed");
                     }
-                    scoped TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree second = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeSubtree(ref reader, writer, groupPath, ref frontier, 0, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0));
-                    Assert.That(second.IsEmpty, Is.True, "the mask, not the entry, marks consumption, so carried nodes and source positions alike are taken once");
                 }
             }
 

@@ -668,17 +668,16 @@ internal static partial class TrieUpdater<TKey, TPath>
             left.LeafHash, right.LeafHash, left.LeafKey, right.LeafKey, Subtree.LeftLeaf | Subtree.RightLeaf, prefix);
     }
 
-    /// <summary>Takes the boundary node a fold is about to descend into, leaving its slot free for the result.</summary>
+    /// <summary>Takes the boundary node a fold is about to descend into, which <see cref="SetBoundary"/> then replaces with the fold's result.</summary>
     internal static BoundaryNode TakeBoundary(scoped ref GroupFrameReader<TKey, TPath> reader, scoped in PbtTraversalPath path,
         scoped ref Frontier frontier, int slot)
     {
         uint bit = 1u << BoundaryPosition(slot);
         if ((frontier.Mask & bit) == 0) return default;
-        frontier.Mask &= ~bit;
         return frontier.TakeBoundaryNode(ref reader, path, slot);
     }
 
-    /// <summary>Takes the node composition stores at <paramref name="position"/>, or empty when neither <paramref name="copies"/> nor the frontier holds one.</summary>
+    /// <summary>Takes the node composition holds at <paramref name="position"/>, which <paramref name="copies"/> or the frontier must mark.</summary>
     /// <remarks>
     /// A position in <paramref name="copies"/> is a stored node with no touched slot under it, copied straight from the
     /// frame. Otherwise the frontier hands out a boundary node, a fold's result or a direct copy; this is where each
@@ -690,11 +689,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped ref Frontier frontier, uint copies, int position)
     {
         uint bit = 1u << position;
-        if (((frontier.Mask | copies) & bit) == 0) return default;
+        Debug.Assert(((frontier.Mask | copies) & bit) != 0, "Only a held position is taken.");
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
         if ((copies & bit) != 0) return new TraversalSubtree(path, reader.TakeDirectCopy(path, position));
 
-        frontier.Mask &= ~bit;
         int slot = PbtFourLevelGroupGeometry.LocalPathOf(position).Slot;
         ref readonly DecompositionEntry entry = ref frontier.Entries[slot];
         switch (entry.Source)
@@ -739,6 +737,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped ref Frontier frontier)
     {
         uint copies = frontier.Copies;
+        uint frontierMask = frontier.Mask;
         writer.ReserveFirstBuffer(reader.PayloadLength);
         ComposeFrameBuffer frames = default;
         // A left child's preimage waits here, one slice per frame, until its sibling is written and both can be hashed at once.
@@ -751,15 +750,48 @@ internal static partial class TrieUpdater<TKey, TPath>
             ref ComposeFrame frame = ref frames[frameCount - 1];
             Span<byte> leftPreimage = pendingPreimages.Slice((frameCount - 1) * PbtNodeCodec.MaxBranchPreimageLength, PbtNodeCodec.MaxBranchPreimageLength);
             int position = frame.Path.Position;
-            int width = frame.Path.Width;
+            if (frame.Stage == ComposeStage.Descend)
+            {
+                // First visit, going down. A position is held only when no slot under it was touched: a direct copy,
+                // or a frontier entry (a boundary node, a fold's result, or an untouched block). Its node is then the
+                // whole subtree, returned up as it is. A node the group stores above a touched slot is never held, so
+                // the walk goes down past it and rebuilds it from its children.
+                if (((frontierMask | copies) & (1u << position)) != 0)
+                {
+                    prevSubtree = TakeSubtree(ref reader, writer, path, ref frontier, copies, position);
+                    Debug.Assert(!prevSubtree.IsEmpty, "A held position always has a node.");
+                    // An internal frontier entry is an unchanged subtree reached from the original input.
+                    // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
+                    if (!prevSubtree.IsLeaf)
+                    {
+                        int copied = reader.CopyRange(path, writer, position - 2 * frame.Path.Width + 2, position);
+                        if (copied != 0) metrics?.AddBulkCopy(copied);
+                    }
+                    frameCount--;
+                    continue;
+                }
+                // A boundary slot has no children to go down into, so it returns up empty.
+                if (frame.Path.Length == PbtFourLevelGroupGeometry.LevelsPerGroup)
+                {
+                    prevSubtree = default;
+                    frameCount--;
+                    continue;
+                }
+
+                // Nothing is held here, so keep going down the left child.
+                frame.Stage = ComposeStage.AwaitingLeft;
+                frames[frameCount] = new(frame.Path.Left);
+                frameCount++;
+                continue;
+            }
             if (frame.Stage == ComposeStage.AwaitingLeft)
             {
                 // Back up from the left child, whose node is in prevSubtree. With no right child, that node rises to
                 // this position. Otherwise the walk goes down the right child, after writing the left node; with no
                 // left node, the right one rises here instead.
                 // Establish right occupancy without decoding it, so the left root can be emitted first.
-                uint rightMask = ((1u << (width - 1)) - 1) << (position - width + 1);
-                if (((frontier.Mask | copies) & rightMask) == 0)
+                uint rightMask = ((1u << (frame.Path.Width - 1)) - 1) << (position - frame.Path.Width + 1);
+                if (((frontierMask | copies) & rightMask) == 0)
                 {
                     frameCount--;
                     continue;
@@ -775,7 +807,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                     // A leaf child is not written; the branch composed below inlines its key.
                     frame.LeftIsLeaf = prevSubtree.IsLeaf;
                     if (prevSubtree.IsLeaf) frame.LeftKey = prevSubtree.Node.LeafKey;
-                    frame.LeftHash = writer.Write(path, position - width, reader.BitDepth + frame.Path.Length + 1, ref prevSubtree, metrics, leftPreimage, out frame.LeftPreimageLength);
+                    frame.LeftHash = writer.Write(path, position - frame.Path.Width, reader.BitDepth + frame.Path.Length + 1, ref prevSubtree, metrics, leftPreimage, out frame.LeftPreimageLength);
                     frame.Stage = ComposeStage.AwaitingRight;
                 }
                 frames[frameCount] = new(frame.Path.Right);
@@ -802,31 +834,6 @@ internal static partial class TrieUpdater<TKey, TPath>
                 frameCount--;
                 continue;
             }
-            // First visit, going down: a node held at this position is the whole subtree, returned up as it is.
-            prevSubtree = TakeSubtree(ref reader, writer, path, ref frontier, copies, position);
-            if (!prevSubtree.IsEmpty)
-            {
-                // An internal frontier entry is an unchanged subtree reached from the original input.
-                // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
-                if (!prevSubtree.IsLeaf)
-                {
-                    int copied = reader.CopyRange(path, writer, position - 2 * width + 2, position);
-                    if (copied != 0) metrics?.AddBulkCopy(copied);
-                }
-                frameCount--;
-                continue;
-            }
-            // A boundary slot has no children to go down into, so it returns up empty.
-            if (frame.Path.Length == PbtFourLevelGroupGeometry.LevelsPerGroup)
-            {
-                frameCount--;
-                continue;
-            }
-
-            // Nothing is held here, so keep going down the left child.
-            frame.Stage = ComposeStage.AwaitingLeft;
-            frames[frameCount] = new(frame.Path.Left);
-            frameCount++;
         }
         frontier.ReturnResults();
         return prevSubtree;
