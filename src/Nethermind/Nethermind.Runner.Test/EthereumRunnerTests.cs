@@ -84,9 +84,10 @@ public class EthereumRunnerTests
     }
 
     /// <summary>Budget for a single start or stop of a runner under test.</summary>
-    /// <remarks><see cref="MaxTimeAttribute"/> only reports once the test returns, so it cannot end a
-    /// start or stop that never completes; without a bound, one takes the whole assembly into the CI
-    /// hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
+    /// <remarks>This is what fails a smoke case whose steps deadlock on incorrect dependencies. A test-level
+    /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
+    /// has stalled for ~30 s on macOS runners. Without a bound, a start or stop that never completes takes the
+    /// whole assembly into the CI hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
     private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
 
     private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
@@ -165,7 +166,6 @@ public class EthereumRunnerTests
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
-    [MaxTime(20000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
     public async Task Smoke((string file, ConfigProvider configProvider) testCase, int testIndex)
     {
         if (testCase.configProvider is null)
@@ -181,7 +181,6 @@ public class EthereumRunnerTests
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
-    [MaxTime(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
     public async Task Smoke_cancel((string file, ConfigProvider configProvider) testCase, int testIndex)
     {
         if (testCase.configProvider is null)
@@ -445,7 +444,7 @@ public class EthereumRunnerTests
         }
     }
 
-    /// <summary>Reports how long a smoke test phase took, so a case over its <see cref="MaxTimeAttribute"/> names the phase that stalled.</summary>
+    /// <summary>Reports how long a smoke test phase took, so a slow case names the phase that stalled.</summary>
     private static void LogPhase(string name, Stopwatch phaseTimer)
     {
         TestContext.Out.WriteLine($"{name}: {phaseTimer.ElapsedMilliseconds} ms");
