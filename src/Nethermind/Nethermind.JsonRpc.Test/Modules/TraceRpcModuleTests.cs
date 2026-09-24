@@ -275,6 +275,59 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    [NonParallelizable]
+    public async Task Trace_get_disposes_materialized_stream([Values] bool replayFails)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        IJsonRpcConfig config = blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.EnableTracingStreamMode = true;
+        // A zero timeout cancels the replay as soon as it starts.
+        if (replayFails) config.Timeout = 0;
+        using CancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        Hash256 txHash = blockchain.BlockTree.Head!.Transactions[0].Hash!;
+
+        if (replayFails)
+        {
+            Assert.That(() => context.TraceRpcModule.trace_get(txHash, [-1]), Throws.InstanceOf<OperationCanceledException>());
+        }
+        else
+        {
+            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_get(txHash, [-1]);
+            Assert.That(result.Data.Count(), Is.EqualTo(1));
+        }
+
+        Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+    }
+
+    [Test]
+    public async Task Trace_get_preserves_missing_transaction_error()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+
+        string expected = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_transaction", TestItem.KeccakA);
+        string actual = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", TestItem.KeccakA, new long[] { 0 });
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Trace_get_selects_valid_and_skips_out_of_range_positions(
+        [Values(0, 3)] int length,
+        [Values(long.MinValue, -2L, -1L, 0L, 1L, 2L, long.MaxValue)] long position)
+    {
+        ParityTxTraceFromStore[] traces = Enumerable.Range(0, length)
+            .Select(_ => ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace { Action = new ParityTraceAction() }).Single()).ToArray();
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+        ParityTxTraceFromStore[] expected = position >= -1 && position < length - 1 ? [traces[position + 1]] : [];
+
+        Assert.That(TraceRpcModule.ExtractPositionsFromTxTrace([position], result), Is.EqualTo(expected));
+    }
+
+    [Test]
     public async Task Tx_positions_are_fine()
     {
         Context context = new();
