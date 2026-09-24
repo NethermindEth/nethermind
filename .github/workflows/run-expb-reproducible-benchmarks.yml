@@ -941,9 +941,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-${{ matrix.payload_set }}-
+            expb-master-metrics-v4-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -1062,6 +1062,47 @@ jobs:
             -e "s#/mnt/sda/nethermind-flat-25490000#${FLAT_SNAPSHOT_BLOCK_DIR}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
+
+          # Limit the client by affinity instead of the CFS quota, whose throttling adds run-to-run
+          # variance: keep resources.cpu CPUs of the cpuset, as whole cores so no SMT sibling is shared.
+          expand_cpus() {
+            local part
+            local -a parts
+            IFS=',' read -ra parts <<< "$1"
+            for part in "${parts[@]}"; do
+              if [[ "${part}" == *-* ]]; then seq "${part%-*}" "${part#*-}"; elif [[ -n "${part}" ]]; then echo "${part}"; fi
+            done
+          }
+          topology="${CPU_TOPOLOGY_DIR:-/sys/devices/system/cpu}"
+          cpu_count="$("${YQ}" -r '.resources.cpu // 0' "${RENDERED_CONFIG_FILE}")"
+          cpuset="$("${YQ}" -r '.resources.cpuset // ""' "${RENDERED_CONFIG_FILE}")"
+          [[ "${cpu_count}" =~ ^[0-9]+$ ]] || { echo "::error::resources.cpu must be a whole number of CPUs, got '${cpu_count}'."; exit 1; }
+          if (( cpu_count > 0 )); then
+            [[ -n "${cpuset}" ]] || { echo "::error::resources.cpu=${cpu_count} needs a resources.cpuset to pin the client to."; exit 1; }
+            mapfile -t allowed < <(expand_cpus "${cpuset}")
+            if (( cpu_count < ${#allowed[@]} )); then
+              declare -A in_set=() taken=()
+              for cpu in "${allowed[@]}"; do in_set[${cpu}]=1; done
+              for cpu in "${allowed[@]}"; do
+                [[ -n "${taken[${cpu}]:-}" ]] && continue
+                siblings_file="${topology}/cpu${cpu}/topology/thread_siblings_list"
+                [[ -r "${siblings_file}" ]] || { echo "::error::cannot read ${siblings_file} to pin whole cores."; exit 1; }
+                core=()
+                while read -r sibling; do
+                  [[ -n "${in_set[${sibling}]:-}" ]] && core+=("${sibling}")
+                done < <(expand_cpus "$(< "${siblings_file}")")
+                (( ${#taken[@]} + ${#core[@]} <= cpu_count )) || continue
+                for sibling in "${core[@]}"; do taken[${sibling}]=1; done
+              done
+              (( ${#taken[@]} == cpu_count )) || { echo "::error::cannot pick ${cpu_count} CPUs as whole cores from cpuset ${cpuset}."; exit 1; }
+              cpuset="$(printf '%s\n' "${!taken[@]}" | sort -n | paste -sd, -)"
+              C="${cpuset}" "${YQ}" -i '.resources.cpuset = strenv(C)' "${RENDERED_CONFIG_FILE}"
+            fi
+            echo "Pinned the client to CPUs ${cpuset} for resources.cpu=${cpu_count}."
+          fi
+
+          # Zero disables the CPU quota; omitting cpu would restore EXPB's default quota.
+          "${YQ}" -i '.resources.cpu = 0' "${RENDERED_CONFIG_FILE}"
 
           scenario_key="${SCENARIO_NAME}"
 
@@ -1693,7 +1734,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.run_id }}
+          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -1894,9 +1935,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v3-superblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-superblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-superblocks-
+            expb-master-metrics-v4-superblocks-
 
       - name: Restore master metrics (realblocks)
         id: restore-master-realblocks
@@ -1904,9 +1945,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v3-realblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-realblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-realblocks-
+            expb-master-metrics-v4-realblocks-
 
       - name: Restore master metrics (fusaka)
         id: restore-master-fusaka
@@ -1914,9 +1955,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-fusaka
-          key: expb-master-metrics-v3-fusaka-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-fusaka-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-fusaka-
+            expb-master-metrics-v4-fusaka-
 
       - name: Build PR comparison comment
         id: pr-comment

@@ -401,6 +401,7 @@ public class FlatDbManagerTests
 
     // A historical bundle reads values as of the block but exposes the current trie; executing main-chain blocks
     // over that mix would commit a corrupt state root, so the manager must reject it rather than serve the scope.
+    // The refusal is the unavailability signal the flat scope providers map to a false TryBeginScope.
     [TestCase(ResourcePool.Usage.MainBlockProcessing)]
     [TestCase(ResourcePool.Usage.PostMainBlockProcessing)]
     public async Task GatherSnapshotBundle_below_barrier_rejects_main_block_processing(ResourcePool.Usage usage)
@@ -412,7 +413,7 @@ public class FlatDbManagerTests
         await using FlatDbManager inner = CreateManager();
         HistoricalFlatDbManager manager = WrapHistory(inner);
 
-        Assert.That(() => manager.GatherSnapshotBundle(historicalBlock, usage), Throws.InvalidOperationException);
+        Assert.That(() => manager.GatherSnapshotBundle(historicalBlock, usage), Throws.TypeOf<StateUnavailableException>());
     }
 
     // The per-block marker binds the captured state root; a query below the barrier for the same height but a
@@ -547,7 +548,8 @@ public class FlatDbManagerTests
         _trieNodeCache,
         _resourcePool,
         enableDetailedMetrics: false,
-        new HistoryScopeGate());
+        new HistoryScopeGate(),
+        LimboLogs.Instance);
 
     private void RecordHistoryWindow()
     {

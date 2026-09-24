@@ -59,11 +59,43 @@ def parse_amount(value: str) -> int | None:
         raise ValueError(f"AMOUNT must be a positive integer, got {value!r}")
     return int(value)
 
+def expand_cpus(value: str) -> list[int]:
+    result = []
+    for part in (x.strip() for x in value.split(",") if x.strip()):
+        first, _, last = part.partition("-")
+        result.extend(range(int(first), int(last or first) + 1))
+    return result
+
+def pin_client_cpus(resources: dict) -> None:
+    """Limit the client to resources.cpu CPUs by affinity and drop the CPU quota.
+
+    CFS quota throttling adds run-to-run variance that a cpuset does not. The CPUs are taken from
+    resources.cpuset as whole cores, read from sysfs, so no SMT sibling is shared with other load.
+    """
+    count = resources.get("cpu") or 0
+    if not isinstance(count, int) or count < 0: raise ValueError(f"resources.cpu must be a whole number of CPUs, got {count!r}")
+    if count:
+        cpuset = str(resources.get("cpuset") or "")
+        if not cpuset: raise ValueError(f"resources.cpu={count} needs a resources.cpuset to pin the client to")
+        allowed = expand_cpus(cpuset)
+        if count < len(allowed):
+            topology = Path(get("CPU_TOPOLOGY_DIR", "/sys/devices/system/cpu"))
+            taken: set[int] = set()
+            for cpu in allowed:
+                if cpu in taken: continue
+                core = [s for s in expand_cpus((topology / f"cpu{cpu}" / "topology" / "thread_siblings_list").read_text(encoding="utf-8").strip()) if s in allowed]
+                if len(taken) + len(core) <= count: taken.update(core)
+            if len(taken) != count: raise ValueError(f"cannot pick {count} CPUs as whole cores from cpuset {cpuset}")
+            resources["cpuset"] = ",".join(map(str, sorted(taken)))
+    # Zero disables the CPU quota; omitting cpu would restore EXPB's default quota.
+    resources["cpu"] = 0
+
 def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
     config = json.loads(json.dumps(base))
     amount = parse_amount(get("AMOUNT"))
     for old, new in (("<<DELAY>>", get("DELAY_SECONDS", "0")), ("<<AMOUNT>>", get("AMOUNT")), ("/mnt/sda/expb-data", get("EXPB_DATA_DIR")), ("/mnt/sda/nethermind-flat-snapshot", get("FLAT_SNAPSHOT_DIR")), ("/mnt/sda/nethermind-flat-25490000", get("FLAT_SNAPSHOT_BLOCK_DIR"))):
         config = json.loads(json.dumps(config).replace(old, new))
+    pin_client_cpus(config.setdefault("resources", {}))
     scenarios = config.get("scenarios")
     if not isinstance(scenarios, dict) or not isinstance(scenarios.get("nethermind"), dict): raise ValueError("config has no scenarios.nethermind mapping")
     client = get("CLIENT", "nethermind")

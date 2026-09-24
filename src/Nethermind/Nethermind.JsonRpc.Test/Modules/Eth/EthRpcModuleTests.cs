@@ -42,13 +42,13 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 

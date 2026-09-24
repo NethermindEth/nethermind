@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
@@ -93,15 +92,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction[] txs = block.Transactions;
 
             // Without the parent's state the retrace fails on its first transaction with a misleading execution error.
-            BlockHeader? parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-            if (parent is null || !blockchainBridge.HasStateForBlock(parent))
+            if (!tracerEnv.TryBuildAndOverrideAtTarget(block.Header, null, null, out Scope<ITracer>? scope))
             {
                 return ResultWrapper<ReceiptWithProof>.Fail(
                     $"No state available to re-execute block {block.Header.ToString(BlockHeader.Format.Short)} for a receipt proof",
                     ErrorCodes.ResourceUnavailable);
             }
 
-            using Scope<ITracer> scope = tracerEnv.BuildAndOverride(parent);
+            using Scope<ITracer> _ = scope;
 
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);

@@ -389,14 +389,14 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        ExecutionPayload[] requests = CreateBlockRequestBranch(chain, startingNewPayload, TestItem.AddressD, 1);
+        ExecutionPayload[] requests = await CreateBlockRequestBranch(chain, startingNewPayload, TestItem.AddressD, 1);
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
             Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         }
 
-        ExecutionPayload[] invalidRequests = CreateBlockRequestBranch(chain, requests[0], TestItem.AddressD, 1);
+        ExecutionPayload[] invalidRequests = await CreateBlockRequestBranch(chain, requests[0], TestItem.AddressD, 1);
         foreach (ExecutionPayload r in invalidRequests)
         {
             Block? newBlock = r.TryGetBlock().Data;
@@ -416,7 +416,7 @@ public partial class EngineModuleTests
         Hash256 startingHead = chain.BlockTree.HeadHash!;
 
         ExecutionPayload parentBlockRequest = ExecutionPayload.Create(Build.A.Block.WithNumber(2).TestObject);
-        ExecutionPayload[] requests = CreateBlockRequestBranch(chain, parentBlockRequest, Address.Zero, 7);
+        ExecutionPayload[] requests = await CreateBlockRequestBranch(chain, parentBlockRequest, Address.Zero, 7);
         ResultWrapper<PayloadStatusV1> payloadStatus;
         foreach (ExecutionPayload r in requests)
         {
@@ -487,7 +487,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
-        ExecutionPayload[] requests = CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, 4);
+        ExecutionPayload[] requests = await CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, 4);
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
@@ -524,7 +524,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
-        ExecutionPayload[] requests = CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, 4);
+        ExecutionPayload[] requests = await CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, 4);
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
@@ -675,7 +675,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
-        ExecutionPayload[] requests = CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, 4);
+        ExecutionPayload[] requests = await CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, 4);
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
@@ -683,7 +683,7 @@ public partial class EngineModuleTests
                 BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
         }
 
-        ExecutionPayload[] secondNewPayloads = CreateBlockRequestBranch(chain, startingNewPayload, TestItem.AddressD, 4);
+        ExecutionPayload[] secondNewPayloads = await CreateBlockRequestBranch(chain, startingNewPayload, TestItem.AddressD, 4);
         foreach (ExecutionPayload r in secondNewPayloads)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
@@ -726,13 +726,13 @@ public partial class EngineModuleTests
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        ExecutionPayload[] initialBranchPayloads = CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, initialChainPayloadsCount);
+        ExecutionPayload[] initialBranchPayloads = await CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, initialChainPayloadsCount);
         foreach (ExecutionPayload r in initialBranchPayloads)
         {
             await rpc.engine_newPayloadV1(r);
         }
 
-        ExecutionPayload[] newBranchPayloads = CreateBlockRequestBranch(chain, startingNewPayload, TestItem.AddressD, reorgedChainPayloadCount);
+        ExecutionPayload[] newBranchPayloads = await CreateBlockRequestBranch(chain, startingNewPayload, TestItem.AddressD, reorgedChainPayloadCount);
         foreach (ExecutionPayload r in newBranchPayloads)
         {
             await rpc.engine_newPayloadV1(r);
@@ -763,7 +763,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         Hash256 startingHead = chain.BlockTree.HeadHash!;
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ExecutionPayload[] requests = CreateBlockRequestBranch(chain, ExecutionPayload.Create(chain.BlockTree.Head!), Address.Zero, 7);
+        ExecutionPayload[] requests = await CreateBlockRequestBranch(chain, ExecutionPayload.Create(chain.BlockTree.Head!), Address.Zero, 7);
 
         ResultWrapper<PayloadStatusV1> payloadStatus;
         for (int i = 4; i < requests.Length - 1; i++)
@@ -818,7 +818,7 @@ public partial class EngineModuleTests
         // create 7 block gap
         int gap = 7;
         ExecutionPayload headBlockRequest = ExecutionPayload.Create(chain.BlockTree.Head!);
-        ExecutionPayload[] branchBlocks = CreateBlockRequestBranch(chain, headBlockRequest, Address.Zero, gap + 2);
+        ExecutionPayload[] branchBlocks = await CreateBlockRequestBranch(chain, headBlockRequest, Address.Zero, gap + 2);
         Block[] missingBlocks = new Block[gap];
         for (int i = 0; i < gap; i++)
         {
@@ -911,7 +911,7 @@ public partial class EngineModuleTests
         await chain.BlockProcessingQueue.WaitForBlockProcessing(cancellationToken);
         await bestBlockOnMain;
 
-        bestBeaconBlockRequest = CreateBlockRequest(chain, bestBeaconBlockRequest, Address.Zero);
+        bestBeaconBlockRequest = await CreateBlockRequest(chain, bestBeaconBlockRequest, Address.Zero);
         Assert.That((await rpc.engine_newPayloadV1(bestBeaconBlockRequest)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         using (Assert.EnterMultipleScope())
@@ -1007,9 +1007,9 @@ public partial class EngineModuleTests
         // create block gap from fast sync pivot
         int gap = 7;
         ExecutionPayload[] requests =
-            CreateBlockRequestBranch(chain, ExecutionPayload.Create(syncedHead), Address.Zero, gap);
+            await CreateBlockRequestBranch(chain, ExecutionPayload.Create(syncedHead), Address.Zero, gap);
         // setting up beacon pivot
-        ExecutionPayload pivotRequest = CreateBlockRequest(chain, requests[^1], Address.Zero);
+        ExecutionPayload pivotRequest = await CreateBlockRequest(chain, requests[^1], Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
         Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         Block? pivotBlock = pivotRequest.TryGetBlock().Data;
@@ -1030,7 +1030,7 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // trigger insertion of blocks in cache into block tree by adding new block
-        ExecutionPayload bestBeaconBlockRequest = CreateBlockRequest(chain, pivotRequest, Address.Zero);
+        ExecutionPayload bestBeaconBlockRequest = await CreateBlockRequest(chain, pivotRequest, Address.Zero);
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
         Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // fill in beacon headers until fast headers pivot
@@ -1066,12 +1066,12 @@ public partial class EngineModuleTests
         Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(lastHash));
 
         // send newPayload
-        ExecutionPayload validBlockOnTopOfHead = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload validBlockOnTopOfHead = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(validBlockOnTopOfHead)).Data;
         Assert.That(payloadStatusResponse.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // send block with invalid state root
-        ExecutionPayload blockWithInvalidStateRoot = CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
+        ExecutionPayload blockWithInvalidStateRoot = await CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
         blockWithInvalidStateRoot.StateRoot = TestItem.KeccakB;
         TryCalculateHash(blockWithInvalidStateRoot, out Hash256? hash);
         blockWithInvalidStateRoot.BlockHash = hash;
@@ -1109,12 +1109,12 @@ public partial class EngineModuleTests
         Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(lastHash));
 
         // send newPayload
-        ExecutionPayload validBlockOnTopOfHead = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        ExecutionPayload validBlockOnTopOfHead = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(validBlockOnTopOfHead)).Data;
         Assert.That(payloadStatusResponse.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // send block with invalid state root
-        ExecutionPayload blockWithInvalidStateRoot = CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
+        ExecutionPayload blockWithInvalidStateRoot = await CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
         blockWithInvalidStateRoot.StateRoot = TestItem.KeccakB;
         TryCalculateHash(blockWithInvalidStateRoot, out Hash256? hash);
         blockWithInvalidStateRoot.BlockHash = hash;
