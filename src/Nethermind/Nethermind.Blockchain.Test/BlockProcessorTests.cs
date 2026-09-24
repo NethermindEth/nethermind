@@ -1774,7 +1774,7 @@ public class BlockProcessorTests
         (_, BranchProcessor branchProcessor, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessorAndBranch(parentHeader: parent);
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).TestObject).TestObject;
 
-        Assert.DoesNotThrow(() => branchProcessor.Process(null, [block], options, NullBlockTracer.Instance));
+        Assert.DoesNotThrow(() => branchProcessor.Process(parent, [block], options, NullBlockTracer.Instance));
         Assert.That(stateHeaderProvider.LookupCalls, Is.EqualTo(1), "the branch scope resolves its parent through the header provider");
     }
 
@@ -1789,7 +1789,7 @@ public class BlockProcessorTests
         processor.TransactionsExecuted += () => executed = true;
 
         StateNotRetainedException exception = Assert.Throws<StateNotRetainedException>(() =>
-            branchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance))!;
+            branchProcessor.Process(parent, [block], ProcessingOptions.None, NullBlockTracer.Instance))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -1826,13 +1826,13 @@ public class BlockProcessorTests
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
         Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
-            null,
+            parent,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
 
         Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
-            null,
+            parent,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
@@ -2557,12 +2557,12 @@ public class BlockProcessorTests
 
         if (validationSucceeds)
         {
-            setup.BranchProcessor.Process(null, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance);
+            setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance);
         }
         else
         {
             Assert.Throws<InvalidBlockException>(() =>
-                setup.BranchProcessor.Process(null, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance));
+                setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance));
         }
 
         using (Assert.EnterMultipleScope())
@@ -2582,7 +2582,7 @@ public class BlockProcessorTests
         using IContainer container = setup.Container;
 
         Assert.Throws<InvalidBlockException>(() =>
-            setup.BranchProcessor.Process(null, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance));
+            setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance));
 
         // Nothing re-enters ProcessTransactions here, so this publishes whatever the rejected
         // attempt left staged.
@@ -3137,6 +3137,7 @@ public class BlockProcessorTests
 
     private readonly record struct CanonicalReceiptEventSetup(
         Block Block,
+        BlockHeader Parent,
         ParallelTestBlockAccessListManager BalManager,
         RecordingTransactionProcessedEventHandler Handler,
         IBlockProcessor.IBlockTransactionsExecutor Executor,
@@ -3203,7 +3204,7 @@ public class BlockProcessorTests
             new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()),
             LimboLogs.Instance);
 
-        return new(block, balManager, handler, executor, branchProcessor, container);
+        return new(block, stateHeaderProvider.Parent!, balManager, handler, executor, branchProcessor, container);
     }
 
     [Test]

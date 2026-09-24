@@ -30,7 +30,8 @@ public class BranchProcessorVerdictTests
     [TestCase(true, typeof(InvalidOperationException), TestName = "Process_FailsAfterAnsweredVerdict_ReportsCommitFailure")]
     public void Process_failure_after_the_verdict_is_a_commit_failure_only_once_answered(bool answered, Type expected)
     {
-        Block block = Build.A.Block.WithNumber(1).TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
 
         IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
         blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
@@ -44,7 +45,7 @@ public class BranchProcessorVerdictTests
         branchProcessor.BlockExecuted += (_, e) => e.Answered = answered;
         branchProcessor.BlockProcessed += (_, _) => throw new InvalidBlockException(block, "failed after the verdict");
 
-        Exception thrown = Assert.Catch(() => branchProcessor.Process(Build.A.BlockHeader.TestObject, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance));
+        Exception thrown = Assert.Catch(() => branchProcessor.Process(parent, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance));
 
         Assert.That(thrown, Is.TypeOf(expected));
     }
