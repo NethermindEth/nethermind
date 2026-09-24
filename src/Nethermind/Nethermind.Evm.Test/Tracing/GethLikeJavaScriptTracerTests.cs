@@ -253,6 +253,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [TestCase("5f5f20", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_fallthrough_to_implicit_stop")]
+    // A PUSH truncated by the end of code moves the counter past the code length; the implicit STOP is traced at that counter.
+    [TestCase("5f61ff", "S0:PUSH0,P0:PUSH0,S1:PUSH2,P1:PUSH2,S4:STOP,P4:STOP", 0, TestName = "Callbacks_ordered_truncated_push_to_implicit_stop")]
     [TestCase("5f5f205000", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:POP,P3:POP,S4:STOP,P4:STOP", 0, TestName = "Callbacks_ordered_mid_code_opcode")]
     [TestCase("00", "S0:STOP,P0:STOP", 0, TestName = "Callbacks_ordered_explicit_stop")]
     [TestCase("5f5ff3", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:RETURN,P2:RETURN", 0, TestName = "Callbacks_ordered_explicit_return")]
@@ -260,6 +262,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     // every other failure faults from EndInstructionTraceError, i.e. after postStep.
     [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,F2:REVERT,P2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
     [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_explicit_self_destruct")]
+    // Other implementations call only step (with the error set) and no fault for stack underflow and out of gas; these rows pin current behaviour.
     [TestCase("20", "S0:KECCAK256,P0:KECCAK256,F0:KECCAK256", 1, TestName = "Callbacks_ordered_stack_underflow")]
     [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256,F6:KECCAK256", 1, TestName = "Callbacks_ordered_out_of_gas")]
     [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_jumpi_falls_off_code")]
