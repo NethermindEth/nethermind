@@ -1935,7 +1935,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload resubmitted = blocks[0];
         // Built while the state is still readable; only its submission happens after pruning.
-        ExecutionPayload child = CreateBlockRequest(chain, resubmitted, TestItem.AddressD);
+        ExecutionPayload child = await CreateBlockRequest(chain, resubmitted, TestItem.AddressD);
 
         ForkchoiceStateV1 toGenesis = new(genesisHash, Keccak.Zero, Keccak.Zero);
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(toGenesis)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
