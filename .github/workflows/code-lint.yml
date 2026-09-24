@@ -56,7 +56,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -75,7 +75,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -87,6 +87,25 @@ jobs:
 
       - name: Test code review publication guards
         run: node --test scripts/ci/test-open-code-review.cjs
+
+  expb-script-tests:
+    name: Test EXPB campaign driver
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # The sequential driver owns every pass/fail gate of a multi-image campaign, and a campaign
+      # costs hours of benchmark-runner time. Nothing else exercises its parsing or failure scope.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/expb -p 'test*.py' -v
 
   frame-verify-gas-scripts:
     name: Test frame-verify-gas artifact fetch
@@ -112,7 +131,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -120,3 +139,22 @@ jobs:
       # were production bugs, and nothing else exercises them without a multi-hour run.
       - name: Run script test suites
         run: python -m unittest discover -s scripts/sync -p 'test*.py' -v
+
+  docker-image-labels:
+    name: Check Docker image labels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Without a LABEL in its final stage, a published image carries the base image's OCI
+      # metadata (Ubuntu's), and a label fed by an ARG that the final stage forgot to redeclare
+      # is silently empty. Neither is visible in the Dockerfile diff, only on a built image, so
+      # this builds the final stage of every published Dockerfile and inspects the result.
+      - name: Check the published images' OCI labels
+        run: scripts/check-docker-labels.sh

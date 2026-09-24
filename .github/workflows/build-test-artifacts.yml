@@ -91,7 +91,7 @@ jobs:
         run: tar -C src/Nethermind -cf test-bin.tar artifacts/bin
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-bin-${{ matrix.variant }}-${{ matrix.rid }}
           path: test-bin.tar
