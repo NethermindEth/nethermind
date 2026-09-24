@@ -280,8 +280,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(head);
+        if (!txProcessorSource.TryBuild(head, out IReadOnlyTxProcessingScope? scope))
+        {
+            return ResultWrapper<PreBuiltTxList[]?>.Fail($"No state available for block {head.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+        }
 
+        using IReadOnlyTxProcessingScope _ = scope;
         return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
                 Keccak.OfAnEmptySequenceRlp,

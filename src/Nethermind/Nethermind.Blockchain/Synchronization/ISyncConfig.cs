@@ -148,7 +148,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = nameof(ITunableDb.TuneType.EnableBlobFiles), HiddenFromDocs = true)]
     ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
 
-    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors.", DefaultValue = "0")]
+    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors. Snap and state sync allow up to twice this many in-flight requests while limiting concurrent response processing to this value.", DefaultValue = "0")]
     public int MaxProcessingThreads { get; set; }
 
     [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]

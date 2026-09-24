@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Buffers;
@@ -14,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
@@ -22,6 +24,56 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
     [TestFixture]
     public class ParityTxTraceFromReplayConverterTest : ParityLikeTxTraceSerializationTestBase
     {
+        [TestCase("0x00", "0x0")]
+        [TestCase("0x01", "0x1")]
+        [TestCase("0x0f", "0xf")]
+        [TestCase("0x10", "0x10")]
+        [TestCase("0x2a", "0x2a")]
+        [TestCase("0x0100", "0x100")]
+        [TestCase("0x8000000000000000000000000000000000000000000000000000000000000000", "0x8000000000000000000000000000000000000000000000000000000000000000")]
+        [TestCase("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+        public void Vm_stack_words_are_quantities_while_code_and_memory_are_data(string input, string expected)
+        {
+            byte[] word = Bytes.FromHexString(input).PadLeft(32);
+            ParityVmOperationTrace operation = new()
+            {
+                Push = [word],
+                Memory = new ParityMemoryChangeTrace { Data = [0, 1], Offset = 0 },
+                Sub = new ParityVmTrace
+                {
+                    Code = [0, 1],
+                    Operations = [new ParityVmOperationTrace { Push = [word] }]
+                }
+            };
+            ParityLikeTxTrace trace = new()
+            {
+                VmTrace = new ParityVmTrace { Code = [0, 1], Operations = [operation] }
+            };
+
+            string json = new EthereumJsonSerializer().Serialize(new ParityTxTraceFromReplay(trace));
+            using JsonDocument document = JsonDocument.Parse(json);
+            JsonElement vm = document.RootElement.GetProperty("vmTrace");
+            JsonElement op = vm.GetProperty("ops")[0];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(op.GetProperty("ex").GetProperty("push")[0].GetString(), Is.EqualTo(expected));
+                Assert.That(op.GetProperty("sub").GetProperty("ops")[0].GetProperty("ex").GetProperty("push")[0].GetString(), Is.EqualTo(expected));
+                Assert.That(vm.GetProperty("code").GetString(), Is.EqualTo("0x0001"));
+                Assert.That(op.GetProperty("sub").GetProperty("code").GetString(), Is.EqualTo("0x0001"));
+                Assert.That(op.GetProperty("ex").GetProperty("mem").GetProperty("data").GetString(), Is.EqualTo("0x0001"));
+            }
+        }
+
+        [Test]
+        public void Vm_push_preserves_null_and_empty_arrays([Values] bool missing)
+        {
+            ParityVmOperationTrace operation = new();
+            if (!missing) operation.Push = [];
+            string json = new EthereumJsonSerializer().Serialize(operation);
+            using JsonDocument document = JsonDocument.Parse(json);
+            Assert.That(document.RootElement.GetProperty("ex").GetProperty("push").GetRawText(), Is.EqualTo(missing ? "null" : "[]"));
+        }
+
         [Test]
         public void Trace_replay_transaction()
         {

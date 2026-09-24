@@ -42,11 +42,14 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
+using Nethermind.State;
+using static Nethermind.JsonRpc.Test.TimeoutTestHelper;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -61,7 +64,6 @@ public partial class EthRpcModuleTests
     private const string ExpectedHeadTxRawAtIndex1 = "0xf85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb";
     private const string ExpectedFilterLogResponse = """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""";
     private const int LogsStreamEnvelopeEndReserveBytes = 128;
-    private const int TimeoutCancellationTokenPoolSize = 64;
 
     private static string ExpectedFilterLogStreamResponse(string status) =>
         ExpectedFilterLogResponse.Replace(",\"id\":67}", $",\"_streamStatus\":\"{status}\",\"id\":67}}");
@@ -557,6 +559,34 @@ public partial class EthRpcModuleTests
         }
     }
 
+    // HasStateForBlock passes but the read finds the node gone: state this node does not hold (a still-syncing flat
+    // node, #13603) is -32002, while a genuinely missing trie node keeps the Geth-parity -32000.
+    [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block")]
+    [TestCase(false, ErrorCodes.ResourceNotFound, "missing trie node")]
+    public async Task Eth_get_storage_at_missing_trie_node_maps_by_cause(bool stateNotRetained, int expectedCode, string expectedMessage)
+    {
+        using Context ctx = await Context.Create(configurer: builder =>
+            builder.AddDecorator<IStateReader>((_, inner) => new MissingStorageStateReader(inner, stateNotRetained)));
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
+
+        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
+        Assert.That(serialized, Does.Contain(expectedMessage));
+    }
+
+    private sealed class MissingStorageStateReader(IStateReader inner, bool stateNotRetained) : IStateReader
+    {
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) => inner.TryGetAccount(baseBlock, address, out account);
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) =>
+            throw new MissingTrieNodeException($"State for block {baseBlock?.Number} is unavailable", null, TreePath.Empty, Keccak.EmptyTreeHash,
+                stateNotRetained ? new StateNotRetainedException($"No state available for block {baseBlock?.Number}") : null);
+        public byte[]? GetCode(Hash256 codeHash) => inner.GetCode(codeHash);
+        public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
+            inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+        public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
+    }
+
     private static IEnumerable<TestCaseData> EthGetStorageValuesCases()
     {
         string addressA = TestItem.AddressA.Bytes.ToHexString(true);
@@ -770,50 +800,6 @@ public partial class EthRpcModuleTests
         pipe.Reader.AdvanceTo(read.Buffer.End);
         await pipe.Reader.CompleteAsync();
         return serialized;
-    }
-
-    private static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
-    {
-        JsonRpcConfig config = new();
-        List<CancellationTokenSource> rentedTimeouts = new(TimeoutCancellationTokenPoolSize);
-        for (int i = 0; i < TimeoutCancellationTokenPoolSize; i++)
-        {
-            rentedTimeouts.Add(config.BuildTimeoutCancellationToken());
-        }
-
-        for (int i = 0; i < rentedTimeouts.Count; i++)
-        {
-            rentedTimeouts[i].Dispose();
-        }
-
-        TrackingCancellationTokenSource timeout = new();
-        JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-        return timeout;
-    }
-
-    private static void DisposeIfNotAlreadyObserved(TrackingCancellationTokenSource timeout)
-    {
-        if (timeout.DisposeCount == 0)
-        {
-            timeout.Dispose();
-        }
-    }
-
-    private sealed class TrackingCancellationTokenSource : CancellationTokenSource
-    {
-        private int _disposeCount;
-
-        public int DisposeCount => Volatile.Read(ref _disposeCount);
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                Interlocked.Increment(ref _disposeCount);
-            }
-
-            base.Dispose(disposing);
-        }
     }
 
     [Test]
@@ -1884,6 +1870,50 @@ public partial class EthRpcModuleTests
     }
 
 
+    /// <summary>The block-level gas breakdown is diagnostic and outside execution-apis, so a receipt carrying it
+    /// must still serialize to the standard shape in the eth_ namespace.</summary>
+    [Test]
+    public async Task Eth_receipts_omit_the_block_gas_breakdown()
+    {
+        using Context ctx = await Context.Create();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+
+        Block block = Build.A.Block.WithNumber(1).WithTimestamp(10)
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .TestObject;
+
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.WithLogs([]).TestObject;
+        receipt.BlockGasUsed = 10;
+        receipt.ExecutionGasUsed = 11;
+        receipt.StorageGasUsed = 12;
+
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        receiptFinder.Get(Arg.Any<Block>()).Returns([receipt]);
+        receiptFinder.Get(Arg.Any<Hash256>()).Returns([receipt]);
+        blockchainBridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Returns((receipt, 10UL, new(UInt256.One), 0));
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
+
+        using JsonDocument single = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString()));
+        using JsonDocument batch = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getBlockReceipts", "latest"));
+
+        JsonElement[] receipts = [single.RootElement.GetProperty("result"), batch.RootElement.GetProperty("result")[0]];
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (JsonElement element in receipts)
+            {
+                Assert.That(element.GetProperty("gasUsed").GetString(), Is.EqualTo("0x64"), "the standard field still reports the receipt's own gas");
+                Assert.That(element.TryGetProperty("blockGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("executionGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("storageGasUsed", out _), Is.False);
+            }
+        }
+    }
+
     [Test]
     public async Task Eth_get_transaction_receipt_when_block_has_few_receipts()
     {
@@ -2132,6 +2162,62 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task EthSendRawTransactionSync_WhenAlreadyMined_FastPathReturnsReceipt()
     {
+        (Hash256 txHash, string raw, TxReceipt receipt, ITxSender txSender) = CreateAcceptedSyncTransaction();
+
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(txHash)
+            .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
+
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+
+        string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
+
+        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
+        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+    }
+
+    [Test]
+    public async Task EthSendRawTransactionSync_WhenWokenBeforeTxIndexIsPublished_ReturnsReceiptOfSameBlock()
+    {
+        TimeSpan timeout = TimeSpan.FromSeconds(5);
+        (Hash256 txHash, string raw, TxReceipt receipt, ITxSender txSender) = CreateAcceptedSyncTransaction();
+
+        bool txIndexPublished = false;
+        using SemaphoreSlim receiptLookups = new(0);
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(txHash).Returns(_ =>
+        {
+            bool published = Volatile.Read(ref txIndexPublished);
+            receiptLookups.Release();
+            if (published) return (receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0);
+            return (null, 0UL, null, 0);
+        });
+
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+
+        Task<string> syncCall = test.TestEthRpc("eth_sendRawTransactionSync", raw, "5000");
+        Assert.That(await receiptLookups.WaitAsync(timeout), Is.True, "initial receipt lookup");
+        Task waiterSignal = test.HeadBlockSignal.NextHeadTask;
+
+        // Stands in for the receipt storage, which publishes the tx index in BlockAddedToMain. Worst-case
+        // scheduling: a waiter the signal has already released finishes its lookup before the index lands.
+        test.BlockTree.BlockAddedToMain += (_, _) =>
+        {
+            if (waiterSignal.IsCompleted) receiptLookups.Wait(timeout);
+            Volatile.Write(ref txIndexPublished, true);
+        };
+
+        await test.AddBlock();
+        string serialized = await syncCall;
+
+        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
+        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+    }
+
+    private static (Hash256 TxHash, string RawTx, TxReceipt Receipt, ITxSender TxSender) CreateAcceptedSyncTransaction()
+    {
         Transaction tx = Build.A.Transaction
             .WithNonce(3)
             .WithGasLimit(21_000)
@@ -2150,18 +2236,8 @@ public partial class EthRpcModuleTests
         txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
             .Returns((txHash, AcceptTxResult.Accepted));
 
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetTxReceiptInfo(txHash)
-            .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
-
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
-
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
-
-        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
-        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+        return (txHash, raw, receipt, txSender);
     }
 
     [Test]

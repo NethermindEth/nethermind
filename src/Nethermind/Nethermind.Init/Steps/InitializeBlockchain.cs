@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
@@ -69,7 +70,8 @@ namespace Nethermind.Init.Steps
                 _specChangeTxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _txGossipPolicy
+                _txGossipPolicy,
+                frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>()
             );
 
             _api.DisposeStack.Push(txPool);
