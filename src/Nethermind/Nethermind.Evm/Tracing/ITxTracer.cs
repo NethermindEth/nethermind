@@ -82,6 +82,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// - <see cref="ReportStackPush"/>
     /// - <see cref="ReportMemoryChange"/>
     /// - <see cref="ReportGasUpdateForVmTrace"/>
+    /// - <see cref="IStorageTracer.ReportStorageChange(in ReadOnlySpan{byte}, in ReadOnlySpan{byte})"/>
     /// </remarks>
     bool IsTracingInstructions { get; }
 
