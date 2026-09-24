@@ -72,6 +72,66 @@ namespace Nethermind.Db.Test
             Assert.That(options.GetDisableWal(), Is.True);
         }
 
+        [TestCase(null, "async_wal_precreate=true", TestName = "AsyncWalPrecreate_DefaultsToTrue")]
+        [TestCase("async_wal_precreate=false;", "async_wal_precreate=false", TestName = "AsyncWalPrecreate_CanBeDisabled")]
+        [TestCase("recycle_log_file_num=2;", "async_wal_precreate=false", TestName = "AsyncWalPrecreate_IsDisabledWhenWalRecyclingIsEnabled")]
+        public void AsyncWalPrecreate_IsPersistedAndReopened(string? additionalOptions, string expectedAsyncWalOption)
+        {
+            byte[] flushedKey = [1, 2, 3];
+            byte[] flushedValue = [4, 5, 6];
+            byte[] walKey = [7, 8, 9];
+            byte[] walValue = [10, 11, 12];
+            DbConfig config = new();
+            config.AdditionalRocksDbOptions = additionalOptions;
+            config.FlushOnExit = FlushOnExitMode.WalOnly;
+            long sstBytesAfterFlush = 0;
+            int sstFileCountAfterFlush = 0;
+
+            using (IContainer container = CreateRocksDbContainer(config))
+            {
+                using IDb db = container.Resolve<IDbFactory>().CreateDb(GetRocksDbSettings(DbPath, "Blocks"));
+                db.Set(flushedKey, flushedValue);
+
+                // Flush the first record to SST and rotate its WAL before adding the recovery-only record.
+                db.Flush();
+                sstBytesAfterFlush = SstBytes(DbPath);
+                sstFileCountAfterFlush = SstFileCount(DbPath);
+                Assert.That(sstBytesAfterFlush, Is.GreaterThan(0), "the first record must be materialized in SST");
+
+                db.Set(walKey, walValue);
+                db.SyncWal();
+
+                Assert.That(SstBytes(DbPath), Is.EqualTo(sstBytesAfterFlush),
+                    "syncing the WAL must not flush the newer record to SST");
+                Assert.That(SstFileCount(DbPath), Is.EqualTo(sstFileCountAfterFlush),
+                    "the newer record must remain WAL-backed before shutdown");
+
+                string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
+                string decoyOption = expectedAsyncWalOption == "async_wal_precreate=true"
+                    ? "async_wal_precreate=false"
+                    : "async_wal_precreate=true";
+                // A temporary OPTIONS file must not be selected; make its payload contradict the expected value.
+                File.WriteAllText(Path.Combine(fullPath, "OPTIONS-999999.dbtmp"), decoyOption);
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain(expectedAsyncWalOption));
+            }
+
+            long sstBytesBeforeReopen = SstBytes(DbPath);
+            Assert.That(sstBytesBeforeReopen, Is.EqualTo(sstBytesAfterFlush),
+                "WalOnly shutdown must not flush the newer record to SST");
+            Assert.That(SstFileCount(DbPath), Is.EqualTo(sstFileCountAfterFlush),
+                "WalOnly shutdown must leave the newer record WAL-backed");
+
+            using IContainer reopenedContainer = CreateRocksDbContainer(config);
+            using IDb reopened = reopenedContainer.Resolve<IDbFactory>().CreateDb(GetRocksDbSettings(DbPath, "Blocks"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(reopened, flushedKey), Is.EqualTo(flushedValue));
+                Assert.That(GetValue(reopened, walKey), Is.EqualTo(walValue),
+                    "the synced record must be recovered from the WAL after reopen");
+                Assert.That(ReadOptionsFile(DbPath), Does.Contain(expectedAsyncWalOption));
+            }
+        }
+
         [Test]
         public void AvoidUnnecessaryBlockingIo_IsPersistedAndCanBeOverridden()
         {
@@ -902,6 +962,10 @@ namespace Nethermind.Db.Test
                 "the exclusive bound is not in the range, so neither the tombstone nor the unlink may take it");
         }
 
+        private static int SstFileCount(string dbPath) => Directory
+            .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
+            .Count();
+
         private static long SstBytes(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
             .Sum(file => new FileInfo(file).Length);
@@ -947,6 +1011,19 @@ namespace Nethermind.Db.Test
                         $"height {number} of another column must be untouched - the tombstone has to be scoped to its column family");
                 }
             }
+        }
+
+        private IContainer CreateRocksDbContainer(DbConfig config)
+        {
+            InitConfig initConfig = new() { BaseDbPath = DbPath };
+            return new ContainerBuilder()
+                .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
+                .AddSingleton<IDbConfig>(config)
+                .AddSingleton<IInitConfig>(initConfig)
+                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
+                .AddSingleton<ILogManager>(LimboLogs.Instance)
+                .Build();
         }
 
         private static byte[]? GetValue(IReadOnlyKeyValueStore db, ReadOnlySpan<byte> key) => db.Get(key);

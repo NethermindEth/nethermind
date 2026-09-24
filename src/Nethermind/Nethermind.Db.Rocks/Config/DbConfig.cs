@@ -44,6 +44,9 @@ public class DbConfig : IDbConfig
         "compression=kSnappyCompression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
+        // EXPERIMENTAL RocksDB option (default false upstream): enabled here to reduce foreground WAL rotation latency.
+        // RocksDB sanitizes it off when WAL recycling is enabled.
+        "async_wal_precreate=true;" +
         // Defer eligible cleanup from latency-sensitive calling threads.
         "avoid_unnecessary_blocking_io=true;" +
 
