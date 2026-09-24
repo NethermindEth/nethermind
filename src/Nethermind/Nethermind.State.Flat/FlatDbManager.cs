@@ -342,7 +342,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 assembled.Dispose();
                 persistenceReader.Dispose();
 
-                if (!_snapshotRepository.HasState(baseBlock))
+                if (!HasStateForBlock(baseBlock))
                 {
                     throw new StateNotRetainedException($"No state available for block {baseBlock.BlockNumber} with state root {baseBlock.StateRoot}");
                 }

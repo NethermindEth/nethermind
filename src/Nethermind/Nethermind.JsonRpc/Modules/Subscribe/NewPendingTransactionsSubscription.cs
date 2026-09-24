@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ISpecProvider? specProvider,
             ILogManager? logManager,
             TransactionsOption? options = null)
-            : base(jsonRpcDuplexClient)
+            : base(jsonRpcDuplexClient, MaxQueuedEvents)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
