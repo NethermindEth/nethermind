@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         /// <param name="jsonRpcDuplexClient">The client notifications are sent to.</param>
         /// <param name="maxQueuedMessages">Queued sends after which a lagging client is disconnected.</param>
-        protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient, int maxQueuedMessages = MaxQueuedBlocks)
+        protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient, int maxQueuedMessages)
         {
             Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
             JsonRpcDuplexClient = jsonRpcDuplexClient;
@@ -45,12 +45,16 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// <summary>
         /// Queue limit for subscriptions that send once per block (a new head, a block's logs): 30 minutes of 2 s blocks.
         /// </summary>
-        protected internal const int MaxQueuedBlocks = 1_000;
+        /// <remarks>
+        /// Blocks canonicalised in one burst (a sync batch, a deep rewind) are queued at once, so a burst of more
+        /// blocks than this disconnects the client regardless of its speed.
+        /// </remarks>
+        internal const int MaxQueuedBlocks = 1_000;
 
         /// <summary>
-        /// Queue limit for subscriptions that send once per transaction: about 30 s of a busy mempool.
+        /// Queue limit for subscriptions that send once per transaction or p2p message: about 30 s of a busy mempool.
         /// </summary>
-        protected internal const int MaxQueuedTransactions = 10_000;
+        internal const int MaxQueuedEvents = 10_000;
 
         private readonly int _maxQueuedMessages;
         private volatile bool _overflowed;

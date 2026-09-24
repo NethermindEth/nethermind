@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             ITxPool? txPool,
             ILogManager? logManager)
-            : base(jsonRpcDuplexClient, MaxQueuedTransactions)
+            : base(jsonRpcDuplexClient, MaxQueuedEvents)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger<DroppedPendingTransactionsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
