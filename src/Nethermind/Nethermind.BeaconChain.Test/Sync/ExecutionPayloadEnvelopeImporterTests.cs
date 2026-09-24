@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
@@ -298,6 +299,28 @@ public class ExecutionPayloadEnvelopeImporterTests
     }
 
     /// <summary>
+    /// <see cref="ExecutionStatus.Irrelevant"/> is no verdict at all, and <see cref="EngineDriver"/> never
+    /// returns it, so only a faulty notifier can. Counting it as a rejection would blame the envelope's sender for our bug.
+    /// </summary>
+    [Test]
+    public void A_notifier_that_returns_irrelevant_fails_loudly_and_is_not_counted_as_a_rejection()
+    {
+        BeaconStateGloas state = StateWithCommittedBid(out SignedExecutionPayloadBid bid, out Bls.SecretKey builderSk);
+        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
+        INewPayloadNotifier notifier = Substitute.For<INewPayloadNotifier>();
+        notifier.NotifyNewPayload(default!, default!, default!, default!).ReturnsForAnyArgs(ExecutionStatus.Irrelevant);
+        ExecutionPayloadEnvelopeImporter importer = new(new BlockStates().Add(state), notifier, new PubkeyCache(), (_, _) => true, LimboLogs.Instance);
+        long rejectionsBefore = Rejections();
+
+        Assert.That(() => importer.Import(envelope), Throws.InvalidOperationException);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Rejections(), Is.EqualTo(rejectionsBefore));
+            notifier.ReceivedWithAnyArgs(1).NotifyNewPayload(default!, default!, default!, default!);
+        }
+    }
+
+    /// <summary>
     /// Two retained blocks whose post-states committed different bids. Each envelope must be judged
     /// against its own block: availability is asked about that block's bid, the engine is sent that
     /// envelope's payload, and each verdict is the one the engine gave for that payload.
@@ -378,12 +401,7 @@ public class ExecutionPayloadEnvelopeImporterTests
     /// <summary>An importer over the <see cref="EngineDriver"/> the production module wires in front of <paramref name="engine"/>.</summary>
     private ExecutionPayloadEnvelopeImporter CreateImporter(IGloasBlockStateProvider states, IEngineRpcModule engine, Func<Hash256, ExecutionPayloadBid, bool>? isDataAvailable = null, PubkeyCache? pubkeys = null)
     {
-        IContainer container = new ContainerBuilder()
-            .AddModule(new BeaconChainModule())
-            .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig { Enabled = true })
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
-            .AddSingleton(engine) // registered by MergePlugin in production
-            .Build();
+        IContainer container = BeaconChainTestContainer.Builder(engine: engine, config: new BeaconChainConfig { Enabled = true }).Build();
         _containers.Add(container);
         return new ExecutionPayloadEnvelopeImporter(states, container.Resolve<EngineDriver>(), pubkeys ?? new PubkeyCache(), isDataAvailable ?? ((_, _) => true), LimboLogs.Instance);
     }
