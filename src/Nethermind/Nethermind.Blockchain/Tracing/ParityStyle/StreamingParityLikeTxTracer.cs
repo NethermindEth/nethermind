@@ -543,9 +543,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             _writer.WriteStartObject();
             _writer.WritePropertyName("key"u8);
-            WriteHexBytes(_storageKeyBuffer.AsSpan(0, _storageKeyByteCount));
+            ByteArrayConverter.Convert(_writer, _storageKeyBuffer.AsSpan(0, _storageKeyByteCount), skipLeadingZeros: true);
             _writer.WritePropertyName("val"u8);
-            WriteHexBytes(_storageValueBuffer.AsSpan(0, _storageValueByteCount));
+            ByteArrayConverter.Convert(_writer, _storageValueBuffer.AsSpan(0, _storageValueByteCount), skipLeadingZeros: true);
             _writer.WriteEndObject();
         }
         else
@@ -603,9 +603,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             _writer.WriteStartObject();
             _writer.WritePropertyName("key"u8);
-            WriteHexBytes(_storageKeyBuffer.AsSpan(0, _storageKeyByteCount));
+            ByteArrayConverter.Convert(_writer, _storageKeyBuffer.AsSpan(0, _storageKeyByteCount), skipLeadingZeros: true);
             _writer.WritePropertyName("val"u8);
-            WriteHexBytes(_storageValueBuffer.AsSpan(0, _storageValueByteCount));
+            ByteArrayConverter.Convert(_writer, _storageValueBuffer.AsSpan(0, _storageValueByteCount), skipLeadingZeros: true);
             _writer.WriteEndObject();
         }
         else
