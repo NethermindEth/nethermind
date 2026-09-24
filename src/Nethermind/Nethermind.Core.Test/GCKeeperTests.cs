@@ -58,6 +58,46 @@ public class GCKeeperTests
     }
 
     [Test]
+    public void Default_dispatch_enters_region_on_calling_thread_before_returning()
+    {
+        int callerThreadId = Environment.CurrentManagedThreadId;
+        int startThreadId = 0;
+        RegionRuntime runtime = new() { BeforeStart = () => startThreadId = Environment.CurrentManagedThreadId };
+        using GCKeeper keeper = CreateRegionKeeper(runtime);
+
+        IDisposable lease = keeper.TryStartNoGCRegion();
+        using (lease)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(runtime.Starts, Is.EqualTo(1));
+                Assert.That(runtime.IsActive, Is.True);
+                Assert.That(startThreadId, Is.EqualTo(callerThreadId));
+            }
+        }
+
+        Assert.That(runtime.Ends, Is.EqualTo(1));
+    }
+
+    [TestCase(false, TestName = "Default_dispatch_releases_slot_after_declined_entry")]
+    [TestCase(true, TestName = "Default_dispatch_releases_slot_after_entry_exception")]
+    public void Default_dispatch_releases_slot_after_failed_entry(bool throws)
+    {
+        RegionRuntime runtime = new() { Refuse = !throws, Throw = throws };
+        using GCKeeper keeper = CreateRegionKeeper(runtime);
+
+        keeper.TryStartNoGCRegion().Dispose();
+        keeper.TryStartNoGCRegion().Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Starts, Is.EqualTo(2));
+            Assert.That(runtime.Ends, Is.Zero);
+            Assert.That(runtime.IsActive, Is.False);
+        }
+    }
+
+    [Test]
     public async Task Blocked_entry_does_not_hold_up_release_or_queue_more_workers([Values] bool shutdown)
     {
         using ManualResetEventSlim entering = new(false);
@@ -396,7 +436,7 @@ public class GCKeeperTests
         }
     }
 
-    private static GCKeeper CreateRegionKeeper(RegionRuntime runtime, Action<IThreadPoolWorkItem> queue)
+    private static GCKeeper CreateRegionKeeper(RegionRuntime runtime, Action<IThreadPoolWorkItem>? queue = null)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);

@@ -42,8 +42,7 @@ public class GCKeeper : IDisposable
         _logger = logManager.GetClassLogger<GCKeeper>();
         _runtime = runtime;
         _delay = delay ?? TaskExtensions.DelaySafe;
-        // One outstanding entry bounds pool usage without a dedicated thread for each keeper.
-        _queue = queue ?? (static item => ThreadPool.UnsafeQueueUserWorkItem(item, preferLocal: false));
+        _queue = queue ?? (static item => item.Execute());
     }
 
     public void Dispose()
@@ -67,7 +66,7 @@ public class GCKeeper : IDisposable
         }
     }
 
-    /// <summary>Queues no-GC-region entry without waiting for the runtime; disposing the lease ends its protection.</summary>
+    /// <summary>Attempts no-GC-region entry before returning; disposing the lease ends its protection.</summary>
     public IDisposable TryStartNoGCRegion()
     {
         bool eligible = _gcStrategy.CanStartNoGCRegion();

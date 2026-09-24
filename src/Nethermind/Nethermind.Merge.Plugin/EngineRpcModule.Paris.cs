@@ -119,13 +119,11 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                // Start tx-root computation before asynchronous GC-region admission so it can
-                // overlap that work; keep it inside the lock so competing requests cannot run
-                // trie work concurrently.
-                _ = executionPayload.StartTxRootComputation();
+                // Admit GC protection before tx-root work so the region covers that preprocessing too.
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
                 try
                 {
+                    _ = executionPayload.StartTxRootComputation();
                     ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
                     // The answer is out before the block is committed; the region stays for the commit's allocations
                     // and ends when the block leaves the queue, on the thread that sees it leave.
