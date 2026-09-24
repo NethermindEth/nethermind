@@ -41,15 +41,16 @@ public partial class ParallelUnbalancedWorkTests
             scope.Enqueue(new ParallelUnbalancedWork.WorkerScope.WorkQueue(), unrelated);
         ParallelUnbalancedWork.WorkerScope.WorkQueue target = new();
         List<int> results = [];
-        scope.Enqueue(target, new CallbackWork(() => results.Add(1)));
-        scope.Enqueue(target, new CallbackWork(() => results.Add(2)));
-        scope.Enqueue(target, new CallbackWork(() => results.Add(3)));
+        CallbackWork targetWork = new(() => results.Add(results.Count + 1));
+        scope.Enqueue(target, targetWork);
+        scope.Enqueue(target, targetWork, count: 2);
         if (withdraw) Assert.That(scope.Withdraw(target), Is.EqualTo(3));
         while (scope.TryExecute(target)) { }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(results, Is.EqualTo(withdraw ? Array.Empty<int>() : new[] { 1, 2, 3 }), "Withdrawn callbacks must never run.");
             Assert.That(scope.Withdraw(target), Is.Zero);
+            Assert.That(target.Work, Is.Null, "A drained queue must not keep its work item alive.");
             Assert.That(unrelatedCalls, Is.Zero);
         }
         while (scheduled.TryDequeue(out IThreadPoolWorkItem? runner)) runner.Execute();

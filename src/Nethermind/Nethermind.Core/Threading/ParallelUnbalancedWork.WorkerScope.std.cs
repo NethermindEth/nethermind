@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
@@ -46,9 +45,12 @@ public partial class ParallelUnbalancedWork
             context.Scope = this;
         }
 
+        /// <summary>One operation's unstarted callbacks, all the same work item.</summary>
         internal sealed class WorkQueue
         {
-            internal readonly Queue<IThreadPoolWorkItem> Items = new();
+            // Cleared when the last callback is taken or withdrawn, so a drained queue keeps nothing alive.
+            internal IThreadPoolWorkItem? Work;
+            internal int Count;
             internal WorkQueue? Previous;
             internal WorkQueue? Next;
         }
@@ -60,8 +62,13 @@ public partial class ParallelUnbalancedWork
             int schedule;
             lock (root._gate)
             {
-                if (queue.Items.Count == 0) root.AddReady(queue);
-                for (int i = 0; i < count; i++) queue.Items.Enqueue(work);
+                Debug.Assert(queue.Count == 0 || ReferenceEquals(queue.Work, work), "A work queue holds a single work item.");
+                if (queue.Count == 0)
+                {
+                    queue.Work = work;
+                    root.AddReady(queue);
+                }
+                queue.Count += count;
                 root._pending += count;
                 // A yielding runner can drain its own next batch. Already requested runners also
                 // cover pending work, even before the thread pool starts their callbacks.
@@ -81,7 +88,7 @@ public partial class ParallelUnbalancedWork
             IThreadPoolWorkItem work;
             lock (_root._gate)
             {
-                if (queue.Items.Count == 0) return false;
+                if (queue.Count == 0) return false;
                 work = _root.Take(queue);
             }
             Run(work);
@@ -94,9 +101,10 @@ public partial class ParallelUnbalancedWork
         {
             lock (_root._gate)
             {
-                int count = queue.Items.Count;
+                int count = queue.Count;
                 if (count == 0) return 0;
-                queue.Items.Clear();
+                queue.Count = 0;
+                queue.Work = null;
                 _root._pending -= count;
                 _root.Unlink(queue);
                 return count;
@@ -114,12 +122,13 @@ public partial class ParallelUnbalancedWork
 
         private IThreadPoolWorkItem Take(WorkQueue queue)
         {
-            IThreadPoolWorkItem work = queue.Items.Dequeue();
+            IThreadPoolWorkItem work = queue.Work!;
+            if (--queue.Count == 0) queue.Work = null;
             _pending--;
             Unlink(queue);
-            // Rotate ready operations without moving their individual callbacks. Joining a specific
-            // operation uses this same constant-time removal and never executes unrelated callbacks.
-            if (queue.Items.Count > 0) AddReady(queue);
+            // Rotate ready operations without moving their callbacks. Joining a specific operation uses
+            // this same constant-time removal and never executes unrelated callbacks.
+            if (queue.Count > 0) AddReady(queue);
             return work;
         }
 
