@@ -14,6 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Trie;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using System;
@@ -195,7 +196,16 @@ namespace Nethermind.TxPool
                     TimeProvider.System,
                     RequestCurrentSpecRevalidation)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            UpdateBucketsWithoutRevalidation();
+            try
+            {
+                UpdateBucketsWithoutRevalidation();
+            }
+            catch (MissingTrieNodeException e)
+            {
+                // Headers can outlive their state (e.g. after FlatDb.OnRepair=Resync). Unknown state is not an empty
+                // account, so the reloaded buckets and persisted blobs are left as they are; the next head retries.
+                if (_logger.IsWarn) _logger.Warn($"Head state is unavailable; leaving tx pool buckets untouched until the next head. {e.Message}");
+            }
             InitializeValidatedSpec();
 
             _headInfo.HeadChanged += OnHeadChange;

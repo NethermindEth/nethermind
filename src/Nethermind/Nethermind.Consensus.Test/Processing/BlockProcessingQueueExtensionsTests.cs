@@ -16,6 +16,17 @@ public class BlockProcessingQueueExtensionsTests
     private static readonly Hash256 Hash = TestItem.KeccakA;
 
     [Test]
+    public async Task Waiting_for_processing_handles_queue_draining_during_subscription()
+    {
+        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
+        queue.IsEmpty.Returns(false, true);
+
+        await queue.WaitForBlockProcessing().WaitAsync(TimeSpan.FromSeconds(2));
+
+        queue.Received().ProcessingQueueEmpty -= Arg.Any<EventHandler>();
+    }
+
+    [Test]
     public async Task WaitForExecutedCopy_NothingCommitting_ReturnsAtOnce()
     {
         IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
