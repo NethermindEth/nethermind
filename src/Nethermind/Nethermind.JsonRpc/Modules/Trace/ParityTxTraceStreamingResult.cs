@@ -9,12 +9,13 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 [JsonConverter(typeof(ParityTxTraceStreamingResultConverterFactory))]
-public sealed class ParityTxTraceStreamingResult<T> : JsonStreamingResultBase, IEnumerable<T>
+public sealed class ParityTxTraceStreamingResult<T> : JsonStreamingResultBase, IStreamableResultWithStatus, IEnumerable<T>
 {
     private readonly Action<Utf8JsonWriter, PipeWriter?, CancellationToken> _runExecution;
 
@@ -36,6 +37,17 @@ public sealed class ParityTxTraceStreamingResult<T> : JsonStreamingResultBase, I
             : MaterializeForInProcess().GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    async ValueTask IStreamableResult.WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        => await WriteToWithStatusAsync(writer, cancellationToken);
+
+    ValueTask<StreamableResultStatus> IStreamableResultWithStatus.WriteToWithStatusAsync(PipeWriter writer, CancellationToken cancellationToken)
+        => WriteToWithStatusAsync(writer, cancellationToken);
+
+    bool IStreamableResultWithStatus.ReportsCompleteStatus => false;
+
+    private ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, CancellationToken cancellationToken)
+        => WriteJsonToWithStatusAsync(TimeoutToken, Logger, writer, EmitContent, cancellationToken);
 
     protected override void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
     {

@@ -38,6 +38,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     private Block? _block;
     private StreamingParityLikeTxTracer? _reusableTxTracer;
     private ParityTraceTypes _reusableTxTracerTypes;
+    private bool _replayObjectOpen;
 
     public StreamingParityLikeBlockTracer(
         ParityTraceTypes types,
@@ -119,6 +120,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         {
             _writer.WriteStartObject();
             _writer.WritePropertyName("vmTrace"u8);
+            _replayObjectOpen = true;
         }
 
         if (_reusableTxTracer is null || _reusableTxTracerTypes != resolvedTypes)
@@ -197,8 +199,19 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         base.EndBlockTrace();
     }
 
+    /// <remarks>
+    /// When tracing is aborted mid-transaction the replay object opened in <see cref="OnStart"/> is closed with an
+    /// empty tail, so the streamed response stays well-formed JSON.
+    /// </remarks>
     public void Dispose()
     {
+        if (_replayObjectOpen)
+        {
+            if (_reusableTxTracer is null) _writer.WriteNullValue();
+            else _reusableTxTracer.CompleteVmTraceSlot();
+            EmitReplayEnvelopeTail(new ParityLikeTxTrace());
+        }
+
         _reusableTxTracer?.ReleaseResources();
         _reusableTxTracer = null;
     }
@@ -220,8 +233,11 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         }
     }
 
-    private void EmitReplayEnvelopeTail(ParityLikeTxTrace trace) =>
+    private void EmitReplayEnvelopeTail(ParityLikeTxTrace trace)
+    {
         ParityReplayEnvelopeWriter.WriteTail(_writer, trace, _includeTxHash, _jsonOptions);
+        _replayObjectOpen = false;
+    }
 
     private void EmitStoreItems(ParityLikeTxTrace trace)
     {

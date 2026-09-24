@@ -73,6 +73,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private bool _disposed;
 
     private bool _outerOpHasSubWritten;
+    private bool _vmTraceSlotFilled;
+    private bool _suppressWireFlush;
 
     public StreamingParityLikeTxTracer(
         Block block,
@@ -124,6 +126,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
 
         _entriesSinceLastFlush = 0;
+        _vmTraceSlotFilled = false;
 
         if (_fillVmTraceSlot && !IsTracingInstructions)
         {
@@ -421,6 +424,38 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.OnLeaveVmFrame(action); return; }
 
+        LeaveStreamingFrame();
+    }
+
+    /// <summary>
+    /// Leaves the vmTrace frames that are still open and, when nothing was streamed into the
+    /// <c>"vmTrace":</c> slot, writes <c>null</c>, so the slot always holds a complete JSON value.
+    /// </summary>
+    /// <remarks>
+    /// A transaction rejected before execution never enters a frame, and one aborted mid-execution
+    /// leaves frames open; both would otherwise leave the slot without a value. Never flushes, so it
+    /// is safe to call while unwinding a cancelled or failed trace.
+    /// </remarks>
+    public void CompleteVmTraceSlot()
+    {
+        if (!_streamVmTrace || _vmTraceSlotFilled) return;
+
+        _suppressWireFlush = true;
+        while (_streamingFrames.Count > 0)
+        {
+            LeaveStreamingFrame();
+        }
+        _suppressWireFlush = false;
+
+        if (!_vmTraceSlotFilled)
+        {
+            _writer.WriteNullValue();
+            _vmTraceSlotFilled = true;
+        }
+    }
+
+    private void LeaveStreamingFrame()
+    {
         VmFrame frame = PopLast(_streamingFrames);
 
         if (frame.IsSuicide)
@@ -445,6 +480,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         int outerPc = frame.OuterPendingPc;
         ulong outerCost = frame.OuterPendingCost;
         ReturnFrame(frame);
+        _vmTraceSlotFilled |= _streamingFrames.Count == 0;
 
         if (hadPendingParent)
         {
@@ -469,6 +505,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         if (_streamVmTrace)
         {
             FinalizePendingOp(closeWithNullSub: true);
+            CompleteVmTraceSlot();
         }
         ParityTraceAction? action = _trace.Action;
         ParityLikeTxTrace result = base.BuildResult();
@@ -646,7 +683,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
     private void MaybeFlushToWire()
     {
-        if (_pipeWriter is null || _entriesSinceLastFlush < _flushIntervalEntries) return;
+        if (_pipeWriter is null || _suppressWireFlush || _entriesSinceLastFlush < _flushIntervalEntries) return;
         _writer.Flush();
         _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
         _entriesSinceLastFlush = 0;

@@ -46,6 +46,54 @@ public abstract class StreamingResultBase(CancellationTokenSource timeoutCts, IL
         }
     }
 
+    /// <summary>
+    /// Streams <paramref name="emitContent"/> and reports how the stream ended instead of throwing once output has started.
+    /// </summary>
+    /// <remarks>
+    /// Once the success envelope is on the wire a failure can no longer become a JSON-RPC error, so it is logged and
+    /// surfaced through <c>_streamStatus</c>. <paramref name="emitContent"/> must leave well-formed JSON behind when it
+    /// throws; the partial output is flushed as is.
+    /// </remarks>
+    internal static async ValueTask<StreamableResultStatus> WriteJsonToWithStatusAsync(
+        CancellationToken timeoutToken,
+        ILogger logger,
+        PipeWriter writer,
+        Action<Utf8JsonWriter, PipeWriter?, CancellationToken> emitContent,
+        CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutToken, cancellationToken);
+        CancellationToken combinedToken = linkedCts.Token;
+
+        using Utf8JsonWriter jsonWriter = new(writer, WriterOptions);
+
+        StreamableResultStatus status;
+        try
+        {
+            emitContent(jsonWriter, writer, combinedToken);
+            jsonWriter.Flush();
+            await writer.FlushAsync(combinedToken);
+            return StreamableResultStatus.Complete;
+        }
+        catch (OperationCanceledException) when (timeoutToken.IsCancellationRequested)
+        {
+            if (logger.IsDebug) logger.Debug("JSON-RPC streaming timed out mid-response; client receives a partial result with the JSON envelope closed.");
+            status = StreamableResultStatus.Timeout;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (logger.IsDebug) logger.Debug("JSON-RPC streaming cancelled mid-response; client receives a partial result with the JSON envelope closed.");
+            status = StreamableResultStatus.Cancelled;
+        }
+        catch (Exception ex)
+        {
+            if (logger.IsWarn) logger.Warn($"JSON-RPC streaming failed mid-response; client receives a partial result with the JSON envelope closed: {ex}");
+            status = StreamableResultStatus.Failed;
+        }
+
+        jsonWriter.Flush();
+        return status;
+    }
+
     protected static async ValueTask<StreamableResultStatus> WriteToWithStatusAsync(
         CancellationToken timeoutToken,
         ILogger logger,

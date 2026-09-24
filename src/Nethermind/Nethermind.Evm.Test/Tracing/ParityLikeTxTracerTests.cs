@@ -73,6 +73,40 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Streaming_vm_trace_slot_is_complete_json_when_aborted([Range(0, 2)] int openFrames)
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+        writer.WriteStartObject();
+        writer.WritePropertyName("vmTrace"u8);
+        StreamingParityLikeTxTracer tracer = new(
+            block, tx, ParityTraceTypes.VmTrace, writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: true);
+        try
+        {
+            for (int depth = 0; depth < openFrames; depth++)
+            {
+                tracer.ReportAction(100_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, Array.Empty<byte>(),
+                    depth == 0 ? ExecutionType.TRANSACTION : ExecutionType.CALL);
+                tracer.StartOperation(0, Instruction.CALL, 50_000, default);
+            }
+
+            tracer.CompleteVmTraceSlot();
+            writer.WriteEndObject();
+            writer.Flush();
+
+            using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+            JsonElement vmTrace = document.RootElement.GetProperty("vmTrace");
+            Assert.That(vmTrace.ValueKind, Is.EqualTo(openFrames == 0 ? JsonValueKind.Null : JsonValueKind.Object));
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
     private sealed class InputReturningTracer(Block block, Transaction tx, Utf8JsonWriter writer)
         : StreamingParityLikeTxTracer(block, tx, ParityTraceTypes.VmTrace, writer, null, CancellationToken.None, fillVmTraceSlot: false)
     {

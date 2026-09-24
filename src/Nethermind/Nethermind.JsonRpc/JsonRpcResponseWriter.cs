@@ -110,6 +110,10 @@ public static class JsonRpcResponseWriter
         {
             await streamable.WriteToAsync(writer, cancellationToken);
         }
+        if (status is StreamableResultStatus.Complete && streamable is IStreamableResultWithStatus { ReportsCompleteStatus: false })
+        {
+            status = null;
+        }
         if (status is not null)
         {
             writer.Write(StreamStatusSeparator);

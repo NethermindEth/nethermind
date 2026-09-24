@@ -33,6 +33,12 @@ public enum StreamableResultStatus
 internal interface IStreamableResultWithStatus : IStreamableResult
 {
     ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether a <see cref="StreamableResultStatus.Complete"/> status is written to the envelope; when <c>false</c>,
+    /// <c>_streamStatus</c> appears only for streams that ended early, leaving successful responses unchanged.
+    /// </summary>
+    bool ReportsCompleteStatus => true;
 }
 
 internal interface IBatchAwareStreamableResultWithStatus : IStreamableResultWithStatus, IBatchAwareStreamableResult

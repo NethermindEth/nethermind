@@ -1590,6 +1590,25 @@ public class TraceRpcModuleTests
         Assert.That(JToken.Parse(streamed), Is.EqualTo(JToken.Parse(buffered)).Using(JToken.EqualityComparer));
     }
 
+    [Test]
+    public async Task Streaming_rejected_transaction_keeps_response_well_formed(
+        [Values("[\"trace\"]", "[\"vmTrace\",\"trace\",\"stateDiff\"]")] string traceTypes)
+    {
+        Context context = new();
+        await context.Build();
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+
+        string unaffordableCall = $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0xffffffffffffffffffffffffffffffff\",\"gas\":\"0xf4240\"}}";
+        string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", $"[[{unaffordableCall},{traceTypes}]]");
+
+        JToken response = JToken.Parse(streamed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["_streamStatus"]?.Value<string>(), Is.EqualTo("failed"));
+            Assert.That(response["result"]?.Type, Is.EqualTo(JTokenType.Array));
+        }
+    }
+
     private static IEnumerable<TestCaseData> StreamingResourceSafetyCases()
     {
         yield return new TestCaseData((Func<Task>)(async () =>

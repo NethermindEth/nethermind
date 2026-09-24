@@ -16,7 +16,7 @@ using Nethermind.Logging;
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 [JsonConverter(typeof(ParityTxTraceFromReplayStreamingResultConverter))]
-public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromReplay, IStreamableResult, IDisposable
+public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromReplay, IStreamableResultWithStatus, IDisposable
 {
     private readonly Action<Utf8JsonWriter, PipeWriter?, CancellationToken> _runExecution;
     private readonly CancellationTokenSource _timeoutCts;
@@ -39,10 +39,32 @@ public sealed class ParityTxTraceFromReplayStreamingResult : ParityTxTraceFromRe
         _logger = logger;
     }
 
-    public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
-        => StreamingResultBase.WriteJsonToAsync(_timeoutToken, _logger, writer, _runExecution, cancellationToken);
+    public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        => await WriteToWithStatusAsync(writer, cancellationToken);
+
+    ValueTask<StreamableResultStatus> IStreamableResultWithStatus.WriteToWithStatusAsync(PipeWriter writer, CancellationToken cancellationToken)
+        => WriteToWithStatusAsync(writer, cancellationToken);
+
+    bool IStreamableResultWithStatus.ReportsCompleteStatus => false;
+
+    private ValueTask<StreamableResultStatus> WriteToWithStatusAsync(PipeWriter writer, CancellationToken cancellationToken)
+        => StreamingResultBase.WriteJsonToWithStatusAsync(_timeoutToken, _logger, writer, EmitContent, cancellationToken);
 
     internal void WriteAsJson(Utf8JsonWriter writer) => _runExecution(writer, null, _timeoutToken);
+
+    private void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+    {
+        long bytesBefore = writer.BytesCommitted + writer.BytesPending;
+        try
+        {
+            _runExecution(writer, pipeWriter, cancellationToken);
+        }
+        finally
+        {
+            // A failure before the trace object opened would otherwise leave "result": without a value.
+            if (writer.BytesCommitted + writer.BytesPending == bytesBefore) writer.WriteNullValue();
+        }
+    }
 
     public void Dispose() => _timeoutCts.Dispose();
 
