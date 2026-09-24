@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Ethereum.Ssz.Test;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
@@ -167,6 +168,7 @@ public class SszStaticTests
         Map<SignedExecutionPayloadBid>("SignedExecutionPayloadBid", GloasOnly);
         Map<ExecutionPayloadEnvelope>("ExecutionPayloadEnvelope", GloasOnly);
         Map<SignedExecutionPayloadEnvelope>("SignedExecutionPayloadEnvelope", GloasOnly);
+        Map<DataColumnSidecarGloas>("DataColumnSidecar", GloasOnly);
         // PayloadTimelinessCommittee.Indices is Vector(512) = PTC_SIZE, preset-scaled by the same
         // reasoning as SyncCommittee above; unlike the others in this block this one was not directly
         // observed failing (no ssz_static/PayloadTimelinessCommittee fixture was hit in the run that
