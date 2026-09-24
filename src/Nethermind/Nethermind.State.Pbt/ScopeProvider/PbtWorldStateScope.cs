@@ -287,7 +287,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
             new StorageWriteBatch(scope, key);
 
-        public void Dispose() => Metrics.PbtWriteBatchTime.Observe(Stopwatch.GetTimestamp() - _start);
+        public void Dispose()
+        {
+            // A tree created before these writes may have cached an emptiness that they just ended.
+            lock (scope._storages) scope._storages.Clear();
+            Metrics.PbtWriteBatchTime.Observe(Stopwatch.GetTimestamp() - _start);
+        }
     }
 
     private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch

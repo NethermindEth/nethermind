@@ -125,10 +125,11 @@ public class PbtWorldStateScopeTests
     }
 
     [Test]
-    public async Task Storage_emptiness_is_unknown_and_slot_reads_work([Values] bool hasStorage)
+    public async Task Storage_is_known_empty_only_for_an_absent_account_and_slot_reads_work([Values] bool hasStorage)
     {
         await using PbtTestContext ctx = new();
         using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        Assert.That(scope.CreateStorageTree(TestItem.AddressA).IsKnownEmpty, Is.True);
         if (hasStorage)
         {
             using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
@@ -140,7 +141,7 @@ public class PbtWorldStateScopeTests
         IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.IsKnownEmpty, Is.False);
+            Assert.That(storage.IsKnownEmpty, Is.EqualTo(!hasStorage));
             Assert.That(storage.Get(1000), Is.EqualTo(hasStorage ? (UInt256)0xab : UInt256.Zero));
             Assert.That(storage.Get(1001), Is.EqualTo(UInt256.Zero));
         }
