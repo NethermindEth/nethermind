@@ -41,10 +41,10 @@ public class Eip8037StateGasInvariantTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(RefundGuards))]
-    public void Refund_path_flags_state_gas_invariant(string method, EthereumGasPolicy corrupted, object[] tail)
+    public void Refund_path_throws_on_state_gas_invariant(string method, EthereumGasPolicy corrupted, object[] tail)
     {
         object[] args = [Tx(), Spec, ExecutionOptions.Commit, corrupted, UInt256.Zero, default(EthereumGasPolicy), .. tail];
-        Assert.That(Invoke<GasConsumed>(method, args).StateGasInvariantError, Is.Not.Null);
+        Assert.That(() => Invoke<GasConsumed>(method, args), Throws.TypeOf<StateGasInvariantViolatedException>());
     }
 
     [Test]
@@ -52,7 +52,7 @@ public class Eip8037StateGasInvariantTests : VirtualMachineTestsBase
     {
         // System calls legitimately run with a state reservoir the halt check would otherwise reject.
         object[] args = [SystemTx(), Spec, ExecutionOptions.Commit, new EthereumGasPolicy { StateGasUsed = (long)GasLimit + 1 }, UInt256.Zero, default(EthereumGasPolicy), 0UL, 0UL];
-        Assert.That(Invoke<GasConsumed>("RefundOnTopLevelHalt", args).StateGasInvariantError, Is.Null);
+        Assert.That(() => Invoke<GasConsumed>("RefundOnTopLevelHalt", args), Throws.Nothing);
     }
 
     [Test]
