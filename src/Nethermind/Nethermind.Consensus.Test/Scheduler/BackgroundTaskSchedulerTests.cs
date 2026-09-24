@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -32,18 +33,33 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
-    public async Task Test_task_will_execute()
+    public async Task Test_task_will_execute([Values(ThreadPriority.AboveNormal, ThreadPriority.Highest, ThreadPriority.Normal)] ThreadPriority priority)
     {
-        TaskCompletionSource tcs = new();
+        System.Threading.Tasks.TaskCompletionSource<(ThreadPriority Before, ThreadPriority Boosted, ThreadPriority After)> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
         scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
         {
-            tcs.SetResult(1);
+            Thread thread = Thread.CurrentThread;
+            ThreadPriority before = thread.Priority;
+            ThreadPriority boosted;
+            using (priority switch
+            {
+                ThreadPriority.AboveNormal => thread.BoostPriority(),
+                ThreadPriority.Highest => thread.SetHighestPriority(),
+                _ => thread.SetNormalPriority()
+            }) boosted = thread.Priority;
+            tcs.SetResult((before, boosted, thread.Priority));
             return Task.CompletedTask;
         });
 
-        await tcs.Task;
+        (ThreadPriority before, ThreadPriority boosted, ThreadPriority after) = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(OperatingSystem.IsLinux() ? ThreadPriority.Normal : ThreadPriority.BelowNormal));
+            Assert.That(boosted, Is.EqualTo(OperatingSystem.IsLinux() ? before : priority));
+            Assert.That(after, Is.EqualTo(before));
+        }
     }
 
     [Test]

@@ -51,6 +51,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => ctx.Resolve<IReceiptFinder>())
             .AddSingleton<IHistoryPruner, HistoryPruner>()
             .AddSingleton<IBlockTree, BlockTree>()
+            .AddSingleton<IStateHeaderProvider, ReorgDepthStateHeaderProvider>()
             .Bind<IBlockFinder, IBlockTree>()
             .AddSingleton<IBlockTreeHealer, IBlockTree>((bt) => (IBlockTreeHealer)bt)
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
