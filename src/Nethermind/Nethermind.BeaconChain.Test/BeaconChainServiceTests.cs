@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -15,38 +14,16 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
-using Nethermind.Network;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test;
 
 public class BeaconChainServiceTests
 {
-    private static IContainer BuildContainer(ILogManager? logManager = null, ulong chainId = BlockchainIds.Mainnet)
-    {
-        IIPResolver ipResolver = Substitute.For<IIPResolver>(); // registered by NetworkModule in production
-        ipResolver.Resolve(Arg.Any<CancellationToken>())
-            .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)));
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>(); // registered by NethermindModule in production
-        specProvider.ChainId.Returns(chainId);
-        ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new BeaconChainModule())
-            .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig())
-            .AddSingleton(logManager ?? LimboLogs.Instance)
-            .AddSingleton(Substitute.For<IEngineRpcModule>()) // registered by MergePlugin in production
-            .AddSingleton<ITimestamper>(Timestamper.Default) // registered by NethermindModule in production
-            .AddSingleton(ipResolver)
-            .AddSingleton(specProvider)
-            .AddSingleton<IDbFactory, MemDbFactory>();
-
-        return builder.Build();
-    }
+    private static IContainer BuildContainer(ILogManager? logManager = null, ulong chainId = BlockchainIds.Mainnet) =>
+        BeaconChainTestContainer.Builder(chainId, logManager).Build();
 
     // Regression for gap 113: Stop() (re-entered from the ExternalClDetected event, raised on
     // whatever thread serviced the engine call) used to check `_disposed` and cancel the token

@@ -29,7 +29,6 @@ public class ProtoArrayWeightAccumulationTests
         Root: root,
         ParentRoot: parent,
         StateRoot: Hash256.Zero,
-        TargetRoot: Hash256.Zero,
         JustifiedCheckpoint: justified ?? Anchor,
         FinalizedCheckpoint: finalized ?? Anchor,
         ExecutionStatus: ExecutionStatus.Optimistic,

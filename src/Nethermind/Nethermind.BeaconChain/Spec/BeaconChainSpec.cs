@@ -207,16 +207,11 @@ public class BeaconChainSpec
     /// fork schedule: <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c>, cross-checked live against
     /// a public beacon node's <c>/eth/v1/beacon/genesis</c> and <c>/eth/v1/config/fork_schedule</c>, and
     /// against Prysm's <c>testnet_sepolia_config.go</c> (all three agree).</item>
-    /// <item><see cref="GloasForkVersion"/> (0x90000076): sigp/lighthouse's built-in Sepolia config,
-    /// OffchainLabs/prysm's <c>testnet_sepolia_config.go</c> and ChainSafe/lodestar PR #10119 (merged
-    /// 2026-09-17), independently. Lighthouse and Prysm carry only the version: their epoch is still
-    /// the far-future sentinel, so they do not corroborate the epoch below.</item>
-    /// <item><see cref="GloasForkEpoch"/> (353024): ethereum/pm PR #2205 (merged 2026-09-15, the
-    /// cross-client activation-time proposal), the EIP-7773 activation table (ethereum/EIPs PR #12355,
-    /// merged 2026-09-17), ChainSafe/lodestar PR #10119 (merged) and eth-clients/sepolia PR #126
-    /// (draft, approved by Prysm, Lodestar and Teku maintainers), independently. As of 2026-09-21 it
-    /// is not yet in the merged <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c> nor in any
-    /// shipped client release; re-check once PR #126 merges and before 2026-10-06.</item>
+    /// <item><see cref="GloasForkVersion"/> (0x90000076) and <see cref="GloasForkEpoch"/> (353024):
+    /// <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c> (<c>GLOAS_FORK_VERSION</c> and
+    /// <c>GLOAS_FORK_EPOCH</c>, merged 2026-09-22 in eth-clients/sepolia PR #126). The epoch also matches
+    /// ethereum/pm PR #2205 (merged 2026-09-15, the cross-client activation-time proposal) and the
+    /// EIP-7773 activation table (ethereum/EIPs PR #12355, merged 2026-09-17).</item>
     /// <item><see cref="BlobSchedule"/> (BPO1 274176/15, BPO2 275712/21) and
     /// <see cref="MaxBlobsPerBlockElectra"/> (9): <c>eth-clients/sepolia config.yaml</c> and
     /// sigp/lighthouse's built-in Sepolia config, independently.</item>
@@ -256,7 +251,7 @@ public class BeaconChainSpec
         ElectraForkEpoch = 222464,
         FuluForkEpoch = 272640,
         MaxBlobsPerBlockElectra = 9,
-        GloasForkEpoch = 353024, // confirmed: ethereum/pm#2205, the EIP-7773 table and lodestar#10119, all merged
+        GloasForkEpoch = 353024, // eth-clients/sepolia metadata/config.yaml
         GloasForkVersion = Bytes.FromHexString("0x90000076"),
     };
 

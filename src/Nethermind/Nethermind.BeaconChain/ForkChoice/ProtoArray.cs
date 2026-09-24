@@ -142,7 +142,6 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         {
             Slot = block.Slot,
             Root = block.Root,
-            TargetRoot = block.TargetRoot,
             StateRoot = block.StateRoot,
             Parent = parentIndex,
             JustifiedCheckpoint = block.JustifiedCheckpoint,

@@ -256,13 +256,11 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"Block {blockRoot} at slot {block.Slot} does not have all its blob data available");
         ExtendPubkeys(postState.Validators!);
 
-        ulong epochStartSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
         RegisterBlock(
             block.Slot,
             blockRoot,
             parentRoot,
             block.StateRoot!,
-            block.Slot == epochStartSlot ? blockRoot : postState.GetBlockRootAtSlot(epochStartSlot),
             CheckpointRef.From(postState.CurrentJustifiedCheckpoint!),
             CheckpointRef.From(postState.FinalizedCheckpoint!),
             EpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache()),
@@ -302,13 +300,11 @@ public sealed class ForkChoiceRunner
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
         ExtendPubkeys(postState.Validators!);
 
-        ulong epochStartSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
         RegisterBlock(
             block.Slot,
             blockRoot,
             parentRoot,
             block.StateRoot!,
-            block.Slot == epochStartSlot ? blockRoot : postState.GetBlockRootAtSlot(epochStartSlot),
             CheckpointRef.From(postState.CurrentJustifiedCheckpoint!),
             CheckpointRef.From(postState.FinalizedCheckpoint!),
             GloasEpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache()),
@@ -341,7 +337,6 @@ public sealed class ForkChoiceRunner
         Hash256 blockRoot,
         Hash256 parentRoot,
         Hash256 stateRoot,
-        Hash256 targetRoot,
         CheckpointRef stateJustified,
         CheckpointRef stateFinalized,
         JustificationAndFinalizationState pulledUp,
@@ -375,7 +370,6 @@ public sealed class ForkChoiceRunner
                 Root: blockRoot,
                 ParentRoot: parentRoot,
                 StateRoot: stateRoot,
-                TargetRoot: targetRoot,
                 JustifiedCheckpoint: stateJustified,
                 FinalizedCheckpoint: stateFinalized,
                 ExecutionStatus: executionStatus,
