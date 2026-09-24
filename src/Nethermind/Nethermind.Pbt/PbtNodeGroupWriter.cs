@@ -145,22 +145,14 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         Commit(path);
     }
 
-    /// <summary>Emits the resolved subtree root at its final position and clears the borrowed value.</summary>
-    /// <remarks>A leaf below the root is stored inline by the branch composed above it, so only its hash is returned.</remarks>
-    internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, int depth, ref TrieUpdater<TKey, TPath>.TraversalSubtree node, TrieUpdaterMetrics? metrics)
+    /// <summary>Emits the resolved tree root at the root position, returning its hash.</summary>
+    internal ValueHash256 WriteRoot<TKey>(scoped in PbtTraversalPath path, in TrieUpdater<TKey, TPath>.FoldResult node, TrieUpdaterMetrics? metrics)
         where TKey : unmanaged, IPbtKey<TKey>
     {
         if (node.IsEmpty) return default;
-        if (node.IsLeaf && position != PbtFourLevelGroupGeometry.RootPosition)
-        {
-            ValueHash256 leafHash = node.Node.LeafHash;
-            node.Clear();
-            return leafHash;
-        }
-        Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
-        ValueHash256 hash = node.Encode(encoding, depth, metrics);
+        Span<byte> encoding = GetSpan(PbtFourLevelGroupGeometry.RootPosition, node.EncodedLength(path, 0));
+        ValueHash256 hash = node.EncodeAt(path, 0, encoding, metrics);
         Commit(path);
-        node.Clear();
         return hash;
     }
 
