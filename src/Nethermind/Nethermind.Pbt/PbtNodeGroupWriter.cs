@@ -157,26 +157,11 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
             node.Clear();
             return leafHash;
         }
-        if (!node.Copy.IsEmpty && depth == node.AnchorDepth)
-        {
-            ValueHash256 copiedHash = Write<TKey>(path, position, node.Copy, metrics);
-            node.Clear();
-            return copiedHash;
-        }
         Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
         ValueHash256 hash = node.Encode(encoding, depth, metrics);
         Commit(path);
         node.Clear();
         return hash;
-    }
-
-    /// <summary>Emits an untouched node at the position that already addressed it, which is a copy of its stored bytes.</summary>
-    internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, in TrieUpdater<TKey, TPath>.DirectCopySubtree copy, TrieUpdaterMetrics? metrics)
-        where TKey : struct, IPbtKey<TKey>
-    {
-        copy.CopyTo(GetSpan(position, copy.Length));
-        Commit(path);
-        return copy.Hash(metrics);
     }
 
     /// <summary>Appends a validated source group's contiguous entry range at unchanged positions.</summary>

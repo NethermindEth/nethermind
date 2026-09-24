@@ -148,15 +148,6 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return writer.CopyRange(entries, _offsets, _lengths, startPosition, lastPosition);
     }
 
-    /// <summary>Takes the node stored at <paramref name="position"/> as the bytes composition writes back unchanged, or empty when the group stores none there.</summary>
-    /// <remarks>The hash is the seeded link hash where a link named this node; composition otherwise hashes the encoding the once it is needed.</remarks>
-    internal TrieUpdater<TKey, TPath>.DirectCopySubtree TakeDirectCopy(scoped in PbtTraversalPath path, int position)
-    {
-        ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
-        if (encoding.IsEmpty) return default;
-        return new(encoding, PbtFourLevelGroupGeometry.LocalPathOf(position), SeededHash(position));
-    }
-
     /// <summary>Records the hash a parent node holds for <paramref name="position"/>, so composing it needs no rehash.</summary>
     internal void SeedHash(int position, in ValueHash256 hash)
     {
