@@ -48,7 +48,6 @@ jobs:
           version=$version_prefix${version_suffix:+-$version_suffix}
           echo "Detected version $version"
           echo "version=$version" >> $GITHUB_OUTPUT
-          echo "suffix=$version_suffix" >> $GITHUB_OUTPUT
           echo "commit=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
 
       - name: Archive and sign
@@ -126,30 +125,19 @@ jobs:
           EOF
           )
 
-          # Stable versions are released once, so they are not numbered
-          suffix="${{ steps.version.outputs.suffix }}"
-          export TAG_REST=$([[ -n "$suffix" ]] && echo '^\.[0-9]+$' || echo '^$')
-
           # Drafts have no git tag yet, so releases are listed instead of tags
           releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '
             .[] | select(.tag_name | startswith(env.TAG_BASE))
-              | select(.tag_name | ltrimstr(env.TAG_BASE) | test(env.TAG_REST))
+              | select(.tag_name | ltrimstr(env.TAG_BASE) | test("^[+][0-9]+$"))
               | "\(.tag_name) \(.draft) \(.target_commitish)"')
           existing=$(awk -v sha="$GITHUB_SHA" '$3 == sha' <<< "$releases")
 
           if [[ -z "$existing" ]]; then
-            if [[ -n "$suffix" ]]; then
-              last=$(cut -d ' ' -f 1 <<< "$releases" | sed 's/.*\.//' | sort -n | tail -n 1)
-              git_tag=$TAG_BASE.$((${last:-0} + 1))
-            else
-              [[ -z "$releases" ]] || \
-                { echo "::error::$TAG_BASE is already released from another commit"; exit 1; }
-              git_tag=$TAG_BASE
-            fi
-
+            last=$(cut -d ' ' -f 1 <<< "$releases" | sed 's/.*+//' | sort -n | tail -n 1)
+            git_tag=$TAG_BASE+$((${last:-0} + 1))
             echo "Drafting release $git_tag"
             gh release create "$git_tag" --target "$GITHUB_SHA" -d -p --latest=false \
-              -t "zkVM guests v${git_tag#zkvm-guests-}" -F <(printf '%s' "$relnotes")
+              -t "zkVM guests v${{ steps.version.outputs.version }}" -F <(printf '%s' "$relnotes")
           else
             read -r git_tag draft _ <<< "$existing"
             [[ "$draft" == true ]] || \
