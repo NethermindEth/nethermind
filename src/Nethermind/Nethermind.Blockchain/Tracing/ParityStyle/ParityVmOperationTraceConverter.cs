@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
@@ -45,7 +46,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             writer.WriteStartArray();
             for (int i = 0; i < value.Push.Length; i++)
             {
-                JsonSerializer.Serialize(writer, value.Push[i], options);
+                ByteArrayConverter.Convert(writer, value.Push[i], skipLeadingZeros: true);
             }
 
             writer.WriteEndArray();
@@ -60,9 +61,9 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
         {
             writer.WriteStartObject();
             writer.WritePropertyName("key"u8);
-            JsonSerializer.Serialize(writer, value.Store.Key, options);
+            ByteArrayConverter.Convert(writer, value.Store.Key, skipLeadingZeros: true);
             writer.WritePropertyName("val"u8);
-            JsonSerializer.Serialize(writer, value.Store.Value, options);
+            ByteArrayConverter.Convert(writer, value.Store.Value, skipLeadingZeros: true);
             writer.WriteEndObject();
         }
         else

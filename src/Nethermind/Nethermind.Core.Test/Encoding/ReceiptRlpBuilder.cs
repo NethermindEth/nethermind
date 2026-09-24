@@ -18,6 +18,12 @@ public static class ReceiptRlpBuilder
     /// <summary>The smallest log the decoders accept: an address, no topics and no data.</summary>
     public static LogEntry MinimalLog() => new(Address.Zero, [], []);
 
+    /// <summary>A log whose encoding clears the log-count guard's per-entry floor with a whole entry to
+    /// spare, so the guard's byte arm cannot reject it on its own.</summary>
+    /// <remarks>Two uses: beside a one-byte null placeholder it buys the placeholder its budget, and alone
+    /// it survives a one-byte under-declaration of the list header - which only an end-of-list check catches.</remarks>
+    public static LogEntry PaddedLog() => new(Address.Zero, new byte[23], []);
+
     /// <summary>Builds a log list of identical entries.</summary>
     /// <param name="logCount">Number of items to write into the receipt's log sequence.</param>
     /// <param name="log">

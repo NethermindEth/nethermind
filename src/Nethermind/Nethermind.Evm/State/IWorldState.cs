@@ -58,13 +58,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void GetOriginal(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
-    /// Get the persistent storage value at the specified storage cell
-    /// </summary>
-    /// <param name="storageCell">Storage location</param>
-    /// <param name="value">Value at cell</param>
-    void Get(in StorageCell storageCell, out UInt256 value);
-
-    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
@@ -149,6 +142,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
+    /// <summary>Credits the account balance, creating the account if it does not physically exist.</summary>
+    /// <returns>True if this operation created the account; false if it already existed, even when empty.</returns>
     bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
