@@ -182,7 +182,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         // Asked once, up front: a recovery that ends before the block is done is still the one every wait below rests on.
         ISenderRecoveryProgress? recovery = _senderRecovery?.GetInFlight(suggestedBlock.Transactions);
-        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, recovery, _concurrencyLevel, cancellationToken, warmSystemAccessLists: true);
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, spec, speculativelyWarmed, recovery, _concurrencyLevel, cancellationToken, warmSystemAccessLists: true);
         // A block access list already enumerates the block's reads; discovery adds nothing.
         List<(int Index, Transaction Tx)>? discoveryCandidates = addressWarmer.HasBal
             ? null
@@ -203,15 +203,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         if (discoveryCandidates is null) return normalWarmTask;
 
-        Task discoveryTask = Task.Run(() => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, parent, spec, recovery, cancellationToken));
+        Task discoveryTask = Task.Run(() => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, spec, recovery, cancellationToken));
         return Task.WhenAll(normalWarmTask, discoveryTask);
     }
 
-    private void DiscoverAndWarmStorageSafely(List<(int Index, Transaction Tx)> candidates, Block block, BlockHeader parent, IReleaseSpec spec, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
+    private void DiscoverAndWarmStorageSafely(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
     {
         try
         {
-            DiscoverAndWarmStorage(candidates, block, parent, spec, recovery, cancellationToken);
+            DiscoverAndWarmStorage(candidates, block, spec, recovery, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -239,7 +239,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return candidates;
     }
 
-    internal void DiscoverAndWarmStorage(List<(int Index, Transaction Tx)> candidates, Block block, BlockHeader parent, IReleaseSpec spec, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
+    internal void DiscoverAndWarmStorage(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
@@ -283,7 +283,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
-            DiscoveryRound roundState = new(block, parent, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates, cancellationToken);
+            DiscoveryRound roundState = new(block, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates, cancellationToken);
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, admitted.Count),
@@ -307,7 +307,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (roundCells.Count > 0)
             {
                 allDiscoveredCells.UnionWith(roundCells);
-                if (!WarmDiscoveredStorage(parent, roundCells, cancellationToken)) return;
+                if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }
             else if (awaiting == 0 && (deferred.Count == 0 || productive == admitted.Count))
@@ -401,7 +401,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <summary>Shared state of one discovery round.</summary>
     private sealed class DiscoveryRound(
         Block block,
-        BlockHeader parent,
         IReleaseSpec spec,
         int cellBudget,
         StrongBox<int> remainingCaptureCells,
@@ -411,7 +410,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         CancellationToken cancellationToken)
     {
         public readonly Block Block = block;
-        public readonly BlockHeader Parent = parent;
         public readonly IReleaseSpec Spec = spec;
         public readonly int CellBudget = cellBudget;
         public readonly StrongBox<int> RemainingCaptureCells = remainingCaptureCells;
@@ -477,7 +475,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(round.RemainingCaptureCells);
-            using IReadOnlyTxProcessingScope scope = env.Build(round.Parent);
+            using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(round.Block.Header);
             scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(round.Block.Header, round.Spec));
 
             try
@@ -533,7 +531,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private bool WarmDiscoveredStorage(BlockHeader parent, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
+    private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
     {
         int cellCount = discoveredCells.Count;
         StorageCell[] cells = ArrayPool<StorageCell>.Shared.Rent(cellCount);
@@ -557,7 +555,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 IPrewarmerEnv env = _envPool.Get();
                 try
                 {
-                    using IReadOnlyTxProcessingScope scope = env.Build(parent);
+                    using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(target);
                     IWorldState worldState = scope.WorldState;
                     int unreadable = 0;
                     for (int i = range.Item1; i < range.Item2; i++)
@@ -598,10 +596,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <returns>Whether the system-contract hints were warmed; false when they were requested but the pass did not reach them.</returns>
-    private bool WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, bool warmSystemAccessLists, CancellationToken token)
+    private bool WarmDeltaSync(Block delta, IReleaseSpec spec, bool warmSystemAccessLists, CancellationToken token)
     {
         // The delta comes from the txpool, where every sender is already recovered, so there is no recovery to wait on.
-        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, recovery: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists);
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, spec, speculativelyWarmed: null, recovery: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists);
         // Run inline rather than through the pool: this pass is going to block on the warmer anyway, and the block
         // that ends the gap joins this thread, so a queued item would put thread-pool dispatch latency on its path.
         ((IThreadPoolWorkItem)addressWarmer).Execute();
@@ -618,16 +616,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return addressWarmer.SystemAccessListsWarmed;
     }
 
-    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, ISenderRecoveryProgress? recovery, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists)
+    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, ISenderRecoveryProgress? recovery, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists)
     {
-        BlockState blockState = new(this, block, parent, spec, speculativelyWarmed, recovery);
+        BlockState blockState = new(this, block, spec, speculativelyWarmed, recovery);
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
         Volatile.Write(ref _mainThreadTxIndex, -1);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
         ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
-        AddressWarmer addressWarmer = new(parallelOptions, block, parent, spec, warmSystemAccessLists, this, bal);
+        AddressWarmer addressWarmer = new(parallelOptions, block, spec, warmSystemAccessLists, this, bal);
         return (blockState, parallelOptions, addressWarmer);
     }
 
@@ -684,7 +682,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     // An empty delta still warms the system-contract slots and the beneficiary for the predicted block.
                     if (warmSystemAccessLists || delta.Transactions.Length > 0)
                     {
-                        bool systemWarmed = WarmDeltaSync(delta, head, deltaSpec, warmSystemAccessLists, token);
+                        bool systemWarmed = WarmDeltaSync(delta, deltaSpec, warmSystemAccessLists, token);
                         // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
                         if (token.IsCancellationRequested) break;
                         if (warmSystemAccessLists)
@@ -1179,7 +1177,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, bool warmSystemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, IReleaseSpec spec, bool warmSystemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
@@ -1230,7 +1228,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IPrewarmerEnv env = envPool.Get();
                     try
                     {
-                        using IReadOnlyTxProcessingScope scope = env.Build(parent);
+                        using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(block.Header);
 
                         WarmupSender(beneficiary, null, scope.WorldState);
 
@@ -1276,7 +1274,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     // contended writes to one cache line for a few nanoseconds of work each.
                     int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
                     int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
-                    WarmingState<(Block Block, int RangeSize, int Count)> baseState = new(envPool, (block, rangeSize, count), parent);
+                    WarmingState<(Block Block, int RangeSize, int Count)> baseState = new(envPool, (block, rangeSize, count), block.Header);
                     ParallelUnbalancedWork.For(
                         0,
                         (count + rangeSize - 1) / rangeSize,
@@ -1365,7 +1363,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private readonly struct WarmingState<TPayload>(ObjectPool<IPrewarmerEnv> envPool, TPayload payload, BlockHeader parent) : IDisposable
+    private readonly struct WarmingState<TPayload>(ObjectPool<IPrewarmerEnv> envPool, TPayload payload, BlockHeader target) : IDisposable
     {
         public static Action<WarmingState<TPayload>> FinallyAction { get; } = DisposeThreadState;
 
@@ -1374,7 +1372,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly TPayload Payload = payload;
         public readonly IReadOnlyTxProcessingScope? Scope;
 
-        private WarmingState(ObjectPool<IPrewarmerEnv> envPool, TPayload payload, BlockHeader parent, IPrewarmerEnv env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, parent)
+        private WarmingState(ObjectPool<IPrewarmerEnv> envPool, TPayload payload, BlockHeader target, IPrewarmerEnv env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, target)
         {
             Env = env;
             Scope = scope;
@@ -1385,7 +1383,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             IPrewarmerEnv env = EnvPool.Get();
             try
             {
-                return new(EnvPool, Payload, parent, env, scope: env.Build(parent));
+                return new(EnvPool, Payload, target, env, scope: env.BuildAtTarget(target));
             }
             catch
             {
@@ -1422,7 +1420,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <param name="Recovery">The sender recovery still running for the block, or <c>null</c> when every sender is final.</param>
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null, ISenderRecoveryProgress? Recovery = null);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null, ISenderRecoveryProgress? Recovery = null);
 
     /// <summary>
     /// What the transaction-warming workers share, owned by the prewarmer and loaded with one block at a time: the
@@ -1917,7 +1915,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             CancellationToken token = _queue.Token;
             // Each job builds and disposes its own scope, so no speculative state crosses jobs.
-            using IReadOnlyTxProcessingScope scope = _env!.Build(blockState.Parent);
+            using IReadOnlyTxProcessingScope scope = _env!.BuildAtTarget(blockState.Block.Header);
             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
             scope.TransactionProcessor.SetBlockExecutionContext(context);
 

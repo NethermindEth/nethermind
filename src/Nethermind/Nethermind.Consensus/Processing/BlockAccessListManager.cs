@@ -34,8 +34,8 @@ namespace Nethermind.Consensus.Processing;
 /// </summary>
 /// <remarks>
 /// Parent-state fallbacks (for slots the suggested BAL doesn't cover) flow through a pooled
-/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: each parallel worker rents a snapshot scoped
-/// to the state root captured in <see cref="PrepareForProcessing"/>. Passing <c>null</c>
+/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: each parallel worker rents a snapshot at the
+/// parent of the block being processed. Passing <c>null</c>
 /// disables this and thus parallel execution.
 /// </remarks>
 public partial class BlockAccessListManager(
@@ -71,8 +71,8 @@ public partial class BlockAccessListManager(
         (prewarmerEnvFactory is not null && preBlockCaches is not null)
         || readOnlyTxProcessingEnvFactory is not null;
 
-    // Snapshot point for parallel workers' parent-reader scopes. Set only when
-    // ParallelExecutionEnabled; null on the sequential path so a stray scope opens fail fast.
+    // Pre-state root of the block being processed, captured before any consensus-specific pre-processing
+    // touches the state; the parallel workers' parent readers are checked against it.
     private Hash256? _parentStateRoot;
 
     // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The

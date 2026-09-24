@@ -25,7 +25,9 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.TxPool.Collections;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections;
@@ -530,6 +532,75 @@ namespace Nethermind.TxPool.Test
             Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10));
             storage.DidNotReceiveWithAnyArgs().TryGetMany(default, default, default);
         }
+
+        [Test]
+        public void reloaded_blobs_are_kept_when_head_state_is_unavailable()
+        {
+            // Soak #13577: after a Flat repair resync, headers/HEAD remain but state was Clear()'d.
+            // Persistent blob txs are reloaded and TxPool ctor used to die in UpdateBucketsWithoutRevalidation
+            // (MissingTrieNodeException from TryGetAccount) → docker restart loop. Unknown state is not an
+            // empty account either: the reloaded blobs must stay pooled and persisted until state is back.
+            IBlobTxStorage storage = CreateStorageWithOneReloadedBlobTx();
+            ChainHeadInfoProvider headInfo = CreateHeadInfoWithState(_ => throw MissingHeadState());
+
+            Assert.DoesNotThrow(() => _txPool = CreatePoolWithPersistentBlobs(headInfo, storage));
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            storage.DidNotReceiveWithAnyArgs().Delete(default, default);
+        }
+
+        [Test]
+        public async Task reloaded_blobs_see_real_account_once_head_state_is_back()
+        {
+            const ulong accountNonce = 2;
+            bool stateAvailable = false;
+            IBlobTxStorage storage = CreateStorageWithOneReloadedBlobTx();
+            ChainHeadInfoProvider headInfo = CreateHeadInfoWithState(callInfo =>
+            {
+                if (!stateAvailable) throw MissingHeadState();
+                callInfo[1] = new AccountStruct(accountNonce, UInt256.MaxValue);
+                return true;
+            });
+
+            _txPool = CreatePoolWithPersistentBlobs(headInfo, storage);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            stateAvailable = true;
+            // Had the failed lookup been cached as TotallyEmpty, the pooled nonce-0 tx would yield 1 here.
+            Assert.That(_txPool.GetLatestPendingNonce(TestItem.AddressA), Is.EqualTo(accountNonce));
+
+            Block nextBlock = Build.A.Block.WithNumber(_blockTree.Head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            AssertRevalidatedForHead();
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+            storage.ReceivedWithAnyArgs(1).Delete(default, default);
+        }
+
+        private IBlobTxStorage CreateStorageWithOneReloadedBlobTx()
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns([new LightTransaction(transaction)]);
+            return storage;
+        }
+
+        private ChainHeadInfoProvider CreateHeadInfoWithState(Func<NSubstitute.Core.CallInfo, bool> tryGetAccount)
+        {
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(tryGetAccount);
+            return new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state);
+        }
+
+        private TxPool CreatePoolWithPersistentBlobs(ChainHeadInfoProvider headInfo, IBlobTxStorage storage) => CreatePool(
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 1 },
+            GetCancunSpecProvider(),
+            chainHeadInfoProvider: headInfo,
+            txStorage: storage);
+
+        private static MissingTrieNodeException MissingHeadState() =>
+            new("State for block 11739434 is unavailable", null, TreePath.Empty, Keccak.Zero);
 
         [Test]
         public async Task should_allow_rebroadcast_of_blob_with_new_proofs_after_fork_when_balance_is_insufficient()

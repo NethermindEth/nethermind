@@ -3,8 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.State;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Consensus.Processing;
