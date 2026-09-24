@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Logging;
 using NSubstitute;
@@ -46,6 +47,11 @@ public class GCKeeperTests
         using IDisposable lease = keeper.TryStartNoGCRegion();
         await Task.Run(queued[0].Execute).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(runtime.IsActive, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.LohSize, Is.EqualTo(256.MB));
+            Assert.That(runtime.TotalSize - runtime.LohSize, Is.EqualTo(512.MB));
+        }
         lease.Dispose();
         lease.Dispose();
         using (Assert.EnterMultipleScope())
@@ -422,10 +428,14 @@ public class GCKeeperTests
         public int Starts { get; private set; }
         public int Ends { get; private set; }
         public bool IsActive { get; private set; }
+        public long TotalSize { get; private set; }
+        public long LohSize { get; private set; }
         public bool TryStart(long totalSize, long lohSize)
         {
             BeforeStart?.Invoke();
             Starts++;
+            TotalSize = totalSize;
+            LohSize = lohSize;
             if (Throw) throw new InvalidOperationException("Another no-GC region is active.");
             return IsActive = !Refuse;
         }
