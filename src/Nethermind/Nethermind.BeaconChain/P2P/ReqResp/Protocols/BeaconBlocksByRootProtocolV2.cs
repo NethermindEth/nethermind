@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -20,13 +21,13 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// The dial side recomputes each returned block's hash tree root and rejects blocks that were not asked for.
 /// </remarks>
 public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconChainStore store) : BlocksProtocolBase(spec),
-    ISessionProtocol<Hash256[], IReadOnlyList<SignedBeaconBlock>>
+    ISessionProtocol<Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>
 {
     private const int MaxRequestLength = (int)MaxRequestBlocks * Hash256.Size;
 
     public string Id => "/eth2/beacon_chain/req/beacon_blocks_by_root/2/ssz_snappy";
 
-    public async Task<IReadOnlyList<SignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, Hash256[] request)
+    public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, Hash256[] request)
     {
         if (request.Length > (int)MaxRequestBlocks)
         {
@@ -41,11 +42,11 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
             await WriteRequestAndEofAsync(downChannel, stream, BeaconBlocksByRootRequest.Encode(new BeaconBlocksByRootRequest { Roots = request }), cts.Token);
         }
 
-        IReadOnlyList<SignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, request.Length, Id);
+        IReadOnlyList<ForkedSignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, request.Length, Id);
         HashSet<Hash256> requestedRoots = [.. request];
-        foreach (SignedBeaconBlock block in blocks)
+        foreach (ForkedSignedBeaconBlock block in blocks)
         {
-            if (!requestedRoots.Remove(SszRoots.HashTreeRoot(block.Message!)))
+            if (!requestedRoots.Remove(block.ComputeMessageRoot()))
             {
                 RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
                 throw new Eth2ReqRespException("Peer responded with a block that was not requested");
@@ -81,7 +82,7 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
 
             foreach (Hash256 root in request.Roots ?? [])
             {
-                if (store.TryGetBlock(root, out SignedBeaconBlock? block))
+                if (store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
                 {
                     await WriteBlockChunkAsync(stream, block, cts);
                 }

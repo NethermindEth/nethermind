@@ -12,6 +12,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
@@ -27,7 +28,7 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-public class BeaconSyncOrchestratorTests
+public partial class BeaconSyncOrchestratorTests
 {
     private const ulong AnchorSlot = 100;
     private const ulong WallSlot = 200;
@@ -43,9 +44,9 @@ public class BeaconSyncOrchestratorTests
 
         // The gossip block arrives first with an unknown parent; far behind the wall clock it is
         // queued instead of backfilled, and drains once range sync delivers its parent.
-        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(chain[2]));
-        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(chain[0]));
-        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(chain[1]));
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[2])));
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0])));
+        harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[1])));
         harness.Orchestrator.WorkWriter.Complete();
         await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
 
@@ -151,17 +152,17 @@ public class BeaconSyncOrchestratorTests
         SignedBeaconBlock belowFinality = TestChain.CreateBlock(120, anchorRoot);
         SignedBeaconBlock wrongProposer = TestChain.CreateBlock(160, anchorRoot);
 
-        await orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
-        await orchestrator.ProcessGossipBlockAsync(equivocation, CancellationToken.None);
-        await orchestrator.ProcessGossipBlockAsync(belowFinality, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(child), CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(equivocation), CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(belowFinality), CancellationToken.None);
         harness.Importer.ExpectedProposer = false;
-        await orchestrator.ProcessGossipBlockAsync(wrongProposer, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(wrongProposer), CancellationToken.None);
         harness.Importer.ExpectedProposer = true;
 
         Assert.That(harness.Importer.Imports, Is.Empty, "all gossip blocks were held or dropped before import");
 
         // Importing the parent through range sync drains only the valid queued child.
-        await orchestrator.ImportBlockAsync(chain[0], CancellationToken.None);
+        await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None);
 
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[150, 151]), "parent imported, then the queued child — nothing else");
     }
@@ -187,7 +188,7 @@ public class BeaconSyncOrchestratorTests
         Hash256 blockRoot = SszRoots.HashTreeRoot(block.Message!);
         harness.Importer.Unavailable.Add(blockRoot);
 
-        await orchestrator.ProcessGossipBlockAsync(block, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(block), CancellationToken.None);
 
         Assert.That(harness.Importer.Known, Does.Not.Contain(blockRoot), "nothing may be recorded while the block's data is unavailable");
 
@@ -214,7 +215,7 @@ public class BeaconSyncOrchestratorTests
         SignedBeaconBlock block = chain[0]; // slot 150, still ahead of finality
         Hash256 blockRoot = SszRoots.HashTreeRoot(block.Message!);
         harness.Importer.Unavailable.Add(blockRoot);
-        await orchestrator.ProcessGossipBlockAsync(block, CancellationToken.None);
+        await orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(block), CancellationToken.None);
 
         // Finality advances past slot 150 (epoch 6 starts at slot 192) before the block is retried.
         harness.Importer.Head = harness.Importer.Head with { Finalized = new CheckpointRef(6, TestItem.KeccakB) };
@@ -254,7 +255,7 @@ public class BeaconSyncOrchestratorTests
         }
     }
 
-    private static Harness CreateHarness(ulong anchorSlot = AnchorSlot, ulong wallSlot = WallSlot, BeaconChainStore? store = null)
+    private static Harness CreateHarness(ulong anchorSlot = AnchorSlot, ulong wallSlot = WallSlot, BeaconChainStore? store = null, IBeaconSyncPeer[]? peers = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot).AddSeconds(6);
         ManualTimestamper timestamper = new(now);
@@ -262,7 +263,7 @@ public class BeaconSyncOrchestratorTests
         store ??= new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>());
         ScriptedImporter importer = new() { Head = CreateHead(TestItem.KeccakA, anchorSlot, finalizedEpoch: Spec.GetEpoch(anchorSlot)) };
         ScriptedEngine engine = new();
-        StubPool pool = new();
+        StubPool pool = new(peers ?? []);
         GossipRouter router = new(Spec, slotClock, LimboLogs.Instance);
         BeaconChainStatusHolder statusHolder = new(Spec, timestamper);
         BeaconSyncOrchestrator orchestrator = new(
@@ -374,14 +375,14 @@ public class BeaconSyncOrchestratorTests
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
-    private sealed class StubPool : IBeaconSyncPeerPool
+    private sealed class StubPool(IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
     {
         public int GetBestPeersCalls { get; private set; }
 
         public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
         {
             GetBestPeersCalls++;
-            return [];
+            return peers;
         }
     }
 
