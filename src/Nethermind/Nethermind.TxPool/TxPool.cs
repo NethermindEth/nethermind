@@ -260,7 +260,18 @@ namespace Nethermind.TxPool
 
                     // Nothing raises Inserted for a record the pool recreated, so without this a restart would
                     // exempt every blob-carrying frame transaction it restored from head revalidation.
-                    IndexFrameTxDependencies(restored);
+                    try
+                    {
+                        IndexFrameTxDependencies(restored);
+                    }
+                    catch (MissingTrieNodeException)
+                    {
+                        // The only head-state read in this loop. Head state can be missing, as the bucket update below
+                        // tolerates, and escaping here would leave the later records out of every ledger. Revalidation
+                        // re-indexes the delegate.
+                        IndexFrameTxDependencies(restored, resolveDelegation: false);
+                    }
+
                     StageFrameEvictionRetries(restored);
                 }
             }
@@ -592,7 +603,8 @@ namespace Nethermind.TxPool
         /// <param name="resolvedPayer">A payer the sweep resolved but did not record, so it is still tracked.</param>
         /// <param name="onlyIfTracked">Set by revalidation, which re-indexes a transaction the pool already holds
         /// rather than admitting one, so an eviction that landed meanwhile is not undone.</param>
-        private void IndexFrameTxDependencies(Transaction tx, Address? resolvedPayer = null, bool onlyIfTracked = false)
+        /// <param name="resolveDelegation">False only where head state is known to be unavailable.</param>
+        private void IndexFrameTxDependencies(Transaction tx, Address? resolvedPayer = null, bool onlyIfTracked = false, bool resolveDelegation = true)
         {
             if (!tx.SupportsFrames) return;
 
@@ -600,7 +612,7 @@ namespace Nethermind.TxPool
             bool hasDistinctPayer = payer is not null && payer != tx.SenderAddress;
             // A delegated sender runs the delegate's code, so that account is a dependency too; the sender's
             // own code hash only pins the designation.
-            Address? delegated = DelegationTargetOf(tx.SenderAddress!);
+            Address? delegated = resolveDelegation ? DelegationTargetOf(tx.SenderAddress!) : null;
             AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (delegated is not null ? 1 : 0)];
             int next = 0;
             accounts[next++] = tx.SenderAddress!;

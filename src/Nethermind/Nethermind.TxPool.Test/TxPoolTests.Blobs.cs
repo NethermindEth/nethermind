@@ -624,6 +624,52 @@ namespace Nethermind.TxPool.Test
             storage.ReceivedWithAnyArgs(1).Delete(default, default);
         }
 
+        // The constructor's head-state guard covers the bucket update only, but restoring a blob-carrying frame tx
+        // reads head state first, to index a delegated sender. Neither the missing state nor a sender with code may
+        // stop the constructor or leave the second record out of the ledgers, which the checked build compares
+        // against the pool at the next head.
+        [Test]
+        public async Task reloaded_frame_blobs_seed_every_ledger_when_head_state_is_unavailable([Values] bool senderHasCode)
+        {
+            bool stateAvailable = false;
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns([
+                new LightTransaction(RestorableFrameBlobTx(nonce: 0, payer: TestItem.AddressC)),
+                new LightTransaction(RestorableFrameBlobTx(nonce: 1, payer: TestItem.AddressD))]);
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(callInfo =>
+            {
+                if (!stateAvailable && !senderHasCode) throw MissingHeadState();
+                callInfo[1] = senderHasCode
+                    ? new AccountStruct(0, UInt256.MaxValue, Keccak.EmptyTreeHash, TestItem.KeccakA)
+                    : new AccountStruct(0, UInt256.MaxValue);
+                return true;
+            });
+            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? [] : throw MissingHeadState());
+            ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state);
+
+            Assert.DoesNotThrow(() => _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 10 },
+                GetBogotaSpecProvider(),
+                chainHeadInfoProvider: headInfo,
+                txStorage: storage));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(2));
+
+            stateAvailable = true;
+            Block nextBlock = Build.A.Block.WithNumber(_blockTree.Head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            AssertRevalidatedForHead();
+        }
+
+        private Transaction RestorableFrameBlobTx(ulong nonce, Address payer)
+        {
+            Transaction tx = BuildBlobFrameTx(nonce, blobCount: 1, paymaster: payer);
+            tx.PayerAddress = payer;
+            tx.PayerExposure = 1.GWei;
+            return tx;
+        }
+
         private IBlobTxStorage CreateStorageWithOneReloadedBlobTx()
         {
             Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
