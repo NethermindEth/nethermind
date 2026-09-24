@@ -1486,15 +1486,23 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void Nested_precompile_and_top_level_outputs_remain_frame_local()
+    private static IEnumerable<TestCaseData> TopLevelEndingsAfterNestedCall()
+    {
+        byte[] topLevelOutput = Bytes.FromHexString("0xaabbccddeeff");
+        yield return new TestCaseData(
+                Prepare.EvmCode.StoreDataInMemory(64, topLevelOutput).Return(topLevelOutput.Length, 64).Done, topLevelOutput)
+            .SetArgDisplayNames("Return_own_output");
+        yield return new TestCaseData(Prepare.EvmCode.Op(Instruction.STOP).Done, Array.Empty<byte>())
+            .SetArgDisplayNames("Stop");
+    }
+
+    [TestCaseSource(nameof(TopLevelEndingsAfterNestedCall))]
+    public void Nested_precompile_and_top_level_outputs_remain_frame_local(byte[] topLevelEnding, byte[] topLevelOutput)
     {
         byte[] nestedOutput = Bytes.FromHexString("0x1122334455667788");
-        byte[] topLevelOutput = Bytes.FromHexString("0xaabbccddeeff");
         byte[] code = Prepare.EvmCode
             .CallWithInput(IdentityPrecompile.Address, 50_000, nestedOutput)
-            .StoreDataInMemory(64, topLevelOutput)
-            .Return(topLevelOutput.Length, 64)
+            .Data(topLevelEnding)
             .Done;
 
         TestAllTracerWithOutput receipt = Execute(code);
