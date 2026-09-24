@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -49,11 +50,17 @@ public class BranchProcessor(
         stateProvider.CommitTree(block.Number);
     }
 
+    private IDisposable BeginTargetScope(Block targetBlock) => stateProvider.BeginScopeAtTarget(targetBlock.Header);
+
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
+        // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
+        // inconsistent pair would warm one state and execute another without any other symptom.
+        Debug.Assert(suggestedBlock.IsGenesis ? baseBlock is null : baseBlock?.Hash == suggestedBlock.ParentHash,
+            "baseBlock must be the parent of the first suggested block");
 
         IDisposable? worldStateCloser = null;
         if (stateProvider.IsInScope)
@@ -72,7 +79,7 @@ public class BranchProcessor(
         }
         else
         {
-            worldStateCloser = stateProvider.BeginScope(baseBlock);
+            worldStateCloser = BeginTargetScope(suggestedBlock);
         }
 
         CancellationTokenSource? backgroundCancellation = new();
@@ -151,7 +158,7 @@ public class BranchProcessor(
                     WaitForCacheClear();
 
                     worldStateCloser.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(preBlockBaseBlock);
+                    worldStateCloser = BeginTargetScope(suggestedBlock);
                     ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
                 }
@@ -175,8 +182,9 @@ public class BranchProcessor(
                 // is the last one the queue answers for. The suggested block is what the queue knows the branch by.
                 if (notReadOnly && i == blocksCount - 1)
                 {
-                    BlockExecuted?.Invoke(this, new BlockExecutedEventArgs(suggestedBlock));
-                    verdictGiven = true;
+                    BlockExecutedEventArgs executed = new(suggestedBlock);
+                    BlockExecuted?.Invoke(this, executed);
+                    verdictGiven = executed.Answered;
                 }
 
                 QueueClearCaches(preWarmTask);
@@ -200,10 +208,9 @@ public class BranchProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
                     worldStateCloser?.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
+                    worldStateCloser = BeginTargetScope(suggestedBlocks[i + 1]);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
@@ -231,9 +238,10 @@ public class BranchProcessor(
             QueueClearCaches(preWarmTask);
             WaitAndClear(ref preWarmTask);
 
-            // Answered VALID already, so a failure from here on belongs to the commit, not to the block. Left as an
-            // invalid block it would be deleted from the tree and recorded on the invalid chain, and the forkchoice
-            // that follows the VALID this block was given would answer INVALID for it and for every child of it.
+            // A request was answered VALID already, so a failure from here on belongs to the commit, not to the block.
+            // Left as an invalid block it would be deleted from the tree and recorded on the invalid chain, and the
+            // forkchoice that follows that VALID would answer INVALID for it and for every child of it. A block nobody
+            // was answered for, sync's included, keeps the invalid-block handling it always had.
             if (verdictGiven && ex is InvalidBlockException)
                 throw new InvalidOperationException($"Block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} failed after its verdict.", ex);
 
