@@ -105,7 +105,7 @@ public partial class DebugRpcModuleTests
 
         Block sideChain = Build.A.Block
             .WithParent(parent)
-            .WithStateRoot(parent.StateRoot!)
+            .WithStateRoot(TestItem.KeccakA)
             .WithExtraData([1])
             .TestObject;
         AddBlockResult suggested = context.Blockchain.BlockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
@@ -209,12 +209,10 @@ public partial class DebugRpcModuleTests
         await AddBlockWithTransfer(context);
         BlockHeader parent = context.Blockchain.BlockTree.Head!.Header;
 
-        // Reuses the parent's state root, but HasStateForBlock keys on (number, root) together, not root
-        // alone - only the parent's own (number, root) pair is committed, so the guard must resolve and
-        // check the actual parent header rather than matching state roots.
+        // A root never committed anywhere, so HasStateForBlock fails under both backends.
         Block unprocessed = Build.A.Block
             .WithParent(parent)
-            .WithStateRoot(parent.StateRoot!)
+            .WithStateRoot(TestItem.KeccakA)
             .TestObject;
         context.Blockchain.BlockTree.SuggestBlock(unprocessed, BlockTreeSuggestOptions.ForceDontSetAsMain);
 

@@ -414,6 +414,24 @@ public class DebugModuleTests
         }
     }
 
+    [TestCaseSource(nameof(TraceBaseStateGuardErrorCases))]
+    public void DebugTraceTransactionByIndex_WhenTraceBaseStateGuardRejects_ReturnsResourceUnavailable(
+        Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> invoke,
+        Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge> setup,
+        string expectedErrorSubstring)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+
+        setup(header, parent, _blockFinder, _blockchainBridge);
+
+        ResultWrapper<GethLikeTxTrace> actual = invoke(CreateModule(), header);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+    }
+
     [Test]
     public void DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
     {
@@ -631,5 +649,53 @@ public class DebugModuleTests
             ErrorCodes.ResourceUnavailable,
             null)
         { TestName = "state_unavailable" };
+    }
+
+    private static IEnumerable<TestCaseData> TraceBaseStateGuardErrorCases()
+    {
+        (string Name, Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> Invoke, Action<BlockHeader, IBlockFinder> ResolveHeader)[] methods =
+        [
+            (
+                "ByBlockAndIndex",
+                static (module, header) => module.debug_traceTransactionByBlockAndIndex(new BlockParameter(header.Number), 0),
+                static (header, finder) =>
+                {
+                    finder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+                    finder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
+                }
+            ),
+            (
+                "ByBlockhashAndIndex",
+                static (module, header) => module.debug_traceTransactionByBlockhashAndIndex(header.Hash!, 0),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            )
+        ];
+
+        foreach ((string name, Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> invoke, Action<BlockHeader, IBlockFinder> resolveHeader) in methods)
+        {
+            yield return new TestCaseData(
+                invoke,
+                (Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge>)((header, _, finder, _) =>
+                {
+                    resolveHeader(header, finder);
+                    finder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).ReturnsNull();
+                }),
+                "Cannot find parent header")
+            { TestName = $"{name}_parent_header_missing" };
+
+            yield return new TestCaseData(
+                invoke,
+                (Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge>)((header, parent, finder, bridge) =>
+                {
+                    resolveHeader(header, finder);
+                    finder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).ReturnsForAnyArgs(parent);
+                    // Positive control: the block's own state reports available, so a guard that (incorrectly)
+                    // checked the block's own state instead of its parent's would let this request through.
+                    bridge.HasStateForBlock(Arg.Is(header)).Returns(true);
+                    bridge.HasStateForBlock(Arg.Is(parent)).Returns(false);
+                }),
+                "No state available for the parent of block")
+            { TestName = $"{name}_parent_state_missing" };
+        }
     }
 }
