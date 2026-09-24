@@ -66,6 +66,60 @@ namespace Nethermind.Core.Test.Collections
         }
 
         [Test]
+        public void Sparse_clear_preserves_insertion_order_across_reuse_cycles()
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            journalSet.AddRange(Enumerable.Range(0, 8192));
+            journalSet.Restore(2);
+
+            for (int cycle = 0; cycle < 3; cycle++)
+            {
+                journalSet.Clear();
+                int[] expected = [cycle * 10 + 1, cycle * 10 + 2, cycle * 10 + 3, cycle * 10 + 4];
+                journalSet.AddRange(expected);
+
+                switch (cycle)
+                {
+                    case 0:
+                    {
+                        int[] copied = Enumerable.Repeat(-1, expected.Length + 1).ToArray();
+                        journalSet.CopyTo(copied, 1);
+                        Assert.That(copied, Is.EqualTo([-1, .. expected]));
+                        break;
+                    }
+                    case 1:
+                        Assert.That(EnumerateConcrete(journalSet), Is.EqualTo(expected));
+                        break;
+                    default:
+                    {
+                        IEnumerable<int> enumerable = journalSet;
+                        using IEnumerator<int> enumerator = enumerable.GetEnumerator();
+                        List<int> enumerated = [];
+                        while (enumerator.MoveNext())
+                        {
+                            enumerated.Add(enumerator.Current);
+                        }
+
+                        Assert.That(enumerated, Is.EqualTo(expected));
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static int[] EnumerateConcrete(JournalSet<int> journalSet)
+        {
+            using HashSet<int>.Enumerator enumerator = journalSet.GetEnumerator();
+            List<int> items = [];
+            while (enumerator.MoveNext())
+            {
+                items.Add(enumerator.Current);
+            }
+
+            return items.ToArray();
+        }
+
+        [Test]
         public void Sparse_clear_preserves_add_and_restore_semantics_after_large_growth()
         {
             JournalSet<int> journalSet = CreateJournalSet();

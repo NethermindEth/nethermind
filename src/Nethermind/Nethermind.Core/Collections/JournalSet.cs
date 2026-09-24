@@ -20,6 +20,7 @@ namespace Nethermind.Core.Collections
     {
         private readonly List<T> _items = [];
         private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
+        private bool _enumerationNeedsNormalization;
 
         public int TakeSnapshot() => Position;
 
@@ -66,16 +67,23 @@ namespace Nethermind.Core.Collections
                 {
                     _set.Remove(item);
                 }
+
+                _enumerationNeedsNormalization = true;
             }
             else
             {
                 _set.Clear();
+                _enumerationNeedsNormalization = false;
             }
 
             _items.Clear();
         }
 
-        public HashSet<T>.Enumerator GetEnumerator() => _set.GetEnumerator();
+        public HashSet<T>.Enumerator GetEnumerator()
+        {
+            NormalizeForEnumeration();
+            return _set.GetEnumerator();
+        }
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
@@ -88,6 +96,27 @@ namespace Nethermind.Core.Collections
         /// </summary>
         /// <remarks>The caller must ensure the set is not empty.</remarks>
         public T First => _items[0];
-        public void CopyTo(T[] array, int arrayIndex) => _set.CopyTo(array, arrayIndex);
+        public void CopyTo(T[] array, int arrayIndex)
+        {
+            NormalizeForEnumeration();
+            _set.CopyTo(array, arrayIndex);
+        }
+
+        private void NormalizeForEnumeration()
+        {
+            if (!_enumerationNeedsNormalization)
+            {
+                return;
+            }
+
+            // Sparse clears leave reusable HashSet slots whose order can reverse later additions; rebuild only when enumeration is requested.
+            _set.Clear();
+            foreach (T item in _items)
+            {
+                _set.Add(item);
+            }
+
+            _enumerationNeedsNormalization = false;
+        }
     }
 }
