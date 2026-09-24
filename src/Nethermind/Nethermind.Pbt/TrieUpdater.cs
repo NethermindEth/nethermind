@@ -469,7 +469,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (!foldedInParallel)
             FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition);
 
-        return Compose(ref reader, writer, path, context.Metrics, ref frontier).Materialize(resultDepth);
+        return Compose(ref reader, writer, path, resultDepth, context.Metrics, ref frontier);
     }
 
     private static void FoldBuckets(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
@@ -732,23 +732,28 @@ internal static partial class TrieUpdater<TKey, TPath>
         frontier.Set(slot, ref result);
     }
 
-    [SkipLocalsInit]
-    internal static TraversalSubtree Compose(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, TrieUpdaterMetrics? metrics,
-        scoped ref Frontier frontier)
+    /// <summary>Rebuilds the group from the frontier into <paramref name="writer"/>, returning its root for the caller to place.</summary>
+    /// <remarks>
+    /// The walk is post-order, and the writer's buffer is its stack memory: every node is appended at its own position
+    /// as soon as it is produced, and what moves up the walk is only where it sits. The parent reads it back from there.
+    /// A node that rises over an empty sibling is always the last entry, so it is rewritten in place one level up; a
+    /// node that must not stay in the group, an inlined leaf or an omitted branch, is dropped as soon as its position is
+    /// settled, while it is still the last entry, keeping only what its parent needs. The root is returned rather than
+    /// kept, anchored at <paramref name="resultDepth"/>.
+    /// </remarks>
+    internal static FoldResult Compose(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth,
+        TrieUpdaterMetrics? metrics, scoped ref Frontier frontier)
     {
         uint copies = frontier.Copies;
         uint frontierMask = frontier.Mask;
         writer.ReserveFirstBuffer(reader.PayloadLength);
         ComposeFrameBuffer frames = default;
-        // A left child's preimage waits here, one slice per frame, until its sibling is written and both can be hashed at once.
-        Span<byte> pendingPreimages = stackalloc byte[(PbtFourLevelGroupGeometry.LevelsPerGroup + 2) * PbtNodeCodec.MaxBranchPreimageLength];
         int frameCount = 1;
-        TraversalSubtree prevSubtree = default;
+        ComposedNode prevSubtree = default;
         while (frameCount != 0)
         {
             // The top of the stack: the position being visited, which is prevSubtree's parent when one of its children has just completed.
             ref ComposeFrame frame = ref frames[frameCount - 1];
-            Span<byte> leftPreimage = pendingPreimages.Slice((frameCount - 1) * PbtNodeCodec.MaxBranchPreimageLength, PbtNodeCodec.MaxBranchPreimageLength);
             int position = frame.Path.Position;
             if (frame.Stage == ComposeStage.Descend)
             {
@@ -758,15 +763,16 @@ internal static partial class TrieUpdater<TKey, TPath>
                 // the walk goes down past it and rebuilds it from its children.
                 if (((frontierMask | copies) & (1u << position)) != 0)
                 {
-                    prevSubtree = TakeSubtree(ref reader, writer, path, ref frontier, copies, position);
-                    Debug.Assert(!prevSubtree.IsEmpty, "A held position always has a node.");
+                    TraversalSubtree held = TakeSubtree(ref reader, writer, path, ref frontier, copies, position);
+                    Debug.Assert(!held.IsEmpty, "A held position always has a node.");
                     // An internal frontier entry is an unchanged subtree reached from the original input.
                     // Copy descendants only: its root may still be promoted by an updated sibling's deletion.
-                    if (!prevSubtree.IsLeaf)
+                    if (!held.IsLeaf)
                     {
                         int copied = reader.CopyRange(path, writer, position - 2 * frame.Path.Width + 2, position);
                         if (copied != 0) metrics?.AddBulkCopy(copied);
                     }
+                    prevSubtree = AppendHeld(writer, position, reader.BitDepth + frame.Path.Length, ref held);
                     frameCount--;
                     continue;
                 }
@@ -787,12 +793,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (frame.Stage == ComposeStage.AwaitingLeft)
             {
                 // Back up from the left child, whose node is in prevSubtree. With no right child, that node rises to
-                // this position. Otherwise the walk goes down the right child, after writing the left node; with no
+                // this position. Otherwise the walk goes down the right child, after settling the left node; with no
                 // left node, the right one rises here instead.
-                // Establish right occupancy without decoding it, so the left root can be emitted first.
                 uint rightMask = ((1u << (frame.Path.Width - 1)) - 1) << (position - frame.Path.Width + 1);
                 if (((frontierMask | copies) & rightMask) == 0)
                 {
+                    if (!prevSubtree.IsEmpty) prevSubtree = Rise(writer, prevSubtree, position - frame.Path.Width, position, 0);
                     frameCount--;
                     continue;
                 }
@@ -804,10 +810,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
                 else
                 {
-                    // A leaf child is not written; the branch composed below inlines its key.
-                    frame.LeftIsLeaf = prevSubtree.IsLeaf;
-                    if (prevSubtree.IsLeaf) frame.LeftKey = prevSubtree.Node.LeafKey;
-                    frame.LeftHash = writer.Write(path, position - frame.Path.Width, reader.BitDepth + frame.Path.Length + 1, ref prevSubtree, metrics, leftPreimage, out frame.LeftPreimageLength);
+                    SettleLeft(writer, path, position - frame.Path.Width, prevSubtree, ref frame, metrics);
                     frame.Stage = ComposeStage.AwaitingRight;
                 }
                 frames[frameCount] = new(frame.Path.Right);
@@ -816,30 +819,149 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
             if (frame.Stage == ComposeStage.AwaitingOnlyRight)
             {
-                // Back up from the right child of a position with no left node: its node returns up to the parent frame as it is.
+                // Back up from the right child of a position with no left node: its node rises to this position.
+                prevSubtree = Rise(writer, prevSubtree, position - 1, position, 1);
                 frameCount--;
                 continue;
             }
             if (frame.Stage == ComposeStage.AwaitingRight)
             {
-                // Back up from the right child with both children present: write the right one and return the branch
-                // over the two up to the parent frame.
-                bool rightIsLeaf = prevSubtree.IsLeaf;
-                TKey rightKey = rightIsLeaf ? prevSubtree.Node.LeafKey : default;
-                Span<byte> rightPreimage = pendingPreimages[^PbtNodeCodec.MaxBranchPreimageLength..];
-                ValueHash256 rightHash = writer.Write(path, position - 1, reader.BitDepth + frame.Path.Length + 1, ref prevSubtree, metrics, rightPreimage, out int rightPreimageLength);
-                HashPending(leftPreimage[..frame.LeftPreimageLength], ref frame.LeftHash, rightPreimage[..rightPreimageLength], ref rightHash, metrics);
-                byte leafChildren = (byte)((frame.LeftIsLeaf ? Subtree.LeftLeaf : 0) | (rightIsLeaf ? Subtree.RightLeaf : 0));
-                prevSubtree = new TraversalSubtree(path, new Subtree(frame.Path, frame.LeftHash, rightHash, frame.LeftKey, rightKey, leafChildren));
+                // Back up from the right child with both children present: settle the right one and append the branch
+                // over the two, returning it up to the parent frame.
+                prevSubtree = AppendBranch(writer, path, position, prevSubtree, ref frame, metrics);
                 frameCount--;
                 continue;
             }
         }
         frontier.ReturnResults();
-        return prevSubtree;
+        return TakeRoot(writer, path, resultDepth, prevSubtree);
     }
 
-    /// <summary>Hashes the sibling preimages left pending by <see cref="PbtNodeGroupWriter{TPath}.Write{TKey}(in PbtTraversalPath, int, int, ref TraversalSubtree, TrieUpdaterMetrics?, scoped Span{byte}, out int)"/>, together when both are pending.</summary>
+    /// <summary>Appends a held node at <paramref name="position"/>, encoded at that position's <paramref name="depth"/>.</summary>
+    private static ComposedNode AppendHeld(PbtNodeGroupWriter<TPath> writer, int position, int depth, scoped ref TraversalSubtree node)
+    {
+        int offset = writer.WrittenCount;
+        int length = node.EncodedLength(depth);
+        ValueHash256 hash = node.EncodeDeferringHash(writer.Append(position, length), depth, out _);
+        node.Clear();
+        return new(offset, length, hash);
+    }
+
+    /// <summary>Moves the last entry, the node at <paramref name="childPosition"/> on <paramref name="side"/> of <paramref name="position"/>, up to <paramref name="position"/>.</summary>
+    /// <remarks>
+    /// A branch gains the side bit in front of its compressed prefix, and so needs hashing again; a leaf's encoding does
+    /// not depend on its position.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static ComposedNode Rise(PbtNodeGroupWriter<TPath> writer, in ComposedNode node, int childPosition, int position, int side)
+    {
+        // The entry is rewritten over itself, so it is read from a copy.
+        Span<byte> previous = stackalloc byte[node.Length];
+        writer.Entry(node.Offset, node.Length).Span.CopyTo(previous);
+        writer.DropLast(childPosition);
+        PbtNodeReader stored = PbtNodeReader.FromValidated(previous);
+        if (stored.IsLeaf)
+        {
+            previous.CopyTo(writer.Append(position, node.Length));
+            return node;
+        }
+
+        CompressedPrefix prefix = stored.Prefix;
+        int bitCount = prefix.BitCount + 1;
+        int length = PbtNodeCodec.BranchLength(bitCount, stored.LeftKey.Length, stored.RightKey.Length);
+        Span<byte> encoding = writer.Append(position, length);
+        PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, stored.LeftHash, stored.RightHash);
+        encoding[3] |= (byte)(side << 7);
+        PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, encoding[3..], 1);
+        PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..], stored.LeftKey, stored.RightKey);
+        return new(node.Offset, length, default);
+    }
+
+    /// <summary>Settles the left child at <paramref name="leftPosition"/> into <paramref name="frame"/>, dropping it when the group does not keep it.</summary>
+    /// <remarks>
+    /// A leaf is inlined into the branch above it, so only its key and hash are kept. An omitted branch is hashed now,
+    /// while it is still the last entry, since the right subtree is written over it. A kept branch stays in the
+    /// writer, its preimage read back from there to be hashed together with its sibling's.
+    /// </remarks>
+    private static void SettleLeft(PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path, int leftPosition, in ComposedNode left, ref ComposeFrame frame,
+        TrieUpdaterMetrics? metrics)
+    {
+        ReadOnlySpan<byte> encoding = writer.Entry(left.Offset, left.Length).Span;
+        PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
+        frame.LeftIsLeaf = node.IsLeaf;
+        frame.LeftHash = left.Hash;
+        frame.LeftPreimageLength = 0;
+        if (node.IsLeaf)
+        {
+            frame.LeftKey = TKey.Create(node.Key);
+            writer.DropLast(leftPosition);
+            return;
+        }
+        if (writer.Omits(leftPosition, encoding))
+        {
+            if (frame.LeftHash == default)
+            {
+                metrics?.IncrementNodeHashes();
+                frame.LeftHash = Blake3Hash.Hash(node.Preimage);
+            }
+            writer.DropLast(leftPosition);
+            return;
+        }
+        writer.ValidateEntry(path, leftPosition, encoding);
+        if (frame.LeftHash == default)
+        {
+            frame.LeftPreimageOffset = left.Offset;
+            frame.LeftPreimageLength = node.Preimage.Length;
+        }
+    }
+
+    /// <summary>Settles the right child, the last entry, and appends the branch over it and the frame's left child at <paramref name="position"/>.</summary>
+    [SkipLocalsInit]
+    private static ComposedNode AppendBranch(PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path, int position, in ComposedNode right, ref ComposeFrame frame,
+        TrieUpdaterMetrics? metrics)
+    {
+        int rightPosition = position - 1;
+        ReadOnlySpan<byte> encoding = writer.Entry(right.Offset, right.Length).Span;
+        PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
+        bool rightIsLeaf = node.IsLeaf;
+        TKey rightKey = rightIsLeaf ? TKey.Create(node.Key) : default;
+        ValueHash256 rightHash = right.Hash;
+        ReadOnlySpan<byte> rightPreimage = rightHash == default ? node.Preimage : default;
+        ReadOnlySpan<byte> leftPreimage = frame.LeftPreimageLength == 0 ? default : writer.Entry(frame.LeftPreimageOffset, frame.LeftPreimageLength).Span;
+        HashPending(leftPreimage, ref frame.LeftHash, rightPreimage, ref rightHash, metrics);
+        if (rightIsLeaf || writer.Omits(rightPosition, encoding))
+            writer.DropLast(rightPosition);
+        else
+            writer.ValidateEntry(path, rightPosition, encoding);
+
+        int leftKeyLength = frame.LeftIsLeaf ? frame.LeftKey.Length : 0;
+        int rightKeyLength = rightIsLeaf ? rightKey.Length : 0;
+        int offset = writer.WrittenCount;
+        int length = PbtNodeCodec.BranchLength(0, leftKeyLength, rightKeyLength);
+        Span<byte> branch = writer.Append(position, length);
+        PbtNodeCodec.CreateBranchEncoding(branch, 0, frame.LeftHash, rightHash);
+        Span<byte> trailer = branch[PbtNodeCodec.BranchPreimageLength(0)..];
+        PbtNodeCodec.WriteBranchTrailer(trailer, leftKeyLength, rightKeyLength);
+        if (frame.LeftIsLeaf) frame.LeftKey.Bytes.CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
+        if (rightIsLeaf) rightKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftKeyLength)..]);
+        return new(offset, length, default);
+    }
+
+    /// <summary>Detaches the group's root, the last entry, as a result anchored at <paramref name="resultDepth"/>, and drops it from the group.</summary>
+    private static FoldResult TakeRoot(PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth, in ComposedNode root)
+    {
+        if (root.IsEmpty) return default;
+        ReadOnlyMemory<byte> encoding = writer.Entry(root.Offset, root.Length);
+        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
+        FoldResult result = node.IsLeaf
+            ? new(TKey.Create(node.Key), root.Hash)
+            : new TraversalSubtree(path, new DirectCopySubtree(encoding, PbtFourLevelGroupGeometry.LocalPathOf(PbtFourLevelGroupGeometry.RootPosition), root.Hash))
+                .Materialize(resultDepth);
+        writer.DropLast(PbtFourLevelGroupGeometry.RootPosition);
+        return result;
+    }
+
+    /// <summary>Hashes the sibling preimages still pending, together when both are.</summary>
     private static void HashPending(ReadOnlySpan<byte> leftPreimage, ref ValueHash256 leftHash, ReadOnlySpan<byte> rightPreimage, ref ValueHash256 rightHash, TrieUpdaterMetrics? metrics)
     {
         if (leftPreimage.IsEmpty && rightPreimage.IsEmpty) return;
@@ -868,10 +990,22 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal NodeGroupPath Path = path;
         internal ComposeStage Stage;
         internal ValueHash256 LeftHash;
+        /// <summary>Where the left child's preimage awaiting its sibling sits in the writer.</summary>
+        internal int LeftPreimageOffset;
         /// <summary>The length of the left child's preimage awaiting its sibling, or zero when its hash is already known.</summary>
         internal int LeftPreimageLength;
         internal TKey LeftKey;
         internal bool LeftIsLeaf;
+    }
+
+    /// <summary>A node composition has appended to the writer, read back from there by its parent.</summary>
+    private readonly struct ComposedNode(int offset, int length, in ValueHash256 hash)
+    {
+        internal readonly int Offset = offset;
+        internal readonly int Length = length;
+        /// <summary>The node's hash, or default while its preimage waits in the writer to be hashed with its sibling's.</summary>
+        internal readonly ValueHash256 Hash = hash;
+        internal bool IsEmpty => Length == 0;
     }
 
     [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup + 1)]

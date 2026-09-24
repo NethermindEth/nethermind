@@ -80,7 +80,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         Debug.Assert(path.BitDepth == _bitDepth);
         ValidateReservedNode();
         ReadOnlySpan<byte> encoding = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, _pendingLength);
-        ValidateEncoding(path, encoding);
+        ValidateEncoding(path, _pendingPosition, encoding);
         if (!PbtNodeGroupCodec.ShouldOmit(_omission, _pendingPosition, encoding))
         {
             _offsets[_pendingPosition] = (ushort)_written;
@@ -90,6 +90,52 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         _lastPosition = _pendingPosition;
         _pendingPosition = -1;
         _pendingLength = 0;
+    }
+
+    /// <summary>Appends an entry that composition settles later, reserving <paramref name="length"/> bytes at <paramref name="position"/>.</summary>
+    /// <remarks>
+    /// The entry is neither omitted nor validated here: composition decides that once the entry's final position is
+    /// known, reading it back through <see cref="Entry"/> meanwhile and removing it with <see cref="DropLast"/> if it
+    /// must not stay. The group root may be appended too, since composition always drops it below depth zero.
+    /// </remarks>
+    internal Span<byte> Append(int position, int length)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ValidateCommitted();
+        ValidatePositionOrder(position);
+        if (length <= 0 || length > MaxEntriesLength - _written)
+            throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit or have an invalid length.");
+        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + length);
+        Span<byte> entry = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, length);
+        _offsets[position] = (ushort)_written;
+        _availability |= 1u << position;
+        _written += length;
+        _lastPosition = position;
+        return entry;
+    }
+
+    /// <summary>The entry written at <paramref name="offset"/>, borrowed until the next writer operation.</summary>
+    internal ReadOnlyMemory<byte> Entry(int offset, int length) => _memory!.Memory.Slice(PbtNodeGroupCodec.HeaderLength + offset, length);
+
+    /// <summary>Removes the last entry, appended at <paramref name="position"/>, so the next one is written over it.</summary>
+    internal void DropLast(int position)
+    {
+        Debug.Assert((_availability & (1u << position)) != 0, "Only an appended entry is dropped.");
+        _availability &= ~(1u << position);
+        _written = _offsets[position];
+        // Every earlier entry sits below the dropped one, so its position may be written again.
+        _lastPosition = position - 1;
+    }
+
+    /// <summary>Whether <paramref name="encoding"/> at <paramref name="position"/> is left out of the group and rebuilt from its children.</summary>
+    internal bool Omits(int position, ReadOnlySpan<byte> encoding) => PbtNodeGroupCodec.ShouldOmit(_omission, position, encoding);
+
+    /// <summary>Checks an appended entry once its position is final.</summary>
+    [Conditional("DEBUG")]
+    internal void ValidateEntry(scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
+    {
+        Debug.Assert(path.BitDepth == _bitDepth);
+        ValidateEncoding(path, position, encoding);
     }
 
     /// <summary>Copies and commits an existing canonical encoding.</summary>
@@ -131,38 +177,6 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         copy.CopyTo(GetSpan(position, copy.Length));
         Commit(path);
         return copy.Hash(metrics);
-    }
-
-    /// <summary>
-    /// <see cref="Write{TKey}(in PbtTraversalPath, int, int, ref TrieUpdater{TKey, TPath}.TraversalSubtree, TrieUpdaterMetrics?)"/>,
-    /// except that a branch whose hash is not yet known is left for the caller to hash: its preimage is copied
-    /// into <paramref name="pendingPreimage"/>, <paramref name="pendingPreimageLength"/> set, and default returned.
-    /// </summary>
-    /// <remarks>The copy is needed because the committed encoding may be omitted from the group and the writer's span is only borrowed until its next operation.</remarks>
-    internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, int depth, ref TrieUpdater<TKey, TPath>.TraversalSubtree node, TrieUpdaterMetrics? metrics,
-        scoped Span<byte> pendingPreimage, out int pendingPreimageLength)
-        where TKey : struct, IPbtKey<TKey>
-    {
-        pendingPreimageLength = 0;
-        if (node.IsEmpty) return default;
-        if (node.IsLeaf && position != PbtFourLevelGroupGeometry.RootPosition)
-        {
-            ValueHash256 leafHash = node.Node.LeafHash;
-            node.Clear();
-            return leafHash;
-        }
-        if (!node.Copy.IsEmpty && depth == node.AnchorDepth)
-        {
-            ValueHash256 copiedHash = Write<TKey>(path, position, node.Copy, metrics);
-            node.Clear();
-            return copiedHash;
-        }
-        Span<byte> encoding = GetSpan(position, node.EncodedLength(depth));
-        ValueHash256 hash = node.EncodeDeferringHash(encoding, depth, metrics, out pendingPreimageLength);
-        encoding[..pendingPreimageLength].CopyTo(pendingPreimage);
-        Commit(path);
-        node.Clear();
-        return hash;
     }
 
     /// <summary>Appends a validated source group's contiguous entry range at unchanged positions.</summary>
@@ -255,10 +269,10 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     [Conditional("DEBUG")]
-    private void ValidateEncoding(scoped in PbtTraversalPath path, ReadOnlySpan<byte> encoding)
+    private static void ValidateEncoding(scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
     {
         PbtNodeCodec.ValidateExact(encoding);
-        PbtNodeGroupReader.ValidateLeafPath(path, _pendingPosition, encoding);
+        PbtNodeGroupReader.ValidateLeafPath(path, position, encoding);
     }
 
     /// <summary>Sizes the first payload buffer for a group expected to be about <paramref name="length"/> bytes.</summary>
