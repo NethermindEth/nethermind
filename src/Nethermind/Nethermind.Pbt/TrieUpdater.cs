@@ -994,14 +994,43 @@ internal static partial class TrieUpdater<TKey, TPath>
     private static FoldResult TakeRoot(PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth, in ComposedNode root)
     {
         if (root.IsEmpty) return default;
-        ReadOnlyMemory<byte> encoding = writer.Entry(root.Offset, root.Length);
-        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
-        FoldResult result = node.IsLeaf
-            ? new(TKey.Create(node.Key), root.Hash)
-            : new TraversalSubtree(path, new DirectCopySubtree(encoding, PbtFourLevelGroupGeometry.LocalPathOf(PbtFourLevelGroupGeometry.RootPosition), root.Hash))
-                .Materialize(resultDepth);
+        PbtNodeReader node = PbtNodeReader.FromValidated(writer.Entry(root.Offset, root.Length).Span);
+        FoldResult result = node.IsLeaf ? new(TKey.Create(node.Key), root.Hash) : ReanchoredRoot(path, resultDepth, node);
         writer.DropLast(PbtFourLevelGroupGeometry.RootPosition);
         return result;
+    }
+
+    /// <summary>A group's root branch, stored at the group's depth, as a result anchored at <paramref name="resultDepth"/>.</summary>
+    /// <remarks>A prefix jump leaves <paramref name="resultDepth"/> above the group, so the bits in between are read from <paramref name="path"/>.</remarks>
+    private static FoldResult ReanchoredRoot(scoped in PbtTraversalPath path, int resultDepth, scoped in PbtNodeReader root)
+    {
+        CompressedPrefix prefix = root.Prefix;
+        int anchorDepth = path.BitDepth;
+        int splitDepth = anchorDepth + prefix.BitCount;
+        int localLength = Math.Min(splitDepth - resultDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
+        int slot = 0;
+        for (int bit = resultDepth; bit < resultDepth + localLength; bit++)
+            slot = (slot << 1) | (bit < anchorDepth ? GetBit(path.Bytes, bit) : GetBit(prefix.Bytes, bit - anchorDepth));
+
+        int ownedStart = resultDepth + localLength;
+        ReadOnlyMemory<byte> ownedPrefix = default;
+        if (ownedStart < splitDepth)
+        {
+            // Zeroed, because the bits are copied in by disjunction.
+            byte[] owned = new byte[sizeof(ushort) + PbtBitPrefix.ByteCount(splitDepth - ownedStart)];
+            BinaryPrimitives.WriteUInt16BigEndian(owned, (ushort)(splitDepth - ownedStart));
+            Span<byte> bits = owned.AsSpan(sizeof(ushort));
+            if (ownedStart < anchorDepth) PbtBitPrefix.CopyBits(path.Bytes, ownedStart, anchorDepth - ownedStart, bits, 0);
+            int prefixStart = Math.Max(ownedStart, anchorDepth);
+            if (prefixStart < splitDepth) PbtBitPrefix.CopyBits(prefix.Bytes, prefixStart - anchorDepth, splitDepth - prefixStart, bits, prefixStart - ownedStart);
+            ownedPrefix = owned;
+        }
+
+        return new(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
+            root.LeftHash, root.RightHash,
+            root.LeftKey.IsEmpty ? default : TKey.Create(root.LeftKey),
+            root.RightKey.IsEmpty ? default : TKey.Create(root.RightKey),
+            (byte)((root.LeftKey.IsEmpty ? 0 : Subtree.LeftLeaf) | (root.RightKey.IsEmpty ? 0 : Subtree.RightLeaf)), ownedPrefix);
     }
 
     /// <summary>Hashes the sibling preimages still pending, together when both are.</summary>
