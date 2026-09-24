@@ -169,9 +169,8 @@ public class KademliaSimulation
         TimeSpan queryDuration = sw.Elapsed;
         double totalNodesReturned = nodeIds.Count * _config.KSize;
 
-        // Alpha = 1 is deterministic (~0.9935). Alpha > 1 lookups interleave their Task.Run workers,
-        // so the ratio moves run to run (observed 0.948-0.99).
-        double minClosestKRatio = _config.Alpha == 1 ? 0.98 : 0.93;
+        // Alpha > 1 lookups interleave their Task.Run workers, so their ratio is scheduling-dependent.
+        double minClosestKRatio = _config.Alpha == 1 ? 0.99 : 0.93;
         Assert.That(closestKCount / totalNodesReturned, Is.GreaterThan(minClosestKRatio));
 
         TestContext.Out.WriteLine($"Closest K ratio {closestKCount / totalNodesReturned}");
@@ -232,6 +231,8 @@ public class KademliaSimulation
                     Alpha = config.Alpha,
                     Beta = config.Beta,
                     RefreshInterval = TimeSpan.FromHours(1),
+                    // A delayed wall-clock ping on full buckets would reorder the LRU mid-bootstrap.
+                    RefreshPingDelay = TimeSpan.FromHours(1),
                 })
                 .AddSingleton<IKademliaMessageSender<ValueHash256, TestNode>>(new SenderForNode(nodeIDTestNode, this))
                 .AddSingleton<ReceiverForNode>()
