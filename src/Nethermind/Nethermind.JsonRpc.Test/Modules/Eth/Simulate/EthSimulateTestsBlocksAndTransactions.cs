@@ -1070,7 +1070,7 @@ public class EthSimulateTestsBlocksAndTransactions
     /// <summary>
     /// Regression test: under EIP-8037 the block <c>gasUsed</c> reported by eth_simulateV1 must be
     /// the two-dimensional block accounting <c>max(Σ execution, Σ state)</c>, not the execution
-    /// dimension alone (and not the gas-limit budget tracked for the gas cap). Value transfers
+    /// dimension alone (and not the execution-only gas-cap budget). Value transfers
     /// materialising dead recipients charge <c>NEW_ACCOUNT</c> state gas that far exceeds the
     /// transactions' execution gas, so the state dimension dominates.
     /// </summary>
@@ -1111,12 +1111,12 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// Regression test: on forks without EIP-7778 the block <c>gasUsed</c> reported by eth_simulateV1
-    /// must be the gas the calls actually spent, not the gas-limit budget the simulate adapter tracks
-    /// for the JSON-RPC gas cap. This is the behaviour that applies to every currently deployed fork.
+    /// On forks without EIP-7778 the block <c>gasUsed</c> reported by eth_simulateV1 must be the gas
+    /// the calls actually spent, not the execution-only gas-cap budget the simulate adapter tracks for
+    /// the JSON-RPC gas cap. This is the behaviour that applies to every currently deployed fork.
     /// </summary>
-    [TestCase(true, TestName = "block gasUsed is the spent gas, not the requested limit (validation=true)")]
-    [TestCase(false, TestName = "block gasUsed is the spent gas, not the requested limit (validation=false)")]
+    [TestCase(true, TestName = "block gasUsed is the spent gas, not the execution-only gas-cap budget (validation=true)")]
+    [TestCase(false, TestName = "block gasUsed is the spent gas, not the execution-only gas-cap budget (validation=false)")]
     public async Task eth_simulateV1_block_gas_used_is_spent_gas_without_eip7778(bool validation)
     {
         // Default chain is Berlin: neither EIP-7778 nor EIP-8037, so the funded transfer costs exactly
