@@ -764,7 +764,9 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// Only an interior prefixless branch is ever left out (<see cref="PbtNodeGroupCodec.ShouldOmit"/>), so a
     /// boundary position or the root with nothing stored, or a child missing, is a corrupt group. The link hash
-    /// decomposition seeded is kept, so the branch is only hashed again if a sibling's deletion promotes it.
+    /// decomposition seeded is kept, so the branch is only hashed again if a sibling's deletion promotes it. With that
+    /// hash known and the branch left out again, its child hashes are only needed by <see cref="Rise"/>, so they are
+    /// resolved there instead, sparing the rehash of every unchanged node below it.
     /// </remarks>
     private static ComposedNode AppendImplicitBranch(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
         int position)
@@ -772,15 +774,24 @@ internal static partial class TrieUpdater<TKey, TPath>
         int width = PbtFourLevelGroupGeometry.WidthOf(position);
         if (width is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
         {
+            int offset = writer.WrittenCount;
+            int length = PbtNodeCodec.BranchLength(0, 0, 0);
+            Span<byte> branch = writer.Append(position, length);
+            ValueHash256 seeded = reader.SeededHash(position);
+            if (seeded != default)
+            {
+                // The seeded hash only stands in for the child hashes, which omission does not look at.
+                PbtNodeCodec.CreateBranchEncoding(branch, 0, seeded, seeded);
+                PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(0)..], 0, 0);
+                if (writer.Omits(position, branch)) return new(offset, length, seeded) { ChildHashesPending = true };
+            }
+
             reader.GetChildHashes(path, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
             if (left != default && right != default)
             {
-                int offset = writer.WrittenCount;
-                int length = PbtNodeCodec.BranchLength(0, 0, 0);
-                Span<byte> branch = writer.Append(position, length);
                 PbtNodeCodec.CreateBranchEncoding(branch, 0, left, right);
                 PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(0)..], 0, 0);
-                return new(offset, length, reader.SeededHash(position));
+                return new(offset, length, seeded);
             }
         }
         throw new InvalidDataException("A referenced PBT node is missing.");
@@ -860,7 +871,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 uint rightMask = ((1u << (frame.Path.Width - 1)) - 1) << (position - frame.Path.Width + 1);
                 if (((frontierMask | copies) & rightMask) == 0)
                 {
-                    if (!prevSubtree.IsEmpty) prevSubtree = Rise(writer, prevSubtree, position - frame.Path.Width, position, 0);
+                    if (!prevSubtree.IsEmpty) prevSubtree = Rise(ref reader, writer, path, prevSubtree, position - frame.Path.Width, position, 0);
                     frameCount--;
                     continue;
                 }
@@ -882,7 +893,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (frame.Stage == ComposeStage.AwaitingOnlyRight)
             {
                 // Back up from the right child of a position with no left node: its node rises to this position.
-                prevSubtree = Rise(writer, prevSubtree, position - 1, position, 1);
+                prevSubtree = Rise(ref reader, writer, path, prevSubtree, position - 1, position, 1);
                 frameCount--;
                 continue;
             }
@@ -901,10 +912,11 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>Moves the last entry, the node at <paramref name="childPosition"/> on <paramref name="side"/> of <paramref name="position"/>, up to <paramref name="position"/>.</summary>
     /// <remarks>
     /// A branch gains the side bit in front of its compressed prefix, and so needs hashing again; a leaf's encoding does
-    /// not depend on its position.
+    /// not depend on its position. An implicit branch appended without its child hashes has them resolved here.
     /// </remarks>
     [SkipLocalsInit]
-    private static ComposedNode Rise(PbtNodeGroupWriter<TPath> writer, in ComposedNode node, int childPosition, int position, int side)
+    private static ComposedNode Rise(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
+        in ComposedNode node, int childPosition, int position, int side)
     {
         // The entry is rewritten over itself, so it is read from a copy.
         Span<byte> previous = stackalloc byte[node.Length];
@@ -917,11 +929,18 @@ internal static partial class TrieUpdater<TKey, TPath>
             return node;
         }
 
+        ValueHash256 leftHash = stored.LeftHash;
+        ValueHash256 rightHash = stored.RightHash;
+        if (node.ChildHashesPending)
+        {
+            int width = PbtFourLevelGroupGeometry.WidthOf(childPosition);
+            reader.GetChildHashes(path, childPosition - width, childPosition - 1, out leftHash, out rightHash);
+        }
         CompressedPrefix prefix = stored.Prefix;
         int bitCount = prefix.BitCount + 1;
         int length = PbtNodeCodec.BranchLength(bitCount, stored.LeftKey.Length, stored.RightKey.Length);
         Span<byte> encoding = writer.Append(position, length);
-        PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, stored.LeftHash, stored.RightHash);
+        PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, leftHash, rightHash);
         encoding[3] |= (byte)(side << 7);
         PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, encoding[3..], 1);
         PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..], stored.LeftKey, stored.RightKey);
@@ -1085,6 +1104,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly int Length = length;
         /// <summary>The node's hash, or default while its preimage waits in the writer to be hashed with its sibling's.</summary>
         internal readonly ValueHash256 Hash = hash;
+        /// <summary>Whether the encoding is an omitted implicit branch whose child hashes were not resolved, which only <see cref="Rise"/> needs.</summary>
+        internal bool ChildHashesPending { get; init; }
         internal bool IsEmpty => Length == 0;
     }
 

@@ -22,7 +22,8 @@ public class PbtDecompositionHashingTests
     /// Sixteen keys differing in the first nibble fill the root group's boundary slots. Rewriting values hashes the new
     /// leaves and the nodes composed above them, plus each touched boundary encoding the group stores no link for.
     /// Nothing else is hashed: resolving a boundary node reads its hash from the link that names it, and never rebuilds
-    /// the implicit branches above it only to discard them, which cost a further 2, 2 and 12 hashes here.
+    /// the implicit branches above it only to discard them, which cost a further 2, 2 and 12 hashes here. An untouched
+    /// implicit sibling whose link hash is known is not rebuilt either, which cost a further 6 hashes here.
     /// </remarks>
     [Test]
     public void Dense_group_update_hashes_nothing_it_does_not_rebuild([Values(1, 2, 16)] int touched)
@@ -39,6 +40,6 @@ public class PbtDecompositionHashingTests
         tree.ApplyBatch(rewrites, metrics);
 
         TestContext.Out.WriteLine($"touched {touched}: node hashes {metrics.NodeHashes}");
-        Assert.That(metrics.NodeHashes, Is.EqualTo(touched switch { 1 => 15, 2 => 16, _ => 31 }));
+        Assert.That(metrics.NodeHashes, Is.EqualTo(touched switch { 1 => 9, 2 => 10, _ => 31 }));
     }
 }
