@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -256,7 +257,7 @@ public partial class BlockAccessListManager
 
         [DoesNotReturn]
         private static void ThrowParentStateUnavailable(BlockHeader targetBlock)
-            => throw new InvalidOperationException($"Parent state is unavailable for block {targetBlock.ToString(BlockHeader.Format.Short)}.");
+            => throw new StateNotRetainedException($"Parent state is unavailable for block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 
         private void ReclaimAndResize(int size, int previousSize)
         {

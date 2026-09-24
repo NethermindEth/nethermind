@@ -33,8 +33,8 @@ namespace Nethermind.Consensus.Processing;
 /// </summary>
 /// <remarks>
 /// Parent-state fallbacks (for slots the suggested BAL doesn't cover) flow through a pooled
-/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: each parallel worker rents a snapshot scoped
-/// to the state root captured in <see cref="PrepareForProcessing"/>. Passing <c>null</c>
+/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: each parallel worker rents a snapshot at the
+/// parent of the block being processed. Passing <c>null</c>
 /// disables this and thus parallel execution.
 /// </remarks>
 public partial class BlockAccessListManager(

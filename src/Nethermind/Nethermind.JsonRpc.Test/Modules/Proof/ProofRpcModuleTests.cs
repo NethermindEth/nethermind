@@ -320,8 +320,11 @@ public class ProofRpcModuleTests
         receiptFinder.Get(Arg.Any<Block>()).Returns(_receiptStorage.Get(block));
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
-        // A known header whose state root the node no longer holds, or no header at all.
-        _stateHeaderProvider.Parent = parentHeaderKnown ? Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakH).TestObject : null;
+        // A known parent whose state root the node no longer holds, or no parent at all. The header must carry the
+        // block's own parent hash, or the "known" case would resolve to nothing and repeat the unknown one.
+        _stateHeaderProvider.Parent = parentHeaderKnown
+            ? Build.A.BlockHeader.WithNumber(0).WithHash(block.ParentHash!).WithStateRoot(TestItem.KeccakH).TestObject
+            : null;
         RebuildContainerWith(receiptFinder, blockFinder: blockFinder);
 
         ResultWrapper<ReceiptWithProof?> result = _proofRpcModule.proof_getTransactionReceipt(txHash, false);

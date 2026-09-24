@@ -21,28 +21,16 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
     public bool HasStateForTargetBlock(BlockHeader targetBlock) => inner.HasStateForTargetBlock(targetBlock);
 
-    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        Wrap(inner.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope), innerScope, out scope);
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        Wrap(inner.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope), innerScope, out scope);
+
+    private bool Wrap(bool opened, IWorldStateScopeProvider.IScope? innerScope, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        if (!inner.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
-        {
-            scope = null;
-            return false;
-        }
-
-        scope = new Scope(innerScope, slot);
-        return true;
-    }
-
-    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
-    {
-        if (!inner.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
-        {
-            scope = null;
-            return false;
-        }
-
-        scope = new Scope(innerScope, slot);
-        return true;
+        scope = opened ? new Scope(innerScope!, slot) : null;
+        return opened;
     }
 
     private sealed class Scope(IWorldStateScopeProvider.IScope inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider.IScope

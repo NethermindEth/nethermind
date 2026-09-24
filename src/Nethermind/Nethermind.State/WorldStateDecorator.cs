@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -24,10 +25,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public bool IsInScope => State.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 
-    public bool TryBeginScope(BlockHeader? baseBlock, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IDisposable? scopeCloser)
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
         => State.TryBeginScope(baseBlock, out scopeCloser);
 
-    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IDisposable? scopeCloser)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
         => State.TryBeginScopeAtTarget(targetBlock, out scopeCloser);
 
     public bool HasStateForTargetBlock(BlockHeader targetBlock)

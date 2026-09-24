@@ -29,32 +29,37 @@ namespace Nethermind.Store.Test;
 
 public class WorldStateManagerTests
 {
-    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, WorldStateManager manager, StateBoundaryStore boundary) CreateWorldStateManager(IStateHeaderProvider stateHeaderProvider)
+    /// <param name="existingRoot">The only root the trie store holds; every other root is reported missing.</param>
+    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, IReadOnlyTrieStore readOnlyTrieStore, WorldStateManager manager, StateBoundaryStore boundary) CreateWorldStateManager(IStateHeaderProvider stateHeaderProvider, Hash256 existingRoot = null)
     {
         IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
-        readOnlyTrieStore.HasRoot(Arg.Any<Hash256>()).Returns(true);
+        if (existingRoot is null) readOnlyTrieStore.HasRoot(Arg.Any<Hash256>()).Returns(true);
+        else readOnlyTrieStore.HasRoot(existingRoot).Returns(true);
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         IDbProvider dbProvider = TestMemDbProvider.Init();
         StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
-        WorldStateManager manager = new(worldState, trieStore, dbProvider, boundary, stateHeaderProvider ?? TestStateHeaderProvider.Unavailable, LimboLogs.Instance);
-        return (worldState, trieStore, manager, boundary);
+        WorldStateManager manager = new(worldState, trieStore, dbProvider, boundary, stateHeaderProvider, LimboLogs.Instance);
+        return (worldState, trieStore, readOnlyTrieStore, manager, boundary);
     }
 
     [Test]
     public void ShouldProxyGlobalWorldState()
     {
-        (IWorldStateScopeProvider worldState, _, WorldStateManager manager, _) = CreateWorldStateManager(TestStateHeaderProvider.Unavailable);
+        (IWorldStateScopeProvider worldState, _, _, WorldStateManager manager, _) = CreateWorldStateManager(UnavailableStateHeaderProvider.Instance);
         Assert.That(manager.GlobalWorldState, Is.EqualTo(worldState));
     }
 
     [Test]
     public void CreatedWorldStateScopesUseTargetParentLookup()
     {
+        // Only the parent's root exists, and the target carries a different one, so a scope opened at the target's
+        // own root instead of its parent's would be refused rather than quietly serving the wrong state.
         BlockHeader parent = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).WithNumber(1).TestObject;
-        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(12345).TestObject;
-        (_, _, WorldStateManager manager, _) = CreateWorldStateManager(new TestStateHeaderProvider { Parent = parent });
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithStateRoot(TestItem.KeccakB).WithTimestamp(12345).TestObject;
+        TestStateHeaderProvider stateHeaderProvider = new() { Parent = parent };
+        (_, _, IReadOnlyTrieStore readOnlyTrieStore, WorldStateManager manager, _) = CreateWorldStateManager(stateHeaderProvider, existingRoot: TestItem.KeccakA);
 
         IWorldStateScopeProvider resettable = manager.CreateResettableWorldState();
         Assert.That(resettable.HasStateForTargetBlock(target), Is.True);
@@ -65,6 +70,13 @@ public class WorldStateManagerTests
         Assert.That(overridable.WorldState.HasStateForTargetBlock(target), Is.True);
         Assert.That(overridable.WorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope overridableScope), Is.True);
         overridableScope!.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateHeaderProvider.LookupCalls, Is.GreaterThan(0), "the target must be resolved through the header provider");
+            readOnlyTrieStore.Received().HasRoot(TestItem.KeccakA);
+            readOnlyTrieStore.DidNotReceive().HasRoot(TestItem.KeccakB);
+        }
     }
 
     [Test]
@@ -122,7 +134,7 @@ public class WorldStateManagerTests
         IDbProvider dbProvider = TestMemDbProvider.Init();
         StateBoundaryStore boundary = new(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null);
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
-        _ = new WorldStateManager(Substitute.For<IWorldStateScopeProvider>(), trieStore, dbProvider, boundary, TestStateHeaderProvider.Unavailable, LimboLogs.Instance);
+        _ = new WorldStateManager(Substitute.For<IWorldStateScopeProvider>(), trieStore, dbProvider, boundary, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
 
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
@@ -135,7 +147,7 @@ public class WorldStateManagerTests
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        (_, IPruningTrieStore trieStore, WorldStateManager manager, _) = CreateWorldStateManager(TestStateHeaderProvider.Unavailable);
+        (_, IPruningTrieStore trieStore, _, WorldStateManager manager, _) = CreateWorldStateManager(UnavailableStateHeaderProvider.Instance);
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);

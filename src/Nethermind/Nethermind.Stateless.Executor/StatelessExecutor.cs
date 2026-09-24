@@ -134,7 +134,7 @@ public static class StatelessExecutor
 
         if (!blockProcessingEnv.WorldState.TryBeginScope(parentHeader, out IDisposable? scope))
         {
-            Debug.Fail("The witness does not contain the parent state root.");
+            Debug.WriteLine("The witness does not contain the parent state root.");
             return false;
         }
 

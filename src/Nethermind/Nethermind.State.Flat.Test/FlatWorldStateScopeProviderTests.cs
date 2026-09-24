@@ -56,8 +56,11 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(provider.HasStateForTargetBlock(target), Is.True);
 
         stateAvailable = false;
-        Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
-        Assert.That(scope, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
+            Assert.That(scope, Is.Null);
+        }
     }
 
     [Test]
@@ -67,7 +70,8 @@ public class FlatWorldStateScopeProviderTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
         BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(1).TestObject;
         BlockHeader sameParentDifferentTimestamp = Build.A.BlockHeader.WithParent(parent).WithTimestamp(2).TestObject;
-        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+        // Only the exact parent lookup answers, so a provider resolving anything else gets no parent at all.
+        blockTree.FindHeader(parent.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, parent.Number).Returns(parent);
 
         using TestContext context = new(blockTree);
         IWorldStateManager manager = context.WorldStateManager;
@@ -89,7 +93,12 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(manager.GlobalWorldState.HasStateForTargetBlock(sameParentDifferentTimestamp), Is.True);
         Assert.That(manager.GlobalWorldState.TryBeginScopeAtTarget(sameParentDifferentTimestamp, new LocalMetrics(), out IWorldStateScopeProvider.IScope? secondScope), Is.True);
         secondScope!.Dispose();
-        blockTree.Received(8).FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            context.FlatDbManager.Received().GatherSnapshotBundle(new StateId(parent), Arg.Any<ResourcePool.Usage>());
+            context.FlatDbManager.DidNotReceive().GatherSnapshotBundle(new StateId(target), Arg.Any<ResourcePool.Usage>());
+        }
     }
 
     [Test]
@@ -134,16 +143,7 @@ public class FlatWorldStateScopeProviderTests
         overridable.Dispose();
     }
 
-    private static Exception CreateStateUnavailableException()
-    {
-        Type exceptionType = typeof(FlatScopeProvider).Assembly.GetType("Nethermind.State.Flat.StateUnavailableException")!;
-        return (Exception)Activator.CreateInstance(
-            exceptionType,
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic,
-            binder: null,
-            args: ["state removed during acquisition"],
-            culture: null)!;
-    }
+    private static Exception CreateStateUnavailableException() => new StateUnavailableException("state removed during acquisition");
 
     private static SnapshotBundle CreateSnapshotBundle(ResourcePool resourcePool, IPersistence.IPersistenceReader? persistenceReader = null)
     {

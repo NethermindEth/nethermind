@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain;
 
@@ -20,5 +21,5 @@ public static class ShareableTxProcessorSourceExtensions
     public static IReadOnlyTxProcessingScope Build(this IShareableTxProcessorSource source, BlockHeader? baseBlock) =>
         source.TryBuild(baseBlock, out IReadOnlyTxProcessingScope? scope)
             ? scope
-            : throw new InvalidOperationException($"State is unavailable for base block {baseBlock?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
+            : throw new StateNotRetainedException($"State is unavailable for base block {baseBlock?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
 }

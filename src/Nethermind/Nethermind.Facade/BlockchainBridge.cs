@@ -725,7 +725,23 @@ namespace Nethermind.Facade
                 if (!inner.TryBuildAndOverride(header, stateOverride: null, specOverride, blockOverride, out scope)) return false;
 
                 if (stateOverride is null || header is null) return true;
+                ApplyUnmerkleizedStateOverride(scope, stateOverride, header);
+                return true;
+            }
 
+            /// <inheritdoc/>
+            /// <remarks>Same unmerkleized state override as <see cref="TryBuildAndOverride"/>.</remarks>
+            public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<BlockchainBridge.BlockProcessingComponents>? scope)
+            {
+                if (!inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride: null, specOverride, out scope)) return false;
+
+                if (stateOverride is null) return true;
+                ApplyUnmerkleizedStateOverride(scope, stateOverride, targetBlock);
+                return true;
+            }
+
+            private void ApplyUnmerkleizedStateOverride(Scope<BlockchainBridge.BlockProcessingComponents> scope, Dictionary<Address, AccountOverride> stateOverride, BlockHeader header)
+            {
                 try
                 {
                     IReleaseSpec spec = specProvider.GetSpec(header).WithoutEip158();
@@ -738,12 +754,7 @@ namespace Nethermind.Facade
                     scope.Dispose();
                     throw;
                 }
-
-                return true;
             }
-
-            public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<BlockchainBridge.BlockProcessingComponents>? scope) =>
-                inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out scope);
 
             public void Dispose() => scope.Dispose();
         }

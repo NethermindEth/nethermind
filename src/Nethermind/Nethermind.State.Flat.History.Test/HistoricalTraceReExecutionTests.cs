@@ -97,7 +97,8 @@ public class HistoricalTraceReExecutionTests
             _trieNodeCache,
             _resourcePool,
             enableDetailedMetrics: false,
-            new HistoryScopeGate());
+            new HistoryScopeGate(),
+            LimboLogs.Instance);
         using FlatScopeProvider scopeProvider = CreateScopeProvider(manager, ResourcePool.Usage.ReadOnlyProcessingEnv);
         WorldState worldState = new(scopeProvider, LimboLogs.Instance);
 
@@ -158,7 +159,8 @@ public class HistoricalTraceReExecutionTests
             _trieNodeCache,
             _resourcePool,
             enableDetailedMetrics: false,
-            new HistoryScopeGate());
+            new HistoryScopeGate(),
+            LimboLogs.Instance);
         using FlatScopeProvider scopeProvider = CreateScopeProvider(manager, ResourcePool.Usage.MainBlockProcessing);
 
         BlockHeader historicalHeader = Build.A.BlockHeader.WithNumber(HistoricalBlock).WithStateRoot(TestItem.KeccakB).TestObject;

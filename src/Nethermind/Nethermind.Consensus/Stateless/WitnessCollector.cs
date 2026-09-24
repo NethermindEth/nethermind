@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -25,12 +26,8 @@ public class WitnessCollector(
     /// </remarks>
     public Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block)
     {
-        if (!worldState.TryBeginScopeAtTarget(block.Header, out IDisposable? scope))
-        {
-            throw new InvalidOperationException($"Parent state is unavailable for target block {block.ToString(Block.Format.FullHashAndNumber)}.");
-        }
-
-        using IDisposable _ = scope;
+        // The scope and the witness must share one parent: the witness walks the pre-state at parentHeader's root.
+        using IDisposable _ = worldState.BeginScope(parentHeader);
         blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
         return worldState.GetWitness(parentHeader);
     }

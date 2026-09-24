@@ -25,24 +25,27 @@ public sealed class BulkFillScopeProvider(
     public bool HasRoot(BlockHeader? baseBlock) => session.IsReady && baseBlock is not null
         && baseBlock.Hash == session.BlockHash && new StateId(baseBlock) == session.CurrentState;
 
-    /// <remarks>The session holds only its checkpoint's hash, so the target is matched by parent hash rather than through a header provider.</remarks>
+    /// <remarks>
+    /// The session stands on the parent of the block it is about to replay, so the target is anchored here exactly
+    /// when the session holds that parent - the same pairing <see cref="BulkFillSession.BeginBlock"/> requires.
+    /// </remarks>
     public bool HasStateForTargetBlock(BlockHeader targetBlock) => session.IsReady
-        && targetBlock.ParentHash == session.BlockHash && session.CurrentState.BlockNumber + 1 == targetBlock.Number;
+        && targetBlock.ParentHash == session.BlockHash && targetBlock.Number == session.CurrentState.BlockNumber + 1;
 
-    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
-    {
-        if (!HasStateForTargetBlock(targetBlock)) throw new InvalidOperationException("Bulk replay may only open its verified checkpoint.");
-        return OpenCheckpointScope(out scope);
-    }
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        TryOpen(HasStateForTargetBlock(targetBlock), out scope);
 
-    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
-    {
-        RequireRoot(baseBlock);
-        return OpenCheckpointScope(out scope);
-    }
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        TryOpen(HasRoot(baseBlock), out scope);
 
-    private bool OpenCheckpointScope([NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    private bool TryOpen(bool anchored, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
+        if (!anchored)
+        {
+            scope = null;
+            return false;
+        }
+
         ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), isHistorical: true);
         SnapshotBundle bundle = new(readOnly, trieCache, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
         try

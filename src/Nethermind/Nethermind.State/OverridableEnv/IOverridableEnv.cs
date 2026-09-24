@@ -95,8 +95,8 @@ public static class OverridableEnvExtensions
         source.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, out Scope<T>? scope) ? scope : ThrowUnavailable<Scope<T>>(targetBlock);
 
     private static TScope ThrowUnavailable<TScope>(BlockHeader targetBlock) =>
-        throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
+        throw new StateNotRetainedException($"Parent state is unavailable for target block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 
     private static TScope ThrowBaseUnavailable<TScope>(BlockHeader? header) =>
-        throw new InvalidOperationException($"State is unavailable for base block {header?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
+        throw new StateNotRetainedException($"State is unavailable for base block {header?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
 }

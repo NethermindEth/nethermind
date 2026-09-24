@@ -707,27 +707,25 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void PreWarmCaches_DoesNotCarryTheCachesOverTheParentBlocksCommit()
+    public void PreWarmCaches_KeepsTheCachesTheParentBlocksCommitBroughtForward()
     {
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
         BlockHeader head = BuildParentHeader();
         preBlockCaches.PrepareFor(head.StateRoot);
-        AddressAsKey written = TestItem.AddressA;
         AddressAsKey untouched = TestItem.AddressD;
-        preBlockCaches.StateCache.Set(in written, new Account(123));
         preBlockCaches.StateCache.Set(in untouched, new Account(456));
-        // Processing the block on top of head through the main world state clears the caches on commit.
+        // Processing the block on top of head through the main world state writes its final values back.
         BlockHeader parent = BuildOtherStateHeader(head);
 
         preWarmer.PreWarmCaches(BuildChildBlock(parent), parent, Osaka.Instance).GetAwaiter().GetResult();
 
+        AddressAsKey written = TestItem.AddressA;
         using (Assert.EnterMultipleScope())
         {
-            // The child block's sender may be warmed again, but only from the parent state.
-            if (preBlockCaches.StateCache.TryGetValue(in written, out Account? account))
-                Assert.That(account!.Nonce, Is.EqualTo(1UL), "a pre-block value must not survive the commit");
-            Assert.That(preBlockCaches.StateCache.TryGetValue(in untouched, out _), Is.False, "entries the block did not touch do not carry over");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(in written, out Account? account), Is.True);
+            Assert.That(account!.Nonce, Is.EqualTo(1UL), "the committed value replaces the pre-block one");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(in untouched, out _), Is.True, "entries the block did not touch carry over");
             Assert.That(preBlockCaches.ValidFor, Is.EqualTo(parent.StateRoot));
         }
     }

@@ -144,6 +144,11 @@ internal sealed class MigrationGenesisBootstrap(
 
         public bool HasRoot(BlockHeader? baseBlock) => baseBlock is null && Volatile.Read(ref _opened) == 0;
 
+        public bool HasStateForTargetBlock(BlockHeader targetBlock) => throw new NotSupportedException();
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+            throw new NotSupportedException();
+
         public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
             if (baseBlock is not null || Interlocked.CompareExchange(ref _opened, 1, 0) != 0)

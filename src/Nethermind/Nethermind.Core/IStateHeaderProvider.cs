@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+
 namespace Nethermind.Core;
 
 /// <summary>
@@ -24,4 +25,25 @@ public interface IStateHeaderProvider
     /// <see cref="FinalizedBlockNumber"/> or the header is unavailable.
     /// </summary>
     BlockHeader? GetFinalizedHeader(ulong blockNumber);
+}
+
+public static class StateHeaderProviderExtensions
+{
+    /// <summary>
+    /// Resolves the base block whose state <paramref name="targetBlock"/> executes on: pre-genesis (<c>null</c>) for
+    /// the genesis block, otherwise the parent header.
+    /// </summary>
+    /// <returns><c>false</c> when the parent header is unavailable.</returns>
+    public static bool TryGetBaseBlock(this IStateHeaderProvider provider, BlockHeader targetBlock, out BlockHeader? baseBlock)
+    {
+        if (targetBlock.IsGenesis)
+        {
+            baseBlock = null;
+            return true;
+        }
+
+        baseBlock = provider.FindParentHeader(targetBlock);
+        return baseBlock is not null;
+    }
+
 }

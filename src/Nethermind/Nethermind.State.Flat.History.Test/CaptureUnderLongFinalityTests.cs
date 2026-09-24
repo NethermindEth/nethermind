@@ -64,10 +64,11 @@ public class CaptureUnderLongFinalityTests
     private sealed class SyncingFinality(IReadOnlyDictionary<ulong, Hash256> roots) : IStateHeaderProvider
     {
         public ulong FinalizedBlockNumber => 26_000_000;
-        public BlockHeader? GetFinalizedHeader(ulong blockNumber) => roots.TryGetValue(blockNumber, out Hash256? root)
-            ? Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(root).TestObject
-            : null;
         public BlockHeader? FindParentHeader(BlockHeader target) => null;
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber) =>
+            roots.TryGetValue(blockNumber, out Hash256? root)
+                ? Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(root).TestObject
+                : null;
     }
 
     private sealed class CaptureFixture : IAsyncDisposable

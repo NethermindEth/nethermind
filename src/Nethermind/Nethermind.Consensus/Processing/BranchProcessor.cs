@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -49,16 +50,17 @@ public class BranchProcessor(
         stateProvider.CommitTree(block.Number);
     }
 
-    private IDisposable BeginTargetScope(Block targetBlock) =>
-        stateProvider.TryBeginScopeAtTarget(targetBlock.Header, out IDisposable? worldStateCloser)
-            ? worldStateCloser
-            : throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(Block.Format.FullHashAndNumber)}.");
+    private IDisposable BeginTargetScope(Block targetBlock) => stateProvider.BeginScopeAtTarget(targetBlock.Header);
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
+        // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
+        // inconsistent pair would warm one state and execute another without any other symptom.
+        Debug.Assert(suggestedBlock.IsGenesis ? baseBlock is null : baseBlock?.Hash == suggestedBlock.ParentHash,
+            "baseBlock must be the parent of the first suggested block");
 
         IDisposable? worldStateCloser = null;
         if (stateProvider.IsInScope)

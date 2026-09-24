@@ -38,7 +38,7 @@ public class PbtMirrorScopeProviderTests
 
         await using PbtTestContext ctx = new();
         Hash256[] mirroredRoots = RunBlocks(
-            new PbtMirrorScopeProvider(BuildPatriciaProvider(), ctx.Manager, ctx.ResourcePool, ctx.Config, TestStateHeaderProvider.Instance));
+            new PbtMirrorScopeProvider(BuildPatriciaProvider(), ctx.Manager, ctx.ResourcePool, ctx.Config, UnavailableStateHeaderProvider.Instance));
 
         Assert.That(mirroredRoots, Is.EqualTo(plainRoots));
 
@@ -65,7 +65,7 @@ public class PbtMirrorScopeProviderTests
         IWorldStateScopeProvider authoritative = Substitute.For<IWorldStateScopeProvider>();
         authoritative.TryBeginScope(null, Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope?>()).Returns(call => call.Succeed(2, authoritativeScope));
 
-        PbtMirrorScopeProvider provider = new(authoritative, ctx.Manager, ctx.ResourcePool, ctx.Config, TestStateHeaderProvider.Instance);
+        PbtMirrorScopeProvider provider = new(authoritative, ctx.Manager, ctx.ResourcePool, ctx.Config, UnavailableStateHeaderProvider.Instance);
         using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
 
         PbtMirrorMismatchException? mismatch = divergeOnSlot
@@ -79,7 +79,7 @@ public class PbtMirrorScopeProviderTests
     private static TrieStoreScopeProvider BuildPatriciaProvider()
     {
         MemDb stateDb = new();
-        return new TrieStoreScopeProvider(TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance), new MemDb(), TestStateHeaderProvider.Instance, LimboLogs.Instance);
+        return new TrieStoreScopeProvider(TestTrieStoreFactory.Build(stateDb, LimboLogs.Instance), new MemDb(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
     }
 
     /// <summary>Processes three blocks, the last of which only reads back what the first two wrote.</summary>

@@ -91,6 +91,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private ITunableDb.TuneType _currentTune = ITunableDb.TuneType.Default;
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
+    private string RepairedMarkerPath => Path.Join(_fullPath, "repaired.marker");
+
+    public bool WasRepairedOnOpen { get; private set; }
 
     private readonly List<IDisposable> _metricsUpdaters = [];
 
@@ -356,17 +359,36 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private void RepairIfCorrupted(DbOptions dbOptions)
     {
         string corruptMarker = CorruptMarkerPath;
+        bool persistRepairMarker = _settings.PersistRepairMarkerUntilAcknowledged;
 
-        if (!_fileSystem.File.Exists(corruptMarker))
+        if (_fileSystem.File.Exists(corruptMarker))
         {
+            if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
+            RepairDb(dbOptions, _fullPath!);
+
+            WasRepairedOnOpen = true;
+            if (persistRepairMarker)
+            {
+                _fileSystem.File.WriteAllText(RepairedMarkerPath, DateTime.UtcNow.ToString("O"));
+                if (_logger.IsWarn) _logger.Warn("Repair completed. Some data may be lost. Wrote repaired.marker.");
+            }
+            else if (_logger.IsWarn)
+            {
+                _logger.Warn("Repair completed. Some data may be lost.");
+            }
+
+            _fileSystem.File.Delete(corruptMarker);
             return;
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
-        RepairDb(dbOptions, _fullPath!);
+        if (persistRepairMarker && _fileSystem.File.Exists(RepairedMarkerPath))
+            WasRepairedOnOpen = true;
+    }
 
-        if (_logger.IsWarn) _logger.Warn($"Repair completed. Some data may be lost. Consider a full resync.");
-        _fileSystem.File.Delete(corruptMarker);
+    public void AcknowledgeRepair()
+    {
+        _fileSystem.File.Delete(RepairedMarkerPath);
+        WasRepairedOnOpen = false;
     }
 
     protected virtual void RepairDb(DbOptions dbOptions, string path) => RocksDb.Repair(dbOptions, path);

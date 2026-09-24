@@ -68,7 +68,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
 /// <remarks>
 /// The hint providers read state (<c>AccountExists</c> / <c>IsContract</c>) to decide whether the system contract is
 /// deployed, so they are only usable inside an open world-state scope. Resolving them from the env's lifetime scope
-/// binds them to the env's world state, the one <see cref="IReadOnlyTxProcessorSource.Build"/> opens a scope on. The
+/// binds them to the env's world state, the one <see cref="IReadOnlyTxProcessorSource.TryBuild"/> opens a scope on. The
 /// main processing world state has no scope open between blocks, which is exactly when the speculative pass runs.
 /// </remarks>
 public interface IPrewarmerEnv : IReadOnlyTxProcessorSource

@@ -1176,8 +1176,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (BlockChange.HasClear)
             {
                 storageWriteBatch.Clear();
-                // Reads must continue through the uncleared tree until the write batch is disposed.
-                BlockChange.UnmarkClear();
+                Db.Metrics.IncrementStorageCleared();
+                BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
             // Delete last to match stateless verifiers and avoid resolving siblings after branch compression.

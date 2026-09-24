@@ -21,7 +21,7 @@ public sealed class ReorgDepthStateHeaderProvider(IBlockTree blockTree) : IState
 
     /// <inheritdoc />
     public BlockHeader? FindParentHeader(BlockHeader target) =>
-        target.ParentHash is null
+        target.ParentHash is null || target.Number == 0
             ? null
             : blockTree.FindHeader(target.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, target.Number - 1);
 
