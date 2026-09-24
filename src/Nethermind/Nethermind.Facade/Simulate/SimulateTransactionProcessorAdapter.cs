@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -34,7 +35,8 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         // Keep track of gas left
         ulong blockGasUsed = transaction.BlockGasUsed;
         simulateRequestState.TotalGasLeft -= blockGasUsed;
-        simulateRequestState.BlockGasLeft -= blockGasUsed;
+        // Validation:false admits explicit gas above the remaining block gas, which must not wrap the clamp budget.
+        simulateRequestState.BlockGasLeft = simulateRequestState.BlockGasLeft.SaturatingSub(blockGasUsed);
 
         _currentTxIndex++;
         return result;
