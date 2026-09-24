@@ -183,13 +183,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
 
         (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, scenario.FactoryCode, value: 0);
-        block.Header.GasUsed = 0;
-        BlockReceiptsTracer tracer = new();
-        tracer.StartNewBlockTrace(block);
-        tracer.StartNewTxTrace(tx);
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-        tracer.EndTxTrace();
-        tracer.EndBlockTrace();
+        TxReceipt receipt = Eip7708SelfDestructScenario.ExecuteForReceipt(block, tx, _processor, SpecProvider.GetSpec(block.Header));
 
         // Order-independent, so checked first: it must still hold when the log order check fails.
         foreach ((Address account, byte _) in scenario.InDestroyOrder)
@@ -197,7 +191,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
             Assert.That(TestState.AccountExists(account), Is.False, $"destroyed account {account} must be gone regardless of finalization order");
         }
 
-        Eip7708SelfDestructScenario.AssertReceiptFinalizationOrder(tracer.TxReceipts[0], TransferLog.SelfDestructSignature, scenario);
+        Eip7708SelfDestructScenario.AssertReceiptFinalizationOrder(receipt, TransferLog.SelfDestructSignature, scenario);
     }
 
     private static IEnumerable<TestCaseData> TransferLogCases()
@@ -260,15 +254,9 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
         Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
 
         (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, scenario.FactoryCode, value: 0);
-        block.Header.GasUsed = 0;
-        BlockReceiptsTracer tracer = new();
-        tracer.StartNewBlockTrace(block);
-        tracer.StartNewTxTrace(tx);
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-        tracer.EndTxTrace();
-        tracer.EndBlockTrace();
+        TxReceipt receipt = Eip7708SelfDestructScenario.ExecuteForReceipt(block, tx, _processor, SpecProvider.GetSpec(block.Header));
 
-        Eip7708SelfDestructScenario.AssertReceiptFinalizationOrder(tracer.TxReceipts[0], TransferLog.BurnSignature, scenario);
+        Eip7708SelfDestructScenario.AssertReceiptFinalizationOrder(receipt, TransferLog.BurnSignature, scenario);
     }
 }
 
@@ -331,6 +319,19 @@ file static class Eip7708SelfDestructScenario
         }
 
         return new MultiDestroy(factory.STOP().Done, inDestroyOrder);
+    }
+
+    /// <summary>Executes <paramref name="tx"/> as the only transaction of <paramref name="block"/> and returns its receipt.</summary>
+    public static TxReceipt ExecuteForReceipt(Block block, Transaction tx, ITransactionProcessor processor, IReleaseSpec spec)
+    {
+        block.Header.GasUsed = 0;
+        using BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+        tracer.StartNewTxTrace(tx);
+        processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        return tracer.TxReceipts[0];
     }
 
     /// <summary>Asserts that the receipt's finalization logs carrying <paramref name="signature"/> follow destroy order.</summary>
