@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
 internal static partial class TrieUpdater<TKey, TPath>
-    where TKey : struct, IPbtKey<TKey>
+    where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
     /// <summary>The boundary slots of the group being rebuilt.</summary>
@@ -20,7 +20,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <see cref="Mask"/> marks the positions that hold a node. Taking one leaves its bit set: <see cref="SetBoundary"/>
     /// rewrites a folded slot's bit, and composition visits each position once.
     /// </remarks>
-    internal struct Frontier
+    /// <param name="touchedMask">The slots the folds replace, whose results are held by rank in a span sized to them.</param>
+    internal struct Frontier(int touchedMask)
     {
         internal EntryBuffer Entries;
         internal uint Mask;
@@ -28,8 +29,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal uint Copies;
         /// <summary>The input node, for the slots that resolve to the group's own root instead of a node inside it.</summary>
         internal BoundaryNode Root;
-        /// <summary>The folds' results by slot, rented on the first one so a frame does not carry a node per slot.</summary>
-        private FoldResult[]? _results;
+        private readonly uint _touchedMask = (uint)touchedMask;
 
         /// <summary>Records that <paramref name="slot"/> is read from <paramref name="source"/>, occupying <paramref name="position"/>.</summary>
         internal void Place(int slot, int position, EntrySource source, int sourcePosition)
@@ -57,20 +57,18 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>Takes the fold's result at <paramref name="slot"/>.</summary>
-        internal FoldResult TakeResult(int slot) => FoldResult.Move(ref _results![slot]);
+        internal readonly FoldResult TakeResult(scoped Span<FoldResult> results, int slot) => FoldResult.Move(ref results[ResultIndex(slot)]);
 
-        internal void Set(int slot, ref FoldResult result)
+        internal void Set(scoped Span<FoldResult> results, int slot, ref FoldResult result)
         {
             Entries[slot] = default;
-            (_results ??= ArrayPool<FoldResult>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots))[slot] = FoldResult.Move(ref result);
+            results[ResultIndex(slot)] = FoldResult.Move(ref result);
         }
 
-        /// <summary>Returns the results' array once composition has taken every live one, which leaves it clear.</summary>
-        internal void ReturnResults()
+        private readonly int ResultIndex(int slot)
         {
-            if (_results is null) return;
-            ArrayPool<FoldResult>.Shared.Return(_results);
-            _results = null;
+            Debug.Assert((_touchedMask >> slot & 1) != 0, "Only a touched slot holds a fold's result.");
+            return BitOperations.PopCount(_touchedMask & ((1u << slot) - 1));
         }
     }
 

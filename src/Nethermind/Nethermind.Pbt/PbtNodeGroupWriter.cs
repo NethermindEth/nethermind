@@ -148,7 +148,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <summary>Emits the resolved subtree root at its final position and clears the borrowed value.</summary>
     /// <remarks>A leaf below the root is stored inline by the branch composed above it, so only its hash is returned.</remarks>
     internal ValueHash256 Write<TKey>(scoped in PbtTraversalPath path, int position, int depth, ref TrieUpdater<TKey, TPath>.TraversalSubtree node, TrieUpdaterMetrics? metrics)
-        where TKey : struct, IPbtKey<TKey>
+        where TKey : unmanaged, IPbtKey<TKey>
     {
         if (node.IsEmpty) return default;
         if (node.IsLeaf && position != PbtFourLevelGroupGeometry.RootPosition)

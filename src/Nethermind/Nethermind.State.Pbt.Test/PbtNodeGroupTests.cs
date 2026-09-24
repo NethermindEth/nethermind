@@ -1113,13 +1113,14 @@ public class PbtNodeGroupTests
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], rootPath);
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, rootPath.BitDepth, store.GetGroupHash(rootPath), null);
         PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath.BitDepth, provider, PbtPrefixlessBranchOmission.Interior);
-        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier frontier = default;
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier frontier = new(1);
+        Span<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult> results = stackalloc TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[1];
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             if (scenario == 2)
             {
                 TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult folded = new(new PbtStorageTreeKey(new byte[32]), new ValueHash256(Value(3)));
-                TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, 0, ref folded);
+                TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, results, 0, ref folded);
                 Assert.That(folded.IsEmpty, Is.True, "the frontier consumes the result");
             }
             else if (scenario != 0)
@@ -1135,7 +1136,7 @@ public class PbtNodeGroupTests
                     InvalidDataException? failure = null;
                     try
                     {
-                        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.AppendHeld(ref reader, writer, groupPath, ref frontier, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0), null);
+                        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.AppendHeld(ref reader, writer, groupPath, ref frontier, results, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0), null);
                     }
                     catch (InvalidDataException exception)
                     {
@@ -1146,7 +1147,7 @@ public class PbtNodeGroupTests
                 else
                 {
                     if (scenario != 0)
-                        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.AppendHeld(ref reader, writer, groupPath, ref frontier, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0), null);
+                        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.AppendHeld(ref reader, writer, groupPath, ref frontier, results, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0), null);
                     Assert.That(writer.WrittenCount == 0, Is.EqualTo(scenario == 0));
                     if (scenario != 0)
                         Assert.That(PbtNodeReader.FromValidated(writer.Entry(0, writer.WrittenCount).Span).IsLeaf, Is.EqualTo(scenario == 2),
@@ -1181,8 +1182,9 @@ public class PbtNodeGroupTests
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], rootPath);
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, rootPath.BitDepth, store.GetGroupHash(rootPath), null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath.BitDepth, new TrackingMemoryProvider(), PbtPrefixlessBranchOmission.Interior);
-        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier frontier = default;
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier frontier = new(touchedMask);
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode root = default;
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult composed = default;
         scoped TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree result = default;
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
@@ -1206,7 +1208,8 @@ public class PbtNodeGroupTests
                 Assert.That(frontier.Mask, Is.EqualTo(expectedFrontier));
                 Assert.That(actualFrontier, Is.EqualTo(expectedFrontier), "untouched siblings stay at their internal positions");
             }
-            result = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier).Borrow(groupPath);
+            composed = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier, []);
+            result = composed.Borrow(groupPath);
             ValueHash256 hash = writer.Write(groupPath, 30, 0, ref result, null);
             Span<long> descendantBytes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
             for (int slot = 0; slot < descendantBytes.Length; slot++) descendantBytes[slot] = reader.DescendantBytes(slot);
@@ -1259,7 +1262,9 @@ public class PbtNodeGroupTests
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], rootPath);
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, rootPath.BitDepth, store.GetGroupHash(rootPath), null);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(rootPath.BitDepth, new TrackingMemoryProvider(), PbtPrefixlessBranchOmission.Interior);
-        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier frontier = default;
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier frontier = new(1 << slot);
+        Span<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult> results = stackalloc TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[1];
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult composed = default;
         scoped TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TraversalSubtree subtree = default;
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode input = default;
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
@@ -1268,15 +1273,17 @@ public class PbtNodeGroupTests
             Assert.That(frontier.Mask, Is.Zero);
             Assert.That(TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeBoundary(ref reader, groupPath, ref frontier, slot).IsEmpty,
                 Is.True, "an absent group has no boundary node to fold into");
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier).Borrow(groupPath);
+            composed = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier, results);
+            subtree = composed.Borrow(groupPath);
             Assert.That(subtree.IsEmpty, Is.True);
 
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult folded = new(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1)));
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref folded);
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, results, slot, ref folded);
             Assert.That(frontier.Mask, Is.EqualTo(1u << TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(slot)));
             folded = default;
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref folded);
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier).Borrow(groupPath);
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, results, slot, ref folded);
+            composed = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier, results);
+            subtree = composed.Borrow(groupPath);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(frontier.Mask, Is.Zero);
@@ -1284,8 +1291,9 @@ public class PbtNodeGroupTests
             }
 
             folded = new(new PbtStorageTreeKey(key), PbtNodeCodec.HashLeaf(key, Value(1)));
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, slot, ref folded);
-            subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier).Borrow(groupPath);
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(ref frontier, results, slot, ref folded);
+            composed = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, 0, null, ref frontier, results);
+            subtree = composed.Borrow(groupPath);
             Assert.That(writer.Write(groupPath, 30, 0, ref subtree, null), Is.EqualTo(expected.ApplyBatch([(key, Value(1))])));
         }
     }
@@ -2331,7 +2339,7 @@ public class PbtNodeGroupTests
 
     [TestCaseSource(nameof(PathWarmingCases))]
     public void Path_warming_reads_only_matching_groups_without_writes<TKey>(string first, string second, string query)
-        where TKey : struct, IPbtKey<TKey> =>
+        where TKey : unmanaged, IPbtKey<TKey> =>
         AssertPathWarming(TKey.Create(Bytes.FromHexString(first)),
             TKey.Create(Bytes.FromHexString(second)), TKey.Create(Bytes.FromHexString(query)));
 
@@ -2346,7 +2354,7 @@ public class PbtNodeGroupTests
     }
 
     private static void AssertPathWarming<TKey>(TKey first, TKey second, TKey query)
-        where TKey : struct, IPbtKey<TKey>
+        where TKey : unmanaged, IPbtKey<TKey>
     {
         TrackingMemoryProvider memory = new();
         using PbtNodeGroupStore store = new(memory);
@@ -2404,7 +2412,7 @@ public class PbtNodeGroupTests
 
     [TestCaseSource(nameof(PathWarmingThresholdCases))]
     public void Path_warming_stops_above_a_small_subtree<TKey>(long minSubtreeBytes)
-        where TKey : struct, IPbtKey<TKey>
+        where TKey : unmanaged, IPbtKey<TKey>
     {
         // A sibling branching off at every bit of the queried key's first bytes gives its path a group at every boundary.
         int keyLength = typeof(TKey) == typeof(PbtTreeKey) ? PbtTreeKey.MaxLength : PbtStorageTreeKey.MaxLength;
@@ -2452,7 +2460,7 @@ public class PbtNodeGroupTests
     }
 
     private static long DescendantBytesTowards<TKey>(PbtNodeGroupStore store, PbtStorageNodePath groupKey, TKey key)
-        where TKey : struct, IPbtKey<TKey>
+        where TKey : unmanaged, IPbtKey<TKey>
     {
         using RefCountingMemory payload = store.GetPhysicalNodeGroup(groupKey)!;
         PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
@@ -2464,7 +2472,7 @@ public class PbtNodeGroupTests
     [TestCase(false, TypeArgs = [typeof(PbtStorageTreeKey)])]
     [TestCase(true, TypeArgs = [typeof(PbtStorageTreeKey)])]
     public void Path_warming_releases_payloads_on_missing_nodes_and_invalid_payloads<TKey>(bool invalidPayload)
-        where TKey : struct, IPbtKey<TKey>
+        where TKey : unmanaged, IPbtKey<TKey>
     {
         TrackingMemoryProvider memory = new();
         using PbtNodeGroupStore store = new();

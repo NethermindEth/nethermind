@@ -112,7 +112,7 @@ public static partial class TrieUpdater
 }
 
 internal static partial class TrieUpdater<TKey, TPath>
-    where TKey : struct, IPbtKey<TKey>
+    where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
     /// <summary>Applies <paramref name="changes"/> and returns the resulting canonical root.</summary>
@@ -460,20 +460,21 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped PartitionOutcome partition)
     {
         Debug.Assert(path.BitDepth == bitDepth);
-        Frontier frontier = default;
+        Frontier frontier = new(partition.UsedMask);
+        Span<FoldResult> results = stackalloc FoldResult[BitOperations.PopCount((uint)partition.UsedMask)];
         Decompose(ref reader, path, ref current, bitDepth, ref frontier, partition.UsedMask);
 
         bool foldedInParallel = context.FoldQuota is not null
             && (partition.UsedMask & (partition.UsedMask - 1)) != 0
-            && TryFoldBucketsInParallel(context, ref reader, writer, ref frontier, operations, path, bitDepth, partition);
+            && TryFoldBucketsInParallel(context, ref reader, writer, ref frontier, results, operations, path, bitDepth, partition);
         if (!foldedInParallel)
-            FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition);
+            FoldBuckets(context, ref reader, writer, ref frontier, results, operations, ref path, bitDepth, partition);
 
-        return Compose(ref reader, writer, path, resultDepth, context.Metrics, ref frontier);
+        return Compose(ref reader, writer, path, resultDepth, context.Metrics, ref frontier, results);
     }
 
     private static void FoldBuckets(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
-        scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth,
+        scoped ref Frontier frontier, scoped Span<FoldResult> results, Span<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth,
         scoped PartitionOutcome partition)
     {
         int offset = 0;
@@ -490,7 +491,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 bucket, ref path, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, bitDepth, partition.Plan.ForChild());
             path.Truncate(bitDepth);
             writer.AddDescendantDelta(slot, result.SizeDelta);
-            SetBoundary(ref frontier, slot, ref result);
+            SetBoundary(ref frontier, results, slot, ref result);
         }
     }
 
@@ -504,7 +505,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <returns>Whether the buckets were folded; false leaves them untouched when they cannot fill two runs.</returns>
     [SkipLocalsInit]
     private static bool TryFoldBucketsInParallel(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
-        scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth,
+        scoped ref Frontier frontier, scoped Span<FoldResult> results, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth,
         scoped PartitionOutcome partition)
     {
         // Two runs each hold at least the smaller minimum, so a frame with fewer operations never splits.
@@ -571,7 +572,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             if (bucket.Context.Metrics is { } bucketMetrics) context.Metrics!.Add(bucketMetrics);
             writer.AddDescendantDelta(bucket.Slot, bucket.Result.SizeDelta);
-            SetBoundary(ref frontier, bucket.Slot, ref bucket.Result);
+            SetBoundary(ref frontier, results, bucket.Slot, ref bucket.Result);
         }
         // The folds hold node encodings; clear so the pool does not keep them alive.
         ArrayPool<BucketFold>.Shared.Return(buckets, clearArray: true);
@@ -656,13 +657,14 @@ internal static partial class TrieUpdater<TKey, TPath>
         int slot = 0;
         for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | key.GetBit(bit);
         int prefixBitCount = branchDepth - anchorDepth - localLength;
-        ReadOnlyMemory<byte> prefix = default;
+        scoped Span<byte> prefix = default;
         if (prefixBitCount != 0)
         {
-            byte[] owned = new byte[sizeof(ushort) + PbtBitPrefix.ByteCount(prefixBitCount)];
-            BinaryPrimitives.WriteUInt16BigEndian(owned, (ushort)prefixBitCount);
-            PbtBitPrefix.CopyBits(key.Bytes, anchorDepth + localLength, prefixBitCount, owned.AsSpan(sizeof(ushort)), 0);
-            prefix = owned;
+            prefix = stackalloc byte[sizeof(ushort) + PbtBitPrefix.ByteCount(prefixBitCount)];
+            // Zeroed, because the bits are copied in by disjunction.
+            prefix.Clear();
+            BinaryPrimitives.WriteUInt16BigEndian(prefix, (ushort)prefixBitCount);
+            PbtBitPrefix.CopyBits(key.Bytes, anchorDepth + localLength, prefixBitCount, prefix[sizeof(ushort)..], 0);
         }
         return new FoldResult(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
             left.LeafHash, right.LeafHash, left.LeafKey, right.LeafKey, Subtree.LeftLeaf | Subtree.RightLeaf, prefix);
@@ -686,7 +688,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// does store. Only the descendants are copied: the node itself may still be promoted by an updated sibling's deletion.
     /// </remarks>
     internal static ComposedNode AppendHeld(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
-        scoped ref Frontier frontier, int position, TrieUpdaterMetrics? metrics)
+        scoped ref Frontier frontier, scoped Span<FoldResult> results, int position, TrieUpdaterMetrics? metrics)
     {
         Debug.Assert((frontier.Mask & (1u << position)) != 0, "Only a held position is taken.");
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
@@ -697,7 +699,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         switch (entry.Source)
         {
             case EntrySource.Node:
-                return AppendResult(writer, position, frontier.TakeResult(local.Slot));
+                return AppendResult(writer, position, frontier.TakeResult(results, local.Slot));
             case EntrySource.AtPosition when entry.SourcePosition != RootSource:
                 ReadOnlyMemory<byte> stored = reader.GetEncoding(path, entry.SourcePosition);
                 return stored.IsEmpty
@@ -722,7 +724,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         Debug.Assert(node.Path.Length == PbtFourLevelGroupGeometry.LocalPathOf(position).Length, "A held result is anchored at the position that holds it.");
-        CompressedPrefix prefix = node.Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(node.Encoding.Span);
+        CompressedPrefix prefix = node.Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(node.Encoding);
         TKey rightKey = node.RightLeafKey;
         int leftKeyLength = node.HasLeftLeaf ? leftKey.Length : 0;
         int rightKeyLength = node.HasRightLeaf ? rightKey.Length : 0;
@@ -777,11 +779,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         throw new InvalidDataException("A referenced PBT node is missing.");
     }
 
-    internal static void SetBoundary(ref Frontier frontier, int slot, ref FoldResult result)
+    internal static void SetBoundary(ref Frontier frontier, scoped Span<FoldResult> results, int slot, ref FoldResult result)
     {
         uint bit = 1u << BoundaryPosition(slot);
         frontier.Mask = result.IsEmpty ? frontier.Mask & ~bit : frontier.Mask | bit;
-        frontier.Set(slot, ref result);
+        frontier.Set(results, slot, ref result);
     }
 
     /// <summary>Rebuilds the group from the frontier into <paramref name="writer"/>, returning its root for the caller to place.</summary>
@@ -794,7 +796,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// kept, anchored at <paramref name="resultDepth"/>.
     /// </remarks>
     internal static FoldResult Compose(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth,
-        TrieUpdaterMetrics? metrics, scoped ref Frontier frontier)
+        TrieUpdaterMetrics? metrics, scoped ref Frontier frontier, scoped Span<FoldResult> results)
     {
         uint copies = frontier.Copies;
         uint frontierMask = frontier.Mask;
@@ -825,7 +827,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
                 if ((frontierMask & (1u << position)) != 0)
                 {
-                    prevSubtree = AppendHeld(ref reader, writer, path, ref frontier, position, metrics);
+                    prevSubtree = AppendHeld(ref reader, writer, path, ref frontier, results, position, metrics);
                     frameCount--;
                     continue;
                 }
@@ -886,7 +888,6 @@ internal static partial class TrieUpdater<TKey, TPath>
                 continue;
             }
         }
-        frontier.ReturnResults();
         return TakeRoot(writer, path, resultDepth, prevSubtree);
     }
 
@@ -1013,17 +1014,17 @@ internal static partial class TrieUpdater<TKey, TPath>
             slot = (slot << 1) | (bit < anchorDepth ? GetBit(path.Bytes, bit) : GetBit(prefix.Bytes, bit - anchorDepth));
 
         int ownedStart = resultDepth + localLength;
-        ReadOnlyMemory<byte> ownedPrefix = default;
+        scoped Span<byte> ownedPrefix = default;
         if (ownedStart < splitDepth)
         {
+            ownedPrefix = stackalloc byte[sizeof(ushort) + PbtBitPrefix.ByteCount(splitDepth - ownedStart)];
             // Zeroed, because the bits are copied in by disjunction.
-            byte[] owned = new byte[sizeof(ushort) + PbtBitPrefix.ByteCount(splitDepth - ownedStart)];
-            BinaryPrimitives.WriteUInt16BigEndian(owned, (ushort)(splitDepth - ownedStart));
-            Span<byte> bits = owned.AsSpan(sizeof(ushort));
+            ownedPrefix.Clear();
+            BinaryPrimitives.WriteUInt16BigEndian(ownedPrefix, (ushort)(splitDepth - ownedStart));
+            Span<byte> bits = ownedPrefix[sizeof(ushort)..];
             if (ownedStart < anchorDepth) PbtBitPrefix.CopyBits(path.Bytes, ownedStart, anchorDepth - ownedStart, bits, 0);
             int prefixStart = Math.Max(ownedStart, anchorDepth);
             if (prefixStart < splitDepth) PbtBitPrefix.CopyBits(prefix.Bytes, prefixStart - anchorDepth, splitDepth - prefixStart, bits, prefixStart - ownedStart);
-            ownedPrefix = owned;
         }
 
         return new(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),

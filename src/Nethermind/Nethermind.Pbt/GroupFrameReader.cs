@@ -13,7 +13,7 @@ namespace Nethermind.Pbt;
 // The only stack buffer, the branch encoding in GetHash, is fully written before it is read.
 [SkipLocalsInit]
 internal struct GroupFrameReader<TKey, TPath> : IDisposable
-    where TKey : struct, IPbtKey<TKey>
+    where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
     private readonly IPbtStore _store;

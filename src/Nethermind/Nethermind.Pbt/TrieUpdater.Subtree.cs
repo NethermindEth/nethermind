@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using static Nethermind.Pbt.TrieUpdater;
@@ -9,7 +11,7 @@ using static Nethermind.Pbt.TrieUpdater;
 namespace Nethermind.Pbt;
 
 internal static partial class TrieUpdater<TKey, TPath>
-    where TKey : struct, IPbtKey<TKey>
+    where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
     /// <summary>A group-local node a fold composed, or a leaf.</summary>
@@ -20,21 +22,21 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// also carries the compressed prefix below it, so that it stays readable against the cursor that placed it rather
     /// than against a group path of its own.
     /// </remarks>
-    internal struct Subtree
+    internal ref struct Subtree
     {
         internal const byte LeftLeaf = 1;
         internal const byte RightLeaf = 2;
 
-        internal readonly NodeKind Kind;
-        internal readonly ReadOnlyMemory<byte> Encoding;
-        /// <summary>A leaf's key, or a composed branch's left leaf key.</summary>
-        internal readonly TKey LeafKey;
-        private readonly TKey _rightLeafKey;
         /// <summary>A leaf's hash, or a branch's left child hash.</summary>
         internal readonly ValueHash256 HashOrLeft;
         private readonly ValueHash256 _right;
         /// <summary>The hash already computed for this node, or default when it must be computed.</summary>
         internal readonly ValueHash256 KnownHash;
+        internal readonly NodeKind Kind;
+        internal readonly ReadOnlySpan<byte> Encoding;
+        /// <summary>A leaf's key, or a composed branch's left leaf key.</summary>
+        internal readonly TKey LeafKey;
+        private readonly TKey _rightLeafKey;
         /// <summary>The compressed-prefix bit count of the encoding <see cref="KnownHash"/> is the hash of.</summary>
         internal readonly ushort KnownHashBitCount;
         /// <summary>Which children of a composed branch are leaves: <see cref="LeftLeaf"/> and <see cref="RightLeaf"/> bits.</summary>
@@ -49,7 +51,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         /// <param name="prefix">The owned compressed prefix below this branch's anchor, empty when it branches at its anchor.</param>
         internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
-            ReadOnlyMemory<byte> prefix)
+            ReadOnlySpan<byte> prefix)
         {
             Kind = NodeKind.Branch;
             Encoding = prefix;
@@ -63,7 +65,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         /// <param name="knownHash">The hash of this branch's encoding with a <paramref name="knownHashBitCount"/>-bit prefix.</param>
         internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
-            ReadOnlyMemory<byte> prefix, in ValueHash256 knownHash, int knownHashBitCount)
+            ReadOnlySpan<byte> prefix, in ValueHash256 knownHash, int knownHashBitCount)
             : this(path, left, right, leftLeafKey, rightLeafKey, leafChildren, prefix)
         {
             KnownHash = knownHash;
@@ -74,7 +76,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly bool IsEmpty => Kind == NodeKind.Empty;
         internal readonly bool IsLeaf => Kind == NodeKind.Leaf;
         internal readonly ValueHash256 LeafHash => HashOrLeft;
-        internal readonly CompressedPrefix Prefix => Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(Encoding.Span);
+        internal readonly CompressedPrefix Prefix => Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(Encoding);
         internal readonly ValueHash256 LeftHash => HashOrLeft;
         internal readonly ValueHash256 RightHash => _right;
         internal readonly bool HasLeftLeaf => (LeafChildren & LeftLeaf) != 0;
@@ -193,9 +195,11 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// </remarks>
     internal struct FoldResult
     {
+        /// <summary>The longest owned compressed prefix: its bit count, then bits that never outrun the longest key.</summary>
+        internal const int MaxPrefixLength = sizeof(ushort) + PbtStorageTreeKey.MaxLength;
+
         internal readonly NodeKind Kind;
-        /// <summary>A branch's owned compressed prefix below its anchor, empty when it branches at its anchor.</summary>
-        internal readonly ReadOnlyMemory<byte> Encoding;
+        private PrefixBuffer _prefix;
         /// <summary>A leaf's key, or a branch's left leaf key.</summary>
         internal readonly TKey LeafKey;
         internal readonly TKey RightLeafKey;
@@ -228,10 +232,10 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         /// <param name="prefix">The owned compressed prefix below this branch's anchor, empty when it branches at its anchor.</param>
         internal FoldResult(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
-            ReadOnlyMemory<byte> prefix)
+            ReadOnlySpan<byte> prefix)
         {
             Kind = NodeKind.Branch;
-            Encoding = prefix;
+            prefix.CopyTo(_prefix);
             LeftHash = left;
             RightHash = right;
             Path = path;
@@ -242,11 +246,23 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         /// <param name="knownHash">The hash of this branch's encoding with a <paramref name="knownHashBitCount"/>-bit prefix.</param>
         internal FoldResult(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right, TKey leftLeafKey, TKey rightLeafKey, byte leafChildren,
-            ReadOnlyMemory<byte> prefix, in ValueHash256 knownHash, int knownHashBitCount)
+            ReadOnlySpan<byte> prefix, in ValueHash256 knownHash, int knownHashBitCount)
             : this(path, left, right, leftLeafKey, rightLeafKey, leafChildren, prefix)
         {
             KnownHash = knownHash;
             KnownHashBitCount = (ushort)knownHashBitCount;
+        }
+
+        /// <summary>A branch's owned compressed prefix below its anchor, empty when it branches at its anchor.</summary>
+        [UnscopedRef]
+        internal readonly ReadOnlySpan<byte> Encoding
+        {
+            get
+            {
+                ReadOnlySpan<byte> prefix = _prefix;
+                int bitCount = BinaryPrimitives.ReadUInt16BigEndian(prefix);
+                return bitCount == 0 ? default : prefix[..(sizeof(ushort) + PbtBitPrefix.ByteCount(bitCount))];
+            }
         }
 
         /// <summary>This result carrying the hash of its encoding with a <paramref name="bitCount"/>-bit prefix, so that encoding is not hashed again.</summary>
@@ -257,7 +273,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly ValueHash256 LeafHash => LeftHash;
         internal readonly bool HasLeftLeaf => (LeafChildren & Subtree.LeftLeaf) != 0;
         internal readonly bool HasRightLeaf => (LeafChildren & Subtree.RightLeaf) != 0;
-        private readonly CompressedPrefix Prefix => Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(Encoding.Span);
+        [UnscopedRef]
+        private readonly CompressedPrefix Prefix => Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(Encoding);
 
         /// <summary>The depth this branch splits at when read against <paramref name="cursor"/>.</summary>
         internal readonly int BranchDepth(scoped in PbtTraversalPath cursor) => cursor.BitDepth + Path.Length + Prefix.BitCount;
@@ -277,6 +294,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             return Blake3Hash.Hash(preimage);
         }
 
+        [UnscopedRef]
         internal readonly TraversalSubtree Borrow(PbtTraversalPath cursor) => new(cursor, Kind switch
         {
             NodeKind.Leaf => new Subtree(LeafKey, LeftHash),
@@ -292,7 +310,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         internal static FoldResult TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.FoldResult source)
-            where TSourceKey : struct, IPbtKey<TSourceKey>
+            where TSourceKey : unmanaged, IPbtKey<TSourceKey>
             where TSourcePath : struct, IPbtNodePath<TSourcePath>
         {
             FoldResult result = default;
@@ -314,6 +332,9 @@ internal static partial class TrieUpdater<TKey, TPath>
             return result;
         }
     }
+
+    [InlineArray(FoldResult.MaxPrefixLength)]
+    internal struct PrefixBuffer { private byte _element; }
 
     /// <summary>Where the frame reads a slot's node from, or that the slot holds a fold's result.</summary>
     /// <remarks>

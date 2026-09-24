@@ -19,7 +19,7 @@ public class PbtNodeTraverserTests
     [TestCase(2, TypeArgs = [typeof(PbtStorageTreeKey)])]
     [TestCase(256, TypeArgs = [typeof(PbtStorageTreeKey)])]
     public void Leaf_hash_matches_the_reference_tree_for_present_and_absent_keys<TKey>(int leafCount)
-        where TKey : struct, IPbtKey<TKey>
+        where TKey : unmanaged, IPbtKey<TKey>
     {
         Random random = new(leafCount);
         TrackingMemoryProvider memory = new();
@@ -58,7 +58,7 @@ public class PbtNodeTraverserTests
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
     }
 
-    private static TKey RandomKey<TKey>(Random random) where TKey : struct, IPbtKey<TKey>
+    private static TKey RandomKey<TKey>(Random random) where TKey : unmanaged, IPbtKey<TKey>
     {
         byte[] bytes = new byte[TKey.Capacity];
         random.NextBytes(bytes);

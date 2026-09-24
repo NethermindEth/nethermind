@@ -9,7 +9,7 @@ using static Nethermind.Pbt.TrieUpdater;
 namespace Nethermind.Pbt;
 
 internal static partial class TrieUpdater<TKey, TPath>
-    where TKey : struct, IPbtKey<TKey>
+    where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
     /// <summary>The node at one boundary slot of a group, read against the traversal cursor that reached it.</summary>
@@ -172,7 +172,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <summary>Takes a node read under a wider key type, which a fold below the zone nibble continues under its own.</summary>
         /// <remarks>Nothing is decoded: the encoding is the stored one either way, and only reading a key off it is typed.</remarks>
         internal static BoundaryNode TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.BoundaryNode source)
-            where TSourceKey : struct, IPbtKey<TSourceKey>
+            where TSourceKey : unmanaged, IPbtKey<TSourceKey>
             where TSourcePath : struct, IPbtNodePath<TSourcePath>
         {
             BoundaryNode result = new(source.Encoding, source.AnchorDepth, source.Hash, source.Source);
@@ -214,18 +214,19 @@ internal static partial class TrieUpdater<TKey, TPath>
                 reader.LeftKey.IsEmpty ? default : TKey.Create(reader.LeftKey),
                 reader.RightKey.IsEmpty ? default : TKey.Create(reader.RightKey),
                 LeafChildrenMask,
-                OwnedPrefix(cursor, anchorDepth + localLength, splitDepth), _hash, splitDepth - _anchorDepth);
+                OwnedPrefix(cursor, anchorDepth + localLength, splitDepth, stackalloc byte[FoldResult.MaxPrefixLength]), _hash, splitDepth - _anchorDepth);
         }
 
         /// <summary>The bits from <paramref name="from"/> to <paramref name="splitDepth"/> as a standalone compressed prefix.</summary>
-        private readonly ReadOnlyMemory<byte> OwnedPrefix(scoped in PbtTraversalPath cursor, int from, int splitDepth)
+        private readonly Span<byte> OwnedPrefix(scoped in PbtTraversalPath cursor, int from, int splitDepth, Span<byte> buffer)
         {
             int bitCount = splitDepth - from;
             if (bitCount == 0) return default;
+            Span<byte> prefix = buffer[..(sizeof(ushort) + PbtBitPrefix.ByteCount(bitCount))];
             // Zeroed, because the bits are copied in by disjunction.
-            byte[] prefix = new byte[sizeof(ushort) + PbtBitPrefix.ByteCount(bitCount)];
+            prefix.Clear();
             BinaryPrimitives.WriteUInt16BigEndian(prefix, (ushort)bitCount);
-            Span<byte> bits = prefix.AsSpan(sizeof(ushort));
+            Span<byte> bits = prefix[sizeof(ushort)..];
             int cursorEnd = Math.Min(splitDepth, _anchorDepth);
             if (from < cursorEnd) PbtBitPrefix.CopyBits(cursor.Bytes, from, cursorEnd - from, bits, 0);
             if (splitDepth > _anchorDepth)

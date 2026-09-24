@@ -20,7 +20,7 @@ internal static class PbtNodeTraverser
     /// stops short returns default, as an absent key does.
     /// </param>
     /// <param name="stoppedAtSmallSubtree">Whether the traversal stopped short of the leaf because of <paramref name="minSubtreeBytes"/>.</param>
-    internal static ValueHash256 GetLeafHash<TKey>(IPbtStore store, in ValueHash256 root, in TKey key, long minSubtreeBytes, out bool stoppedAtSmallSubtree) where TKey : struct, IPbtKey<TKey>
+    internal static ValueHash256 GetLeafHash<TKey>(IPbtStore store, in ValueHash256 root, in TKey key, long minSubtreeBytes, out bool stoppedAtSmallSubtree) where TKey : unmanaged, IPbtKey<TKey>
     {
         ArgumentNullException.ThrowIfNull(store);
         if (key.Length == 0) throw new ArgumentException("A complete key is required.", nameof(key));
