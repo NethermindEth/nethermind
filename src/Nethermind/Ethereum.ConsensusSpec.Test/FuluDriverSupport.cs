@@ -130,6 +130,29 @@ public static class FuluDriverSupport
                 ulong.Parse(((YamlScalarNode)entry.Children[new YamlScalarNode("MAX_BLOBS_PER_BLOCK")]).Value!)))];
         }
 
+        return MainnetWith(
+            blobSchedule,
+            Scalar("ELECTRA_FORK_EPOCH", mainnet.ElectraForkEpoch),
+            Scalar("FULU_FORK_EPOCH", mainnet.FuluForkEpoch),
+            Scalar("MAX_BLOBS_PER_BLOCK_ELECTRA", mainnet.MaxBlobsPerBlockElectra),
+            Scalar("GLOAS_FORK_EPOCH", mainnet.GloasForkEpoch),
+            gloasForkVersion);
+    }
+
+    /// <summary>
+    /// The runtime config a Fulu-to-Gloas <c>transition</c> vector runs under: the mainnet config with every
+    /// fork before Gloas live from genesis and Gloas from <paramref name="gloasForkEpoch"/>, meta.yaml's
+    /// <c>fork_epoch</c> (tests/formats/transition/README.md).
+    /// </summary>
+    public static BeaconChainSpec TransitionSpec(ulong gloasForkEpoch)
+    {
+        BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
+        return MainnetWith(mainnet.BlobSchedule, 0, 0, mainnet.MaxBlobsPerBlockElectra, gloasForkEpoch, mainnet.GloasForkVersion);
+    }
+
+    private static BeaconChainSpec MainnetWith(BlobScheduleEntry[] blobSchedule, ulong electraForkEpoch, ulong fuluForkEpoch, ulong maxBlobsPerBlockElectra, ulong gloasForkEpoch, byte[] gloasForkVersion)
+    {
+        BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
         return new BeaconChainSpec
         {
             ChainId = mainnet.ChainId,
@@ -139,10 +162,10 @@ public static class FuluDriverSupport
             GenesisValidatorsRoot = mainnet.GenesisValidatorsRoot,
             Forks = mainnet.Forks,
             BlobSchedule = blobSchedule,
-            ElectraForkEpoch = Scalar("ELECTRA_FORK_EPOCH", mainnet.ElectraForkEpoch),
-            FuluForkEpoch = Scalar("FULU_FORK_EPOCH", mainnet.FuluForkEpoch),
-            MaxBlobsPerBlockElectra = Scalar("MAX_BLOBS_PER_BLOCK_ELECTRA", mainnet.MaxBlobsPerBlockElectra),
-            GloasForkEpoch = Scalar("GLOAS_FORK_EPOCH", mainnet.GloasForkEpoch),
+            ElectraForkEpoch = electraForkEpoch,
+            FuluForkEpoch = fuluForkEpoch,
+            MaxBlobsPerBlockElectra = maxBlobsPerBlockElectra,
+            GloasForkEpoch = gloasForkEpoch,
             GloasForkVersion = gloasForkVersion,
             Bootnodes = mainnet.Bootnodes,
         };
