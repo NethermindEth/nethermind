@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc
     public static class JsonRpcConfigExtension
     {
         private static readonly ConcurrentQueue<CancellationTokenSource> _ctsPool = new();
-        internal const int MaxPoolSize = 64;
+        private const int MaxPoolSize = 64;
         private static int _ctsPoolSize;
 
         public static void EnableModules(this IJsonRpcConfig config, params string[] modules)

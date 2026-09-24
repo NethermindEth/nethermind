@@ -6,13 +6,15 @@ using System.Threading;
 
 namespace Nethermind.JsonRpc.Test;
 
-internal static class TimeoutTest
+internal static class TimeoutTestHelper
 {
+    private const int TimeoutCancellationTokenPoolSize = 64;
+
     internal static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
     {
         JsonRpcConfig config = new();
-        List<CancellationTokenSource> rentedTimeouts = new(JsonRpcConfigExtension.MaxPoolSize);
-        for (int i = 0; i < JsonRpcConfigExtension.MaxPoolSize; i++)
+        List<CancellationTokenSource> rentedTimeouts = new(TimeoutCancellationTokenPoolSize);
+        for (int i = 0; i < TimeoutCancellationTokenPoolSize; i++)
         {
             rentedTimeouts.Add(config.BuildTimeoutCancellationToken());
         }

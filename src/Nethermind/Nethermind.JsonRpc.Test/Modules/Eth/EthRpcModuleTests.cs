@@ -48,8 +48,8 @@ using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
-using static Nethermind.JsonRpc.Test.TimeoutTest;
 using Nethermind.State;
+using static Nethermind.JsonRpc.Test.TimeoutTestHelper;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 

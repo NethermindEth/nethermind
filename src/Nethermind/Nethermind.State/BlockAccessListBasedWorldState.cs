@@ -97,10 +97,36 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A prior transaction that only touched an empty account records no indexed change in the suggested
+    /// BAL, so the EIP-161 deletion such a touch causes is invisible here: an empty parent account that an
+    /// earlier transaction already removed is reported as still existing. Distinguishing that from the
+    /// first touch of the same account is not possible from the BAL, which declares both identically, and
+    /// this arm favours the first touch. The result is only read by the EIP-161 RIPEMD-160 exception in
+    /// <c>VirtualMachine.RunPrecompile</c>, so a divergence needs an account at the RIPEMD-160 address that
+    /// is empty yet physically present in the pre-block state and touched twice in one block. No block can
+    /// produce that pre-state — a touched empty account is deleted at the end of its transaction and CREATE
+    /// sets nonce 1 — so it would have to come from a genesis allocation.
+    /// </remarks>
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         oldBalance = GetBalance(address);
-        return !AccountExists(address);
+        if (AccountExists(address)) return false;
+
+        ReadOnlyAccountChanges changes = ResolveContext(address);
+        if (changes.TryGetLastBalanceChangeBefore(_blockAccessIndex, out _)
+            || changes.TryGetLastNonceChangeBefore(_blockAccessIndex, out _)
+            || changes.TryGetLastCodeChangeBefore(_blockAccessIndex, out _))
+        {
+            // EIP-161 removes an account left empty by a prior transaction.
+            return true;
+        }
+
+        // An unchanged empty parent account still physically exists, despite being logically dead.
+        return _parentReader is WorldState parent
+            ? ReadParentAccount(parent, address) is null
+            : !_parentReader!.AccountExists(address);
     }
 
     public override void Get(in StorageCell storageCell, out UInt256 value)
