@@ -480,6 +480,29 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
+    [TestCase(new byte[] { 0x90, 0xC0 }, new byte[] { }, TestName = "Right half folds away under a kept left half")]
+    [TestCase(new byte[] { 0x90 }, new byte[] { 0xC0 }, TestName = "First right slot folds away and a later one stays")]
+    [TestCase(new byte[] { 0x90, 0xC0 }, new byte[] { 0xE0 }, TestName = "Right half folds away except an insert")]
+    [TestCase(new byte[] { 0xC0 }, new byte[] { 0x90 }, TestName = "Nested right quarter folds away under a rewritten left")]
+    [TestCase(new byte[] { 0x10, 0x20, 0x90 }, new byte[] { 0xC0 }, TestName = "Left half folds away and the right one stays")]
+    [TestCase(new byte[] { 0x10, 0x20, 0x90, 0xC0 }, new byte[] { }, TestName = "Both halves fold away")]
+    public void Touched_right_half_folding_away_settles_left_sibling_canonically(byte[] deletedPrefixes, byte[] writtenPrefixes)
+    {
+        using PbtTreeHarness tree = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        List<(byte[] Key, byte[]? Value)> initial = [];
+        foreach (byte prefix in new byte[] { 0x10, 0x20, 0x90, 0xC0 }) initial.Add(([prefix, 0x00], Value(prefix)));
+        ApplyAll(tree, serial, oracle, initial);
+
+        List<(byte[] Key, byte[]? Value)> changes = [];
+        foreach (byte prefix in deletedPrefixes) changes.Add(([prefix, 0x00], null));
+        foreach (byte prefix in writtenPrefixes) changes.Add(([prefix, 0x00], Value((byte)(prefix + 1))));
+        ApplyAll(tree, serial, oracle, changes);
+
+        AssertEquivalentAfterReopen(tree, serial, oracle, "touched right half");
+    }
+
     [Test]
     public void Split_inside_compressed_prefix_and_delete_merge_stay_canonical()
     {

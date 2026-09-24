@@ -51,7 +51,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             switch (entry.Source)
             {
                 case EntrySource.AtPosition:
-                    return fromRoot ? BoundaryNode.Move(ref Root) : reader.TakeBoundaryNode(path, entry.SourcePosition);
+                    // The root stays: a touched slot resolved after this take still reads its links from it.
+                    return fromRoot ? Root : reader.TakeBoundaryNode(path, entry.SourcePosition);
                 case EntrySource.LeftLeafOf:
                 case EntrySource.RightLeafOf:
                     bool right = entry.Source == EntrySource.RightLeafOf;
