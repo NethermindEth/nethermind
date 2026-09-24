@@ -465,6 +465,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.Actions[0].Gas, Is.EqualTo((ulong)GasCostOf.CreateState - 1));
             Assert.That(tracer.ReportedActionErrors, Is.EqualTo(new[] { EvmExceptionType.OutOfGas }));
             Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, contractAddress, block.Header.GasBeneficiary! }));
         }
     }
 
@@ -615,6 +616,29 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(authority)), Is.False);
             Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
             Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, authority, block.Header.GasBeneficiary! }));
+        }
+    }
+
+    // The delegation target is warmed before its cold access charge fails, so the halt's report must hold it.
+    [Test]
+    public void Eip8037_delegated_recipient_access_oog_reports_delegation_target()
+    {
+        Address delegationTarget = TestItem.AddressE;
+        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. delegationTarget.Bytes];
+        (Block block, Transaction transaction) = PrepareTx(Activation, 1_000_000, delegationCode, value: 0, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        transaction.GasLimit = intrinsicGas.Standard + Eip8038Constants.ColdAccountAccess - 1;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.ReportedActionErrors, Is.EqualTo(new[] { EvmExceptionType.OutOfGas }));
+            Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, Recipient, delegationTarget, block.Header.GasBeneficiary! }));
         }
     }
 
