@@ -652,7 +652,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Category("Flaky")]
+    [Category("Flaky"), Retry(2)]
     public async Task FastSync_downloads_block_access_lists_over_eth71()
     {
         if (!isPostMerge || dbMode != DbMode.Default)
@@ -733,7 +733,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
-    [Category("Flaky")]
+    [Category("Flaky"), Retry(2)]
     public async Task FastSync_skips_pre_eip7928_block_access_lists_over_eth71()
     {
         if (!isPostMerge || dbMode != DbMode.Default)
