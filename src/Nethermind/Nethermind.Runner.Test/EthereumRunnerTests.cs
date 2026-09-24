@@ -86,7 +86,7 @@ public class EthereumRunnerTests
     /// <summary>Budget for a single start or stop of a runner under test.</summary>
     /// <remarks>This is what fails a smoke case whose steps deadlock on incorrect dependencies. A test-level
     /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
-    /// has stalled for ~30 s on macOS runners. Without a bound, a start or stop that never completes takes the
+    /// is unbounded and can stall on slow CI hosts. Without a bound, a start or stop that never completes takes the
     /// whole assembly into the CI hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
     private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
 
