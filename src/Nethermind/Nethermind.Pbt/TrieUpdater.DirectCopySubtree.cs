@@ -15,8 +15,8 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// Composition never touched this node, so the group it is written into keeps the bytes the group it was read from
     /// holds, and its hash is the one decomposition seeded from the link that named it. The copy only holds while the
     /// position addressing it does not move: a node promoted by an updated sibling's deletion, or a group root placed
-    /// against a shallower cursor, branches at the same depth over a longer compressed prefix and is rebuilt through
-    /// <see cref="ToBranch"/>. The encoding is borrowed, so it is only valid while that frame is open.
+    /// against a shallower cursor, branches at the same depth over a longer compressed prefix and is rebuilt from its
+    /// stored children. The encoding is borrowed, so it is only valid while that frame is open.
     /// </remarks>
     internal readonly struct DirectCopySubtree
     {
@@ -50,20 +50,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (_knownHash != default) return _knownHash;
             metrics?.IncrementNodeHashes();
             return PbtNodeCodec.Hash(Reader);
-        }
-
-        /// <summary>The same node as a composed branch, for a cursor that does not address it at its own anchor.</summary>
-        /// <remarks>Nothing is copied: a branch encoding carries its compressed prefix in the layout a composed branch borrows.</remarks>
-        internal Subtree ToBranch()
-        {
-            PbtNodeReader node = Reader;
-            int prefixBitCount = node.Prefix.BitCount;
-            Subtree branch = new(Path, node.LeftHash, node.RightHash,
-                node.LeftKey.IsEmpty ? default : TKey.Create(node.LeftKey),
-                node.RightKey.IsEmpty ? default : TKey.Create(node.RightKey),
-                (byte)((node.LeftKey.IsEmpty ? 0 : Subtree.LeftLeaf) | (node.RightKey.IsEmpty ? 0 : Subtree.RightLeaf)),
-                _encoding.Slice(1, sizeof(ushort) + PbtBitPrefix.ByteCount(prefixBitCount)));
-            return _knownHash == default ? branch : branch.WithKnownHash(_knownHash, prefixBitCount);
         }
     }
 }
