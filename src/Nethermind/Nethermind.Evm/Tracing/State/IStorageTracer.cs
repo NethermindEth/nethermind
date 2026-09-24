@@ -19,7 +19,7 @@ public interface IStorageTracer
     /// </summary>
     /// <remarks>
     /// Controls
-    /// - <see cref="ReportStorageChange(in StorageCell, byte[], byte[])"/>
+    /// - <see cref="ReportStorageChange"/>
     /// - <see cref="ReportStorageRead"/>
     /// - <see cref="ReportStorageClear"/>
     /// - <see cref="ReportStorageRestore"/>
