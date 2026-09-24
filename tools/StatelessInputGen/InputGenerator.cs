@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -27,7 +28,7 @@ namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
-    internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk, CancellationToken cancellationToken = default)
+    internal static async Task<int> Generate(string blockParam, Uri host, Uri? beaconUrl, string output, bool forZisk, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
         ArgumentNullException.ThrowIfNull(host);
@@ -42,6 +43,8 @@ internal static class InputGenerator
         using (witness)
         {
             ISpecProvider specProvider = GetSpecProvider(chainId.Value);
+            if (beaconUrl is not null)
+                await TryFetchBeaconRequests(block, specProvider, beaconUrl, cancellationToken);
             data = await EncodeInput(block, witness, specProvider, cancellationToken);
         }
 
@@ -106,11 +109,38 @@ internal static class InputGenerator
         return StatelessInput<TExecutionPayload>.Encode(input);
     }
 
+    private static bool NeedsExecutionRequests(Block block) =>
+        block.ExecutionRequests is null && block.Header.RequestsHash is not null &&
+        block.Header.RequestsHash != ExecutionRequestExtensions.EmptyRequestsHash;
+
+    /// <summary>Attaches execution requests read from a beacon node, leaving the block untouched on any mismatch.</summary>
+    private static async Task TryFetchBeaconRequests(Block block, ISpecProvider specProvider, Uri beaconUrl, CancellationToken cancellationToken)
+    {
+        // Amsterdam inputs also need the access list that only the replay produces.
+        if (!NeedsExecutionRequests(block) ||
+            ProtocolForkExtensions.TryGetByName(specProvider.GetSpec(block.Header).Name, out ProtocolFork fork) && fork == ProtocolFork.Amsterdam)
+            return;
+
+        string? error;
+        try
+        {
+            (block.ExecutionRequests, error) = await BeaconRequests.TryFetch(beaconUrl, block, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException { CancellationToken.IsCancellationRequested: false } or JsonException or InvalidDataException or FormatException or KeyNotFoundException or InvalidOperationException)
+        {
+            error = ex.Message;
+        }
+
+        if (error is null)
+            AnsiConsole.MarkupLine($"[green]✓[/] Fetched execution requests from the beacon node");
+        else
+            AnsiConsole.MarkupLine($"[yellow]Beacon requests unusable ({error.EscapeMarkup()}), recovering them by replay[/]");
+    }
+
     private static async Task RecoverExecutionRequests(Block block, Witness witness, ISpecProvider specProvider, CancellationToken cancellationToken)
     {
         // EIP-7685 request bodies are absent from block RLP; only their hash survives debug_getRawBlock.
-        if (block.ExecutionRequests is not null || block.Header.RequestsHash is null ||
-            block.Header.RequestsHash == ExecutionRequestExtensions.EmptyRequestsHash)
+        if (!NeedsExecutionRequests(block))
             return;
 
         cancellationToken.ThrowIfCancellationRequested();
