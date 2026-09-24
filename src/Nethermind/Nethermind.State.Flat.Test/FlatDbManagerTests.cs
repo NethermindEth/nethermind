@@ -515,6 +515,7 @@ public class FlatDbManagerTests
         {
             _persistenceManager.Received(2).LeaseReader();
             staleReader.Received(1).Dispose();
+            freshReader.DidNotReceive().Dispose();
         }
     }
 
