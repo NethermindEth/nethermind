@@ -396,10 +396,13 @@ public static class GloasStateAccessors
     /// previous epoch in the first <c>SLOTS_PER_EPOCH</c> entries, then the current epoch and the
     /// <c>MIN_SEED_LOOKAHEAD</c> epochs after it).
     /// </summary>
-    /// <exception cref="BeaconStateException">The slot's epoch is outside the window.</exception>
-    public static PayloadTimelinessCommittee GetPtc(this BeaconStateGloas state, ulong slot)
+    /// <exception cref="BeaconStateException">The slot's epoch is before <c>GLOAS_FORK_EPOCH</c> or outside the window.</exception>
+    public static PayloadTimelinessCommittee GetPtc(this BeaconStateGloas state, ulong slot, BeaconChainSpec spec)
     {
         ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(slot);
+        // Spec get_ptc asserts epoch >= GLOAS_FORK_EPOCH: pre-fork window entries are placeholders, not committees.
+        if (epoch < spec.GloasForkEpoch)
+            throw new BeaconStateException($"PTC for slot {slot} is not available: epoch {epoch} is before GLOAS_FORK_EPOCH {spec.GloasForkEpoch}");
         ulong stateEpoch = state.GetCurrentEpoch();
         ulong slotInEpoch = slot % Presets.SlotsPerEpoch;
         if (epoch < stateEpoch)
@@ -417,11 +420,9 @@ public static class GloasStateAccessors
 
     /// <summary>Spec <c>get_indexed_payload_attestation</c> (new in Gloas): resolves the set PTC bits to validator indices, sorted ascending.</summary>
     /// <exception cref="BeaconStateException">The bitvector's length is not the PTC size, or the slot's PTC is not available.</exception>
-    public static IndexedPayloadAttestation GetIndexedPayloadAttestation(this BeaconStateGloas state, PayloadAttestation attestation)
+    public static IndexedPayloadAttestation GetIndexedPayloadAttestation(this BeaconStateGloas state, PayloadAttestation attestation, BeaconChainSpec spec)
     {
-        // The pre-fork history is the spec's default committee (validator 0 at every position), which
-        // the upgrade leaves unpopulated; a vote for one of those slots is invalid, not a crash.
-        ulong[] ptc = state.GetPtc(attestation.Data!.Slot).Indices ?? new ulong[Presets.PtcSize];
+        ulong[] ptc = state.GetPtc(attestation.Data!.Slot, spec).Indices!;
         BitArray bits = attestation.AggregationBits!;
         if (bits.Length != ptc.Length)
             throw new BeaconStateException($"Payload attestation has {bits.Length} aggregation bits, expected {ptc.Length}");
