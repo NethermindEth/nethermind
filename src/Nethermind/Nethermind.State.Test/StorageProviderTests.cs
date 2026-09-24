@@ -285,6 +285,8 @@ public class StorageProviderTests(bool useFlat)
             GetPrivateField(provider._stateProvider, "_intraTxCache"),
             GetPrivateField(provider._stateProvider, "_committedThisRound"),
             GetPrivateField(provider._stateProvider, "_nullAccountReads"),
+            GetPrivateField(provider._persistentStorageProvider, "_intraBlockCache"),
+            GetPrivateField(GetPrivateField(provider, "_transientStorageProvider"), "_intraBlockCache"),
             GetPrivateField(provider._persistentStorageProvider, "_originalValues"),
             GetPrivateField(provider._persistentStorageProvider, "_destroyedThisRound"),
         ];
@@ -1120,6 +1122,85 @@ public class StorageProviderTests(bool useFlat)
         provider.GetTransientState(new StorageCell(ctx.Address1, 2), out UInt256 storageValue24);
         Assert.That(storageValue24.IsZero, Is.True);
     }
+
+    [Test]
+    public void Reset_clears_sparse_storage_cache_after_large_round([Values] bool transient)
+    {
+        const int LargeStateCount = 5_000;
+
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        for (int i = 0; i < LargeStateCount; i++)
+        {
+            SetStorage(provider, new StorageCell(ctx.Address1, (UInt256)i), UInt256.One, transient);
+        }
+
+        provider.Reset();
+
+        object storageProvider = transient ? GetPrivateField(provider, "_transientStorageProvider") : provider._persistentStorageProvider;
+        object cache = GetPrivateField(storageProvider, "_intraBlockCache");
+        int retainedCapacity = GetDictionaryCapacity(cache);
+        Assert.That(retainedCapacity, Is.InRange(1_000, CoreCollectionExtensions.DefaultTrimAboveCapacity));
+
+        StorageCell repeated = new(ctx.Address1, (UInt256)LargeStateCount + 1);
+        StorageCell restored = new(ctx.Address1, (UInt256)LargeStateCount + 2);
+        StorageCell later = new(ctx.Address1, (UInt256)LargeStateCount + 3);
+        SetStorage(provider, repeated, (UInt256)1, transient);
+        SetStorage(provider, repeated, (UInt256)2, transient);
+        Snapshot afterRepeatedWrites = provider.TakeSnapshot();
+        SetStorage(provider, restored, (UInt256)3, transient);
+        SetStorage(provider, restored, (UInt256)4, transient);
+        provider.Restore(afterRepeatedWrites);
+
+        GetStorage(provider, restored, transient, out UInt256 restoredValue);
+        Assert.That(restoredValue, Is.EqualTo(UInt256.Zero));
+        SetStorage(provider, repeated, (UInt256)5, transient);
+        SetStorage(provider, later, (UInt256)6, transient);
+        if (transient)
+        {
+            provider.Set(new StorageCell(ctx.Address1, (UInt256)LargeStateCount + 4), UInt256.One);
+        }
+        provider.ClearStorage(ctx.Address1);
+
+        provider.Reset();
+
+        Assert.That(((IDictionary)cache).Count, Is.Zero);
+        Assert.That(GetDictionaryCapacity(cache), Is.EqualTo(retainedCapacity));
+        GetStorage(provider, repeated, transient, out UInt256 repeatedAfterReset);
+        GetStorage(provider, restored, transient, out UInt256 restoredAfterReset);
+        GetStorage(provider, later, transient, out UInt256 laterAfterReset);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repeatedAfterReset, Is.EqualTo(UInt256.Zero));
+            Assert.That(restoredAfterReset, Is.EqualTo(UInt256.Zero));
+            Assert.That(laterAfterReset, Is.EqualTo(UInt256.Zero));
+        }
+
+        SetStorage(provider, repeated, (UInt256)7, transient);
+        SetStorage(provider, restored, (UInt256)8, transient);
+        GetStorage(provider, repeated, transient, out UInt256 repeatedAfterReuse);
+        GetStorage(provider, restored, transient, out UInt256 restoredAfterReuse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repeatedAfterReuse, Is.EqualTo((UInt256)7));
+            Assert.That(restoredAfterReuse, Is.EqualTo((UInt256)8));
+        }
+    }
+
+    private static void SetStorage(WorldState provider, in StorageCell cell, in UInt256 value, bool transient)
+    {
+        if (transient) provider.SetTransientState(in cell, in value);
+        else provider.Set(in cell, in value);
+    }
+
+    private static void GetStorage(WorldState provider, in StorageCell cell, bool transient, out UInt256 value)
+    {
+        if (transient) provider.GetTransientState(in cell, out value);
+        else provider.Get(in cell, out value);
+    }
+
+    private static int GetDictionaryCapacity(object dictionary) =>
+        (int)dictionary.GetType().GetProperty(nameof(System.Collections.Generic.Dictionary<,>.Capacity))!.GetValue(dictionary)!;
 
     /// <summary>
     /// Transient state does not impact persistent state

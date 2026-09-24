@@ -155,9 +155,25 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
+            const int SparseResetCapacityRatio = 8;
+            int cacheCapacity = _intraBlockCache.Capacity;
+            if (cacheCapacity > Nethermind.Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity || _changes.Count > cacheCapacity / SparseResetCapacityRatio)
+            {
+                _intraBlockCache.ClearAndTrim();
+            }
+            else
+            {
+                // Every retained cache entry is journaled; duplicate records repeat a harmless removal.
+                ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+                for (int i = changes.Length - 1; i >= 0; i--)
+                {
+                    ref readonly Change change = ref changes[i];
+                    if (change.ChangeType == StorageChangeType.Update) _intraBlockCache.Remove(change.StorageCell);
+                }
+            }
+
             _changes.Clear();
             _protectedPosition = Resettable.EmptyPosition;
-            _intraBlockCache.ClearAndTrim();
             _transactionChangesSnapshots.Clear();
         }
 
