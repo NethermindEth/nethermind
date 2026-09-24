@@ -147,7 +147,7 @@ namespace Nethermind.Runner.Ethereum
         /// Kestrel binds any host that is neither an IP literal nor <c>localhost</c> to all interfaces,
         /// so a host name such as <c>node.lan</c> would otherwise expose the port on every address of the machine.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">A host name resolves to no addresses.</exception>
+        /// <exception cref="InvalidOperationException">A host name cannot be resolved or resolves to no addresses.</exception>
         internal static string[] GetListenUrls(IEnumerable<JsonRpcUrl> urls, Func<string, IPAddress[]> resolveHost)
         {
             List<string> listenUrls = [];
@@ -161,10 +161,19 @@ namespace Nethermind.Runner.Ethereum
                     continue;
                 }
 
-                IPAddress[] addresses = resolveHost(url.Host);
+                IPAddress[] addresses;
+                try
+                {
+                    addresses = resolveHost(url.Host);
+                }
+                catch (SocketException e)
+                {
+                    throw UnresolvedHost(url.Host, e);
+                }
+
                 if (addresses.Length == 0)
                 {
-                    throw new InvalidOperationException($"JSON RPC host '{url.Host}' does not resolve to any IP address");
+                    throw UnresolvedHost(url.Host, null);
                 }
 
                 foreach (IPAddress address in addresses)
@@ -179,6 +188,9 @@ namespace Nethermind.Runner.Ethereum
             }
 
             return listenUrls.ToArray();
+
+            static InvalidOperationException UnresolvedHost(string host, Exception? innerException) =>
+                new($"Failed to resolve JSON RPC host '{host}'. Use an IP address, or 0.0.0.0 to listen on all interfaces.", innerException);
         }
 
         public async ValueTask DisposeAsync()

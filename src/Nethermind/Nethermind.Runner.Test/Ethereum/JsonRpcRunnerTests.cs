@@ -3,6 +3,7 @@
 
 using System;
 using System.Net;
+using System.Net.Sockets;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Runner.Ethereum;
@@ -39,9 +40,11 @@ public class JsonRpcRunnerTests
             }));
 
     [Test]
-    public void GetListenUrls_throws_when_host_name_resolves_to_nothing() =>
+    public void GetListenUrls_throws_when_host_name_cannot_be_resolved([Values] bool lookupThrows) =>
         Assert.That(
-            () => JsonRpcRunner.GetListenUrls([CreateUrl("node.lan", 8545)], static _ => []),
+            () => JsonRpcRunner.GetListenUrls(
+                [CreateUrl("node.lan", 8545)],
+                lookupThrows ? static _ => throw new SocketException((int)SocketError.HostNotFound) : static _ => []),
             Throws.InvalidOperationException.With.Message.Contains("node.lan"));
 
     private static JsonRpcUrl CreateUrl(string host, int port) =>
