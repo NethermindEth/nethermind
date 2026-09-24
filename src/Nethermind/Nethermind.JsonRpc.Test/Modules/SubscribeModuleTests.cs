@@ -634,7 +634,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using (new LogsSubscription(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, null))
             {
                 // The first message blocks the sender and the queue fills behind it.
-                for (int i = 0; i < Subscription.MaxQueuedMessages + 2; i++)
+                for (int i = 0; i < Subscription.MaxQueuedBlocks + 2; i++)
                 {
                     receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
                 }
@@ -650,7 +650,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>())
                 .Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
             IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
-            ReceiptsEventArgs receiptsEvent = MatchingLogEvent(Build.A.BlockHeader.WithNumber(1).TestObject, logCount: Subscription.MaxQueuedMessages + 2);
+            ReceiptsEventArgs receiptsEvent = MatchingLogEvent(Build.A.BlockHeader.WithNumber(1).TestObject, logCount: Subscription.MaxQueuedBlocks + 2);
             using ManualResetEventSlim disposed = new();
             _jsonRpcDuplexClient.When(c => c.Dispose()).Do(_ => disposed.Set());
 

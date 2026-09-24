@@ -12,10 +12,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         protected ILogger _logger;
 
-        protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient)
+        /// <param name="jsonRpcDuplexClient">The client notifications are sent to.</param>
+        /// <param name="maxQueuedMessages">Queued sends after which a lagging client is disconnected.</param>
+        protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient, int maxQueuedMessages = MaxQueuedBlocks)
         {
             Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
             JsonRpcDuplexClient = jsonRpcDuplexClient;
+            _maxQueuedMessages = maxQueuedMessages;
+            SendChannel = Channel.CreateBounded<Func<Task>>(new BoundedChannelOptions(maxQueuedMessages) { SingleReader = true });
             ProcessMessages();
         }
 
@@ -39,13 +43,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
 
         /// <summary>
-        /// Maximum number of queued sends; each is one notification or batch, e.g. one new head or one block's logs.
+        /// Queue limit for subscriptions that send once per block (a new head, a block's logs): 30 minutes of 2 s blocks.
         /// </summary>
-        internal const int MaxQueuedMessages = 20_000;
+        protected internal const int MaxQueuedBlocks = 1_000;
 
+        /// <summary>
+        /// Queue limit for subscriptions that send once per transaction: about 30 s of a busy mempool.
+        /// </summary>
+        protected internal const int MaxQueuedTransactions = 10_000;
+
+        private readonly int _maxQueuedMessages;
         private volatile bool _overflowed;
 
-        private Channel<Func<Task>> SendChannel { get; } = Channel.CreateBounded<Func<Task>>(new BoundedChannelOptions(MaxQueuedMessages) { SingleReader = true });
+        private Channel<Func<Task>> SendChannel { get; }
 
         public virtual void Dispose() => SendChannel.Writer.TryComplete();
 
@@ -72,7 +82,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 }, default);
 
         /// <remarks>
-        /// A client that falls <see cref="MaxQueuedMessages"/> sends behind is disconnected rather than buffered
+        /// A client that falls the queue limit's worth of sends behind is disconnected rather than buffered
         /// without limit, and its backlog is dropped.
         /// </remarks>
         protected void ScheduleAction(Func<Task> action)
@@ -81,7 +91,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (SendChannel.Writer.TryWrite(action) || !SendChannel.Writer.TryComplete()) return;
 
             _overflowed = true;
-            if (_logger.IsWarn) _logger.Warn($"{GetErrorMsg()} Client fell {MaxQueuedMessages} messages behind and is disconnected.");
+            if (_logger.IsWarn) _logger.Warn($"{GetErrorMsg()} Client fell {_maxQueuedMessages} sends behind and is disconnected.");
             // Off the caller's thread, which may be block processing.
             _ = Task.Run(JsonRpcDuplexClient.Dispose);
         }
