@@ -97,7 +97,8 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateTimestamp(header, parent, ref error))
                    && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
-                   && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
+                   && ValidateBlobGasFields(header, spec, ref error)
+                   && (orphaned || ValidateExcessBlobGas(header, parent, spec, ref error))
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
                    && ValidateSlotNumber(header, spec, ref error);
@@ -337,7 +338,11 @@ namespace Nethermind.Consensus.Validators
             header.Bloom is not null &&
             header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
 
-        protected virtual bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        /// <summary>
+        /// Checks that the EIP-4844 blob-gas fields are present exactly when the fork enables them.
+        /// </summary>
+        /// <remarks>Parent-independent, so it also runs for orphaned headers.</remarks>
+        protected virtual bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip4844Enabled)
             {
@@ -352,14 +357,6 @@ namespace Nethermind.Consensus.Validators
                 {
                     if (_logger.IsWarn) _logger.Warn("ExcessBlobGas field is not set.");
                     error = BlockErrorMessages.MissingExcessBlobGas;
-                    return false;
-                }
-
-                ulong? expectedExcessBlobGas = CalculateExcessBlobGas(parent, spec);
-                if (header.ExcessBlobGas != expectedExcessBlobGas)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
-                    error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
                     return false;
                 }
             }
@@ -378,6 +375,28 @@ namespace Nethermind.Consensus.Validators
                     error = BlockErrorMessages.NotAllowedExcessBlobGas;
                     return false;
                 }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Checks that <see cref="BlockHeader.ExcessBlobGas"/> matches the value derived from <paramref name="parent"/>.
+        /// </summary>
+        /// <remarks>Assumes <see cref="ValidateBlobGasFields"/> has passed.</remarks>
+        protected virtual bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            if (!spec.IsEip4844Enabled)
+            {
+                return true;
+            }
+
+            ulong? expectedExcessBlobGas = CalculateExcessBlobGas(parent, spec);
+            if (header.ExcessBlobGas != expectedExcessBlobGas)
+            {
+                if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
+                error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
+                return false;
             }
 
             return true;
