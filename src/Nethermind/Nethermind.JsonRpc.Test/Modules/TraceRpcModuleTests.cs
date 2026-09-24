@@ -15,7 +15,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
