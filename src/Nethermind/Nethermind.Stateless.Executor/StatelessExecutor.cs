@@ -132,8 +132,13 @@ public static class StatelessExecutor
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
 
-        using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
+        if (!blockProcessingEnv.WorldState.TryBeginScope(parentHeader, out IDisposable? scope))
+        {
+            Debug.WriteLine("The witness does not contain the parent state root.");
+            return false;
+        }
 
+        using IDisposable _ = scope;
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
         (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(

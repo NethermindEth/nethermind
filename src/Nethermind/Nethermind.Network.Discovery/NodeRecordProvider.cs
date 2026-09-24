@@ -44,6 +44,7 @@ public sealed class NodeRecordProvider(
                 {
                     blockTree.NewHeadBlock += OnNewHeadBlock;
                     listenerState.Changed += OnListenerChanged;
+                    ipResolver.Changed += OnExternalIpChanged;
                     _subscribed = true;
                 }
 
@@ -91,6 +92,9 @@ public sealed class NodeRecordProvider(
         => RefreshRecord(e.Block.Header);
 
     private void OnListenerChanged(object? sender, EventArgs e)
+        => RefreshRecord(effectiveHeader: null);
+
+    private void OnExternalIpChanged(object? sender, EventArgs e)
         => RefreshRecord(effectiveHeader: null);
 
     private void RefreshRecord(BlockHeader? effectiveHeader)

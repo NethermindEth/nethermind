@@ -171,9 +171,6 @@ public interface IDbConfig : IConfig
     /// </summary>
     string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; }
 
-    string? PreimageDbRocksDbOptions { get; set; }
-    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
-
     string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; }
     string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
 }
