@@ -377,6 +377,21 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void receipt_whose_bloom_excludes_the_filter_is_skipped_without_shifting_log_indexes()
+    {
+        LogFilter filter = BuildFilter(static f => f.WithAddress(TestItem.AddressA));
+        _filterStore.SaveFilter(filter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);
+
+        // Both logs match the filter, so only the first receipt's bloom can drop its log.
+        TxReceipt skipped = BuildReceipt(static r => r.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject).WithBloom(new Bloom()));
+        TxReceipt matched = BuildReceipt(static r => r.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject));
+        RaiseBlockProcessed(skipped, matched);
+
+        Assert.That(Drain(_filterManager.PollLogs(filter.Id)).Select(static l => l.LogIndex), Is.EqualTo(new[] { 1L }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void block_filter_polled_before_any_new_block_returns_the_last_processed_block_once()
     {
         _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _receiptMonitor, _logManager);

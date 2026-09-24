@@ -170,7 +170,6 @@ namespace Nethermind.Facade.Filters
                 return ArrayPoolList<Hash256>.Empty();
 
             ArrayPoolList<Hash256> result = new(transactions.Count);
-            // Every admission of a re-added transaction passes the pool check, so each hash is reported once per poll.
             using PooledSet<Hash256>? reported = transactions.Count > 1 ? new PooledSet<Hash256>(transactions.Count) : null;
             foreach (PendingTransaction transaction in transactions)
             {
@@ -215,6 +214,13 @@ namespace Nethermind.Facade.Filters
                     LogEntry[]? entries = receipt.Logs;
                     if (entries is null)
                     {
+                        continue;
+                    }
+
+                    // A busy block's bloom matches most filters; a receipt's own bloom still rules most receipts out.
+                    if (!filter.Matches(receipt.Bloom))
+                    {
+                        logIndex += entries.Length;
                         continue;
                     }
 
