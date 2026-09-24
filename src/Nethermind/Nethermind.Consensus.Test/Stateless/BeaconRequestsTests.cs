@@ -5,9 +5,15 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -102,6 +108,93 @@ public class BeaconRequestsTests
 
         Assert.That(requests, Is.Null);
         Assert.That(error, Does.Contain("builder_exits"));
+    }
+
+    [Test]
+    public async Task Fetches_requests_from_the_slot_of_the_block()
+    {
+        byte[][] expected = [ExpectedConsolidations()];
+        Block block = Build.A.Block.WithTimestamp(GenesisTime + 5 * 12).WithRequestsHash(ExpectedHash(expected)).TestObject;
+        using HttpClient client = Stub(path => path switch
+        {
+            "/eth/v2/beacon/blocks/5" => BeaconBlock(block, $$"""{ "consolidations": [{{Consolidation}}] }"""),
+            _ => DefaultResponse(path)
+        });
+
+        (byte[][]? requests, string? error) = await BeaconRequests.TryFetch(BeaconUrl, block, CancellationToken.None, client);
+
+        Assert.That(error, Is.Null);
+        Assert.That(requests, Is.EqualTo(expected));
+    }
+
+    [TestCase("""{ "data": { "SECONDS_PER_SLOT": "0" } }""", "SECONDS_PER_SLOT = 0", TestName = "Zero seconds per slot")]
+    [TestCase("""{ "data": { "SECONDS_PER_SLOT": null } }""", null, TestName = "Null seconds per slot")]
+    [TestCase("""{ "data": { "SECONDS_PER_SLOT": "99999999999999999999999" } }""", null, TestName = "Seconds per slot overflow")]
+    [TestCase("""{ "data": """, null, TestName = "Truncated JSON")]
+    public async Task Falls_back_on_a_malformed_spec(string spec, string? expectedError)
+    {
+        Block block = Build.A.Block.WithTimestamp(GenesisTime + 12).WithRequestsHash(ExpectedHash([ExpectedConsolidations()])).TestObject;
+        using HttpClient client = Stub(path => path == "/eth/v1/config/spec" ? spec : DefaultResponse(path));
+
+        (byte[][]? requests, string? error) = await BeaconRequests.TryFetch(BeaconUrl, block, CancellationToken.None, client);
+
+        Assert.That(requests, Is.Null);
+        Assert.That(error, expectedError is null ? Is.Not.Null.And.Not.Empty : Does.Contain(expectedError));
+    }
+
+    [Test]
+    public async Task Falls_back_when_the_beacon_node_times_out()
+    {
+        Block block = Build.A.Block.WithTimestamp(GenesisTime + 12).WithRequestsHash(ExpectedHash([ExpectedConsolidations()])).TestObject;
+        using HttpClient client = new(new HangingHandler()) { Timeout = TimeSpan.FromMilliseconds(100) };
+
+        (byte[][]? requests, string? error) = await BeaconRequests.TryFetch(BeaconUrl, block, CancellationToken.None, client);
+
+        Assert.That(requests, Is.Null);
+        Assert.That(error, Is.Not.Null.And.Not.Empty);
+    }
+
+    [Test]
+    public void Propagates_caller_cancellation()
+    {
+        Block block = Build.A.Block.WithTimestamp(GenesisTime + 12).WithRequestsHash(ExpectedHash([ExpectedConsolidations()])).TestObject;
+        using HttpClient client = new(new HangingHandler());
+        using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(100));
+
+        Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => BeaconRequests.TryFetch(BeaconUrl, block, cts.Token, client));
+    }
+
+    private const ulong GenesisTime = 1_606_824_023;
+    private static readonly Uri BeaconUrl = new("http://beacon.test/");
+
+    private static string DefaultResponse(string path) => path switch
+    {
+        "/eth/v1/beacon/genesis" => $$"""{ "data": { "genesis_time": "{{GenesisTime}}" } }""",
+        "/eth/v1/config/spec" => """{ "data": { "SECONDS_PER_SLOT": "12" } }""",
+        _ => throw new HttpRequestException($"unexpected path {path}", null, HttpStatusCode.NotFound)
+    };
+
+    private static string BeaconBlock(Block block, string executionRequests) =>
+        $$"""{ "data": { "message": { "body": { "execution_payload": { "block_hash": "{{block.Hash}}" }, "execution_requests": {{executionRequests}} } } } }""";
+
+    private static HttpClient Stub(Func<string, string> respond) => new(new StubHandler(respond));
+
+    private sealed class StubHandler(Func<string, string> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(respond(request.RequestUri!.AbsolutePath), Encoding.UTF8, "application/json")
+            });
+    }
+
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new UnreachableException();
+        }
     }
 
     private static (byte[][]? Requests, string? Error) FromBody(Block block, string executionRequests, Hash256? blockHash = null)

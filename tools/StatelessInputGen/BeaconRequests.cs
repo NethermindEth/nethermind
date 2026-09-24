@@ -21,18 +21,35 @@ internal static class BeaconRequests
     private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     /// <returns>The flat-encoded requests, or <c>null</c> with the reason if they can't be used.</returns>
-    internal static async Task<(byte[][]? Requests, string? Error)> TryFetch(Uri beaconUrl, Block block, CancellationToken cancellationToken)
+    /// <remarks>Never throws on a bad or unreachable beacon node; only the caller's own cancellation escapes.</remarks>
+    internal static async Task<(byte[][]? Requests, string? Error)> TryFetch(Uri beaconUrl, Block block, CancellationToken cancellationToken, HttpClient? httpClient = null)
     {
-        using JsonDocument genesis = await Get(beaconUrl, "eth/v1/beacon/genesis", cancellationToken);
-        using JsonDocument spec = await Get(beaconUrl, "eth/v1/config/spec", cancellationToken);
+        try
+        {
+            return await Fetch(httpClient ?? _httpClient, beaconUrl, block, cancellationToken);
+        }
+        // Any failure here (timeout, bad JSON, null or out-of-range fields) just means falling back to replay.
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            return (null, ex.Message);
+        }
+    }
+
+    private static async Task<(byte[][]? Requests, string? Error)> Fetch(HttpClient httpClient, Uri beaconUrl, Block block, CancellationToken cancellationToken)
+    {
+        using JsonDocument genesis = await Get(httpClient, beaconUrl, "eth/v1/beacon/genesis", cancellationToken);
+        using JsonDocument spec = await Get(httpClient, beaconUrl, "eth/v1/config/spec", cancellationToken);
         ulong genesisTime = ulong.Parse(genesis.RootElement.GetProperty("data").GetProperty("genesis_time").GetString()!, CultureInfo.InvariantCulture);
         ulong secondsPerSlot = ulong.Parse(spec.RootElement.GetProperty("data").GetProperty("SECONDS_PER_SLOT").GetString()!, CultureInfo.InvariantCulture);
+
+        if (secondsPerSlot == 0)
+            return (null, "the beacon node reports SECONDS_PER_SLOT = 0");
 
         if (block.Timestamp < genesisTime || (block.Timestamp - genesisTime) % secondsPerSlot != 0)
             return (null, "the block timestamp doesn't fall on a beacon slot");
 
         ulong slot = (block.Timestamp - genesisTime) / secondsPerSlot;
-        using JsonDocument beaconBlock = await Get(beaconUrl, $"eth/v2/beacon/blocks/{slot}", cancellationToken);
+        using JsonDocument beaconBlock = await Get(httpClient, beaconUrl, $"eth/v2/beacon/blocks/{slot}", cancellationToken);
         (byte[][]? requests, string? error) = FromBeaconBlockBody(beaconBlock.RootElement.GetProperty("data").GetProperty("message").GetProperty("body"), block);
 
         return (requests, error is null ? null : $"beacon slot {slot}: {error}");
@@ -123,9 +140,9 @@ internal static class BeaconRequests
         return bytes;
     }
 
-    private static async Task<JsonDocument> Get(Uri beaconUrl, string path, CancellationToken cancellationToken)
+    private static async Task<JsonDocument> Get(HttpClient httpClient, Uri beaconUrl, string path, CancellationToken cancellationToken)
     {
-        using HttpResponseMessage response = await _httpClient.GetAsync(new Uri(beaconUrl, path), cancellationToken);
+        using HttpResponseMessage response = await httpClient.GetAsync(new Uri(beaconUrl, path), cancellationToken);
         response.EnsureSuccessStatusCode();
         await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);

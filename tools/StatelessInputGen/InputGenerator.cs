@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Globalization;
-using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -121,15 +120,7 @@ internal static class InputGenerator
             ProtocolForkExtensions.TryGetByName(specProvider.GetSpec(block.Header).Name, out ProtocolFork fork) && fork == ProtocolFork.Amsterdam)
             return;
 
-        string? error;
-        try
-        {
-            (block.ExecutionRequests, error) = await BeaconRequests.TryFetch(beaconUrl, block, cancellationToken);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException { CancellationToken.IsCancellationRequested: false } or JsonException or InvalidDataException or FormatException or KeyNotFoundException or InvalidOperationException)
-        {
-            error = ex.Message;
-        }
+        (block.ExecutionRequests, string? error) = await BeaconRequests.TryFetch(beaconUrl, block, cancellationToken);
 
         if (error is null)
             AnsiConsole.MarkupLine($"[green]✓[/] Fetched execution requests from the beacon node");
