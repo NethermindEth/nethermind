@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
@@ -61,8 +62,16 @@ public sealed class BeaconChainService(
 
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.EffectiveCheckpointSyncUrl}");
             store.EnsureSchemaVersion();
-            (BeaconStateFulu state, SignedBeaconBlock? block, Hash256 blockRoot) = await InitializeAnchorAsync(_cancellationTokenSource.Token);
-            if (block is null)
+            (ForkedBeaconState forkedState, ForkedSignedBeaconBlock? forkedBlock, Hash256 blockRoot) = await InitializeAnchorAsync(_cancellationTokenSource.Token);
+            if (forkedState is not ForkedBeaconState.OfFulu { State: BeaconStateFulu state } || forkedBlock is ForkedSignedBeaconBlock.OfGloas)
+            {
+                // Checked before the pubkey cache is built: the orchestrator and importer take only a Fulu anchor.
+                if (_logger.IsError) _logger.Error($"The anchor block {blockRoot} at slot {forkedState.Slot} is a {BeaconFork.Gloas} checkpoint, and the embedded beacon chain driver cannot yet sync from one. Run an external consensus client instead, or set BeaconChain.Enabled=false.");
+                return;
+            }
+
+            InitializePubkeyCache(state);
+            if (forkedBlock is not ForkedSignedBeaconBlock.OfFulu { Block: SignedBeaconBlock block })
             {
                 if (_logger.IsWarn) _logger.Warn("Anchor block is unavailable (state-file-only bootstrap); the sync orchestrator cannot start.");
                 return;
@@ -79,10 +88,10 @@ public sealed class BeaconChainService(
         }
     }
 
-    private async Task<(BeaconStateFulu State, SignedBeaconBlock? Block, Hash256 BlockRoot)> InitializeAnchorAsync(CancellationToken cancellationToken)
+    private async Task<(ForkedBeaconState State, ForkedSignedBeaconBlock? Block, Hash256 BlockRoot)> InitializeAnchorAsync(CancellationToken cancellationToken)
     {
-        BeaconStateFulu state;
-        SignedBeaconBlock? block;
+        ForkedBeaconState state;
+        ForkedSignedBeaconBlock? block;
         Hash256 blockRoot;
         if (store.TryGetAnchor(out Hash256? anchorRoot, out ulong anchorSlot))
         {
@@ -92,9 +101,9 @@ public sealed class BeaconChainService(
                 throw new InvalidOperationException($"Persisted anchor state {anchorRoot} is missing or corrupt; delete the beaconChain database to checkpoint-sync again.");
             }
 
-            state = BeaconStateCodec.Decode(stateSsz, spec);
+            state = BeaconStateCodec.DecodeForked(stateSsz, spec);
             blockRoot = anchorRoot;
-            store.TryGetBlock(anchorRoot, out block);
+            store.TryGetForkedBlock(anchorRoot, out block);
         }
         else
         {
@@ -102,7 +111,6 @@ public sealed class BeaconChainService(
             (state, block, blockRoot) = (anchor.State, anchor.Block, anchor.BlockRoot);
         }
 
-        InitializePubkeyCache(state);
         return (state, block, blockRoot);
     }
 
