@@ -28,6 +28,33 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
+    public async Task GetPayloadV5_should_return_unsupported_fork_at_amsterdam()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        PayloadAttributes payloadAttributes = CreateAmsterdamPayloadAttributes(head.Header);
+        ForkchoiceStateV1 forkchoiceState = new(head.Hash!, head.Hash!, head.Hash!);
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse =
+            await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcuResponse.Result, Is.EqualTo(Result.Success));
+            Assert.That(fcuResponse.Data.PayloadId, Is.Not.Null);
+        }
+
+        ResultWrapper<GetPayloadV5Result?> result =
+            await rpcModule.engine_getPayloadV5(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Fail(MergeErrorMessages.UnsupportedFork)));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        }
+    }
+
+    [Test]
     public async Task GetPayloadV5_should_return_all_the_blobs([Values(0, 1, 2, 3, 4)] int blobTxCount, [Values(true, false)] bool oneBlobPerTx)
     {
         (IEngineRpcModule rpcModule, string? payloadId, _, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Osaka.Instance, blobTxCount, oneBlobPerTx: oneBlobPerTx);
