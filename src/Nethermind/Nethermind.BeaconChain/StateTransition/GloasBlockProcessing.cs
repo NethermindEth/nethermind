@@ -82,7 +82,7 @@ public static class GloasBlockProcessing
         ProcessExecutionPayloadBid(state, body.SignedExecutionPayloadBid!, spec, pubkeys, verifySignatures);
         ProcessRandao(state, body, pubkeys, verifySignatures);
         ProcessEth1Data(state, body);
-        ProcessOperations(state, body, parentSlot, cache, pubkeys, verifySignatures);
+        ProcessOperations(state, body, parentSlot, spec, cache, pubkeys, verifySignatures);
         ProcessSyncAggregate(state, body.SyncAggregate!, cache, verifySignatures);
     }
 
@@ -165,7 +165,7 @@ public static class GloasBlockProcessing
     /// consolidation-request dispatch is gone (moved to <see cref="ApplyParentExecutionPayload"/>),
     /// payload attestations are added, and attestations learn the parent block's slot.
     /// </summary>
-    public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot, BeaconChainSpec spec, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
     {
         if ((body.Deposits?.Length ?? 0) != 0)
             throw new BeaconStateException("Gloas block body must carry zero deposits (EIP-6110: the Eth1 deposit path is fully retired)");
@@ -201,7 +201,7 @@ public static class GloasBlockProcessing
         }
         foreach (PayloadAttestation attestation in body.PayloadAttestations ?? [])
         {
-            ProcessPayloadAttestation(state, attestation, pubkeys, verifySignatures);
+            ProcessPayloadAttestation(state, attestation, spec, pubkeys, verifySignatures);
         }
     }
 
@@ -217,7 +217,7 @@ public static class GloasBlockProcessing
     /// payload, valid only for the parent and the previous slot. Pure verification - the vote's
     /// content feeds fork choice, not the state.
     /// </summary>
-    public static void ProcessPayloadAttestation(BeaconStateGloas state, PayloadAttestation attestation, PubkeyCache pubkeys, bool verifySignature = true)
+    public static void ProcessPayloadAttestation(BeaconStateGloas state, PayloadAttestation attestation, BeaconChainSpec spec, PubkeyCache pubkeys, bool verifySignature = true)
     {
         PayloadAttestationData data = attestation.Data!;
         if (data.BeaconBlockRoot != state.LatestBlockHeader!.ParentRoot)
@@ -225,7 +225,7 @@ public static class GloasBlockProcessing
         if (data.Slot + 1 != state.Slot)
             throw new BeaconStateException($"Payload attestation for slot {data.Slot} is not for the slot before {state.Slot}");
 
-        IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation);
+        IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation, spec);
         if (!IsValidIndexedPayloadAttestation(state, indexed, pubkeys, verifySignature))
             throw new BeaconStateException("Invalid indexed payload attestation");
     }
@@ -624,7 +624,8 @@ public static class GloasBlockProcessing
                 throw new BeaconStateException("Invalid execution payload bid signature");
         }
 
-        ulong maxBlobsPerBlock = spec.GetBlobParameters(state.GetCurrentEpoch())!.Value.MaxBlobsPerBlock;
+        // Spec get_blob_parameters falls back to MAX_BLOBS_PER_BLOCK_ELECTRA when no BLOB_SCHEDULE entry applies, whatever FULU_FORK_EPOCH is.
+        ulong maxBlobsPerBlock = spec.GetBlobParameters(state.GetCurrentEpoch())?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra;
         if ((ulong)(bid.BlobKzgCommitments?.Length ?? 0) > maxBlobsPerBlock)
             throw new BeaconStateException($"Bid has {bid.BlobKzgCommitments!.Length} blob commitments, exceeding the limit of {maxBlobsPerBlock}");
 
@@ -896,7 +897,7 @@ public static class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>process_deposit_request</c> (EIP-6110): unchanged from Fulu, ported to <see cref="BeaconStateGloas"/>.</summary>
-    private static void ProcessDepositRequest(BeaconStateGloas state, DepositRequest request)
+    internal static void ProcessDepositRequest(BeaconStateGloas state, DepositRequest request)
     {
         if (state.DepositRequestsStartIndex == Presets.UnsetDepositRequestsStartIndex)
             state.DepositRequestsStartIndex = request.Index;
@@ -912,7 +913,7 @@ public static class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>process_withdrawal_request</c> (EIP-7002/EIP-7251): unchanged from Fulu, ported to <see cref="BeaconStateGloas"/>.</summary>
-    private static void ProcessWithdrawalRequest(BeaconStateGloas state, WithdrawalRequest request, EpochCache cache)
+    internal static void ProcessWithdrawalRequest(BeaconStateGloas state, WithdrawalRequest request, EpochCache cache)
     {
         bool isFullExitRequest = request.Amount == Presets.FullExitRequestAmount;
 
@@ -960,7 +961,7 @@ public static class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>process_consolidation_request</c> (EIP-7251): unchanged from Fulu, ported to <see cref="BeaconStateGloas"/>.</summary>
-    private static void ProcessConsolidationRequest(BeaconStateGloas state, ConsolidationRequest request, EpochCache cache)
+    internal static void ProcessConsolidationRequest(BeaconStateGloas state, ConsolidationRequest request, EpochCache cache)
     {
         if (IsValidSwitchToCompoundingRequest(state, request))
         {
@@ -1053,7 +1054,7 @@ public static class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>process_builder_deposit_request</c> (EIP-8282, new in Gloas).</summary>
-    private static void ProcessBuilderDepositRequest(BeaconStateGloas state, BuilderDepositRequest request)
+    internal static void ProcessBuilderDepositRequest(BeaconStateGloas state, BuilderDepositRequest request)
     {
         if (!GloasForkTransition.IsBuilderWithdrawalCredential(request.WithdrawalCredentials!))
             return;
@@ -1113,7 +1114,7 @@ public static class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>process_builder_exit_request</c> (EIP-8282, new in Gloas).</summary>
-    private static void ProcessBuilderExitRequest(BeaconStateGloas state, BuilderExitRequest request)
+    internal static void ProcessBuilderExitRequest(BeaconStateGloas state, BuilderExitRequest request)
     {
         int builderIndex = Array.FindIndex(state.Builders!, b => b.Pubkey.Equals(request.Pubkey));
         if (builderIndex < 0)
@@ -1192,6 +1193,10 @@ public static class GloasBlockProcessing
     }
 
     private static bool IsBuilderIndex(ulong validatorIndex) => (validatorIndex & Presets.BuilderIndexFlag) != 0;
+
+    // The spec's registry read raises IndexError past the end, which its tests count as a failed assert.
+    private static int RequireRegistryIndex(ulong index, int length, string registry) =>
+        index < (ulong)length ? (int)index : throw new BeaconStateException($"{registry} index {index} is out of range ({length} entries)");
     private static ulong ToBuilderWithdrawalIndex(ulong builderIndex) => builderIndex | Presets.BuilderIndexFlag;
 
     /// <summary>Spec <c>get_expected_withdrawals</c> (Gloas): builder withdrawals, then pending partials, then the builders sweep, then the validators sweep.</summary>
@@ -1248,7 +1253,7 @@ public static class GloasBlockProcessing
             if (accumulated.Count >= withdrawalsLimit)
                 break;
 
-            Builder builder = builders[(int)builderIndex];
+            Builder builder = builders[RequireRegistryIndex(builderIndex, builders.Length, "Builder")];
             if (builder.WithdrawableEpoch <= epoch && builder.Balance > 0)
             {
                 accumulated.Add(new Withdrawal
@@ -1277,8 +1282,9 @@ public static class GloasBlockProcessing
             if (pending.WithdrawableEpoch > epoch || accumulated.Count >= withdrawalsLimit)
                 break;
 
-            Validator validator = state.Validators![(int)pending.ValidatorIndex];
-            ulong balance = state.Balances![(int)pending.ValidatorIndex] - TotalWithdrawn(accumulated, pending.ValidatorIndex);
+            int index = RequireRegistryIndex(pending.ValidatorIndex, state.Validators!.Length, "Validator");
+            Validator validator = state.Validators[index];
+            ulong balance = state.Balances![index] - TotalWithdrawn(accumulated, pending.ValidatorIndex);
             bool isEligible = validator.ExitEpoch == Presets.FarFutureEpoch && validator.EffectiveBalance >= Presets.MinActivationBalance && balance > Presets.MinActivationBalance;
             if (isEligible)
             {
@@ -1307,8 +1313,9 @@ public static class GloasBlockProcessing
             if (accumulated.Count >= Presets.MaxWithdrawalsPerPayload)
                 break;
 
-            Validator validator = state.Validators[(int)validatorIndex];
-            ulong balance = state.Balances![(int)validatorIndex] - TotalWithdrawn(accumulated, validatorIndex);
+            int index = RequireRegistryIndex(validatorIndex, state.Validators.Length, "Validator");
+            Validator validator = state.Validators[index];
+            ulong balance = state.Balances![index] - TotalWithdrawn(accumulated, validatorIndex);
             if (validator.IsFullyWithdrawableValidator(balance, epoch))
             {
                 accumulated.Add(new Withdrawal
@@ -1351,8 +1358,8 @@ public static class GloasBlockProcessing
         {
             if (IsBuilderIndex(withdrawal.ValidatorIndex))
             {
-                int builderIndex = (int)(withdrawal.ValidatorIndex & ~Presets.BuilderIndexFlag);
-                Builder builder = state.Builders![builderIndex];
+                int builderIndex = RequireRegistryIndex(withdrawal.ValidatorIndex & ~Presets.BuilderIndexFlag, state.Builders!.Length, "Builder");
+                Builder builder = state.Builders[builderIndex];
                 ulong balance = builder.Balance;
                 ulong saturated = balance - Math.Min(balance, withdrawal.Amount);
                 state.Builders[builderIndex] = new Builder
