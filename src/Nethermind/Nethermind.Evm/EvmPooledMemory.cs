@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -878,8 +879,7 @@ public struct EvmPooledMemory
 
         if (requiredEnd > initializedSize)
         {
-            // Over-zero to a chunk boundary so sequential MSTORE growth does not take RentSlow per word.
-            const ulong zeroChunk = 4 * 1024;
+            ulong zeroChunk = Math.Min(4 * 1024UL, Math.Max(256UL, BitOperations.RoundUpToPowerOf2(requiredEnd) >> 3));
             ulong target = Math.Min((ulong)memory.Length, (requiredEnd + (zeroChunk - 1)) & ~(zeroChunk - 1));
             Array.Clear(memory, (int)initializedSize, (int)(target - initializedSize));
             initializedSize = target;
