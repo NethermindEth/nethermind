@@ -630,11 +630,25 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, in request.IdRef, returnAction),
 
+            // Only state this node legitimately does not hold is -32002. A corrupt or untrusted history row is wrapped
+            // the same way but must fall through to HandleMissingTrieNode, whose WARN is its only sign at default log level.
+            MissingTrieNodeException { InnerException: StateNotRetainedException inner } =>
+                HandleStateNotRetained(inner, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: MissingTrieNodeException { InnerException: StateNotRetainedException inner } } =>
+                HandleStateNotRetained(inner, methodName, request, returnAction),
+
             MissingTrieNodeException e =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
 
             TargetInvocationException { InnerException: MissingTrieNodeException e } =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
+
+            StateNotRetainedException e =>
+                HandleStateNotRetained(e, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: StateNotRetainedException e } =>
+                HandleStateNotRetained(e, methodName, request, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };
@@ -667,6 +681,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // The Warn above carries the message but not the exception, so the trace still needs KeepTrace.
             return KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
         }
+
+        JsonRpcErrorResponse HandleStateNotRetained(StateNotRetainedException ex, string methodName, JsonRpcRequest request, Action? returnAction) =>
+            KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
     }
 
     /// <summary>Renders an exception chain for <c>error.data</c> without exposing its stack trace.</summary>
@@ -1054,8 +1071,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // rejections reach this point along two distinct paths (module rental before invocation,
         // and the override-environment cap during invocation), and their warnings are suppressed
         // by design — without a counter operators cannot see that callers are being shed.
-        // suppressWarning scopes the count to exactly those shedding sites: batch-size and
-        // response-body caps also produce LimitExceeded but keep their warnings.
+        // suppressWarning scopes the count to exactly those shedding sites. The batch-size cap keeps its own Warn,
+        // and the response-body cap's entries never reached CreateSingleRequestEntry's WARN at all (the HTTP sink
+        // warns when it trips); the one -32005 that WARN now demotes is eth_getLogs' "Too many logs requested".
         if (suppressWarning && errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
         {
             Metrics.IncrementJsonRpcOverloadRejections();

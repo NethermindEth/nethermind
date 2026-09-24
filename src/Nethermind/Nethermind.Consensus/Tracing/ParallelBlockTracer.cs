@@ -499,8 +499,12 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     public sealed class OwnedEnvironment(IOverridableEnv<Components> inner, ILifetimeScope scope) : IOverridableEnv<Components>, IDisposable
     {
         /// <inheritdoc />
-        public Scope<Components> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null) =>
-            inner.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
+        public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out Scope<Components>? scope) =>
+            inner.TryBuildAndOverride(header, stateOverride, specOverride, blockOverride, out scope);
+
+        /// <inheritdoc />
+        public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<Components>? scope) =>
+            inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out scope);
 
         /// <summary>Releases the scope owning the processing services.</summary>
         public void Dispose() => scope.Dispose();

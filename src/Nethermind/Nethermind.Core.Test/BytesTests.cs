@@ -21,6 +21,9 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class BytesTests
     {
+        [OneTimeSetUp]
+        public void Check_instruction_set_expectations() => VectorIsaExpectations.AssertPinnedInstructionSet();
+
         private static string CreateHexString(int byteLength)
         {
             char[] chars = new char[byteLength * 2];
@@ -418,6 +421,73 @@ namespace Nethermind.Core.Test
                 hex[i] = b;
                 byte[] output = Bytes.FromUtf8HexString(hex);
                 Assert.That(output, Is.EqualTo(input));
+            }
+        }
+
+        // 0-99 reaches every block size and overlapping tail; the rest run the block loops at both parities.
+        private static IEnumerable<int> HexLengths => Enumerable.Range(0, 100).Concat([127, 128, 129, 255, 256, 257, 1000, 1001]);
+
+        [Test]
+        public void OutputBytesToByteHex_matches_reference([ValueSource(nameof(HexLengths))] int length, [Values] bool extraNibble)
+        {
+            if (length == 0 && extraNibble) return;
+            byte[] input = new byte[length];
+            // Adjacent bytes, and bytes 16 apart, differ in both nibbles.
+            for (int i = 0; i < length; i++) input[i] = (byte)(i * 37 + (i >> 4) + length);
+            string expected = Convert.ToHexStringLower(input)[(extraNibble ? 1 : 0)..];
+            byte[] hex = new byte[expected.Length];
+
+            Bytes.OutputBytesToByteHex(input, hex, extraNibble);
+
+            Assert.That(System.Text.Encoding.ASCII.GetString(hex), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void FromUtf8HexString_matches_reference([ValueSource(nameof(HexLengths))] int hexLength)
+        {
+            const string digits = "0123456789abcdefABCDEF";
+            byte[] hex = new byte[hexLength];
+            for (int i = 0; i < hexLength; i++) hex[i] = (byte)digits[(i * 7 + hexLength) % digits.Length];
+            string text = System.Text.Encoding.ASCII.GetString(hex);
+
+            byte[] actual = Bytes.FromUtf8HexString(hex);
+
+            Assert.That(actual, Is.EqualTo(Convert.FromHexString(hexLength % 2 == 0 ? text : "0" + text)));
+        }
+
+        // Validity is merged across lanes, halves and tail blocks, so every position must be able to fail the call:
+        // 'g', bit 7 set, just below '0', ':' just above '9', and 0x70 (an index past the 64-entry table).
+        [Test]
+        public void FromUtf8HexString_rejects_a_bad_byte_at_every_position([ValueSource(nameof(HexLengths))] int hexLength)
+        {
+            byte[] hex = new byte[hexLength];
+            hex.AsSpan().Fill((byte)'a');
+            for (int position = 0; position < hexLength; position++)
+            {
+                foreach (byte bad in new byte[] { (byte)'g', 0x80, (byte)'/', (byte)':', 0x70 })
+                {
+                    hex[position] = bad;
+                    Assert.Throws<FormatException>(() => Bytes.FromUtf8HexString(hex), $"byte 0x{bad:x2} at {position}");
+                }
+                hex[position] = (byte)'a';
+            }
+        }
+
+        [Test]
+        public void FromUtf8HexString_rejects_every_non_hex_byte([ValueSource(nameof(HexLengths))] int hexLength)
+        {
+            if (hexLength == 0) return;
+            byte[] hex = new byte[hexLength];
+            hex.AsSpan().Fill((byte)'a');
+            foreach (int position in new[] { 0, hexLength / 2, hexLength - 1 })
+            {
+                for (int value = 0; value < 256; value++)
+                {
+                    if (Uri.IsHexDigit((char)value)) continue;
+                    hex[position] = (byte)value;
+                    Assert.Throws<FormatException>(() => Bytes.FromUtf8HexString(hex), $"byte 0x{value:x2} at {position}");
+                }
+                hex[position] = (byte)'a';
             }
         }
 
