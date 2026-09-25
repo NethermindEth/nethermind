@@ -34,6 +34,12 @@ public readonly struct EIP1559Parameters(byte version, UInt32 denominator, UInt3
             return false;
         }
 
+        if (denominator != 0 && elasticity == 0)
+        {
+            error = $"{nameof(elasticity)} cannot be 0 unless {nameof(denominator)} is also 0";
+            return false;
+        }
+
         parameters = new EIP1559Parameters(0, denominator, elasticity);
 
         return true;
@@ -49,6 +55,12 @@ public readonly struct EIP1559Parameters(byte version, UInt32 denominator, UInt3
         if (denominator == 0 && (elasticity != 0 || minBaseFee != 0))
         {
             error = $"{nameof(denominator)} cannot be 0 unless {nameof(elasticity)} and {nameof(minBaseFee)} are also 0";
+            return false;
+        }
+
+        if (denominator != 0 && elasticity == 0)
+        {
+            error = $"{nameof(elasticity)} cannot be 0 unless {nameof(denominator)} is also 0";
             return false;
         }
 
