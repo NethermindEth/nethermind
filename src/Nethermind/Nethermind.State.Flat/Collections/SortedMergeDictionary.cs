@@ -36,6 +36,25 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 {
     private const int StackScratchLength = 256;
 
+    // Entry arrays of 64 KiB and more come from a pool of their own. ArrayPool.Shared keeps a copy per thread and trims
+    // large arrays on gen2 GCs, so compaction kept renting fresh LOH arrays while idle copies sat in thread-local slots
+    // (366 MB of them in a block-processing heap dump). This pool is shared by all threads, never trims, and keeps at
+    // most MaxPooledLargeArraysPerSize arrays per power-of-two length; longer arrays are not pooled.
+    private const int MaxPooledLargeArrayLength = 1 << 21;
+    private const int MaxPooledLargeArraysPerSize = 4;
+    private static readonly int LargeEntryArrayMinLength = Math.Max(16, 64 * 1024 / Unsafe.SizeOf<Entry>());
+    private static readonly ArrayPool<Entry> LargeEntryPool = ArrayPool<Entry>.Create(MaxPooledLargeArrayLength, MaxPooledLargeArraysPerSize);
+
+    private static Entry[] RentEntries(int minimumLength) =>
+        minimumLength >= LargeEntryArrayMinLength ? LargeEntryPool.Rent(minimumLength) : ArrayPool<Entry>.Shared.Rent(minimumLength);
+
+    // Routed by length, so an array always goes back to the pool its length class rents from.
+    private static void ReturnEntries(Entry[] entries)
+    {
+        if (entries.Length >= LargeEntryArrayMinLength) LargeEntryPool.Return(entries);
+        else ArrayPool<Entry>.Shared.Return(entries);
+    }
+
     internal struct Entry
     {
         public uint HashCode;
@@ -66,7 +85,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             if (_count > 0) Array.Clear(owned, 0, _count);
             _entries = [];
             _count = 0;
-            ArrayPool<Entry>.Shared.Return(owned);
+            ReturnEntries(owned);
         }
     }
 
@@ -135,7 +154,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         where TComparer : IComparer<TKey>
     {
         int count = source.Count;
-        Entry[] entries = count == 0 ? [] : ArrayPool<Entry>.Shared.Rent(count);
+        Entry[] entries = count == 0 ? [] : RentEntries(count);
         // Unexpected failures abandon the shared rental; only deliberate failures below return it before throwing.
         Span<Entry> run = entries.AsSpan(0, count);
         FillResult result = Fill(run, source);
@@ -144,7 +163,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             if (count != 0)
             {
                 Array.Clear(entries, 0, count);
-                ArrayPool<Entry>.Shared.Return(entries);
+                ReturnEntries(entries);
             }
             ThrowSourceCountMismatch(result);
         }
@@ -345,7 +364,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         if (_entries.Length > 0)
         {
             if (_entriesDirty > 0) Array.Clear(_entries, 0, _entriesDirty);
-            ArrayPool<Entry>.Shared.Return(_entries);
+            ReturnEntries(_entries);
             _entries = [];
         }
         if (_buckets.Length > 0)
@@ -365,11 +384,11 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         int dirtyBefore = _entriesDirty;
         if (entries.Length < count)
         {
-            _entries = ArrayPool<Entry>.Shared.Rent(count);
+            _entries = RentEntries(count);
             if (entries.Length > 0)
             {
                 if (_entriesDirty > 0) Array.Clear(entries, 0, _entriesDirty);
-                ArrayPool<Entry>.Shared.Return(entries);
+                ReturnEntries(entries);
             }
             dirtyBefore = 0;
             _entriesDirty = count;
