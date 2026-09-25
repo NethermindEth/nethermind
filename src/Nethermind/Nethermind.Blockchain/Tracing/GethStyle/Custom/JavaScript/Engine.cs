@@ -86,18 +86,6 @@ public class Engine : IDisposable
     }
 
     /// <summary>
-    /// Refuses a tracer that no script engine could load: inline tracer code that does not compile, or a name that
-    /// is internal or not shipped under <c>Data/JSTracers</c>.
-    /// </summary>
-    /// <remarks>
-    /// Inline code is compiled in a short-lived runtime of its own. Code that compiles but lacks the functions a
-    /// tracer must expose, such as <c>{}</c>, passes and is refused by its first engine: finding the functions takes
-    /// evaluating the code in an engine, and a minimal working tracer costs a caller the same engine anyway.
-    /// </remarks>
-    /// <exception cref="ArgumentException">The tracer is not found or its code does not compile.</exception>
-    public static void ValidateTracer(string tracer) => TracerRuntime.CreateValidated(tracer)?.Dispose();
-
-    /// <summary>
     /// Registers the host functions and evaluates the built-in scripts into the script engine.
     /// </summary>
     private void Initialize()
