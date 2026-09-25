@@ -22,6 +22,14 @@ internal static partial class TrieUpdater<TKey, TPath>
         private HashBuffer _hashes;
         private uint _known;
 
+        /// <summary>Opens <paramref name="hashes"/> with no hash known, leaving the hash buffer unzeroed, since only known positions are read from it.</summary>
+        /// <remarks>A frame opens one per group it folds, and the buffer is a kilobyte.</remarks>
+        internal static void Open(out StoredGroupHashes hashes)
+        {
+            Unsafe.SkipInit(out hashes);
+            hashes._known = 0;
+        }
+
         /// <summary>The hash of the node <paramref name="frame"/> stores or leaves implicit at <paramref name="position"/>, computed once.</summary>
         internal ValueHash256 GetHash<TFrame>(ref TFrame frame, int position)
             where TFrame : struct, IGroupFrame<TKey, TPath>

@@ -137,7 +137,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
-        StoredGroupHashes hashes = default;
+        StoredGroupHashes.Open(out StoredGroupHashes hashes);
         ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, default);
         SlotNode result = default;
         ValueHash256 groupHash = default;
@@ -510,7 +510,8 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         ComposeFrame frame = new(local, default);
         int leftPosition = position - local.Width;
-        OmittedPreimage omittedLeft = default;
+        // Only read back once SettleLeftSorted wrote it, so it is not zeroed.
+        Unsafe.SkipInit(out OmittedPreimage omittedLeft);
         bool leftPending = SettleLeftSorted(walk.Writer, walk.Path, leftPosition, left.RiseBitCount == 0 ? left : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, left, leftPosition), ref frame, omittedLeft);
         ComposedNode right = Walk(ref walk, local.Right, rightCover);
         Debug.Assert(!right.IsEmpty, "A right half known to survive composes a node.");
