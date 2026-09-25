@@ -37,7 +37,7 @@ namespace Nethermind.TxPool.Test;
 /// <remarks>
 /// Reports <c>RESULT</c> lines for three snapshots of the same pool: <c>filtered</c> is the full readiness filter,
 /// <c>nonframe</c> the inclusion list's, and <c>unfiltered</c> the bucket copy alone, which separates the copy
-/// from the readiness reads. The whole snapshot runs under the pool's exclusive lock.
+/// from the readiness reads. Only the bucket copy runs under the pool's lock; readiness is judged afterwards.
 ///
 /// The state lives in a <c>MemDb</c>, so every read here is a warm in-process trie traversal — a floor for what
 /// the same scan costs against RocksDB.

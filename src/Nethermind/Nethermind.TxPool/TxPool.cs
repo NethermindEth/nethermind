@@ -399,7 +399,10 @@ namespace Nethermind.TxPool
 
         /// <summary>Whether a sender's bucket holds a non-frame transaction ready for the next block.</summary>
         /// <remarks>Frame-only buckets avoid account reads, and no EIP-8250 keyed-nonce state is needed for a
-        /// caller that discards frames. A spent ordinary entry does not block a later entry at the account nonce.</remarks>
+        /// caller that discards frames. A spent ordinary entry does not block a later entry at the account nonce.
+        /// <para>Skipping on <see cref="Transaction.SupportsFrames"/> also drops account-domain frame transactions
+        /// that the full readiness scan can accept. The inclusion-list builder strips them on the same predicate,
+        /// so retaining their sender here would only consume a reservoir slot.</para></remarks>
         private bool HasReadyNonFrameTransaction(ReadOnlySpan<Transaction> bucket, Address sender, in UInt256 baseFee)
         {
             ulong accountNonce = 0;

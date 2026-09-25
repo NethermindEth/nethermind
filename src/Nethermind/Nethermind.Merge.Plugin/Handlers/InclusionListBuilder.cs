@@ -42,7 +42,8 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         // state read: only the drawn senders below pay for one.
         using ArrayPoolListRef<Transaction[]> drawn = new(capacity);
         int seen = 0;
-        // Blob txs cannot appear here. Frame txs can remain in mixed buckets and are removed below.
+        // The pool routes blob txs to separate storage this snapshot never reads. Frame txs can remain in
+        // mixed sender buckets and are removed below.
         foreach (Transaction[] pending in txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(baseFee).Values)
         {
             if (drawn.Count < capacity)
