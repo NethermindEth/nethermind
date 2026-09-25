@@ -5,6 +5,7 @@ using Ethereum.Test.Base;
 using Evm.T8n;
 using Evm.T8n.JsonTypes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -14,7 +15,7 @@ namespace Evm.Test;
 [TestFixture]
 public class T8nExecutorTests
 {
-    private const ulong AllocatedBalance = 1_000_000_000_000_000_000; // 1 ETH
+    private static readonly UInt256 AllocatedBalance = 1.Ether;
 
     private string _inputDirectory = null!;
 
@@ -37,14 +38,14 @@ public class T8nExecutorTests
 
         Assert.That(result.PostState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
         Assert.That(result.Accounts.TryGetValue(TestItem.AddressA, out AccountState? account), Is.True);
-        Assert.That(account!.Balance, Is.EqualTo((UInt256)AllocatedBalance));
+        Assert.That(account!.Balance, Is.EqualTo(AllocatedBalance));
     }
 
     private T8nCommandArguments WriteInputs()
     {
         Write("alloc.json", $$"""
             {
-                "{{TestItem.AddressA}}": { "balance": "0x{{AllocatedBalance:x}}" }
+                "{{TestItem.AddressA}}": { "balance": "{{AllocatedBalance}}" }
             }
             """);
         Write("env.json", $$"""

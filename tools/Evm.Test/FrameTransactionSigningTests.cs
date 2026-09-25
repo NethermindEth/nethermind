@@ -17,7 +17,7 @@ namespace Evm.Test;
 [TestFixture]
 public class FrameTransactionSigningTests
 {
-    private const ulong ChainId = 1; // feeds the sig-hash preimage through Transaction.ChainId
+    private const ulong ChainId = 1;
 
     private static IEnumerable<TestCaseData> SenderResolutionCases()
     {
@@ -55,6 +55,17 @@ public class FrameTransactionSigningTests
 
         AssertSignatureRecoversSigner(transaction, 0, key.Address);
         AssertSignatureRecoversSigner(transaction, 1, key.Address);
+    }
+
+    [Test]
+    public void Fills_explicit_signer_for_a_contract_sender()
+    {
+        PrivateKey key = TestItem.PrivateKeyA;
+
+        Transaction transaction = Fill(BuildInput(key, TestItem.AddressB, [Entry(signer: key.Address)]));
+
+        Assert.That(transaction.SenderAddress, Is.EqualTo(TestItem.AddressB));
+        AssertSignatureRecoversSigner(transaction, 0, key.Address);
     }
 
     [Test]
@@ -122,35 +133,24 @@ public class FrameTransactionSigningTests
         AssertSignatureRecoversSigner(transaction, 1, key.Address);
     }
 
-    [Test]
-    public void Rejects_sender_that_does_not_match_secret_key()
+    private static IEnumerable<TestCaseData> InvalidSenderAndSignerCases()
     {
-        InputData input = BuildInput(TestItem.PrivateKeyA, TestItem.AddressB, [Entry()]);
-
-        T8nException? exception = Assert.Throws<T8nException>(() => Fill(input));
-
-        Assert.That(exception!.Message, Is.EqualTo("frame transaction sender does not match secretKey"));
+        yield return new TestCaseData(TestItem.PrivateKeyA, TestItem.AddressB, null,
+            "frame transaction sender does not match secretKey").SetName("implicit signer differs from sender");
+        yield return new TestCaseData(TestItem.PrivateKeyA, TestItem.PrivateKeyA.Address, TestItem.AddressB,
+            "frame signature signer does not match secretKey").SetName("explicit signer differs from key");
+        yield return new TestCaseData(null, null, null,
+            "frame transaction requires a sender or a secretKey").SetName("sender and key absent");
     }
 
-    [Test]
-    public void Rejects_signer_that_does_not_match_secret_key()
+    [TestCaseSource(nameof(InvalidSenderAndSignerCases))]
+    public void Rejects_invalid_sender_or_signer(PrivateKey? key, Address? sender, Address? signer, string expectedMessage)
     {
-        PrivateKey key = TestItem.PrivateKeyA;
-        InputData input = BuildInput(key, key.Address, [Entry(signer: TestItem.AddressB)]);
+        InputData input = BuildInput(key, sender, [Entry(signer: signer)]);
 
         T8nException? exception = Assert.Throws<T8nException>(() => Fill(input));
 
-        Assert.That(exception!.Message, Is.EqualTo("frame signature signer does not match secretKey"));
-    }
-
-    [Test]
-    public void Rejects_frame_transaction_without_sender_and_secret_key()
-    {
-        InputData input = BuildInput(key: null, sender: null, signatures: [Entry()]);
-
-        T8nException? exception = Assert.Throws<T8nException>(() => Fill(input));
-
-        Assert.That(exception!.Message, Is.EqualTo("frame transaction requires a sender or a secretKey"));
+        Assert.That(exception!.Message, Is.EqualTo(expectedMessage));
     }
 
     private static IEnumerable<TestCaseData> UnfillableSignatureCases()

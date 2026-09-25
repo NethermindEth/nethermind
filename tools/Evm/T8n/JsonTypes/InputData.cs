@@ -87,14 +87,7 @@ public class InputData
 
         if (privateKey is not null)
         {
-            if (transaction.SenderAddress is null)
-            {
-                transaction.SenderAddress = privateKey.Address;
-            }
-            else if (transaction.SenderAddress != privateKey.Address)
-            {
-                throw new T8nException("frame transaction sender does not match secretKey", T8nErrorCodes.ErrorJson);
-            }
+            transaction.SenderAddress ??= privateKey.Address;
         }
 
         if (transaction.SenderAddress is null)
@@ -129,6 +122,11 @@ public class InputData
             if (signature.Signer is not null && signature.Signer != privateKey.Address)
             {
                 throw new T8nException("frame signature signer does not match secretKey", T8nErrorCodes.ErrorJson);
+            }
+
+            if (signature.Signer is null && transaction.SenderAddress != privateKey.Address)
+            {
+                throw new T8nException("frame transaction sender does not match secretKey", T8nErrorCodes.ErrorJson);
             }
 
             Signature ecdsaSignature = ecdsa.Sign(privateKey, in sigHash);
