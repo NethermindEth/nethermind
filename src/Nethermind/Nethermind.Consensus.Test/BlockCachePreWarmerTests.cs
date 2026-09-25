@@ -38,6 +38,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Consensus.Test;
 
@@ -377,7 +378,7 @@ public class BlockCachePreWarmerTests
         BlockHeader parent = BuildParentHeader();
         using (mainWorldState.BeginScope(parent))
         {
-            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            Task warmTask = StartPrewarming(preWarmer, block, parent, Osaka.Instance);
             try
             {
                 Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
@@ -544,7 +545,7 @@ public class BlockCachePreWarmerTests
         ProcessingThread.IsBlockProcessingThread = true;
         try
         {
-            prewarmTask = flagWarmer.PreWarmCaches(BuildReactiveWarmBlock(), BuildParentHeader(), Osaka.Instance);
+            prewarmTask = StartPrewarming(flagWarmer, BuildReactiveWarmBlock(), BuildParentHeader(), Osaka.Instance);
             Assert.That(
                 ProcessingThread.IsBlockProcessingThread,
                 Is.True,
@@ -708,7 +709,7 @@ public class BlockCachePreWarmerTests
         // Processing the block on top of head through the main world state writes its final values back.
         BlockHeader parent = BuildOtherStateHeader(head);
 
-        preWarmer.PreWarmCaches(BuildChildBlock(parent), parent, Osaka.Instance).GetAwaiter().GetResult();
+        StartPrewarming(preWarmer, BuildChildBlock(parent), parent, Osaka.Instance).GetAwaiter().GetResult();
 
         AddressAsKey written = TestItem.AddressA;
         using (Assert.EnterMultipleScope())
@@ -1009,7 +1010,7 @@ public class BlockCachePreWarmerTests
             // A side branch: this block's parent is not the head the session warmed.
             BlockHeader sideParent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakB).TestObject;
             // Amsterdam enables access lists, which disables warming for this configuration.
-            preWarmer.PreWarmCaches(BuildChildBlock(sideParent), sideParent, Amsterdam.Instance).GetAwaiter().GetResult();
+            StartPrewarming(preWarmer, BuildChildBlock(sideParent), sideParent, Amsterdam.Instance).GetAwaiter().GetResult();
 
             using (Assert.EnterMultipleScope())
             {
@@ -1713,7 +1714,7 @@ public class BlockCachePreWarmerTests
         BlockHeader parent = BuildParentHeader();
         using (mainWorldState.BeginScope(parent))
         {
-            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            Task warmTask = StartPrewarming(preWarmer, block, parent, Osaka.Instance);
             try
             {
                 Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
@@ -1805,7 +1806,7 @@ public class BlockCachePreWarmerTests
     /// </summary>
     [Test]
     [CancelAfter(15_000)]
-    public void PreWarmCaches_AWaveOfLateSendersAfterTheWorkersRanDry_IsWarmedInParallel(CancellationToken testToken)
+    public void PreWarmCaches_AWaveOfLateSendersAfterTheWorkersRanDry_IsWarmedInParallel([Values] bool callerRunsDry, CancellationToken testToken)
     {
         Transaction lateB = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
         Transaction lateC = GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000);
@@ -1828,7 +1829,8 @@ public class BlockCachePreWarmerTests
                 recovery.PublishWave((lateB, TestItem.AddressB), (lateC, TestItem.AddressC));
             },
             workerLeftDry: workerLeftDry,
-            recovery: recovery);
+            recovery: recovery,
+            callerRunsDry: callerRunsDry);
 
         Assert.That(warmedTxs, Is.EqualTo(3),
             "both late transactions must be warmed at once: the first is parked until the second is too, so one worker alone never gets there");
@@ -1851,7 +1853,8 @@ public class BlockCachePreWarmerTests
         int parkedScopes = 2,
         Action? beforeParked = null,
         ManualResetEventSlim? workerLeftDry = null,
-        FakeSenderRecovery? recovery = null)
+        FakeSenderRecovery? recovery = null,
+        bool callerRunsDry = false)
     {
         recovery ??= new FakeSenderRecovery();
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
@@ -1860,10 +1863,29 @@ public class BlockCachePreWarmerTests
         using ManualResetEventSlim gate = new(initialState: false);
         using CountdownEvent txScopesInFlight = new(parkedScopes);
         int warmedTxs = 0;
+        int coordinatorThread = 0;
+        using ManualResetEventSlim recoveryWaiting = new(false);
+        ILogManager logManager = LimboLogs.Instance;
+        if (callerRunsDry)
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsDebug.Returns(true);
+            logger.When(l => l.Debug(Arg.Is<string>(message => message.StartsWith("Started pre-warming"))))
+                .Do(_ => Volatile.Write(ref coordinatorThread, Environment.CurrentManagedThreadId));
+            logManager = new OneLoggerLogManager(new(logger));
+            recovery.OnWait = recoveryWaiting.Set;
+        }
         TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
             onTxScope: static () => { },
             onWarmup: () => Interlocked.Increment(ref warmedTxs),
-            onIdleEnvReturn: () => workerLeftDry?.Set());
+            onIdleEnvReturn: () => workerLeftDry?.Set(),
+            beforeCreate: () =>
+            {
+                if (callerRunsDry && Environment.CurrentManagedThreadId == Volatile.Read(ref coordinatorThread))
+                    Assert.That(recoveryWaiting.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                        "the other workers must claim the initial job and the recovery wait before the caller runs");
+            },
+            retain: !callerRunsDry);
 
         using BlockCachePreWarmer preWarmer = new(
             policy,
@@ -1871,7 +1893,7 @@ public class BlockCachePreWarmerTests
             concurrency: concurrency,
             parallelExecutionBatchRead: true,
             preBlockCaches,
-            LimboLogs.Instance,
+            logManager,
             senderRecovery: recovery);
         created?.Invoke(preWarmer);
 
@@ -1879,7 +1901,7 @@ public class BlockCachePreWarmerTests
         BlockHeader parent = BuildParentHeader();
         using (mainWorldState.BeginScope(parent))
         {
-            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            Task warmTask = StartPrewarming(preWarmer, block, parent, Osaka.Instance);
             try
             {
                 beforeParked?.Invoke();
@@ -1939,7 +1961,7 @@ public class BlockCachePreWarmerTests
         BlockHeader parent = BuildParentHeader();
         using (mainWorldState.BeginScope(parent))
         {
-            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            Task warmTask = StartPrewarming(preWarmer, block, parent, Osaka.Instance);
             try
             {
                 Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
@@ -2057,6 +2079,91 @@ public class BlockCachePreWarmerTests
         return new BlockCachePreWarmer(envFactory, config, preBlockCaches, logManager ?? LimboLogs.Instance);
     }
 
+    [Test]
+    public void Reactive_warmers_share_one_worker_budget([Values] bool cancel, [Values(1, 2)] int budget)
+    {
+        PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
+        using ManualResetEventSlim release = new(false);
+        using CountdownEvent occupied = new(budget);
+        using ManualResetEventSlim exceeded = new(false);
+        using CancellationTokenSource cancellation = new();
+        SharedBudgetPolicy policy = new(_processingScope.Resolve<PrewarmerEnvFactory>(), caches,
+            release, occupied, exceeded);
+        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 4, concurrency: 2,
+            parallelExecutionBatchRead: true, caches, LimboLogs.Instance);
+        Block block = Build.A.Block.WithTransactions(
+            Build.A.Transaction.WithNonce(0).WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithGasLimit(12_000_000).WithTo(TestItem.AddressF)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressC)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject).WithGasLimit(30_000_000).TestObject;
+        BlockHeader parent = BuildParentHeader();
+        using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
+        {
+            Task warming = StartPrewarming(preWarmer, block, parent, Osaka.Instance, cancellation.Token, budget);
+            bool filled;
+            bool oversubscribed;
+            try
+            {
+                filled = occupied.Wait(DiscoveryTimeout);
+                oversubscribed = exceeded.Wait(PendingProbe);
+                if (cancel) cancellation.Cancel();
+            }
+            finally
+            {
+                release.Set();
+                warming.WaitAsync(DiscoveryTimeout).GetAwaiter().GetResult();
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(filled, Is.True, "all available workers must actually enter warming");
+                Assert.That(oversubscribed || exceeded.IsSet, Is.False, "all warming paths must share the inherited worker budget");
+                Assert.That(policy.Timeouts, Is.Zero);
+                if (!cancel) Assert.That(policy.DiscoveryBuilds, Is.GreaterThan(0), "storage discovery must still run");
+            }
+        }
+    }
+
+    private sealed class SharedBudgetPolicy(PrewarmerEnvFactory factory, PreBlockCaches caches,
+        ManualResetEventSlim release, CountdownEvent occupied, ManualResetEventSlim exceeded)
+        : IPooledObjectPolicy<IPrewarmerEnv>
+    {
+        private int _active;
+        private int _entered;
+        private ManualResetEventSlim Release => release;
+        private CountdownEvent Occupied => occupied;
+        private ManualResetEventSlim Exceeded => exceeded;
+        private PreBlockCaches Caches => caches;
+        public int Timeouts;
+        public int DiscoveryBuilds;
+
+        public IPrewarmerEnv Create() => new BudgetEnv(factory.Create(caches), this);
+        public bool Return(IPrewarmerEnv obj) => true;
+
+        private sealed class BudgetEnv(IPrewarmerEnv inner, SharedBudgetPolicy owner) : IPrewarmerEnv
+        {
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
+
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
+            {
+                int active = Interlocked.Increment(ref owner._active);
+                try
+                {
+                    if (active > owner.Occupied.InitialCount) owner.Exceeded.Set();
+                    if (Interlocked.Increment(ref owner._entered) <= owner.Occupied.InitialCount) owner.Occupied.Signal();
+                    if (!owner.Release.Wait(DiscoveryTimeout)) Interlocked.Increment(ref owner.Timeouts);
+                    if (owner.Caches.CurrentStorageReadCapture is not null) Interlocked.Increment(ref owner.DiscoveryBuilds);
+                    return inner.TryBuildAtTarget(targetBlock, out scope);
+                }
+                finally { Interlocked.Decrement(ref owner._active); }
+            }
+
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
+            public void Dispose() => inner.Dispose();
+        }
+    }
+
     private (BlockCachePreWarmer, ConcurrentBag<IPrewarmerEnv> created, ConcurrentBag<IPrewarmerEnv> disposed) CreatePreWarmer(int minPoolSize, bool parallelExecutionBatchRead = true)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
@@ -2120,6 +2227,110 @@ public class BlockCachePreWarmerTests
         public BlockHeader? GetFinalizedHeader(ulong blockNumber) => null;
     }
 
+    [Test]
+    public void Prewarming_session_disposed_before_dispatch_does_not_start_work()
+    {
+        using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(1);
+        using PrewarmingSession session = new(CancellationToken.None, LimboLogs.Instance.GetClassLogger<PrewarmingSession>());
+        SessionResources resources = new();
+        bool ran = false;
+        CancellationToken token = session.Token;
+        session.Start(() => ran = true, resources);
+
+        session.Dispose();
+        session.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ran, Is.False);
+            Assert.That(token.IsCancellationRequested, Is.True);
+            Assert.That(resources.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Prewarming_session_disposal_cancels_and_drains_running_work()
+    {
+        using ManualResetEventSlim entered = new(false);
+        using ManualResetEventSlim cancelled = new(false);
+        using ManualResetEventSlim release = new(false);
+        using PrewarmingSession session = new(CancellationToken.None, LimboLogs.Instance.GetClassLogger<PrewarmingSession>());
+        SessionResources resources = new();
+        CancellationToken token = session.Token;
+        int timeouts = 0;
+        session.Start(() =>
+        {
+            entered.Set();
+            if (!token.WaitHandle.WaitOne(DiscoveryTimeout)) Interlocked.Increment(ref timeouts);
+            cancelled.Set();
+            if (!release.Wait(DiscoveryTimeout)) Interlocked.Increment(ref timeouts);
+        }, resources);
+        Task? disposal = null;
+        try
+        {
+            Assert.That(entered.Wait(DiscoveryTimeout), Is.True);
+            disposal = Task.Run(session.Dispose);
+            Assert.That(cancelled.Wait(DiscoveryTimeout), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disposal.IsCompleted, Is.False, "disposal must drain the active callback");
+                Assert.That(resources.DisposeCount, Is.Zero, "resources remain alive until the callback returns");
+            }
+        }
+        finally
+        {
+            release.Set();
+            disposal?.WaitAsync(DiscoveryTimeout).GetAwaiter().GetResult();
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(timeouts, Is.Zero);
+            Assert.That(resources.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Prewarming_session_logs_a_failed_pass_and_still_releases_resources()
+    {
+        TestLogger testLogger = new();
+        SessionResources resources = new();
+        using (PrewarmingSession session = new(CancellationToken.None, new ILogger(testLogger)))
+        {
+            session.Start(static () => throw new InvalidOperationException("warming failed"), resources);
+            session.WaitForCompletion();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testLogger.LogList, Has.One.Contains("Error pre-warming caches"), "Disposal cannot report the fault, so it must be logged.");
+            Assert.That(resources.DisposeCount, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class SessionResources : IDisposable
+    {
+        public int DisposeCount;
+        public void Dispose() => Interlocked.Increment(ref DisposeCount);
+    }
+
+    private static Task StartPrewarming(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent,
+        IReleaseSpec spec, CancellationToken token = default, int workerBudget = 0)
+    {
+        if (workerBudget > 0)
+            return Task.Run(() =>
+            {
+                using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(workerBudget);
+                using IDisposable? scopedSession = preWarmer.PreWarmCaches(block, parent, spec, token);
+                ((PrewarmingSession?)scopedSession)?.WaitForCompletion();
+            });
+
+        IDisposable? session = preWarmer.PreWarmCaches(block, parent, spec, token);
+        return Task.Run(() =>
+        {
+            using (session) ((PrewarmingSession?)session)?.WaitForCompletion();
+        });
+    }
+
     // Sync on purpose — TrieStore's Lock-based BeginScope dispose must run on the same thread.
     private Task RunPreWarmCaches(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec)
     {
@@ -2129,7 +2340,7 @@ public class BlockCachePreWarmerTests
             Task? hintBalTask = block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec)
                 ? mainWorldState.HintBal(block.BlockAccessList)
                 : null;
-            preWarmer.PreWarmCaches(block, parent, spec).GetAwaiter().GetResult();
+            StartPrewarming(preWarmer, block, parent, spec).GetAwaiter().GetResult();
             hintBalTask?.GetAwaiter().GetResult();
         }
         return Task.CompletedTask;
@@ -2358,7 +2569,7 @@ public class BlockCachePreWarmerTests
             IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
             using (mainWorldState.BeginScope(BuildParentHeader()))
             {
-                Task task = preWarmer.PreWarmCaches(block, BuildParentHeader(), Osaka.Instance);
+                Task task = StartPrewarming(preWarmer, block, BuildParentHeader(), Osaka.Instance);
                 // Advance the prewarmer's view of main-thread progress past every tx while warming is gated at env.Build.
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
@@ -2466,8 +2677,11 @@ public class BlockCachePreWarmerTests
         public int Recovered => Volatile.Read(ref _recovered);
         public bool IsCompleted => _completed;
 
+        public Action? OnWait { get; set; }
+
         public bool WaitForCompletion(int millisecondsTimeout)
         {
+            OnWait?.Invoke();
             lock (_gate)
             {
                 return _completed || Monitor.Wait(_gate, millisecondsTimeout);
@@ -2520,7 +2734,9 @@ public class BlockCachePreWarmerTests
         Action onTxScope,
         Action onWarmup,
         Action? onTxWarmEnvReturn = null,
-        Action? onIdleEnvReturn = null)
+        Action? onIdleEnvReturn = null,
+        Action? beforeCreate = null,
+        bool retain = true)
         : IPooledObjectPolicy<IPrewarmerEnv>
     {
         private readonly ManualResetEventSlim _gate = gate;
@@ -2530,7 +2746,11 @@ public class BlockCachePreWarmerTests
         private readonly Action? _onTxWarmEnvReturn = onTxWarmEnvReturn;
         private readonly Action? _onIdleEnvReturn = onIdleEnvReturn;
 
-        public IPrewarmerEnv Create() => new GateEnv(factory.Create(caches), this);
+        public IPrewarmerEnv Create()
+        {
+            beforeCreate?.Invoke();
+            return new GateEnv(factory.Create(caches), this);
+        }
 
         public bool Return(IPrewarmerEnv obj)
         {
@@ -2551,7 +2771,7 @@ public class BlockCachePreWarmerTests
 
                 env.BuiltScope = false;
             }
-            return true;
+            return retain;
         }
 
         private sealed class GateEnv(IPrewarmerEnv inner, TxWarmGatePolicy owner) : IPrewarmerEnv

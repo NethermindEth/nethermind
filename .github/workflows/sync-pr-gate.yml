@@ -40,7 +40,7 @@ jobs:
         run: docker save nethermind:pr-local | gzip > /tmp/nethermind-pr-local.tar.gz
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nethermind-pr-local-image
           path: /tmp/nethermind-pr-local.tar.gz
@@ -99,7 +99,7 @@ jobs:
 
       - name: Cache Sedge binary
         id: cache-sedge
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: sedge/build/sedge
           key: sedge-core-${{ runner.arch }}
@@ -116,7 +116,7 @@ jobs:
           make compile-sedge
 
       - name: Download PR image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nethermind-pr-local-image
           path: /tmp
@@ -193,7 +193,7 @@ jobs:
 
       - name: Upload Nethermind Debug logs artifact
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.artifact_name }}
           path: ${{ env.artifact_path }}

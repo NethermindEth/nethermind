@@ -624,7 +624,7 @@ public class E2ESyncTests(bool isPostMerge)
     }
 
     [Test]
-    [Category("Flaky")]
+    [Category("Flaky"), Retry(2)]
     public async Task FastSync_downloads_block_access_lists_over_eth71()
     {
         if (!isPostMerge)

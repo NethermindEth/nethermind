@@ -238,7 +238,7 @@ jobs:
 
       - name: Send Slack notification
         if: ${{ steps.failures.outputs.should_page == 'true' }}
-        uses: slackapi/slack-github-action@v2
+        uses: slackapi/slack-github-action@v3
         env:
           FAILED_JOBS: ${{ steps.failures.outputs.failed_jobs }}
           COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
