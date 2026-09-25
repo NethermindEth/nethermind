@@ -17,25 +17,26 @@ namespace Nethermind.Optimism.Test;
 [Parallelizable(ParallelScope.All)]
 public class OptimismPayloadAttributesTests
 {
-    private static IEnumerable<(string, string)> PayloadIdTestCases()
+    private static IEnumerable<(string, ulong?, string)> PayloadIdTestCases()
     {
         // V0
-        yield return ("0x000000000100000000", "0x00dea77451f10b20");
-        yield return ("0x0000000001000001bc", "0xf2975f6725d5f2e5");
-        yield return ("0x0000000001ffffffff", "0x6b09fc2a90d6c067");
-        yield return ("0x00ffffffff00000000", "0x9787e23f29594f18");
-        yield return ("0x00ffffffff000001bc", "0x2cb414f72aac7824");
-        yield return ("0x00ffffffffffffffff", "0xe411646692277df5");
-        // V1
-        yield return ("0x0100000001000000000000000000000001", "0xb1be2b369ffc937d");
-        yield return ("0x0100000001000001bc0000000000000abc", "0x3227f4be2903c6ec");
-        yield return ("0x0100000001000001bc0000000000000def", "0xe471f88f2ef8553d");
-        yield return ("0x0100000001ffffffff00000000ffffffff", "0xe56c5af8cb83c757");
-        yield return ("0x01ffffffff00000000ffffffff00000000", "0x34dec71cdbff4bbe");
-        yield return ("0x01ffffffffffffffffffffffffffffffff", "0x2d20df1e01fc582a");
+        yield return ("0x000000000100000000", null, "0x00dea77451f10b20");
+        yield return ("0x0000000001000001bc", null, "0xf2975f6725d5f2e5");
+        yield return ("0x0000000001ffffffff", null, "0x6b09fc2a90d6c067");
+        yield return ("0x00ffffffff00000000", null, "0x9787e23f29594f18");
+        yield return ("0x00ffffffff000001bc", null, "0x2cb414f72aac7824");
+        yield return ("0x00ffffffffffffffff", null, "0xe411646692277df5");
+        // 8-byte params with MinBaseFee
+        yield return ("0x0000000100000000", 1UL, "0x45b296ba4fd598c5");
+        yield return ("0x00000001000001bc", 0xabcUL, "0x4846b5d9cecbff6b");
+        yield return ("0x00000001000001bc", 0xdefUL, "0x5ea21df353c54513");
+        yield return ("0x00000001ffffffff", 0xffffffffUL, "0x50ed8e906952abd0");
+        yield return ("0xffffffff00000000", 0xffffffff00000000UL, "0x86b5c4e46610022b");
+        yield return ("0xffffffffffffffff", ulong.MaxValue, "0x5713beee480922da");
     }
+
     [TestCaseSource(nameof(PayloadIdTestCases))]
-    public void Compute_PayloadID_with_EIP1559Params((string HexStringEIP1559Params, string PayloadId) testCase)
+    public void Compute_PayloadID_with_EIP1559Params((string HexStringEIP1559Params, ulong? MinBaseFee, string PayloadId) testCase)
     {
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         OptimismPayloadAttributes payloadAttributes = new()
@@ -44,20 +45,11 @@ public class OptimismPayloadAttributesTests
             Transactions = [],
             PrevRandao = Hash256.Zero,
             SuggestedFeeRecipient = TestItem.AddressA,
-            EIP1559Params = Bytes.FromHexString(testCase.HexStringEIP1559Params)
+            EIP1559Params = Bytes.FromHexString(testCase.HexStringEIP1559Params),
+            MinBaseFee = testCase.MinBaseFee
         };
 
         Assert.That(payloadAttributes.GetPayloadId(blockHeader), Is.EqualTo(testCase.PayloadId));
-    }
-
-    [Test]
-    public void Compute_PayloadID_includes_MinBaseFee()
-    {
-        BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
-
-        string payloadId = BuildAttributes(Spec.JovianTimeStamp, new byte[8], minBaseFee: 1).GetPayloadId(blockHeader);
-
-        Assert.That(BuildAttributes(Spec.JovianTimeStamp, new byte[8], minBaseFee: 2).GetPayloadId(blockHeader), Is.Not.EqualTo(payloadId));
     }
 
     private static IEnumerable<(int? length, Valid isValid)> Validate_EIP1559Params_TestCases()
