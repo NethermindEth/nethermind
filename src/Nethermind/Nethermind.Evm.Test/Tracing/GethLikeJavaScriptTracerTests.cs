@@ -231,10 +231,6 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void post_step_fires_once_per_step()
     {
-        // postStep runs from ReportOperationRemainingGas. The interpreter reports that once per
-        // instruction, and the CALL handler reports it once more itself before the child frame runs, so
-        // the one CALL below is the only step that fires postStep twice. Both frames halt on an explicit
-        // opcode, so no instruction picks up the extra end-of-code report either.
         string userTracer = @"{
                     steps: 0,
                     postSteps: 0,
@@ -263,7 +259,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         string[] counts = ResultJson(traces).Trim('"').Split(':');
         int steps = int.Parse(counts[0]);
         Assert.That(steps, Is.GreaterThan(0));
-        Assert.That(int.Parse(counts[1]), Is.EqualTo(steps + 1), "postStep must fire once per step, plus the CALL's own report");
+        Assert.That(int.Parse(counts[1]), Is.EqualTo(steps), "postStep must fire once per step");
     }
 
     [TestCase("5f5f20", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_fallthrough_to_implicit_stop")]
@@ -273,7 +269,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("00", "S0:STOP,P0:STOP", 0, TestName = "Callbacks_ordered_explicit_stop")]
     [TestCase("5f5ff3", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:RETURN,P2:RETURN", 0, TestName = "Callbacks_ordered_explicit_return")]
     // REVERT faults from SetOperationStack, so its marker lands between step and postStep;
-    // every other failure faults from EndInstructionTraceError, i.e. after postStep.
+    // every other failure faults from EndInstructionTrace, i.e. after postStep.
     [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,F2:REVERT,P2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
     [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_explicit_self_destruct")]
     // Other implementations call only step (with the error set) and no fault for stack underflow and out of gas; these rows pin current behaviour.
