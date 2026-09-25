@@ -63,6 +63,23 @@ public static partial class TrieUpdater
     /// folds may leave partial writes; the caller owns failure isolation and must not reuse that state without
     /// recovery.
     /// </remarks>
+    internal static ValueHash256 UpdateRoot(
+        IPbtStore store,
+        in ValueHash256 currentRoot,
+        PbtPartitionBatches changes,
+        ConcurrencyController foldQuota,
+        FoldFanOut fanOut,
+        PbtPrefixlessBranchOmission prefixlessBranchOmission,
+        IMetricObserver? partitionFoldTime,
+        TrieUpdaterMetrics? metrics = null,
+        IRefCountingMemoryProvider? memoryProvider = null) =>
+        UpdateRoot(store, currentRoot, changes, foldQuota, fanOut, prefixlessBranchOmission, false, partitionFoldTime, metrics, memoryProvider);
+
+    /// <inheritdoc cref="UpdateRoot(IPbtStore, in ValueHash256, PbtPartitionBatches, ConcurrencyController, FoldFanOut, PbtPrefixlessBranchOmission, IMetricObserver?, TrieUpdaterMetrics?, IRefCountingMemoryProvider?)"/>
+    /// <param name="sortedZoneFold">
+    /// Whether each zone is folded by the sorted-range walk: its shards are sorted in place, across threads when wide
+    /// enough, and the producer's shard counts serve as the zone group's slot ranges.
+    /// </param>
     [SkipLocalsInit]
     internal static ValueHash256 UpdateRoot(
         IPbtStore store,
@@ -71,6 +88,7 @@ public static partial class TrieUpdater
         ConcurrencyController foldQuota,
         FoldFanOut fanOut,
         PbtPrefixlessBranchOmission prefixlessBranchOmission,
+        bool sortedZoneFold,
         IMetricObserver? partitionFoldTime,
         TrieUpdaterMetrics? metrics = null,
         IRefCountingMemoryProvider? memoryProvider = null)
@@ -123,7 +141,8 @@ public static partial class TrieUpdater
                 if (batch is null) return;
                 ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
                 batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
-                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldQuota, fanOut, prefixlessBranchOmission, partitionFoldTime, foldLabel);
+                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldQuota, fanOut, prefixlessBranchOmission,
+                    sortedZoneFold, partitionFoldTime, foldLabel);
                 if (operations.Count != 0) workers.Add(worker);
                 else worker.Dispose();
             }
@@ -283,7 +302,7 @@ public static partial class TrieUpdater
     private sealed class PartitionFold<TKey, TPath>(IPbtStore store, byte zone,
         ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table,
         bool collectMetrics, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, FoldFanOut fanOut,
-        PbtPrefixlessBranchOmission prefixlessBranchOmission, IMetricObserver? foldTime, StringLabel foldLabel) : PartitionFold(zone, collectMetrics)
+        PbtPrefixlessBranchOmission prefixlessBranchOmission, bool sortedZoneFold, IMetricObserver? foldTime, StringLabel foldLabel) : PartitionFold(zone, collectMetrics)
         where TKey : unmanaged, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
@@ -321,9 +340,18 @@ public static partial class TrieUpdater
                 foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
             TrieUpdater<TKey, TPath>.StoredGroupHashes hashes = default;
             TrieUpdater<TKey, TPath>.FoldResult result = default;
-            // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
-            TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, ref hashes, writer, current,
-                operations.AsSpan(), ref path, 8, 4, new(table.AsSpan(), 8, false), ref result);
+            if (sortedZoneFold)
+            {
+                // The producer grouped the zone by the slot nibble of this group, so sorted shards sort the zone and keep its slot ranges.
+                TrieUpdater<TKey, TPath>.SortShards(context, operations.AsSpan(), table.AsSpan());
+                TrieUpdater<TKey, TPath>.FoldZoneSorted(context, ref reader, ref hashes, writer, current, operations.AsSpan(), ref path, 4, table.AsSpan(), ref result);
+            }
+            else
+            {
+                // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
+                TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, ref hashes, writer, current,
+                    operations.AsSpan(), ref path, 8, 4, new(table.AsSpan(), 8, false), ref result);
+            }
             // The result is anchored at the zone cursor its boundary slot sits on, four bits above this group.
             ValueHash256 groupHash = result.Hash(path.Truncated(sourceBuffer, 4), 8, Metrics);
             result.SizeDelta = TrieUpdater<TKey, TPath>.PublishGroup(concurrentWriter, ref reader, writer, path, groupHash);
