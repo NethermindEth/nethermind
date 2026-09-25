@@ -34,8 +34,8 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
     /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over.
     /// Not gated on pool revalidation: the ready-tx snapshot applies no per-transaction spec check, so around a
     /// fork the draw can include entries the new spec rejects — either because the pool's background revalidation
-    /// is still catching up, or because the target block is the activation slot itself, whose spec is not
-    /// derivable from a parent hash alone. The only cost is wasted list bytes.</remarks>
+    /// is still catching up, or because the target block is the activation slot itself, whose timestamp is
+    /// not known from the parent header. The only cost is wasted list bytes.</remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs(BlockHeader? parent)
     {
         const int capacity = SenderSampleCapacity;
