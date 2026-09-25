@@ -78,18 +78,17 @@ namespace Nethermind.Blockchain
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
             HeadNumber = e.Block.Number;
+            HeadTimestamp = e.Block.Timestamp;
             ReadHead(e.Block.Header);
             HeadChanged?.Invoke(sender, e);
         }
 
         /// <summary>Reads the head-derived facts the transaction pool gates on off <paramref name="header"/>.</summary>
         /// <remarks>The constructor calls this only for a non-genesis head; the head-change handler always calls it.
-        /// <see cref="HeadNumber"/> is set outside this method so it is seeded for genesis too.
-        /// <see cref="HeadTimestamp"/> is likewise seeded for genesis in the constructor and refreshed here.</remarks>
+        /// <see cref="HeadNumber"/> and <see cref="HeadTimestamp"/> are set outside this method so they are seeded for genesis too.</remarks>
         private void ReadHead(BlockHeader header)
         {
             IReleaseSpec spec = SpecProvider.GetSpec(header);
-            HeadTimestamp = header.Timestamp;
             BlockGasLimit = header.GasLimit;
             CurrentBaseFee = header.BaseFeePerGas;
             CurrentFeePerBlobGas =
