@@ -883,7 +883,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task Inclusion_list_cache_is_bounded_when_finality_stalls()
+    public async Task Inclusion_list_cache_keeps_accepted_tips_without_finality()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
             new MergeConfig { TerminalTotalDifficulty = "0" });
@@ -892,20 +892,7 @@ public partial class EngineModuleTests
         Hash256 first = Keccak.Compute(BitConverter.GetBytes(0));
         Hash256 newest = first;
 
-        retain.Invoke(rpc, [first, chain.BlockTree.HeadHash, 1UL, new byte[][] { new byte[1] }, true]);
-        for (int i = 1; i < 300; i++)
-        {
-            newest = Keccak.Compute(BitConverter.GetBytes(i));
-            retain.Invoke(rpc, [newest, chain.BlockTree.HeadHash, (ulong)i + 1, new byte[][] { new byte[1] }, false]);
-        }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(CachedInclusionLists(rpc).Count, Is.EqualTo(256));
-            Assert.That(CachedInclusionLists(rpc).Contains(first), Is.True, "an ACCEPTED tip outranks SYNCING entries");
-            Assert.That(CachedInclusionLists(rpc).Contains(newest), Is.True);
-        }
-
-        for (int i = 300; i < 600; i++)
+        for (int i = 0; i < 300; i++)
         {
             newest = Keccak.Compute(BitConverter.GetBytes(i));
             retain.Invoke(rpc, [newest, chain.BlockTree.HeadHash, (ulong)i + 1, new byte[][] { new byte[1] }, true]);
@@ -913,8 +900,8 @@ public partial class EngineModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(CachedInclusionLists(rpc).Count, Is.EqualTo(256));
-            Assert.That(CachedInclusionLists(rpc).Contains(first), Is.False);
+            Assert.That(CachedInclusionLists(rpc).Count, Is.EqualTo(300));
+            Assert.That(CachedInclusionLists(rpc).Contains(first), Is.True);
             Assert.That(CachedInclusionLists(rpc).Contains(newest), Is.True);
         }
     }
