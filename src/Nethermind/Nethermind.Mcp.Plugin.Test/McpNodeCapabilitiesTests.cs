@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Globalization;
 using System.Text.Json;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -104,8 +106,8 @@ public class McpNodeCapabilitiesTests
     public void Ancient_body_barrier_is_named_when_an_old_body_is_missing()
     {
         NodeFixture node = new() { Sync = { FastSync = true, SnapSync = true, PivotNumber = 1_000_000, AncientBodiesBarrier = 500_000, AncientReceiptsBarrier = 600_000 } };
-        node.Pointers.LowestInsertedBodyNumber.Returns(500_000UL);
-        node.Pointers.LowestInsertedReceiptBlockNumber.Returns(600_000UL);
+        node.BodiesFrom = 500_000;
+        node.ReceiptsFrom = 600_000;
         node.StateBoundary.OldestStateBlock.Returns(1_000_000UL);
         McpNodeCapabilities capabilities = node.Create();
 
@@ -130,38 +132,51 @@ public class McpNodeCapabilitiesTests
     public void Transaction_history_limit_names_the_later_of_the_body_and_receipt_floors()
     {
         NodeFixture limited = new() { Sync = { FastSync = true, SnapSync = true, PivotNumber = 1_000_000, AncientBodiesBarrier = 500_000, AncientReceiptsBarrier = 600_000 } };
-        limited.Pointers.LowestInsertedBodyNumber.Returns(500_000UL);
-        limited.Pointers.LowestInsertedReceiptBlockNumber.Returns(600_000UL);
+        limited.BodiesFrom = 500_000;
+        limited.ReceiptsFrom = 600_000;
+        NodeFixture full = new() { BodiesFrom = 0, ReceiptsFrom = 0 };
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(limited.Create().DescribeTransactionHistoryLimit(),
                 Is.EqualTo(" This node keeps transaction history only from block 600000 (see node_status); older transactions cannot be found here."));
-            Assert.That(new NodeFixture().Create().DescribeTransactionHistoryLimit(), Is.Empty, "full history needs no hint");
+            Assert.That(full.Create().GetAvailability().OldestBodyBlock, Is.Zero, "a stored genesis body means full history");
+            Assert.That(full.Create().DescribeTransactionHistoryLimit(), Is.Empty, "full history needs no hint");
+            Assert.That(new NodeFixture().Create().DescribeTransactionHistoryLimit(), Is.Empty, "an unknown range needs no hint");
         }
     }
 
     [Test]
-    public void Fast_sync_without_old_bodies_and_receipts_reports_the_pivot_as_the_history_floor()
+    public void Fast_sync_without_old_history_reports_the_probed_floors_not_the_pivot()
     {
+        // The live case: bodies start well above the configured pivot and well below the moving beacon pivot,
+        // and the history pruner reports the moving pivot as its oldest block although expiry is disabled.
         NodeFixture node = new()
         {
-            Sync = { FastSync = true, SnapSync = true, PivotNumber = 1_000_000, DownloadBodiesInFastSync = false, DownloadReceiptsInFastSync = false }
+            Sync = { FastSync = true, SnapSync = true, PivotNumber = 1_000_000, DownloadBodiesInFastSync = false, DownloadReceiptsInFastSync = false },
+            BodiesFrom = 1_500_000,
+            ReceiptsFrom = 1_600_000,
         };
+        node.BlockTree.SyncPivot.Returns((19_999_000UL, Keccak.Compute("beacon pivot")));
+        node.HistoryPruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(19_999_000).TestObject);
         McpNodeCapabilities capabilities = node.Create();
 
         McpDataAvailability availability = capabilities.GetAvailability();
-        string body = Unavailable(capabilities.CheckBody(100));
-        string receipts = Unavailable(capabilities.CheckReceipts(100));
+        string body = Unavailable(capabilities.CheckBody(1_000_001));
+        string receipts = Unavailable(capabilities.CheckReceipts(1_550_000));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(availability.OldestBodyBlock, Is.EqualTo(1_000_001), "eth_capabilities reports these as disabled, yet blocks after the pivot are stored");
-            Assert.That(availability.OldestReceiptBlock, Is.EqualTo(1_000_001));
-            Assert.That(body, Does.Contain("keeps bodies for blocks 1000001..20000128"));
-            Assert.That(body, Does.Contain("Sync.DownloadBodiesInFastSync=false"));
-            Assert.That(receipts, Does.Contain("keeps receipts for blocks 1000001..20000128"));
-            Assert.That(capabilities.DescribeTransactionHistoryLimit(), Does.Contain("from block 1000001"));
+            Assert.That(availability.OldestBodyBlock, Is.EqualTo(1_500_000), "eth_capabilities reports these as disabled; the stores hold them");
+            Assert.That(availability.OldestReceiptBlock, Is.EqualTo(1_600_000));
+            Assert.That(capabilities.CheckBody(1_500_000), Is.Null);
+            Assert.That(capabilities.CheckBody(19_000_000), Is.Null, "a block below the moving pivot is served");
+            Assert.That(body, Does.Contain("keeps bodies for blocks 1500000..20000128"));
+            Assert.That(body, Does.Contain("this node was snap/fast-synced and did not download older bodies (Sync.DownloadBodiesInFastSync=false)"));
+            Assert.That(body, Does.Not.Contain("EIP-4444"), "history pruning is not configured");
+            Assert.That(receipts, Does.Contain("keeps receipts for blocks 1600000..20000128"));
+            Assert.That(receipts, Does.Contain("did not download older receipts (Sync.DownloadBodiesInFastSync=false, Sync.DownloadReceiptsInFastSync=false)"));
+            Assert.That(capabilities.DescribeTransactionHistoryLimit(), Does.Contain("from block 1600000"));
         }
     }
 
@@ -170,16 +185,92 @@ public class McpNodeCapabilitiesTests
     {
         NodeFixture node = new()
         {
-            Sync = { FastSync = true, SnapSync = true, PivotNumber = 1_000_000, DownloadReceiptsInFastSync = false, AncientBodiesBarrier = 500_000 }
+            Sync = { FastSync = true, SnapSync = true, PivotNumber = 1_000_000, DownloadReceiptsInFastSync = false, AncientBodiesBarrier = 500_000 },
+            BodiesFrom = 500_000,
+            ReceiptsFrom = 1_000_123,
         };
-        node.Pointers.LowestInsertedBodyNumber.Returns(500_000UL);
+        McpNodeCapabilities capabilities = node.Create();
 
-        McpDataAvailability availability = node.Create().GetAvailability();
+        McpDataAvailability availability = capabilities.GetAvailability();
+        string receipts = Unavailable(capabilities.CheckReceipts(900_000));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(availability.OldestBodyBlock, Is.EqualTo(500_000));
-            Assert.That(availability.OldestReceiptBlock, Is.EqualTo(1_000_001));
+            Assert.That(availability.OldestReceiptBlock, Is.EqualTo(1_000_123));
+            Assert.That(receipts, Does.Contain("did not download older receipts (Sync.DownloadReceiptsInFastSync=false)"));
+        }
+    }
+
+    [Test]
+    public void Receipt_floor_skips_blocks_without_transactions()
+    {
+        // Odd blocks are empty; receipts are stored from 600001, so 600001 (empty) is the first block needing none missing.
+        NodeFixture node = new() { BodiesFrom = 1, ReceiptsFrom = 600_001, EmptyWhen = static n => n % 2 == 1 };
+        McpNodeCapabilities capabilities = node.Create();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capabilities.GetAvailability().OldestReceiptBlock, Is.EqualTo(600_001));
+            Assert.That(node.ReceiptStorage.ReceivedCalls().Select(static c => c.GetArguments()[0]).OfType<ulong>().Where(static n => n % 2 == 1), Is.Empty,
+                "receipts of an empty block are never probed");
+        }
+    }
+
+    [Test]
+    public void Floor_probe_is_cheap_and_cached()
+    {
+        NodeFixture node = new() { BodiesFrom = 12_345_678, ReceiptsFrom = 12_345_700 };
+        McpNodeCapabilities capabilities = node.Create();
+
+        McpDataAvailability availability = capabilities.GetAvailability();
+        int bodyLookups = HasBlockCalls(node.BlockTree);
+        int receiptLookups = HasBlockCalls(node.ReceiptStorage);
+        capabilities.DescribeTransactionHistoryLimit();
+        capabilities.GetAvailability();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(availability.OldestBodyBlock, Is.EqualTo(12_345_678));
+            Assert.That(availability.OldestReceiptBlock, Is.EqualTo(12_345_700));
+            Assert.That(bodyLookups, Is.LessThanOrEqualTo(30));
+            Assert.That(receiptLookups, Is.LessThanOrEqualTo(30));
+            Assert.That(HasBlockCalls(node.BlockTree) + HasBlockCalls(node.ReceiptStorage), Is.EqualTo(bodyLookups + receiptLookups), "cached");
+        }
+
+        static int HasBlockCalls(object substitute) => substitute.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == "HasBlock");
+    }
+
+    [Test]
+    public void Missing_block_above_the_cached_floor_probes_again()
+    {
+        NodeFixture node = new() { BodiesFrom = 500_000 };
+        McpNodeCapabilities capabilities = node.Create();
+        Assert.That(capabilities.GetAvailability().OldestBodyBlock, Is.EqualTo(500_000));
+
+        node.BodiesFrom = 600_000;
+        string body = Unavailable(capabilities.CheckBody(550_000));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(body, Does.Contain("keeps bodies for blocks 600000..20000128"));
+            Assert.That(capabilities.GetAvailability().OldestBodyBlock, Is.EqualTo(600_000));
+        }
+    }
+
+    [Test]
+    public void Missing_history_without_an_explaining_setting_is_described_neutrally()
+    {
+        NodeFixture node = new() { BodiesFrom = 1_000 };
+        node.HistoryPruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(1_000).TestObject);
+
+        string body = Unavailable(node.Create().CheckBody(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(body, Does.Contain("keeps bodies for blocks 1000..20000128. "));
+            Assert.That(body, Does.Not.Contain("EIP-4444"));
+            Assert.That(body, Does.Not.Contain("Sync."));
         }
     }
 
@@ -201,7 +292,7 @@ public class McpNodeCapabilitiesTests
     [Test]
     public void History_expiry_is_named_when_an_expired_body_is_missing()
     {
-        NodeFixture node = new() { History = { Pruning = PruningModes.Rolling } };
+        NodeFixture node = new() { History = { Pruning = PruningModes.Rolling }, BodiesFrom = 15_000_000 };
         node.HistoryPruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(15_000_000).TestObject);
         node.HistoryPruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(5_000_000UL);
         McpNodeCapabilities capabilities = node.Create();
@@ -211,7 +302,7 @@ public class McpNodeCapabilitiesTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(body, Does.Contain("EIP-4444"));
+            Assert.That(body, Does.Contain("history expiry (EIP-4444, History.Pruning=Rolling) removed blocks below 15000000"));
             Assert.That(body, Does.Contain("keeps bodies for blocks 15000000..20000128"));
             Assert.That(availability.OldestBodyBlock, Is.EqualTo(15_000_000));
             Assert.That(availability.HistoryRetentionBlocks, Is.EqualTo(5_000_000));
@@ -327,6 +418,38 @@ public class McpNodeCapabilitiesTests
         Assert.That(second, Is.SameAs(first));
     }
 
+    [Test]
+    public async Task Tools_name_the_probed_floors_end_to_end()
+    {
+        await using McpTestNode node = await McpTestNode.Create();
+        ulong first = (await node.Seed()).Block.Number;
+        ulong second = (await node.Seed()).Block.Number;
+        ulong third = (await node.Seed()).Block.Number;
+        IBlockTree blockTree = node.Chain.BlockTree;
+
+        // Bodies are kept from the second seeded block, receipts from the third.
+        for (ulong n = 1; n <= second; n++)
+        {
+            Block block = blockTree.FindBlock(n, BlockTreeLookupOptions.RequireCanonical)!;
+            node.Chain.ReceiptStorage.RemoveReceipts(block);
+            if (n <= first) blockTree.DeleteOldBlock(n, block.Hash!);
+        }
+
+        await using McpClient client = await node.CreateClient();
+        string missingBlock = Unavailable(await McpToolCalls.Call(client, "get_block", [("block", first.ToString(CultureInfo.InvariantCulture))]));
+        JsonElement missingTx = McpAssert.Error(await McpToolCalls.Call(client, "get_transaction", [("hash", Keccak.Compute("unknown").ToString())]), McpAssert.NotFound);
+        JsonElement history = McpAssert.Success(await McpToolCalls.Call(client, "node_status", [])).GetProperty("history");
+        ulong head = blockTree.Head!.Number;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingBlock, Does.Contain($"keeps bodies for blocks {second}..{head}"));
+            Assert.That(missingTx.GetProperty("message").GetString(), Does.Contain($"keeps transaction history only from block {third}"));
+            Assert.That(history.GetProperty("oldestBodyBlock").GetUInt64(), Is.EqualTo(second));
+            Assert.That(history.GetProperty("oldestReceiptBlock").GetUInt64(), Is.EqualTo(third));
+        }
+    }
+
     private static string Unavailable(CallToolResult? result)
     {
         Assert.That(result, Is.Not.Null, "expected an unavailable error");
@@ -334,7 +457,10 @@ public class McpNodeCapabilitiesTests
         return error.GetProperty("message").GetString()!;
     }
 
-    /// <summary>Substituted node services; every block exists, and by default no state, body or receipts are stored.</summary>
+    /// <summary>
+    /// Substituted node services; every block header exists, and by default no state, body or receipts are stored.
+    /// <see cref="BodiesFrom"/> and <see cref="ReceiptsFrom"/> store bodies (and the genesis body) and receipts from a block up.
+    /// </summary>
     private sealed class NodeFixture
     {
         public IReadOnlyBlockTree BlockTree { get; } = Substitute.For<IReadOnlyBlockTree>();
@@ -353,6 +479,9 @@ public class McpNodeCapabilitiesTests
         public bool WithProvider { get; init; } = true;
         public bool EmptyBlocks { get; init; }
         public bool UnknownBlocks { get; init; }
+        public Func<ulong, bool>? EmptyWhen { get; init; }
+        public ulong? BodiesFrom { get; set; }
+        public ulong? ReceiptsFrom { get; set; }
 
         public McpNodeCapabilities Create()
         {
@@ -360,18 +489,28 @@ public class McpNodeCapabilitiesTests
             BlockTree.Head.Returns(Build.A.Block.WithHeader(head).TestObject);
             BlockTree.BestSuggestedHeader.Returns(head);
             BlockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>()).Returns(c => UnknownBlocks ? null : Header(c.Arg<ulong>()));
+            if (BodiesFrom is not null)
+            {
+                BlockTree.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(c => c.Arg<ulong>() is var n && (n == 0 || n >= BodiesFrom));
+            }
+
+            if (ReceiptsFrom is not null)
+            {
+                ReceiptStorage.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(c => c.Arg<ulong>() >= ReceiptsFrom);
+            }
 
             EthCapabilitiesProvider? provider = WithProvider
                 ? new EthCapabilitiesProvider(BlockTree, StateBoundary, Sync, Pointers, History, HistoryPruner)
                 : null;
             return new McpNodeCapabilities(BlockTree, Sync, Receipts, Pruning, Flat, Init, LimboLogs.Instance,
-                provider, StateReader, ReceiptStorage, worldStateManager: null, SyncingInfo, HistoryPruner, syncPointers: Pointers);
+                provider, StateReader, ReceiptStorage, worldStateManager: null, SyncingInfo, HistoryPruner, historyConfig: History);
         }
 
         private BlockHeader Header(ulong number)
         {
             BlockHeaderBuilder builder = Build.A.BlockHeader.WithNumber(number);
-            return (EmptyBlocks ? builder : builder.WithTransactionsRoot(Keccak.Compute("txs"))).TestObject;
+            bool empty = EmptyBlocks || EmptyWhen?.Invoke(number) == true;
+            return (empty ? builder : builder.WithTransactionsRoot(Keccak.Compute("txs"))).TestObject;
         }
     }
 }

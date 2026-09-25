@@ -94,10 +94,11 @@ internal sealed class McpNodeTools(
                     "lagBlocks": { "type": ["integer", "null"] },
                     "fastSync": { "type": "boolean" },
                     "snapSync": { "type": "boolean" },
-                    "pivotBlock": { "type": ["integer", "null"] },
+                    "pivotBlock": { "type": ["integer", "null"], "description": "The configured fast/snap sync pivot (Sync.PivotNumber)" },
+                    "currentPivotBlock": { "type": ["integer", "null"], "description": "The sync pivot the node tracks now; the consensus client moves it forward, so it is not where stored history starts (see history)" },
                     "lowestHeader": { "type": ["integer", "null"] },
-                    "lowestBody": { "type": ["integer", "null"] },
-                    "lowestReceipt": { "type": ["integer", "null"] },
+                    "lowestBody": { "type": ["integer", "null"], "description": "Backfill progress pointer for bodies; history.oldestBodyBlock is the stored floor" },
+                    "lowestReceipt": { "type": ["integer", "null"], "description": "Backfill progress pointer for receipts; history.oldestReceiptBlock is the stored floor" },
                     "headStateAvailable": { "type": ["boolean", "null"] }
                   },
                   "required": ["isSyncing", "modes", "highestBlock", "lagBlocks", "fastSync", "snapSync", "headStateAvailable"]
@@ -124,8 +125,8 @@ internal sealed class McpNodeTools(
                 "history": {
                   "type": "object",
                   "properties": {
-                    "oldestBodyBlock": { "type": ["integer", "null"] },
-                    "oldestReceiptBlock": { "type": ["integer", "null"] },
+                    "oldestBodyBlock": { "type": ["integer", "null"], "description": "Oldest block whose body is stored, found by probing the block store" },
+                    "oldestReceiptBlock": { "type": ["integer", "null"], "description": "Oldest block whose receipts are stored, found by probing the receipt store" },
                     "receiptsStored": { "type": "boolean" },
                     "retentionBlocks": { "type": ["integer", "null"] }
                   },
@@ -169,7 +170,7 @@ internal sealed class McpNodeTools(
     [Description("Answers \"is my node healthy and synced, and what can it serve?\" in one call. Use it first when a user asks about their node, " +
         "or when another tool fails with unavailable. Returns: chain (chainId, networkName, nativeCurrency: ETH, or xDAI on Gnosis/Chiado); " +
         "client version; head block (number, hash, timestamp, timestampIso, ageSeconds); sync (isSyncing, modes, highestBlock, lagBlocks, " +
-        "fast/snap sync pivot and backfill progress); peers (count, max); state storage (backend Flat/HalfPath/Hash, archive or pruned, oldest " +
+        "configured and current fast/snap sync pivot, backfill progress); peers (count, max); state storage (backend Flat/HalfPath/Hash, archive or pruned, oldest " +
         "block with state); history (oldest block with bodies and receipts, whether receipts are stored); features (trace/debug tools " +
         "available, log index range); and warnings: plain-English problems such as 0 peers, a stale head or an unfinished sync. " +
         "Block numbers are decimal integers except head.numberHex. Null means the value is unknown on this node. Takes no arguments.")]
@@ -252,6 +253,7 @@ internal sealed class McpNodeTools(
             lag,
             syncConfig.FastSync,
             syncConfig.SnapSync,
+            syncConfig.FastSync && syncConfig.PivotNumber > 0 ? syncConfig.PivotNumber : null,
             syncConfig.FastSync ? TryValue<ulong>(() => blockTree.SyncPivot.BlockNumber) : null,
             syncConfig.FastSync ? TryValue<ulong>(() => blockTree.LowestInsertedHeader?.Number) : null,
             syncConfig.FastSync ? TryValue<ulong>(() => syncPointers?.LowestInsertedBodyNumber) : null,
@@ -312,6 +314,7 @@ internal sealed class McpNodeTools(
         writer.WriteBoolean("fastSync"u8, s.FastSync);
         writer.WriteBoolean("snapSync"u8, s.SnapSync);
         WriteNumberOrNull(writer, "pivotBlock"u8, s.PivotBlock);
+        WriteNumberOrNull(writer, "currentPivotBlock"u8, s.CurrentPivotBlock);
         WriteNumberOrNull(writer, "lowestHeader"u8, s.LowestHeader);
         WriteNumberOrNull(writer, "lowestBody"u8, s.LowestBody);
         WriteNumberOrNull(writer, "lowestReceipt"u8, s.LowestReceipt);
@@ -442,6 +445,7 @@ internal sealed class McpNodeTools(
         bool FastSync,
         bool SnapSync,
         ulong? PivotBlock,
+        ulong? CurrentPivotBlock,
         ulong? LowestHeader,
         ulong? LowestBody,
         ulong? LowestReceipt,

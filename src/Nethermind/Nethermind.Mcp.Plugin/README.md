@@ -641,9 +641,11 @@ Use a recent block (for example "latest"), or query an archive node.`
 - **History.** Fast sync doesn't download bodies and receipts below the network's ancient barriers (the bundled
   mainnet, Sepolia and Gnosis configs set `Sync.AncientBodiesBarrier` and `Sync.AncientReceiptsBarrier`), and not at
   all with `Sync.DownloadBodiesInFastSync=false` or `Sync.DownloadReceiptsInFastSync=false` (then the node keeps
-  bodies and receipts from the block after the sync pivot, and `node_status`, the `get_logs` clamp and the error
-  messages name that block). History expiry drops
-  old bodies and receipts too. With `Receipt.StoreReceipts=false`, receipt, log and status queries fail. Error
+  only the bodies and receipts of the blocks it processed after syncing). History expiry (`History.Pruning`) drops
+  old bodies and receipts too. The server finds the oldest stored body and receipt block by probing the stores
+  (a binary search of about 25 key lookups each, cached for five minutes), not from the sync pivot, which moves on
+  every pivot update; `node_status`, the `get_logs` clamp and the error messages name those blocks.
+  With `Receipt.StoreReceipts=false`, receipt, log and status queries fail. Error
   messages name the setting that caused the gap.
 - **Old transactions by hash.** When a node never stored a transaction's block body, looking it up by hash returns
   `not_found`, not `unavailable`, because the node has no record of that hash. When the node's history is limited,

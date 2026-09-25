@@ -15,7 +15,6 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.Synchronization;
 using Nethermind.Trie;
 
 namespace Nethermind.Mcp.Plugin.Tools;
@@ -57,10 +56,12 @@ public sealed record McpStateStorage(string Backend, bool Archive, string Summar
 /// <para>
 /// The checks use the same cheap, authoritative lookups the RPC modules use before doing the work:
 /// <see cref="IStateReader.HasStateForBlock"/> for state (the guard of <c>eth_call</c>/<c>eth_getBalance</c>), block-store
-/// and receipt-store key lookups for bodies and receipts. Ranges in messages and in <see cref="GetAvailability"/> come from
-/// <see cref="IEthCapabilitiesProvider"/> (<c>eth_capabilities</c>: sync pivot, ancient barriers, history expiry, trie
-/// pruning window), adjusted for flat-state history and for fast sync without old bodies or receipts (which
-/// <c>eth_capabilities</c> reports as disabled although the blocks synced after the pivot are stored), and are informational:
+/// and receipt-store key lookups for bodies and receipts. The oldest stored body and receipt blocks are found by
+/// binary-searching those same key lookups between block 1 and the head (see <see cref="ProbeHistoryFloors"/>), which is right
+/// however the node synced: <c>eth_capabilities</c> reports bodies and receipts as disabled on a node that fast-synced without
+/// old history, and the sync pivot moves with every pivot update although the stored range does not. State ranges come
+/// from <see cref="IEthCapabilitiesProvider"/> (<c>eth_capabilities</c>: state floor, trie pruning window), adjusted for
+/// flat-state history. Ranges are informational:
 /// state availability is not monotonic (a HalfPath
 /// node may still hold an old checkpoint root, a flat node serves only its persisted block plus the in-memory snapshots above
 /// it), so the range is never used to reject a query on its own.
@@ -81,10 +82,17 @@ public sealed class McpNodeCapabilities(
     IEthSyncingInfo? syncingInfo = null,
     IHistoryPruner? historyPruner = null,
     Lazy<INodeStorageFactory>? nodeStorageFactory = null,
-    ISyncPointers? syncPointers = null)
+    IHistoryConfig? historyConfig = null)
 {
     // Availability is read on every failing check and by node_status; a short cache keeps bursts cheap while staying fresh.
     private const long CacheMilliseconds = 1000;
+
+    // The body and receipt floors move only with history expiry or a backfill, so the probe (about 50 key lookups) runs
+    // at most every five minutes, and sooner only when a check finds a block missing above the cached floor.
+    private const long FloorCacheMilliseconds = 5 * 60 * 1000;
+
+    // A receipt probe of a block without transactions looks this many blocks up for one with transactions.
+    private const int ReceiptProbeSpan = 32;
     private const string FlatBackend = "Flat";
 
     private readonly ILogger _logger = logManager.GetClassLogger<McpNodeCapabilities>();
@@ -92,6 +100,8 @@ public sealed class McpNodeCapabilities(
     private McpDataAvailability? _cached;
     private long _cachedAt;
     private McpStateStorage? _storage;
+    private HistoryFloors? _floors;
+    private long _floorsAt;
 
     /// <summary>Gets the current data availability; values are cached for about a second.</summary>
     public McpDataAvailability GetAvailability()
@@ -151,7 +161,7 @@ public sealed class McpNodeCapabilities(
         }
 
         return McpToolExecutor.Error(McpToolErrorCodes.Unavailable,
-            $"The body (transactions) of block {blockNumber} is not stored on this node: it {DescribeHistory(blockNumber, receipts: false, GetAvailability())}. " +
+            $"The body (transactions) of block {blockNumber} is not stored on this node: it {DescribeHistory(blockNumber, receipts: false, AvailabilityBelow(blockNumber, receipts: false))}. " +
             "Use a more recent block, or query a node that keeps full history.");
     }
 
@@ -186,7 +196,7 @@ public sealed class McpNodeCapabilities(
         }
 
         return McpToolExecutor.Error(McpToolErrorCodes.Unavailable,
-            $"Receipts and logs of block {blockNumber} are not stored on this node: it {DescribeHistory(blockNumber, receipts: true, GetAvailability())}. " +
+            $"Receipts and logs of block {blockNumber} are not stored on this node: it {DescribeHistory(blockNumber, receipts: true, AvailabilityBelow(blockNumber, receipts: true))}. " +
             "Use a more recent block, or query a node that keeps full history.");
     }
 
@@ -229,36 +239,71 @@ public sealed class McpNodeCapabilities(
         return $"keeps block {bodies} and {receipts} up to head {availability.HeadNumber}";
     }
 
+    /// <summary>
+    /// Returns the availability for a block just found missing; a cached floor at or below that block is stale (a history
+    /// expiry pass ran since), so the floors are probed again.
+    /// </summary>
+    private McpDataAvailability AvailabilityBelow(ulong missingBlock, bool receipts)
+    {
+        McpDataAvailability availability = GetAvailability();
+        long? floor = receipts ? availability.OldestReceiptBlock : availability.OldestBodyBlock;
+        if (floor is not { } f || ToLong(missingBlock) < f)
+        {
+            return availability;
+        }
+
+        lock (_lock)
+        {
+            _floors = null;
+            _cached = null;
+        }
+
+        return GetAvailability();
+    }
+
     private string DescribeHistory(ulong blockNumber, bool receipts, McpDataAvailability availability)
     {
         long? oldest = receipts ? availability.OldestReceiptBlock : availability.OldestBodyBlock;
         string what = receipts ? "receipts" : "bodies";
-        string range = oldest is { } o ? $"keeps {what} for blocks {o}..{availability.HeadNumber}" : $"does not report its oldest stored {what}";
-
-        string? reason = null;
-        if (TryValue<ulong>(() => historyPruner?.OldestBlockHeader?.Number) is { } expiredBelow && blockNumber < expiredBelow)
-        {
-            reason = "history expiry (EIP-4444, History.Pruning) removed older blocks";
-        }
-        else if (syncConfig.FastSync && syncConfig.PivotNumber > 0 && blockNumber < syncConfig.PivotNumber)
-        {
-            bool downloads = receipts ? syncConfig.DownloadReceiptsInFastSync : syncConfig.DownloadBodiesInFastSync;
-            ulong barrier = receipts ? syncConfig.AncientReceiptsBarrierCalc : syncConfig.AncientBodiesBarrierCalc;
-            if (!downloads)
-            {
-                reason = $"fast sync was configured not to download old {what} (Sync.Download{(receipts ? "Receipts" : "Bodies")}InFastSync=false)";
-            }
-            else if (blockNumber < barrier)
-            {
-                reason = $"fast sync skips {what} below block {barrier} (Sync.Ancient{(receipts ? "Receipts" : "Bodies")}Barrier)";
-            }
-            else if (availability.IsSyncing)
-            {
-                reason = $"old {what} are still being downloaded";
-            }
-        }
-
+        string range = oldest is { } o ? $"keeps {what} for blocks {o}..{availability.HeadNumber}" : $"could not determine its oldest stored {what}";
+        string? reason = HistoryReason(blockNumber, receipts, oldest, availability.IsSyncing);
         return reason is null ? range : $"{range}; {reason}";
+    }
+
+    /// <summary>Explains why the <paramref name="receipts"/> or body of a block below the stored range is missing, or returns <see langword="null"/> when no configuration explains it.</summary>
+    internal string? HistoryReason(ulong blockNumber, bool receipts, long? oldest, bool isSyncing)
+    {
+        string what = receipts ? "receipts" : "bodies";
+
+        // The pruner reports an oldest block even with expiry disabled (the first stored body it found), so it is named
+        // as the cause only when history pruning is configured.
+        if (historyConfig?.Enabled() == true
+            && TryValue<ulong>(() => historyPruner?.OldestBlockHeader?.Number) is { } expiredBelow && blockNumber < expiredBelow)
+        {
+            return $"history expiry (EIP-4444, History.Pruning={historyConfig.Pruning}) removed blocks below {expiredBelow}";
+        }
+
+        // Below the probed floor only: a block missing inside the stored range is not explained by how the node synced.
+        if (!syncConfig.FastSync || (oldest is { } floor && ToLong(blockNumber) >= floor))
+        {
+            return null;
+        }
+
+        List<string> skipped = new(2);
+        if (!syncConfig.DownloadBodiesInFastSync) skipped.Add("Sync.DownloadBodiesInFastSync=false");
+        if (receipts && !syncConfig.DownloadReceiptsInFastSync) skipped.Add("Sync.DownloadReceiptsInFastSync=false");
+        if (skipped.Count > 0)
+        {
+            return $"this node was snap/fast-synced and did not download older {what} ({string.Join(", ", skipped)})";
+        }
+
+        ulong barrier = receipts ? syncConfig.AncientReceiptsBarrierCalc : syncConfig.AncientBodiesBarrierCalc;
+        if (barrier > 1 && blockNumber < barrier)
+        {
+            return $"fast sync does not download {what} below the ancient barrier, block {barrier} (Sync.Ancient{(receipts ? "Receipts" : "Bodies")}Barrier)";
+        }
+
+        return isSyncing ? $"older {what} are still being downloaded" : null;
     }
 
     private McpDataAvailability ComputeAvailability()
@@ -282,9 +327,11 @@ public sealed class McpNodeCapabilities(
             oldestState = oldestState is { } o ? Math.Min(o, historyFloor) : historyFloor;
         }
 
-        long? oldestBody = Oldest(capabilities?.Blocks) ?? (capabilities is null ? null : SkippedHistoryFloor(receipts: false));
+        HistoryFloors floors = GetHistoryFloors(head);
+        long? oldestBody = floors.Body ?? Oldest(capabilities?.Blocks);
         long? oldestReceipt = !receiptConfig.StoreReceipts ? null
-            : Oldest(capabilities?.Receipts) ?? (capabilities is null ? null : SkippedHistoryFloor(receipts: true));
+            : receiptConfig.DeriveFromState ? oldestBody
+            : floors.Receipt ?? Oldest(capabilities?.Receipts);
         long? stateRetention = capabilities?.State.DeleteStrategy is { } stateWindow ? ToLong(stateWindow.RetentionBlocks) : null;
 
         // The detected summary names the configured boundary; the window actually kept is what eth_capabilities reports.
@@ -305,40 +352,98 @@ public sealed class McpNodeCapabilities(
             resource is { Disabled: false, OldestBlock: { } oldest } ? ToLong(oldest) : null;
     }
 
-    /// <summary>
-    /// Returns the oldest stored body or receipt block of a node that fast-synced without downloading old bodies or receipts
-    /// (<c>Sync.DownloadBodiesInFastSync</c>/<c>Sync.DownloadReceiptsInFastSync</c> false), or <see langword="null"/> otherwise.
-    /// </summary>
-    /// <remarks>
-    /// Such a node stores the blocks it processed after the sync pivot, plus anything a backward download inserted before it,
-    /// raised to the history-expiry floor. Receipts never start below bodies.
-    /// </remarks>
-    private long? SkippedHistoryFloor(bool receipts)
+    private HistoryFloors GetHistoryFloors(BlockHeader? head)
     {
-        bool skipsBodies = !syncConfig.DownloadBodiesInFastSync;
-        bool skips = receipts ? skipsBodies || !syncConfig.DownloadReceiptsInFastSync : skipsBodies;
-        if (!syncConfig.FastSync || !skips)
+        long now = Environment.TickCount64;
+        lock (_lock)
         {
-            return null;
+            if (_floors is { } cached && now - _floorsAt < FloorCacheMilliseconds)
+            {
+                return cached;
+            }
         }
 
-        ulong pivot = TryValue<ulong>(() => blockTree.SyncPivot.BlockNumber) is { } treePivot and > 0 ? treePivot : syncConfig.PivotNumber;
-        if (pivot == 0)
+        HistoryFloors floors = head is null ? new HistoryFloors(null, null) : ProbeHistoryFloors(head.Number);
+        lock (_lock)
         {
-            return null;
+            _floors = floors;
+            _floorsAt = now;
         }
 
-        ulong? lowestBody = TryValue<ulong>(() => syncPointers?.LowestInsertedBodyNumber);
-        ulong floor = Math.Min(lowestBody ?? pivot + 1, pivot + 1);
-        if (receipts)
-        {
-            ulong? lowestReceipt = TryValue<ulong>(() => syncPointers?.LowestInsertedReceiptBlockNumber);
-            floor = Math.Max(floor, Math.Min(lowestReceipt ?? pivot + 1, pivot + 1));
-        }
-
-        ulong expired = TryValue<ulong>(() => historyPruner?.OldestBlockHeader?.Number) ?? 0;
-        return ToLong(Math.Max(floor, expired));
+        return floors;
     }
+
+    /// <summary>Finds the oldest block whose body, and the oldest whose receipts, are stored, by binary search over the stores.</summary>
+    /// <remarks>
+    /// <para>
+    /// Bodies and receipts are stored contiguously from a floor up to the head (sync and backfill insert them descending,
+    /// history expiry deletes them ascending) while headers exist further down, so presence is monotonic and about 25 key
+    /// lookups each find the floor on mainnet. Sync never inserts the genesis body, so the search starts at block 1 and a floor
+    /// of 1 becomes 0 when genesis is stored too. A floor is <see langword="null"/> when the head itself is not stored or a
+    /// lookup fails.
+    /// </para>
+    /// <para>
+    /// A block without transactions has no receipts to store, so a receipt probe uses the first block with transactions at or
+    /// above it (up to <see cref="ReceiptProbeSpan"/> blocks) and counts a run of empty blocks as stored: the receipt floor
+    /// is then the oldest block from which every block with transactions has its receipts.
+    /// </para>
+    /// </remarks>
+    private HistoryFloors ProbeHistoryFloors(ulong head)
+    {
+        long? body = TryValue<long>(() => LowestStored(1, head, BodyStored) is { } floor ? ToLong(floor == 1 && BodyStored(0) ? 0 : floor) : null);
+        if (receiptStorage is null || !receiptConfig.StoreReceipts || receiptConfig.DeriveFromState)
+        {
+            return new HistoryFloors(body, null);
+        }
+
+        // Receipts are never stored without their body.
+        ulong from = body is { } b and > 1 ? (ulong)b : 1;
+        long? receipt = TryValue<long>(() => LowestStored(from, head, n => ReceiptsStored(n, head)) is { } floor
+            ? ToLong(floor == 1 && body == 0 ? 0 : floor)
+            : null);
+        return new HistoryFloors(body, receipt);
+    }
+
+    private static ulong? LowestStored(ulong low, ulong high, Func<ulong, bool> stored)
+    {
+        if (!stored(high))
+        {
+            return null;
+        }
+
+        while (low < high)
+        {
+            ulong middle = low + (high - low) / 2;
+            if (stored(middle)) high = middle;
+            else low = middle + 1;
+        }
+
+        return high;
+    }
+
+    private bool BodyStored(ulong number) =>
+        blockTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical) is { Hash: { } hash } && blockTree.HasBlock(number, hash);
+
+    private bool ReceiptsStored(ulong number, ulong head)
+    {
+        ulong last = Math.Min(head, number + ReceiptProbeSpan - 1);
+        for (ulong n = number; n <= last; n++)
+        {
+            if (blockTree.FindHeader(n, BlockTreeLookupOptions.RequireCanonical) is not { Hash: { } hash } header)
+            {
+                return false;
+            }
+
+            if (header.TxRoot != Keccak.EmptyTreeHash)
+            {
+                return receiptStorage!.HasBlock(n, hash);
+            }
+        }
+
+        return true;
+    }
+
+    private readonly record struct HistoryFloors(long? Body, long? Receipt);
 
     private McpStateStorage DetectStorage()
     {
