@@ -648,7 +648,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             return only.IsEmpty ? default : only.Rise(position - 1, 1);
         }
 
-        ComposeFrame frame = new(local);
+        ComposeFrame frame = new(local, default);
         int leftPosition = position - local.Width;
         OmittedPreimage omittedLeft = default;
         bool leftPending = SettleLeftSorted(walk.Writer, walk.Path, leftPosition, left.RiseBitCount == 0 ? left : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, left, leftPosition, metrics), ref frame, omittedLeft);
