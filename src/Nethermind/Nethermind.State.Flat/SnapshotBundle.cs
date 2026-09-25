@@ -32,7 +32,8 @@ public sealed class SnapshotBundle : IDisposable
     private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
-    private readonly ConcurrentDictionary<HashedKey<Address>, byte> _addressesWithChangedSlots = new();
+    // Created on the first slot write: prewarm scopes never write slots, and one is built per warm-up job.
+    private ConcurrentDictionary<HashedKey<Address>, byte>? _addressesWithChangedSlots;
 
     private bool _trieChanged = false;
 
@@ -498,10 +499,18 @@ public sealed class SnapshotBundle : IDisposable
             _changedSlots[key] = value;
         }
 
-        if (!_addressesWithChangedSlots.ContainsKey(address))
+        ConcurrentDictionary<HashedKey<Address>, byte> addressesWithChangedSlots =
+            Volatile.Read(ref _addressesWithChangedSlots) ?? CreateAddressesWithChangedSlots();
+        if (!addressesWithChangedSlots.ContainsKey(address))
         {
-            _addressesWithChangedSlots.TryAdd(address, 0);
+            addressesWithChangedSlots.TryAdd(address, 0);
         }
+    }
+
+    private ConcurrentDictionary<HashedKey<Address>, byte> CreateAddressesWithChangedSlots()
+    {
+        ConcurrentDictionary<HashedKey<Address>, byte> created = new();
+        return Interlocked.CompareExchange(ref _addressesWithChangedSlots, created, null) ?? created;
     }
 
     internal void ClearStorage(Address address, Hash256 addressHash)
@@ -515,7 +524,8 @@ public sealed class SnapshotBundle : IDisposable
 
         _changedStorageNodes.RemoveAddress(addressHash);
 
-        if (!_addressesWithChangedSlots.TryRemove(address, out _))
+        // No dictionary yet means no slot of any address was written.
+        if (Volatile.Read(ref _addressesWithChangedSlots)?.TryRemove(address, out _) != true)
         {
             return;
         }
@@ -619,7 +629,7 @@ public sealed class SnapshotBundle : IDisposable
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
-            _addressesWithChangedSlots.NoLockClear();
+            _addressesWithChangedSlots?.NoLockClear();
 
             return (snapshot, transientResource);
         }
@@ -633,7 +643,7 @@ public sealed class SnapshotBundle : IDisposable
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
-            _addressesWithChangedSlots.NoLockClear();
+            _addressesWithChangedSlots?.NoLockClear();
             _trieChanged = false;
 
             return (null, null);
