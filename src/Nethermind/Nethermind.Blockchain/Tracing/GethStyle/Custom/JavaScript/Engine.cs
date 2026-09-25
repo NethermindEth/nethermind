@@ -367,9 +367,11 @@ public class Engine : IDisposable
     /// is internal or not shipped under <c>Data/JSTracers</c>.
     /// </summary>
     /// <remarks>
-    /// Every traced transaction gets its own engine, so checking once per request keeps an unusable tracer from
-    /// creating an engine per transaction. Inline code is compiled through the shared runtime, which needs no
-    /// engine, and the compiled script is cached for the engines that follow.
+    /// Every traced transaction gets its own engine, so checking once per request keeps such a tracer from creating
+    /// an engine per transaction. Inline code is compiled through the shared runtime, which needs no engine, and the
+    /// compiled script is cached for the engines that follow. Code that compiles but lacks the functions a tracer
+    /// must expose, such as <c>{}</c>, passes and is refused by its first engine: finding the functions takes
+    /// evaluating the code in an engine, and a minimal working tracer costs a caller the same engine anyway.
     /// </remarks>
     /// <exception cref="ArgumentException">The tracer is not found or its code does not compile.</exception>
     public static void ValidateTracer(string tracer)
