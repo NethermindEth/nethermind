@@ -260,7 +260,7 @@ public static partial class EvmInstructions
                     state.SubtractFromBalance(caller, in callValue, spec);
                     vm.AddTransferLog<TEip7708>(caller, target, in callValue);
                 }
-                state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
+                state.AddToBalanceAndCreateIfNotEmpty(target, TOpCall.ExecutionType, in callValue, spec);
             }
             vm.MetricsCounters.IncrementEmptyCalls();
             return EvmExceptionType.None;
@@ -369,7 +369,8 @@ public static partial class EvmInstructions
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot,
-            newAccountCharged: newAccountCharged);
+            newAccountCharged: newAccountCharged,
+            frameJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.FrameJournalCheckpoint ?? 0);
 
         return EvmExceptionType.Suspend;
     }

@@ -4,6 +4,7 @@
 
 """Regression coverage for folded perf profiles and their reporting contract."""
 
+import json
 import os
 import re
 import shutil
@@ -23,6 +24,7 @@ START_NODE = ROOT / "scripts" / "rpc-bench" / "start-node.sh"
 STOP_NODE = ROOT / "scripts" / "rpc-bench" / "stop-node.sh"
 START_PROFILERS = ROOT / "scripts" / "rpc-bench" / "start-profilers.sh"
 RUN_JSONBENCH = ROOT / "scripts" / "rpc-bench" / "run-jsonbench.sh"
+SEQUENTIAL_DRIVER = ROOT / "scripts" / "expb" / "sequential_driver.py"
 PROFILE_ARTIFACT_GATE = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
 
 WORKFLOW_JOB_PATTERN = re.compile(
@@ -902,7 +904,7 @@ esac
         # through `bash <path>`, so a script committed 100644 dies with exit 126 wherever the
         # checkout's mode bits are honoured. The index mode is the only platform-independent record
         # of the bit — a Windows working tree reports nothing useful about it.
-        # rpc-bench plus the two perf-flow scripts one level up, which AGENTS.md documents as commands to
+        # rpc-bench plus the two perf-flow scripts one level up, which the benchmark skills document as commands to
         # run by path. Deliberately not the whole scripts/ tree: unrelated scripts there predate this flow.
         listing = subprocess.run(
             ["git", "ls-files", "-s", "--", "scripts/rpc-bench",
@@ -1000,6 +1002,82 @@ esac
         self.assertEqual(preparations(), (5, 5))
         self.assertNotIn("Reusing", seventh.stdout)
 
+    def test_run_jsonbench_probes_primary_and_reference_even_when_preparation_is_reused(self) -> None:
+        fake_bin = self.directory / "probe-bin"
+        fake_bin.mkdir()
+        corpus = self.directory / "eth-call-corpus.jsonl.gz"
+        corpus.write_bytes(b"fixture contents are never read by the command stub\n")
+        self.write_executable("probe-bin/sudo", '#!/bin/bash\nexec "$@"\n')
+        self.write_executable("probe-bin/git", self.FAKE_GIT)
+        self.write_executable("probe-bin/docker", self.FAKE_DOCKER_CLI)
+        self.write_executable(
+            "probe-bin/python3",
+            "#!/bin/bash\n"
+            "printf '%s\\n' \"$*\" >> \"$PROBE_LOG\"\n"
+            "if [[ \"${1:-}\" == *corpus_parity.py && \"${2:-}\" == probe && -n \"${PROBE_FAILURE_URL:-}\" && \"$*\" == *\"$PROBE_FAILURE_URL\"* ]]; then\n"
+            "  if [[ \"${PROBE_FAILURE_RESPONSE:-}\" == all-error ]]; then printf '%s\\n' 'corpus method probe found no successful results over 2 records (rpc_error:-32000)' >&2; fi\n"
+            "  exit 7\n"
+            "fi\n"
+            # The converter writes one fixture per selector class, plus the manifest that both
+            # the benchmark config and the reuse check read.
+            "if [[ \"${1:-}\" == *prepare-eth-call-corpus.py ]]; then\n"
+            "  mkdir -p \"$3\"; printf '[]' > \"$3/class_1.json\"\n"
+            "  printf '%s' '{\"class_1\":1}' > \"$3/classes.json\"\n"
+            "fi\n"
+            # The renderer is invoked as `python3 - <benchmark.yaml>`; the summary reads back the
+            # duration/rps/vus it wrote.
+            "if [[ \"${1:-}\" == - ]]; then\n"
+            "  mkdir -p \"$(dirname \"$2\")\"; printf '%s\\n' 'duration: \"60s\"' 'rps: 100' 'vus: 10' > \"$2\"\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == *corpus_results.py && \"${2:-}\" == sanitize ]]; then\n"
+            "  mkdir -p \"$(dirname \"$4\")\"; printf '%s\\n' '{\"metrics\":{\"http_req_duration\":{\"values\":{\"avg\":1,\"med\":1,\"p(90)\":1,\"p(95)\":1,\"p(99)\":1,\"max\":1}},\"http_reqs\":{\"values\":{\"count\":1,\"rate\":1}},\"http_req_failed\":{\"values\":{\"rate\":0}},\"checks\":{\"values\":{\"passes\":1,\"fails\":0}},\"dropped_iterations\":{\"values\":{\"count\":0}}}}' > \"$4\"\n"
+            "fi\n",
+        )
+        for method in ("trace_call", "debug_traceCall"):
+            with self.subTest(method=method):
+                state = self.directory / f"probe-state-{method}"
+                (state / "images").mkdir(parents=True)
+                probe_log = self.directory / f"probe-{method}.log"
+                environment = os.environ.copy()
+                environment.update({
+                    "FAKE_BIN": fake_bin.as_posix(),
+                    "FAKE_STATE": state.as_posix(),
+                    "PROBE_LOG": probe_log.as_posix(),
+                    "RPC_URL": "http://primary.invalid:8545",
+                    "REFERENCE_RPC_URL": "http://reference.invalid:8546",
+                    "SCRATCH_ROOT": (self.directory / f"scratch-{method}").as_posix(),
+                    "JB_MODE": "benchmark",
+                    "JB_ETH_CALL_CORPUS": "true",
+                    "JB_ETH_CALL_CORPUS_FILE": corpus.as_posix(),
+                    "CORPUS_METHOD": method,
+                    "JB_REUSE_PREPARED": "true",
+                    "PROBE_FAILURE_URL": "",
+                    "PROBE_FAILURE_RESPONSE": "",
+                })
+
+                first = self.run_jsonbench(environment, self.directory / f"out-{method}-1")
+                second = self.run_jsonbench(environment, self.directory / f"out-{method}-2")
+
+                self.assertEqual(first.returncode, 0, f"{first.stdout}\n{first.stderr}")
+                self.assertEqual(second.returncode, 0, f"{second.stdout}\n{second.stderr}")
+                calls = probe_log.read_text(encoding="utf-8").splitlines()
+                probes = [call for call in calls if "corpus_parity.py probe " in call]
+                self.assertEqual(len(probes), 4, calls)
+                self.assertTrue(any("http://primary.invalid:8545" in call for call in probes), probes)
+                self.assertTrue(any("http://reference.invalid:8546" in call for call in probes), probes)
+                docker_calls = (state / "docker.log").read_text(encoding="utf-8").splitlines()
+                self.assertEqual(len([call for call in docker_calls if call.startswith("build ")]), 1)
+                self.assertIn("Reusing the json-bench checkout, runner image and fixture", second.stdout)
+
+                environment["PROBE_FAILURE_URL"] = "http://reference.invalid:8546"
+                environment["PROBE_FAILURE_RESPONSE"] = "all-error"
+                before_failure = len(docker_calls)
+                failed = self.run_jsonbench(environment, self.directory / f"out-{method}-3")
+                self.assertNotEqual(failed.returncode, 0, failed.stdout)
+                self.assertIn("rpc_error:-32000", failed.stderr)
+                self.assertEqual(len((state / "docker.log").read_text(encoding="utf-8").splitlines()), before_failure)
+                self.assertFalse((self.directory / f"out-{method}-3").exists())
+
     def resolve(self, **inputs: str) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
         """Run the workflow's resolve body with these dispatch inputs; return it plus its outputs."""
         script = self.directory / "resolve.sh"
@@ -1055,6 +1133,178 @@ esac
                 result, _ = self.resolve(IN_DOTNET_TRACE="true", **inputs)
                 self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
                 self.assertIn("::error::", result.stdout)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_explicit_sweep_clients_supply_the_image_on_arm(self) -> None:
+        cases = (
+            (
+                " \t nethermind@registry.example/master:baseline#trace=true\t nethermind@registry.example/pr:head",
+                "registry.example/pr:head",
+            ),
+            (
+                "nethermind@registry.example/pr:head nethermind@registry.example/master:baseline",
+                "registry.example/master:baseline",
+            ),
+            (
+                "nethermind@registry.example/master:baseline reth@registry.example/reth:latest",
+                "registry.example/master:baseline",
+            ),
+            (
+                "reth@registry.example/reth:first reth@registry.example/reth:second",
+                "registry.example/reth:first",
+            ),
+        )
+        for clients, expected_image in cases:
+            with self.subTest(clients=clients):
+                result, outputs = self.resolve(
+                    IN_TOOL="jsonbench-sweep",
+                    IN_ARCH="arm64",
+                    IN_TOOL_CONFIG=json.dumps({"clients": clients}),
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["image_mode"], "provided")
+                self.assertEqual(outputs["image_ref"], expected_image)
+                self.assertEqual(outputs["baseline_image"], "cache")
+                tool_config = re.search(r"^tool_config: (\{.*\})$", result.stdout, re.M)
+                self.assertIsNotNone(tool_config)
+                self.assertEqual(json.loads(tool_config.group(1))["clients"], clients)
+
+        mixed_clients = " \t nethermind@registry.example/master:baseline nethermind"
+        mixed, _ = self.resolve(
+            IN_TOOL="jsonbench-sweep",
+            IN_ARCH="arm64",
+            IN_TOOL_CONFIG=json.dumps({"clients": mixed_clients}),
+        )
+        self.assertNotEqual(mixed.returncode, 0, f"{mixed.stdout}\n{mixed.stderr}")
+        self.assertIn("does not build images", mixed.stdout)
+
+        malformed, _ = self.resolve(
+            IN_TOOL="jsonbench-sweep",
+            IN_ARCH="arm64",
+            IN_TOOL_CONFIG='{"clients":["nethermind@registry.example/a","nethermind@registry.example/b"]}',
+        )
+        self.assertEqual(malformed.returncode, 1, f"{malformed.stdout}\n{malformed.stderr}")
+        self.assertIn("tool_config.clients must be a string", malformed.stdout)
+
+    def test_response_limit_is_validated_and_exported_to_both_corpus_paths(self) -> None:
+        jsonbench = {"IN_TOOL": "jsonbench", "IN_CLIENT": "nethermind"}
+        result, _ = self.resolve(**jsonbench, IN_TOOL_CONFIG='{"max_response_bytes":123456}')
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        result, _ = self.resolve(
+            **jsonbench,
+            IN_DEBUG_TRACE_CALL_CORPUS="true",
+            IN_TOOL_CONFIG='{"eth_call_corpus":true,"trace_call_tracer":"stateGasTracer"}',
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+
+        # A corpus run serves only the module its method lives in, so the replay cannot reach a
+        # method the dispatch did not ask for - and the narrowing must still follow the method.
+        for inputs, expected in (
+            ({"IN_DEBUG_TRACE_CALL_CORPUS": "true"}, "Eth,Debug"),
+            ({"IN_TRACE_CALL_CORPUS": "true"}, "Eth,Trace"),
+            ({}, "Eth"),
+        ):
+            with self.subTest(modules=expected):
+                result, outputs = self.resolve(
+                    **jsonbench, **inputs, IN_TOOL_CONFIG='{"eth_call_corpus":true}'
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["jsonrpc_modules"], expected)
+        result, outputs = self.resolve(
+            **jsonbench,
+            IN_NODE_CONFIG='{"jsonrpc_modules":"Eth,Trace"}',
+            IN_DEBUG_TRACE_CALL_CORPUS="true",
+            IN_TOOL_CONFIG='{"eth_call_corpus":true}',
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(outputs["jsonrpc_modules"], "Eth,Trace")
+
+        for value in (0, -1, 1.5, '"123"'):
+            with self.subTest(value=value):
+                result, _ = self.resolve(**jsonbench, IN_TOOL_CONFIG=f'{{"max_response_bytes":{value}}}')
+                self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
+                self.assertIn("max_response_bytes must be a positive JSON integer", result.stdout)
+
+        workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("callTracer|prestateTracer|4byteTracer|stateGasTracer|\"\"", resolve_script(workflow))
+        # Every path that replays the corpus has to accept the same responses; the sweep and the
+        # measured cell export it through their tool_config tables, the warm-up on its own line.
+        for step_name in ("Warm up node", "Run json-bench benchmark", "Run RPC sweep"):
+            self.assertIn(
+                "RPC_BENCH_MAX_RESPONSE_BYTES",
+                workflow_named_step_body(workflow, "benchmark", step_name),
+            )
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the parity gate")
+    def test_trace_parity_gate_rejects_every_replay_defect(self) -> None:
+        # A replay that could not produce a trustworthy answer is not "no divergence found": a trace
+        # response that never arrived, was invalid, or was an RPC error has to count as a defect.
+        sweep = (ROOT / "scripts" / "rpc-bench" / "run-rpc-sweep.sh").read_text(encoding="utf-8")
+        match = re.search(r"(?ms)^parity_compare\(\) \{.*?^\}$", sweep)
+        self.assertIsNotNone(match, "could not extract the checked-in parity gate")
+        self.write_executable(
+            "python3",
+            """#!/usr/bin/env bash
+set -euo pipefail
+report=''
+for ((i = 1; i <= $#; i++)); do
+  if [[ "${!i}" == "--report" ]]; then
+    j=$((i + 1)); report="${!j}"
+  fi
+done
+[[ -z "${report}" || -z "${FAKE_REPORT}" ]] || printf '%s' "${FAKE_REPORT}" > "${report}"
+exit "${FAKE_EXIT}"
+""",
+        )
+        script = self.write_executable(
+            "parity-gate.sh",
+            """#!/usr/bin/env bash
+set -uo pipefail
+here=/unused
+RPC=http://localhost:8545
+OUT_DIR="$1"
+CORPUS_PARITY_DIFFS=false
+PARITY_ROWS=()
+parity_fail=0
+parity_skipped=0
+__PARITY_FUNCTION__
+mkdir -p "$OUT_DIR"
+parity_compare corpus candidate corpus-file state base "${SAVED_MARKER}"
+printf 'parity_fail=%s parity_skipped=%s rows=%s\\n' "$parity_fail" "$parity_skipped" "${#PARITY_ROWS[@]}"
+""".replace("__PARITY_FUNCTION__", match.group(0).rstrip()),
+        )
+
+        clean = '{"candidate_transport_failures":0,"candidate_invalid_responses":0,"candidate_rpc_errors":0}'
+        transport = '{"candidate_transport_failures":1,"candidate_invalid_responses":0,"candidate_rpc_errors":0}'
+        cases = (
+            ("divergence", clean, "1", "", "parity_fail=1 parity_skipped=0 rows=1"),
+            ("transport failure", transport, "1", "", "parity_fail=1 parity_skipped=0 rows=1"),
+            ("unparseable report", '{"candidate_transport_failures":0}', "1", "", "parity_fail=1 parity_skipped=0 rows=1"),
+            ("no report written", "", "1", "", "parity_fail=1 parity_skipped=0 rows=0"),
+            # Exit 2 is "the comparison could not run". Against a live baseline that is a defect;
+            # against a saved one it is reported separately, because only a moved snapshot calls
+            # for re-recording and neither must be silently read as parity.
+            ("replay could not run", clean, "2", "", "parity_fail=1 parity_skipped=0"),
+            ("saved baseline unusable", clean, "2", "saved", "parity_fail=0 parity_skipped=1 rows=0"),
+            ("clean", clean, "0", "", "parity_fail=0 parity_skipped=0 rows=1"),
+        )
+        for label, report, status, saved, expected in cases:
+            with self.subTest(case=label):
+                result = subprocess.run(
+                    [BASH, str(script), str(self.directory / label.replace(" ", "-"))],
+                    check=False,
+                    text=True,
+                    capture_output=True,
+                    env={
+                        **os.environ,
+                        "PATH": f"{self.directory}{os.pathsep}{os.environ.get('PATH', '')}",
+                        "FAKE_EXIT": status,
+                        "FAKE_REPORT": report,
+                        "SAVED_MARKER": saved,
+                    },
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertIn(expected, result.stdout)
 
     def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")
@@ -1166,7 +1416,7 @@ esac
         ]
         positions = [job.index(step) for step in order]
         self.assertEqual(positions, sorted(positions))
-        dotnet_trace_gate = "always() && needs.resolve.outputs.dotnet_trace == 'true'"
+        dotnet_trace_gate = "always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_trace == 'true'"
         for step_name in ("Collect dotnet-trace", "Upload dotnet-trace"):
             self.assertEqual(workflow_named_step_if(rpc_workflow, "benchmark", step_name), dotnet_trace_gate)
         self.assertIn("name: dotnet-trace-rpcbench", workflow_named_step_body(rpc_workflow, "benchmark", "Upload dotnet-trace"))
@@ -1188,19 +1438,12 @@ esac
         self.assertEqual(expb_workflow.count('artifact_prefix="dottrace"'), 2)
         self.assertEqual(expb_workflow.count('artifact_prefix="profiling"'), 2)
         self.assertIn("pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}", expb_workflow)
-        self.assertEqual(
-            expb_workflow.count(
-                "# Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard."
-            ),
-            2,
-        )
         for job_name in ("benchmark", "benchmark-multi"):
             job_body = workflow_job_body(expb_workflow, job_name)
             self.assertIn(
-                'if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then',
+                'capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"',
                 job_body,
             )
-            self.assertIn('expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)"', job_body)
         self.assertIn("bash scripts/validate-folded-profile.sh", rpc_workflow)
         self.assertIn("zip -9r \"${ARCHIVE}\" perf -x '*/perf.data'", rpc_workflow)
         self.assertIn("require_perf_access", rpc_workflow)
@@ -1214,8 +1457,8 @@ esac
             start_node.index('mkdir -p "$STATE_DIR"'),
         )
         self.assertIn(
-            "# 6) Start the profilers once the node serves RPC, so they exclude startup. With a warm-up the\n"
-            "#    workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.",
+            "# Start the profilers once the node serves RPC, so they exclude startup. With a warm-up the\n"
+            "# workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.",
             start_node,
         )
         self.assertNotIn("itself rather than startup and warm-up", start_node)
@@ -1278,7 +1521,7 @@ esac
             RPC_LIB.read_text(encoding="utf-8"),
         )
 
-        # Pinned collector: the rig pins expb and json-bench for the same reason.
+        # Pinned collector: the rig pins json-bench to keep profiling reproducible.
         start_node = START_NODE.read_text(encoding="utf-8")
         self.assertRegex(start_node, r'DOTNET_TRACE_VERSION="\$\{DOTNET_TRACE_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"')
         self.assertEqual(start_node.count('dotnet tool install --version "$DOTNET_TRACE_VERSION"'), 2)
@@ -1298,6 +1541,14 @@ esac
                 f"{job_name} must archive dotTrace/EventPipe data before failing invalid perf output",
             )
             self.assertIn("exit 1", collector[collector.index(deferred_failure) :])
+
+    def test_campaign_fail_fast_is_scoped_to_an_explicit_image_comparison(self) -> None:
+        # Retrospective sweeps bisect across many master builds, where the images that did run stay
+        # useful; an explicit `docker_images` A/B is invalid the moment one arm fails.
+        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
+        campaign = workflow_named_step_body(expb_workflow, "benchmark-multi", "Run sequential EXPB campaign")
+        self.assertIn("CAMPAIGN_FAIL_FAST: ${{ needs.resolve.outputs.docker_images != '' }}", campaign)
+        self.assertIn('fail_fast = get("CAMPAIGN_FAIL_FAST", "true") != "false"', SEQUENTIAL_DRIVER.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

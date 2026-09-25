@@ -21,13 +21,10 @@ namespace Nethermind.Serialization.Rlp
         {
             int headerLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
 
-            (int txs, int uncles, int? withdrawals) = _blockBodyDecoder.GetBodyComponentLength(item.Body);
-
             byte[][]? encodedTxs = item.EncodedTransactions;
-            if (encodedTxs is not null)
-            {
-                txs = GetPreEncodedTxLength(item.Transactions, encodedTxs);
-            }
+            (int txs, int uncles, int? withdrawals) = encodedTxs is null
+                ? _blockBodyDecoder.GetBodyComponentLength(item.Body)
+                : _blockBodyDecoder.GetBodyComponentLength(item.Body, GetPreEncodedTxLength(item.Transactions, encodedTxs));
 
             int contentLength =
                 headerLength +
@@ -66,7 +63,8 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.Position = position;
 
             BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
-            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
+            // Blocks retain transactions without the return path provided by OwnedBlockBodies.Dispose.
+            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck, usePooledTransactions: false);
 
             Block block = new(header, body)
             {

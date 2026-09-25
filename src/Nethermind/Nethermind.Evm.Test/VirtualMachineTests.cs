@@ -81,6 +81,21 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
     }
 
+    /// <summary>Asserts that the per-test <see cref="VirtualMachineTestsBase.Setup"/> resets the fork activation that a previous test leaked into it.</summary>
+    /// <remarks>The fixture lifecycle is driven by hand because NUnit gives no ordering contract between tests, so the leak can only be observed deterministically within a single test.</remarks>
+    [Test]
+    public void Setup_restores_default_activation_between_tests()
+    {
+        Execute(MainnetSpecProvider.CancunActivation, (byte)Instruction.STOP);
+        Assert.That(Activation, Is.EqualTo(MainnetSpecProvider.CancunActivation));
+
+        TearDown();
+        Setup();
+
+        Assert.That(Activation, Is.EqualTo(new ForkActivation(DefaultBlockNumber, DefaultTimestamp)));
+        AssertExpZeroTo160();
+    }
+
     [Test]
     public void Opcode_refresh_recaptures_frame_handlers()
     {
@@ -923,7 +938,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 
@@ -942,7 +957,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 1 }), "storage");
+            AssertStorage(UInt256.Zero, UInt256.One);
         }
     }
 
@@ -961,7 +976,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 1 }), "storage");
+            AssertStorage(UInt256.Zero, UInt256.One);
         }
     }
 
@@ -1080,7 +1095,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet + GasCostOf.Exp + GasCostOf.ExpByteEip160), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Pow(2, 160).ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, BigInteger.Pow(2, 160));
         }
     }
 
@@ -1099,12 +1114,14 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.One.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.One);
         }
     }
 
     [Test]
-    public void Exp_0_160()
+    public void Exp_0_160() => AssertExpZeroTo160();
+
+    private void AssertExpZeroTo160()
     {
         TestAllTracerWithOutput receipt = Execute(
             (byte)Instruction.PUSH1,
@@ -1118,7 +1135,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 
@@ -1137,7 +1154,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.One.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.One);
         }
     }
 
@@ -1156,7 +1173,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 
@@ -1173,7 +1190,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo((BigInteger.Pow(2, 256) - 1).ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.MaxValue);
         }
     }
 
@@ -1192,7 +1209,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 
@@ -1208,7 +1225,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset), "gas");
-            Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+            AssertStorage(UInt256.Zero, UInt256.Zero);
         }
     }
 
@@ -1394,11 +1411,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0123456789abcdef")).SetName("Multi_word_output"),
     ];
 
-    // Regression cover for the returndata copy-elision in the transaction processor: the bytes handed to the
-    // receipt tracer must equal the top-level RETURN / REVERT / precompile output, whether the backing array is
-    // forwarded directly or copied.
     [TestCaseSource(nameof(TopLevelOutputCases))]
-    public void Return_output_reaches_receipt_tracer_verbatim(byte[] data)
+    public void Return_output_reaches_receipt_and_action_tracers_verbatim(byte[] data)
     {
         byte[] code = Prepare.EvmCode
             .StoreDataInMemory(0, data)
@@ -1411,11 +1425,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.EqualTo(data));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { data }));
         }
     }
 
     [TestCaseSource(nameof(TopLevelOutputCases))]
-    public void Revert_output_reaches_receipt_tracer_verbatim(byte[] data)
+    public void Revert_output_reaches_receipt_and_action_tracers_verbatim(byte[] data)
     {
         byte[] code = Prepare.EvmCode
             .StoreDataInMemory(0, data)
@@ -1428,11 +1443,13 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
             Assert.That(receipt.ReturnValue, Is.EqualTo(data));
+            Assert.That(receipt.ActionOutputs, Is.Empty);
+            Assert.That(receipt.ActionRevertOutputs, Is.EqualTo(new[] { data }));
         }
     }
 
     [Test]
-    public void Empty_return_yields_empty_receipt_output()
+    public void Empty_return_yields_empty_receipt_and_action_output()
     {
         TestAllTracerWithOutput receipt = Execute(Prepare.EvmCode.Return(0, 0).Done);
 
@@ -1440,15 +1457,15 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.Empty);
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { Array.Empty<byte>() }));
         }
     }
 
     // Top-level call straight to a precompile exercises the precompile output path, where the backing array may be
     // a whole array that is forwarded without copying.
-    [Test]
-    public void Top_level_precompile_output_reaches_receipt_tracer_verbatim()
+    [TestCaseSource(nameof(TopLevelOutputCases))]
+    public void Top_level_precompile_output_reaches_receipt_and_action_tracers_verbatim(byte[] input)
     {
-        byte[] input = Bytes.FromHexString("0x00112233445566778899aabbccddeeff");
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         Transaction tx = Build.A.Transaction
             .WithTo(IdentityPrecompile.Address)
@@ -1463,6 +1480,91 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.EqualTo(input));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { input }));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> TopLevelEndingsAfterNestedCall()
+    {
+        byte[] topLevelOutput = Bytes.FromHexString("0xaabbccddeeff");
+        yield return new TestCaseData(
+                Prepare.EvmCode.StoreDataInMemory(64, topLevelOutput).Return(topLevelOutput.Length, 64).Done, topLevelOutput)
+            .SetArgDisplayNames("Return_own_output");
+        yield return new TestCaseData(Prepare.EvmCode.Op(Instruction.STOP).Done, Array.Empty<byte>())
+            .SetArgDisplayNames("Stop");
+    }
+
+    [TestCaseSource(nameof(TopLevelEndingsAfterNestedCall))]
+    public void Nested_precompile_and_top_level_outputs_remain_frame_local(byte[] topLevelEnding, byte[] topLevelOutput)
+    {
+        byte[] nestedOutput = Bytes.FromHexString("0x1122334455667788");
+        byte[] code = Prepare.EvmCode
+            .CallWithInput(IdentityPrecompile.Address, 50_000, nestedOutput)
+            .Data(topLevelEnding)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ReturnValue, Is.EqualTo(topLevelOutput));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { nestedOutput, topLevelOutput }));
+        }
+    }
+
+    [TestCaseSource(nameof(TopLevelEndingsAfterNestedCall))]
+    public void Reverted_child_output_is_not_reported_as_top_level_output(byte[] topLevelEnding, byte[] topLevelOutput)
+    {
+        byte[] revertData = Bytes.FromHexString("0x1122334455667788");
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.StoreDataInMemory(0, revertData).Revert(revertData.Length, 0).Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50_000)
+            .Data(topLevelEnding)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ReturnValue, Is.EqualTo(topLevelOutput));
+            Assert.That(receipt.ActionRevertOutputs, Is.EqualTo(new[] { revertData }));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { topLevelOutput }));
+        }
+    }
+
+    // A create frame ends through the deployment overload, so its action output is the deployed code, not RETURN data.
+    [Test]
+    public void Create_frame_reports_deployed_code_as_action_output()
+    {
+        byte[] deployedCode = Bytes.FromHexString("0x600060005500");
+        byte[] code = Prepare.EvmCode
+            .Create(Prepare.EvmCode.ForInitOf(deployedCode).Done, 0)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { deployedCode, Array.Empty<byte>() }));
+        }
+    }
+
+    [Test]
+    public void Exceptional_halt_does_not_report_action_output()
+    {
+        TestAllTracerWithOutput receipt = Execute((byte)Instruction.ADD);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipt.ReturnValue, Is.Empty);
+            Assert.That(receipt.ActionOutputs, Is.Empty);
+            Assert.That(receipt.ActionRevertOutputs, Is.Empty);
+            Assert.That(receipt.ReportedActionErrors, Is.EqualTo([EvmExceptionType.StackUnderflow]));
         }
     }
 }

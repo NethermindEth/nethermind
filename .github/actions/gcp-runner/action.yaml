@@ -63,6 +63,14 @@ inputs:
   zones:
     description: Comma-separated zones, tried in order on capacity errors.
     required: true
+  zone_order:
+    description: >-
+      `listed` keeps the zones in the order given. `rotate` groups them by region and rotates
+      both orders by a hash of the instance name, so concurrent creates spread across regions
+      instead of all contending for the first zone. Timing-sensitive callers must keep
+      `listed`, otherwise the region varies from run to run.
+    required: false
+    default: listed
   project_id:
     description: GCP project id.
     required: true
@@ -125,6 +133,9 @@ outputs:
   preempted:
     description: Whether the VM was reclaimed by GCE rather than deleted by this action.
     value: ${{ steps.destroy.outputs.preempted }}
+  preempted_at:
+    description: Epoch seconds of the reclaim, or 0 when it could not be determined.
+    value: ${{ steps.destroy.outputs.preempted_at }}
   terminated_by:
     description: >-
       One of deleted-by-action, already-deleted, deleted-concurrently, preempted,
@@ -136,14 +147,14 @@ runs:
   steps:
     - name: Authenticate to GCP
       if: inputs.skip_auth != 'true'
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@v3
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
         service_account: ${{ inputs.spawner_service_account }}
 
     - name: Set up gcloud
       if: inputs.skip_auth != 'true'
-      uses: google-github-actions/setup-gcloud@v2
+      uses: google-github-actions/setup-gcloud@v3
 
     - name: Create runner
       id: create
@@ -165,6 +176,7 @@ runs:
         BOOT_TIMEOUT: ${{ inputs.boot_timeout }}
         DATA_MOUNT: ${{ inputs.data_mount }}
         ZONES: ${{ inputs.zones }}
+        ZONE_ORDER: ${{ inputs.zone_order }}
         PROJECT_ID: ${{ inputs.project_id }}
         RUNNER_SERVICE_ACCOUNT: ${{ inputs.runner_service_account }}
         NETWORK: ${{ inputs.network }}

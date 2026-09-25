@@ -7,12 +7,13 @@ using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider)
+internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState)
 {
     // Conservative lower bound for an encoded transaction's size.
     private const int MinTransactionSizeBytes = 32;
@@ -29,8 +30,8 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     }
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
-    /// <remarks>Restricted to each sender's appendable run from its next nonce, since nothing else could be
-    /// appended. Drawn uniformly, not by fee: a fee-ordered draw drops what a builder passes over.
+    /// <remarks>Restricted to each sender's appendable run, since nothing else could be appended. Drawn
+    /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over.
     /// Not gated on pool revalidation: the ready-tx snapshot applies no per-transaction spec check, so around a
     /// fork the draw can include entries the new spec rejects — either because the pool's background revalidation
     /// is still catching up, or because the target block is the activation slot itself, whose spec is not
@@ -41,78 +42,121 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
         Random rnd = Random.Shared;
         UInt256 baseFee = NextBlockBaseFee(parent);
 
-        using ArrayPoolListRef<Transaction[]> senders = new(capacity);
+        // Reservoir over senders rather than over their runs, so the pool's size costs no allocation and no
+        // state read: only the drawn senders below pay for one.
+        using ArrayPoolListRef<Transaction[]> drawn = new(capacity);
         int seen = 0;
         // Blob txs cannot appear here: TxPool routes them to a separate pool this snapshot does not read.
-        foreach (Transaction[] bySender in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee).Values)
+        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee).Values)
         {
-            if (senders.Count < capacity)
+            if (drawn.Count < capacity)
             {
-                senders.Add(bySender);
+                drawn.Add(pending);
             }
             else
             {
                 int j = rnd.Next(seen + 1);
-                if (j < capacity) senders[j] = bySender;
+                if (j < capacity) drawn[j] = pending;
             }
             seen++;
         }
 
         // The byte-cap loop below treats position as priority, so shuffle: membership alone isn't enough.
-        for (int i = senders.Count - 1; i > 0; i--)
+        for (int i = drawn.Count - 1; i > 0; i--)
         {
             int j = rnd.Next(i + 1);
-            (senders[i], senders[j]) = (senders[j], senders[i]);
+            (drawn[i], drawn[j]) = (drawn[j], drawn[i]);
         }
 
-        using ArrayPoolListRef<int> runLengths = new(capacity);
-        foreach (Transaction[] bySender in senders) runLengths.Add(AppendableRunLength(bySender, in baseFee));
-
-        // Take one nonce per sender per round rather than draining each run in turn, so a single account
-        // with a long ready run cannot spend the byte cap before the other drawn senders are represented.
-        ArrayPoolListRef<Transaction> sample = new(capacity);
-        for (int round = 0; ; round++)
+        // Runs are held as ranges: one over the sender's own bucket where nothing had to be filtered out,
+        // and otherwise over a single shared buffer the filtered entries are appended to.
+        ArrayPoolListRef<Transaction> filtered = new(capacity);
+        try
         {
-            bool advanced = false;
-            for (int i = 0; i < senders.Count; i++)
+            using ArrayPoolListRef<Run> runs = new(capacity);
+            foreach (Transaction[] pending in drawn)
             {
-                if (round >= runLengths[i]) continue;
-
-                sample.Add(senders[i][round]);
-                advanced = true;
-                if (sample.Count == capacity) return sample;
+                Run run = AppendableRun(pending, in baseFee, ref filtered);
+                if (run.Length > 0) runs.Add(run);
             }
-            if (!advanced) return sample;
+
+            // Take one nonce per sender per round rather than draining each run in turn, so a single account
+            // with a long ready run cannot spend the byte cap before the other drawn senders are represented.
+            ArrayPoolListRef<Transaction> sample = new(capacity);
+            for (int round = 0; ; round++)
+            {
+                bool advanced = false;
+                foreach (Run run in runs)
+                {
+                    if (round >= run.Length) continue;
+
+                    sample.Add(run.Bucket is null ? filtered[run.Start + round] : run.Bucket[run.Start + round]);
+                    advanced = true;
+                    if (sample.Count == capacity) return sample;
+                }
+                if (!advanced) return sample;
+            }
+        }
+        finally
+        {
+            // A ref struct cannot be a using variable and a ref argument both.
+            filtered.Dispose();
         }
     }
 
-    /// <summary>How many leading transactions of <paramref name="bySender"/> the next block could append.</summary>
-    /// <remarks>Buckets are nonce-ordered, so a broken offset can never realign: nothing behind a nonce gap is
-    /// appendable, and nothing behind an entry the next block would price out is worth the byte cap either.
-    /// The pool vouches for the first entry alone, so both are re-checked from there.
-    /// Deliberately doesn't check gas limit or spendable balance like <see cref="Nethermind.Consensus.Validators.InclusionListValidator"/>
-    /// does: the pool already evicts a run past the nonce its sender cannot fund (<c>BalanceTooLowFilter</c> plus the
-    /// cumulative-cost eviction in <c>UpdateGasBottleneckAndMarkForEviction</c>), and the validator's gas-limit check is
-    /// against the built block's remaining gas, which is not knowable here.</remarks>
-    private static int AppendableRunLength(Transaction[] bySender, in UInt256 baseFee)
-    {
-        // GetBucketSnapshot only prunes empty buckets when a predicate is supplied (SortedPool.cs); ITxPool's
-        // contract doesn't guarantee it otherwise, so guard rather than rely on the current caller's filter.
-        if (bySender.Length == 0) return 0;
+    /// <summary>A sender's appendable run, as a range over its bucket or over the shared filtered buffer.</summary>
+    private readonly record struct Run(Transaction[]? Bucket, int Start, int Length);
 
-        ulong anchor = bySender[0].Nonce;
+    /// <summary>The transactions of <paramref name="pending"/> the next block could append, in order.</summary>
+    /// <remarks>The pool vouches only that some bucket entry is ready, so the run is rebuilt here against the
+    /// account: frame transactions removed, spent nonces skipped, anchored at the account's next nonce, cut at the
+    /// first nonce gap or unpayable base fee.</remarks>
+    /// <param name="filtered">Buffer a run that had frame transactions removed is appended to.</param>
+    private Run AppendableRun(Transaction[] pending, in UInt256 baseFee, ref ArrayPoolListRef<Transaction> filtered)
+    {
+        int filteredStart = filtered.Count;
+        ReadOnlySpan<Transaction> bySender = WithoutFrameTxs(pending, ref filtered);
+        if (bySender.Length == 0) return default;
+        // A filtered run is held as indices, not as the span: a later sender's appends may move the buffer.
+        Transaction[]? bucket = bySender.Length == pending.Length ? pending : null;
+
+        ulong anchor = headState.GetNonce(bySender[0].SenderAddress!);
+        int start = 0;
+        // The pool reads an entry under the account nonce as spent rather than blocking, so one can head the
+        // bucket while a later entry is what got it admitted.
+        while (start < bySender.Length && bySender[start].Nonce < anchor) start++;
+        if (start == bySender.Length || bySender[start].Nonce != anchor) return default;
+
         int length = 0;
-        // The caller only ever consults round < SenderSampleCapacity, so a run longer than that is
-        // indistinguishable from one capped here — scanning further would just waste work.
-        int limit = Math.Min(bySender.Length, SenderSampleCapacity);
-        while (length < limit
-            && bySender[length].Nonce == anchor + (ulong)length
-            && bySender[length].CanPayBaseFee(baseFee))
+        // Buckets are nonce-ordered, so a broken offset can never realign: nothing behind a gap is appendable,
+        // and nothing behind an entry the next block would price out is worth the byte cap either.
+        while (start + length < bySender.Length
+            && bySender[start + length].Nonce == anchor + (ulong)length
+            && bySender[start + length].CanPayBaseFee(baseFee))
         {
             length++;
         }
 
-        return length;
+        return new Run(bucket, bucket is null ? filteredStart + start : start, length);
+    }
+
+    /// <summary>The sender's pending run with its EIP-8141 frame transactions removed.</summary>
+    /// <remarks>
+    /// Listing one spends the byte cap without buying censorship resistance, and its EIP-8250 keyed nonce
+    /// shares <see cref="Transaction.Nonce"/> while counting per key, breaking the offsets behind it.
+    /// A bucket holding none is returned as a span over itself, so only a bucket that holds one is copied.
+    /// </remarks>
+    private static ReadOnlySpan<Transaction> WithoutFrameTxs(Transaction[] bySender, ref ArrayPoolListRef<Transaction> filtered)
+    {
+        int kept = 0;
+        foreach (Transaction tx in bySender)
+            if (!tx.SupportsFrames) kept++;
+        if (kept == bySender.Length) return bySender;
+
+        int start = filtered.Count;
+        foreach (Transaction tx in bySender)
+            if (!tx.SupportsFrames) filtered.Add(tx);
+        return filtered.AsSpan().Slice(start, kept);
     }
 
     /// <summary>The base fee the next block will charge.</summary>
