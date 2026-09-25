@@ -181,6 +181,17 @@ public class EvmAdmissionGateTests
     }
 
     [Test]
+    public async Task Waiter_leaves_the_queue_when_its_wait_fails_unexpectedly()
+    {
+        EvmAdmissionGate gate = CreateGate(new ManualClock { TimerFailure = new InvalidOperationException() });
+        Lease held = await Admit(gate);
+
+        Assert.That(async () => await Admit(gate), Throws.InvalidOperationException);
+        held.Dispose();
+        Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((0, 0)), "no slot is granted to a waiter nobody awaits");
+    }
+
+    [Test]
     public async Task Slot_granted_before_a_cancellation_is_observed_is_returned_not_lost()
     {
         EvmAdmissionGate gate = CreateGate();
@@ -213,12 +224,16 @@ public class EvmAdmissionGateTests
         private readonly List<ManualTimer> _timers = [];
         private long _ticks;
 
+        /// <summary>When set, <see cref="CreateTimer"/> throws it.</summary>
+        public Exception? TimerFailure { get; init; }
+
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
         public override long GetTimestamp() => Volatile.Read(ref _ticks);
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
+            if (TimerFailure is not null) throw TimerFailure;
             ManualTimer timer = new(this, callback, state);
             timer.Change(dueTime, period);
             lock (_timers) _timers.Add(timer);

@@ -103,12 +103,12 @@ internal sealed class EvmAdmissionGate
         {
             lease = await waiter.Task.WaitAsync(_budget, _timeProvider, cancellationToken);
         }
-        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
+        catch (Exception ex)
         {
             if (TryRemove(waiter, timedOut: ex is TimeoutException))
             {
-                if (ex is OperationCanceledException) throw;
-                throw new LimitExceededException(WaitTimeoutMessage);
+                if (ex is TimeoutException) throw new LimitExceededException(WaitTimeoutMessage);
+                throw;
             }
 
             // Release dequeued the waiter first, so its decision stands.
