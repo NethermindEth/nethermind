@@ -31,7 +31,7 @@ public static class StatelessExecutor
         }
         catch (Exception ex)
         {
-            Debug.Fail(ex.Message);
+            Debug.WriteLine(ex.Message);
             return output;
         }
 
@@ -56,7 +56,8 @@ public static class StatelessExecutor
             Transaction[] transactions = block.Transactions;
 
             if (transactions.Length == publicKeys.Length &&
-                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span))
+                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span) &&
+                HeaderValidator.ValidateHash(block.Header))
             {
                 ISpecProvider specProvider = payload.SpecProvider;
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
@@ -64,17 +65,18 @@ public static class StatelessExecutor
                 if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
                     KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
-                for (int i = 0; i < transactions.Length; i++)
-                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].AsSpan()[1..]);
+                if (TryAssignSenders(transactions, publicKeys, specProvider, spec))
+                {
+                    using Witness witness = payload.Witness.ToWitness();
 
-                using Witness witness = payload.Witness.ToWitness();
-
-                success = Execute(block, witness, specProvider);
+                    // Reconstruction derives body roots; the hash check above binds them to the declared block hash.
+                    success = Execute(block, witness, specProvider, validateHashes: false);
+                }
             }
         }
         catch (Exception ex)
         {
-            Debug.Fail(ex.Message);
+            Debug.WriteLine(ex.Message);
         }
 
         if (success)
@@ -87,6 +89,9 @@ public static class StatelessExecutor
     }
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
+        => Execute(suggestedBlock, witness, specProvider, validateHashes: true);
+
+    private static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider, bool validateHashes)
     {
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
         BlockHeader parentHeader;
@@ -99,7 +104,7 @@ public static class StatelessExecutor
         }
         else
         {
-            Debug.Fail("Witness is missing the parent header");
+            Debug.WriteLine("Witness is missing the parent header");
             return false;
         }
 
@@ -118,17 +123,22 @@ public static class StatelessExecutor
             NullLogManager.Instance
         );
 
-        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error))
+        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error, validateHashes))
         {
-            Debug.Fail(error);
+            Debug.WriteLine(error);
             return false;
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
 
-        using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
+        if (!blockProcessingEnv.WorldState.TryBeginScope(parentHeader, out IDisposable? scope))
+        {
+            Debug.WriteLine("The witness does not contain the parent state root.");
+            return false;
+        }
 
+        using IDisposable _ = scope;
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
         (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
@@ -139,7 +149,7 @@ public static class StatelessExecutor
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
-            Debug.Fail(error);
+            Debug.WriteLine(error);
             return false;
         }
 
@@ -158,6 +168,9 @@ public static class StatelessExecutor
     /// </remarks>
     public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
 
+    /// <summary>SEC1 tag for an uncompressed public key, the form the stateless input carries.</summary>
+    private const byte UncompressedPublicKeyPrefix = 0x04;
+
     private static readonly StatelessValidationResult _defaultFailureResult = new()
     {
         NewPayloadRequestRoot = Hash256.Zero,
@@ -165,6 +178,43 @@ public static class StatelessExecutor
         ChainId = 0,
         SchemaId = 0
     };
+
+    /// <summary>
+    /// Binds each supplied public key to the signature of the transaction at the same index and assigns the
+    /// recovered sender, returning whether every key matched.
+    /// </summary>
+    /// <remarks>
+    /// The keys are an input hint and are verified rather than trusted: comparing against the key the signature
+    /// recovers also pins the recovery id, since a signature's other recovery candidate verifies just as well on
+    /// its own and would name a different sender.
+    /// </remarks>
+    private static bool TryAssignSenders(
+        Transaction[] transactions, ReadOnlySpan<SszPublicKey> publicKeys, ISpecProvider specProvider, IReleaseSpec spec)
+    {
+        EthereumEcdsa ecdsa = new(specProvider.ChainId);
+
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Transaction transaction = transactions[i];
+
+            if (transaction.Signature is null)
+                return false;
+
+            PublicKey? recovered = ecdsa.RecoverPublicKey(transaction, !spec.ValidateChainId);
+            ReadOnlySpan<byte> declared = publicKeys[i].AsSpan();
+
+            if (recovered is null ||
+                declared[0] != UncompressedPublicKeyPrefix ||
+                !declared[1..].SequenceEqual(recovered.Bytes))
+            {
+                return false;
+            }
+
+            transaction.SenderAddress = recovered.Address;
+        }
+
+        return true;
+    }
 
     /// <summary>Returns whether <paramref name="transactions"/> commit to exactly <paramref name="expected"/>, in order.</summary>
     internal static bool BlobVersionedHashesMatch(Transaction[] transactions, ReadOnlySpan<Hash256> expected)

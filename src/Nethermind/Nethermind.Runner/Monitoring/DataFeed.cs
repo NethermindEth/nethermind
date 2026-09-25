@@ -67,7 +67,7 @@ public class DataFeed
         ArgumentNullException.ThrowIfNull(receiptFinder);
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(syncPeerPool);
-        ArgumentNullException.ThrowIfNull(mainProcessingContext?.BlockchainProcessor);
+        ArgumentNullException.ThrowIfNull(mainProcessingContext?.BlockProcessingQueue);
 
         _lifetime = lifetime;
         _txPool = txPool;
@@ -77,7 +77,7 @@ public class DataFeed
 
         _logger = logManager.GetClassLogger<DataFeed>();
 
-        mainProcessingContext.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
+        mainProcessingContext.BlockProcessingQueue.NewProcessingStatistics += OnNewProcessingStatistics;
         blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
         ConsoleHelpers.LineWritten += OnConsoleLineWritten;
         _ = StartTxFlowRefresh();
@@ -365,7 +365,9 @@ public class DataFeed
         // No subscribers, no need to prepare event data
         if (!HaveSubscribers(EntryType.forkChoice)) return;
 
-        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
+        // Swapped at raise time so subscribers see updates in raise order even when a slower preparation finishes later.
+        DataCompletion next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, next);
         Task.Run(() =>
         {
             try
@@ -375,6 +377,11 @@ public class DataFeed
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("UI Forkchoice data preparation failed", e);
+                // Subscribers awaiting this update get the next one that succeeds instead of waiting forever.
+                _ = next.Task.ContinueWith(
+                    static (completed, state) => ((DataCompletion)state!).TrySetResult(completed.Result),
+                    forkChoice,
+                    TaskContinuationOptions.OnlyOnRanToCompletion);
             }
         });
     }

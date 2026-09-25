@@ -671,11 +671,13 @@ class InputListTests(unittest.TestCase):
     REPOSITORY = Path(__file__).resolve().parents[2]
     GUEST_INPUTS = "src/Nethermind/Nethermind.Stateless.ZiskGuest/inputs.json"
 
+    WORKFLOW = REPOSITORY / ".github/workflows/stateless-tests.yml"
+
     def test_the_correctness_matrix_is_built_from_the_file(self):
-        workflow = (self.REPOSITORY / ".github/workflows/stateless-tests.yml").read_text(encoding="utf-8")
+        workflow = self.WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn(self.GUEST_INPUTS, workflow)
-        self.assertIn("include: ${{ fromJSON(needs.build.outputs.blocks) }}", workflow)
+        self.assertIn("block: ${{ fromJSON(needs.blocks.outputs.blocks) }}", workflow)
         self.assertNotIn("- input:", workflow, "the matrix restates the block set instead of reading it")
 
     def test_the_pinned_set_has_the_shape_both_workflows_expect(self):
@@ -686,6 +688,22 @@ class InputListTests(unittest.TestCase):
             self.assertRegex(entry["input"], r"^[0-9]+\.ssz$")
             self.assertRegex(entry["hash"], r"^[0-9a-f]{64}$")
             self.assertRegex(entry["output"], r"^[0-9a-f]{64}$")
+            # What OpenVM proves: keccak256 of the result, checked against its public-values window.
+            self.assertRegex(entry["digest"], r"^[0-9a-f]{64}$")
+
+    @unittest.skipUnless(sys.platform == "linux" and shutil.which("jq"), "workflow shell and jq required")
+    def test_the_matrix_step_publishes_the_pinned_set(self):
+        # A step that rejects the file, or publishes something other than it, leaves the test job with
+        # no matrix at all, which reads as a workflow error rather than a failed block.
+        match = re.search(r"      - name: Read the pinned block set\n.*?        run: \|\n(.*?)(?=\n\n)",
+                          self.WORKFLOW.read_text(encoding="utf-8"), re.DOTALL)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "outputs"
+            subprocess.run(["bash", "-c", textwrap.dedent(match.group(1))], cwd=self.REPOSITORY,
+                           env=dict(os.environ, GITHUB_OUTPUT=str(output)), capture_output=True, text=True, check=True)
+            published = output.read_text(encoding="utf-8").removeprefix("json=")
+
+        self.assertEqual(json.loads(published), json.loads((self.REPOSITORY / self.GUEST_INPUTS).read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":

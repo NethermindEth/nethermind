@@ -148,10 +148,35 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.BASEFEE] = OpcodeHandler<BlkUInt256Opcode<EvmInstructions.OpBaseFee<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
         if (spec.IsEip4844Enabled)
             lookup[(int)Instruction.BLOBHASH] = OpcodeHandler<BlobHashOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        if (spec.IsEip8141Enabled)
+        {
+            // APPROVE ends the frame on every path, so it never continues the dispatch chain.
+            lookup[(int)Instruction.APPROVE] = TerminatingOpcodeHandler<ApproveOpcode, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.TXPARAM] = (spec.IsEip8250Enabled, spec.IsEip8272Enabled) switch
+            {
+                (true, true) => OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag, OnFlag>, TTracingInst, TCancelable>(),
+                (true, false) => OpcodeHandler<TxParamOpcode<TTracingInst, OnFlag, OffFlag>, TTracingInst, TCancelable>(),
+                (false, true) => OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag, OnFlag>, TTracingInst, TCancelable>(),
+                _ => OpcodeHandler<TxParamOpcode<TTracingInst, OffFlag, OffFlag>, TTracingInst, TCancelable>(),
+            };
+            lookup[(int)Instruction.FRAMEDATALOAD] = OpcodeHandler<FrameDataLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.FRAMEDATACOPY] = OpcodeHandler<FrameDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.FRAMEPARAM] = OpcodeHandler<FrameParamOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.SIGPARAM] = OpcodeHandler<SigParamOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.SIGDATACOPY] = OpcodeHandler<SigDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        }
+        if (spec.IsEip7906Enabled)
+        {
+            lookup[(int)Instruction.TXTRACE] = OpcodeHandler<TxTraceOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.TXDIFF] = OpcodeHandler<TxDiffOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.EVENTDATACOPY] = OpcodeHandler<EventDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        }
         if (spec.BlobBaseFeeEnabled)
             lookup[(int)Instruction.BLOBBASEFEE] = OpcodeHandler<BlobBaseFeeOpcode<TTracingInst>, TTracingInst, TCancelable>();
         if (spec.IsEip7843Enabled)
             lookup[(int)Instruction.SLOTNUM] = OpcodeHandler<SlotNumOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        if (spec.IsEip8141Enabled && spec.IsEip8272Enabled)
+            lookup[(int)Instruction.RECENTROOTREFLOAD] = OpcodeHandler<RecentRootRefLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.POP] = OpcodeHandler<PopOpcode, TTracingInst, TCancelable>();
         lookup[(int)Instruction.MLOAD] = OpcodeHandler<MLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
@@ -1012,6 +1037,86 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSlotNum<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct ApproveOpcode : IOpcodeBody
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionApprove(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct TxParamOpcode<TTracingInst, TEip8250, TEip8272> : IOpcodeBody
+        where TTracingInst : struct, IFlag
+        where TEip8250 : struct, IFlag
+        where TEip8272 : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct FrameDataLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionFrameDataLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct FrameDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionFrameDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct FrameParamOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionFrameParam<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct SigParamOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionSigParam<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct SigDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionSigDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct RecentRootRefLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct TxTraceOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionTxTrace<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct TxDiffOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionTxDiff<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct EventDataCopyOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionEventDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]

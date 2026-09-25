@@ -19,8 +19,11 @@ public interface IBlockCachePreWarmer : IDisposable
     /// <see cref="ClearCaches"/> is not called before execution, so declining to warm — for a block with too few
     /// transactions to be worth it, say — must not decline that decision.
     /// </remarks>
-    /// <returns>A task that completes when warming has finished; the caller awaits it before clearing the caches.</returns>
-    Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default);
+    /// <returns>
+    /// A session whose disposal cancels and drains warming, or <see langword="null"/> if no warming was started.
+    /// Dispose it before clearing caches, committing the state tree, or releasing the state scope.
+    /// </returns>
+    IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default);
 
     /// <summary>Ends a block's use of the block-processing caches once its warming has been joined.</summary>
     /// <remarks>
@@ -41,5 +44,5 @@ public interface IBlockCachePreWarmer : IDisposable
     /// Speculatively warms against <paramref name="head"/> from <paramref name="nextDelta"/> until cancelled or the next
     /// block enters processing; <paramref name="generation"/> drops the session if a newer head has already started one.
     /// </summary>
-    Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken);
+    Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken);
 }

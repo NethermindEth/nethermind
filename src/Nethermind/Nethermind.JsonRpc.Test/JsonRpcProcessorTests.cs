@@ -83,7 +83,9 @@ public class JsonRpcProcessorTests
     [TestCase(ErrorCodes.InvalidParams, false, TestName = "InvalidParams (-32602) is not WARN")]
     [TestCase(ErrorCodes.InternalError, true, TestName = "InternalError (-32603) keeps WARN")]
     [TestCase(ErrorCodes.Default, true, TestName = "Default (-32000) keeps WARN")]
-    [TestCase(ErrorCodes.LimitExceeded, true, TestName = "LimitExceeded (-32005) without suppression keeps WARN")]
+    [TestCase(ErrorCodes.ResourceUnavailable, false, TestName = "ResourceUnavailable (-32002) is not WARN")]
+    [TestCase(ErrorCodes.LimitExceeded, false, TestName = "LimitExceeded (-32005) without suppression is not WARN")]
+    [TestCase(ErrorCodes.PrunedHistoryUnavailable, false, TestName = "PrunedHistoryUnavailable (4444) is not WARN")]
     public async Task Error_response_log_level_follows_error_class(int errorCode, bool expectWarn)
     {
         IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse

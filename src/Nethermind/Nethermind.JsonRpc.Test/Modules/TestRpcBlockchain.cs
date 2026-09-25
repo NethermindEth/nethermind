@@ -70,6 +70,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
 
         public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }
+        public HeadBlockSignal HeadBlockSignal { get; private set; } = null!;
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType, long? testTimeout = null) => ForTest<TestRpcBlockchain>(sealEngineType, testTimeout);
 
         public static Builder<T> ForTest<T>(string sealEngineType, long? testTimeout = null) where T : TestRpcBlockchain, new() =>
@@ -195,13 +196,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.SpecProvider,
             @this.GasPriceOracle,
             new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
-            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
+            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.BlocksConfig.SecondsPerSlot,
-            new HeadBlockSignal(@this.BlockTree),
+            @this.HeadBlockSignal,
             new EthCapabilitiesProvider(
                 @this.BlockTree.AsReadOnly(),
                 @this.Container.Resolve<IStateBoundary>(),
@@ -245,6 +246,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance
             );
 
+            HeadBlockSignal = new HeadBlockSignal(BlockTree);
             EthRpcModule = _ethRpcModuleBuilder(this);
 
             return this;
@@ -253,7 +255,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
             RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
 
-        private IBlockchainProcessor? _currentBlockchainProcessor;
+        private IBlockProcessingQueue? _currentBlockchainProcessor;
 
         public async Task RestartBlockchainProcessor()
         {
@@ -263,13 +265,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
             else
             {
-                await BlockchainProcessor.StopAsync();
+                await BlockProcessingQueue.StopAsync();
             }
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
-            _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
+            BlockchainProcessor newProcessor = new(BlockTree, BranchProcessor,
                 SpecProvider, BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
-            _currentBlockchainProcessor.Start();
+            _currentBlockchainProcessor = newProcessor;
+            newProcessor.Start();
         }
     }
 }
