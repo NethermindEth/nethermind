@@ -96,13 +96,29 @@ public static partial class EvmInstructions
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
             goto StackUnderflow;
 
+        ulong traceInitialGas = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
         if (UInt256.AddOverflow(size, sourceOffset, out UInt256 result) || result > returnDataBuffer.Length)
+        {
+            if (TTracingInst.IsActive)
+            {
+                // Geth calculates memory expansion before checking return-data bounds.
+                EvmPooledMemory traceMemory = vm.VmState.Memory;
+                ulong memoryCost = traceMemory.CalculateMemoryCost(in destOffset, in size, out bool memoryOverflow);
+                ulong remainingGas = TGasPolicy.GetRemainingGas(in gas);
+                if (!memoryOverflow)
+                {
+                    vm.TraceOperationGasCost(traceInitialGas - remainingGas + memoryCost);
+                    if (memoryCost > remainingGas)
+                        vm.TraceActionErrorDetails("out of gas");
+                }
+            }
             goto AccessViolation;
+        }
 
         if (!size.IsZero)
         {

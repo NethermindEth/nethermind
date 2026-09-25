@@ -195,6 +195,90 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Static_storage_fault_keeps_dynamic_gas_error()
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("600160005500"), CancunSpec);
+        TestState.Commit(CancunSpec);
+        byte[] code = Prepare.EvmCode.StaticCall(TestItem.AddressC, 65535).Op(Instruction.STOP).Done;
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        GethTxTraceEntry storage = result.Entries[^2];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.Opcode, Is.EqualTo("SSTORE"));
+            Assert.That(storage.Error, Is.EqualTo("out of gas: write protection"));
+            Assert.That(storage.GasCost, Is.Zero);
+            Assert.That(result.Failed, Is.False);
+            Assert.That(result.Entries[^1].Opcode, Is.EqualTo("STOP"));
+        }
+    }
+
+    [TestCase("fe")]
+    [TestCase("600156")]
+    [TestCase("6001600060003e")]
+    public void File_logger_retains_execution_fault(string bytecode)
+    {
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, Bytes.FromHexString(bytecode));
+        string? lastError = null;
+        using GethLikeTxFileTracer tracer = new(entry => lastError = entry.Error, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        Assert.That(lastError, Is.Not.Null.And.Not.Empty);
+    }
+
+    private static System.Collections.Generic.IEnumerable<TestCaseData> NonGasOpcodeFaultCases()
+    {
+        yield return new("fe", 0UL, null, 100000UL);
+        yield return new("0c", 0UL, null, 100000UL);
+        yield return new("01", 3UL, "stack underflow (0 <=> 2)", 100000UL);
+        yield return new("600156", 8UL, null, 100000UL);
+        yield return new("6001600060003e", 9UL, null, 100000UL);
+        yield return new("60006000fd", 0UL, null, 100000UL);
+        yield return new("fe", 0UL, null, 21000UL);
+        yield return new("fe", 0UL, null, 21009UL);
+        yield return new("600101", 3UL, "stack underflow (1 <=> 2)", 100000UL);
+        yield return new("600160006110003e", 425UL, "out of gas", 21100UL);
+        yield return new("600160006110003e", 425UL, null, 22000UL);
+    }
+
+    [TestCaseSource(nameof(NonGasOpcodeFaultCases))]
+    public void Opcode_fault_matches_struct_logger_callback_phase(string bytecode, ulong cost, string? error, ulong gasLimit)
+    {
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.PragueActivation, gasLimit, Bytes.FromHexString(bytecode));
+        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Entries[^1].GasCost, Is.EqualTo(cost));
+            Assert.That(result.Entries[^1].Error, Is.EqualTo(error));
+            Assert.That(result.Failed, Is.True);
+        }
+
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            using GethLikeTxDirectStreamingTracer streamingTracer = new(tx, GethTraceOptions.Default, writer, null, CancellationToken.None);
+            writer.WriteStartArray();
+            _processor.CallAndRestore(tx, block.Header, new CompositeTxTracer(NullTxTracer.Instance, streamingTracer.WithCancellation(CancellationToken.None)));
+            using GethLikeTxTrace streamingResult = streamingTracer.BuildResult();
+            writer.WriteEndArray();
+            writer.Flush();
+        }
+        using JsonDocument streamed = JsonDocument.Parse(buffer.WrittenMemory);
+        JsonElement last = streamed.RootElement[streamed.RootElement.GetArrayLength() - 1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(last.GetProperty("gasCost").GetUInt64(), Is.EqualTo(cost), "streaming gas cost");
+            Assert.That(last.TryGetProperty("error", out JsonElement streamedError) ? streamedError.GetString() : null,
+                Is.EqualTo(error), "streaming error");
+        }
+    }
+
     private static System.Collections.Generic.IEnumerable<TestCaseData> StorageOpcodeCases()
     {
         foreach (TestCaseData scenario in StorageOpcodeScenarios())
