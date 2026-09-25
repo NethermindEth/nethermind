@@ -61,7 +61,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
         EvmExceptionType.BadInstruction => "BadInstruction",
         EvmExceptionType.StackOverflow => "StackOverflow",
         EvmExceptionType.StackUnderflow => "StackUnderflow",
-        EvmExceptionType.OutOfGas => "OutOfGas",
+        EvmExceptionType.OutOfGas => "out of gas",
         EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
         EvmExceptionType.AccessViolation => "AccessViolation",
         EvmExceptionType.StaticCallViolation => "StaticCallViolation",
@@ -108,7 +108,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
     public virtual GethLikeTxTrace BuildResult() => Trace;
 }
 
-public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund) where TEntry : GethTxTraceEntry, new()
+public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund), ITraceActionErrorDetails, ITraceOperationGasCost where TEntry : GethTxTraceEntry, new()
 {
     protected TEntry? CurrentTraceEntry { get; set; }
 
@@ -130,10 +130,27 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         _gasCostAlreadySetForCurrentOp = false;
     }
 
+    /// <inheritdoc/>
+    public void ReportOperationGasCost(ulong gasCost)
+    {
+        if (CurrentTraceEntry is not null)
+        {
+            CurrentTraceEntry.GasCost = gasCost;
+            _gasCostAlreadySetForCurrentOp = true;
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error)
+    {
+        if (CurrentTraceEntry is not null)
+            CurrentTraceEntry.Error = error;
+    }
+
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (CurrentTraceEntry is not null)
-            CurrentTraceEntry.Error = GetErrorDescription(error);
+            CurrentTraceEntry.Error ??= GetErrorDescription(error);
     }
 
     public override void ReportOperationRemainingGas(ulong gas)

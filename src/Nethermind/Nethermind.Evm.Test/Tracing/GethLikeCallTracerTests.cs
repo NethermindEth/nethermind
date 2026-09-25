@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -92,6 +94,142 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 Assert.That(root.GetProperty("calls")[0].GetProperty("logs")[0].GetProperty("index").GetString(), Is.EqualTo("0x1"));
                 Assert.That(root.GetProperty("calls")[0].GetProperty("logs")[1].GetProperty("index").GetString(), Is.EqualTo("0x2"));
             }
+        }
+    }
+
+    private static TestCaseData[] OpcodeFaultCases =>
+    [
+        new("6000600060006000600173000000000000000000000000000000000000beef6000f1", 35000UL, "out of gas", 36600UL),
+        new("6000600060006000600073000000000000000000000000000000000000beef6000f1", 23000UL, "out of gas: out of gas", 100UL),
+        new("600060006000600060017300000000000000000000000000000000000056786000f1", 29548UL, "out of gas: out of gas", 100UL),
+        new("600060006000600060007300000000000000000000000000000000000056786000f1", 21050UL, "out of gas", 100UL),
+        new("6001600055", 23306UL, "out of gas: not enough gas for reentrancy sentry", 0UL),
+        new("6001600055", 26000UL, "out of gas", 22100UL),
+        new("600061100052", 21100UL, "out of gas", 422UL),
+        new("6001600101", 21006UL, "out of gas", 3UL),
+        new("600060006000600060017300000000000000000000000000000000000056786000f2", 29548UL, "out of gas", 11600UL),
+        new("600060006000600060017300000000000000000000000000000000000056786040f2", 29548UL, "out of gas", 11664UL),
+        new("60006000620100006000600073000000000000000000000000000000000000beef6000f2", 24000UL, "out of gas", 16936UL),
+        new("6000600062010000600073000000000000000000000000000000000000beef6000fa", 24000UL, "out of gas", 16936UL),
+        new("600060006000600073000000000000000000000000000000000000beef6000fa", 23000UL, "out of gas: out of gas", 100UL),
+        new("600060006000600073000000000000000000000000000000000000beef6000f4", 23000UL, "out of gas: out of gas", 100UL)
+    ];
+
+    [TestCaseSource(nameof(OpcodeFaultCases))]
+    public void Opcode_fault_preserves_error_and_calculated_cost(string bytecode, ulong gasLimit, string expectedError, ulong expectedCost)
+    {
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit, Bytes.FromHexString(bytecode));
+        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Entries[^1].Error, Is.EqualTo(expectedError));
+            Assert.That(result.Entries[^1].GasCost, Is.EqualTo(expectedCost));
+            Assert.That(result.Gas, Is.EqualTo(gasLimit));
+        }
+
+        string? fileError = null;
+        ulong fileCost = ulong.MaxValue;
+        using GethLikeTxFileTracer fileTracer = new(entry =>
+        {
+            fileError = entry.Error;
+            fileCost = entry.GasCost;
+        }, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, fileTracer.WithCancellation(CancellationToken.None));
+        using GethLikeTxTrace fileResult = fileTracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fileError, Is.EqualTo(expectedError), "file error");
+            Assert.That(fileCost, Is.EqualTo(expectedCost), "file gas cost");
+        }
+
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            using GethLikeTxDirectStreamingTracer streamingTracer = new(tx, GethTraceOptions.Default, writer, null, CancellationToken.None);
+            writer.WriteStartArray();
+            _processor.CallAndRestore(tx, block.Header, new CompositeTxTracer(NullTxTracer.Instance, streamingTracer.WithCancellation(CancellationToken.None)));
+            using GethLikeTxTrace streamingResult = streamingTracer.BuildResult();
+            writer.WriteEndArray();
+            writer.Flush();
+        }
+        using JsonDocument streamed = JsonDocument.Parse(buffer.WrittenMemory);
+        JsonElement last = streamed.RootElement[streamed.RootElement.GetArrayLength() - 1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(last.GetProperty("error").GetString(), Is.EqualTo(expectedError), "streaming error");
+            Assert.That(last.GetProperty("gasCost").GetUInt64(), Is.EqualTo(expectedCost), "streaming gas cost");
+        }
+    }
+
+    [TestCaseSource(nameof(OpcodeFaultCases))]
+    public void Child_opcode_fault_keeps_diagnostics_and_parent_resumes(string bytecode, ulong gasLimit, string expectedError, ulong expectedCost)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(bytecode), CancunSpec);
+        TestState.Commit(CancunSpec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, checked((long)gasLimit - 21000)).Op(Instruction.STOP).Done;
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 1000000, code);
+        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, tracer.WithCancellation(CancellationToken.None));
+        using GethLikeTxTrace result = tracer.BuildResult();
+        int faults = 0;
+        foreach (GethTxTraceEntry entry in result.Entries)
+        {
+            if (entry.Error is null) continue;
+            faults++;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry.Error, Is.EqualTo(expectedError));
+                Assert.That(entry.GasCost, Is.EqualTo(expectedCost));
+                Assert.That(entry.Depth, Is.EqualTo(2));
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(faults, Is.EqualTo(1));
+            Assert.That(result.Entries[^1].Opcode, Is.EqualTo("STOP"));
+            Assert.That(result.Entries[^1].Depth, Is.EqualTo(1));
+            Assert.That(result.Entries[^1].Error, Is.Null);
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<TestCaseData> StorageOpcodeCases()
+    {
+        foreach (ForkActivation activation in new[] { MainnetSpecProvider.CancunActivation, MainnetSpecProvider.PragueActivation })
+        {
+            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 5000UL, "out of gas");
+            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 5000UL, "out of gas");
+            yield return new TestCaseData(activation, "6001600055", 23307UL, 1UL, 2200UL, null);
+            yield return new TestCaseData(activation, "60016000556002600055", 45412UL, 0UL, 0UL, "out of gas: not enough gas for reentrancy sentry");
+        }
+        foreach (ForkActivation activation in new ForkActivation[] { new(MainnetSpecProvider.IstanbulBlockNumber), new(MainnetSpecProvider.BerlinBlockNumber - 1), new(MainnetSpecProvider.BerlinBlockNumber) })
+        {
+            yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 5000UL, "out of gas");
+            yield return new TestCaseData(activation, "6002600055", 24000UL, 1UL, 5000UL, "out of gas");
+        }
+    }
+
+    [TestCaseSource(nameof(StorageOpcodeCases))]
+    public void Storage_opcode_reports_cost_and_error(ForkActivation activation, string bytecode, ulong gasLimit, ulong initialValue, ulong expectedCost, string? expectedError)
+    {
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), (Nethermind.Int256.UInt256)initialValue);
+        TestState.Commit(spec);
+        (Block block, Transaction tx) = PrepareTx(activation, gasLimit, Bytes.FromHexString(bytecode));
+        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default);
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        GethTxTraceEntry? lastStorage = null;
+        foreach (GethTxTraceEntry entry in result.Entries)
+            if (entry.Opcode == "SSTORE") lastStorage = entry;
+        Assert.That(lastStorage, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastStorage!.GasCost, Is.EqualTo(expectedCost));
+            Assert.That(lastStorage.Error, Is.EqualTo(expectedError));
         }
     }
 
