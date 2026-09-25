@@ -131,9 +131,6 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Which prefixless branches without inline leaves are left out of stored node groups and recomputed from their children on read: Interior (relative depths 1-3), OddLevels (relative depths 1 and 3, keeping depth 2) or None (store every node). All layouts are readable, so the setting can change on an existing database; groups convert as they are rewritten.", DefaultValue = "OddLevels", HiddenFromDocs = true)]
     PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; set; }
 
-    [ConfigItem(Description = "Fold each state zone with the sorted-range trie updater: the zone's shards are sorted in place, across threads when wide enough, and walked bit by bit with the shard counts as the zone group's slot ranges. Off folds zones with the bucketing updater. Both produce the same node groups.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool SortedTrieUpdater { get; set; }
-
     [ConfigItem(Description = "Cache persisted account and storage-run reads across heads, so a new head does not re-read the serving working set from the database. Only the write-set of each persisted batch is dropped.", DefaultValue = "true", HiddenFromDocs = true)]
     bool CarryForwardCache { get; set; }
 

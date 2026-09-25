@@ -11,27 +11,16 @@ namespace Nethermind.Pbt;
 internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable where TKey : struct, IPbtKey<TKey>
 {
     private ArrayPoolList<PbtWriteOperation<TKey>>? _operations;
-    private ArrayPoolList<int>? _table;
     private PartitionOffsets _partitionOffsets;
 
-    private PbtWriteBatchSet(ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table, PartitionOffsets partitionOffsets)
+    private PbtWriteBatchSet(ArrayPoolList<PbtWriteOperation<TKey>> operations, PartitionOffsets partitionOffsets)
     {
         _operations = operations;
-        _table = table;
         _partitionOffsets = partitionOffsets;
     }
 
     internal int Count => Operations.Count;
     internal ReadOnlySpan<PbtWriteOperation<TKey>> Entries => Operations.AsSpan();
-    internal ReadOnlySpan<int> Precalculated
-    {
-        get
-        {
-            EnsureNotConsumed();
-            return _table!.AsSpan();
-        }
-    }
-
     internal ReadOnlySpan<PbtWriteOperation<TKey>> this[PbtPartition partition]
     {
         get
@@ -64,23 +53,17 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
         }
     }
 
-    internal void Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table)
+    internal void Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations)
     {
         operations = Operations;
-        table = _table!;
         _operations = null;
-        _table = null;
     }
-
-    private void EnsureNotConsumed() => _ = Operations;
 
     /// <inheritdoc/>
     public void Dispose()
     {
         _operations?.Dispose();
-        _table?.Dispose();
         _operations = null;
-        _table = null;
     }
 
     private static PbtWriteBatchSet<TKey> PrepareOperations(IEnumerable<KeyValuePair<TKey, ValueHash256?>> uniqueOperations)
@@ -105,7 +88,7 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
         counts.Clear();
         foreach (PbtWriteOperation<TKey> operation in operations)
         {
-            if (PartitionOf(operation.Key) < 0) return new(operations, new(0), default);
+            if (PartitionOf(operation.Key) < 0) return new(operations, default);
 
             counts[BucketOf(operation)]++;
         }
@@ -139,7 +122,6 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
     /// <remarks>Takes ownership of operations, including when preparation fails.</remarks>
     internal static PbtWriteBatchSet<TKey> CreateGrouped(ArrayPoolList<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> counts)
     {
-        ArrayPoolList<int>? table = null;
         try
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(counts.Length, BucketCount);
@@ -153,30 +135,11 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
             }
             partitionOffsets[PartitionCount] = total;
             ArgumentOutOfRangeException.ThrowIfNotEqual(operations.Count, total);
-            int tableLength = total == 0 ? 0 : LevelLength;
-            table = new(tableLength, tableLength);
-            if (total != 0)
-            {
-                int countIndex = 1;
-                int accountAndCodeCount = partitionOffsets[(int)PbtPartition.Storage];
-                if (accountAndCodeCount != 0)
-                {
-                    table[0] |= 1 << (Eip8297KeyDerivation.AccountZone >> 4);
-                    table[countIndex++] = accountAndCodeCount;
-                }
-                int storageCount = total - accountAndCodeCount;
-                if (storageCount != 0)
-                {
-                    table[0] |= 1 << (Eip8297KeyDerivation.StorageZone >> 4);
-                    table[countIndex] = storageCount;
-                }
-            }
-            return new(operations, table, partitionOffsets);
+            return new(operations, partitionOffsets);
         }
         catch
         {
             operations.Dispose();
-            table?.Dispose();
             throw;
         }
     }
@@ -198,7 +161,6 @@ internal abstract class PbtWriteBatchSet
     protected const int PartitionCount = 3;
     protected const int ShardsPerPartition = 256;
     protected const int BucketCount = PartitionCount * ShardsPerPartition;
-    protected const int LevelLength = PbtFourLevelGroupGeometry.BoundarySlots + 1;
 
     [InlineArray(PartitionCount + 1)]
     protected struct PartitionOffsets

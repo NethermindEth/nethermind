@@ -14,27 +14,23 @@ using Nethermind.Pbt;
 
 namespace Nethermind.Benchmarks.State;
 
-/// <summary>Compares the bucketing <c>TrieUpdater.UpdateRoot</c> with the sorted-range <c>UpdateRootSorted</c>, each on one thread and in parallel.</summary>
+/// <summary>Measures the sorted-range <c>UpdateRootSorted</c> on one thread, in parallel and through the partitioned driver.</summary>
 /// <remarks>
 /// Every invocation applies one of <see cref="BatchVariants"/> prepared batches to the same base tree: the store keeps the
 /// base groups apart and discards what the previous invocation wrote, so no invocation sees another's changes. Keys are
-/// account-zone keys, the shape the partitioned driver the bucketing updater parallelizes through expects.
+/// account-zone keys, the shape the partitioned driver expects.
 /// </remarks>
 [MemoryDiagnoser]
 public class PbtTrieUpdaterBenchmark
 {
     public enum Variant
     {
-        /// <summary>The bucketing updater, given the sorted batch and the shard table the builder produces.</summary>
-        Current,
         /// <summary>The sorted-range updater, given the sorted batch.</summary>
         Sorted,
         /// <summary>The sorted-range updater, sorting a shuffled copy of the batch first.</summary>
         SortedIncludingSort,
         /// <summary>The sorted-range updater folding each frame's slots across threads, given the sorted batch.</summary>
         SortedParallel,
-        /// <summary>The bucketing updater through the partitioned driver, folding buckets across threads, given the batch grouped by shard as the builder leaves it.</summary>
-        CurrentParallel,
         /// <summary>The sorted-range updater through the partitioned driver, sorting the shards and folding slots across threads, given the same shard-grouped batch.</summary>
         SortedPartitioned,
     }
@@ -54,7 +50,7 @@ public class PbtTrieUpdaterBenchmark
     [Params(1, 16, 256, 4096)]
     public int BatchSize { get; set; }
 
-    [Params(Variant.Current, Variant.Sorted, Variant.SortedIncludingSort, Variant.SortedParallel, Variant.CurrentParallel, Variant.SortedPartitioned)]
+    [Params(Variant.Sorted, Variant.SortedIncludingSort, Variant.SortedParallel, Variant.SortedPartitioned)]
     public Variant Updater { get; set; }
 
     [GlobalSetup]
@@ -89,16 +85,11 @@ public class PbtTrieUpdaterBenchmark
         Batch batch = _batches[_next++ % BatchVariants];
         switch (Updater)
         {
-            case Variant.Current:
-                return TrieUpdater<PbtPath, PbtNodePath>.UpdateRoot(_store, _root,
-                    new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(batch.Sorted), new ArrayPoolList<int>(batch.Table), 0),
-                    PbtPrefixlessBranchOmission.Interior);
             case Variant.Sorted:
                 {
                     using ArrayPoolList<PbtWriteOperation<PbtPath>> operations = new(batch.Sorted);
                     return TrieUpdater<PbtPath, PbtNodePath>.UpdateRootSorted(_store, _root, operations.AsSpan(), PbtPrefixlessBranchOmission.Interior);
                 }
-            case Variant.CurrentParallel:
             case Variant.SortedPartitioned:
                 {
                     using PbtPartitionBatches batches = new()
@@ -106,8 +97,7 @@ public class PbtTrieUpdaterBenchmark
                         Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(batch.Sharded), new ArrayPoolList<int>(batch.ZoneTable),
                             ZoneShardNibbleIndex),
                     };
-                    return TrieUpdater.UpdateRoot(_store, _root, batches, _foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior,
-                        Updater == Variant.SortedPartitioned, null);
+                    return TrieUpdater.UpdateRoot(_store, _root, batches, _foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
                 }
             case Variant.SortedParallel:
                 {
@@ -142,7 +132,7 @@ public class PbtTrieUpdaterBenchmark
         PbtWriteOperation<PbtPath>[] sorted = (PbtWriteOperation<PbtPath>[])shuffled.Clone();
         Array.Sort(sorted, OperationComparer.Instance);
 
-        return new Batch(sorted, shuffled, GroupByShard(shuffled, ZoneShardNibbleIndex), ShardTable(sorted, 0), ShardTable(sorted, ZoneShardNibbleIndex));
+        return new Batch(sorted, shuffled, GroupByShard(shuffled, ZoneShardNibbleIndex), ShardTable(sorted, ZoneShardNibbleIndex));
     }
 
     /// <summary>The partitioned driver shards a zone's batch by the nibble just below the zone byte.</summary>
@@ -194,7 +184,7 @@ public class PbtTrieUpdaterBenchmark
         return new ValueHash256(bytes);
     }
 
-    private sealed record Batch(PbtWriteOperation<PbtPath>[] Sorted, PbtWriteOperation<PbtPath>[] Shuffled, PbtWriteOperation<PbtPath>[] Sharded, int[] Table, int[] ZoneTable);
+    private sealed record Batch(PbtWriteOperation<PbtPath>[] Sorted, PbtWriteOperation<PbtPath>[] Shuffled, PbtWriteOperation<PbtPath>[] Sharded, int[] ZoneTable);
 
     private sealed class OperationComparer : IComparer<PbtWriteOperation<PbtPath>>
     {

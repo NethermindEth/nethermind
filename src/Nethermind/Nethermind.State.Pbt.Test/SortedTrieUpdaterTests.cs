@@ -11,13 +11,13 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <summary>Checks <see cref="TrieUpdater{TKey,TPath}.UpdateRootSorted"/> against the bucketing updater, group for group.</summary>
+/// <summary>Checks <see cref="TrieUpdater{TKey,TPath}.UpdateRootSorted"/> serially, in parallel and through the batch and partitioned drivers, group for group, against the reference tree.</summary>
 public class SortedTrieUpdaterTests
 {
     public enum KeyKind { Variable, Fixed }
 
     [Test]
-    public void Random_batches_match_bucketing_updater(
+    public void Random_batches_match_reference(
         [Values] KeyKind keyKind,
         [Values] PbtPrefixlessBranchOmission omission,
         [Values(1, 2, 3)] int seed)
@@ -53,7 +53,7 @@ public class SortedTrieUpdaterTests
     }
 
     [TestCaseSource(nameof(Shapes))]
-    public void Targeted_shapes_match_bucketing_updater(string[][] batches)
+    public void Targeted_shapes_match_reference(string[][] batches)
     {
         foreach (PbtPrefixlessBranchOmission omission in Enum.GetValues<PbtPrefixlessBranchOmission>())
         {
@@ -66,7 +66,7 @@ public class SortedTrieUpdaterTests
     }
 
     [Test]
-    public void Prefix_violation_throws_like_bucketing_updater()
+    public void Prefix_violation_throws()
     {
         using PbtNodeGroupStore store = new();
         PbtWriteOperation<PbtStorageTreeKey>[] operations =
@@ -79,25 +79,28 @@ public class SortedTrieUpdaterTests
     }
 
     [Test]
-    public void Partitioned_sorted_zone_fold_matches_bucketing([Values] PbtPrefixlessBranchOmission omission, [Values(1, 2, 3)] int seed)
+    public void Partitioned_zone_fold_matches_batch_fold([Values] PbtPrefixlessBranchOmission omission, [Values(1, 2, 3)] int seed)
     {
-        using PbtNodeGroupStore bucketingStore = new();
-        using PbtNodeGroupStore sortedStore = new();
-        ValueHash256 bucketingRoot = default;
-        ValueHash256 sortedRoot = default;
+        using PbtNodeGroupStore batchStore = new();
+        using PbtNodeGroupStore partitionedStore = new();
+        ValueHash256 batchRoot = default;
+        ValueHash256 partitionedRoot = default;
         foreach ((byte[] Key, byte[]? Value)[] writes in RandomRounds(new Random(seed), ZoneKey))
         {
+            using (PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(0))
+            {
+                foreach ((byte[] key, byte[]? value) in writes) builder.Set(new PbtStorageTreeKey(key), value is null ? default : new ValueHash256(value));
+                batchRoot = TrieUpdater.UpdateRoot(batchStore, batchRoot, builder.Build(), omission);
+            }
             // A single-operation minimum splits every zone and frame, so shards sort and slots fold across threads even for small batches.
             using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
-                bucketingRoot = TrieUpdater.UpdateRoot(bucketingStore, bucketingRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.FanOut(1), omission, false, null);
-            using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
-                sortedRoot = TrieUpdater.UpdateRoot(sortedStore, sortedRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.FanOut(1), omission, true, null);
+                partitionedRoot = TrieUpdater.UpdateRoot(partitionedStore, partitionedRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.FanOut(1), omission, null);
 
-            IReadOnlyList<PbtPhysicalPayload> actual = sortedStore.ExportPhysicalPayloads();
+            IReadOnlyList<PbtPhysicalPayload> actual = partitionedStore.ExportPhysicalPayloads();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(sortedRoot, Is.EqualTo(bucketingRoot));
-                Assert.That(actual.Select(Describe), Is.EqualTo(bucketingStore.ExportPhysicalPayloads().Select(Describe)));
+                Assert.That(partitionedRoot, Is.EqualTo(batchRoot));
+                Assert.That(actual.Select(Describe), Is.EqualTo(batchStore.ExportPhysicalPayloads().Select(Describe)));
             }
             PbtStoreTestExtensions.AssertSubtreeBytes(actual);
         }
@@ -204,16 +207,16 @@ public class SortedTrieUpdaterTests
         return value;
     }
 
-    /// <summary>Applies every batch through both updaters, the sorted one serially and in parallel, each on its own store, and asserts identical roots and groups.</summary>
+    /// <summary>Applies every batch through the batch entry point and the sorted updater serially and in parallel, each on its own store, and asserts identical roots and groups matching the reference tree.</summary>
     private sealed class DifferentialTree<TKey, TPath>(PbtPrefixlessBranchOmission omission) : IDisposable
         where TKey : unmanaged, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
-        private readonly PbtNodeGroupStore _bucketingStore = new();
+        private readonly PbtNodeGroupStore _batchStore = new();
         private readonly PbtNodeGroupStore _sortedStore = new();
         private readonly PbtNodeGroupStore _parallelStore = new();
         private readonly EipReferenceTree _oracle = new();
-        private ValueHash256 _bucketingRoot;
+        private ValueHash256 _batchRoot;
         private ValueHash256 _sortedRoot;
         private ValueHash256 _parallelRoot;
 
@@ -233,18 +236,18 @@ public class SortedTrieUpdaterTests
             }
             Array.Sort(sorted, static (left, right) => left.Key.CompareTo(right.Key));
 
-            _bucketingRoot = TrieUpdater<TKey, TPath>.UpdateRoot(_bucketingStore, _bucketingRoot, builder.Build(), omission);
+            _batchRoot = TrieUpdater<TKey, TPath>.UpdateRoot(_batchStore, _batchRoot, builder.Build(), omission);
             _sortedRoot = TrieUpdater<TKey, TPath>.UpdateRootSorted(_sortedStore, _sortedRoot, sorted, omission);
             // A single-operation minimum splits every frame with two touched slots, so even small batches fold in parallel.
             _parallelRoot = TrieUpdater<TKey, TPath>.UpdateRootSorted(_parallelStore, _parallelRoot, sorted.AsMemory(), omission,
                 PbtTreeHarness.FoldQuota(), PbtTreeHarness.FanOut(1));
 
-            IReadOnlyList<PbtPhysicalPayload> expected = _bucketingStore.ExportPhysicalPayloads();
+            IReadOnlyList<PbtPhysicalPayload> expected = _batchStore.ExportPhysicalPayloads();
             IReadOnlyList<PbtPhysicalPayload> actual = _sortedStore.ExportPhysicalPayloads();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(_sortedRoot, Is.EqualTo(_bucketingRoot));
-                Assert.That(_parallelRoot, Is.EqualTo(_bucketingRoot));
+                Assert.That(_sortedRoot, Is.EqualTo(_batchRoot));
+                Assert.That(_parallelRoot, Is.EqualTo(_batchRoot));
                 Assert.That(_sortedRoot.Bytes.ToArray(), Is.EqualTo(_oracle.Merkelize()));
                 Assert.That(actual.Select(Describe), Is.EqualTo(expected.Select(Describe)));
                 Assert.That(_parallelStore.ExportPhysicalPayloads().Select(Describe), Is.EqualTo(expected.Select(Describe)));
@@ -254,7 +257,7 @@ public class SortedTrieUpdaterTests
 
         public void Dispose()
         {
-            _bucketingStore.Dispose();
+            _batchStore.Dispose();
             _sortedStore.Dispose();
             _parallelStore.Dispose();
         }

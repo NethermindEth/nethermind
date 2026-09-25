@@ -20,9 +20,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 {
     /// <summary>Applies key-sorted <paramref name="sortedOperations"/> on one thread and returns the resulting canonical root.</summary>
     /// <remarks>
-    /// Produces the same groups as <see cref="UpdateRoot(IPbtStore, in ValueHash256, PbtWriteBatch{TKey}, PbtPrefixlessBranchOmission)"/>.
-    /// Instead of bucketing each group by nibble, decomposing it and composing it back, a single recursion descends one
-    /// bit at a time, splitting the sorted range where the bit turns to one and carrying the stored node covering each
+    /// A single recursion descends one bit at a time, splitting the sorted range where the bit turns to one and carrying the stored node covering each
     /// position alongside. The recursion returns in post-order, the order a group stores its positions in, so every
     /// node is appended to the group as soon as it is composed. A fold below a boundary slot hands back the final
     /// encoding of the node its parent group stores there.
@@ -113,7 +111,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly bool IsEmpty => Length == 0;
     }
 
-    /// <summary>The sorted counterpart of <see cref="FoldMutations"/>, with the in-frame recursion in place of bucketing.</summary>
+    /// <summary>Consumes a subtree and applies its sorted mutation range, encoding the canonical replacement.</summary>
+    /// <remarks>
+    /// Mutations sharing a prefix share traversal through four-bit groups (16 boundary slots). Shared prefixes skip
+    /// intermediate groups; each group is rebuilt by the in-frame recursion, which folds its touched slots below.
+    /// </remarks>
     /// <param name="anchorDepth">The depth the caller places the result at; the range and <paramref name="input"/> share the path down to <paramref name="bitDepth"/>.</param>
     /// <param name="encoding">Receives the result's encoding, at least <see cref="MaxNodeLength"/> bytes.</param>
     [SkipLocalsInit]
@@ -203,7 +205,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         return FoldSortedInOwnFrame(context, ref ownerReader, current, operations, ref path, bitDepth, anchorDepth, encoding);
     }
 
-    /// <summary>Folds a range holding a key that ends at <paramref name="bitDepth"/>, apart from the longer keys, as <see cref="FoldMutations"/> does.</summary>
+    /// <summary>Folds a range holding a key that ends at <paramref name="bitDepth"/>, apart from the longer keys.</summary>
+    /// <remarks>
+    /// Keys are logically variable-length, and complete keys end on byte boundaries. A key ending here has no next bit to
+    /// split by, so it is folded separately from longer keys: deleting 0xAB and inserting 0xABCD must be allowed, while
+    /// keeping both would violate EIP-8297 prefix freedom.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
     private static SlotNode FoldSortedTerminal<TFrame>(FoldContext context, ref TFrame ownerReader, ref StoredGroupHashes ownerHashes, PbtNodeGroupWriter<TPath> ownerWriter,
@@ -236,7 +243,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         return leafResult;
     }
 
-    /// <summary>The sorted counterpart of <see cref="FoldMutations"/>'s own-frame fold, opening the group absent or stored.</summary>
+    /// <summary>Folds a group deeper than the open frame in a frame of its own, opening the group absent or stored.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
     private static SlotNode FoldSortedInOwnFrame<TFrame>(FoldContext context, ref TFrame ownerReader, scoped in BoundaryNode current,
@@ -318,7 +325,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// here, on the calling thread, since the frame's hash cache is not shared. Each worker writes its slot's encoding
     /// into a slice of its own and never touches the frame, whose group lease outlives the loop, so boundary nodes are
     /// read from it in place. Slots fold on the calling thread while the quota has no free slot, as
-    /// <see cref="FoldBoundaryFromPartition"/> does.
+    /// <see cref="ForEachOnQuota"/> does.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
@@ -401,7 +408,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>Runs <paramref name="work"/> for every index below <paramref name="count"/>, across threads as <paramref name="quota"/> allows.</summary>
     /// <remarks>
     /// Work runs on the calling thread while the quota has no free slot; the first slot taken admits a parallel loop over
-    /// the indices still left, whose workers charge themselves as they start, as <see cref="FoldBoundaryFromPartition"/> does.
+    /// the indices still left, whose workers charge themselves as they start.
     /// </remarks>
     private static void ForEachOnQuota(ConcurrencyController quota, int count, Action<int> work)
     {
@@ -463,7 +470,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     /// <summary>Folds a zone group whose operations <see cref="SortShards"/> sorted, leaving its root in <paramref name="result"/> anchored at <paramref name="resultDepth"/>.</summary>
     /// <remarks>
-    /// The sorted counterpart of <see cref="FoldBoundary"/> for the partitioned driver: the shard table's counts are this
+    /// Used by the partitioned driver: the shard table's counts are this
     /// frame's slot ranges, which the walk and its slot fan-out take as they are.
     /// </remarks>
     internal static void FoldZoneSorted<TFrame>(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
@@ -861,7 +868,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         return new ComposedNode(offset, length, hash);
     }
 
-    /// <summary>Folds the boundary slot <paramref name="local"/> in the group below and appends the node it returns, as <see cref="BucketFolds"/> does.</summary>
+    /// <summary>Folds the boundary slot <paramref name="local"/> in the group below and appends the node it returns.</summary>
     [SkipLocalsInit]
     private static ComposedNode FoldSlot<TFrame>(scoped ref SortedWalk<TFrame> walk, NodeGroupPath local, Cover cover, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
         where TFrame : struct, IGroupFrame<TKey, TPath>

@@ -24,16 +24,6 @@ public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtK
 
     internal int ShardNibbleIndex { get; }
     internal ReadOnlySpan<PbtWriteOperation<TKey>> Entries => Operations.AsSpan();
-    internal BucketPlan Plan
-    {
-        get
-        {
-            _ = Operations;
-            int bitDepth = ShardNibbleIndex * PbtFourLevelGroupGeometry.LevelsPerGroup;
-            return new(_table!.AsSpan(), bitDepth, false);
-        }
-    }
-
     private ArrayPoolList<PbtWriteOperation<TKey>> Operations => _operations ?? throw new InvalidOperationException("The prepared batch has already been consumed.");
 
     internal void Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table)

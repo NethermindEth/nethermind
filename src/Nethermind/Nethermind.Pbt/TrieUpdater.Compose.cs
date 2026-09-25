@@ -142,24 +142,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         TrieUpdaterMetrics? metrics, scoped ref Frontier frontier, scoped Span<FoldResult> results, ref FoldResult result)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        BucketFolds folded = default;
-        Compose(ref reader, ref hashes, writer, path, resultDepth, metrics, ref frontier, results, ref folded, ref result);
-    }
-
-    /// <inheritdoc cref="Compose{TFrame}(ref TFrame, PbtNodeGroupWriter{TPath}, PbtTraversalPath, int, TrieUpdaterMetrics?, ref Frontier, Span{FoldResult}, ref FoldResult)"/>
-    /// <remarks>
-    /// The touched slots <paramref name="folds"/> still holds are folded as the walk reaches them, so their results are
-    /// appended straight away rather than held.
-    /// </remarks>
-    [SkipLocalsInit]
-    private static void Compose<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth,
-        TrieUpdaterMetrics? metrics, scoped ref Frontier frontier, scoped Span<FoldResult> results, scoped ref BucketFolds folds, ref FoldResult result)
-        where TFrame : struct, IGroupFrame<TKey, TPath>
-    {
-        Debug.Assert((frontier.Unresolved & ~folds.Unfolded) == 0, "Every touched slot is taken by its fold before composition.");
+        Debug.Assert(frontier.Unresolved == 0, "Every touched slot is taken by its fold before composition.");
         uint copies = frontier.Copies;
-        // A touched slot Decompose placed the input at is held only once its fold returns a node.
-        uint frontierMask = frontier.Mask & ~folds.Positions;
+        uint frontierMask = frontier.Mask;
         writer.ReserveFirstBuffer(reader.PayloadLength);
         ComposeFrameBuffer frames = default;
         frames[0].Parent = LinkParentAt(ref reader, frontier, -1);
@@ -183,14 +168,6 @@ internal static partial class TrieUpdater<TKey, TPath>
                     metrics?.AddBulkCopy(copied);
                     int length = reader.GetEncoding(position).Length;
                     prevSubtree = new ComposedNode(writer.WrittenCount - length, length, frame.Parent.HashOf(position));
-                    frameCount--;
-                    continue;
-                }
-                if ((folds.Positions & (1u << position)) != 0)
-                {
-                    FoldResult taken = default;
-                    folds.Take(ref reader, ref hashes, writer, ref path, ref frontier, frame.Path.Slot, ref taken);
-                    prevSubtree = taken.IsEmpty ? default : AppendResult(writer, position, taken);
                     frameCount--;
                     continue;
                 }
@@ -221,11 +198,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 // this position. Otherwise the walk goes down the right child, after settling the left node; with no
                 // left node, the right one rises here instead.
                 uint rightMask = ((1u << (frame.Path.Width - 1)) - 1) << (position - frame.Path.Width + 1);
-                // A right half of touched slots alone may fold away entirely, which must be known before the left node
-                // is settled; with no left node there is nothing to settle, and the walk finds out on its way back.
-                bool rightIsEmpty = ((frontierMask | copies) & rightMask) == 0
-                    && ((folds.Positions & rightMask) == 0
-                        || (!prevSubtree.IsEmpty && !folds.TryFoldAhead(ref reader, ref hashes, writer, ref path, ref frontier, frame.Path.Right)));
+                bool rightIsEmpty = ((frontierMask | copies) & rightMask) == 0;
                 if (rightIsEmpty)
                 {
                     if (!prevSubtree.IsEmpty) prevSubtree = prevSubtree.Rise(position - frame.Path.Width, 0);
@@ -498,80 +471,5 @@ internal static partial class TrieUpdater<TKey, TPath>
     private struct ComposeFrameBuffer
     {
         private ComposeFrame _element;
-    }
-
-    /// <summary>The touched slots a serial composition folds as its walk reaches them, in ascending slot order.</summary>
-    /// <remarks>
-    /// A right half holding only touched slots must be known not to fold away before its left sibling is settled, so the
-    /// walk may fold ahead into it. The first node that returns is kept until the walk reaches its slot, which happens
-    /// before the walk could fold ahead again, so one is enough. The default instance has nothing left to fold.
-    /// </remarks>
-    private ref struct BucketFolds(FoldContext context, Span<PbtWriteOperation<TKey>> operations, int bitDepth, PartitionOutcome partition)
-    {
-        private readonly FoldContext _context = context;
-        private readonly ReadOnlySpan<int> _counts = partition.Counts;
-        private readonly int _bitDepth = bitDepth;
-        private readonly int _knownCommonPrefixLength = partition.Plan.KnownCommonPrefixLength;
-        private readonly bool _isSorted = partition.Plan.IsSorted;
-        private Span<PbtWriteOperation<TKey>> _operations = operations;
-        private int _countIndex;
-        private FoldResult _foldedAhead;
-
-        /// <summary>The touched slots not folded yet.</summary>
-        internal int Unfolded { get; private set; } = partition.UsedMask;
-
-        /// <summary>The boundary positions of the slots not folded yet and of the node folded ahead, which the walk takes from here.</summary>
-        internal uint Positions { get; private set; } = BoundaryPositions(partition.UsedMask);
-
-        /// <summary>Takes the node at <paramref name="slot"/>, folding it unless it was folded ahead.</summary>
-        internal void Take<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, ref PbtTraversalPath path,
-            scoped ref Frontier frontier, int slot, ref FoldResult result)
-            where TFrame : struct, IGroupFrame<TKey, TPath>
-        {
-            Positions &= ~(1u << BoundaryPosition(slot));
-            if ((Unfolded >> slot & 1) == 0) FoldResult.Move(ref _foldedAhead, ref result);
-            else FoldNext(ref reader, ref hashes, writer, ref path, ref frontier, slot, ref result);
-        }
-
-        /// <summary>Folds the touched slots under <paramref name="subtree"/> until one returns a node, which is kept for <see cref="Take"/>.</summary>
-        /// <returns>Whether a node was found; false when every touched slot under <paramref name="subtree"/> folded away.</returns>
-        internal bool TryFoldAhead<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, ref PbtTraversalPath path,
-            scoped ref Frontier frontier, NodeGroupPath subtree)
-            where TFrame : struct, IGroupFrame<TKey, TPath>
-        {
-            int slots = ((1 << subtree.Width) - 1) << subtree.Slot;
-            while ((Unfolded & slots) != 0)
-            {
-                int slot = BitOperations.TrailingZeroCount(Unfolded);
-                FoldNext(ref reader, ref hashes, writer, ref path, ref frontier, slot, ref _foldedAhead);
-                if (!_foldedAhead.IsEmpty) return true;
-                Positions &= ~(1u << BoundaryPosition(slot));
-            }
-            return false;
-        }
-
-        private void FoldNext<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, ref PbtTraversalPath path,
-            scoped ref Frontier frontier, int slot, ref FoldResult result)
-            where TFrame : struct, IGroupFrame<TKey, TPath>
-        {
-            Debug.Assert(slot == BitOperations.TrailingZeroCount(Unfolded), "Touched slots are folded in ascending order, which is the order their operations are in.");
-            Unfolded &= Unfolded - 1;
-            int count = _counts[_countIndex++];
-            Span<PbtWriteOperation<TKey>> bucket = _operations[..count];
-            _operations = _operations[count..];
-            BoundaryNode boundary = TakeBoundary(ref reader, ref hashes, path, ref frontier, slot, _context.Metrics);
-            path.AppendMut(slot);
-            FoldMutations(_context, ref reader, ref hashes, writer, boundary, bucket, ref path,
-                _bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, _bitDepth, new BucketPlan(default, _knownCommonPrefixLength, _isSorted), ref result);
-            path.Truncate(_bitDepth);
-            writer.AddDescendantDelta(slot, result.SizeDelta);
-        }
-
-        private static uint BoundaryPositions(int slots)
-        {
-            uint positions = 0;
-            for (; slots != 0; slots &= slots - 1) positions |= 1u << BoundaryPosition(BitOperations.TrailingZeroCount(slots));
-            return positions;
-        }
     }
 }
