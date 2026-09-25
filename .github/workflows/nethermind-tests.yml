@@ -492,7 +492,7 @@ jobs:
             echo "::error::Test host hung and was dumped; see the hang-dump artifact"
             exit 1
           elif [[ $rc -ne 7 ]]; then
-            # Only MTP exit code 7 (session did not complete) is a crash worth a retry; 2 (a test failed) and the rest are real failures.
+            # Only MTP exit code 7 (the test host exited non-gracefully, a crash) is worth a retry; 2 (a test failed) and the rest are real failures.
             echo "::error::dotnet test failed with exit code $rc"
             exit $rc
           else
