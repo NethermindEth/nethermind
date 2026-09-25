@@ -1390,7 +1390,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
                 gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
-                goto Complete;
+                goto CompleteWithoutFrame;
             }
 
             PayValue(tx, spec, opts);
@@ -1414,7 +1414,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             VirtualMachine.TxExecutionContext.GasPrice,
                             in collisionIntrinsicGasStandard,
                             floorGasLong);
-                        goto Complete;
+                        goto CompleteWithoutFrame;
                     }
                 }
             }
@@ -1426,7 +1426,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 // If noValidation we didn't charge for gas, so do not refund; otherwise return unspent gas
                 if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                     WorldState.AddToBalance(tx.SenderAddress!, (tx.GasLimit - minimalGasLong) * VirtualMachine.TxExecutionContext.GasPrice, spec);
-                goto Complete;
+                goto CompleteWithoutFrame;
             }
 
             ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
@@ -1441,7 +1441,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     WorldState.Restore(snapshot);
                     TGasPolicy createStateOogIntrinsicGasStandard = gas.Standard;
                     gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in createStateOogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
-                    goto Complete;
+                    goto CompleteWithoutFrame;
                 }
 
                 substate = !DispatchFlags.Tracing(TTracingInst.IsActive)
@@ -1538,6 +1538,14 @@ namespace Nethermind.Evm.TransactionProcessing
             else
             {
                 gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong);
+            }
+            goto Complete;
+        CompleteWithoutFrame:
+            // The create-state-gas halt jumps here from inside the top-level `using (VmState ...)`, so the
+            // tracker outlives the Dispose: RentTopLevel leaves `_canRestore` false, so it never Restores.
+            if (tracer.IsTracingAccess)
+            {
+                tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
             }
         Complete:
             return statusCode;
