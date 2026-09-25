@@ -939,9 +939,14 @@ internal sealed class McpContractTools(
         }
 
         // A reverse record is a free-form claim; it only counts once the name resolves back to the same address.
-        bool verified = McpEns.TryNormalize(reverseName, out string? normalized, out _)
-            && ResolveName(eth, registry, normalized, block).Resolved == account;
-        return new JsonObject { ["name"] = McpTokenMetadata.Sanitize(normalized ?? reverseName) ?? string.Empty, ["verified"] = verified };
+        // A verified name is normalized (a-z, 0-9, '-', '_' and dots, at most 255 characters), so it is shown exactly as verified.
+        string? verifiedName = McpEns.TryNormalize(reverseName, out string? normalized, out _)
+            && ResolveName(eth, registry, normalized, block).Resolved == account ? normalized : null;
+        return new JsonObject
+        {
+            ["name"] = verifiedName ?? McpTokenMetadata.Sanitize(normalized ?? reverseName) ?? string.Empty,
+            ["verified"] = verifiedName is not null
+        };
     }
 
     private bool TryResolveBlock(BlockParameter selector, [NotNullWhen(true)] out BlockHeader? header, [NotNullWhen(true)] out BlockParameter? pinned, [NotNullWhen(false)] out CallToolResult? failure)

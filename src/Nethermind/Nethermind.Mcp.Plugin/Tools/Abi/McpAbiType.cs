@@ -51,7 +51,10 @@ public sealed class McpAbiType
     /// <summary>The maximum nesting of arrays and tuples accepted in a type.</summary>
     public const int MaxNestingDepth = 8;
 
-    /// <summary>The maximum static encoded size of a type, which bounds huge fixed arrays such as <c>uint256[1000][1000]</c>.</summary>
+    /// <summary>
+    /// The maximum encoded head size of a type (its static encoding, or the offset table of a dynamic fixed array or tuple),
+    /// which bounds huge fixed arrays such as <c>uint256[1000][1000]</c> and <c>string[999999]</c>.
+    /// </summary>
     public const int MaxStaticSize = 32 * 4096;
 
     /// <summary>The maximum number of components of one tuple.</summary>
@@ -74,20 +77,19 @@ public sealed class McpAbiType
             _ => false
         };
 
-        long staticSize = kind switch
+        long encodedHeadSize = kind switch
         {
-            _ when IsDynamic => WordSize,
             McpAbiTypeKind.FixedArray => (long)size * element!.HeadSize,
             McpAbiTypeKind.Tuple => Components.Sum(static c => (long)c.Type.HeadSize),
             _ => WordSize
         };
 
-        if (staticSize > MaxStaticSize)
+        if (encodedHeadSize > MaxStaticSize)
         {
-            throw new FormatException($"type '{CanonicalName}' is too large: its static encoding exceeds {MaxStaticSize} bytes");
+            throw new FormatException($"type '{CanonicalName}' is too large: its encoded head exceeds {MaxStaticSize} bytes");
         }
 
-        HeadSize = (int)staticSize;
+        HeadSize = IsDynamic ? WordSize : (int)encodedHeadSize;
         Depth = kind switch
         {
             McpAbiTypeKind.Array or McpAbiTypeKind.FixedArray => element!.Depth + 1,

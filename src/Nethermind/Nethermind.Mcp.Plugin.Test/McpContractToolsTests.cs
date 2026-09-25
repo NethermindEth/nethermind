@@ -35,6 +35,10 @@ public class McpContractToolsTests
     private static readonly Address EnsRegistry = new("0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e");
     private static readonly Address Holder = TestItem.AddressC;
     private static readonly Address EnsTarget = TestItem.AddressB;
+    private static readonly Address LongEnsResolver = new("0x00000000000000000000000000000000000e5502");
+    private static readonly Address LongEnsTarget = TestItem.AddressE;
+    // Longer than the 64-character cap on token texts, well within ENS's 255.
+    private static readonly string LongEnsName = $"{new string('l', 60)}.{new string('m', 15)}.eth";
     private static readonly Address Implementation = new("0x1234567890123456789012345678901234567890");
     private static readonly UInt256 Supply = 1_000_000_000;
     private const string ZosImplementationSlot = "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3";
@@ -382,6 +386,18 @@ public class McpContractToolsTests
     }
 
     [Test]
+    public async Task Lookup_address_returns_a_long_verified_ens_name_in_full()
+    {
+        JsonElement ens = (await Success("lookup_address", ("address", Hex(LongEnsTarget)))).GetProperty("ens");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ens.GetProperty("name").GetString(), Is.EqualTo(LongEnsName));
+            Assert.That(ens.GetProperty("verified").GetBoolean(), Is.True);
+        }
+    }
+
+    [Test]
     public async Task Lookup_address_profiles_contracts_precompiles_and_empty_accounts()
     {
         JsonElement token = await Success("lookup_address", ("address", Hex(_deployed.ProxyToken)));
@@ -463,7 +479,10 @@ public class McpContractToolsTests
     private sealed record Deployed(Address Token, Address Bytes32Token, Address NftToken, Address ProxyToken, Address ZosProxyToken, Address GetterProxyToken,
         Address EvilToken, Transaction TokenDeploy);
 
-    /// <summary>Puts a minimal ENS registry and resolver in genesis: alice.eth resolves to <see cref="EnsTarget"/>, whose reverse record is alice.eth.</summary>
+    /// <summary>
+    /// Puts a minimal ENS registry and resolvers in genesis: alice.eth resolves to <see cref="EnsTarget"/>, whose reverse record is
+    /// alice.eth, and <see cref="LongEnsName"/> resolves to <see cref="LongEnsTarget"/>, whose reverse record is that name.
+    /// </summary>
     private sealed class EnsGenesis(IWorldState state, ISpecProvider specProvider) : IGenesisPostProcessor
     {
         public void PostProcess(Block genesis)
@@ -481,6 +500,13 @@ public class McpContractToolsTests
             state.CreateAccount(EnsResolver, UInt256.Zero);
             state.InsertCode(EnsResolver, TestContracts.Resolver("alice.eth"), spec, isGenesis: true);
             state.Set(new StorageCell(EnsResolver, Slot(alice)), Value(EnsTarget));
+
+            Hash256 longName = McpEns.NameHash(LongEnsName);
+            state.Set(new StorageCell(EnsRegistry, Slot(longName) + UInt256.One), Value(LongEnsResolver));
+            state.Set(new StorageCell(EnsRegistry, Slot(McpEns.NameHash(McpEns.ReverseName(LongEnsTarget))) + UInt256.One), Value(LongEnsResolver));
+            state.CreateAccount(LongEnsResolver, UInt256.Zero);
+            state.InsertCode(LongEnsResolver, TestContracts.Resolver(LongEnsName), spec, isGenesis: true);
+            state.Set(new StorageCell(LongEnsResolver, Slot(longName)), Value(LongEnsTarget));
         }
 
         private static UInt256 Slot(Hash256 node) => new(node.Bytes, isBigEndian: true);

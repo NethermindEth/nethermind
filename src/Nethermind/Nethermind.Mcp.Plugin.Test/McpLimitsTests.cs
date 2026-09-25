@@ -259,6 +259,33 @@ public class McpLimitsTests
     }
 
     [Test]
+    public async Task Detached_work_keeps_the_concurrency_slot_until_it_finishes()
+    {
+        await using McpTestNode node = await McpTestNode.Create(c => c.MaxConcurrentToolCalls = 1, start: false);
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+        TaskCompletionSource detached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Func<IEthRpcModule, CancellationToken, Task<CallToolResult>> chainId = (module, _) => Task.FromResult(executor.Success(module.eth_chainId().Data));
+
+        CallToolResult parent = await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_chainId), (module, _) =>
+        {
+            executor.TrackDetached(detached.Task);
+            return Task.FromResult(executor.Success(module.eth_chainId().Data));
+        }, CancellationToken.None);
+        CallToolResult whileDetached = await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_chainId), chainId, CancellationToken.None);
+        CallToolResult local = await executor.ExecuteLocalAsync("test", _ => Task.FromResult(executor.Success(1)), CancellationToken.None);
+
+        detached.SetResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            McpAssert.Success(parent);
+            McpAssert.Error(whileDetached, McpAssert.ResourceExhausted);
+            McpAssert.Success(local);
+            McpAssert.Success(await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_chainId), chainId, CancellationToken.None));
+        }
+    }
+
+    [Test]
     public async Task Calls_beyond_concurrency_limit_fail_after_a_short_wait_while_others_succeed()
     {
         BlockingEthModule blocking = new();

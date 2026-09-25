@@ -23,17 +23,22 @@ public sealed record McpTokenInfo(Address Address, string? Name, string? Symbol,
 /// <para>Callers pass an eth module they already rented. Each metadata call is bounded by <see cref="MetadataCallGas"/>.
 /// Both ABI <c>string</c> and legacy <c>bytes32</c> results (such as MKR's) are accepted; texts are stripped of control
 /// characters and capped at <see cref="MaxTextLength"/> characters, since they are untrusted contract output shown to an LLM.</para>
-/// <para>Results read at the head are cached per chain and address in a bounded LRU of <see cref="CacheCapacity"/> entries;
-/// reads at older blocks bypass the cache, since a token may not exist yet or may have been upgraded since. Results
+/// <para>Results read at the head are cached per chain and address in a bounded LRU of <see cref="CacheCapacity"/> entries
+/// for at most <see cref="CacheTtl"/>, so a proxy upgrade or reorg that changes a token's symbol or decimals is picked up
+/// again; reads at older blocks bypass the cache, since a token may not exist yet or may have been upgraded since. Results
 /// affected by a transient failure (state not available, node busy, unexpected error) are returned but not cached;
 /// reverts and malformed return data are permanent and cached as missing fields.</para>
 /// </remarks>
 /// <param name="logManager">Logs unexpected failures at debug level.</param>
 /// <param name="blockFinder">Recognizes head blocks passed by hash or number; without it only <c>latest</c> reads are cached.</param>
-public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? blockFinder = null)
+/// <param name="timeProvider">Expires cached entries; defaults to the system clock.</param>
+public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? blockFinder = null, TimeProvider? timeProvider = null)
 {
     /// <summary>The maximum number of cached tokens.</summary>
     public const int CacheCapacity = 4096;
+
+    /// <summary>How long a cached token's metadata is served before it is read again.</summary>
+    public static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(10);
 
     /// <summary>The gas limit of each metadata <c>eth_call</c>.</summary>
     public const ulong MetadataCallGas = 150_000;
@@ -50,6 +55,7 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
     private readonly Dictionary<(ulong ChainId, AddressAsKey Address), LinkedListNode<CacheEntry>> _cache = [];
     private readonly LinkedList<CacheEntry> _order = new();
     private readonly ILogger _logger = logManager.GetClassLogger<McpTokenMetadata>();
+    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
     /// <summary>Creates the metadata reader without logging.</summary>
     public McpTokenMetadata() : this(LimboLogs.Instance, null)
@@ -78,8 +84,13 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
             if (cacheable && _cache.TryGetValue(key, out LinkedListNode<CacheEntry>? node))
             {
                 _order.Remove(node);
-                _order.AddFirst(node);
-                return node.Value.Info;
+                if (node.Value.Expires > _time.GetUtcNow())
+                {
+                    _order.AddFirst(node);
+                    return node.Value.Info;
+                }
+
+                _cache.Remove(key);
             }
         }
 
@@ -228,7 +239,7 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
                 _order.Remove(existing);
             }
 
-            _cache[key] = _order.AddFirst(new CacheEntry(key, info));
+            _cache[key] = _order.AddFirst(new CacheEntry(key, info, _time.GetUtcNow() + CacheTtl));
             while (_cache.Count > CacheCapacity && _order.Last is { } last)
             {
                 _order.RemoveLast();
@@ -237,5 +248,5 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
         }
     }
 
-    private sealed record CacheEntry((ulong ChainId, AddressAsKey Address) Key, McpTokenInfo Info);
+    private sealed record CacheEntry((ulong ChainId, AddressAsKey Address) Key, McpTokenInfo Info, DateTimeOffset Expires);
 }

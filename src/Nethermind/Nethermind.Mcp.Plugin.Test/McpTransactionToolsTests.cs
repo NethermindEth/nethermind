@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using Autofac;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,9 +18,12 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
 using Nethermind.Mcp.Plugin.Tools;
+using Nethermind.Mcp.Plugin.Tools.Abi;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -36,6 +40,7 @@ namespace Nethermind.Mcp.Plugin.Test;
 [Parallelizable(ParallelScope.Self)]
 public class McpTransactionToolsTests
 {
+    private const int BatchIds = 20;
     private static readonly string UnknownHash = Keccak.Compute("unknown transaction").ToString();
 
     private McpTestNode _node = null!;
@@ -221,6 +226,73 @@ public class McpTransactionToolsTests
             Assert.That(found, Is.Empty);
             Assert.That(skipped, Is.EqualTo(2));
             Assert.That(eth.ReceivedCalls(), Is.Empty, "no metadata call is made once the budget is spent");
+        }
+    }
+
+    [Test]
+    public void Token_metadata_cache_expires_so_a_changed_token_is_read_again()
+    {
+        IEthRpcModule eth = Substitute.For<IEthRpcModule>();
+        eth.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
+        eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
+        string symbol = "OLD";
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+            .Returns(_ => ResultWrapper<HexBytes>.Success(new HexBytes(TestContracts.AbiString(symbol))));
+        TimeProvider time = Substitute.For<TimeProvider>();
+        DateTimeOffset now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        time.GetUtcNow().Returns(_ => now);
+        McpTokenMetadata metadata = new(LimboLogs.Instance, timeProvider: time);
+
+        string? first = metadata.Get(eth, TestItem.AddressA, BlockParameter.Latest)?.Symbol;
+        symbol = "NEW";
+        string? cached = metadata.Get(eth, TestItem.AddressA, BlockParameter.Latest)?.Symbol;
+        now += McpTokenMetadata.CacheTtl;
+        string? expired = metadata.Get(eth, TestItem.AddressA, BlockParameter.Latest)?.Symbol;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo("OLD"));
+            Assert.That(cached, Is.EqualTo("OLD"), "served from the cache within its lifetime");
+            Assert.That(expired, Is.EqualTo("NEW"), "an upgraded token is read again once the entry expires");
+            Assert.That(metadata.CachedCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Erc1155_batch_yields_a_movement_for_every_id()
+    {
+        List<McpTokenMovement> movements = [];
+
+        McpTxTokens.Extract(TransferBatchLog(BatchIds).ToLogEntry(), movements, wrappedNativeToken: null);
+
+        Assert.That(movements.Select(static m => m.TokenId), Is.EqualTo(Enumerable.Range(1, BatchIds).Select(static i => (UInt256?)(ulong)i)));
+    }
+
+    [Test]
+    public void Block_receipt_stats_count_every_batch_id_and_leave_pre_byzantium_failures_unknown()
+    {
+        McpTransactionTools tools = _node.Chain.Container.Resolve<McpTransactionTools>();
+        IEthRpcModule eth = Substitute.For<IEthRpcModule>();
+        ReceiptForRpc[] receipts =
+        [
+            new() { Root = Keccak.Zero, GasUsed = 50_000, EffectiveGasPrice = 1, Logs = [TransferBatchLog(BatchIds)] },
+            new() { Root = Keccak.Zero, GasUsed = 21_000, EffectiveGasPrice = 1, Logs = [] }
+        ];
+        eth.eth_getBlockReceipts(Arg.Any<BlockParameter>()).Returns(ResultWrapper<ReceiptForRpc[]?>.Success(receipts));
+        List<string> notes = [];
+
+        JsonObject stats = tools.ReceiptStats(eth, new BlockParameter(1), null, notes, static () => true, CancellationToken.None)!;
+
+        JsonNode topToken = stats["topTokens"]![0]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stats.ContainsKey("failed") && stats["failed"] is null, Is.True, "pre-Byzantium receipts have no status, so failures are unknown");
+            Assert.That(stats["tokenTransfers"]!.GetValue<int>(), Is.EqualTo(BatchIds));
+            Assert.That(topToken["transfers"]!.GetValue<int>(), Is.EqualTo(BatchIds));
+            Assert.That(topToken["symbol"], Is.Null, "no metadata is read once the token budget is spent");
+            Assert.That(notes, Has.Some.Contains("predate Byzantium"));
+            Assert.That(notes, Has.Some.Contains("shown by address only"));
+            Assert.That(eth.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IEthRpcModule.eth_getCode)), Is.Zero);
         }
     }
 
@@ -481,6 +553,28 @@ public class McpTransactionToolsTests
     }
 
     private Task<CallToolResult> Call(string toolName, params (string Name, object? Value)[] args) => McpToolCalls.Call(_client, toolName, args);
+
+    // An ERC-1155 TransferBatch of ids 1..count, each moving 10 units, from AddressA to AddressB.
+    private static LogEntryForRpc TransferBatchLog(int count)
+    {
+        int[] ids = [.. Enumerable.Range(1, count)];
+        McpAbiParam array = new(string.Empty, McpAbiType.ArrayOf(McpAbiType.UInt256));
+        Assert.That(McpAbiCodec.TryEncode([array, array], [JsonSerializer.SerializeToElement(ids), JsonSerializer.SerializeToElement(ids.Select(static _ => 10))],
+            1 << 16, out byte[]? data, out string? error), Is.True, error);
+        return new LogEntryForRpc
+        {
+            Address = TestItem.AddressC,
+            Data = data!,
+            Topics = [Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])"), Topic(TestItem.AddressA), Topic(TestItem.AddressA), Topic(TestItem.AddressB)]
+        };
+
+        static Hash256 Topic(Address address)
+        {
+            byte[] word = new byte[32];
+            address.Bytes.CopyTo(word.AsSpan(12));
+            return new Hash256(word);
+        }
+    }
 }
 
 /// <summary>Fee reporting on a London chain, where part of every fee is the burnt base fee.</summary>

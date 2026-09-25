@@ -72,6 +72,7 @@ public class McpAbiTests
     [TestCase("foo(uint256 indexed x)", "only valid in event")]
     [TestCase("foo(uint256[0])", "at least 1")]
     [TestCase("foo(uint256[1000000000])", "too large")]
+    [TestCase("foo(string[999999])", "too large")]
     [TestCase("foo(uint256[][][][][][][][][])", "deeper than 8")]
     [TestCase("foo() banana", "unexpected 'banana'")]
     [TestCase("foo(())", "1 to 64 components")]
@@ -194,6 +195,8 @@ public class McpAbiTests
     [TestCase("", "the data is empty")]
     [TestCase("0x00", "too short")]
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000001000", "invalid offset")]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "invalid offset")]
+    [TestCase("0x000000000000000000000000000000000000000000000000000000000000002100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "invalid offset")]
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000020ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "invalid length")]
     [TestCase("0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000ff", "invalid length")]
     public void Decoding_malformed_dynamic_data_fails_without_throwing(string hex, string expected)
@@ -210,10 +213,28 @@ public class McpAbiTests
     [TestCase("int8", "0x0000000000000000000000000000000000000000000000000000000000000080")]
     [TestCase("bytes2", "0xabcdef0000000000000000000000000000000000000000000000000000000000")]
     [TestCase("uint256[]", "0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000ffff")]
+    // A dynamic tail offset pointing back into the tuple's own head.
+    [TestCase("(uint256,string)", "0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000")]
     public void Decoding_rejects_non_canonical_values(string type, string hex)
     {
         Assert.That(McpAbiSignature.TryParseType(type, out McpAbiType? abiType, out _), Is.True);
         Assert.That(McpAbiCodec.TryDecode([abiType!], Bytes.FromHexString(hex), out _, out _), Is.False);
+    }
+
+    [Test]
+    public void Decoding_fixed_arrays_of_dynamic_values_checks_the_data_before_allocating()
+    {
+        McpAbiType type = McpAbiType.String;
+        for (int i = 0; i < McpAbiType.MaxNestingDepth; i++) type = McpAbiType.FixedArrayOf(type, 4096);
+        byte[] data = [.. Word(32), .. Word(0)];
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread();
+        bool decoded = McpAbiCodec.TryDecode([type], data, out _, out string? error);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        Assert.That(decoded, Is.False);
+        Assert.That(error, Does.Contain("claims 4096 elements"));
+        Assert.That(allocated, Is.LessThan(16 * 1024));
     }
 
     [Test]

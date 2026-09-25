@@ -4,6 +4,7 @@
 using System.Text.Json;
 using Autofac;
 using ModelContextProtocol.Client;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -331,6 +332,68 @@ public class McpLogPagingTests
         {
             Assert.That(logs, Is.EqualTo(seeded.Expected));
             Assert.That(pages.Max(static p => p.GetProperty("logs").GetArrayLength()), Is.LessThanOrEqualTo(7));
+        }
+    }
+
+    [Test]
+    public async Task Block_with_more_logs_than_the_eth_module_limit_is_paged_through([Values] bool streamMode, [Values] bool byTopic)
+    {
+        await using McpTestNode node = await McpTestNode.Create(
+            c =>
+            {
+                c.MaxLogBlockRange = MaxLogBlockRange;
+                c.MaxLogs = MaxLogs;
+            },
+            b => b.AddDecorator<IJsonRpcConfig>((_, rpc) =>
+            {
+                rpc.EnableLogsStreamMode = streamMode;
+                rpc.MaxLogsPerResponse = 7;
+                return rpc;
+            }));
+        // The middle block holds 15 logs, more than the eth module returns for one eth_getLogs call.
+        SeededLogs seeded = await SeedLogs(node, [1, 3, 1]);
+        await using McpClient client = await node.CreateClient();
+        List<(string, object?)> args = [("fromBlock", Hex(seeded.First)), ("toBlock", Hex(seeded.Last))];
+        if (byTopic) args.Add(("topics", Json(new object?[] { PagingTopic.ToString() })));
+
+        (List<LogId> logs, List<JsonElement> pages) = await PageAll(client, args, limit: null);
+        // Two of the middle block's three emitters still match more logs than the eth module limit.
+        Address[] emitters = [seeded.Expected[10].Emitter, seeded.Expected[15].Emitter];
+        (List<LogId> filtered, _) = await PageAll(client, [.. args, ("address", Json(emitters.Select(static e => e.ToString()).ToArray()))], limit: 3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs, Is.EqualTo(seeded.Expected));
+            Assert.That(pages.Max(static p => p.GetProperty("logs").GetArrayLength()), Is.LessThanOrEqualTo(MaxLogs));
+            Assert.That(filtered, Is.EqualTo(seeded.Expected.Where(l => emitters.Contains(l.Emitter)).ToList()), "the address filter applies inside the block too");
+        }
+    }
+
+    [Test]
+    public async Task Missing_receipts_inside_the_range_fail_instead_of_dropping_logs()
+    {
+        await using McpTestNode node = await McpTestNode.Create(c =>
+        {
+            c.MaxLogBlockRange = 1000;
+            c.MaxLogs = MaxLogs;
+        });
+        SeededLogs seeded = await SeedLogs(node, [1, 1, 1, 1]);
+        ulong missing = seeded.Last - 1;
+        node.Chain.ReceiptStorage.RemoveReceipts(node.Chain.BlockTree.FindBlock(missing, BlockTreeLookupOptions.RequireCanonical)!);
+        await using McpClient client = await node.CreateClient();
+
+        JsonElement history = McpAssert.Success(await McpToolCalls.Call(client, "node_status", [])).GetProperty("history");
+        Assert.That(history.GetProperty("oldestReceiptBlock").GetUInt64(), Is.LessThan(missing), "precondition: the gap is above the receipt floor");
+
+        JsonElement error = McpAssert.Error(await McpToolCalls.Call(client, "get_logs",
+            [("fromBlock", Hex(seeded.First)), ("toBlock", Hex(seeded.Last))]), McpAssert.Unavailable);
+        JsonElement below = McpAssert.Success(await McpToolCalls.Call(client, "get_logs",
+            [("fromBlock", Hex(seeded.First)), ("toBlock", Hex(missing - 1))]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain($"block {missing}"));
+            Assert.That(below.GetProperty("logs").GetArrayLength(), Is.EqualTo(seeded.Expected.Count(l => l.Block < missing)));
         }
     }
 

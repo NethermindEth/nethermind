@@ -550,10 +550,14 @@ public static class McpAbiCodec
 
         public string? Error { get; private set; }
 
-        // Decodes a sequence whose head starts at `start`; offsets are relative to `start` and must stay below `end`.
+        // Decodes a sequence whose head starts at `start`; offsets are relative to `start`, word-aligned, and must land
+        // between the end of the head and `end`, so a tail can never alias its own head.
         public bool TryDecodeSequence(IReadOnlyList<McpAbiType> types, int start, int end, [NotNullWhen(true)] out object?[]? values)
         {
             values = new object?[types.Count];
+            long headEnd = start;
+            foreach (McpAbiType type in types) headEnd += type.HeadSize;
+
             int head = start;
             for (int i = 0; i < types.Count; i++)
             {
@@ -566,7 +570,7 @@ public static class McpAbiCodec
                 int position = head;
                 if (type.IsDynamic)
                 {
-                    if (!TryReadLength(head, out int offset) || start + (long)offset >= end)
+                    if (!TryReadLength(head, out int offset) || offset % WordSize != 0 || start + (long)offset < headEnd || start + (long)offset >= end)
                     {
                         return Fail($"invalid offset for {type.CanonicalName} at byte {head}");
                     }
@@ -666,16 +670,10 @@ public static class McpAbiCodec
                             return Fail($"invalid length for {type.CanonicalName} at byte {position}");
                         }
 
-                        int bodyStart = position + WordSize;
-                        if ((long)length * type.Element!.HeadSize > end - bodyStart)
-                        {
-                            return Fail($"{type.CanonicalName} claims {length} elements, more than the data holds");
-                        }
-
-                        return TryDecodeList(type.Element, length, bodyStart, end, out value);
+                        return TryDecodeList(type, length, position + WordSize, end, out value);
                     }
                 case McpAbiTypeKind.FixedArray:
-                    return TryDecodeList(type.Element!, type.Size, position, end, out value);
+                    return TryDecodeList(type, type.Size, position, end, out value);
                 case McpAbiTypeKind.Tuple:
                     {
                         McpAbiType[] types = new McpAbiType[type.Components.Count];
@@ -689,11 +687,22 @@ public static class McpAbiCodec
             }
         }
 
-        private bool TryDecodeList(McpAbiType element, int length, int start, int end, out object? value)
+        private bool TryDecodeList(McpAbiType array, int length, int start, int end, out object? value)
         {
             value = null;
+            // Checked before allocating: a fixed array's length comes from the signature, not from the data.
+            if ((long)length * array.Element!.HeadSize > end - start)
+            {
+                return Fail($"{array.CanonicalName} claims {length} elements, more than the data holds");
+            }
+
+            if (length > MaxDecodedValues - _values)
+            {
+                return Fail($"the data decodes to more than {MaxDecodedValues} values");
+            }
+
             McpAbiType[] types = new McpAbiType[length];
-            Array.Fill(types, element);
+            Array.Fill(types, array.Element);
             if (!TryDecodeSequence(types, start, end, out object?[]? items)) return false;
             value = new List<object?>(items);
             return true;

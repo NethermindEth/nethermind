@@ -10,7 +10,9 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 
@@ -42,7 +44,13 @@ internal sealed partial class McpEthTools
     /// The eth module buffers the whole matching set and fails with <see cref="ErrorCodes.LimitExceeded"/> above
     /// <see cref="IJsonRpcConfig.MaxLogsPerResponse"/>; such a page is retried over half the block span until it fits.
     /// In logs stream mode the module instead stops silently at that count, so a page that reached it resumes right after
-    /// its last log rather than at the next block.
+    /// its last log rather than at the next block. A single block with more matching logs than that count is read from
+    /// its receipts (<c>eth_getBlockReceipts</c>) and filtered here, so paging can move through it.
+    /// </para>
+    /// <para>
+    /// The eth module checks that receipts exist only for the first and last block of a range and returns no logs for a
+    /// block in between whose receipts are missing, so a page not answered from the log index first checks every block whose
+    /// bloom matches the filter and fails with <c>unavailable</c> instead of silently omitting its logs.
     /// </para>
     /// </remarks>
     [McpServerTool(Name = "get_logs", Title = "Get logs", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -165,6 +173,13 @@ internal sealed partial class McpEthTools
             }
 
             (ulong scanTo, bool indexed) = PlanLogPage(start, end, selective);
+            LogFilter logFilter = CreateLogFilter(addresses, topicFilter);
+            if (!indexed && FindMissingReceipts(start, scanTo, logFilter, token) is { } missingReceipts)
+            {
+                return Task.FromResult(missingReceipts);
+            }
+
+            LogPage singleBlockPage = new([], start, startLogIndex, start, end, pageLimit, pageBytes, filterHash, false, clampedFrom, false, token);
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -179,20 +194,145 @@ internal sealed partial class McpEthTools
                 using ResultWrapper<IEnumerable<FilterLog>> result = eth.eth_getLogs(filter);
                 if (result.Result.ResultType != ResultType.Success)
                 {
-                    if (result.ErrorCode == ErrorCodes.LimitExceeded && scanTo > start)
+                    if (result.ErrorCode == ErrorCodes.LimitExceeded)
                     {
-                        scanTo = start + (scanTo - start) / 2;
-                        continue;
+                        if (scanTo > start)
+                        {
+                            scanTo = start + (scanTo - start) / 2;
+                            continue;
+                        }
+
+                        return Task.FromResult(BlockLogPage(eth, logFilter, singleBlockPage));
                     }
 
                     return Task.FromResult(_executor.Failure("get_logs", result));
                 }
 
+                IEnumerable<FilterLog> logs = result.Data;
+                int streamCap = StreamLogCap;
+                if (streamCap > 0)
+                {
+                    // The stream stops at the cap counted from the page start, so a block holding that many matching logs
+                    // could never be paged past; the (cap-bounded) logs are read first to find out.
+                    List<FilterLog> capped = ReadLogs(logs, token);
+                    if (capped.Count >= streamCap && capped[^1].BlockNumber == start)
+                    {
+                        return Task.FromResult(BlockLogPage(eth, logFilter, singleBlockPage));
+                    }
+
+                    logs = capped;
+                }
+
                 // The logs may be produced lazily, so they are enumerated here, while the module is still rented.
-                LogPage page = new(result.Data, start, startLogIndex, scanTo, end, pageLimit, pageBytes, filterHash, indexed, clampedFrom, token);
-                return Task.FromResult(_executor.Success((Page: page, Tools: this), static (writer, state) => state.Tools.WriteLogPage(writer, state.Page)));
+                LogPage page = new(logs, start, startLogIndex, scanTo, end, pageLimit, pageBytes, filterHash, indexed, clampedFrom, streamCap > 0, token);
+                return Task.FromResult(WriteLogPageResult(page));
             }
         }, cancellationToken);
+    }
+
+    private CallToolResult WriteLogPageResult(LogPage page) =>
+        _executor.Success((Page: page, Tools: this), static (writer, state) => state.Tools.WriteLogPage(writer, state.Page));
+
+    /// <summary>The count at which the eth module silently stops a logs stream, or 0 when it returns every log or fails instead.</summary>
+    private int StreamLogCap => rpcConfig.EnableLogsStreamMode && rpcConfig.MaxLogsPerResponse > 0 ? rpcConfig.MaxLogsPerResponse : 0;
+
+    /// <summary>Returns an <c>unavailable</c> error for the first block in the range whose bloom matches the filter but whose receipts are missing.</summary>
+    private CallToolResult? FindMissingReceipts(ulong from, ulong to, LogFilter filter, CancellationToken token)
+    {
+        for (ulong number = from; number <= to; number++)
+        {
+            if ((number - from) % LogCancellationCheckInterval == 0)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+
+            if (blockFinder.FindHeader(number, BlockTreeLookupOptions.RequireCanonical) is { } header
+                && (header.Bloom is not { } bloom || filter.Matches(bloom))
+                && capabilities.CheckReceipts(header) is { } missing)
+            {
+                return missing;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Serves one block from its receipts, for a block with more matching logs than one <c>eth_getLogs</c> response carries.</summary>
+    /// <param name="eth">The rented eth module.</param>
+    /// <param name="filter">The address and topic filter.</param>
+    /// <param name="page">The page, covering only its start block; its logs are replaced by the block's matching logs.</param>
+    private CallToolResult BlockLogPage(IEthRpcModule eth, LogFilter filter, LogPage page)
+    {
+        if (blockFinder.FindHeader(page.Start, BlockTreeLookupOptions.RequireCanonical) is { } header && capabilities.CheckReceipts(header) is { } missing)
+        {
+            return missing;
+        }
+
+        using ResultWrapper<ReceiptForRpc[]?> receipts = eth.eth_getBlockReceipts(new BlockParameter(page.Start));
+        if (receipts.Result.ResultType != ResultType.Success)
+        {
+            return _executor.Failure("get_logs", receipts);
+        }
+
+        if (receipts.Data is null)
+        {
+            return McpToolExecutor.Error(McpToolErrorCodes.Unavailable, $"Receipts and logs of block {page.Start} are not available on this node.");
+        }
+
+        List<FilterLog> logs = [];
+        foreach (ReceiptForRpc receipt in receipts.Data)
+        {
+            page.Token.ThrowIfCancellationRequested();
+            foreach (LogEntryForRpc log in receipt.Logs)
+            {
+                if (log.LogIndex is { } logIndex && (ulong)logIndex >= page.StartLogIndex && filter.Accepts(log.ToLogEntry()))
+                {
+                    logs.Add(new FilterLog(logIndex, log.BlockNumber ?? page.Start, log.BlockTimestamp ?? 0, log.BlockHash, (int)(log.TransactionIndex ?? 0),
+                        log.TransactionHash, log.Address, log.Data, log.Topics, log.Removed ?? false));
+                }
+            }
+        }
+
+        return WriteLogPageResult(page with { Logs = logs });
+    }
+
+    private static List<FilterLog> ReadLogs(IEnumerable<FilterLog> logs, CancellationToken token)
+    {
+        List<FilterLog> list = [];
+        foreach (FilterLog log in logs)
+        {
+            if (list.Count % LogCancellationCheckInterval == 0)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+
+            list.Add(log);
+        }
+
+        return list;
+    }
+
+    /// <summary>Builds the filter the eth module applies to <c>eth_getLogs</c>: any listed address, and at each topic position any listed topic.</summary>
+    private static LogFilter CreateLogFilter(HashSet<AddressAsKey>? addresses, Hash256[]?[]? topics)
+    {
+        TopicsFilter topicsFilter = SequenceTopicsFilter.AnyTopic;
+        if (topics is not null)
+        {
+            TopicExpression[] expressions = new TopicExpression[topics.Length];
+            for (int i = 0; i < topics.Length; i++)
+            {
+                expressions[i] = topics[i] switch
+                {
+                    null or [] => AnyTopic.Instance,
+                    [Hash256 topic] => new SpecificTopic(topic),
+                    Hash256[] alternatives => new OrExpression(Array.ConvertAll(alternatives, static t => (TopicExpression)new SpecificTopic(t)))
+                };
+            }
+
+            topicsFilter = new SequenceTopicsFilter(expressions);
+        }
+
+        return new LogFilter(0, BlockParameter.Earliest, BlockParameter.Latest, addresses is null ? AddressFilter.AnyAddress : new AddressFilter(addresses), topicsFilter);
     }
 
     /// <summary>Chooses the last block of a page starting at <paramref name="start"/>, and whether the log index widened it.</summary>
@@ -265,14 +405,9 @@ internal sealed partial class McpEthTools
 
         writer.WriteEndArray();
 
-        if (!hasNext && rpcConfig.EnableLogsStreamMode && rpcConfig.MaxLogsPerResponse > 0 && enumerated >= rpcConfig.MaxLogsPerResponse)
+        // A capped stream that ended past its start block (see GetLogs) resumes right after its last log.
+        if (!hasNext && page.Capped && enumerated >= StreamLogCap && last is not null)
         {
-            if (last is null)
-            {
-                return McpToolExecutor.Error(McpToolErrorCodes.ResourceExhausted,
-                    $"Block {page.Start} has more matching logs than the node's JsonRpc.MaxLogsPerResponse ({rpcConfig.MaxLogsPerResponse}); add address/topic filters.");
-            }
-
             (hasNext, nextBlock, nextLogIndex) = (true, last.BlockNumber, (ulong)last.LogIndex + 1);
         }
 
@@ -338,5 +473,6 @@ internal sealed partial class McpEthTools
         byte[] FilterHash,
         bool Indexed,
         ulong? ClampedFrom,
+        bool Capped,
         CancellationToken Token);
 }

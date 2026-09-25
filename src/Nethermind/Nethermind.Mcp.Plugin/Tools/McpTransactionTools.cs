@@ -151,7 +151,7 @@ internal sealed class McpTransactionTools(
           "blobs":{"type":"object"},
           "withdrawals":{"type":"object"},
           "topRecipients":{"type":"array","items":{"type":"object"}},
-          "receipts":{"type":["object","null"]},
+          "receipts":{"type":["object","null"],"properties":{"failed":{"type":["integer","null"]},"tokenTransfers":{"type":"integer"}}},
           "summary":{"type":"string"},
           "notes":{"type":"array","items":{"type":"string"}}},
           "required":["number","hash","timestamp","timestampIso","transactionCount","gasUsed","gasLimit","summary","notes"]}},
@@ -166,6 +166,7 @@ internal sealed class McpTransactionTools(
 
     // explain_transaction degrades into notes before the executor's hard timeout would discard the whole answer: token metadata
     // stops at 30% of the tool timeout, the call trace gets at most half of it, and everything must be done by 85%.
+    // simulate_transaction and block_summary stop their token metadata lookups at the same 30% mark.
     private readonly TimeSpan _tokenDeadline = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout) * 0.3);
     private readonly TimeSpan _traceBudget = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout) * 0.5);
     private readonly TimeSpan _explainDeadline = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout) * 0.85);
@@ -268,7 +269,7 @@ internal sealed class McpTransactionTools(
         "transaction count by type, contract creations, gas used vs limit (%), base fee in gwei, base fees burnt (or sent to the fee collector " +
         "on Gnosis) in the native currency (ETH, or xDAI on Gnosis), blob count and blob gas, withdrawals (count and total: ETH on Ethereum, " +
         "GNO on Gnosis where they are paid by the deposit contract, not in xDAI), the top 10 `to` addresses by transaction count and, from " +
-        "receipts, failed transactions, total and priority fees and the top 10 tokens by transfer count. Includes a plain-English `summary`. " +
+        "receipts, failed transactions (null before Byzantium, whose receipts carry no status), total and priority fees and the top 10 tokens by transfer count. Includes a plain-English `summary`. " +
         "Prefer it over get_block when the question is \"what happened in this block\". Receipt-based parts are omitted with a note when the " +
         "node has no receipts for the block.")]
     public Task<CallToolResult> BlockSummary(
@@ -605,7 +606,8 @@ internal sealed class McpTransactionTools(
         }
 
         // The native tracer is bounded only by JsonRpc.Timeout, so it runs on its own task and the answer stops waiting for it
-        // after the trace budget; an abandoned trace keeps its debug module until it finishes and stays tracked for shutdown.
+        // after the trace budget; an abandoned trace keeps its debug module and the call's concurrency slot until it finishes
+        // and stays tracked for shutdown.
         Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> trace = Task.Run(() => RunTraceAsync(context.Hash), CancellationToken.None);
         using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(token);
         try
@@ -903,6 +905,7 @@ internal sealed class McpTransactionTools(
     private CallToolResult Simulate(IEthRpcModule eth, BlockParameter blockParameter, Dictionary<Address, AccountOverride>? overrides,
         List<SimulateCallInput> inputs, CancellationToken token)
     {
+        Stopwatch clock = Stopwatch.StartNew();
         using ResultWrapper<BlockHeaderForRpc?> headerResult = eth.eth_getHeaderByNumber(blockParameter);
         if (headerResult.Result.ResultType != ResultType.Success)
         {
@@ -955,11 +958,11 @@ internal sealed class McpTransactionTools(
         }
 
         token.ThrowIfCancellationRequested();
-        return executor.Success(BuildSimulation(eth, header, simulated, inputs, token));
+        return executor.Success(BuildSimulation(eth, header, simulated, inputs, () => clock.Elapsed > _tokenDeadline, token));
     }
 
     private JsonObject BuildSimulation(IEthRpcModule eth, BlockHeaderForRpc header, SimulateBlockResult<SimulateCallResult> simulated,
-        List<SimulateCallInput> inputs, CancellationToken token)
+        List<SimulateCallInput> inputs, Func<bool> tokenBudgetSpent, CancellationToken token)
     {
         List<JsonObject> callJsons = [];
         List<McpTokenMovement> allMovements = [];
@@ -1081,8 +1084,8 @@ internal sealed class McpTransactionTools(
         Dictionary<AddressAsKey, McpTokenInfo> tokens = [];
         if (allMovements.Count > 0)
         {
-            (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(allMovements), MaxTokenLookups, token);
-            if (skipped > 0) notes.Add($"Metadata was read for the first {MaxTokenLookups} tokens only.");
+            (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(allMovements), MaxTokenLookups, token, tokenBudgetSpent);
+            if (skipped > 0) notes.Add($"Token metadata was not read for {skipped} token(s) (at most {MaxTokenLookups} per call, within the time budget); they show raw amounts.");
             foreach ((int call, List<McpTokenMovement> movements) in perCall)
             {
                 if (movements.Count == 0) continue;
@@ -1391,6 +1394,7 @@ internal sealed class McpTransactionTools(
 
     private CallToolResult SummarizeBlock(IEthRpcModule eth, BlockParameter blockParameter, CancellationToken token)
     {
+        Stopwatch clock = Stopwatch.StartNew();
         using ResultWrapper<BlockForRpc> blockResult = blockParameter.Type == BlockParameterType.BlockHash
             ? eth.eth_getBlockByHash(blockParameter.BlockHash!, true)
             : eth.eth_getBlockByNumber(blockParameter, true);
@@ -1516,7 +1520,8 @@ internal sealed class McpTransactionTools(
             else
             {
                 // By hash, so a non-canonical block passed by hash gets its own receipts, not the canonical ones at its height.
-                receipts = ReceiptStats(eth, block.Hash is { } blockHash ? new BlockParameter(blockHash) : new BlockParameter(number), block.BaseFeePerGas, notes, token);
+                receipts = ReceiptStats(eth, block.Hash is { } blockHash ? new BlockParameter(blockHash) : new BlockParameter(number), block.BaseFeePerGas, notes,
+                    () => clock.Elapsed > _tokenDeadline, token);
             }
         }
 
@@ -1574,7 +1579,9 @@ internal sealed class McpTransactionTools(
         return json;
     }
 
-    private JsonObject? ReceiptStats(IEthRpcModule eth, BlockParameter block, UInt256? baseFee, List<string> notes, CancellationToken token)
+    /// <summary>Aggregates a block's receipts for <c>block_summary</c>: failures, fees and the most transferred tokens.</summary>
+    /// <param name="tokenBudgetSpent">Returns <see langword="true"/> once no more token metadata may be read; the remaining top tokens are then shown by address only.</param>
+    internal JsonObject? ReceiptStats(IEthRpcModule eth, BlockParameter block, UInt256? baseFee, List<string> notes, Func<bool> tokenBudgetSpent, CancellationToken token)
     {
         using ResultWrapper<ReceiptForRpc[]?> result = eth.eth_getBlockReceipts(block);
         if (result.Result.ResultType != ResultType.Success || result.Data is not { } receipts)
@@ -1584,6 +1591,7 @@ internal sealed class McpTransactionTools(
         }
 
         int failed = 0;
+        bool statusUnknown = false;
         UInt256 totalFees = UInt256.Zero;
         UInt256 blobFees = UInt256.Zero;
         ulong gasUsed = 0;
@@ -1593,7 +1601,8 @@ internal sealed class McpTransactionTools(
         List<McpTokenMovement> scratch = [];
         foreach (ReceiptForRpc receipt in receipts)
         {
-            if (receipt.Status == 0) failed++;
+            if (receipt.Status is null) statusUnknown = true;
+            else if (receipt.Status == 0) failed++;
             gasUsed += receipt.GasUsed;
             totalFees += (receipt.EffectiveGasPrice ?? UInt256.Zero) * (UInt256)receipt.GasUsed;
             if (receipt.BlobGasUsed is { } blobGas && receipt.BlobGasPrice is { } blobPrice)
@@ -1615,9 +1624,15 @@ internal sealed class McpTransactionTools(
         }
 
         UInt256 baseFeesPaid = baseFee is { } fee ? fee * (UInt256)gasUsed : UInt256.Zero;
+        if (statusUnknown)
+        {
+            // EIP-658: receipts before Byzantium carry a post-state root instead of a status code.
+            notes.Add("The failed-transaction count is unknown: this block's receipts predate Byzantium (EIP-658) and carry no success status.");
+        }
+
         JsonObject json = new()
         {
-            ["failed"] = failed,
+            ["failed"] = statusUnknown ? null : failed,
             ["totalFees"] = Amount(totalFees),
             ["priorityFees"] = Amount(totalFees > baseFeesPaid ? totalFees - baseFeesPaid : UInt256.Zero),
             ["tokenTransfers"] = transfers
@@ -1629,7 +1644,11 @@ internal sealed class McpTransactionTools(
         top.Sort(static (a, b) => b.Value.CompareTo(a.Value));
         List<Address> topTokens = [];
         for (int i = 0; i < top.Count && i < BlockTopCount; i++) topTokens.Add(top[i].Key);
-        (Dictionary<AddressAsKey, McpTokenInfo> infos, _) = McpTxTokens.LookUp(tokenMetadata, eth, topTokens, BlockTopCount, token);
+        (Dictionary<AddressAsKey, McpTokenInfo> infos, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, topTokens, BlockTopCount, token, tokenBudgetSpent);
+        if (skipped > 0)
+        {
+            notes.Add($"Token metadata was not read for {skipped} of the top tokens within the time budget; they are shown by address only.");
+        }
 
         JsonArray topJson = [];
         foreach (Address tokenAddress in topTokens)

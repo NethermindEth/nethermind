@@ -205,16 +205,37 @@ public class McpNodeCapabilitiesTests
     [Test]
     public void Receipt_floor_skips_blocks_without_transactions()
     {
-        // Odd blocks are empty; receipts are stored from 600001, so 600001 (empty) is the first block needing none missing.
-        NodeFixture node = new() { BodiesFrom = 1, ReceiptsFrom = 600_001, EmptyWhen = static n => n % 2 == 1 };
+        // Odd blocks are empty and, as after a sync, have no receipt entry; receipts are stored from 600002, so 600001 (empty)
+        // is the first block from which none is missing.
+        NodeFixture node = new() { BodiesFrom = 1, EmptyWhen = static n => n % 2 == 1 };
+        node.ReceiptStorage.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(static c => c.Arg<ulong>() is var n && n % 2 == 0 && n >= 600_002);
+        McpNodeCapabilities capabilities = node.Create();
+
+        Assert.That(capabilities.GetAvailability().OldestReceiptBlock, Is.EqualTo(600_001));
+    }
+
+    [TestCase(140UL)]
+    [TestCase(100_000UL)]
+    public void Receipt_floor_is_not_lowered_by_empty_blocks_below_a_missing_one(ulong missing)
+    {
+        // Every block below the missing one is empty, so no block below it has receipts to find missing.
+        NodeFixture node = new() { BodiesFrom = 1, ReceiptsFrom = missing + 1, EmptyWhen = n => n < missing };
         McpNodeCapabilities capabilities = node.Create();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(capabilities.GetAvailability().OldestReceiptBlock, Is.EqualTo(600_001));
-            Assert.That(node.ReceiptStorage.ReceivedCalls().Select(static c => c.GetArguments()[0]).OfType<ulong>().Where(static n => n % 2 == 1), Is.Empty,
-                "receipts of an empty block are never probed");
+            Assert.That(capabilities.GetAvailability().OldestReceiptBlock, Is.EqualTo(missing + 1));
+            Assert.That(capabilities.CheckReceipts(missing), Is.Not.Null);
         }
+    }
+
+    [Test]
+    public void Receipt_floor_counts_empty_blocks_with_stored_receipts()
+    {
+        // An idle chain: every block since the last transaction is empty, and block processing stored an empty entry for each.
+        NodeFixture node = new() { BodiesFrom = 1, ReceiptsFrom = 10_000, EmptyWhen = static n => n > 10_000 };
+
+        Assert.That(node.Create().GetAvailability().OldestReceiptBlock, Is.EqualTo(10_000));
     }
 
     [Test]

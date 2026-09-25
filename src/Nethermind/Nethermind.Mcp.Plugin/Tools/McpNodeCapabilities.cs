@@ -91,8 +91,8 @@ public sealed class McpNodeCapabilities(
     // at most every five minutes, and sooner only when a check finds a block missing above the cached floor.
     private const long FloorCacheMilliseconds = 5 * 60 * 1000;
 
-    // A receipt probe of a block without transactions looks this many blocks up for one with transactions.
-    private const int ReceiptProbeSpan = 32;
+    // A receipt probe of a block without transactions looks at most this many blocks up for one with transactions.
+    private const int ReceiptProbeSpan = 1024;
     private const string FlatBackend = "Flat";
 
     private readonly ILogger _logger = logManager.GetClassLogger<McpNodeCapabilities>();
@@ -169,7 +169,12 @@ public sealed class McpNodeCapabilities(
     public CallToolResult? CheckReceipts(long blockNumber) => blockNumber < 0 ? null : CheckReceipts((ulong)blockNumber);
 
     /// <inheritdoc cref="CheckReceipts(long)"/>
-    public CallToolResult? CheckReceipts(ulong blockNumber)
+    public CallToolResult? CheckReceipts(ulong blockNumber) =>
+        FindCanonicalHeader(blockNumber) is { } header ? CheckReceipts(header) : null;
+
+    /// <summary>Returns an <c>unavailable</c> error naming the available receipt range, or <see langword="null"/> if receipts of the block of <paramref name="header"/> are available.</summary>
+    /// <param name="header">The canonical header of the block.</param>
+    internal CallToolResult? CheckReceipts(BlockHeader header)
     {
         // Derived receipts are recomputed from state on demand, so a missing stored body proves nothing.
         if (receiptConfig.DeriveFromState)
@@ -177,9 +182,9 @@ public sealed class McpNodeCapabilities(
             return null;
         }
 
-        BlockHeader? header = FindCanonicalHeader(blockNumber);
+        ulong blockNumber = header.Number;
         // A block without transactions has no receipts to miss.
-        if (header?.Hash is not { } hash || header.TxRoot == Keccak.EmptyTreeHash)
+        if (header.Hash is not { } hash || header.TxRoot == Keccak.EmptyTreeHash)
         {
             return null;
         }
@@ -383,14 +388,17 @@ public sealed class McpNodeCapabilities(
     /// lookup fails.
     /// </para>
     /// <para>
-    /// A block without transactions has no receipts to store, so a receipt probe uses the first block with transactions at or
-    /// above it (up to <see cref="ReceiptProbeSpan"/> blocks) and counts a run of empty blocks as stored: the receipt floor
-    /// is then the oldest block from which every block with transactions has its receipts.
+    /// A block without transactions may have no receipts stored (sync can skip it), so a receipt probe uses the first block at
+    /// or above it that has transactions or a stored receipt entry: the receipt floor is the oldest block from which every
+    /// block with transactions has its receipts. A run of empty blocks without entries counts as stored only when it reaches
+    /// a block already found stored (or the head), which keeps the predicate monotonic; a longer run than
+    /// <see cref="ReceiptProbeSpan"/> blocks counts as not stored, so on a synced chain with long empty runs the floor can come
+    /// out too high, but never too low.
     /// </para>
     /// </remarks>
     private HistoryFloors ProbeHistoryFloors(ulong head)
     {
-        long? body = TryValue<long>(() => LowestStored(1, head, BodyStored) is { } floor ? ToLong(floor == 1 && BodyStored(0) ? 0 : floor) : null);
+        long? body = TryValue<long>(() => LowestStored(1, head, (n, _) => BodyStored(n)) is { } floor ? ToLong(floor == 1 && BodyStored(0) ? 0 : floor) : null);
         if (receiptStorage is null || !receiptConfig.StoreReceipts || receiptConfig.DeriveFromState)
         {
             return new HistoryFloors(body, null);
@@ -398,15 +406,17 @@ public sealed class McpNodeCapabilities(
 
         // Receipts are never stored without their body.
         ulong from = body is { } b and > 1 ? (ulong)b : 1;
-        long? receipt = TryValue<long>(() => LowestStored(from, head, n => ReceiptsStored(n, head)) is { } floor
+        long? receipt = TryValue<long>(() => LowestStored(from, head, ReceiptsStored) is { } floor
             ? ToLong(floor == 1 && body == 0 ? 0 : floor)
             : null);
         return new HistoryFloors(body, receipt);
     }
 
-    private static ulong? LowestStored(ulong low, ulong high, Func<ulong, bool> stored)
+    /// <summary>Binary-searches the lowest block in [<paramref name="low"/>, <paramref name="high"/>] for which <paramref name="stored"/> holds.</summary>
+    /// <param name="stored">Called with a block and the lowest block above it already found stored.</param>
+    private static ulong? LowestStored(ulong low, ulong high, Func<ulong, ulong, bool> stored)
     {
-        if (!stored(high))
+        if (!stored(high, high))
         {
             return null;
         }
@@ -414,7 +424,7 @@ public sealed class McpNodeCapabilities(
         while (low < high)
         {
             ulong middle = low + (high - low) / 2;
-            if (stored(middle)) high = middle;
+            if (stored(middle, high)) high = middle;
             else low = middle + 1;
         }
 
@@ -424,23 +434,33 @@ public sealed class McpNodeCapabilities(
     private bool BodyStored(ulong number) =>
         blockTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical) is { Hash: { } hash } && blockTree.HasBlock(number, hash);
 
-    private bool ReceiptsStored(ulong number, ulong head)
+    private bool ReceiptsStored(ulong number, ulong storedAbove)
     {
-        ulong last = Math.Min(head, number + ReceiptProbeSpan - 1);
+        ulong last = Math.Min(storedAbove, number + ReceiptProbeSpan - 1);
         for (ulong n = number; n <= last; n++)
         {
+            // Every block with transactions from here up is already known to be stored.
+            if (n == storedAbove && n > number)
+            {
+                return true;
+            }
+
             if (blockTree.FindHeader(n, BlockTreeLookupOptions.RequireCanonical) is not { Hash: { } hash } header)
             {
                 return false;
             }
 
-            if (header.TxRoot != Keccak.EmptyTreeHash)
+            // Block processing stores an entry for an empty block too, which history expiry deletes with the rest, so
+            // one found proves the floor is at or below it; sync may skip empty blocks, so a missing one proves nothing.
+            bool stored = receiptStorage!.HasBlock(n, hash);
+            if (stored || header.TxRoot != Keccak.EmptyTreeHash)
             {
-                return receiptStorage!.HasBlock(n, hash);
+                return stored;
             }
         }
 
-        return true;
+        // An empty head has no receipts to miss; an empty run too long to scan may hide a block without them.
+        return number == storedAbove;
     }
 
     private readonly record struct HistoryFloors(long? Body, long? Receipt);

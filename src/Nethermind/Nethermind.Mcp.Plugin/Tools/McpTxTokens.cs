@@ -30,9 +30,6 @@ internal sealed record McpTokenMovement(Address Token, string Standard, Address 
 /// <summary>Extracts token movements from logs via <see cref="McpKnownAbi"/> and formats them with token metadata.</summary>
 internal static class McpTxTokens
 {
-    /// <summary>The maximum number of ids read from one ERC-1155 <c>TransferBatch</c> log.</summary>
-    private const int MaxBatchIds = 16;
-
     /// <summary>Appends the token movements described by <paramref name="log"/>, if it is a known transfer, wrap or unwrap event.</summary>
     /// <returns>The decoded log, or <see langword="null"/> if it matches no known event.</returns>
     /// <param name="log">The log.</param>
@@ -61,7 +58,8 @@ internal static class McpTxTokens
                 break;
             case "TransferBatch" when p.Count >= 5 && TryAddress(p[1].Value, out Address? from) && TryAddress(p[2].Value, out Address? to)
                 && p[3].Value is IList ids && p[4].Value is IList values:
-                for (int i = 0; i < Math.Min(Math.Min(ids.Count, values.Count), MaxBatchIds); i++)
+                // Every id is a movement: callers cap what they display and report the rest as omitted.
+                for (int i = 0; i < Math.Min(ids.Count, values.Count); i++)
                 {
                     if (TryAmount(ids[i], out UInt256 batchId) && TryAmount(values[i], out UInt256 batchValue))
                     {

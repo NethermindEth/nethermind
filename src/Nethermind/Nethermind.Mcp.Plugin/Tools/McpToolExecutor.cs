@@ -79,6 +79,9 @@ internal sealed class McpToolExecutor(
     private int _runningBodies;
     private bool _stopping;
 
+    // The slot of the body running on the current async flow, so detached work it starts can keep that slot taken.
+    private readonly AsyncLocal<SlotHold?> _currentHold = new();
+
     /// <summary>How long a call waits for a free concurrency slot before failing with <c>resource_exhausted</c>.</summary>
     /// <remarks>Clients such as Claude Code issue several tool calls at once; a short wait queues them instead of failing them.</remarks>
     internal static readonly TimeSpan SlotWait = TimeSpan.FromSeconds(2);
@@ -326,6 +329,9 @@ internal sealed class McpToolExecutor(
 
     private async Task<CallToolResult> RunAndReleaseAsync(SemaphoreSlim slots, Func<CancellationToken, Task<CallToolResult>> run, CancellationToken cancellationToken)
     {
+        SlotHold hold = new(slots);
+        // Set inside this async method, so only this body (and work it starts) sees it.
+        _currentHold.Value = hold;
         try
         {
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
@@ -334,7 +340,7 @@ internal sealed class McpToolExecutor(
         }
         finally
         {
-            slots.Release();
+            hold.Release();
             EndBody();
         }
     }
@@ -342,17 +348,45 @@ internal sealed class McpToolExecutor(
     /// <summary>Counts <paramref name="task"/>, work a body started but stopped waiting for, as running until it completes.</summary>
     /// <remarks>
     /// Such work (for example an abandoned call trace) may still use rented modules after its body returned, so
-    /// <see cref="StopAsync"/> waits for it like for a body. It does not hold a concurrency slot.
+    /// <see cref="StopAsync"/> waits for it like for a body, and the calling body's concurrency slot stays taken until it
+    /// completes, like the slot of a body that outlived its timeout. Must be called from inside a running body.
     /// </remarks>
     public void TrackDetached(Task task)
     {
+        SlotHold? hold = _currentHold.Value;
+        hold?.Retain();
         lock (_bodiesLock) _runningBodies++;
         task.ContinueWith(static (finished, state) =>
         {
             // Nobody awaits detached work, so its failure is observed here instead of surfacing as an unobserved exception.
             _ = finished.Exception;
-            ((McpToolExecutor)state!).EndBody();
-        }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            ((DetachedState)state!).End();
+        }, new DetachedState(this, hold), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    private sealed record DetachedState(McpToolExecutor Executor, SlotHold? Hold)
+    {
+        public void End()
+        {
+            Hold?.Release();
+            Executor.EndBody();
+        }
+    }
+
+    /// <summary>A body's concurrency slot, released once the body and all detached work it tracked have finished.</summary>
+    private sealed class SlotHold(SemaphoreSlim slots)
+    {
+        private int _holders = 1;
+
+        public void Retain() => Interlocked.Increment(ref _holders);
+
+        public void Release()
+        {
+            if (Interlocked.Decrement(ref _holders) == 0)
+            {
+                slots.Release();
+            }
+        }
     }
 
     private void EndBody()

@@ -554,7 +554,10 @@ implementation is this proxy using?"*
   first page. Cursors are opaque, can't be edited, and expire when the node restarts. A cursor also becomes invalid
   (`invalid_input`) if the chain reorganises past its position; restart the query then.
 - If `fromBlock` is below the oldest block the node keeps receipts for, the scan starts at that block and the page
-  reports `clampedFromBlock` (the requested start) and a `note`. A range entirely below it fails with `unavailable`.
+  reports `clampedFromBlock` (the requested start) and a `note`. A range entirely below it fails with `unavailable`,
+  and so does a page with a block inside it whose receipts are missing, rather than silently leaving out its logs.
+  A block with more matching logs than `JsonRpc.MaxLogsPerResponse` is read from its receipts, so paging still
+  gets through it.
 - With the log index enabled (`LogIndex.Enabled`), a page whose filter has an address or topic and starts inside the
   indexed range can span up to `Mcp.MaxIndexedLogBlockRange` blocks (1,000,000 by default), and the response has
   `indexed: true`. Without an address or topic, pages always use the smaller range. Filtering is much faster either
