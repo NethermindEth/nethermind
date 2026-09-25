@@ -23,7 +23,8 @@ public class NonceManager : INonceManager, IDisposable
     private readonly IStateReader _stateReader;
     private readonly IStateHeaderProvider _stateHeaderProvider;
     private readonly ILogger _logger;
-    private Task _eviction = Task.CompletedTask;
+    private volatile Task _eviction = Task.CompletedTask;
+    private int _sweepRunning;
     private volatile bool _disposed;
 
     /// <summary>
@@ -58,8 +59,7 @@ public class NonceManager : INonceManager, IDisposable
     /// <inheritdoc/>
     /// <remarks>
     /// Waits a bounded time for an in-flight sweep, which stops after its current read, so it does not keep reading
-    /// state that is being disposed. The bound stays below the flat state's 5 s gather deadline: a read still running
-    /// after a second is stuck in that retry, and shutdown should not wait it out.
+    /// state that is being disposed, while a read stuck in a state backend does not hold up shutdown.
     /// </remarks>
     public void Dispose()
     {
@@ -109,15 +109,24 @@ public class NonceManager : INonceManager, IDisposable
     }
 
     /// <remarks>
-    /// <see cref="IChainHeadInfoProvider.HeadChanged"/> has several raisers on different threads, so two sweeps can
-    /// overlap. That is tolerated: removal compares the value as well as the key, so a sweep holding a stale entry
-    /// never removes the manager that replaced it.
+    /// <see cref="IChainHeadInfoProvider.HeadChanged"/> has several raisers on different threads; the flag admits one sweep
+    /// at a time, so <see cref="Dispose"/> waits on the only sweep that can be reading.
     /// </remarks>
     private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
     {
-        if (_disposed || _addressNonceManagers.IsEmpty || !_eviction.IsCompleted) return;
+        if (_disposed || _addressNonceManagers.IsEmpty || Interlocked.CompareExchange(ref _sweepRunning, 1, 0) != 0) return;
 
-        _eviction = Task.Run(EvictCaughtUpAddresses);
+        _eviction = Task.Run(() =>
+        {
+            try
+            {
+                EvictCaughtUpAddresses();
+            }
+            finally
+            {
+                Volatile.Write(ref _sweepRunning, 0);
+            }
+        });
     }
 
     /// <summary>
@@ -147,7 +156,8 @@ public class NonceManager : INonceManager, IDisposable
                 if (_disposed) break;
 
                 ulong? finalizedNonce = null;
-                if (finalizedHeader is not null)
+                // A never-used manager is dropped whatever the nonce, so it needs no state read.
+                if (finalizedHeader is not null && !entry.Value.IsUnused)
                 {
                     try
                     {
@@ -199,6 +209,9 @@ public class NonceManager : INonceManager, IDisposable
         public bool IsEvicted { get; private set; }
 
         public int UsedNonceCount => _usedNonces.Count;
+
+        /// <summary>Unlocked pre-check; <see cref="TryMarkEvicted"/> re-checks under the lock.</summary>
+        public bool IsUnused => _usedNonces.Count == 0 && _currentNonce == 0;
 
         public NonceLocker Lock() => new(_accountLock, TxAccepted);
 

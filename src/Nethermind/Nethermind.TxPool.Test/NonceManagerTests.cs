@@ -309,6 +309,24 @@ public class NonceManagerTests
         }
     }
 
+    [Test]
+    public async Task Never_used_entries_are_evicted_without_a_state_read()
+    {
+        AcceptReservation(_nonceManager, TestItem.AddressA);
+        _finalizedNonces[TestItem.AddressA] = 1;
+        using (_nonceManager.TxWithNonceReceived(TestItem.AddressB, 5)) { }
+
+        await ProcessHead();
+
+        using (Assert.EnterMultipleScope())
+        {
+            _stateReader.Received(1).TryGetAccount(Arg.Any<BlockHeader>(), TestItem.AddressA, out Arg.Any<AccountStruct>());
+            _stateReader.DidNotReceive().TryGetAccount(Arg.Any<BlockHeader>(), TestItem.AddressB, out Arg.Any<AccountStruct>());
+            Assert.That(_nonceManager.TryGetUsedNonceCount(TestItem.AddressA, out _), Is.False);
+            Assert.That(_nonceManager.TryGetUsedNonceCount(TestItem.AddressB, out _), Is.False);
+        }
+    }
+
     [TestCase(900UL, 900UL, TestName = "Sweep_reads_at_the_finalized_block")]
     [TestCase(990UL, 936UL, TestName = "Sweep_reads_at_most_max_reorg_depth_below_the_head")]
     public async Task Sweep_reads_the_finalized_nonce_at_a_finality_safe_block(ulong finalizedBlockNumber, ulong expectedBlockNumber)
