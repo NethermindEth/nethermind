@@ -56,13 +56,23 @@ namespace Nethermind.Core.Test.Collections
             Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
         }
 
+        /// <remarks>Adds after a restore refill the freed slots, where a hash set's own order stops following insertion order.</remarks>
         [Test]
-        public void Single_returns_the_only_item()
+        public void Enumerates_in_insertion_order_when_restored_slots_are_reused()
         {
             JournalSet<int> journalSet = CreateJournalSet();
-            journalSet.Add(3);
+            journalSet.AddRange([3, 1, 2]);
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange([6, 4, 5]);
+            journalSet.Restore(snapshot);
+            journalSet.AddRange([9, 7, 8]);
 
-            Assert.That(journalSet.First, Is.EqualTo(3));
+            int[] insertionOrder = [3, 1, 2, 9, 7, 8];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.EqualTo(insertionOrder), "enumeration");
+                Assert.That(journalSet.ToArray(), Is.EqualTo(insertionOrder), "CopyTo");
+            }
         }
     }
 }
