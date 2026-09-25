@@ -44,6 +44,7 @@ public abstract class StateSyncFeedTestsBase(
     int defaultPeerMaxRandomLatency = 0)
 {
     public const int TimeoutLength = 60000;
+    private const int DrainTimeoutLength = 10000;
 
     // Chain length used for test block trees, use a constant to avoid shared state
     private const int TestChainLength = 100;
@@ -192,11 +193,15 @@ public abstract class StateSyncFeedTestsBase(
         await roundCancellation.CancelAsync();
         try
         {
-            await feedTask;
+            await feedTask.WaitAsync(TimeSpan.FromMilliseconds(DrainTimeoutLength));
         }
         catch (OperationCanceledException)
         {
             // Expected: the round was cancelled above.
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail($"State sync did not complete within {timeout}ms and did not drain within {DrainTimeoutLength}ms of cancellation.");
         }
 
         if (failOnTimeout)
