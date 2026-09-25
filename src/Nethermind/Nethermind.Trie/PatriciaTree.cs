@@ -305,12 +305,23 @@ namespace Nethermind.Trie
             void TraceSkipInlineNode(TrieNode node) => _logger.Trace($"Skipping commit of an inlined {node}");
         }
 
+        // A static lambda over a state object: the capturing lambda allocated a closure and a delegate per child task.
         private Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx) => Task.Factory.StartNew(
-            _ =>
+            static state => ((ChildCommit)state!).Run(),
+            new ChildCommit(this, committer, node, maxLevelForConcurrentCommit, childPath, childNode, idx),
+            CancellationToken.None,
+            TaskCreationOptions.None,
+            TaskScheduler.Default);
+
+        private sealed class ChildCommit(PatriciaTree tree, ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx)
+        {
+            private TreePath _childPath = childPath;
+
+            public void Run()
             {
                 try
                 {
-                    TrieNode newChild = Commit(committer, ref childPath, childNode!, maxLevelForConcurrentCommit);
+                    TrieNode newChild = tree.Commit(committer, ref _childPath, childNode, maxLevelForConcurrentCommit);
                     if (!ReferenceEquals(childNode, newChild))
                         node[idx] = newChild;
                 }
@@ -318,11 +329,8 @@ namespace Nethermind.Trie
                 {
                     committer.ReturnConcurrencyQuota();
                 }
-            },
-            state: null,
-            CancellationToken.None,
-            TaskCreationOptions.None,
-            TaskScheduler.Default);
+            }
+        }
 
         public void UpdateRootHash(bool canBeParallel = true)
         {
