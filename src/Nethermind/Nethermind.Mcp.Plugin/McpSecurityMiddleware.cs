@@ -67,16 +67,19 @@ internal sealed class McpSecurityMiddleware
     /// <param name="authorization">The <c>Authorization</c> header value(s); empty when absent.</param>
     /// <param name="remoteAddress">The client address, used by the failed-authentication limit.</param>
     /// <remarks>A failed authentication is recorded against <paramref name="remoteAddress"/>; once the limit is reached the
-    /// client gets <see cref="McpRequestVerdict.TooManyAttempts"/> without its token being checked, until the window passes.</remarks>
+    /// client's failing requests get <see cref="McpRequestVerdict.TooManyAttempts"/> until the window passes. A valid token is always
+    /// accepted, so failures recorded against a shared address (NAT, proxy) cannot lock out a client that holds the token.</remarks>
     public McpRequestVerdict Evaluate(StringValues host, int localPort, StringValues origin, StringValues authorization, IPAddress? remoteAddress)
     {
         if (host.Count != 1 || !_hostPolicy.IsAllowed(host[0], localPort)) return McpRequestVerdict.BadHost;
         if (!IsAllowedOrigin(origin)) return McpRequestVerdict.BadOrigin;
         if (_tokenHash is null) return McpRequestVerdict.Allowed;
 
+        // The digest comparison is constant-time, so checking the token first leaks nothing to a throttled client.
+        if (IsAuthorized(authorization)) return McpRequestVerdict.Allowed;
+
         McpAuthFailureLimiter? limiter = remoteAddress is null ? null : _limiter;
         if (limiter?.IsBlocked(remoteAddress!) == true) return McpRequestVerdict.TooManyAttempts;
-        if (IsAuthorized(authorization)) return McpRequestVerdict.Allowed;
 
         limiter?.RecordFailure(remoteAddress!);
         return McpRequestVerdict.Unauthorized;
@@ -134,10 +137,15 @@ internal sealed class McpSecurityMiddleware
             request.Headers.Authorization,
             context.Connection.RemoteIpAddress);
 
+        if (verdict == McpRequestVerdict.Allowed)
+        {
+            return next(context);
+        }
+
+        // Rejected clients must not keep the connection open and pin the listener's connection limit via keep-alive.
+        context.Response.Headers.Connection = "close";
         switch (verdict)
         {
-            case McpRequestVerdict.Allowed:
-                return next(context);
             case McpRequestVerdict.BadHost:
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 break;
@@ -310,7 +318,8 @@ internal sealed class McpHostPolicy
 /// Sliding window: a client with <see cref="MaxFailures"/> failures within <see cref="Window"/> is blocked until the oldest of
 /// them leaves the window. IPv4-mapped IPv6 addresses count as IPv4, and IPv6 clients are grouped by /64, the smallest block
 /// usually assigned to one host. At most <see cref="MaxTrackedClients"/> clients are tracked; when the table is full of active
-/// entries, further new clients share one bucket, so a distributed attack degrades to a shared limit rather than unbounded memory.
+/// entries, failures of further new clients are recorded in one shared overflow bucket that bounds memory but never blocks
+/// anyone, so an attacker spraying addresses cannot get unrelated clients throttled.
 /// Only used in remote mode: on loopback every client shares one address, so a local process could lock out the legitimate agent.
 /// Thread-safe.
 /// </remarks>
@@ -347,7 +356,7 @@ internal sealed class McpAuthFailureLimiter(TimeProvider? timeProvider = null)
         IPAddress key = Normalize(address);
         lock (_lock)
         {
-            if (!_failures.TryGetValue(key, out Queue<long>? failures) && !(IsFull() && _failures.TryGetValue(OverflowKey, out failures)))
+            if (!_failures.TryGetValue(key, out Queue<long>? failures))
                 return false;
 
             Expire(failures, now);

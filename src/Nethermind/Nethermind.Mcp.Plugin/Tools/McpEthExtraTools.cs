@@ -67,7 +67,7 @@ internal sealed class McpEthExtraTools(
 
     /// <inheritdoc/>
     public IEnumerable<McpServerTool> CreateServerTools() =>
-        McpEthHelpers.WithDeclaredOutputSchemas(McpToolFactory.Create(this, DescribeLimits, _maxResultSize), typeof(McpEthExtraTools));
+        McpToolFactory.Create(this, DescribeLimits, _maxResultSize);
 
     private string DescribeLimits(MethodInfo method) => method.Name switch
     {
@@ -193,7 +193,7 @@ internal sealed class McpEthExtraTools(
             using ResultWrapper<UInt256?> result = eth.eth_estimateGas(transaction, query);
             if (result.Result.ResultType != ResultType.Success)
             {
-                return Task.FromResult(McpEthHelpers.WithRevertReason(executor.Failure("estimate_gas", result)));
+                return Task.FromResult(McpEthHelpers.WithRevertReason(executor.Failure("estimate_gas", result), result));
             }
 
             if (result.Data is not { } gas)
@@ -608,7 +608,7 @@ internal sealed class McpEthExtraTools(
         writer.WriteNumber("gas"u8, TransferGas);
         writer.WritePropertyName("wei"u8);
         McpToolExecutor.WriteValue(writer, report.TransferWei);
-        writer.WriteString("formatted"u8, McpEthHelpers.FormatUnits(report.TransferWei, McpEthHelpers.NativeDecimals));
+        writer.WriteString("formatted"u8, McpEthHelpers.FormatNative(report.TransferWei));
         writer.WriteString("symbol"u8, report.Symbol);
         writer.WriteEndObject();
 
@@ -622,7 +622,7 @@ internal sealed class McpEthExtraTools(
             writer.WriteNumber("blobGasUsedRatioAverage"u8, blob.AverageRatio);
             writer.WritePropertyName("costPerBlob"u8);
             McpToolExecutor.WriteValue(writer, blob.CostPerBlob);
-            writer.WriteString("costPerBlobFormatted"u8, McpEthHelpers.FormatUnits(blob.CostPerBlob, McpEthHelpers.NativeDecimals));
+            writer.WriteString("costPerBlobFormatted"u8, McpEthHelpers.FormatNative(blob.CostPerBlob));
         }
 
         writer.WriteEndObject();
@@ -648,11 +648,11 @@ internal sealed class McpEthExtraTools(
             $"Suggested priority fee (tip) slow/standard/fast: {McpEthHelpers.Gwei(report.Slow.Priority)} / {McpEthHelpers.Gwei(report.Standard.Priority)} / {McpEthHelpers.Gwei(report.Fast.Priority)} gwei; ");
         text.Append(CultureInfo.InvariantCulture, $"standard maxFeePerGas {McpEthHelpers.Gwei(report.Standard.MaxFee)} gwei. ");
         text.Append(CultureInfo.InvariantCulture,
-            $"A plain {TransferGas:N0}-gas transfer costs about {McpEthHelpers.FormatUnits(report.TransferWei, McpEthHelpers.NativeDecimals)} {report.Symbol} at the standard tip.");
+            $"A plain {TransferGas:N0}-gas transfer costs about {McpEthHelpers.FormatNative(report.TransferWei)} {report.Symbol} at the standard tip.");
         if (report.Blob is { } blob)
         {
             text.Append(CultureInfo.InvariantCulture,
-                $" Blob base fee {McpEthHelpers.Gwei(blob.Next)} gwei per blob gas (about {McpEthHelpers.FormatUnits(blob.CostPerBlob, McpEthHelpers.NativeDecimals)} {report.Symbol} per blob).");
+                $" Blob base fee {McpEthHelpers.Gwei(blob.Next)} gwei per blob gas (about {McpEthHelpers.FormatNative(blob.CostPerBlob)} {report.Symbol} per blob).");
         }
 
         return text.ToString();

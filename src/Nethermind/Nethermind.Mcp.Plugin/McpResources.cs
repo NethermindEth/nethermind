@@ -9,6 +9,7 @@ using ModelContextProtocol.Server;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.JsonRpc;
 using Nethermind.Mcp.Plugin.Tools;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -16,7 +17,7 @@ namespace Nethermind.Mcp.Plugin;
 
 /// <summary>Read-only MCP resources that orient an AI agent: chain metadata, well-known contracts and a usage guide.</summary>
 /// <remarks>Every resource is computed from in-memory chain facts (chain spec, head header), so reading one never touches the database or the EVM.</remarks>
-public sealed class McpResources(McpChainProfile profile, IBlockTree blockTree, ISpecProvider specProvider, ChainSpec chainSpec, IMcpConfig config)
+public sealed class McpResources(McpChainProfile profile, IBlockTree blockTree, ISpecProvider specProvider, ChainSpec chainSpec, IMcpConfig config, IJsonRpcConfig rpcConfig)
 {
     internal const string ChainUri = "nethermind://chain";
     internal const string ContractsUri = "nethermind://contracts";
@@ -127,19 +128,21 @@ public sealed class McpResources(McpChainProfile profile, IBlockTree blockTree, 
             - Timestamps are Unix seconds; tools add `timestampIso` (UTC).
 
             ## Errors and what to do
+            Errors come as text content only (no structuredContent): parse the JSON text, whose `error` object has `code` and `message`.
+
             | Code | Meaning | What to do |
             |---|---|---|
             | `invalid_input` | An argument is malformed or out of range | Fix the argument as the message says (formats, ranges) and retry |
             | `not_found` | No such block, transaction or receipt | Check the hash and network; a very recent transaction may not be mined yet |
-            | `execution_reverted` | The EVM call reverted | Explain the decoded revert reason in `data`; do not retry unchanged |
+            | `execution_reverted` | The EVM call reverted | Explain the decoded `reason` (raw revert data is in `data`); do not retry unchanged |
             | `unavailable` | The node does not have that data (pruned history, still syncing) | Use a block inside the range the message names (usually recent blocks), or tell the user an archive node is needed |
             | `resource_exhausted` | A limit was hit (range, result size, concurrency) | Narrow the query (smaller block range, fewer addresses) or page with the cursor; on concurrency, retry shortly |
             | `timeout` | The tool ran out of time | Narrow the query; do not retry the same large request in a loop |
             | `internal_error` | Unexpected node error | Retry once; if it persists, report it to the node operator |
 
             ## Limits on this node
-            - `get_logs`: at most {config.MaxLogBlockRange} blocks per query ({config.MaxIndexedLogBlockRange} when the log index covers the range), at most {config.MaxLogs} logs.
-            - `call`: at most {config.MaxCallGas} gas; `trace_transaction`: at most {config.MaxTraceCalls} call frames.
+            - `get_logs`: any range is accepted and returned in pages; each page scans at most {config.MaxLogBlockRange} blocks (up to {Math.Max(config.MaxLogBlockRange, config.MaxIndexedLogBlockRange)} when the filter has an address or topic and the log index covers the page) and returns at most {config.MaxLogs} logs. Continue with `cursor` = `nextCursor` while `truncated` is true.
+            - `call`, `call_function`, `estimate_gas`, `simulate_transaction`: at most {Math.Min((ulong)Math.Max(1, config.MaxCallGas), rpcConfig.GasCap.EffectiveGasCap())} gas; `trace_transaction`: at most {config.MaxTraceCalls} call frames.
             - Results larger than {config.MaxResultSize} bytes fail with `resource_exhausted`.
 
             """);
@@ -188,7 +191,7 @@ public sealed class McpResources(McpChainProfile profile, IBlockTree blockTree, 
         {
             writer.WriteStartObject();
             writer.WriteString("name", contract.Name);
-            writer.WriteString("address", contract.Address.ToString(withZeroX: true, withEip55Checksum: true));
+            writer.WriteString("address", McpEthHelpers.Checksum(contract.Address));
             writer.WriteString("kind", contract.Kind);
             if (contract.Symbol is not null) writer.WriteString("symbol", contract.Symbol);
             if (contract.Decimals is int decimals) writer.WriteNumber("decimals", decimals);

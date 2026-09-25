@@ -204,6 +204,7 @@ public class McpRemoteModeTests
         {
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
             Assert.That(response.Headers.WwwAuthenticate.Select(static h => h.Scheme), Is.EqualTo(new[] { "Bearer" }));
+            Assert.That(response.Headers.ConnectionClose, Is.True);
         }
     }
 
@@ -222,11 +223,14 @@ public class McpRemoteModeTests
             Assert.That(failed.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
         }
 
-        using HttpResponseMessage throttled = await https.SendAsync(McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host, bearer: Token));
+        using HttpResponseMessage throttled = await https.SendAsync(McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host, bearer: "wrong-again"));
+        using HttpResponseMessage authorized = await https.SendAsync(McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host, bearer: Token));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(throttled.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests), "even the right token is refused while throttled");
+            Assert.That(throttled.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests));
             Assert.That(throttled.Headers.RetryAfter, Is.Not.Null);
+            Assert.That(throttled.Headers.ConnectionClose, Is.True, "rejected clients must not keep the connection");
+            Assert.That(authorized.IsSuccessStatusCode, Is.True, "the right token is accepted even from a throttled address");
         }
     }
 
@@ -309,7 +313,7 @@ public class McpRemoteModeTests
     }
 
     [Test]
-    public void Throttled_verdict_skips_the_token_check()
+    public void Throttled_address_still_accepts_the_valid_token()
     {
         McpAuthFailureLimiter limiter = new(new ManualTimeProvider());
         McpSecurityMiddleware security = new([], Token, McpHostPolicy.Loopback(McpHostPolicy.DefaultHttpPort, []), limiter);
@@ -320,9 +324,27 @@ public class McpRemoteModeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(security.Evaluate("127.0.0.1:8555", 8555, StringValues.Empty, $"Bearer {Token}", client), Is.EqualTo(McpRequestVerdict.TooManyAttempts));
+            Assert.That(security.Evaluate("127.0.0.1:8555", 8555, StringValues.Empty, "Bearer nope", client), Is.EqualTo(McpRequestVerdict.TooManyAttempts));
+            Assert.That(security.Evaluate("127.0.0.1:8555", 8555, StringValues.Empty, $"Bearer {Token}", client), Is.EqualTo(McpRequestVerdict.Allowed));
             Assert.That(security.Evaluate("127.0.0.1:8555", 8555, StringValues.Empty, $"Bearer {Token}", IPAddress.Parse("203.0.113.10")), Is.EqualTo(McpRequestVerdict.Allowed));
             Assert.That(security.Evaluate("evil.com", 8555, StringValues.Empty, $"Bearer {Token}", client), Is.EqualTo(McpRequestVerdict.BadHost), "host is checked first");
+        }
+    }
+
+    [Test]
+    public void Overflow_bucket_never_blocks_new_clients()
+    {
+        McpAuthFailureLimiter limiter = new(new ManualTimeProvider());
+        McpSecurityMiddleware security = new([], Token, McpHostPolicy.Loopback(McpHostPolicy.DefaultHttpPort, []), limiter);
+        for (int i = 0; i < McpAuthFailureLimiter.MaxTrackedClients + McpAuthFailureLimiter.MaxFailures; i++)
+            limiter.RecordFailure(new IPAddress(0x0A000000u + (uint)i));
+
+        IPAddress newcomer = IPAddress.Parse("198.51.100.7");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(limiter.IsBlocked(newcomer), Is.False, "the shared overflow bucket only records");
+            Assert.That(security.Evaluate("127.0.0.1:8555", 8555, StringValues.Empty, "Bearer nope", newcomer), Is.EqualTo(McpRequestVerdict.Unauthorized));
+            Assert.That(security.Evaluate("127.0.0.1:8555", 8555, StringValues.Empty, $"Bearer {Token}", newcomer), Is.EqualTo(McpRequestVerdict.Allowed));
         }
     }
 

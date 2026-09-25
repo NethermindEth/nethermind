@@ -18,7 +18,6 @@ using Nethermind.Logging;
 using Nethermind.Mcp.Plugin.Tools;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -124,6 +123,21 @@ public class McpNodeCapabilitiesTests
             Assert.That(availability.OldestBodyBlock, Is.EqualTo(500_000));
             Assert.That(availability.OldestReceiptBlock, Is.EqualTo(600_000));
             Assert.That(availability.OldestStateBlock, Is.EqualTo(1_000_000));
+        }
+    }
+
+    [Test]
+    public void Transaction_history_limit_names_the_later_of_the_body_and_receipt_floors()
+    {
+        NodeFixture limited = new() { Sync = { FastSync = true, SnapSync = true, PivotNumber = 1_000_000, AncientBodiesBarrier = 500_000, AncientReceiptsBarrier = 600_000 } };
+        limited.Pointers.LowestInsertedBodyNumber.Returns(500_000UL);
+        limited.Pointers.LowestInsertedReceiptBlockNumber.Returns(600_000UL);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(limited.Create().DescribeTransactionHistoryLimit(),
+                Is.EqualTo(" This node keeps transaction history only from block 600000 (see node_status); older transactions cannot be found here."));
+            Assert.That(new NodeFixture().Create().DescribeTransactionHistoryLimit(), Is.Empty, "full history needs no hint");
         }
     }
 

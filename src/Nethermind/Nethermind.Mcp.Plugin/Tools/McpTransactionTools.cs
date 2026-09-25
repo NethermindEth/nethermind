@@ -8,7 +8,6 @@ using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -76,6 +75,9 @@ internal sealed class McpTransactionTools(
     /// <summary>The maximum number of logs listed per simulated call.</summary>
     public const int MaxSimulateLogs = 50;
 
+    /// <summary>The most characters of a revert string quoted in a summary sentence.</summary>
+    private const int MaxSummaryRevertLength = 120;
+
     /// <summary>The number of entries in each <c>block_summary</c> top list.</summary>
     public const int BlockTopCount = 10;
 
@@ -83,9 +85,6 @@ internal sealed class McpTransactionTools(
     private const int MaxAuthorizations = 16;
     private const int MaxNetFlows = 20;
     private const ulong IntrinsicTransferGas = 21_000;
-
-    private const string BlockSelectorDescription =
-        "Block selector: \"latest\", \"earliest\", \"safe\", \"finalized\", a block number as 0x-hex or decimal string, or a 32-byte block hash.";
 
     private const string AmountSchema = """{"type":"object","properties":{"wei":{"type":"string"},"formatted":{"type":"string"},"symbol":{"type":"string"}},"required":["wei","formatted","symbol"]}""";
 
@@ -127,7 +126,8 @@ internal sealed class McpTransactionTools(
           "calls":{"type":"array","items":{"type":"object","properties":{
             "index":{"type":"integer"},"status":{"type":"string"},"gasUsed":{"type":"integer"},
             "returnData":{"type":"string"},"returnDataSize":{"type":"integer"},"error":{"type":"object"},
-            "logs":{"type":"array"},"tokenTransfers":{"type":"array"},"nativeTransfers":{"type":"array"}},
+            "logs":{"type":"array"},"logsOmitted":{"type":"integer"},"tokenTransfers":{"type":"array"},"tokenTransfersOmitted":{"type":"integer"},
+            "nativeTransfers":{"type":"array"},"nativeTransfersOmitted":{"type":"integer"}},
             "required":["index","status"]}},
           "netTokenFlows":{"type":"array","items":{"type":"object"}},
           "notes":{"type":"array","items":{"type":"string"}}},
@@ -158,16 +158,17 @@ internal sealed class McpTransactionTools(
 
     private readonly ulong _maxCallGas = Math.Min((ulong)Math.Max(1, config.MaxCallGas), rpcConfig.GasCap.EffectiveGasCap());
     private readonly int _maxCallDataSize = Math.Max(0, config.MaxCallDataSize);
+    private readonly bool _tracingEnabled = config.EnableTracing;
     private readonly int _maxResultSize = Math.Max(1, config.MaxResultSize);
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout));
 
     /// <inheritdoc/>
-    public IEnumerable<McpServerTool> CreateServerTools() => McpEthHelpers.WithDeclaredOutputSchemas(McpToolFactory.Create(this, method => method.Name switch
+    public IEnumerable<McpServerTool> CreateServerTools() => McpToolFactory.Create(this, method => method.Name switch
     {
         nameof(SimulateTransaction) => $" Limits on this node: gas at most {_maxCallGas} per call, data at most {_maxCallDataSize} bytes per call, " +
             $"{MaxSimulateCalls} calls, {MaxOverrideAccounts} overridden accounts with {MaxOverrideSlots} slots each.",
         _ => string.Empty
-    }, _maxResultSize), typeof(McpTransactionTools));
+    }, _maxResultSize);
 
     /// <summary>Explains what a transaction did in one call.</summary>
     [McpServerTool(Name = "explain_transaction", Title = "Explain transaction", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -187,7 +188,7 @@ internal sealed class McpTransactionTools(
     {
         if (!McpToolInput.TryParseHash(hash, nameof(hash), out Hash256? txHash, out string? error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         return executor.ExecuteAsync("explain_transaction", nameof(IEthRpcModule.eth_getTransactionByHash), async (eth, token) =>
@@ -202,7 +203,7 @@ internal sealed class McpTransactionTools(
             {
                 return McpToolExecutor.Error(McpToolErrorCodes.NotFound,
                     $"Transaction {txHash} is not known to this node: it is neither in a canonical block nor in the mempool. " +
-                    "Check the hash and the network (chain_info); very old transactions may be missing if the node dropped their bodies or receipts.");
+                    "Check the hash and the network (chain_info)." + capabilities.DescribeTransactionHistoryLimit());
             }
 
             ExplainContext context = new(txHash, tx);
@@ -232,7 +233,7 @@ internal sealed class McpTransactionTools(
         [Description("Sender address; defaults to the zero address. Also the default sender for entries of `calls`.")] string? from = null,
         [Description("Value to send in wei, as 0x-hex or decimal. Default 0.")] string? value = null,
         [Description("Gas limit per call, as 0x-hex or decimal; defaults to the block gas limit (capped by this node) split across the calls.")] string? gas = null,
-        [Description(BlockSelectorDescription + " The simulation runs on top of this block. Default \"latest\".")] string block = "latest",
+        [Description(McpEthTools.BlockSelectorDescription + " The simulation runs on top of this block. Default \"latest\".")] string block = "latest",
         [Description("Optional state overrides: an object mapping up to 8 addresses to {balance?, nonce?, code?, stateDiff?}; stateDiff maps " +
             "32-byte storage slots to 32-byte values (0x hex). Full-state replacement and precompile moves are not supported.")] JsonElement? stateOverrides = null,
         [Description("Optional sequence of up to 8 calls {to, data?, value?, gas?, from?} to run in order instead of the single call.")] JsonElement[]? calls = null,
@@ -244,7 +245,7 @@ internal sealed class McpTransactionTools(
             || !TryParseOverrides(stateOverrides, out Dictionary<Address, AccountOverride>? overrides, out error)
             || !TryParseCalls(to, data, value, gas, calls, defaultSender, out List<SimulateCallInput>? inputs, out error))
         {
-            return InvalidInput(error!);
+            return McpEthHelpers.InvalidInput(error!);
         }
 
         return executor.ExecuteAsync("simulate_transaction", nameof(IEthRpcModule.eth_simulateV1), (eth, token) =>
@@ -262,12 +263,12 @@ internal sealed class McpTransactionTools(
         "Prefer it over get_block when the question is \"what happened in this block\". Receipt-based parts are omitted with a note when the " +
         "node has no receipts for the block.")]
     public Task<CallToolResult> BlockSummary(
-        [Description(BlockSelectorDescription)] string block,
+        [Description(McpEthTools.BlockSelectorDescription)] string block,
         CancellationToken cancellationToken = default)
     {
         if (!McpToolInput.TryParseBlock(block, nameof(block), out BlockParameter? blockParameter, out string? error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         bool byHash = blockParameter.Type == BlockParameterType.BlockHash;
@@ -289,12 +290,12 @@ internal sealed class McpTransactionTools(
         UInt256 maxPrice = tx is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFee } ? maxFee : tx.GasPrice ?? UInt256.Zero;
         if (tx is EIP1559TransactionForRpc eip1559)
         {
-            if (eip1559.MaxFeePerGas is { } mf) fees["maxFeePerGasGwei"] = McpTxFormat.Gwei(mf);
-            if (eip1559.MaxPriorityFeePerGas is { } mp) fees["maxPriorityFeePerGasGwei"] = McpTxFormat.Gwei(mp);
+            if (eip1559.MaxFeePerGas is { } mf) fees["maxFeePerGasGwei"] = McpEthHelpers.Gwei(mf);
+            if (eip1559.MaxPriorityFeePerGas is { } mp) fees["maxPriorityFeePerGasGwei"] = McpEthHelpers.Gwei(mp);
         }
         else if (tx.GasPrice is { } gasPrice)
         {
-            fees["gasPriceGwei"] = McpTxFormat.Gwei(gasPrice);
+            fees["gasPriceGwei"] = McpEthHelpers.Gwei(gasPrice);
         }
 
         UInt256 maxCost = maxPrice * (UInt256)(tx.Gas ?? 0);
@@ -359,7 +360,7 @@ internal sealed class McpTransactionTools(
 
         if (receipt?.ContractAddress is { } created)
         {
-            json["contractCreated"] = McpTxFormat.Checksum(created);
+            json["contractCreated"] = McpEthHelpers.Checksum(created);
         }
 
         if (receipt is not null)
@@ -374,7 +375,7 @@ internal sealed class McpTransactionTools(
         {
             foreach (LogEntryForRpc log in logs)
             {
-                McpTxTokens.Extract(log.ToLogEntry(), movements);
+                McpTxTokens.Extract(log.ToLogEntry(), movements, profile.WrappedNativeToken);
             }
         }
 
@@ -417,10 +418,10 @@ internal sealed class McpTransactionTools(
                 internals.Add(new JsonObject
                 {
                     ["type"] = transfer.Type,
-                    ["from"] = McpTxFormat.Checksum(transfer.From),
-                    ["to"] = McpTxFormat.Checksum(transfer.To),
+                    ["from"] = McpEthHelpers.Checksum(transfer.From),
+                    ["to"] = McpEthHelpers.Checksum(transfer.To),
                     ["value"] = McpTxFormat.Hex(transfer.Value),
-                    ["valueFormatted"] = McpTxFormat.Ether(transfer.Value),
+                    ["valueFormatted"] = McpEthHelpers.FormatNative(transfer.Value),
                     ["depth"] = transfer.Depth
                 });
             }
@@ -442,10 +443,10 @@ internal sealed class McpTransactionTools(
     {
         LegacyTransactionForRpc tx = context.Tx;
         JsonObject json = context.Json;
-        json["from"] = tx.From is null ? null : McpTxFormat.Checksum(tx.From);
+        json["from"] = tx.From is null ? null : McpEthHelpers.Checksum(tx.From);
         if (tx.To is not null)
         {
-            json["to"] = McpTxFormat.Checksum(tx.To);
+            json["to"] = McpEthHelpers.Checksum(tx.To);
             if (Label(tx.To) is { } label) json["toLabel"] = label;
         }
 
@@ -479,7 +480,7 @@ internal sealed class McpTransactionTools(
                     entries.Add(new JsonObject
                     {
                         ["chainId"] = tuple.ChainId.ToString(),
-                        ["delegateTo"] = McpTxFormat.Checksum(tuple.Address),
+                        ["delegateTo"] = McpEthHelpers.Checksum(tuple.Address),
                         ["revokes"] = tuple.Address == Address.Zero,
                         ["nonce"] = tuple.Nonce
                     });
@@ -509,14 +510,14 @@ internal sealed class McpTransactionTools(
             ["gasUsed"] = gasUsed,
             ["gasUsedPercent"] = McpTxFormat.Percent(gasUsed, gasLimit),
             ["effectiveGasPrice"] = McpTxFormat.Hex(price),
-            ["effectiveGasPriceGwei"] = McpTxFormat.Gwei(price),
+            ["effectiveGasPriceGwei"] = McpEthHelpers.Gwei(price),
             ["total"] = Amount(total)
         };
 
         if (tx is EIP1559TransactionForRpc eip1559)
         {
-            if (eip1559.MaxFeePerGas is { } mf) fees["maxFeePerGasGwei"] = McpTxFormat.Gwei(mf);
-            if (eip1559.MaxPriorityFeePerGas is { } mp) fees["maxPriorityFeePerGasGwei"] = McpTxFormat.Gwei(mp);
+            if (eip1559.MaxFeePerGas is { } mf) fees["maxFeePerGasGwei"] = McpEthHelpers.Gwei(mf);
+            if (eip1559.MaxPriorityFeePerGas is { } mp) fees["maxPriorityFeePerGasGwei"] = McpEthHelpers.Gwei(mp);
         }
 
         if (header?.BaseFeePerGas is { } baseFee)
@@ -524,9 +525,9 @@ internal sealed class McpTransactionTools(
             UInt256 baseFeePaid = baseFee * (UInt256)gasUsed;
             UInt256 tip = total > baseFeePaid ? total - baseFeePaid : UInt256.Zero;
             Address? collector = specProvider.GetSpec(blockNumber, timestamp).FeeCollector;
-            fees["baseFeePerGasGwei"] = McpTxFormat.Gwei(baseFee);
+            fees["baseFeePerGasGwei"] = McpEthHelpers.Gwei(baseFee);
             JsonObject baseFeeJson = Amount(baseFeePaid);
-            baseFeeJson["destination"] = collector is null ? "burnt" : $"fee collector {McpTxFormat.Checksum(collector)}";
+            baseFeeJson["destination"] = collector is null ? "burnt" : $"fee collector {McpEthHelpers.Checksum(collector)}";
             fees["baseFee"] = baseFeeJson;
             fees["priorityFee"] = Amount(tip);
         }
@@ -542,7 +543,7 @@ internal sealed class McpTransactionTools(
             fees["blob"] = new JsonObject
             {
                 ["blobGasUsed"] = blobGasUsed,
-                ["blobGasPriceGwei"] = McpTxFormat.Gwei(blobPrice),
+                ["blobGasPriceGwei"] = McpEthHelpers.Gwei(blobPrice),
                 ["fee"] = Amount(blobPrice * (UInt256)blobGasUsed)
             };
         }
@@ -552,6 +553,12 @@ internal sealed class McpTransactionTools(
 
     private async Task<TraceFacts?> TraceAsync(ExplainContext context, ulong blockNumber, CancellationToken token)
     {
+        if (!_tracingEnabled)
+        {
+            context.Notes.Add("Call trace skipped: tracing is disabled on this node (Mcp.EnableTracing=false). Internal transfers and the failing call frame are unknown.");
+            return null;
+        }
+
         if (blockNumber > 0 && capabilities.CheckState((long)blockNumber - 1) is { } stateUnavailable)
         {
             context.Notes.Add($"Call trace skipped: {ErrorMessage(stateUnavailable)} Internal transfers and the failing call frame are unknown.");
@@ -609,8 +616,8 @@ internal sealed class McpTransactionTools(
             failure["outOfGas"] = frameOutOfGas;
             if (frame.Revert is not null) failure["revert"] = McpTxCallTree.RevertJson(frame.Revert);
             JsonObject frameJson = new() { ["depth"] = frame.Depth, ["type"] = frame.Type };
-            if (frame.From is not null) frameJson["from"] = McpTxFormat.Checksum(frame.From);
-            if (frame.To is not null) frameJson["to"] = McpTxFormat.Checksum(frame.To);
+            if (frame.From is not null) frameJson["from"] = McpEthHelpers.Checksum(frame.From);
+            if (frame.To is not null) frameJson["to"] = McpEthHelpers.Checksum(frame.To);
             if (frame.Selector is not null) frameJson["selector"] = frame.Selector;
             if (frame.Method is not null) frameJson["method"] = frame.Method;
             if (frame.Error is not null) frameJson["error"] = frame.Error;
@@ -663,7 +670,7 @@ internal sealed class McpTransactionTools(
                     }
                     else if (frame.Revert is { } revert)
                     {
-                        summary.Append(" (reverted: ").Append(revert.Message).Append(')');
+                        summary.Append(" (reverted: ").Append(SummaryRevert(revert)).Append(')');
                     }
                     else if (frame.Error is not null)
                     {
@@ -735,7 +742,7 @@ internal sealed class McpTransactionTools(
         if (context.BlobCount > 0) summary.Append($" carrying {context.BlobCount} blob(s)");
     }
 
-    private static void AppendReceived(StringBuilder summary, Address sender, List<McpTokenMovement> movements, Dictionary<AddressAsKey, McpTokenInfo> tokens)
+    private void AppendReceived(StringBuilder summary, Address sender, List<McpTokenMovement> movements, Dictionary<AddressAsKey, McpTokenInfo> tokens)
     {
         int shown = 0;
         foreach (McpTokenMovement movement in movements)
@@ -768,10 +775,12 @@ internal sealed class McpTransactionTools(
         return sent;
     }
 
-    private static string TokenText(McpTokenMovement movement, Dictionary<AddressAsKey, McpTokenInfo> tokens)
+    private string TokenText(McpTokenMovement movement, Dictionary<AddressAsKey, McpTokenInfo> tokens)
     {
         tokens.TryGetValue(movement.Token, out McpTokenInfo? info);
-        string label = McpTxTokens.Label(movement.Token, info);
+        string label = info?.Symbol is { } symbol && !IsWellKnownToken(movement.Token)
+            ? $"{symbol} (unverified token {McpTxFormat.Short(movement.Token)})"
+            : McpTxTokens.Label(movement.Token, info);
         if (!movement.IsFungible)
         {
             return $"{movement.Standard} {label} #{movement.TokenId}";
@@ -860,7 +869,7 @@ internal sealed class McpTransactionTools(
             SimulateCallInput input = inputs[Math.Min(index, inputs.Count - 1)];
             bool ok = call.Status == 1;
             JsonObject json = new() { ["index"] = index, ["status"] = ok ? "success" : "reverted" };
-            json["to"] = McpTxFormat.Checksum(input.To);
+            json["to"] = McpEthHelpers.Checksum(input.To);
             if (McpTxMethods.TryName(input.Data ?? []) is { } signature) json["method"] = signature;
             if (call.GasUsed is { } gasUsed)
             {
@@ -880,7 +889,7 @@ internal sealed class McpTransactionTools(
                 {
                     McpDecodedRevert revert = McpKnownAbi.DecodeRevert(call.Error?.Data ?? returnData);
                     error["revert"] = McpTxCallTree.RevertJson(revert);
-                    failureText ??= $"reverted: {revert.Message}";
+                    failureText ??= $"reverted: {SummaryRevert(revert)}";
                 }
                 else
                 {
@@ -899,6 +908,7 @@ internal sealed class McpTransactionTools(
             List<McpTokenMovement> movements = [];
             JsonArray logsJson = [];
             JsonArray native = [];
+            int nativeOmitted = 0;
             int logCount = 0;
             foreach (Log log in call.Logs)
             {
@@ -908,24 +918,30 @@ internal sealed class McpTransactionTools(
                     Address nativeTo = new(toTopic.Bytes[12..]);
                     UInt256 amount = new(log.Data, isBigEndian: true);
                     allNative.Add((nativeFrom, nativeTo, amount));
+                    if (native.Count >= MaxSimulateLogs)
+                    {
+                        nativeOmitted++;
+                        continue;
+                    }
+
                     native.Add(new JsonObject
                     {
-                        ["from"] = McpTxFormat.Checksum(nativeFrom),
-                        ["to"] = McpTxFormat.Checksum(nativeTo),
+                        ["from"] = McpEthHelpers.Checksum(nativeFrom),
+                        ["to"] = McpEthHelpers.Checksum(nativeTo),
                         ["value"] = McpTxFormat.Hex(amount),
-                        ["valueFormatted"] = McpTxFormat.Ether(amount)
+                        ["valueFormatted"] = McpEthHelpers.FormatNative(amount)
                     });
                     continue;
                 }
 
                 LogEntry entry = new(log.Address, log.Data, log.Topics);
-                McpDecodedLog? decoded = McpTxTokens.Extract(entry, movements);
+                McpDecodedLog? decoded = McpTxTokens.Extract(entry, movements, profile.WrappedNativeToken);
                 if (++logCount > MaxSimulateLogs)
                 {
                     continue;
                 }
 
-                JsonObject logJson = new() { ["address"] = McpTxFormat.Checksum(log.Address) };
+                JsonObject logJson = new() { ["address"] = McpEthHelpers.Checksum(log.Address) };
                 if (decoded is not null)
                 {
                     foreach (KeyValuePair<string, JsonNode?> property in McpTxTokens.DecodedJson(decoded))
@@ -947,6 +963,7 @@ internal sealed class McpTransactionTools(
             json["logs"] = logsJson;
             if (logCount > MaxSimulateLogs) json["logsOmitted"] = logCount - MaxSimulateLogs;
             if (native.Count > 0) json["nativeTransfers"] = native;
+            if (nativeOmitted > 0) json["nativeTransfersOmitted"] = nativeOmitted;
             perCall.Add((index, movements));
             allMovements.AddRange(movements);
             callJsons.Add(json);
@@ -964,11 +981,13 @@ internal sealed class McpTransactionTools(
                 JsonArray transfers = [];
                 foreach (McpTokenMovement movement in movements)
                 {
+                    if (transfers.Count >= MaxSimulateLogs) break;
                     tokens.TryGetValue(movement.Token, out McpTokenInfo? info);
                     transfers.Add(McpTxTokens.MovementJson(movement, info));
                 }
 
                 callJsons[call]["tokenTransfers"] = transfers;
+                if (movements.Count > transfers.Count) callJsons[call]["tokenTransfersOmitted"] = movements.Count - transfers.Count;
             }
         }
 
@@ -1274,18 +1293,7 @@ internal sealed class McpTransactionTools(
 
         if (blockResult.Data is not { Number: { } number } block)
         {
-            // The header may still be known when its body was pruned.
-            if (blockParameter.Type != BlockParameterType.BlockHash)
-            {
-                using ResultWrapper<BlockHeaderForRpc?> header = eth.eth_getHeaderByNumber(blockParameter);
-                if (header.Data?.Number is { } headerNumber)
-                {
-                    return capabilities.CheckBody((long)headerNumber)
-                        ?? McpToolExecutor.Error(McpToolErrorCodes.Unavailable, $"The body of block {headerNumber} is not stored on this node.");
-                }
-            }
-
-            return McpToolExecutor.Error(McpToolErrorCodes.NotFound, "Block not found.");
+            return McpEthHelpers.MissingBlock(eth, blockParameter, capabilities, "Block not found.");
         }
 
         List<string> notes = [];
@@ -1305,7 +1313,7 @@ internal sealed class McpTransactionTools(
 
         if (feeRecipient is not null)
         {
-            JsonObject recipient = new() { ["address"] = McpTxFormat.Checksum(feeRecipient) };
+            JsonObject recipient = new() { ["address"] = McpEthHelpers.Checksum(feeRecipient) };
             if (Label(feeRecipient) is { } label) recipient["label"] = label;
             json["feeRecipient"] = recipient;
         }
@@ -1349,9 +1357,9 @@ internal sealed class McpTransactionTools(
         {
             baseFeesPaid = baseFee * (UInt256)block.GasUsed;
             json["baseFeePerGas"] = McpTxFormat.Hex(baseFee);
-            json["baseFeeGwei"] = McpTxFormat.Gwei(baseFee);
+            json["baseFeeGwei"] = McpEthHelpers.Gwei(baseFee);
             JsonObject baseFees = Amount(baseFeesPaid);
-            baseFees["destination"] = spec.FeeCollector is { } collector ? $"fee collector {McpTxFormat.Checksum(collector)}" : "burnt";
+            baseFees["destination"] = spec.FeeCollector is { } collector ? $"fee collector {McpEthHelpers.Checksum(collector)}" : "burnt";
             json["baseFees"] = baseFees;
         }
 
@@ -1383,7 +1391,7 @@ internal sealed class McpTransactionTools(
         JsonArray topRecipients = [];
         for (int i = 0; i < top.Count && i < BlockTopCount; i++)
         {
-            JsonObject entry = new() { ["address"] = McpTxFormat.Checksum(top[i].Key), ["transactions"] = top[i].Value };
+            JsonObject entry = new() { ["address"] = McpEthHelpers.Checksum(top[i].Key), ["transactions"] = top[i].Value };
             if (Label(top[i].Key) is { } label) entry["label"] = label;
             topRecipients.Add(entry);
         }
@@ -1399,7 +1407,8 @@ internal sealed class McpTransactionTools(
             }
             else
             {
-                receipts = ReceiptStats(eth, number, block.BaseFeePerGas, notes, token);
+                // By hash, so a non-canonical block passed by hash gets its own receipts, not the canonical ones at its height.
+                receipts = ReceiptStats(eth, block.Hash is { } blockHash ? new BlockParameter(blockHash) : new BlockParameter(number), block.BaseFeePerGas, notes, token);
             }
         }
 
@@ -1411,7 +1420,7 @@ internal sealed class McpTransactionTools(
             .Append(" using ").Append(McpTxFormat.Percent(block.GasUsed, block.GasLimit).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append("% of the gas limit");
         if (block.BaseFeePerGas is { } fee)
         {
-            summary.Append(" at a base fee of ").Append(McpTxFormat.Human(McpTxFormat.Gwei(fee))).Append(" gwei");
+            summary.Append(" at a base fee of ").Append(McpTxFormat.Human(McpEthHelpers.Gwei(fee))).Append(" gwei");
             summary.Append(spec.FeeCollector is null ? "; " : "; base fees collected: ").Append(Human(baseFeesPaid));
             if (spec.FeeCollector is null) summary.Append(" burnt");
         }
@@ -1445,7 +1454,7 @@ internal sealed class McpTransactionTools(
             // Gnosis withdrawals are amounts of mGNO in gwei; the deposit contract's executeSystemWithdrawals credits
             // amount / 32 GNO (an ERC-20) to be claimed, rather than minting native xDAI.
             UInt256 gnoWei = totalGwei * 1_000_000_000UL / 32;
-            json["total"] = new JsonObject { ["formatted"] = McpTxFormat.Ether(gnoWei), ["symbol"] = "GNO" };
+            json["total"] = new JsonObject { ["formatted"] = McpEthHelpers.FormatNative(gnoWei), ["symbol"] = "GNO" };
             json["note"] = "On Gnosis, withdrawals are system calls to the deposit contract that credit claimable GNO (amount in mGNO gwei / 32), not native xDAI.";
         }
         else
@@ -1457,9 +1466,9 @@ internal sealed class McpTransactionTools(
         return json;
     }
 
-    private JsonObject? ReceiptStats(IEthRpcModule eth, ulong number, UInt256? baseFee, List<string> notes, CancellationToken token)
+    private JsonObject? ReceiptStats(IEthRpcModule eth, BlockParameter block, UInt256? baseFee, List<string> notes, CancellationToken token)
     {
-        using ResultWrapper<ReceiptForRpc[]?> result = eth.eth_getBlockReceipts(new BlockParameter(number));
+        using ResultWrapper<ReceiptForRpc[]?> result = eth.eth_getBlockReceipts(block);
         if (result.Result.ResultType != ResultType.Success || result.Data is not { } receipts)
         {
             notes.Add("The node returned no receipts for this block; failed transactions, fees and token transfers are omitted.");
@@ -1487,7 +1496,7 @@ internal sealed class McpTransactionTools(
             foreach (LogEntryForRpc log in receipt.Logs ?? [])
             {
                 scratch.Clear();
-                McpTxTokens.Extract(log.ToLogEntry(), scratch);
+                McpTxTokens.Extract(log.ToLogEntry(), scratch, profile.WrappedNativeToken);
                 foreach (McpTokenMovement movement in scratch)
                 {
                     transfers++;
@@ -1520,7 +1529,7 @@ internal sealed class McpTransactionTools(
             infos.TryGetValue(tokenAddress, out McpTokenInfo? info);
             JsonObject entry = new()
             {
-                ["token"] = McpTxFormat.Checksum(tokenAddress),
+                ["token"] = McpEthHelpers.Checksum(tokenAddress),
                 ["standard"] = standards[tokenAddress],
                 ["transfers"] = tokenCounts[tokenAddress]
             };
@@ -1537,11 +1546,32 @@ internal sealed class McpTransactionTools(
     private JsonObject Amount(in UInt256 wei) => new()
     {
         ["wei"] = McpTxFormat.Hex(wei),
-        ["formatted"] = McpTxFormat.Ether(wei),
+        ["formatted"] = McpEthHelpers.FormatNative(wei),
         ["symbol"] = profile.NativeCurrencySymbol
     };
 
-    private string Human(in UInt256 wei) => $"{McpTxFormat.Human(McpTxFormat.Ether(wei))} {profile.NativeCurrencySymbol}";
+    private string Human(in UInt256 wei) => $"{McpTxFormat.Human(McpEthHelpers.FormatNative(wei))} {profile.NativeCurrencySymbol}";
+
+    // Anyone can deploy a token called "USDC", so symbols read from other contracts are flagged in sentences.
+    private bool IsWellKnownToken(Address token)
+    {
+        foreach (McpWellKnownContract known in profile.Tokens)
+        {
+            if (known.Address == token)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Revert strings are attacker-controlled text: quoted and cut short so a summary cannot be taken over by them.
+    private static string SummaryRevert(McpDecodedRevert revert)
+    {
+        string message = revert.Message.Length > MaxSummaryRevertLength ? revert.Message[..MaxSummaryRevertLength] + "..." : revert.Message;
+        return revert.Kind == "Error" ? $"\"{message}\"" : message;
+    }
 
     private string? Label(Address address)
     {
@@ -1579,9 +1609,7 @@ internal sealed class McpTransactionTools(
     private static string? StringOf(JsonElement element) => element.ValueKind == JsonValueKind.String ? element.GetString() : null;
 
     private static string ErrorMessage(CallToolResult error) =>
-        error.StructuredContent is { } content && content.TryGetProperty("error", out JsonElement e) && e.TryGetProperty("message", out JsonElement m)
-            ? m.GetString() ?? string.Empty
-            : string.Empty;
+        McpToolExecutor.ReadError(error) is { } e && e.TryGetProperty("message", out JsonElement m) ? m.GetString() ?? string.Empty : string.Empty;
 
     // Puts the fields an LLM reads first (identity, outcome and summary) at the top of the object.
     private static JsonObject Ordered(JsonObject json)
@@ -1612,9 +1640,6 @@ internal sealed class McpTransactionTools(
         foreach (string note in notes) array.Add(note);
         return array;
     }
-
-    private static Task<CallToolResult> InvalidInput(string message) =>
-        Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, message));
 
     private sealed class ExplainContext(Hash256 hash, LegacyTransactionForRpc tx)
     {

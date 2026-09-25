@@ -24,6 +24,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Wallet;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 
@@ -54,10 +55,13 @@ internal sealed class McpTestNode : IAsyncDisposable
 
     public Uri Endpoint => Host.Endpoint ?? throw new InvalidOperationException("The MCP host is not running.");
 
+    private static readonly Lock WalletLock = new();
+
     /// <summary>Creates the chain, and starts the MCP listener on an ephemeral loopback port unless <paramref name="start"/> is false.</summary>
     /// <param name="configure">Adjusts the MCP config; it starts as enabled on port 0.</param>
     /// <param name="configureContainer">Extra container overrides, applied after the MCP module.</param>
     /// <param name="withAuth">Writes <see cref="TestToken"/> to a temporary file and sets it as <see cref="IMcpConfig.AuthTokenFile"/>.</param>
+    /// <param name="start">Whether to start the MCP listener.</param>
     public static async Task<McpTestNode> Create(
         Action<McpConfig>? configure = null,
         Action<ContainerBuilder>? configureContainer = null,
@@ -84,6 +88,13 @@ internal sealed class McpTestNode : IAsyncDisposable
                 .AddSingleton<IMcpConfig>(config);
             configureContainer?.Invoke(builder);
         });
+
+        // DevWallet's constructor mutates a static key seed, so concurrent test nodes creating it race and the eth module
+        // fails to activate; creating the singleton up front, one node at a time, keeps parallel fixtures deterministic.
+        lock (WalletLock)
+        {
+            chain.Container.Resolve<IWallet>();
+        }
 
         McpTestNode node = new(chain, config, tokenFile);
         if (start)
@@ -303,18 +314,21 @@ internal static partial class McpAssert
     /// <summary>Asserts a successful result and returns its <c>result</c> member.</summary>
     public static JsonElement Success(CallToolResult result)
     {
+        Assert.That(result.IsError, Is.Not.True, () => $"tool failed: {Text(result)}");
         JsonElement structured = Structured(result);
-        Assert.That(result.IsError, Is.Not.True, () => $"tool failed: {structured}");
         Assert.That(structured.TryGetProperty("result", out JsonElement value), Is.True, () => $"missing 'result' in {structured}");
         return value;
     }
 
     /// <summary>Asserts a failed result carrying <paramref name="expectedCode"/> and returns the error object.</summary>
+    /// <remarks>Errors are text-only: structuredContent would have to match the tool's output schema, which describes success.</remarks>
     public static JsonElement Error(CallToolResult result, params string[] expectedCode)
     {
-        JsonElement structured = Structured(result);
-        Assert.That(result.IsError, Is.True, () => $"expected a tool error, got {structured}");
-        Assert.That(structured.TryGetProperty("error", out JsonElement error), Is.True, () => $"missing 'error' in {structured}");
+        Assert.That(result.IsError, Is.True, () => $"expected a tool error, got {Text(result)}");
+        Assert.That(result.StructuredContent, Is.Null, "errors must not carry structuredContent");
+        using JsonDocument document = JsonDocument.Parse(Text(result));
+        Assert.That(document.RootElement.TryGetProperty("error", out JsonElement found), Is.True, () => $"missing 'error' in {document.RootElement}");
+        JsonElement error = found.Clone();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error.GetProperty("code").GetString(), Is.AnyOf(expectedCode), () => error.ToString());
@@ -322,6 +336,13 @@ internal static partial class McpAssert
         }
 
         return error;
+    }
+
+    private static string Text(CallToolResult result)
+    {
+        TextContentBlock? text = result.Content.OfType<TextContentBlock>().FirstOrDefault();
+        Assert.That(text, Is.Not.Null, "content must carry a text block");
+        return text!.Text;
     }
 
     /// <summary>Asserts the result carries structured content mirrored by a single JSON text block, and returns the structured content.</summary>

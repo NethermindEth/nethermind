@@ -57,12 +57,17 @@ internal sealed class McpToolExecutor(
     McpNodeCapabilities? capabilities = null)
 {
     private const int MaxClientMessageLength = 512;
+
+    /// <summary>The most bytes of revert data an error carries; longer data is cut and flagged with <c>dataTruncated</c>.</summary>
+    public const int MaxErrorDataBytes = 4096;
     private const string GenericInternalError = "The node failed to process the request.";
     private const string StateAdvice = "Use a recent block (for example \"latest\"), or query an archive node.";
     private const string HistoryAdvice = "Use a more recent block, or query a node that keeps full history.";
 
     private readonly int _maxConcurrentCalls = Math.Max(1, config.MaxConcurrentToolCalls);
     private readonly SemaphoreSlim _slots = new(Math.Max(1, config.MaxConcurrentToolCalls));
+    // Module-less tools (node_status) get their own slot, so slow module-backed calls cannot starve the health check.
+    private readonly SemaphoreSlim _localSlot = new(1);
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout));
     private readonly int _maxResultSize = Math.Max(1, config.MaxResultSize);
     private readonly ILogger _logger = logManager.GetClassLogger<McpToolExecutor>();
@@ -97,14 +102,15 @@ internal sealed class McpToolExecutor(
         string rpcMethod,
         Func<TModule, CancellationToken, Task<CallToolResult>> body,
         CancellationToken cancellationToken) where TModule : class, IRpcModule =>
-        RunLimitedAsync(token => RunRentedAsync(toolName, rpcMethod, body, token), cancellationToken);
+        RunLimitedAsync(_slots, _maxConcurrentCalls, token => RunRentedAsync(toolName, rpcMethod, body, token), cancellationToken);
 
     /// <summary>
     /// Runs a module-less <paramref name="body"/> (one that only reads in-process services such as the block tree or sync
-    /// state) under the same concurrency slot, timeout and error mapping as <see cref="ExecuteAsync{TModule}"/>.
+    /// state) under the same timeout and error mapping as <see cref="ExecuteAsync{TModule}"/>.
     /// </summary>
     /// <remarks>
-    /// Meant for cheap bodies: the slot is held only while the body runs, so a quick read never starves module-backed tools.
+    /// Meant for cheap, bounded bodies. They run in one reserved slot outside <see cref="IMcpConfig.MaxConcurrentToolCalls"/>,
+    /// so a health check still answers while slow module-backed calls hold every shared slot.
     /// </remarks>
     /// <param name="toolName">The MCP tool name, used in log messages.</param>
     /// <param name="body">The tool body.</param>
@@ -114,23 +120,23 @@ internal sealed class McpToolExecutor(
         string toolName,
         Func<CancellationToken, Task<CallToolResult>> body,
         CancellationToken cancellationToken) =>
-        RunLimitedAsync(token => RunLocalAsync(toolName, body, token), cancellationToken);
+        RunLimitedAsync(_localSlot, 1, token => RunLocalAsync(toolName, body, token), cancellationToken);
 
-    private async Task<CallToolResult> RunLimitedAsync(Func<CancellationToken, Task<CallToolResult>> run, CancellationToken cancellationToken)
+    private async Task<CallToolResult> RunLimitedAsync(SemaphoreSlim slots, int limit, Func<CancellationToken, Task<CallToolResult>> run, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!_slots.Wait(0))
+        if (!slots.Wait(0))
         {
-            return Error(McpToolErrorCodes.ResourceExhausted, $"Too many concurrent tool calls (limit {_maxConcurrentCalls}); retry later.");
+            return Error(McpToolErrorCodes.ResourceExhausted, $"Too many concurrent tool calls (limit {limit}); retry later.");
         }
 
         // Deliberately not passing the token to Task.Run: the delegate must run to release the slot.
-        Task<CallToolResult> work = Task.Run(() => RunAndReleaseAsync(run, cancellationToken));
+        Task<CallToolResult> work = Task.Run(() => RunAndReleaseAsync(slots, run, cancellationToken));
 
         try
         {
-            return await work.WaitAsync(_timeout, cancellationToken);
+            return LimitErrorSize(await work.WaitAsync(_timeout, cancellationToken));
         }
         catch (TimeoutException)
         {
@@ -244,11 +250,7 @@ internal sealed class McpToolExecutor(
             writer.WriteStartObject();
             writer.WriteString("code"u8, code);
             writer.WriteString("message"u8, message);
-            if (data is not null)
-            {
-                writer.WriteString("data"u8, data);
-            }
-
+            WriteErrorData(writer, data);
             writer.WriteEndObject();
             writer.WriteEndObject();
         }
@@ -256,7 +258,47 @@ internal sealed class McpToolExecutor(
         return CreateResult(buffer.WrittenSpan, isError: true);
     }
 
-    private async Task<CallToolResult> RunAndReleaseAsync(Func<CancellationToken, Task<CallToolResult>> run, CancellationToken cancellationToken)
+    /// <summary>Writes the <c>data</c> member of an error (0x-hex revert data), cut to <see cref="MaxErrorDataBytes"/> bytes.</summary>
+    /// <remarks>Cut data is followed by <c>"dataTruncated": true</c> and <c>"dataSize"</c>, the full size in bytes.</remarks>
+    public static void WriteErrorData(Utf8JsonWriter writer, string? data)
+    {
+        if (data is null)
+        {
+            return;
+        }
+
+        const int maxLength = 2 + MaxErrorDataBytes * 2;
+        if (data.Length <= maxLength)
+        {
+            writer.WriteString("data"u8, data);
+            return;
+        }
+
+        writer.WriteString("data"u8, data.AsSpan(0, maxLength));
+        writer.WriteBoolean("dataTruncated"u8, true);
+        writer.WriteNumber("dataSize"u8, (data.Length - 2) / 2);
+    }
+
+    /// <summary>Returns the <c>error</c> object of an error result built by this executor, or <see langword="null"/> for any other result.</summary>
+    public static JsonElement? ReadError(CallToolResult result)
+    {
+        if (result.IsError != true || result.Content is not [TextContentBlock { Text: { } text }, ..])
+        {
+            return null;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(text);
+            return document.RootElement.TryGetProperty("error", out JsonElement error) ? error.Clone() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private async Task<CallToolResult> RunAndReleaseAsync(SemaphoreSlim slots, Func<CancellationToken, Task<CallToolResult>> run, CancellationToken cancellationToken)
     {
         try
         {
@@ -266,7 +308,7 @@ internal sealed class McpToolExecutor(
         }
         finally
         {
-            _slots.Release();
+            slots.Release();
         }
     }
 
@@ -431,15 +473,29 @@ internal sealed class McpToolExecutor(
         return new JsonWriterOptions { Encoder = options.Encoder, MaxDepth = options.MaxDepth };
     }
 
+    // Errors are text-only: structuredContent must match the tool's output schema, which describes the success shape.
     private static CallToolResult CreateResult(ReadOnlySpan<byte> json, bool isError)
     {
-        using JsonDocument document = JsonDocument.Parse(json.ToArray());
-        return new CallToolResult
+        TextContentBlock text = new() { Text = Encoding.UTF8.GetString(json) };
+        if (isError)
         {
-            IsError = isError ? true : null,
-            StructuredContent = document.RootElement.Clone(),
-            Content = [new TextContentBlock { Text = Encoding.UTF8.GetString(json) }]
-        };
+            return new CallToolResult { IsError = true, Content = [text] };
+        }
+
+        using JsonDocument document = JsonDocument.Parse(json.ToArray());
+        return new CallToolResult { StructuredContent = document.RootElement.Clone(), Content = [text] };
+    }
+
+    // Error payloads are small by construction (bounded message and data), but a tiny MaxResultSize must still hold.
+    private CallToolResult LimitErrorSize(CallToolResult result)
+    {
+        if (result.IsError != true || result.Content is not [TextContentBlock { Text: { } text }] || Encoding.UTF8.GetByteCount(text) <= _maxResultSize)
+        {
+            return result;
+        }
+
+        string code = ReadError(result)?.GetProperty("code").GetString() ?? McpToolErrorCodes.InternalError;
+        return Error(code, $"The error details exceed the {_maxResultSize}-byte result limit.");
     }
 
     private static string Sanitize(string? message)
@@ -454,7 +510,7 @@ internal sealed class McpToolExecutor(
         for (int i = 0; i < length; i++)
         {
             char c = message[i];
-            builder.Append(char.IsControl(c) ? ' ' : c);
+            builder.Append(McpTokenMetadata.IsUnsafeChar(c) ? ' ' : c);
         }
 
         return builder.ToString();

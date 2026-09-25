@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Mcp.Plugin.Tools.Abi;
@@ -24,12 +23,14 @@ public sealed record McpTokenInfo(Address Address, string? Name, string? Symbol,
 /// <para>Callers pass an eth module they already rented. Each metadata call is bounded by <see cref="MetadataCallGas"/>.
 /// Both ABI <c>string</c> and legacy <c>bytes32</c> results (such as MKR's) are accepted; texts are stripped of control
 /// characters and capped at <see cref="MaxTextLength"/> characters, since they are untrusted contract output shown to an LLM.</para>
-/// <para>Results are cached per chain and address in a bounded LRU of <see cref="CacheCapacity"/> entries. Results
+/// <para>Results read at the head are cached per chain and address in a bounded LRU of <see cref="CacheCapacity"/> entries;
+/// reads at older blocks bypass the cache, since a token may not exist yet or may have been upgraded since. Results
 /// affected by a transient failure (state not available, node busy, unexpected error) are returned but not cached;
 /// reverts and malformed return data are permanent and cached as missing fields.</para>
 /// </remarks>
 /// <param name="logManager">Logs unexpected failures at debug level.</param>
-public sealed class McpTokenMetadata(ILogManager logManager)
+/// <param name="blockFinder">Recognizes head blocks passed by hash or number; without it only <c>latest</c> reads are cached.</param>
+public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? blockFinder = null)
 {
     /// <summary>The maximum number of cached tokens.</summary>
     public const int CacheCapacity = 4096;
@@ -51,7 +52,7 @@ public sealed class McpTokenMetadata(ILogManager logManager)
     private readonly ILogger _logger = logManager.GetClassLogger<McpTokenMetadata>();
 
     /// <summary>Creates the metadata reader without logging.</summary>
-    public McpTokenMetadata() : this(LimboLogs.Instance)
+    public McpTokenMetadata() : this(LimboLogs.Instance, null)
     {
     }
 
@@ -71,9 +72,10 @@ public sealed class McpTokenMetadata(ILogManager logManager)
         ResultWrapper<ulong> chainIdResult = eth.eth_chainId();
         ulong chainId = chainIdResult.Result.ResultType == ResultType.Success ? chainIdResult.Data : 0;
         (ulong, AddressAsKey) key = (chainId, token);
+        bool cacheable = IsHead(block);
         lock (_lock)
         {
-            if (_cache.TryGetValue(key, out LinkedListNode<CacheEntry>? node))
+            if (cacheable && _cache.TryGetValue(key, out LinkedListNode<CacheEntry>? node))
             {
                 _order.Remove(node);
                 _order.AddFirst(node);
@@ -94,7 +96,7 @@ public sealed class McpTokenMetadata(ILogManager logManager)
             string? symbol = ReadText(eth, token, block, SymbolSelector, ref transient);
             byte? decimals = ReadDecimals(eth, token, block, ref transient);
             McpTokenInfo info = new(token, name, symbol, decimals);
-            if (!transient)
+            if (cacheable && !transient)
             {
                 Add(key, info);
             }
@@ -106,6 +108,17 @@ public sealed class McpTokenMetadata(ILogManager logManager)
             if (_logger.IsDebug) _logger.Debug($"MCP token metadata for {token} failed: {e.Message}");
             return null;
         }
+    }
+
+    private bool IsHead(BlockParameter block)
+    {
+        if (block.Type == BlockParameterType.Latest)
+        {
+            return true;
+        }
+
+        BlockHeader? head = blockFinder?.Head?.Header;
+        return head is not null && (block.BlockHash is { } hash ? hash == head.Hash : block.BlockNumber == head.Number);
     }
 
     /// <summary>Formats a raw integer amount with <paramref name="decimals"/> as a decimal string, such as <c>1.5</c>.</summary>
@@ -160,19 +173,28 @@ public sealed class McpTokenMetadata(ILogManager logManager)
         return text is null ? null : Sanitize(text);
     }
 
-    /// <summary>Makes untrusted contract text safe to show: no control characters, trimmed, at most <see cref="MaxTextLength"/> characters.</summary>
+    /// <summary>
+    /// Makes untrusted contract text safe to show: no control or Unicode format characters (bidi overrides, zero-width marks),
+    /// trimmed, at most <see cref="MaxTextLength"/> characters.
+    /// </summary>
     public static string? Sanitize(string text)
     {
         StringBuilder builder = new(Math.Min(text.Length, MaxTextLength));
         foreach (char c in text)
         {
             if (builder.Length >= MaxTextLength) break;
-            if (!char.IsControl(c) && c != '�') builder.Append(c);
+            if (!IsUnsafeChar(c) && c != '\uFFFD') builder.Append(c);
         }
 
         string result = builder.ToString().Trim();
         return result.Length == 0 ? null : result;
     }
+
+    /// <summary>
+    /// Returns whether <paramref name="c"/> must not reach a client verbatim from untrusted on-chain text: control characters and
+    /// Unicode format characters (bidi overrides and isolates, zero-width joiners and spaces), which can hide or reorder text.
+    /// </summary>
+    public static bool IsUnsafeChar(char c) => char.IsControl(c) || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.Format;
 
     /// <summary>Executes a bounded read-only call and classifies the outcome.</summary>
     /// <returns>The return data, or <see langword="null"/> on failure; <paramref name="transient"/> is set when the failure may go away on retry.</returns>

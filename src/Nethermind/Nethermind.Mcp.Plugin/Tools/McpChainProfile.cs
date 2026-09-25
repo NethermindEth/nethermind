@@ -37,8 +37,22 @@ public sealed class McpChainProfile(ChainSpec chainSpec, ISpecProvider specProvi
         Token("Savings xDAI", "sDAI", 18, "0xaf204776c7245bF4147c2612BF6e5972Ee483701"), // Spark / Gnosis docs
     ];
 
+    private static readonly Address MainnetWeth = new("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
+    private static readonly Address GnosisWxdai = new("0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d");
+
     /// <summary>Gets the chain ID.</summary>
     public ulong ChainId => specProvider.ChainId;
+
+    /// <summary>
+    /// Gets the wrapped native currency token (WETH9 on mainnet, WXDAI on Gnosis) whose <c>Deposit</c>/<c>Withdrawal</c>
+    /// events are wraps and unwraps, or <see langword="null"/> where none is known.
+    /// </summary>
+    public Address? WrappedNativeToken => specProvider.ChainId switch
+    {
+        BlockchainIds.Mainnet => MainnetWeth,
+        BlockchainIds.Gnosis => GnosisWxdai,
+        _ => null,
+    };
 
     /// <summary>Gets the network name from the chain spec, such as <c>Foundation</c> for mainnet.</summary>
     public string NetworkName => chainSpec.Name ?? $"chain {specProvider.ChainId}";

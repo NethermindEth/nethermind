@@ -19,42 +19,9 @@ internal static class McpTxFormat
     /// <summary>The number of significant fraction digits kept by <see cref="Human(string)"/> for amounts below one.</summary>
     private const int HumanSignificantDigits = 4;
 
-    /// <summary>Formats <paramref name="amount"/> scaled down by 10^<paramref name="decimals"/> exactly, such as <c>1.5</c>, without trailing zeros.</summary>
-    public static string Units(in UInt256 amount, int decimals)
-    {
-        string digits = amount.ToString();
-        if (decimals <= 0)
-        {
-            return digits;
-        }
-
-        if (digits.Length <= decimals)
-        {
-            digits = digits.PadLeft(decimals + 1, '0');
-        }
-
-        string integer = digits[..^decimals];
-        string fraction = digits[^decimals..].TrimEnd('0');
-        return fraction.Length == 0 ? integer : $"{integer}.{fraction}";
-    }
-
     /// <summary>Formats a signed amount scaled by 10^<paramref name="decimals"/>, prefixed with <c>+</c> or <c>-</c> when non-zero.</summary>
-    public static string SignedUnits(BigInteger amount, int decimals)
-    {
-        if (amount.IsZero)
-        {
-            return "0";
-        }
-
-        UInt256 magnitude = (UInt256)BigInteger.Abs(amount);
-        return (amount.Sign < 0 ? "-" : "+") + Units(magnitude, decimals);
-    }
-
-    /// <summary>Formats wei as ether (or xDAI, which also has 18 decimals).</summary>
-    public static string Ether(in UInt256 wei) => Units(wei, 18);
-
-    /// <summary>Formats wei as gwei.</summary>
-    public static string Gwei(in UInt256 wei) => Units(wei, 9);
+    public static string SignedUnits(BigInteger amount, int decimals) =>
+        amount.Sign > 0 ? "+" + McpTokenMetadata.FormatUnits(amount, decimals) : McpTokenMetadata.FormatUnits(amount, decimals);
 
     /// <summary>Formats a quantity as a JSON-RPC hex quantity.</summary>
     public static string Hex(in UInt256 value) => value.ToHexString(true);
@@ -62,21 +29,15 @@ internal static class McpTxFormat
     /// <summary>Formats a quantity as a JSON-RPC hex quantity.</summary>
     public static string Hex(ulong value) => ((UInt256)value).ToHexString(true);
 
-    /// <summary>Formats an address with its EIP-55 checksum.</summary>
-    public static string Checksum(Address address) => address.ToString(withZeroX: true, withEip55Checksum: true);
-
     /// <summary>Formats an address in its short form for sentences, such as <c>0xAbCd…1234</c>.</summary>
     public static string Short(Address address)
     {
-        string text = Checksum(address);
+        string text = McpEthHelpers.Checksum(address);
         return $"{text[..6]}…{text[^4..]}";
     }
 
-    /// <summary>Formats a unix timestamp in seconds as ISO-8601 UTC.</summary>
-    public static string Iso(ulong unixSeconds) =>
-        unixSeconds > (ulong)DateTimeOffset.MaxValue.ToUnixTimeSeconds()
-            ? "out of range"
-            : DateTimeOffset.FromUnixTimeSeconds((long)unixSeconds).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+    /// <summary>Formats a unix timestamp in seconds as ISO-8601 UTC, or <c>out of range</c> beyond year 9999.</summary>
+    public static string Iso(ulong unixSeconds) => McpEthHelpers.ToIso(unixSeconds) ?? "out of range";
 
     /// <summary>Formats a count with thousands separators, such as <c>21,000,000</c>.</summary>
     public static string Thousands(ulong value) => value.ToString("N0", CultureInfo.InvariantCulture);

@@ -162,20 +162,7 @@ internal sealed class McpNodeTools(
     private readonly int _maxResultSize = Math.Max(1, config.MaxResultSize);
 
     /// <inheritdoc/>
-    public IEnumerable<McpServerTool> CreateServerTools()
-    {
-        foreach (McpServerTool tool in McpToolFactory.Create(this, static _ => string.Empty, _maxResultSize))
-        {
-            // The SDK can drop McpServerToolCreateOptions.OutputSchema, so the declared schema is applied to the descriptor.
-            if (tool.ProtocolTool.OutputSchema is null && tool.ProtocolTool.Name == "node_status")
-            {
-                using JsonDocument document = JsonDocument.Parse(NodeStatusSchema);
-                tool.ProtocolTool.OutputSchema = document.RootElement.Clone();
-            }
-
-            yield return tool;
-        }
-    }
+    public IEnumerable<McpServerTool> CreateServerTools() => McpToolFactory.Create(this, static _ => string.Empty, _maxResultSize);
 
     /// <summary>Returns a health and capability summary of the node.</summary>
     [McpServerTool(Name = "node_status", Title = "Node status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -388,9 +375,7 @@ internal sealed class McpNodeTools(
     }
 
     private static string FormatTimestamp(ulong unixSeconds) =>
-        unixSeconds > (ulong)DateTimeOffset.MaxValue.ToUnixTimeSeconds()
-            ? unixSeconds.ToString(CultureInfo.InvariantCulture)
-            : DateTimeOffset.FromUnixTimeSeconds((long)unixSeconds).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+        McpEthHelpers.ToIso(unixSeconds) ?? unixSeconds.ToString(CultureInfo.InvariantCulture);
 
     private static string FormatAge(long seconds) => seconds switch
     {

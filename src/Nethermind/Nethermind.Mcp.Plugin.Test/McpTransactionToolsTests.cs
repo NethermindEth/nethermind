@@ -3,7 +3,6 @@
 
 using System.Text;
 using System.Text.Json;
-using Autofac;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Nethermind.Core;
@@ -389,11 +388,11 @@ public class McpTransactionToolsTests
     {
         CallToolResult result = await Call(toolName, args);
         JsonElement value = McpAssert.Success(result);
-        await McpTxAssert.ConformsToOutputSchema(_client, toolName, result);
+        await McpToolCalls.AssertConformsToOutputSchema(_client, toolName, result);
         return value;
     }
 
-    private Task<CallToolResult> Call(string toolName, params (string Name, object? Value)[] args) => McpTxAssert.Call(_client, toolName, args);
+    private Task<CallToolResult> Call(string toolName, params (string Name, object? Value)[] args) => McpToolCalls.Call(_client, toolName, args);
 }
 
 /// <summary>Fee reporting on a London chain, where part of every fee is the burnt base fee.</summary>
@@ -422,8 +421,8 @@ public class McpTransactionToolsLondonTests
         Assert.That(baseFee, Is.GreaterThan(UInt256.Zero), "precondition: London blocks have a base fee");
         await using McpClient client = await node.CreateClient();
 
-        JsonElement fees = McpAssert.Success(await McpTxAssert.Call(client, "explain_transaction", [("hash", transfer.Hash!.ToString())])).GetProperty("fees");
-        JsonElement summary = McpAssert.Success(await McpTxAssert.Call(client, "block_summary", [("block", "latest")]));
+        JsonElement fees = McpAssert.Success(await McpToolCalls.Call(client, "explain_transaction", [("hash", transfer.Hash!.ToString())])).GetProperty("fees");
+        JsonElement summary = McpAssert.Success(await McpToolCalls.Call(client, "block_summary", [("block", "latest")]));
 
         UInt256 burnt = baseFee * GasCostOf.Transaction;
         UInt256 total = GasPrice * GasCostOf.Transaction;
@@ -436,37 +435,6 @@ public class McpTransactionToolsLondonTests
             Assert.That(summary.GetProperty("baseFees").GetProperty("wei").GetString(), Is.EqualTo(McpAssert.Hex(burnt)));
             Assert.That(summary.GetProperty("receipts").GetProperty("priorityFees").GetProperty("wei").GetString(), Is.EqualTo(McpAssert.Hex(total - burnt)));
             Assert.That(summary.GetProperty("summary").GetString(), Does.Contain("burnt"));
-        }
-    }
-}
-
-/// <summary>Helpers shared by the transaction and trace tool tests.</summary>
-internal static class McpTxAssert
-{
-    public static async Task<CallToolResult> Call(McpClient client, string toolName, (string Name, object? Value)[] args)
-    {
-        Dictionary<string, object?> arguments = new(args.Length);
-        foreach ((string name, object? value) in args) arguments[name] = value;
-        return await client.CallToolAsync(toolName, arguments);
-    }
-
-    /// <summary>Asserts that the required properties of the declared output schema are present in the result (one level deep).</summary>
-    public static async Task ConformsToOutputSchema(McpClient client, string toolName, CallToolResult result)
-    {
-        McpClientTool tool = (await client.ListToolsAsync()).Single(t => t.Name == toolName);
-        Assert.That(tool.ProtocolTool.OutputSchema, Is.Not.Null, $"{toolName} must declare an output schema");
-        JsonElement schema = tool.ProtocolTool.OutputSchema!.Value;
-        JsonElement structured = result.StructuredContent!.Value;
-        AssertRequired(schema, structured, toolName);
-        AssertRequired(schema.GetProperty("properties").GetProperty("result"), structured.GetProperty("result"), $"{toolName}.result");
-    }
-
-    private static void AssertRequired(JsonElement schema, JsonElement value, string path)
-    {
-        if (!schema.TryGetProperty("required", out JsonElement required)) return;
-        foreach (JsonElement name in required.EnumerateArray())
-        {
-            Assert.That(value.TryGetProperty(name.GetString()!, out _), Is.True, $"{path} is missing required '{name.GetString()}'");
         }
     }
 }

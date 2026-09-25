@@ -186,6 +186,21 @@ public sealed class McpNodeCapabilities(
             "Use a more recent block, or query a node that keeps full history.");
     }
 
+    /// <summary>
+    /// Returns a sentence for a transaction hash that was not found, pointing out that it may predate this node's history
+    /// (ancient barriers, history expiry), or an empty string when the node keeps full history or its range is unknown.
+    /// </summary>
+    /// <remarks>Hash lookups need both the block body and the transaction index kept with the receipts, so the later floor applies.</remarks>
+    public string DescribeTransactionHistoryLimit()
+    {
+        McpDataAvailability availability = GetAvailability();
+        long oldest = Math.Max(availability.OldestBodyBlock ?? 0, availability.OldestReceiptBlock ?? 0);
+        // Sync never inserts the genesis body, so a floor of block 1 still means full history.
+        return oldest > 1
+            ? $" This node keeps transaction history only from block {oldest} (see node_status); older transactions cannot be found here."
+            : string.Empty;
+    }
+
     /// <summary>Describes the state range as a predicate of "the node", such as <c>keeps state for blocks 20000000..20000128 (pruned, HalfPath)</c>.</summary>
     public static string DescribeStateRange(McpDataAvailability availability)
     {

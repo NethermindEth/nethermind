@@ -4,7 +4,6 @@
 using System.Text.Json;
 using Autofac;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;

@@ -236,7 +236,8 @@ CallToolResult balance = await client.CallToolAsync(
         ["address"] = "0x00000000219ab540356cBB839Cbe05303d7705Fa",
         ["block"] = "latest",
     });
-Console.WriteLine($"{(balance.IsError == true ? "error" : "ok")}: {balance.StructuredContent}");
+// Errors carry no structuredContent: read the JSON text instead.
+Console.WriteLine(balance.IsError == true ? ((TextContentBlock)balance.Content[0]).Text : balance.StructuredContent?.ToString());
 ```
 
 ## Reaching a node that isn't on your machine
@@ -402,10 +403,12 @@ Clients reject a self-signed certificate until you tell them to trust it:
 #### Failed-authentication throttle
 
 In remote mode, a client IP address (for IPv6, its /64) that fails authentication 10 times within 60 seconds gets
-HTTP 429 with `Retry-After: 60` until the oldest failure leaves the window. While blocked, its token isn't even
-checked. The throttle is off on loopback, where every client shares one address and a local process could otherwise
-lock out your agent. Behind Docker port publishing or a reverse proxy, all clients may appear to come from one
-address and share the limit.
+HTTP 429 with `Retry-After: 60` for further failing requests until the oldest failure leaves the window. A request
+with the valid token is always accepted, so failures from a shared address can't lock out a client that holds the
+token. At most 4,096 addresses are tracked; beyond that, failures are only counted in a shared bucket that never
+blocks anyone. Rejected requests (400, 401, 403, 413, 429) get `Connection: close`. The throttle is off on loopback,
+where every client shares one address. Behind a reverse proxy (or Docker port publishing), the server sees the
+proxy's address, so all clients share one IP for the throttle.
 
 > [!WARNING]
 > Remote mode makes the server reachable by anyone who can reach the port and holds the token. Prefer an SSH tunnel
@@ -473,8 +476,8 @@ whenever another tool returns `unavailable`.
   internal native transfers, and for failures the decoded revert reason, failing call frame and out-of-gas detection.
   Parts the node can't serve are listed in `notes` instead of failing the whole call. A transaction still in the
   mempool is reported as `pending`.
-- `trace_transaction` replays the transaction and returns its call tree, capped at `Mcp.MaxTraceCalls` frames and 24
-  levels. `truncated` and per-frame `omittedCalls` say what was cut.
+- `trace_transaction` replays the transaction and returns its call tree, capped at `Mcp.MaxTraceCalls` frames, 24
+  levels and a byte budget below `Mcp.MaxResultSize`. `truncated` and per-frame `omittedCalls` say what was cut.
 - `simulate_transaction` dry-runs one call or a sequence (such as approve then swap) with optional state overrides,
   via `eth_simulateV1`. Nothing is signed or stored, and gas isn't charged.
 - `block_summary` covers transaction counts by type, gas, base fee, burnt fees, blobs, withdrawals (ETH on Ethereum,
@@ -485,9 +488,11 @@ whenever another tool returns `unavailable`.
 *"What tokens does vitalik.eth hold?"*, *"What is 0x…?"*, *"Is this really USDC?"*
 
 The agent typically chains `resolve_ens` → `token_balances`, or uses `lookup_address` for a one-call profile. The
-node has no token index, so `token_balances` checks this chain's well-known tokens by default (mainnet: WETH, USDC,
-USDT, DAI, WBTC, stETH, wstETH, GNO; Gnosis: WXDAI, GNO, USDC, WETH, sDAI; none on testnets) and any token addresses
-you pass. Token names and symbols come from the contracts themselves and are untrusted. ENS works on mainnet,
+node has no token index, so `token_balances` checks a built-in token list by default, which exists only on mainnet
+(WETH, USDC, USDT, DAI, WBTC, stETH, wstETH, GNO) and Gnosis (WXDAI, GNO, USDC, WETH, sDAI). On other chains,
+omitting `tokens` returns only the native balance. Token names and symbols come from the contracts themselves and are
+untrusted: summaries mark the symbol of any token outside that list as `SYMBOL (unverified token 0x…)`, and text is
+stripped of control and invisible Unicode formatting characters. ENS works on mainnet,
 Sepolia and Holesky only, and fails with `unavailable` elsewhere.
 
 ### Gas and fees
@@ -510,12 +515,16 @@ implementation is this proxy using?"*
   `Mcp.MaxResultSize`. When `truncated` is `true`, call again with **exactly the same** `fromBlock`, `toBlock`,
   `address` and `topics` plus `cursor` set to `nextCursor`, until `truncated` is `false`. The response's
   `fromBlock`/`toBlock` say which blocks that page covered. A range ending at `latest` keeps the end resolved by the
-  first page. Cursors are opaque, can't be edited, and expire when the node restarts.
+  first page. Cursors are opaque, can't be edited, and expire when the node restarts. A cursor also becomes invalid
+  (`invalid_input`) if the chain reorganises past its position; restart the query then.
+- If `fromBlock` is below the oldest block the node keeps receipts for, the scan starts at that block and the page
+  reports `clampedFromBlock` (the requested start) and a `note`. A range entirely below it fails with `unavailable`.
 - With the log index enabled (`LogIndex.Enabled`), a page whose filter has an address or topic and starts inside the
   indexed range can span up to `Mcp.MaxIndexedLogBlockRange` blocks (1,000,000 by default), and the response has
   `indexed: true`. Without an address or topic, pages always use the smaller range. Filtering is much faster either
   way, so encourage the agent to filter.
-- `decode_logs` decodes common events (ERC-20/721/1155 transfers and approvals, WETH/WXDAI deposits and withdrawals,
+- `decode_logs` decodes common events (ERC-20/721/1155 transfers and approvals, WETH/WXDAI deposits and withdrawals
+  (only from the chain's wrapped native token contract; other `Deposit`/`Withdrawal` events get no standard),
   Uniswap V2/V3 swaps and more) and any event signatures you pass in `abi`.
 
 ## Resources and prompts
@@ -547,9 +556,12 @@ and invalid ones fail the `prompts/get` request.
 
 ## Output conventions
 
-A successful call returns `structuredContent` of `{"result": ...}`, plus a text content block with the same JSON. A
-failed call sets `isError: true` and returns `{"error": {"code": "...", "message": "...", "data": ...}}`. `data` is
-optional. For `call` and `estimate_gas` reverts, `data` holds the raw revert data as hex, and `reason`
+A successful call returns `structuredContent` of `{"result": ...}`, which matches the tool's declared output schema,
+plus a text content block with the same JSON (so the payload travels twice; `MaxResultSize` limits the JSON once).
+A failed call sets `isError: true` and returns only a text content block with
+`{"error": {"code": "...", "message": "...", "data": ...}}`, without `structuredContent`, because the output schema
+describes the success shape. `data` is optional. For `call`, `estimate_gas` and `call_function` reverts, `data` holds
+the raw revert data as hex (cut to 4 KB, then `dataTruncated: true` and `dataSize` in bytes), and `reason`
 (`{kind, message, selector}`) holds the decoded reason.
 
 | Code | Meaning | What to do |
@@ -603,7 +615,8 @@ Use a recent block (for example "latest"), or query an archive node.`
   old bodies and receipts too. With `Receipt.StoreReceipts=false`, receipt, log and status queries fail. Error
   messages name the setting that caused the gap.
 - **Old transactions by hash.** When a node never stored a transaction's block body, looking it up by hash returns
-  `not_found`, not `unavailable`, because the node has no record of that hash. The message mentions this possibility.
+  `not_found`, not `unavailable`, because the node has no record of that hash. When the node's history is limited,
+  the message names the first block it keeps transactions from.
   `node_status` tells you whether that's the likely cause.
 - **Ranges.** `node_status` reports `state.oldestBlock`, `history.oldestBodyBlock` and `history.oldestReceiptBlock`
   as decimal numbers (`null` when unknown). Treat them as guidance: on some backends state availability isn't a
@@ -611,8 +624,8 @@ Use a recent block (for example "latest"), or query an archive node.`
   range alone.
 - **Trace and debug.** `trace_transaction` and the call trace in `explain_transaction` use the node's `debug` module
   in-process (`debug_traceTransaction` with the native call tracer). This works whether or not `debug` or `trace`
-  is listed in `JsonRpc.EnabledModules`, which only gates the public JSON-RPC endpoint. `node_status.features`
-  reports whether both are available.
+  is listed in `JsonRpc.EnabledModules`, which only gates the public JSON-RPC endpoint. Set `Mcp.EnableTracing=false`
+  to turn it off. `node_status.features` reports whether both are available.
 
 ## Configuration reference
 
@@ -630,15 +643,16 @@ variables). Arrays are comma-separated on the command line. All numeric limits m
 | `TlsCertificatePath` | `null` | PEM certificate (plus optional chain). Required in remote mode. Enables HTTPS on loopback. |
 | `TlsCertificateKeyPath` | `null` | Unencrypted PEM private key (PKCS#8, PKCS#1 or SEC1) of the certificate. Required whenever `TlsCertificatePath` is set. |
 | `MaxRequestBodySize` | `262144` | Maximum HTTP request body, in bytes. Larger requests get HTTP 413. |
-| `MaxConcurrentToolCalls` | `4` | Tool calls running at once. Further calls fail immediately with `resource_exhausted` and aren't queued. |
+| `MaxConcurrentToolCalls` | `4` | Tool calls running at once. Further calls fail immediately with `resource_exhausted` and aren't queued. `node_status` has its own reserved slot and still answers when all of them are busy. |
 | `ToolTimeout` | `10000` | Wall-clock limit per tool call, in ms. Must not exceed `JsonRpc.Timeout` (default 20000). |
 | `MaxResultSize` | `4194304` | Maximum serialized tool result, in bytes. Larger results fail with `resource_exhausted`. |
 | `MaxLogBlockRange` | `1000` | Blocks one `get_logs` page scans when the log index doesn't cover it. Larger ranges are paged. |
 | `MaxIndexedLogBlockRange` | `1000000` | Blocks one `get_logs` page may scan when the filter has an address or topic and the log index covers the range. |
 | `MaxLogs` | `10000` | Maximum logs per `get_logs` page. It's also the default and the upper bound of `limit`. |
-| `MaxCallGas` | `50000000` | Gas cap for `call`, `call_function`, `estimate_gas` and `simulate_transaction`. Must not exceed `JsonRpc.GasCap` (default 100000000). |
+| `MaxCallGas` | `50000000` | Gas cap for `call`, `call_function`, `estimate_gas` and `simulate_transaction`. Must not exceed `JsonRpc.GasCap` (default 100000000); the effective cap is the smaller of the two. |
 | `MaxCallDataSize` | `131072` | Maximum call data, in bytes, for the call-style tools. |
 | `MaxTraceCalls` | `2000` | Maximum call frames returned by `trace_transaction`. Larger trees are truncated and flagged. |
+| `EnableTracing` | `true` | Allows `trace_transaction` and the call-trace parts of `explain_transaction`, which use the debug module in-process regardless of `JsonRpc.EnabledModules`. When `false`, `trace_transaction` fails with `unavailable` and `explain_transaction` skips the trace with a note. |
 
 Fixed limits that aren't configurable: 32 `get_logs` addresses, 4 topic positions and 32 hashes per position; 50
 tokens in `token_balances`; 256 logs and 32 signatures in `decode_logs`; 64 proof keys; 8 simulated calls and 8

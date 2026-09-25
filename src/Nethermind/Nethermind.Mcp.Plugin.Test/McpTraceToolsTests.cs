@@ -112,6 +112,42 @@ public class McpTraceToolsTests
     }
 
     [Test]
+    public async Task Trace_stops_at_the_byte_budget_instead_of_failing()
+    {
+        await using McpTestNode node = await McpTestNode.Create(static c => c.MaxResultSize = 2_000);
+        McpTxScenario scenario = await McpTxScenario.Create(node);
+        await using McpClient client = await node.CreateClient();
+
+        JsonElement result = McpAssert.Success(await McpToolCalls.Call(client, "trace_transaction",
+            [("hash", scenario.RecursiveCall.Hash!.ToString()), ("includeInput", true)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("truncated").GetBoolean(), Is.True);
+            Assert.That(result.GetProperty("returnedFrames").GetInt32(), Is.LessThan(result.GetProperty("totalFrames").GetInt32()));
+            Assert.That(result.GetProperty("returnedFrames").GetInt32(), Is.GreaterThanOrEqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Disabled_tracing_makes_trace_unavailable_and_explain_skip_the_trace()
+    {
+        await using McpTestNode node = await McpTestNode.Create(static c => c.EnableTracing = false);
+        McpTxScenario scenario = await McpTxScenario.Create(node);
+        await using McpClient client = await node.CreateClient();
+        string hash = scenario.RevertCall.Hash!.ToString();
+
+        JsonElement error = McpAssert.Error(await McpToolCalls.Call(client, "trace_transaction", [("hash", hash)]), McpAssert.Unavailable);
+        JsonElement explained = McpAssert.Success(await McpToolCalls.Call(client, "explain_transaction", [("hash", hash)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain("Mcp.EnableTracing"));
+            Assert.That(explained.GetProperty("notes").EnumerateArray().Select(static n => n.GetString()), Has.Some.Contains("tracing is disabled"));
+        }
+    }
+
+    [Test]
     public async Task Trace_depth_zero_returns_only_the_top_call()
     {
         JsonElement result = await Success(("hash", _scenario.ForwardCall.Hash!.ToString()), ("maxDepth", 0));
@@ -190,9 +226,9 @@ public class McpTraceToolsTests
     {
         CallToolResult result = await Call(args);
         JsonElement value = McpAssert.Success(result);
-        await McpTxAssert.ConformsToOutputSchema(_client, "trace_transaction", result);
+        await McpToolCalls.AssertConformsToOutputSchema(_client, "trace_transaction", result);
         return value;
     }
 
-    private Task<CallToolResult> Call(params (string Name, object? Value)[] args) => McpTxAssert.Call(_client, "trace_transaction", args);
+    private Task<CallToolResult> Call(params (string Name, object? Value)[] args) => McpToolCalls.Call(_client, "trace_transaction", args);
 }

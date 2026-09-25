@@ -3,7 +3,6 @@
 
 using System.ComponentModel;
 using System.Reflection;
-using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Nethermind.Blockchain.Find;
@@ -34,6 +33,7 @@ namespace Nethermind.Mcp.Plugin.Tools;
 /// <param name="rpcConfig">The JSON-RPC configuration; <see cref="IJsonRpcConfig.GasCap"/> also caps <c>call</c> gas.</param>
 /// <param name="chainProfile">Network name, native currency and well-known contracts.</param>
 /// <param name="logIndexStorage">The log index, whose covered range lets <c>get_logs</c> scan wider pages.</param>
+/// <param name="capabilities">Reports the node's history range for not-found transaction lookups.</param>
 [McpServerToolType]
 internal sealed partial class McpEthTools(
     McpToolExecutor executor,
@@ -41,7 +41,8 @@ internal sealed partial class McpEthTools(
     IMcpConfig config,
     IJsonRpcConfig rpcConfig,
     McpChainProfile chainProfile,
-    ILogIndexStorage logIndexStorage) : IMcpToolSet
+    ILogIndexStorage logIndexStorage,
+    McpNodeCapabilities capabilities) : IMcpToolSet
 {
     internal const string BlockSelectorDescription =
         "Block selector: \"latest\", \"earliest\", \"safe\", \"finalized\", a block number as a 0x-prefixed hex string (\"0x12a05f2\") " +
@@ -60,7 +61,7 @@ internal sealed partial class McpEthTools(
 
     /// <inheritdoc/>
     public IEnumerable<McpServerTool> CreateServerTools() =>
-        McpEthHelpers.WithDeclaredOutputSchemas(McpToolFactory.Create(this, DescribeLimits, _maxResultSize), typeof(McpEthTools));
+        McpToolFactory.Create(this, DescribeLimits, _maxResultSize);
 
     // Descriptions are static attributes, so this node's actual limits are appended here.
     private string DescribeLimits(MethodInfo method) => method.Name switch
@@ -186,7 +187,9 @@ internal sealed partial class McpEthTools(
                 using ResultWrapper<BlockForRpc> result = byHash
                     ? eth.eth_getBlockByHash(blockParameter.BlockHash!, fullTransactions)
                     : eth.eth_getBlockByNumber(blockParameter, fullTransactions);
-                return Task.FromResult(SuccessOrNotFound("get_block", result, "Block not found; check the number is not above the head (see chain_info)."));
+                return Task.FromResult(result.Result.ResultType == ResultType.Success && result.Data is null
+                    ? McpEthHelpers.MissingBlock(eth, blockParameter, capabilities, "Block not found; check the number is not above the head (see chain_info).")
+                    : SuccessOrNotFound("get_block", result, string.Empty));
             },
             cancellationToken);
     }
@@ -219,7 +222,7 @@ internal sealed partial class McpEthTools(
         return _executor.ExecuteAsync("get_transaction", nameof(IEthRpcModule.eth_getTransactionByHash), (eth, _) =>
         {
             using ResultWrapper<TransactionForRpc?> result = eth.eth_getTransactionByHash(txHash);
-            return Task.FromResult(SuccessOrNotFound("get_transaction", result, "Transaction not found; it may never have been broadcast, been dropped from the pool, or be older than this node's history."));
+            return Task.FromResult(SuccessOrNotFound("get_transaction", result, "Transaction not found; it may never have been broadcast or been dropped from the pool.", historyHint: true));
         }, cancellationToken);
     }
 
@@ -253,7 +256,7 @@ internal sealed partial class McpEthTools(
         return _executor.ExecuteAsync("get_transaction_receipt", nameof(IEthRpcModule.eth_getTransactionReceipt), (eth, _) =>
         {
             using ResultWrapper<ReceiptForRpc?> result = eth.eth_getTransactionReceipt(txHash);
-            return Task.FromResult(SuccessOrNotFound("get_transaction_receipt", result, "Receipt not found; the transaction is unknown, still pending, or older than this node's receipt history."));
+            return Task.FromResult(SuccessOrNotFound("get_transaction_receipt", result, "Receipt not found; the transaction is unknown or still pending.", historyHint: true));
         }, cancellationToken);
     }
 
@@ -295,7 +298,7 @@ internal sealed partial class McpEthTools(
                 writer.WriteStartObject();
                 writer.WritePropertyName("balance"u8);
                 McpToolExecutor.WriteValue(writer, state.Balance);
-                writer.WriteString("balanceFormatted"u8, McpEthHelpers.FormatUnits(state.Balance, McpEthHelpers.NativeDecimals));
+                writer.WriteString("balanceFormatted"u8, McpEthHelpers.FormatNative(state.Balance));
                 writer.WriteString("symbol"u8, state.Symbol);
                 writer.WriteNumber("decimals"u8, McpEthHelpers.NativeDecimals);
                 writer.WriteEndObject();
@@ -377,14 +380,19 @@ internal sealed partial class McpEthTools(
             using ResultWrapper<HexBytes> result = eth.eth_call(transaction, blockParameter);
             return Task.FromResult(result.Result.ResultType == ResultType.Success
                 ? _executor.Success(result.Data)
-                : McpEthHelpers.WithRevertReason(_executor.Failure("call", result)));
+                : McpEthHelpers.WithRevertReason(_executor.Failure("call", result), result));
         }, cancellationToken);
     }
 
-    private CallToolResult SuccessOrNotFound<T>(string toolName, ResultWrapper<T> result, string notFoundMessage) =>
+    /// <summary>Maps a JSON-RPC result to a success, its mapped failure, or <c>not_found</c> when it holds no data.</summary>
+    /// <param name="toolName">The MCP tool name, used in log messages.</param>
+    /// <param name="result">The JSON-RPC result.</param>
+    /// <param name="notFoundMessage">The message of the <c>not_found</c> error.</param>
+    /// <param name="historyHint">Whether a not-found result should mention the node's history floor (transaction hash lookups).</param>
+    private CallToolResult SuccessOrNotFound<T>(string toolName, ResultWrapper<T> result, string notFoundMessage, bool historyHint = false) =>
         result.Result.ResultType != ResultType.Success
             ? _executor.Failure(toolName, result)
             : result.Data is null
-                ? McpToolExecutor.Error(McpToolErrorCodes.NotFound, notFoundMessage)
+                ? McpToolExecutor.Error(McpToolErrorCodes.NotFound, historyHint ? notFoundMessage + capabilities.DescribeTransactionHistoryLimit() : notFoundMessage)
                 : _executor.Success(result.Data);
 }

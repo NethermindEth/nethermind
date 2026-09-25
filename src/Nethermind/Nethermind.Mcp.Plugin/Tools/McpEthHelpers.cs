@@ -4,17 +4,16 @@
 using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Mcp.Plugin.Tools.Abi;
 using Nethermind.Serialization.Json;
 
@@ -31,11 +30,11 @@ internal static class McpEthHelpers
 
     private const long MaxIsoTimestamp = 253402300799; // 9999-12-31T23:59:59Z
 
-    /// <summary>Formats a raw integer <paramref name="amount"/> with <paramref name="decimals"/> as a decimal string without trailing zeros, such as <c>1.5</c>.</summary>
-    public static string FormatUnits(in UInt256 amount, int decimals) => McpTokenMetadata.FormatUnits(amount, decimals);
+    /// <summary>Formats a wei amount in the native currency (ETH, or xDAI on Gnosis), such as <c>1.5</c>.</summary>
+    public static string FormatNative(in UInt256 wei) => McpTokenMetadata.FormatUnits(wei, NativeDecimals);
 
     /// <summary>Formats a wei amount as gwei.</summary>
-    public static string Gwei(in UInt256 wei) => FormatUnits(wei, GweiDecimals);
+    public static string Gwei(in UInt256 wei) => McpTokenMetadata.FormatUnits(wei, GweiDecimals);
 
     /// <summary>Formats a Unix timestamp in seconds as ISO 8601 UTC, or returns <see langword="null"/> if it is out of range.</summary>
     public static string? ToIso(ulong unixSeconds) => unixSeconds > MaxIsoTimestamp
@@ -93,33 +92,20 @@ internal static class McpEthHelpers
         return false;
     }
 
-    /// <summary>Makes sure every tool of <paramref name="toolSet"/> advertises the schema from its <see cref="McpToolOutputSchemaAttribute"/>.</summary>
-    /// <remarks>
-    /// The SDK ignores <see cref="McpServerToolCreateOptions.OutputSchema"/> unless
-    /// <see cref="McpServerToolCreateOptions.UseStructuredContent"/> is also set, so a schema missing from the created
-    /// descriptor is copied onto it here. Tools that already carry a schema are left unchanged.
-    /// </remarks>
-    public static IEnumerable<McpServerTool> WithDeclaredOutputSchemas(IEnumerable<McpServerTool> tools, Type toolSet)
+    /// <summary>
+    /// Returns the error for a block <c>eth_getBlockBy*</c> did not return: <c>unavailable</c> when its header is known but its body
+    /// is not stored (history expiry, fast sync without old bodies), otherwise <c>not_found</c> with <paramref name="notFoundMessage"/>.
+    /// </summary>
+    public static CallToolResult MissingBlock(IEthRpcModule eth, BlockParameter block, McpNodeCapabilities capabilities, string notFoundMessage)
     {
-        Dictionary<string, string> schemas = new(StringComparer.Ordinal);
-        foreach (MethodInfo method in toolSet.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly))
+        using ResultWrapper<BlockHeaderForRpc?> header = block.BlockHash is { } hash ? eth.eth_getHeaderByHash(hash) : eth.eth_getHeaderByNumber(block);
+        if (header.Result.ResultType == ResultType.Success && header.Data?.Number is { } number)
         {
-            if (method.GetCustomAttribute<McpServerToolAttribute>()?.Name is { } name && method.GetCustomAttribute<McpToolOutputSchemaAttribute>() is { } schema)
-            {
-                schemas[name] = schema.Json;
-            }
+            return capabilities.CheckBody((long)number)
+                ?? McpToolExecutor.Error(McpToolErrorCodes.Unavailable, $"The header of block {number} is known but its body is not stored on this node.");
         }
 
-        foreach (McpServerTool tool in tools)
-        {
-            if (tool.ProtocolTool.OutputSchema is null && schemas.TryGetValue(tool.ProtocolTool.Name, out string? json))
-            {
-                using JsonDocument document = JsonDocument.Parse(json);
-                tool.ProtocolTool.OutputSchema = document.RootElement.Clone();
-            }
-
-            yield return tool;
-        }
+        return McpToolExecutor.Error(McpToolErrorCodes.NotFound, notFoundMessage);
     }
 
     /// <summary>Returns a completed <c>invalid_input</c> error.</summary>
@@ -130,26 +116,42 @@ internal static class McpEthHelpers
     /// Adds a decoded <c>reason</c> (<c>{"kind", "message", "selector"}</c>) to an <c>execution_reverted</c> error and
     /// appends the reason to its message; other results are returned unchanged.
     /// </summary>
-    public static CallToolResult WithRevertReason(CallToolResult result)
+    /// <param name="result">The mapped failure of <paramref name="wrapper"/>.</param>
+    /// <param name="wrapper">The failed JSON-RPC result, whose full revert data is decoded (the mapped error may carry it cut).</param>
+    public static CallToolResult WithRevertReason(CallToolResult result, IResultWrapper wrapper)
     {
-        if (result.IsError != true
-            || result.StructuredContent is not { } structured
-            || !structured.TryGetProperty("error", out JsonElement error)
-            || error.GetProperty("code").GetString() != McpToolErrorCodes.ExecutionReverted)
+        if (McpToolExecutor.ReadError(result) is not { } error || error.GetProperty("code").GetString() != McpToolErrorCodes.ExecutionReverted)
         {
             return result;
         }
 
         string message = error.GetProperty("message").GetString() ?? McpToolErrorCodes.ExecutionReverted;
-        string? data = error.TryGetProperty("data", out JsonElement dataElement) ? dataElement.GetString() : null;
-        byte[] revertData = data is { Length: > 2 } ? Bytes.FromHexString(data) : [];
-        McpDecodedRevert reason = McpKnownAbi.DecodeRevert(revertData);
+        string? data = wrapper.HasErrorData ? wrapper.Data as string : null;
+        McpDecodedRevert reason = McpKnownAbi.DecodeRevert(FromHexOrEmpty(data));
 
         if (!message.Contains(reason.Message, StringComparison.Ordinal))
         {
             message = $"{message} (reason: {reason.Message})";
         }
 
+        return RevertError(message, data, reason);
+    }
+
+    /// <summary>Decodes 0x-prefixed hex revert data, or returns no bytes when it is missing or malformed.</summary>
+    public static byte[] FromHexOrEmpty(string? hex)
+    {
+        if (hex is not { Length: > 2 } || !hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase) || hex.Length % 2 != 0)
+        {
+            return [];
+        }
+
+        byte[] bytes = new byte[(hex.Length - 2) / 2];
+        return Convert.FromHexString(hex.AsSpan(2), bytes, out _, out _) == OperationStatus.Done ? bytes : [];
+    }
+
+    /// <summary>Builds an <c>execution_reverted</c> error carrying the raw revert <paramref name="data"/> and the decoded <paramref name="reason"/>.</summary>
+    public static CallToolResult RevertError(string message, string? data, McpDecodedRevert reason)
+    {
         ArrayBufferWriter<byte> buffer = new(256);
         using (Utf8JsonWriter writer = new(buffer, new JsonWriterOptions { Encoder = EthereumJsonSerializer.JsonOptions.Encoder }))
         {
@@ -158,11 +160,7 @@ internal static class McpEthHelpers
             writer.WriteStartObject();
             writer.WriteString("code"u8, McpToolErrorCodes.ExecutionReverted);
             writer.WriteString("message"u8, message);
-            if (data is not null)
-            {
-                writer.WriteString("data"u8, data);
-            }
-
+            McpToolExecutor.WriteErrorData(writer, data);
             writer.WritePropertyName("reason"u8);
             writer.WriteStartObject();
             writer.WriteString("kind"u8, reason.Kind);
@@ -173,12 +171,6 @@ internal static class McpEthHelpers
             writer.WriteEndObject();
         }
 
-        using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
-        return new CallToolResult
-        {
-            IsError = true,
-            StructuredContent = document.RootElement.Clone(),
-            Content = [new TextContentBlock { Text = Encoding.UTF8.GetString(buffer.WrittenSpan) }]
-        };
+        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = Encoding.UTF8.GetString(buffer.WrittenSpan) }] };
     }
 }

@@ -199,13 +199,14 @@ public class McpToolInputTests
     [TestCase("7", 9, "0.000000007")]
     [TestCase("42", 0, "42")]
     public void Units_are_formatted_without_trailing_zeros(string amount, int decimals, string expected) =>
-        Assert.That(McpEthHelpers.FormatUnits(UInt256.Parse(amount), decimals), Is.EqualTo(expected));
+        Assert.That(McpTokenMetadata.FormatUnits(UInt256.Parse(amount), decimals), Is.EqualTo(expected));
 
     [Test]
     public void Log_cursor_round_trips_and_rejects_edits()
     {
         byte[] filter = McpLogCursor.ComputeFilterHash(BlockParameter.Earliest, BlockParameter.Latest, null, null);
-        string encoded = new McpLogCursor(12, 3, 99, filter).Encode();
+        Hash256 blockHash = Keccak.Compute("block 12");
+        string encoded = new McpLogCursor(12, 3, 99, filter, blockHash.BytesToArray()).Encode();
 
         bool decoded = McpLogCursor.TryDecode(encoded, out string? error, out McpLogCursor cursor);
         char[] edited = encoded.ToCharArray();
@@ -216,6 +217,8 @@ public class McpToolInputTests
             Assert.That(decoded, Is.True, error);
             Assert.That((cursor.Block, cursor.LogIndex, cursor.ToBlock), Is.EqualTo((12UL, 3UL, 99UL)));
             Assert.That(cursor.Matches(filter), Is.True);
+            Assert.That(cursor.IsAt(blockHash), Is.True);
+            Assert.That(cursor.IsAt(Keccak.Compute("reorged")), Is.False);
             Assert.That(McpLogCursor.TryDecode(new string(edited), out _, out _), Is.False);
             Assert.That(McpLogCursor.TryDecode(encoded + "A", out _, out _), Is.False);
             Assert.That(McpLogCursor.TryDecode("", out _, out _), Is.False);

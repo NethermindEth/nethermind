@@ -35,9 +35,12 @@ internal static class McpTxTokens
 
     /// <summary>Appends the token movements described by <paramref name="log"/>, if it is a known transfer, wrap or unwrap event.</summary>
     /// <returns>The decoded log, or <see langword="null"/> if it matches no known event.</returns>
-    public static McpDecodedLog? Extract(LogEntry log, List<McpTokenMovement> sink)
+    /// <param name="log">The log.</param>
+    /// <param name="sink">Receives the movements.</param>
+    /// <param name="wrappedNativeToken">The chain's wrapped native token; <c>Deposit</c>/<c>Withdrawal</c> of other contracts are not movements.</param>
+    public static McpDecodedLog? Extract(LogEntry log, List<McpTokenMovement> sink, Address? wrappedNativeToken)
     {
-        McpDecodedLog? decoded = McpKnownAbi.TryDecodeLog(log);
+        McpDecodedLog? decoded = McpKnownAbi.TryDecodeLog(log, wrappedNativeToken);
         if (decoded is null)
         {
             return null;
@@ -67,10 +70,10 @@ internal static class McpTxTokens
                 }
 
                 break;
-            case "Deposit" when p.Count >= 2 && TryAddress(p[0].Value, out Address? to) && TryAmount(p[1].Value, out UInt256 wad):
+            case "Deposit" when decoded.Standard == "WETH" && p.Count >= 2 && TryAddress(p[0].Value, out Address? to) && TryAmount(p[1].Value, out UInt256 wad):
                 sink.Add(new McpTokenMovement(log.Address, "WETH", Address.Zero, to, wad, null));
                 break;
-            case "Withdrawal" when p.Count >= 2 && TryAddress(p[0].Value, out Address? from) && TryAmount(p[1].Value, out UInt256 wad):
+            case "Withdrawal" when decoded.Standard == "WETH" && p.Count >= 2 && TryAddress(p[0].Value, out Address? from) && TryAmount(p[1].Value, out UInt256 wad):
                 sink.Add(new McpTokenMovement(log.Address, "WETH", from, Address.Zero, wad, null));
                 break;
         }
@@ -124,10 +127,10 @@ internal static class McpTxTokens
     {
         JsonObject json = new()
         {
-            ["token"] = McpTxFormat.Checksum(movement.Token),
+            ["token"] = McpEthHelpers.Checksum(movement.Token),
             ["standard"] = movement.Standard,
-            ["from"] = McpTxFormat.Checksum(movement.From),
-            ["to"] = McpTxFormat.Checksum(movement.To),
+            ["from"] = McpEthHelpers.Checksum(movement.From),
+            ["to"] = McpEthHelpers.Checksum(movement.To),
             ["amount"] = movement.Amount.ToString()
         };
 
@@ -170,8 +173,8 @@ internal static class McpTxTokens
             tokens.TryGetValue(token, out McpTokenInfo? info);
             JsonObject json = new()
             {
-                ["address"] = McpTxFormat.Checksum(holder),
-                ["token"] = McpTxFormat.Checksum(token),
+                ["address"] = McpEthHelpers.Checksum(holder),
+                ["token"] = McpEthHelpers.Checksum(token),
                 ["change"] = change.ToString()
             };
 

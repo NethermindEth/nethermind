@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -41,6 +42,8 @@ internal sealed partial class McpEthTools
         "and topics plus cursor=nextCursor to get the next page, until truncated is false. The cursor is opaque: do not parse or edit it, and it expires when the node restarts. " +
         "Up to 32 addresses and 4 topic positions are accepted; each topic position is null (any), a 32-byte hash, or an array of up to 32 hashes (any of them). " +
         "Filtering by address or topic is much faster, especially on nodes with the log index enabled. " +
+        "If fromBlock is below the oldest block this node keeps receipts for, the scan starts at that block and the page reports clampedFromBlock (the requested start) and a note; " +
+        "a range entirely below it fails with unavailable. A cursor becomes invalid if the chain reorganises past its position; then restart the query. " +
         "To decode logs into named events (Transfer, Approval, ...) pass them to decode_logs, or use explain_transaction for a single transaction.")]
     [McpToolOutputSchema("""
         {"type":"object","required":["result"],"properties":{"result":{"type":"object","required":["logs","fromBlock","toBlock","truncated","indexed"],
@@ -50,7 +53,8 @@ internal sealed partial class McpEthTools
               "properties":{"address":{"type":"string"},"blockHash":{"type":"string"},"blockNumber":{"type":"string"},"blockTimestamp":{"type":"string"},
                 "data":{"type":"string"},"logIndex":{"type":"string"},"removed":{"type":"boolean"},"topics":{"type":"array","items":{"type":"string"}},
                 "transactionHash":{"type":"string"},"transactionIndex":{"type":"string"}}}},
-            "fromBlock":{"type":"string"},"toBlock":{"type":"string"},"truncated":{"type":"boolean"},"nextCursor":{"type":"string"},"indexed":{"type":"boolean"}}}}}
+            "fromBlock":{"type":"string"},"toBlock":{"type":"string"},"truncated":{"type":"boolean"},"nextCursor":{"type":"string"},"indexed":{"type":"boolean"},
+            "clampedFromBlock":{"type":"string"},"note":{"type":"string"}}}}}
         """)]
     public Task<CallToolResult> GetLogs(
         [Description("First block of the range, inclusive. " + BlockSelectorDescription)] string fromBlock,
@@ -102,8 +106,15 @@ internal sealed partial class McpEthTools
             ulong start;
             ulong end;
             ulong startLogIndex = 0;
+            ulong? clampedFrom = null;
             if (resume is { } position)
             {
+                if (!position.IsAt(blockFinder.FindHeader(position.Block, BlockTreeLookupOptions.RequireCanonical)?.Hash))
+                {
+                    return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput,
+                        $"The chain reorganised since the previous page (block {position.Block} changed); restart the query without 'cursor'."));
+                }
+
                 (start, startLogIndex, end) = (position.Block, position.LogIndex, position.ToBlock);
             }
             else
@@ -119,11 +130,25 @@ internal sealed partial class McpEthTools
                 {
                     return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, $"fromBlock ({start}) is greater than toBlock ({end})."));
                 }
+
+                // Blocks below the receipt floor have no logs to return; scanning them would only yield silent gaps.
+                if (capabilities.GetAvailability().OldestReceiptBlock is { } floor && floor > 1 && start < (ulong)floor)
+                {
+                    if (end < (ulong)floor)
+                    {
+                        return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.Unavailable,
+                            $"Blocks {start}..{end} are older than this node's receipt history, which starts at block {floor} (see node_status); query a node that keeps full history."));
+                    }
+
+                    clampedFrom = start;
+                    start = (ulong)floor;
+                }
             }
 
             (ulong scanTo, bool indexed) = PlanLogPage(start, end, selective);
             while (true)
             {
+                token.ThrowIfCancellationRequested();
                 Filter filter = new()
                 {
                     FromBlock = new BlockParameter(start),
@@ -145,7 +170,7 @@ internal sealed partial class McpEthTools
                 }
 
                 // The logs may be produced lazily, so they are enumerated here, while the module is still rented.
-                LogPage page = new(result.Data, start, startLogIndex, scanTo, end, pageLimit, filterHash, indexed, token);
+                LogPage page = new(result.Data, start, startLogIndex, scanTo, end, pageLimit, filterHash, indexed, clampedFrom, token);
                 return Task.FromResult(_executor.Success((Page: page, Tools: this), static (writer, state) => state.Tools.WriteLogPage(writer, state.Page)));
             }
         }, cancellationToken);
@@ -246,10 +271,17 @@ internal sealed partial class McpEthTools
         writer.WriteBoolean("truncated"u8, hasNext);
         if (hasNext)
         {
-            writer.WriteString("nextCursor"u8, new McpLogCursor(nextBlock, nextLogIndex, page.End, page.FilterHash).Encode());
+            Hash256 nextHash = blockFinder.FindHeader(nextBlock, BlockTreeLookupOptions.RequireCanonical)?.Hash ?? Keccak.Zero;
+            writer.WriteString("nextCursor"u8, new McpLogCursor(nextBlock, nextLogIndex, page.End, page.FilterHash, nextHash.BytesToArray()).Encode());
         }
 
         writer.WriteBoolean("indexed"u8, page.Indexed);
+        if (page.ClampedFrom is { } clampedFrom)
+        {
+            writer.WritePropertyName("clampedFromBlock"u8);
+            McpToolExecutor.WriteValue(writer, clampedFrom);
+            writer.WriteString("note"u8, $"Blocks {clampedFrom}..{page.Start - 1} are older than this node's receipt history and were skipped; this page starts at block {page.Start}.");
+        }
         writer.WriteEndObject();
         return null;
     }
@@ -282,5 +314,6 @@ internal sealed partial class McpEthTools
         int Limit,
         byte[] FilterHash,
         bool Indexed,
+        ulong? ClampedFrom,
         CancellationToken Token);
 }

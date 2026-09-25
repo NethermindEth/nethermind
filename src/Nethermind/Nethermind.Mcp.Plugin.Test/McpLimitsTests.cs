@@ -15,6 +15,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Mcp.Plugin.Tools;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -123,6 +124,33 @@ public class McpLimitsTests
     }
 
     [Test]
+    public void Error_data_is_cut_at_4_KB()
+    {
+        CallToolResult result = McpToolExecutor.Error(McpToolErrorCodes.ExecutionReverted, "reverted", "0x" + new string('a', 20_000));
+
+        JsonElement error = McpAssert.Error(result, McpAssert.ExecutionReverted);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("data").GetString(), Has.Length.EqualTo(2 + 2 * McpToolExecutor.MaxErrorDataBytes));
+            Assert.That(error.GetProperty("dataTruncated").GetBoolean(), Is.True);
+            Assert.That(error.GetProperty("dataSize").GetInt32(), Is.EqualTo(10_000));
+        }
+    }
+
+    [Test]
+    public async Task Oversized_error_respects_the_result_size_limit()
+    {
+        await using McpTestNode node = await McpTestNode.Create(static c => c.MaxResultSize = 200, start: false);
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+
+        CallToolResult result = await executor.ExecuteLocalAsync("test",
+            static _ => Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, new string('x', 400))), CancellationToken.None);
+
+        McpAssert.Error(result, McpAssert.InvalidInput);
+        Assert.That(System.Text.Encoding.UTF8.GetByteCount(result.Content.OfType<TextContentBlock>().Single().Text), Is.LessThanOrEqualTo(200));
+    }
+
+    [Test]
     public async Task Slow_module_times_out()
     {
         BlockingEthModule blocking = new();
@@ -159,6 +187,7 @@ public class McpLimitsTests
 
         CallToolResult rejected = await McpToolCalls.Call(client, "chain_info", []);
         McpAssert.Error(rejected, McpAssert.ResourceExhausted);
+        McpAssert.Success(await McpToolCalls.Call(client, "node_status", []));
 
         blocking.Release();
         McpAssert.Quantity(McpAssert.Success(await inFlight.WaitAsync(WaitLimit)).GetProperty("balance"), McpAssert.Hex(BlockingEthModule.Balance));

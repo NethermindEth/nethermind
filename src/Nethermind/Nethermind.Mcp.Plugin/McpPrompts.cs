@@ -153,6 +153,6 @@ public sealed class McpPrompts(McpChainProfile profile)
 
     private static string ParseAddress(string? value, string parameter) =>
         McpToolInput.TryParseAddress(value, parameter, out Address? parsed, out string? error)
-            ? parsed.ToString(withZeroX: true, withEip55Checksum: true)
+            ? McpEthHelpers.Checksum(parsed)
             : throw new McpProtocolException(error, McpErrorCode.InvalidParams);
 }

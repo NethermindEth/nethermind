@@ -65,6 +65,37 @@ public class McpToolsTests
         }
     }
 
+    [Test]
+    public async Task Every_tool_advertises_an_object_output_schema_requiring_result()
+    {
+        IList<McpClientTool> tools = await _client.ListToolsAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (McpClientTool tool in tools)
+            {
+                Assert.That(tool.ProtocolTool.OutputSchema, Is.Not.Null, $"{tool.Name} output schema");
+                if (tool.ProtocolTool.OutputSchema is not { } schema) continue;
+
+                Assert.That(schema.GetProperty("type").GetString(), Is.EqualTo("object"), $"{tool.Name} output schema type");
+                Assert.That(schema.TryGetProperty("required", out JsonElement required)
+                    && required.EnumerateArray().Any(static r => r.GetString() == "result"), Is.True, $"{tool.Name} output schema requires result");
+            }
+        }
+    }
+
+    [Test]
+    public async Task Tool_results_carry_structured_content_and_the_same_json_as_text()
+    {
+        CallToolResult result = await Call("chain_info");
+
+        Assert.That(result.IsError, Is.Not.True);
+        Assert.That(result.StructuredContent, Is.Not.Null);
+        TextContentBlock text = result.Content.OfType<TextContentBlock>().Single();
+        using JsonDocument parsed = JsonDocument.Parse(text.Text);
+        Assert.That(JsonElement.DeepEquals(parsed.RootElement, result.StructuredContent!.Value), Is.True);
+    }
+
     [TestCase("chain_info", new string[0])]
     [TestCase("get_block", new[] { "block" })]
     [TestCase("get_transaction", new[] { "hash" })]
@@ -505,12 +536,10 @@ public class McpToolsTests
             };
         }
 
-        McpClientTool tool = (await _client.ListToolsAsync()).Single(t => t.Name == toolName);
         CallToolResult result = await Call(toolName, pairs);
         McpAssert.Success(result);
 
-        Assert.That(tool.ProtocolTool.OutputSchema, Is.Not.Null, $"{toolName} must declare an output schema");
-        McpSchemaValidator.AssertConforms(tool.ProtocolTool.OutputSchema!.Value, result.StructuredContent!.Value);
+        await McpToolCalls.AssertConformsToOutputSchema(_client, toolName, result);
     }
 
     private void AssertSeededBlock(JsonElement block)
@@ -552,15 +581,4 @@ public class McpToolsTests
     }
 
     private static JsonElement Json(object value) => JsonSerializer.SerializeToElement(value);
-}
-
-/// <summary>Invokes MCP tools through the SDK client.</summary>
-internal static class McpToolCalls
-{
-    public static async Task<CallToolResult> Call(McpClient client, string toolName, (string Name, object? Value)[] args, CancellationToken cancellationToken = default)
-    {
-        Dictionary<string, object?> arguments = new(args.Length);
-        foreach ((string name, object? value) in args) arguments[name] = value;
-        return await client.CallToolAsync(toolName, arguments, cancellationToken: cancellationToken);
-    }
 }

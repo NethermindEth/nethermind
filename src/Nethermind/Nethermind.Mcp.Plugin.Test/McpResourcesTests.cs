@@ -8,6 +8,7 @@ using ModelContextProtocol.Protocol;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Mcp.Plugin.Tools;
 using Nethermind.Serialization.Json;
@@ -170,17 +171,26 @@ public class McpResourcesTests
     }
 
     [Test]
+    public void Guide_states_the_effective_call_gas_limit()
+    {
+        McpResources resources = CreateResources(MainnetSpecProvider.Instance, "Ethereum",
+            new McpConfig { MaxCallGas = 80_000_000 }, new JsonRpcConfig { GasCap = 30_000_000 });
+
+        Assert.That(resources.GetGuide(), Does.Contain("at most 30000000 gas"));
+    }
+
+    [Test]
     public void Token_addresses_are_unique_per_chain([Values(BlockchainIds.Mainnet, BlockchainIds.Gnosis)] ulong chainId)
     {
         McpChainProfile profile = new(new ChainSpec(), new TestSpecProvider(Specs.Forks.Prague.Instance) { ChainId = chainId });
         Assert.That(profile.Tokens.Select(static t => t.Address), Is.Unique);
     }
 
-    private static McpResources CreateResources(ISpecProvider specProvider, string name, IMcpConfig? config = null)
+    private static McpResources CreateResources(ISpecProvider specProvider, string name, IMcpConfig? config = null, IJsonRpcConfig? rpcConfig = null)
     {
         ChainSpec chainSpec = new() { Name = name, ChainId = specProvider.ChainId };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns((Block?)null);
-        return new McpResources(new McpChainProfile(chainSpec, specProvider), blockTree, specProvider, chainSpec, config ?? new McpConfig());
+        return new McpResources(new McpChainProfile(chainSpec, specProvider), blockTree, specProvider, chainSpec, config ?? new McpConfig(), rpcConfig ?? new JsonRpcConfig());
     }
 }

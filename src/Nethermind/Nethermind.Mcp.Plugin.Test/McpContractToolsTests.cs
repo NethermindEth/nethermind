@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
-using Autofac;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Nethermind.Blockchain;
@@ -129,14 +128,18 @@ public class McpContractToolsTests
         Assert.That(result.GetProperty("decodeError").GetString(), Does.Contain("(string)"));
     }
 
-    [TestCase("fail()", "fail() reverted: \"nope\"")]
-    [TestCase("boom()", "panic 0x11: arithmetic overflow or underflow")]
-    [TestCase("missing()", "reverted without a reason")]
-    public async Task Call_function_decodes_revert_reasons(string signature, string expected)
+    [TestCase("fail()", "fail() reverted: \"nope\"", "Error")]
+    [TestCase("boom()", "panic 0x11: arithmetic overflow or underflow", "Panic")]
+    [TestCase("missing()", "reverted without a reason", "Empty")]
+    public async Task Call_function_decodes_revert_reasons(string signature, string expected, string kind)
     {
         JsonElement error = McpAssert.Error(await Call(_client, "call_function", ("to", Hex(_deployed.Token)), ("signature", signature)), McpAssert.ExecutionReverted);
 
-        Assert.That(error.GetProperty("message").GetString(), Does.Contain(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain(expected));
+            Assert.That(error.GetProperty("reason").GetProperty("kind").GetString(), Is.EqualTo(kind));
+        }
     }
 
     [Test]
@@ -363,22 +366,28 @@ public class McpContractToolsTests
         McpAssert.Error(await Call(_client, "lookup_address", ("address", "vitalik.eth")), McpAssert.InvalidInput);
     }
 
+    [Test]
+    public async Task Lookup_address_uses_the_forks_precompile_set()
+    {
+        await using McpTestNode osaka = await McpTestNode.Create(configureContainer: static b => b.AddSingleton<ISpecProvider>(new TestSpecProvider(Osaka.Instance)));
+        await using McpClient client = await osaka.CreateClient();
+
+        JsonElement p256 = McpAssert.Success(await Call(client, "lookup_address", ("address", "0x0000000000000000000000000000000000000100")));
+
+        Assert.That(p256.GetProperty("kind").GetString(), Is.EqualTo("precompile"), "P256VERIFY is a precompile from Osaka");
+    }
+
     private async Task<JsonElement> Success(string tool, params (string Name, object? Value)[] arguments)
     {
         CallToolResult result = await Call(_client, tool, arguments);
         JsonElement value = McpAssert.Success(result);
 
-        // Validates the whole structured content against the declared output schema (types, enums, required, nested items).
-        McpClientTool descriptor = (await _client.ListToolsAsync()).Single(t => t.Name == tool);
-        McpSchemaValidator.AssertConforms(descriptor.ProtocolTool.OutputSchema!.Value, result.StructuredContent!.Value);
+        await McpToolCalls.AssertConformsToOutputSchema(_client, tool, result);
         return value;
     }
 
-    private static async Task<CallToolResult> Call(McpClient client, string tool, params (string Name, object? Value)[] arguments)
-    {
-        Dictionary<string, object?> args = arguments.ToDictionary(static a => a.Name, static a => a.Value);
-        return await client.CallToolAsync(tool, args);
-    }
+    private static Task<CallToolResult> Call(McpClient client, string tool, params (string Name, object? Value)[] arguments) =>
+        McpToolCalls.Call(client, tool, arguments);
 
     private static string Hex(Address address) => address.ToString();
 

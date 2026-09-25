@@ -13,7 +13,7 @@ using ModelContextProtocol.Server;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -37,6 +37,7 @@ namespace Nethermind.Mcp.Plugin.Tools;
 /// <param name="capabilities">Reports whether state and receipts are available for a block.</param>
 /// <param name="config">The MCP limits.</param>
 /// <param name="rpcConfig">The JSON-RPC configuration; <see cref="IJsonRpcConfig.GasCap"/> also caps call gas.</param>
+/// <param name="specProvider">Tells which addresses are precompiles at the queried block (such as P256VERIFY at 0x100 from Osaka).</param>
 [McpServerToolType]
 internal sealed class McpContractTools(
     McpToolExecutor executor,
@@ -45,7 +46,8 @@ internal sealed class McpContractTools(
     McpTokenMetadata tokenMetadata,
     McpNodeCapabilities capabilities,
     IMcpConfig config,
-    IJsonRpcConfig rpcConfig) : IMcpToolSet
+    IJsonRpcConfig rpcConfig,
+    ISpecProvider specProvider) : IMcpToolSet
 {
     /// <summary>The maximum number of tokens <c>token_balances</c> accepts.</summary>
     public const int MaxBalanceTokens = 50;
@@ -103,23 +105,7 @@ internal sealed class McpContractTools(
     private ulong InternalGas => Math.Min(InternalCallGas, _maxCallGas);
 
     /// <inheritdoc/>
-    public IEnumerable<McpServerTool> CreateServerTools()
-    {
-        // The SDK ignores McpServerToolCreateOptions.OutputSchema unless UseStructuredContent is set, so the declared schema is applied here.
-        foreach (McpServerTool tool in McpToolFactory.Create(this, DescribeLimits, _maxResultSize))
-        {
-            if (tool.ProtocolTool.OutputSchema is null
-                && GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
-                    .FirstOrDefault(m => m.GetCustomAttribute<McpServerToolAttribute>()?.Name == tool.ProtocolTool.Name)
-                    ?.GetCustomAttribute<McpToolOutputSchemaAttribute>() is { } schema)
-            {
-                using JsonDocument document = JsonDocument.Parse(schema.Json);
-                tool.ProtocolTool.OutputSchema = document.RootElement.Clone();
-            }
-
-            yield return tool;
-        }
-    }
+    public IEnumerable<McpServerTool> CreateServerTools() => McpToolFactory.Create(this, DescribeLimits, _maxResultSize);
 
     private string DescribeLimits(MethodInfo method) => method.Name switch
     {
@@ -164,32 +150,32 @@ internal sealed class McpContractTools(
             || (gas is not null && !McpToolInput.TryParseULong(gas, nameof(gas), out gasLimit, out error))
             || !McpToolInput.TryParseBlock(block, nameof(block), out BlockParameter? blockParameter, out error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         if (gasLimit == 0 || gasLimit > _maxCallGas)
         {
-            return InvalidInput($"'gas' must be between 1 and {_maxCallGas}.");
+            return McpEthHelpers.InvalidInput($"'gas' must be between 1 and {_maxCallGas}.");
         }
 
         if (!McpAbiSignature.TryParse(signature, McpAbiSignatureKind.Function, out McpAbiSignature? function, out error))
         {
-            return InvalidInput($"'signature': {error}.");
+            return McpEthHelpers.InvalidInput($"'signature': {error}.");
         }
 
         if (function.Kind != McpAbiSignatureKind.Function)
         {
-            return InvalidInput("'signature' must declare a function; use decode_logs for events and custom errors.");
+            return McpEthHelpers.InvalidInput("'signature' must declare a function; use decode_logs for events and custom errors.");
         }
 
         if (args is { Length: > MaxArguments })
         {
-            return InvalidInput($"'args' has {args.Length} entries; the maximum is {MaxArguments}.");
+            return McpEthHelpers.InvalidInput($"'args' has {args.Length} entries; the maximum is {MaxArguments}.");
         }
 
         if (!McpAbiCodec.TryEncodeCall(function, args, _maxCallDataSize, out byte[]? callData, out error))
         {
-            return InvalidInput($"'args' do not match {function}: {error}.");
+            return McpEthHelpers.InvalidInput($"'args' do not match {function}: {error}.");
         }
 
         return executor.ExecuteAsync("call_function", nameof(IEthRpcModule.eth_call), (eth, _) =>
@@ -209,7 +195,7 @@ internal sealed class McpContractTools(
             byte[] returnData = result.Data.Bytes.ToArray();
             JsonObject output = new()
             {
-                ["to"] = Checksum(target),
+                ["to"] = McpEthHelpers.Checksum(target),
                 ["function"] = function.CanonicalSignature,
                 ["selector"] = function.SelectorHex,
             };
@@ -224,7 +210,7 @@ internal sealed class McpContractTools(
             else if (returnData.Length == 0 && function.Outputs.Count > 0 && !HasCode(eth, target, pinned))
             {
                 return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.NotFound,
-                    $"{Checksum(target)} has no contract code at block {header.Number}; check the address and the network ({chain.NetworkName})."));
+                    $"{McpEthHelpers.Checksum(target)} has no contract code at block {header.Number}; check the address and the network ({chain.NetworkName})."));
             }
             else if (McpAbiCodec.TryDecode(function.Outputs, returnData, out object?[]? values, out string? decodeError))
             {
@@ -265,7 +251,7 @@ internal sealed class McpContractTools(
         if (!McpToolInput.TryParseAddress(token, nameof(token), out Address? address, out string? error)
             || !McpToolInput.TryParseBlock(block, nameof(block), out BlockParameter? blockParameter, out error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         return executor.ExecuteAsync("token_info", nameof(IEthRpcModule.eth_call), (eth, _) =>
@@ -285,21 +271,21 @@ internal sealed class McpContractTools(
             if (code.Length == 0)
             {
                 return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.NotFound,
-                    $"{Checksum(address)} has no contract code at block {header.Number} on {chain.NetworkName}; it is not a token (use lookup_address to profile it)."));
+                    $"{McpEthHelpers.Checksum(address)} has no contract code at block {header.Number} on {chain.NetworkName}; it is not a token (use lookup_address to profile it)."));
             }
 
             McpTokenInfo? info = tokenMetadata.Get(eth, address, pinned);
             UInt256? totalSupply = ReadUInt256(eth, address, TotalSupplySelector, pinned);
             (string standard, string evidence) = DetectStandard(eth, address, pinned, info, totalSupply);
 
-            JsonObject output = new() { ["address"] = Checksum(address) };
+            JsonObject output = new() { ["address"] = McpEthHelpers.Checksum(address) };
             AddBlock(output, header);
             output["standard"] = standard;
             output["standardEvidence"] = evidence;
             output["name"] = info?.Name;
             output["symbol"] = info?.Symbol;
             output["decimals"] = info?.Decimals is { } decimals ? JsonValue.Create((int)decimals) : null;
-            output["totalSupply"] = totalSupply is { } supply ? Quantity(supply) : null;
+            output["totalSupply"] = totalSupply is { } supply ? McpTxFormat.Hex(supply) : null;
             output["totalSupplyFormatted"] = totalSupply is { } s ? McpTokenMetadata.FormatUnits(s, info?.Decimals ?? 0) : null;
             output["proxy"] = DetectProxy(eth, address, code, pinned);
             return Task.FromResult(Success(output));
@@ -309,8 +295,9 @@ internal sealed class McpContractTools(
     /// <summary>Returns the native balance and token balances of an address.</summary>
     [McpServerTool(Name = "token_balances", Title = "Token balances", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Answers \"what does this address hold\": the native balance (ETH, or xDAI on Gnosis/Chiado) plus the balanceOf of each given ERC-20 token, " +
-        "with raw hex amounts and amounts formatted with the token's decimals, and the token's symbol and name. If 'tokens' is omitted, the well-known tokens of " +
-        "this chain are checked (e.g. WETH/USDC/USDT/DAI on mainnet, WXDAI/GNO/USDC on Gnosis). A failing token (no code, revert) reports an inline error " +
+        "with raw hex amounts and amounts formatted with the token's decimals, and the token's symbol and name. If 'tokens' is omitted, a built-in list of well-known " +
+        "tokens is checked, which exists only on Ethereum mainnet (e.g. WETH/USDC/USDT/DAI) and Gnosis Chain (e.g. WXDAI/GNO/USDC); on every other chain " +
+        "(Sepolia, Holesky, Hoodi, Chiado, ...) omitting 'tokens' returns only the native balance. A failing token (no code, revert) reports an inline error " +
         "instead of failing the call. The node has no token index, so tokens not listed are not discovered: pass candidate token addresses explicitly. " +
         "Output: {owner, blockNumber, blockHash, native: {symbol, balance, balanceFormatted}, tokenSource, tokens: [{token, name, symbol, decimals, balance, balanceFormatted} | {token, error}], omitted?}.")]
     [McpToolOutputSchema("""
@@ -326,19 +313,19 @@ internal sealed class McpContractTools(
         """)]
     public Task<CallToolResult> TokenBalances(
         [Description("The holder address: 0x followed by 40 hex characters.")] string owner,
-        [Description("Optional ERC-20 token contract addresses (at most 50). Omit to check this chain's well-known tokens.")] string[]? tokens = null,
+        [Description("Optional ERC-20 token contract addresses (at most 50). Omit to check the built-in token list (Ethereum mainnet and Gnosis only; elsewhere only the native balance is returned).")] string[]? tokens = null,
         [Description(BlockDescription)] string block = "latest",
         CancellationToken cancellationToken = default)
     {
         if (!McpToolInput.TryParseAddress(owner, nameof(owner), out Address? holder, out string? error)
             || !McpToolInput.TryParseBlock(block, nameof(block), out BlockParameter? blockParameter, out error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         if (tokens is { Length: > MaxBalanceTokens })
         {
-            return InvalidInput($"'tokens' has {tokens.Length} entries; the maximum is {MaxBalanceTokens}. Split the request.");
+            return McpEthHelpers.InvalidInput($"'tokens' has {tokens.Length} entries; the maximum is {MaxBalanceTokens}. Split the request.");
         }
 
         List<Address> tokenList = [];
@@ -357,7 +344,7 @@ internal sealed class McpContractTools(
             {
                 if (!McpToolInput.TryParseAddress(tokens[i], $"tokens[{i}]", out Address? tokenAddress, out error))
                 {
-                    return InvalidInput(error);
+                    return McpEthHelpers.InvalidInput(error);
                 }
 
                 if (seen.Add(tokenAddress)) tokenList.Add(tokenAddress);
@@ -379,13 +366,13 @@ internal sealed class McpContractTools(
             }
 
             UInt256 nativeBalance = balance.Data ?? UInt256.Zero;
-            JsonObject output = new() { ["owner"] = Checksum(holder) };
+            JsonObject output = new() { ["owner"] = McpEthHelpers.Checksum(holder) };
             AddBlock(output, header);
             output["native"] = new JsonObject
             {
                 ["symbol"] = chain.NativeCurrencySymbol,
-                ["balance"] = Quantity(nativeBalance),
-                ["balanceFormatted"] = McpTokenMetadata.FormatUnits(nativeBalance, 18),
+                ["balance"] = McpTxFormat.Hex(nativeBalance),
+                ["balanceFormatted"] = McpEthHelpers.FormatNative(nativeBalance),
             };
             output["tokenSource"] = source;
 
@@ -437,29 +424,30 @@ internal sealed class McpContractTools(
     {
         if ((txHash is null) == (logs is null))
         {
-            return InvalidInput("Pass exactly one of 'txHash' (to decode a transaction's receipt logs) or 'logs' (raw logs).");
+            return McpEthHelpers.InvalidInput("Pass exactly one of 'txHash' (to decode a transaction's receipt logs) or 'logs' (raw logs).");
         }
 
         if (!TryParseEventSignatures(abi, out Dictionary<Hash256, List<McpAbiSignature>>? userEvents, out List<McpAbiSignature>? anonymousEvents, out string? error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         Hash256? hash = null;
         List<RawLog>? rawLogs = null;
         if (txHash is not null && !McpToolInput.TryParseHash(txHash, nameof(txHash), out hash, out error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         if (logs is not null && !TryParseRawLogs(logs, out rawLogs, out error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         return executor.ExecuteAsync("decode_logs", nameof(IEthRpcModule.eth_call), (eth, cancellation) =>
         {
             JsonObject output = [];
+            // Metadata is read at the head, like explain_transaction: it rarely changes, and old blocks may have no state on a pruned node.
             BlockParameter metadataBlock = BlockParameter.Latest;
             if (hash is not null)
             {
@@ -475,13 +463,12 @@ internal sealed class McpContractTools(
                 }
 
                 output["transactionHash"] = hash.ToString();
-                output["blockNumber"] = Quantity(receipt.BlockNumber);
+                output["blockNumber"] = McpTxFormat.Hex(receipt.BlockNumber);
                 if (receipt.Status is { } status) output["status"] = status == 1 ? "success" : "failed";
-                if (receipt.BlockHash is not null) metadataBlock = new BlockParameter(receipt.BlockHash);
                 rawLogs = [];
                 foreach (LogEntryForRpc log in receipt.Logs ?? [])
                 {
-                    rawLogs.Add(new RawLog(new LogEntry(log.Address, log.Data ?? [], log.Topics ?? []), log.LogIndex is { } index ? Quantity((ulong)index) : null));
+                    rawLogs.Add(new RawLog(new LogEntry(log.Address, log.Data ?? [], log.Topics ?? []), log.LogIndex is { } index ? McpTxFormat.Hex((ulong)index) : null));
                 }
             }
 
@@ -536,7 +523,7 @@ internal sealed class McpContractTools(
         if (!McpEns.TryNormalize(name, out string? normalized, out string? error)
             || !McpToolInput.TryParseBlock(block, nameof(block), out BlockParameter? blockParameter, out error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         return executor.ExecuteAsync("resolve_ens", nameof(IEthRpcModule.eth_call), (eth, _) =>
@@ -556,10 +543,10 @@ internal sealed class McpContractTools(
             {
                 ["name"] = normalized,
                 ["node"] = resolution.Node.ToString(),
-                ["registry"] = Checksum(registry),
-                ["owner"] = resolution.Owner is null ? null : Checksum(resolution.Owner),
-                ["resolver"] = resolution.Resolver is null ? null : Checksum(resolution.Resolver),
-                ["address"] = resolution.Resolved is null ? null : Checksum(resolution.Resolved),
+                ["registry"] = McpEthHelpers.Checksum(registry),
+                ["owner"] = resolution.Owner is null ? null : McpEthHelpers.Checksum(resolution.Owner),
+                ["resolver"] = resolution.Resolver is null ? null : McpEthHelpers.Checksum(resolution.Resolver),
+                ["address"] = resolution.Resolved is null ? null : McpEthHelpers.Checksum(resolution.Resolved),
                 ["resolvedVia"] = resolution.Via,
             };
             AddBlock(output, header);
@@ -597,7 +584,7 @@ internal sealed class McpContractTools(
         if (!McpToolInput.TryParseAddress(address, nameof(address), out Address? account, out string? error)
             || !McpToolInput.TryParseBlock(block, nameof(block), out BlockParameter? blockParameter, out error))
         {
-            return InvalidInput(error);
+            return McpEthHelpers.InvalidInput(error);
         }
 
         return executor.ExecuteAsync("lookup_address", nameof(IEthRpcModule.eth_call), async (eth, cancellation) =>
@@ -630,23 +617,23 @@ internal sealed class McpContractTools(
             UInt256 balance = balanceResult.Data ?? UInt256.Zero;
             UInt256 nonce = nonceResult.Data;
             bool delegated = Eip7702Constants.IsDelegatedCode(code);
-            string kind = IsPrecompile(account) ? "precompile"
+            string kind = specProvider.GetSpec(header).IsPrecompile(account) ? "precompile"
                 : delegated ? "eip7702-delegated"
                 : code.Length > 0 ? "contract"
                 : nonce.IsZero && balance.IsZero ? "empty"
                 : "eoa";
 
-            JsonObject output = new() { ["address"] = Checksum(account) };
+            JsonObject output = new() { ["address"] = McpEthHelpers.Checksum(account) };
             AddBlock(output, header);
             output["kind"] = kind;
-            output["balance"] = Quantity(balance);
-            output["balanceFormatted"] = McpTokenMetadata.FormatUnits(balance, 18);
+            output["balance"] = McpTxFormat.Hex(balance);
+            output["balanceFormatted"] = McpEthHelpers.FormatNative(balance);
             output["symbol"] = chain.NativeCurrencySymbol;
-            output["nonce"] = Quantity(nonce);
+            output["nonce"] = McpTxFormat.Hex(nonce);
             output["codeSize"] = code.Length;
             if (delegated)
             {
-                output["delegation"] = new JsonObject { ["target"] = Checksum(new Address(code.AsSpan(Eip7702Constants.DelegationHeader.Length))) };
+                output["delegation"] = new JsonObject { ["target"] = McpEthHelpers.Checksum(new Address(code.AsSpan(Eip7702Constants.DelegationHeader.Length))) };
             }
 
             foreach (McpWellKnownContract contract in chain.WellKnownContracts)
@@ -697,7 +684,7 @@ internal sealed class McpContractTools(
 
     private JsonObject TokenBalance(IEthRpcModule eth, Address tokenAddress, byte[] input, BlockParameter block)
     {
-        JsonObject entry = new() { ["token"] = Checksum(tokenAddress) };
+        JsonObject entry = new() { ["token"] = McpEthHelpers.Checksum(tokenAddress) };
         McpTokenInfo? info = tokenMetadata.Get(eth, tokenAddress, block);
         if (info is null)
         {
@@ -718,7 +705,7 @@ internal sealed class McpContractTools(
         }
 
         UInt256 amount = new(data, isBigEndian: true);
-        entry["balance"] = Quantity(amount);
+        entry["balance"] = McpTxFormat.Hex(amount);
         entry["balanceFormatted"] = McpTokenMetadata.FormatUnits(amount, info.Decimals ?? 0);
         return entry;
     }
@@ -726,7 +713,7 @@ internal sealed class McpContractTools(
     private JsonObject DecodeLog(RawLog raw, Dictionary<Hash256, List<McpAbiSignature>> userEvents, List<McpAbiSignature> anonymousEvents, LogDecorator decorator, out bool decoded)
     {
         LogEntry log = raw.Log;
-        JsonObject entry = new() { ["logIndex"] = raw.LogIndex, ["address"] = Checksum(log.Address) };
+        JsonObject entry = new() { ["logIndex"] = raw.LogIndex, ["address"] = McpEthHelpers.Checksum(log.Address) };
         McpDecodedLog? result = null;
         string source = "abi";
         if (log.Topics.Length > 0 && userEvents.TryGetValue(log.Topics[0], out List<McpAbiSignature>? candidates))
@@ -747,7 +734,7 @@ internal sealed class McpContractTools(
 
         if (result is null)
         {
-            result = McpKnownAbi.TryDecodeLog(log);
+            result = McpKnownAbi.TryDecodeLog(log, chain.WrappedNativeToken);
             source = "known";
         }
 
@@ -829,7 +816,7 @@ internal sealed class McpContractTools(
             return new JsonObject
             {
                 ["type"] = "EIP-1167 minimal proxy",
-                ["implementation"] = Checksum(new Address(code.AsSpan(MinimalProxyPrefix.Length, Address.Size))),
+                ["implementation"] = McpEthHelpers.Checksum(new Address(code.AsSpan(MinimalProxyPrefix.Length, Address.Size))),
             };
         }
 
@@ -846,9 +833,9 @@ internal sealed class McpContractTools(
             implementation = ReadAddress(CallContract(eth, beacon, ImplementationSelector, block, InternalGas).Data);
         }
 
-        proxy["implementation"] = implementation is null ? null : Checksum(implementation);
-        if (beacon is not null) proxy["beacon"] = Checksum(beacon);
-        if (ReadStorageAddress(eth, address, AdminSlot, block) is { } admin) proxy["admin"] = Checksum(admin);
+        proxy["implementation"] = implementation is null ? null : McpEthHelpers.Checksum(implementation);
+        if (beacon is not null) proxy["beacon"] = McpEthHelpers.Checksum(beacon);
+        if (ReadStorageAddress(eth, address, AdminSlot, block) is { } admin) proxy["admin"] = McpEthHelpers.Checksum(admin);
         return proxy;
     }
 
@@ -973,12 +960,9 @@ internal sealed class McpContractTools(
 
         IResultWrapper wrapper = result;
         string? revertHex = wrapper.Data as string;
-        byte[] revert = revertHex is { Length: >= 2 } && revertHex.StartsWith("0x", StringComparison.Ordinal) && revertHex.Length % 2 == 0
-            ? Convert.FromHexString(revertHex.AsSpan(2))
-            : [];
-        McpDecodedRevert decoded = McpKnownAbi.DecodeRevert(revert);
+        McpDecodedRevert decoded = McpKnownAbi.DecodeRevert(McpEthHelpers.FromHexOrEmpty(revertHex));
         string reason = decoded.Kind == "Error" ? $"\"{decoded.Message}\"" : decoded.Message;
-        return McpToolExecutor.Error(McpToolErrorCodes.ExecutionReverted, $"{function} reverted: {reason}", revertHex);
+        return McpEthHelpers.RevertError($"{function} reverted: {reason}", revertHex, decoded);
     }
 
     private static CallOutcome CallContract(IEthRpcModule eth, Address to, byte[] input, BlockParameter block, ulong gas)
@@ -993,8 +977,7 @@ internal sealed class McpContractTools(
         IResultWrapper wrapper = result;
         if (result.ErrorCode == ErrorCodes.ExecutionReverted)
         {
-            byte[] revert = wrapper.Data is string { Length: >= 2 } hex && hex.Length % 2 == 0 ? Convert.FromHexString(hex.AsSpan(2)) : [];
-            return new CallOutcome(null, revert, false, null);
+            return new CallOutcome(null, McpEthHelpers.FromHexOrEmpty(wrapper.Data as string), false, null);
         }
 
         bool transient = result.IsTemporary || result.ErrorCode != ErrorCodes.Default;
@@ -1024,12 +1007,6 @@ internal sealed class McpContractTools(
         }
 
         return new Address(word.AsSpan(12));
-    }
-
-    private static bool IsPrecompile(Address address)
-    {
-        ReadOnlySpan<byte> bytes = address.Bytes;
-        return !bytes[..^1].ContainsAnyExcept((byte)0) && bytes[^1] is >= 0x01 and <= 0x11;
     }
 
     // ABI-encodes (bytes, bytes) by hand; the ENSIP-10 call is the only place that needs it.
@@ -1211,7 +1188,7 @@ internal sealed class McpContractTools(
 
     private static void AddBlock(JsonObject output, BlockHeader header)
     {
-        output["blockNumber"] = Quantity(header.Number);
+        output["blockNumber"] = McpTxFormat.Hex(header.Number);
         if (header.Hash is not null) output["blockHash"] = header.Hash.ToString();
     }
 
@@ -1221,18 +1198,9 @@ internal sealed class McpContractTools(
         return null;
     });
 
-    private static string Checksum(Address address) => address.ToString(true, true);
-
-    private static string Quantity(UInt256 value) => value.ToHexString(true);
-
-    private static string Quantity(ulong value) => ((UInt256)value).ToHexString(true);
-
     private static string Hex(ReadOnlySpan<byte> bytes) => "0x" + Convert.ToHexStringLower(bytes);
 
     private static UInt256 Slot(string hex) => new(Convert.FromHexString(hex.AsSpan(2)), isBigEndian: true);
-
-    private static Task<CallToolResult> InvalidInput(string message) =>
-        Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, message));
 
     /// <summary>A log to decode and its index, if known.</summary>
     private sealed record RawLog(LogEntry Log, string? LogIndex);

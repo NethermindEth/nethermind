@@ -75,7 +75,12 @@ public static class McpKnownAbi
     public static Hash256 TransferTopic { get; } = Keccak.Compute("Transfer(address,address,uint256)");
 
     /// <summary>Decodes <paramref name="log"/> against the known events, or returns <see langword="null"/> if it matches none.</summary>
-    public static McpDecodedLog? TryDecodeLog(LogEntry log)
+    /// <param name="log">The log to decode.</param>
+    /// <param name="wrappedNativeToken">
+    /// The chain's wrapped native token. <c>Deposit</c>/<c>Withdrawal</c> are generic names, so they get the <c>WETH</c> standard
+    /// only when emitted by this contract; from any other emitter they decode as plain events without a standard.
+    /// </param>
+    public static McpDecodedLog? TryDecodeLog(LogEntry log, Address? wrappedNativeToken = null)
     {
         if (log?.Topics is not { Length: > 0 } topics || topics[0] is null || !Events.TryGetValue(topics[0], out KnownEvent[]? candidates))
         {
@@ -84,7 +89,8 @@ public static class McpKnownAbi
 
         foreach (KnownEvent candidate in candidates)
         {
-            if (McpAbiCodec.TryDecodeEvent(candidate.Signature, log, candidate.Standard, out McpDecodedLog? decoded))
+            string? standard = candidate.Standard == Weth && log.Address != wrappedNativeToken ? null : candidate.Standard;
+            if (McpAbiCodec.TryDecodeEvent(candidate.Signature, log, standard, out McpDecodedLog? decoded))
             {
                 return decoded;
             }
@@ -113,7 +119,7 @@ public static class McpKnownAbi
             case ErrorSelector:
                 if (McpAbiCodec.TryDecode(StringParam, payload, out object?[]? message, out _) && message[0] is string text)
                 {
-                    return new McpDecodedRevert("Error", Sanitize(text), selector);
+                    return new McpDecodedRevert("Error", SanitizeRevertText(text), selector);
                 }
 
                 return new McpDecodedRevert("Custom", "reverted with a malformed Error(string) payload", selector);
@@ -147,13 +153,14 @@ public static class McpKnownAbi
         _ => "unknown panic code"
     };
 
-    private static string Sanitize(string text)
+    /// <summary>Makes an untrusted revert string safe to show: control and format characters become spaces, and it is cut to a bounded length.</summary>
+    public static string SanitizeRevertText(string text)
     {
         Span<char> buffer = stackalloc char[Math.Min(text.Length, MaxRevertMessageLength)];
         for (int i = 0; i < buffer.Length; i++)
         {
             char c = text[i];
-            buffer[i] = char.IsControl(c) ? ' ' : c;
+            buffer[i] = McpTokenMetadata.IsUnsafeChar(c) ? ' ' : c;
         }
 
         string result = new(buffer);

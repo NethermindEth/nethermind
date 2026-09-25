@@ -106,11 +106,10 @@ public class McpNodeToolsTests
     [Test]
     public async Task Node_status_conforms_to_its_output_schema()
     {
-        McpClientTool tool = (await _client.ListToolsAsync()).Single(static t => t.Name == "node_status");
         CallToolResult result = await NodeStatus();
         McpAssert.Success(result);
 
-        McpNodeSchema.AssertConforms(result.StructuredContent!.Value, tool.ProtocolTool.OutputSchema!.Value, "$");
+        await McpToolCalls.AssertConformsToOutputSchema(_client, "node_status", result);
     }
 
     [Test]
@@ -275,61 +274,4 @@ public class McpNodeToolsTests
 
     private Task<CallToolResult> NodeStatus() =>
         _client.CallToolAsync("node_status", new Dictionary<string, object?>()).AsTask();
-}
-
-/// <summary>A minimal JSON Schema check: declared types, required properties, nested properties and array items.</summary>
-internal static class McpNodeSchema
-{
-    public static void AssertConforms(JsonElement value, JsonElement schema, string path)
-    {
-        if (schema.TryGetProperty("type", out JsonElement type))
-        {
-            string[] allowed = type.ValueKind == JsonValueKind.Array
-                ? type.EnumerateArray().Select(static t => t.GetString()!).ToArray()
-                : [type.GetString()!];
-            Assert.That(allowed, Has.Some.Matches<string>(t => Matches(value, t)), $"{path}: {value.ValueKind} is not one of {string.Join(", ", allowed)}");
-        }
-
-        if (value.ValueKind == JsonValueKind.Object)
-        {
-            if (schema.TryGetProperty("required", out JsonElement required))
-            {
-                foreach (JsonElement name in required.EnumerateArray())
-                {
-                    Assert.That(value.TryGetProperty(name.GetString()!, out _), Is.True, $"{path}: missing required '{name.GetString()}'");
-                }
-            }
-
-            if (schema.TryGetProperty("properties", out JsonElement properties))
-            {
-                foreach (JsonProperty property in properties.EnumerateObject())
-                {
-                    if (value.TryGetProperty(property.Name, out JsonElement child))
-                    {
-                        AssertConforms(child, property.Value, $"{path}.{property.Name}");
-                    }
-                }
-            }
-        }
-        else if (value.ValueKind == JsonValueKind.Array && schema.TryGetProperty("items", out JsonElement items))
-        {
-            int index = 0;
-            foreach (JsonElement item in value.EnumerateArray())
-            {
-                AssertConforms(item, items, $"{path}[{index++}]");
-            }
-        }
-    }
-
-    private static bool Matches(JsonElement value, string type) => type switch
-    {
-        "object" => value.ValueKind == JsonValueKind.Object,
-        "array" => value.ValueKind == JsonValueKind.Array,
-        "string" => value.ValueKind == JsonValueKind.String,
-        "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
-        "null" => value.ValueKind == JsonValueKind.Null,
-        "number" => value.ValueKind == JsonValueKind.Number,
-        "integer" => value.ValueKind == JsonValueKind.Number && (value.TryGetInt64(out _) || value.TryGetUInt64(out _)),
-        _ => true
-    };
 }

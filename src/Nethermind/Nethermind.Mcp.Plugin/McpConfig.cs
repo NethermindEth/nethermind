@@ -23,4 +23,5 @@ public class McpConfig : IMcpConfig
     public string[] AllowedHosts { get; set; } = [];
     public long MaxIndexedLogBlockRange { get; set; } = 1_000_000;
     public int MaxTraceCalls { get; set; } = 2000;
+    public bool EnableTracing { get; set; } = true;
 }

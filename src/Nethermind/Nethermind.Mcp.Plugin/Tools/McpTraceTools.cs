@@ -62,14 +62,13 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         """;
 
     private readonly int _maxFrames = Math.Max(1, config.MaxTraceCalls);
+    private readonly bool _tracingEnabled = config.EnableTracing;
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout));
     private readonly int _maxResultSize = Math.Max(1, config.MaxResultSize);
 
     /// <inheritdoc/>
     public IEnumerable<McpServerTool> CreateServerTools() =>
-        McpEthHelpers.WithDeclaredOutputSchemas(
-            McpToolFactory.Create(this, _ => $" Limits on this node: at most {_maxFrames} frames and {MaxTreeDepth} levels per trace.", _maxResultSize),
-            typeof(McpTraceTools));
+        McpToolFactory.Create(this, _ => $" Limits on this node: at most {_maxFrames} frames and {MaxTreeDepth} levels per trace.", _maxResultSize);
 
     /// <summary>Returns the bounded call tree of a mined transaction.</summary>
     [McpServerTool(Name = "trace_transaction", Title = "Trace transaction calls", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -95,6 +94,12 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         if (maxDepth is < 0 or > MaxTreeDepth)
         {
             return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, $"'maxDepth' must be between 0 and {MaxTreeDepth}."));
+        }
+
+        if (!_tracingEnabled)
+        {
+            return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.Unavailable,
+                "Transaction tracing is disabled on this node (Mcp.EnableTracing=false); use explain_transaction or get_transaction_receipt instead."));
         }
 
         int depthLimit = maxDepth ?? MaxTreeDepth;
@@ -151,8 +156,10 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
     {
         int emitted = 0;
         bool truncated = false;
+        // Frames stop once their estimated size would take the result near MaxResultSize, instead of failing the whole trace.
+        long budget = Math.Max(1, _maxResultSize / 4 * 3);
         int total = root is null ? 0 : McpTxCallTree.CountFrames(root);
-        JsonNode? rootJson = root is null ? null : Frame(root, 0, depthLimit, includeInput, ref emitted, ref truncated);
+        JsonNode? rootJson = root is null ? null : Frame(root, 0, depthLimit, includeInput, ref emitted, ref truncated, ref budget);
 
         return new JsonObject
         {
@@ -169,16 +176,17 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         };
     }
 
-    private JsonObject Frame(NativeCallTracerCallFrame frame, int depth, int depthLimit, bool includeInput, ref int emitted, ref bool truncated)
+    private JsonObject Frame(NativeCallTracerCallFrame frame, int depth, int depthLimit, bool includeInput, ref int emitted, ref bool truncated, ref long budget)
     {
         emitted++;
+        budget -= EstimateFrameSize(frame, includeInput);
         JsonObject json = new() { ["type"] = frame.Type.ToString() };
-        if (frame.From is not null) json["from"] = McpTxFormat.Checksum(frame.From);
-        if (frame.To is not null) json["to"] = McpTxFormat.Checksum(frame.To);
+        if (frame.From is not null) json["from"] = McpEthHelpers.Checksum(frame.From);
+        if (frame.To is not null) json["to"] = McpEthHelpers.Checksum(frame.To);
         if (frame.Value is { IsZero: false } value)
         {
             json["value"] = McpTxFormat.Hex(value);
-            json["valueFormatted"] = $"{McpTxFormat.Ether(value)} {profile.NativeCurrencySymbol}";
+            json["valueFormatted"] = $"{McpEthHelpers.FormatNative(value)} {profile.NativeCurrencySymbol}";
         }
 
         json["gas"] = frame.Gas;
@@ -214,7 +222,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             }
             else if (frame.RevertReason is not null)
             {
-                json["revert"] = McpTxCallTree.RevertJson(new McpDecodedRevert("Error", frame.RevertReason, null));
+                json["revert"] = McpTxCallTree.RevertJson(new McpDecodedRevert("Error", McpKnownAbi.SanitizeRevertText(frame.RevertReason), null));
             }
         }
 
@@ -225,14 +233,14 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             int omitted = 0;
             foreach (NativeCallTracerCallFrame child in children)
             {
-                if (depth + 1 > depthLimit || emitted >= _maxFrames)
+                if (depth + 1 > depthLimit || emitted >= _maxFrames || budget <= 0)
                 {
                     omitted += McpTxCallTree.CountFrames(child);
                     truncated = true;
                     continue;
                 }
 
-                calls.Add(Frame(child, depth + 1, depthLimit, includeInput, ref emitted, ref truncated));
+                calls.Add(Frame(child, depth + 1, depthLimit, includeInput, ref emitted, ref truncated, ref budget));
             }
 
             if (calls.Count > 0) json["calls"] = calls;
@@ -240,5 +248,16 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         }
 
         return json;
+    }
+
+    // An upper estimate of a frame's JSON size: fixed fields plus the hex it carries.
+    private static long EstimateFrameSize(NativeCallTracerCallFrame frame, bool includeInput)
+    {
+        const int fixedFields = 400;
+        int inputLength = frame.Input?.Count ?? 0;
+        int outputLength = frame.Output?.Count ?? 0;
+        int outputBytes = Math.Min(outputLength, includeInput ? MaxInputBytes : McpTxCallTree.DefaultOutputBytes);
+        int inputBytes = includeInput ? Math.Min(inputLength, MaxInputBytes) : 0;
+        return fixedFields + 2L * (inputBytes + outputBytes);
     }
 }

@@ -21,7 +21,8 @@ namespace Nethermind.Mcp.Plugin.Tools;
 /// </para>
 /// <para>
 /// Wire format (base64url, no padding): version (1 byte), block, log index and end block (big-endian 64-bit each), the
-/// first 16 bytes of the filter hash, and the first 16 bytes of an HMAC-SHA256 over everything before it. The HMAC key is
+/// first 16 bytes of the filter hash, the first 16 bytes of <see cref="Block"/>'s hash (so a resumed page can detect a
+/// reorganisation), and the first 16 bytes of an HMAC-SHA256 over everything before it. The HMAC key is
 /// random per process, so a cursor cannot be forged or edited, and cursors expire when the node restarts.
 /// </para>
 /// </remarks>
@@ -29,14 +30,18 @@ namespace Nethermind.Mcp.Plugin.Tools;
 /// <param name="LogIndex">The smallest block-level log index the next page returns within <paramref name="Block"/>.</param>
 /// <param name="ToBlock">The last block of the whole query, inclusive.</param>
 /// <param name="FilterHash">Identifies the filter (block selectors, addresses and topics) the cursor belongs to.</param>
-internal readonly record struct McpLogCursor(ulong Block, ulong LogIndex, ulong ToBlock, ReadOnlyMemory<byte> FilterHash)
+/// <param name="BlockHash">The hash of <paramref name="Block"/> when the cursor was issued; only its first <see cref="BlockHashLength"/> bytes are kept.</param>
+internal readonly record struct McpLogCursor(ulong Block, ulong LogIndex, ulong ToBlock, ReadOnlyMemory<byte> FilterHash, ReadOnlyMemory<byte> BlockHash)
 {
     /// <summary>The length of the filter hash prefix stored in a cursor.</summary>
     public const int FilterHashLength = 16;
 
-    private const byte Version = 1;
+    /// <summary>The length of the block hash prefix stored in a cursor.</summary>
+    public const int BlockHashLength = 16;
+
+    private const byte Version = 2;
     private const int MacLength = 16;
-    private const int PayloadLength = 1 + 3 * sizeof(ulong) + FilterHashLength;
+    private const int PayloadLength = 1 + 3 * sizeof(ulong) + FilterHashLength + BlockHashLength;
     private const int Length = PayloadLength + MacLength;
 
     private static readonly byte[] Key = RandomNumberGenerator.GetBytes(32);
@@ -50,6 +55,7 @@ internal readonly record struct McpLogCursor(ulong Block, ulong LogIndex, ulong 
         BinaryPrimitives.WriteUInt64BigEndian(bytes[9..], LogIndex);
         BinaryPrimitives.WriteUInt64BigEndian(bytes[17..], ToBlock);
         FilterHash.Span[..FilterHashLength].CopyTo(bytes[25..]);
+        BlockHash.Span[..BlockHashLength].CopyTo(bytes[(25 + FilterHashLength)..]);
         Span<byte> mac = stackalloc byte[HMACSHA256.HashSizeInBytes];
         HMACSHA256.HashData(Key, bytes[..PayloadLength], mac);
         mac[..MacLength].CopyTo(bytes[PayloadLength..]);
@@ -83,7 +89,8 @@ internal readonly record struct McpLogCursor(ulong Block, ulong LogIndex, ulong 
             BinaryPrimitives.ReadUInt64BigEndian(bytes[1..]),
             BinaryPrimitives.ReadUInt64BigEndian(bytes[9..]),
             BinaryPrimitives.ReadUInt64BigEndian(bytes[17..]),
-            bytes[25..PayloadLength].ToArray());
+            bytes[25..(25 + FilterHashLength)].ToArray(),
+            bytes[(25 + FilterHashLength)..PayloadLength].ToArray());
         if (cursor.Block > cursor.ToBlock)
         {
             cursor = default;
@@ -97,6 +104,9 @@ internal readonly record struct McpLogCursor(ulong Block, ulong LogIndex, ulong 
     /// <summary>Returns whether this cursor was issued for the filter identified by <paramref name="filterHash"/>.</summary>
     public bool Matches(ReadOnlySpan<byte> filterHash) =>
         FilterHash.Span.SequenceEqual(filterHash[..FilterHashLength]);
+
+    /// <summary>Returns whether <paramref name="hash"/> is still the hash the cursor saw for <see cref="Block"/>.</summary>
+    public bool IsAt(Hash256? hash) => hash is not null && BlockHash.Span.SequenceEqual(hash.Bytes[..BlockHashLength]);
 
     /// <summary>
     /// Hashes the parts of a <c>get_logs</c> query that must stay the same across pages: the block selectors as given,

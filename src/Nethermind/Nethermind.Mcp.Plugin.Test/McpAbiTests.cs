@@ -4,12 +4,18 @@
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Mcp.Plugin.Tools;
 using Nethermind.Mcp.Plugin.Tools.Abi;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Mcp.Plugin.Test;
@@ -312,7 +318,11 @@ public class McpAbiTests
             Parse("""["-1000", "2000", "79228162514264337593543950336", "5", "-887272"]"""), 4096, out byte[]? swap, out _) ? swap : [];
 
         McpDecodedLog? batch = McpKnownAbi.TryDecodeLog(new LogEntry(To, batchData, [transferBatch, Topic(From), Topic(From), Topic(To)]));
-        McpDecodedLog? deposit = McpKnownAbi.TryDecodeLog(new LogEntry(To, Word(7), [Keccak.Compute("Deposit(address,uint256)"), Topic(From)]));
+        LogEntry depositLog = new(To, Word(7), [Keccak.Compute("Deposit(address,uint256)"), Topic(From)]);
+        McpDecodedLog? deposit = McpKnownAbi.TryDecodeLog(depositLog, wrappedNativeToken: To);
+        McpDecodedLog? foreignDeposit = McpKnownAbi.TryDecodeLog(depositLog, wrappedNativeToken: From);
+        List<McpTokenMovement> movements = [];
+        McpTxTokens.Extract(depositLog, movements, wrappedNativeToken: From);
         McpDecodedLog? swapped = McpKnownAbi.TryDecodeLog(new LogEntry(To, swapData, [v3Swap, Topic(From), Topic(To)]));
         McpDecodedLog? approvalForAll = McpKnownAbi.TryDecodeLog(new LogEntry(To, Word(1), [Keccak.Compute("ApprovalForAll(address,address,bool)"), Topic(From), Topic(To)]));
 
@@ -322,6 +332,9 @@ public class McpAbiTests
             Assert.That(McpAbiCodec.FormatValue(batch?.Get("values")), Is.EqualTo("[10, 20]"));
             Assert.That(deposit?.Standard, Is.EqualTo("WETH"));
             Assert.That(deposit?.Get("wad"), Is.EqualTo("7"));
+            Assert.That(foreignDeposit?.Event, Is.EqualTo("Deposit"), "a Deposit from another contract still decodes");
+            Assert.That(foreignDeposit?.Standard, Is.Null, "but is not a WETH wrap");
+            Assert.That(movements, Is.Empty, "and moves no tokens");
             Assert.That(swapped?.Standard, Is.EqualTo("Uniswap V3"));
             Assert.That(swapped?.Get("amount0"), Is.EqualTo("-1000"));
             Assert.That(swapped?.Get("tick"), Is.EqualTo("-887272"));
@@ -438,6 +451,31 @@ public class McpAbiTests
             Assert.That(McpTokenMetadata.DecodeText(longString), Is.EqualTo(new string('x', McpTokenMetadata.MaxTextLength)));
             Assert.That(McpTokenMetadata.DecodeText(new byte[32]), Is.Null, "all-zero bytes32");
             Assert.That(McpTokenMetadata.DecodeText([1, 2, 3]), Is.Null, "garbage");
+        }
+    }
+
+    [Test]
+    public void Token_metadata_is_cached_only_for_head_reads()
+    {
+        IEthRpcModule eth = Substitute.For<IEthRpcModule>();
+        eth.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
+        eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+            .Returns(static _ => ResultWrapper<HexBytes>.Fail("execution reverted", ErrorCodes.ExecutionReverted));
+        McpTokenMetadata metadata = new();
+
+        metadata.Get(eth, To, new BlockParameter(5));
+        metadata.Get(eth, To, new BlockParameter(5));
+        int historicalCodeReads = eth.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IEthRpcModule.eth_getCode));
+        metadata.Get(eth, To, BlockParameter.Latest);
+        metadata.Get(eth, To, BlockParameter.Latest);
+        int totalCodeReads = eth.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IEthRpcModule.eth_getCode));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(historicalCodeReads, Is.EqualTo(2), "reads at an old block bypass the cache");
+            Assert.That(totalCodeReads, Is.EqualTo(3), "the second latest read is served from the cache");
+            Assert.That(metadata.CachedCount, Is.EqualTo(1));
         }
     }
 

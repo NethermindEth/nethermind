@@ -45,16 +45,16 @@ public interface IMcpConfig : IConfig
     [ConfigItem(Description = "The maximum size of a serialized tool result, in bytes. Larger results fail with a `resource_exhausted` error.", DefaultValue = "4194304")]
     int MaxResultSize { get; set; }
 
-    /// <summary>Gets or sets the maximum number of blocks a `get_logs` query may span.</summary>
-    [ConfigItem(Description = "The maximum number of blocks a `get_logs` query may span, inclusive.", DefaultValue = "1000")]
+    /// <summary>Gets or sets the maximum number of blocks one <c>get_logs</c> page scans.</summary>
+    [ConfigItem(Description = "The maximum number of blocks one `get_logs` page scans, inclusive. Queries over larger ranges are not rejected: they return the first page with a `nextCursor` to continue from.", DefaultValue = "1000")]
     long MaxLogBlockRange { get; set; }
 
-    /// <summary>Gets or sets the maximum number of logs a `get_logs` query may return.</summary>
-    [ConfigItem(Description = "The maximum number of logs a `get_logs` query may return. Queries matching more fail with a `resource_exhausted` error.", DefaultValue = "10000")]
+    /// <summary>Gets or sets the maximum number of logs one <c>get_logs</c> page returns.</summary>
+    [ConfigItem(Description = "The maximum number of logs one `get_logs` page returns; it is also the default and the upper bound of the tool's `limit` argument. Further matching logs are returned on the next page (`nextCursor`).", DefaultValue = "10000")]
     int MaxLogs { get; set; }
 
-    /// <summary>Gets or sets the maximum gas a `call` tool invocation may use.</summary>
-    [ConfigItem(Description = "The maximum gas a `call` tool invocation may use. It is also capped by `JsonRpc.GasCap`.", DefaultValue = "50000000")]
+    /// <summary>Gets or sets the maximum gas a <c>call</c>, <c>call_function</c>, <c>estimate_gas</c> or <c>simulate_transaction</c> invocation may use.</summary>
+    [ConfigItem(Description = "The maximum gas one `call`, `call_function`, `estimate_gas` or `simulate_transaction` execution may use. Must not exceed `JsonRpc.GasCap`; the effective limit is the smaller of the two.", DefaultValue = "50000000")]
     long MaxCallGas { get; set; }
 
     /// <summary>Gets or sets the maximum size of `call` input data, in bytes.</summary>
@@ -73,9 +73,13 @@ public interface IMcpConfig : IConfig
     [ConfigItem(Description = "`Host` header values the MCP endpoint accepts, as host or host:port (for example `node.example.com` or `[2001:db8::1]:8555`, no scheme or path). An entry without a port matches any port. On a loopback `Host` they are accepted besides the loopback names; in remote mode only these (and the bound IP literal) are accepted, and at least one is required.", DefaultValue = "[]")]
     string[] AllowedHosts { get; set; }
 
-    /// <summary>Gets or sets the maximum <c>get_logs</c> block span when the node's log index covers the range.</summary>
-    [ConfigItem(Description = "The maximum number of blocks a log query may span when the node's log index (`LogIndex.Enabled`) covers the whole range. Used instead of `MaxLogBlockRange` for indexed ranges.", DefaultValue = "1000000")]
+    /// <summary>Gets or sets the maximum number of blocks one <c>get_logs</c> page scans when the node's log index serves it.</summary>
+    [ConfigItem(Description = "The maximum number of blocks one `get_logs` page scans when the filter has an address or topic and the page starts inside the node's log index (`LogIndex.Enabled`); the page then stops at the last indexed block. Other pages use `MaxLogBlockRange`, and a value below it has no effect.", DefaultValue = "1000000")]
     long MaxIndexedLogBlockRange { get; set; }
+
+    /// <summary>Gets or sets whether the tools that replay transactions with the call tracer are enabled.</summary>
+    [ConfigItem(Description = "Whether `trace_transaction` and the call-trace parts of `explain_transaction` (internal transfers, the failing call frame) are enabled. They replay transactions through the debug module in-process, regardless of `JsonRpc.EnabledModules`. When disabled, `trace_transaction` fails with `unavailable` and `explain_transaction` skips the trace with a note.", DefaultValue = "true")]
+    bool EnableTracing { get; set; }
 
     /// <summary>Gets or sets the maximum number of call frames a trace tool returns.</summary>
     [ConfigItem(Description = "The maximum number of call frames returned by `trace_transaction`; deeper or wider call trees are truncated and flagged.", DefaultValue = "2000")]
