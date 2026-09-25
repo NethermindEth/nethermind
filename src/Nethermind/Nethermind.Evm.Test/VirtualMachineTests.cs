@@ -32,6 +32,7 @@ using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test;
 
@@ -833,6 +834,242 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Create_instruction_callbacks_are_paired(
+        [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction instruction)
+    {
+        byte[] code = instruction switch
+        {
+            Instruction.CREATE => Prepare.EvmCode.Create([], UInt256.Zero).Op(Instruction.STOP).Done,
+            Instruction.CREATE2 => Prepare.EvmCode.Create2([], [1], UInt256.Zero).Op(Instruction.STOP).Done,
+            _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
+        };
+        InstructionCallbackTracer tracer = new();
+
+        ExecuteAmsterdam(tracer, code);
+
+        ulong[] expectedGas = instruction switch
+        {
+            Instruction.CREATE => [978_997, 978_994, 978_991, 783_391, 783_391],
+            Instruction.CREATE2 => [978_997, 978_994, 978_991, 978_988, 783_388, 783_388],
+            _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
+        };
+        AssertCallbacksPaired(tracer, expectedGas.Length);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GetStarts(), Is.EqualTo(instruction switch
+            {
+                Instruction.CREATE => new (Instruction, int, ulong)[]
+                {
+                    (Instruction.PUSH1, 0, 979_000),
+                    (Instruction.PUSH1, 0, 978_997),
+                    (Instruction.PUSH1, 0, 978_994),
+                    (Instruction.CREATE, 0, 978_991),
+                    (Instruction.STOP, 0, 783_391)
+                },
+                Instruction.CREATE2 => new (Instruction, int, ulong)[]
+                {
+                    (Instruction.PUSH1, 0, 979_000),
+                    (Instruction.PUSH1, 0, 978_997),
+                    (Instruction.PUSH1, 0, 978_994),
+                    (Instruction.PUSH1, 0, 978_991),
+                    (Instruction.CREATE2, 0, 978_988),
+                    (Instruction.STOP, 0, 783_388)
+                },
+                _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
+            }));
+            Assert.That(tracer.GetCompletedGas(), Is.EqualTo(expectedGas));
+        }
+    }
+
+    [Test]
+    public void Create2_collision_instruction_callbacks_are_paired()
+    {
+        byte[] code = Prepare.EvmCode
+            .Create2([], [1], UInt256.Zero)
+            .Create2([], [1], UInt256.Zero)
+            .Op(Instruction.STOP)
+            .Done;
+        InstructionCallbackTracer tracer = new();
+
+        ExecuteAmsterdam(tracer, code);
+
+        AssertCallbacksPaired(tracer, 11);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GetStarts(), Is.EqualTo(new (Instruction, int, ulong)[]
+            {
+                (Instruction.PUSH1, 0, 979_000),
+                (Instruction.PUSH1, 0, 978_997),
+                (Instruction.PUSH1, 0, 978_994),
+                (Instruction.PUSH1, 0, 978_991),
+                (Instruction.CREATE2, 0, 978_988),
+                (Instruction.PUSH1, 0, 783_388),
+                (Instruction.PUSH1, 0, 783_385),
+                (Instruction.PUSH1, 0, 783_382),
+                (Instruction.PUSH1, 0, 783_379),
+                (Instruction.CREATE2, 0, 783_376),
+                (Instruction.STOP, 0, 12_052)
+            }));
+            Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
+            {
+                978_997, 978_994, 978_991, 978_988, 783_388,
+                783_385, 783_382, 783_379, 783_376, 771_376, 12_052
+            }));
+        }
+    }
+
+    [Test]
+    public void Create_child_completion_callbacks_are_paired(
+        [Values(Instruction.RETURN, Instruction.REVERT, Instruction.INVALID)] Instruction halt)
+    {
+        byte[] initCode = halt switch
+        {
+            Instruction.RETURN => Prepare.EvmCode.Return(0, 0).Done,
+            Instruction.REVERT => Prepare.EvmCode.Revert(0, 0).Done,
+            Instruction.INVALID => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            _ => throw new ArgumentOutOfRangeException(nameof(halt), halt, null)
+        };
+        byte[] code = Prepare.EvmCode.Create(initCode, UInt256.Zero).Op(Instruction.STOP).Done;
+        InstructionCallbackTracer tracer = new();
+
+        ExecuteAmsterdam(tracer, code);
+
+        AssertCallbacksPaired(tracer, halt == Instruction.INVALID ? 9 : 11,
+            halt == Instruction.INVALID
+                ? [(Instruction.INVALID, 1, EvmExceptionType.BadInstruction)]
+                : []);
+        Assert.That(tracer.GetCompletedGas(), Is.EqualTo(halt switch
+        {
+            Instruction.RETURN => new ulong[]
+            {
+                978_997, 978_994, 978_988, 978_985, 978_982, 978_979, 783_377,
+                771_134, 771_131, 771_131, 783_371
+            },
+            Instruction.REVERT => new ulong[]
+            {
+                978_997, 978_994, 978_988, 978_985, 978_982, 978_979, 783_377,
+                771_134, 771_131, 771_131, 966_971
+            },
+            Instruction.INVALID => new ulong[]
+            {
+                978_997, 978_994, 978_988, 978_985, 978_982, 978_979, 783_377,
+                771_127, 195_840
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(halt), halt, null)
+        }));
+    }
+
+    [Test]
+    public void Call_child_completion_callbacks_are_paired(
+        [Values(Instruction.RETURN, Instruction.REVERT, Instruction.INVALID)] Instruction halt)
+    {
+        byte[] childCode = halt switch
+        {
+            Instruction.RETURN => Prepare.EvmCode.Return(0, 0).Done,
+            Instruction.REVERT => Prepare.EvmCode.Revert(0, 0).Done,
+            Instruction.INVALID => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            _ => throw new ArgumentOutOfRangeException(nameof(halt), halt, null)
+        };
+        TestState.CreateAccount(TestItem.AddressC, UInt256.Zero);
+        TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.STOP).Done;
+        InstructionCallbackTracer tracer = new();
+
+        ExecuteAmsterdam(tracer, code);
+
+        AssertCallbacksPaired(tracer, halt == Instruction.INVALID ? 10 : 12,
+            halt == Instruction.INVALID
+                ? [(Instruction.INVALID, 1, EvmExceptionType.BadInstruction)]
+                : []);
+        Assert.That(tracer.GetCompletedGas(), Is.EqualTo(halt == Instruction.INVALID
+            ? new ulong[] { 978_997, 978_994, 978_991, 978_988, 978_985, 978_982, 978_979, 925_979, 49_990, 925_979 }
+            : new ulong[] { 978_997, 978_994, 978_991, 978_988, 978_985, 978_982, 978_979, 925_979, 49_997, 49_994, 49_994, 975_973 }));
+    }
+
+    [Test]
+    public void Create_insufficient_balance_callbacks_are_paired()
+    {
+        byte[] code = Prepare.EvmCode.Create([], 200.Ether).Op(Instruction.STOP).Done;
+        InstructionCallbackTracer tracer = new();
+
+        ExecuteAmsterdam(tracer, code);
+
+        AssertCallbacksPaired(tracer, 5);
+        Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
+        {
+            978_997, 978_994, 978_991, 966_991, 966_991
+        }));
+    }
+
+    [Test]
+    public void Call_insufficient_balance_callbacks_are_paired()
+    {
+        byte[] code = Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, 200.Ether).Op(Instruction.STOP).Done;
+        InstructionCallbackTracer tracer = new();
+
+        ExecuteAmsterdam(tracer, code);
+
+        AssertCallbacksPaired(tracer, 9, (Instruction.CALL, 0, EvmExceptionType.NotEnoughBalance));
+        Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
+        {
+            978_997, 978_994, 978_991, 978_988, 978_985, 978_982, 978_979, 731_079, 966_979
+        }));
+    }
+
+    [Test]
+    public void Create_nonce_overflow_callbacks_are_paired()
+    {
+        byte[] code = Prepare.EvmCode.Create([], UInt256.Zero).Op(Instruction.STOP).Done;
+        InstructionCallbackTracer tracer = new();
+
+        ExecuteAmsterdam(tracer, code, static state => state.SetNonce(Recipient, ulong.MaxValue));
+
+        AssertCallbacksPaired(tracer, 5);
+        Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
+        {
+            978_997, 978_994, 978_991, 966_991, 966_991
+        }));
+    }
+
+    [Test]
+    public void Create_depth_limit_callbacks_are_paired()
+    {
+        byte[] code = Prepare.EvmCode.Create([], UInt256.Zero).Op(Instruction.STOP).Done;
+        CodeInfo codeInfo = new(code);
+        ExecutionEnvironment env = ExecutionEnvironment.Rent(
+            codeInfo,
+            executingAccount: Recipient,
+            caller: Sender,
+            codeSource: Recipient,
+            callDepth: VirtualMachineStatics.MaxCallDepth,
+            value: UInt256.Zero,
+            inputData: ReadOnlyMemory<byte>.Empty);
+        EthereumGasPolicy gas = new()
+        {
+            Value = 1_000_000,
+            StateReservoir = GasCostOf.CreateState,
+        };
+        StackAccessTracker accessTracker = new();
+        using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
+            gas,
+            ExecutionType.CALL,
+            env,
+            in accessTracker,
+            Snapshot.Empty);
+        InstructionCallbackTracer tracer = new();
+        Machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.Block.TestObject.Header, Amsterdam.Instance));
+        Machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
+
+        Machine.ExecuteTransaction<OnFlag>(vmState, TestState, tracer);
+
+        AssertCallbacksPaired(tracer, 5);
+        Assert.That(tracer.GetCompletedGas(), Is.EqualTo(new ulong[]
+        {
+            999_997, 999_994, 999_991, 987_991, 987_991
+        }));
+    }
+
+    [Test]
     public void Implicit_stop_is_only_traced_by_opted_in_tracers([Values(1, 0x01020304)] int value)
     {
         byte[] code = Prepare.EvmCode.PushData(value).Done;
@@ -899,10 +1136,212 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.Throws<OperationCanceledException>(() =>
                 _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
             Assert.That(innerTracer.StartedOperations, Is.EqualTo(1));
+            Assert.That(innerTracer.CompletedOperations, Is.EqualTo(1));
         }
     }
 
-    private sealed class CountingGethLikeTxTracer() : GethLikeTxTracer(new GethTraceOptions())
+    [Test]
+    public void Cancellation_after_instruction_start_completes_started_instruction()
+    {
+        byte[] code = [(byte)Instruction.STOP];
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
+        using CancellationTokenSource cancellation = new();
+        CancelOnOperationStartTracer innerTracer = new(cancellation);
+        CancellationTxTracer tracer = new(innerTracer, cancellation.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<OperationCanceledException>(() =>
+                _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
+            Assert.That(innerTracer.StartedOperations, Is.EqualTo(1));
+            Assert.That(innerTracer.CompletedOperations, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Cancellation_wraps_all_observers_before_forwarding_the_next_instruction([Values] bool cancellationFirst)
+    {
+        byte[] code = Prepare.EvmCode.PushData(1).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
+        using CancellationTokenSource cancellation = new();
+        CountingGethLikeTxTracer observer = new();
+        CancelOnOperationStartTracer inner = new(cancellation);
+        CompositeTxTracer composite = cancellationFirst ? new(inner, observer) : new(observer, inner);
+        CancellationTxTracer tracer = new(composite, cancellation.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<OperationCanceledException>(() =>
+                _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
+            Assert.That(observer.StartedOperations, Is.EqualTo(1));
+            Assert.That(observer.CompletedOperations, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Cancellation_during_implicit_stop_completes_every_opted_in_tracer()
+    {
+        using CancellationTokenSource cancellation = new();
+        CountingGethLikeTxTracer first = new(cancellation);
+        CountingGethLikeTxTracer second = new();
+        CancellationTxTracer tracer = new(new CompositeTxTracer(first, second), cancellation.Token);
+
+        Assert.Throws<OperationCanceledException>(() => Execute(tracer, Prepare.EvmCode.PushData(1).Done));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.StartedOperations, Is.EqualTo(2));
+            Assert.That(first.CompletedOperations, Is.EqualTo(2));
+            Assert.That(second.StartedOperations, Is.EqualTo(2));
+            Assert.That(second.CompletedOperations, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Cancellation_after_exception_start_reports_completion_and_error([Values] bool cancellationFirst)
+    {
+        byte[] code = [(byte)Instruction.INVALID];
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
+        using CancellationTokenSource cancellation = new();
+        CancelOnOperationStartTracer innerTracer = new(cancellation);
+        InstructionCallbackTracer observer = new();
+        CompositeTxTracer composite = cancellationFirst ? new(innerTracer, observer) : new(observer, innerTracer);
+        CancellationTxTracer tracer = new(composite, cancellation.Token);
+
+        Assert.Throws<OperationCanceledException>(() =>
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
+        AssertCallbacksPaired(observer, 1, (Instruction.INVALID, 0, EvmExceptionType.BadInstruction));
+        Assert.That(innerTracer.Callbacks, Is.EqualTo(new[]
+        {
+            $"start:{Instruction.INVALID}",
+            "remaining-gas",
+            $"error:{EvmExceptionType.BadInstruction}"
+        }));
+    }
+
+    private sealed class CountingGethLikeTxTracer(CancellationTokenSource? cancelOnStop = null) : GethLikeTxTracer(new GethTraceOptions())
+    {
+        public int StartedOperations { get; private set; }
+        public int CompletedOperations { get; private set; }
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+        {
+            StartedOperations++;
+            if (opcode == Instruction.STOP) cancelOnStop?.Cancel();
+        }
+
+        public override void ReportOperationRemainingGas(ulong gas) => CompletedOperations++;
+    }
+
+    private sealed class InstructionCallbackTracer : TxTracer
+    {
+        private InstructionCallback? _activeOperation;
+        private InstructionCallback? _completedOperation;
+
+        public override bool IsTracingInstructions => true;
+
+        public List<InstructionCallback> Operations { get; } = [];
+        public bool HasActiveOperation => _activeOperation is not null;
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+        {
+            Assert.That(_activeOperation, Is.Null, "the previous instruction must complete before the next starts");
+            _completedOperation = null;
+            _activeOperation = new(opcode, env.CallDepth, gas);
+            Operations.Add(_activeOperation);
+        }
+
+        public override void ReportOperationRemainingGas(ulong gas)
+        {
+            Assert.That(_activeOperation, Is.Not.Null, "an instruction completion must have a matching start");
+            _activeOperation!.RemainingGas = gas;
+            _completedOperation = _activeOperation;
+            _activeOperation = null;
+        }
+
+        public override void ReportOperationError(EvmExceptionType error)
+        {
+            Assert.That(_completedOperation, Is.Not.Null, "an instruction error must follow its completion");
+            _completedOperation!.Error = error;
+            _completedOperation = null;
+        }
+
+        public ulong[] GetCompletedGas()
+        {
+            ulong[] gas = new ulong[Operations.Count];
+            for (int i = 0; i < Operations.Count; i++)
+            {
+                gas[i] = Operations[i].RemainingGas!.Value;
+            }
+
+            return gas;
+        }
+
+        public (Instruction Opcode, int Depth, EvmExceptionType Error)[] GetErrors()
+        {
+            List<(Instruction Opcode, int Depth, EvmExceptionType Error)> errors = [];
+            foreach (InstructionCallback operation in Operations)
+            {
+                if (operation.Error is not null)
+                {
+                    errors.Add((operation.Opcode, operation.Depth, operation.Error.Value));
+                }
+            }
+
+            return errors.ToArray();
+        }
+
+        public (Instruction Opcode, int Depth, ulong Gas)[] GetStarts()
+        {
+            (Instruction Opcode, int Depth, ulong Gas)[] starts = new (Instruction, int, ulong)[Operations.Count];
+            for (int i = 0; i < Operations.Count; i++)
+            {
+                InstructionCallback operation = Operations[i];
+                starts[i] = (operation.Opcode, operation.Depth, operation.StartGas);
+            }
+
+            return starts;
+        }
+    }
+
+    private sealed class InstructionCallback(Instruction opcode, int depth, ulong startGas)
+    {
+        public Instruction Opcode { get; } = opcode;
+        public int Depth { get; } = depth;
+        public ulong StartGas { get; } = startGas;
+        public ulong? RemainingGas { get; set; }
+        public EvmExceptionType? Error { get; set; }
+    }
+
+    private static void AssertCallbacksPaired(
+        InstructionCallbackTracer tracer,
+        int expectedCount,
+        params (Instruction Opcode, int Depth, EvmExceptionType Error)[] expectedErrors)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations, Has.Count.EqualTo(expectedCount));
+            Assert.That(tracer.HasActiveOperation, Is.False);
+            Assert.That(tracer.Operations, Has.All.Property(nameof(InstructionCallback.RemainingGas)).Not.Null);
+            Assert.That(tracer.GetErrors(), Is.EqualTo(expectedErrors));
+        }
+    }
+
+    private void ExecuteAmsterdam(ITxTracer tracer, byte[] code, Action<IWorldState>? configureState = null)
+    {
+        const ulong gasLimit = 1_000_000;
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            code);
+        block.Header.Number = MainnetSpecProvider.AmsterdamActivation.BlockNumber;
+        block.Header.Timestamp = MainnetSpecProvider.AmsterdamBlockTimestamp;
+        configureState?.Invoke(TestState);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+    }
+
+    private sealed class CancelAfterFirstOperationTracer(CancellationTokenSource cancellation) : GethLikeTxTracer(new GethTraceOptions())
     {
         public int StartedOperations { get; private set; }
         public int CompletedOperations { get; private set; }
@@ -910,17 +1349,33 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
             StartedOperations++;
 
-        public override void ReportOperationRemainingGas(ulong gas) => CompletedOperations++;
+        public override void ReportOperationRemainingGas(ulong gas)
+        {
+            CompletedOperations++;
+            cancellation.Cancel();
+        }
     }
 
-    private sealed class CancelAfterFirstOperationTracer(CancellationTokenSource cancellation) : GethLikeTxTracer(new GethTraceOptions())
+    private sealed class CancelOnOperationStartTracer(CancellationTokenSource cancellation) : GethLikeTxTracer(new GethTraceOptions())
     {
         public int StartedOperations { get; private set; }
+        public int CompletedOperations { get; private set; }
+        public List<string> Callbacks { get; } = [];
 
-        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+        {
             StartedOperations++;
+            Callbacks.Add($"start:{opcode}");
+            cancellation.Cancel();
+        }
 
-        public override void ReportOperationRemainingGas(ulong gas) => cancellation.Cancel();
+        public override void ReportOperationRemainingGas(ulong gas)
+        {
+            CompletedOperations++;
+            Callbacks.Add("remaining-gas");
+        }
+
+        public override void ReportOperationError(EvmExceptionType error) => Callbacks.Add($"error:{error}");
     }
 
     [Test]
@@ -1411,11 +1866,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0123456789abcdef")).SetName("Multi_word_output"),
     ];
 
-    // Regression cover for the returndata copy-elision in the transaction processor: the bytes handed to the
-    // receipt tracer must equal the top-level RETURN / REVERT / precompile output, whether the backing array is
-    // forwarded directly or copied.
     [TestCaseSource(nameof(TopLevelOutputCases))]
-    public void Return_output_reaches_receipt_tracer_verbatim(byte[] data)
+    public void Return_output_reaches_receipt_and_action_tracers_verbatim(byte[] data)
     {
         byte[] code = Prepare.EvmCode
             .StoreDataInMemory(0, data)
@@ -1428,11 +1880,12 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.EqualTo(data));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { data }));
         }
     }
 
     [TestCaseSource(nameof(TopLevelOutputCases))]
-    public void Revert_output_reaches_receipt_tracer_verbatim(byte[] data)
+    public void Revert_output_reaches_receipt_and_action_tracers_verbatim(byte[] data)
     {
         byte[] code = Prepare.EvmCode
             .StoreDataInMemory(0, data)
@@ -1445,11 +1898,13 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
             Assert.That(receipt.ReturnValue, Is.EqualTo(data));
+            Assert.That(receipt.ActionOutputs, Is.Empty);
+            Assert.That(receipt.ActionRevertOutputs, Is.EqualTo(new[] { data }));
         }
     }
 
     [Test]
-    public void Empty_return_yields_empty_receipt_output()
+    public void Empty_return_yields_empty_receipt_and_action_output()
     {
         TestAllTracerWithOutput receipt = Execute(Prepare.EvmCode.Return(0, 0).Done);
 
@@ -1457,15 +1912,15 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.Empty);
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { Array.Empty<byte>() }));
         }
     }
 
     // Top-level call straight to a precompile exercises the precompile output path, where the backing array may be
     // a whole array that is forwarded without copying.
-    [Test]
-    public void Top_level_precompile_output_reaches_receipt_tracer_verbatim()
+    [TestCaseSource(nameof(TopLevelOutputCases))]
+    public void Top_level_precompile_output_reaches_receipt_and_action_tracers_verbatim(byte[] input)
     {
-        byte[] input = Bytes.FromHexString("0x00112233445566778899aabbccddeeff");
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         Transaction tx = Build.A.Transaction
             .WithTo(IdentityPrecompile.Address)
@@ -1480,6 +1935,91 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(receipt.ReturnValue, Is.EqualTo(input));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { input }));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> TopLevelEndingsAfterNestedCall()
+    {
+        byte[] topLevelOutput = Bytes.FromHexString("0xaabbccddeeff");
+        yield return new TestCaseData(
+                Prepare.EvmCode.StoreDataInMemory(64, topLevelOutput).Return(topLevelOutput.Length, 64).Done, topLevelOutput)
+            .SetArgDisplayNames("Return_own_output");
+        yield return new TestCaseData(Prepare.EvmCode.Op(Instruction.STOP).Done, Array.Empty<byte>())
+            .SetArgDisplayNames("Stop");
+    }
+
+    [TestCaseSource(nameof(TopLevelEndingsAfterNestedCall))]
+    public void Nested_precompile_and_top_level_outputs_remain_frame_local(byte[] topLevelEnding, byte[] topLevelOutput)
+    {
+        byte[] nestedOutput = Bytes.FromHexString("0x1122334455667788");
+        byte[] code = Prepare.EvmCode
+            .CallWithInput(IdentityPrecompile.Address, 50_000, nestedOutput)
+            .Data(topLevelEnding)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ReturnValue, Is.EqualTo(topLevelOutput));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { nestedOutput, topLevelOutput }));
+        }
+    }
+
+    [TestCaseSource(nameof(TopLevelEndingsAfterNestedCall))]
+    public void Reverted_child_output_is_not_reported_as_top_level_output(byte[] topLevelEnding, byte[] topLevelOutput)
+    {
+        byte[] revertData = Bytes.FromHexString("0x1122334455667788");
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.StoreDataInMemory(0, revertData).Revert(revertData.Length, 0).Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50_000)
+            .Data(topLevelEnding)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ReturnValue, Is.EqualTo(topLevelOutput));
+            Assert.That(receipt.ActionRevertOutputs, Is.EqualTo(new[] { revertData }));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { topLevelOutput }));
+        }
+    }
+
+    // A create frame ends through the deployment overload, so its action output is the deployed code, not RETURN data.
+    [Test]
+    public void Create_frame_reports_deployed_code_as_action_output()
+    {
+        byte[] deployedCode = Bytes.FromHexString("0x600060005500");
+        byte[] code = Prepare.EvmCode
+            .Create(Prepare.EvmCode.ForInitOf(deployedCode).Done, 0)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ActionOutputs, Is.EqualTo(new[] { deployedCode, Array.Empty<byte>() }));
+        }
+    }
+
+    [Test]
+    public void Exceptional_halt_does_not_report_action_output()
+    {
+        TestAllTracerWithOutput receipt = Execute((byte)Instruction.ADD);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipt.ReturnValue, Is.Empty);
+            Assert.That(receipt.ActionOutputs, Is.Empty);
+            Assert.That(receipt.ActionRevertOutputs, Is.Empty);
+            Assert.That(receipt.ReportedActionErrors, Is.EqualTo([EvmExceptionType.StackUnderflow]));
         }
     }
 }

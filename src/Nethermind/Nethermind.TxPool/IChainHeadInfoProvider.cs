@@ -20,6 +20,14 @@ namespace Nethermind.TxPool
 
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
+        /// <summary>
+        /// Number of the last block moved onto the canonical chain.
+        /// </summary>
+        /// <remarks>
+        /// Seeded from the processed head, then tracks every block moved onto the main chain. The downloader moves
+        /// blocks across without processing them and that raises the same event, so in that mode this follows the
+        /// downloaded chain rather than the processed head.
+        /// </remarks>
         ulong HeadNumber { get; }
 
         /// <summary>Timestamp (Unix seconds) of the current chain head.</summary>
