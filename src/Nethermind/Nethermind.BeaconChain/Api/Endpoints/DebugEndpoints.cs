@@ -105,9 +105,9 @@ internal static class DebugEndpoints
 
         // The raw path never decodes the state; the block it belongs to is the cheap source of its
         // slot for the version header. Without that block the header is omitted, never guessed.
-        if (ctx.Store.TryGetBlock(resolved.Root, out SignedBeaconBlock? block))
+        if (ctx.Store.TryGetForkedBlock(resolved.Root, out ForkedSignedBeaconBlock? block))
         {
-            ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, block.Message!.Slot);
+            ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, block.Slot);
         }
 
         c.Response.ContentType = ContentNegotiation.OctetStream;
