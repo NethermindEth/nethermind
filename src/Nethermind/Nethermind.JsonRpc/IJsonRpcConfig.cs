@@ -163,8 +163,9 @@ public interface IJsonRpcConfig : IConfig
             concurrency cap on the override-path env pool used by sharable `eth_call` /
             `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
             overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Also the
-            number of EVM-executing calls run at once, see `EvmExecutionMaxQueueWaitMs`. Defaults
-            to the number of logical processors.
+            number of execution slots shared by `eth_call`, `eth_estimateGas`, `eth_createAccessList`,
+            `eth_simulateV1` and `eth_fillTransaction`, with or without overrides; see
+            `EvmExecutionMaxQueueWaitMs`. Defaults to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
