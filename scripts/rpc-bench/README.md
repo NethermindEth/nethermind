@@ -13,18 +13,31 @@ and post-process it to XML.
 path below follows that choice. **Never compare timings across the two boxes.**
 
 The amd64 box holds the full snapshot set, so it serves every `client`,
-`reference_client` and `state_layout`. The arm64 box carries exactly one kind of
-snapshot set — Nethermind in the **flat** layout — so there `client`,
-`reference_client` and `state_layout` are held to `nethermind` / `none` / `flat`,
-and an image it would have to build is refused as well (that box's ~19G root disk
-dies under a build). `resolve` checks those limits against the selected runner.
+`reference_client` and `state_layout`. The arm64 box carries the Nethermind
+**flat** set plus one directory per additionally provisioned client
+(`/data/<client>/<client>-<block>`), so there any single provisioned `client`
+runs in single-node mode, `reference_client` is held to `none`, `state_layout`
+to `flat`, and an image it would have to build is refused as well (that box's
+small root disk dies under a build). Sweeps resolve their sets differently
+(below), so those per-client sets serve single-node runs only. `resolve` checks
+those limits against the selected runner, and the benchmark job's
+`Validate snapshot and output paths` step checks that every set the run will
+mount exists before anything is pulled.
 
-Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
-Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses
-a non-Nethermind entry in `tool_config.clients`
-instead of those inputs. `start-node.sh` stays client-generic, so re-enabling
-geth/reth or a second layout is a matter of provisioning the snapshot set and
-widening those two guards.
+Benchmark output and profiling archives are staged in a per-run directory
+(`rpcbench.XXXXXX`) that the job removes at the end: under the runner's
+temporary directory on amd64, and on the scratch volume on arm64, whose small
+root disk cannot hold them. The ARM disk guard requires 6 GiB free on each
+Docker/containerd filesystem and on the output filesystem, plus 1 GiB on `/`,
+and sweeps per-run directories that a killed job left on the scratch volume.
+
+Independently of the runner, **sweep mode** (the corpus presets and
+`jsonbench-sweep`) resolves every arm's set under the runner's Nethermind
+snapshot root: Nethermind's in `tool_config.state_layout` (`flat` unless set to
+`halfpath`), any geth/reth arm named in `tool_config.clients` at
+`<root>/<client>-<block>`. `run-rpc-sweep.sh` refuses a type whose set is absent
+before any node starts, which leaves geth/reth sweep arms to amd64: the arm64
+box keeps its other clients' sets under `/data/<client>/`, outside that root.
 
 ## Goals
 
