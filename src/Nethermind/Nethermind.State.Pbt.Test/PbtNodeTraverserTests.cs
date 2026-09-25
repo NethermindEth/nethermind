@@ -44,12 +44,12 @@ public class PbtNodeTraverserTests
             foreach (TKey key in keys)
             {
                 ValueHash256 expected = new(oracle.Merkelize(PbtStorageNodePath.Create(key.Bytes, key.BitLength)));
-                Assert.That(PbtNodeTraverser.GetLeafHash(store, root, key, 0, null, out _), Is.EqualTo(expected), $"present key {Convert.ToHexString(key.Bytes)}");
+                Assert.That(PbtNodeTraverser.GetLeafHash(store, root, key, null), Is.EqualTo(expected), $"present key {Convert.ToHexString(key.Bytes)}");
             }
             for (int index = 0; index < 64; index++)
             {
                 TKey absent = RandomKey<TKey>(random);
-                Assert.That(PbtNodeTraverser.GetLeafHash(store, root, absent, 0, null, out _), Is.EqualTo(default(ValueHash256)), $"absent key {Convert.ToHexString(absent.Bytes)}");
+                Assert.That(PbtNodeTraverser.GetLeafHash(store, root, absent, null), Is.EqualTo(default(ValueHash256)), $"absent key {Convert.ToHexString(absent.Bytes)}");
             }
         }
         store.Dispose();

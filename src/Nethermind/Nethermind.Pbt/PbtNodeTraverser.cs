@@ -14,22 +14,15 @@ internal static class PbtNodeTraverser
     /// stored (<see cref="PbtNodeGroupCodec.ShouldOmit"/>); its position is descended as an implicit branch whose
     /// children lie in the same group.
     /// </remarks>
-    /// <param name="minSubtreeBytes">
-    /// The stored size below the next node group under which the traversal stops instead of fetching it; zero or less
-    /// follows the key to its leaf. Only a caller that discards the hash may pass a positive value: a traversal that
-    /// stops short returns default, as an absent key does.
-    /// </param>
     /// <param name="pinnedGroups">
     /// Top groups of the same state shared across traversals, read from without the store and filled from it; null
     /// fetches every group from the store.
     /// </param>
-    /// <param name="stoppedAtSmallSubtree">Whether the traversal stopped short of the leaf because of <paramref name="minSubtreeBytes"/>.</param>
-    internal static ValueHash256 GetLeafHash<TKey>(IPbtStore store, in ValueHash256 root, in TKey key, long minSubtreeBytes, PbtPinnedGroups? pinnedGroups, out bool stoppedAtSmallSubtree) where TKey : unmanaged, IPbtKey<TKey>
+    internal static ValueHash256 GetLeafHash<TKey>(IPbtStore store, in ValueHash256 root, in TKey key, PbtPinnedGroups? pinnedGroups) where TKey : unmanaged, IPbtKey<TKey>
     {
         ArgumentNullException.ThrowIfNull(store);
         if (key.Length == 0) throw new ArgumentException("A complete key is required.", nameof(key));
 
-        stoppedAtSmallSubtree = false;
         PbtStorageNodePath path = new([], 0);
         ValueHash256 groupHash = root;
         Span<byte> groupPathBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
@@ -70,12 +63,6 @@ internal static class PbtNodeTraverser
                     location = PbtFourLevelGroupGeometry.Locate(childPath);
                     if (!location.GroupKey.Equals(groupKey))
                     {
-                        if (minSubtreeBytes > 0
-                            && group.DescendantBytes(TrieUpdater.BoundarySlot(key.Bytes, groupKey.BitDepth)) < minSubtreeBytes)
-                        {
-                            stoppedAtSmallSubtree = true;
-                            return default;
-                        }
                         pinned = pinnedGroups?.Get(location.GroupKey);
                         if (pinned is null) groupHash = HashAtBoundary(node, location.GroupKey.BitDepth - path.BitDepth);
                     }

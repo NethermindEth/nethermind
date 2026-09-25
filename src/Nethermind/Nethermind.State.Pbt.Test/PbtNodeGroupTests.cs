@@ -2325,7 +2325,7 @@ public class PbtNodeGroupTests
         oracle.Insert(first, Value(1));
         oracle.Insert(second, Value(2));
         WarmReadStore reader = new(store);
-        PbtTrieWarmer.WarmUpPath(reader, root, query, 0, null);
+        PbtTrieWarmer.WarmUpPath(reader, root, query, null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.Reads, Is.EquivalentTo(expectedGroups));
@@ -2344,51 +2344,6 @@ public class PbtNodeGroupTests
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
     }
 
-    private static IEnumerable<TestCaseData> PathWarmingThresholdCases()
-    {
-        foreach (Type keyType in new[] { typeof(PbtTreeKey), typeof(PbtStorageTreeKey) })
-            foreach (long minSubtreeBytes in new long[] { 0, 1, 64, 1024, PbtNodeGroupCodec.MaxDescendantBytes })
-                yield return new TestCaseData(minSubtreeBytes) { TypeArgs = [keyType] };
-    }
-
-    [TestCaseSource(nameof(PathWarmingThresholdCases))]
-    public void Path_warming_stops_above_a_small_subtree<TKey>(long minSubtreeBytes)
-        where TKey : unmanaged, IPbtKey<TKey>
-    {
-        TrackingMemoryProvider memory = new();
-        using PbtNodeGroupStore store = new(memory);
-        ValueHash256 root = BuildGroupAtEveryBoundary(store, out TKey query);
-
-        WarmReadStore fullReader = new(store);
-        PbtTrieWarmer.WarmUpPath(fullReader, root, query, 0, null);
-        List<PbtStorageNodePath> expected = [];
-        bool expectedToStop = false;
-        foreach (PbtStorageNodePath groupKey in fullReader.Reads)
-        {
-            if (expected.Count > 0 && DescendantBytesTowards(store, expected[^1], query) < minSubtreeBytes)
-            {
-                expectedToStop = true;
-                break;
-            }
-            expected.Add(groupKey);
-        }
-
-        WarmReadStore reader = new(store);
-        bool stopped = PbtTrieWarmer.WarmUpPath(reader, root, query, minSubtreeBytes, null);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reader.Reads, Is.EqualTo(expected));
-            Assert.That(stopped, Is.EqualTo(expectedToStop));
-            Assert.That(fullReader.Reads.Count, Is.GreaterThan(1), "the warm path crosses at least one boundary");
-            if (minSubtreeBytes == PbtNodeGroupCodec.MaxDescendantBytes)
-                Assert.That(reader.Reads, Is.EqualTo(fullReader.Reads[..1]), "no subtree reaches the largest threshold");
-            if (minSubtreeBytes == 0)
-                Assert.That(reader.Reads, Is.EqualTo(fullReader.Reads), "a zero threshold warms the whole path");
-        }
-        store.Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
-    }
-
     [TestCase(TypeArgs = [typeof(PbtTreeKey)])]
     [TestCase(TypeArgs = [typeof(PbtStorageTreeKey)])]
     public void Path_warming_reads_pinned_top_groups_without_the_store<TKey>()
@@ -2398,13 +2353,13 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = new(memory);
         ValueHash256 root = BuildGroupAtEveryBoundary(store, out TKey query);
         WarmReadStore unpinned = new(store);
-        PbtTrieWarmer.WarmUpPath(unpinned, root, query, 0, null);
+        PbtTrieWarmer.WarmUpPath(unpinned, root, query, null);
 
         PbtPinnedGroups pinnedGroups = new();
         WarmReadStore pinning = new(store);
-        PbtTrieWarmer.WarmUpPath(pinning, root, query, 0, pinnedGroups);
+        PbtTrieWarmer.WarmUpPath(pinning, root, query, pinnedGroups);
         WarmReadStore pinned = new(store);
-        PbtTrieWarmer.WarmUpPath(pinned, root, query, 0, pinnedGroups);
+        PbtTrieWarmer.WarmUpPath(pinned, root, query, pinnedGroups);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(unpinned.Hashes.Select(read => read.Path.BitDepth), Does.Contain(PbtPinnedGroups.MaxDepth).And.Contain(PbtPinnedGroups.MaxDepth + PbtFourLevelGroupGeometry.LevelsPerGroup));
@@ -2433,14 +2388,6 @@ public class PbtNodeGroupTests
         return store.Fold(default, writes);
     }
 
-    private static long DescendantBytesTowards<TKey>(PbtNodeGroupStore store, PbtStorageNodePath groupKey, TKey key)
-        where TKey : unmanaged, IPbtKey<TKey>
-    {
-        using RefCountingMemory payload = store.GetPhysicalNodeGroup(groupKey)!;
-        PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
-        return group.DescendantBytes(TrieUpdater.BoundarySlot(key.Bytes, groupKey.BitDepth));
-    }
-
     [TestCase(false, TypeArgs = [typeof(PbtTreeKey)])]
     [TestCase(true, TypeArgs = [typeof(PbtTreeKey)])]
     [TestCase(false, TypeArgs = [typeof(PbtStorageTreeKey)])]
@@ -2452,7 +2399,7 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = new();
         WarmReadStore reader = new(store);
         TKey key = TKey.Create(Bytes.FromHexString("00"));
-        PbtTrieWarmer.WarmUpPath(reader, default, key, 0, null);
+        PbtTrieWarmer.WarmUpPath(reader, default, key, null);
         Assert.That(reader.Reads.Count, Is.EqualTo(1), "empty tree");
 
         PbtNodePath root = new([], 0);
@@ -2462,8 +2409,8 @@ public class PbtNodeGroupTests
         RefCountingMemory payload = memory.Rent(bytes.Length);
         bytes.CopyTo(payload.GetSpan());
         reader.Payload = payload;
-        if (invalidPayload) Assert.Catch(() => PbtTrieWarmer.WarmUpPath(reader, default, key, 0, null));
-        else PbtTrieWarmer.WarmUpPath(reader, default, key, 0, null);
+        if (invalidPayload) Assert.Catch(() => PbtTrieWarmer.WarmUpPath(reader, default, key, null));
+        else PbtTrieWarmer.WarmUpPath(reader, default, key, null);
         ((IDisposable)payload).Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
     }

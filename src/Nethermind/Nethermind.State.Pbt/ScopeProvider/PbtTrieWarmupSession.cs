@@ -25,7 +25,6 @@ internal sealed class PbtTrieWarmupSession(
     ITrieWarmer trieWarmer,
     int sequenceId,
     IPbtTrieNodeCache trieNodeCache,
-    long minSubtreeBytes,
     ILogger logger) : IWorldStateScopeProvider.ITrieWarmupSession, ITrieWarmer.IAddressWarmer, IPbtStore
 {
     private static readonly StringLabel _addressJobLabel = new(Metrics.TrieWarmerAddressKind);
@@ -123,7 +122,7 @@ internal sealed class PbtTrieWarmupSession(
         try
         {
             long start = _recordJobTimes ? Stopwatch.GetTimestamp() : 0;
-            if (PbtTrieWarmer.WarmUpPath(this, TreeRoot, key, minSubtreeBytes, _pinnedGroups)) Metrics.IncrementPbtTrieWarmerStoppedBySmallSubtree();
+            PbtTrieWarmer.WarmUpPath(this, TreeRoot, key, _pinnedGroups);
             if (_recordJobTimes) Metrics.PbtTrieWarmerJobTime.Observe(Stopwatch.GetTimestamp() - start, jobLabel);
             return true;
         }
