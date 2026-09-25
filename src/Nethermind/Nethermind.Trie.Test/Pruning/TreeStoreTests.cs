@@ -1542,7 +1542,9 @@ namespace Nethermind.Trie.Test.Pruning
                 fullTrieStore.SyncPruneQueue();
                 testPruningStrategy.ShouldPruneEnabled = false;
             });
-            Assert.That(writeReached.Wait(1000), Is.True, "Pruning task did not reach database write");
+            // Wake on the task ending too, so a pruning failure surfaces instead of waiting out the timeout.
+            int signalled = WaitHandle.WaitAny([writeReached.WaitHandle, ((IAsyncResult)persistTask).AsyncWaitHandle], TimeSpan.FromSeconds(30));
+            Assert.That(signalled, Is.Zero, () => $"Pruning task did not reach database write: {persistTask.Status} {persistTask.Exception}");
 
             // Bring block 5's node to block 12
             // This is done in commit buffer.
