@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -49,15 +50,23 @@ public class OptimismPayloadAttributesTests
         Assert.That(payloadAttributes.GetPayloadId(blockHeader), Is.EqualTo(testCase.PayloadId));
     }
 
+    [Test]
+    public void Compute_PayloadID_includes_MinBaseFee()
+    {
+        BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+
+        string payloadId = BuildAttributes(Spec.JovianTimeStamp, new byte[8], minBaseFee: 1).GetPayloadId(blockHeader);
+
+        Assert.That(BuildAttributes(Spec.JovianTimeStamp, new byte[8], minBaseFee: 2).GetPayloadId(blockHeader), Is.Not.EqualTo(payloadId));
+    }
+
     private static IEnumerable<(int? length, Valid isValid)> Validate_EIP1559Params_TestCases()
     {
         yield return (null, Valid.Before(Spec.HoloceneTimeStamp));
         yield return (7, Valid.Never);
-        yield return (8, Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp));
+        yield return (8, Valid.Since(Spec.HoloceneTimeStamp));
         yield return (9, Valid.Never);
-        yield return (15, Valid.Never);
-        yield return (16, Valid.Since(Spec.JovianTimeStamp));
-        yield return (17, Valid.Never);
+        yield return (16, Valid.Never);
     }
 
     [Test]
@@ -66,23 +75,79 @@ public class OptimismPayloadAttributesTests
         [ValueSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))] Fork fork
     )
     {
-        OptimismPayloadAttributes payloadAttributes = new()
-        {
-            GasLimit = 1,
-            Transactions = [],
-            PrevRandao = Hash256.Zero,
-            SuggestedFeeRecipient = TestItem.AddressA,
-            Timestamp = fork.Timestamp,
-            EIP1559Params = testCase.length is { } length ? new byte[length] : null,
-            ParentBeaconBlockRoot = Hash256.Zero,
-            Withdrawals = []
-        };
+        ulong? minBaseFee = fork.Timestamp >= Spec.JovianTimeStamp ? 0 : null;
+        OptimismPayloadAttributes payloadAttributes = BuildAttributes(fork.Timestamp, testCase.length is { } length ? new byte[length] : null, minBaseFee);
 
-        ISpecProvider spec = Spec.BuildFor(fork.Timestamp);
+        AssertValidation(payloadAttributes, fork.Timestamp, testCase.isValid);
+    }
+
+    private static IEnumerable<(ulong? minBaseFee, Valid isValid)> Validate_MinBaseFee_TestCases()
+    {
+        yield return (null, Valid.Before(Spec.JovianTimeStamp));
+        yield return (0, Valid.Since(Spec.JovianTimeStamp));
+        yield return (1_000_000, Valid.Since(Spec.JovianTimeStamp));
+    }
+
+    [Test]
+    public void Validate_MinBaseFee(
+        [ValueSource(nameof(Validate_MinBaseFee_TestCases))] (ulong? minBaseFee, Valid isValid) testCase,
+        [ValueSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))] Fork fork
+    )
+    {
+        byte[]? eip1559Params = fork.Timestamp >= Spec.HoloceneTimeStamp ? new byte[8] : null;
+        OptimismPayloadAttributes payloadAttributes = BuildAttributes(fork.Timestamp, eip1559Params, testCase.minBaseFee);
+
+        AssertValidation(payloadAttributes, fork.Timestamp, testCase.isValid);
+    }
+
+    /// <remarks>
+    /// op-node and op-geth send an 8-byte <c>eip1559Params</c> and a separate <c>minBaseFee</c> encoded as a JSON number.
+    /// </remarks>
+    [Test]
+    public void Accepts_Jovian_attributes_in_op_node_encoding()
+    {
+        string json = $$"""
+            {
+              "timestamp": "0x{{Spec.JovianTimeStamp:x}}",
+              "prevRandao": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "suggestedFeeRecipient": "0x4200000000000000000000000000000000000011",
+              "withdrawals": [],
+              "parentBeaconBlockRoot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "transactions": [],
+              "noTxPool": true,
+              "gasLimit": "0x1c9c380",
+              "eip1559Params": "0x000000fa00000006",
+              "minBaseFee": 1000000
+            }
+            """;
+
+        OptimismPayloadAttributes payloadAttributes = new EthereumJsonSerializer().Deserialize<OptimismPayloadAttributes>(json)!;
+
+        AssertValidation(payloadAttributes, Spec.JovianTimeStamp, Valid.Since(Spec.JovianTimeStamp));
+        Assert.That(payloadAttributes.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out _), Is.True);
+        Assert.That(parameters, Is.EqualTo(new EIP1559Parameters(1, 250, 6, 1_000_000)));
+    }
+
+    private static OptimismPayloadAttributes BuildAttributes(ulong timestamp, byte[]? eip1559Params, ulong? minBaseFee) => new()
+    {
+        GasLimit = 1,
+        Transactions = [],
+        PrevRandao = Hash256.Zero,
+        SuggestedFeeRecipient = TestItem.AddressA,
+        Timestamp = timestamp,
+        EIP1559Params = eip1559Params,
+        MinBaseFee = minBaseFee,
+        ParentBeaconBlockRoot = Hash256.Zero,
+        Withdrawals = []
+    };
+
+    private static void AssertValidation(OptimismPayloadAttributes payloadAttributes, ulong timestamp, Valid isValid)
+    {
+        ISpecProvider spec = Spec.BuildFor(timestamp);
 
         Assert.That(
             payloadAttributes.Validate(spec, EngineApiVersions.Fcu.V3, out string? error),
-            testCase.isValid.On(fork.Timestamp)
+            isValid.On(timestamp)
                 ? Is.EqualTo(PayloadAttributesValidationResult.Success)
                 : Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes),
             () => error!
