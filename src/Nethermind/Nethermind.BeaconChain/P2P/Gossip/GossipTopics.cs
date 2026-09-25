@@ -69,7 +69,10 @@ public static class GossipTopics
     {
         forkDigest = null;
         name = null;
-        if (!topic.StartsWith(TopicPrefix, StringComparison.Ordinal) || !topic.EndsWith(TopicSuffix, StringComparison.Ordinal))
+        // The prefix and suffix share a slash, so a topic shorter than both would slice to a negative length.
+        if (topic.Length < TopicPrefix.Length + TopicSuffix.Length
+            || !topic.StartsWith(TopicPrefix, StringComparison.Ordinal)
+            || !topic.EndsWith(TopicSuffix, StringComparison.Ordinal))
         {
             return false;
         }

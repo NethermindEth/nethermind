@@ -41,6 +41,7 @@ public class GossipMessageValidatorTests
 
         yield return Case("signed message", Topic(GloasDigest, GossipTopics.BeaconBlock), validBlock, MessageValidity.Rejected, null, GossipDropReason.SignedMessage, signed: true);
         yield return Case("unparseable topic", "/eth2/beacon_block", validBlock, MessageValidity.Rejected, null, GossipDropReason.UnknownTopic);
+        yield return Case("topic whose prefix and suffix overlap", "/eth2/ssz_snappy", validBlock, MessageValidity.Rejected, null, GossipDropReason.UnknownTopic);
         yield return Case("unknown eth2 topic name", Topic(GloasDigest, "beacon_blocks"), validBlock, MessageValidity.Rejected, null, GossipDropReason.UnknownTopic);
         yield return Case("eth2 topic this node does not subscribe", Topic(GloasDigest, GossipTopics.VoluntaryExit),
             Compress(SignedVoluntaryExit.Encode(new SignedVoluntaryExit { Message = new VoluntaryExit { Epoch = 1, ValidatorIndex = 2 } })), MessageValidity.Ignored, null, GossipDropReason.UnknownTopic);
@@ -91,11 +92,11 @@ public class GossipMessageValidatorTests
         yield return Case("Fulu aggregate with data index 1", Topic(FuluDigest, GossipTopics.BeaconAggregateAndProof), Encode(FuluAggregate(index: 1)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
 
         yield return Case("Gloas attester slashing is consumed", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [2, 3], secondSource: 2, secondTarget: 3)), MessageValidity.Ignored, typeof(AttesterSlashingGloas), null);
-        yield return Case("attester slashing of non-slashable data", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [2, 3], secondSource: 5, secondTarget: 6)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
+        yield return Case("attester slashing of non-slashable data is only dropped", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [2, 3], secondSource: 5, secondTarget: 6)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
         yield return Case("attester slashing with no common index", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [3, 4], secondSource: 2, secondTarget: 3)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
-        yield return Case("no common index IGNORE precedes the non-slashable REJECT", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [3, 4], secondSource: 5, secondTarget: 6)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
+        yield return Case("no common index is dropped whatever the attestation data", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [3, 4], secondSource: 5, secondTarget: 6)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
         yield return Case("Fulu attester slashing is consumed", Topic(FuluDigest, GossipTopics.AttesterSlashing), Encode(FuluSlashing([1, 2], [2, 3], secondSource: 2, secondTarget: 3)), MessageValidity.Ignored, typeof(AttesterSlashing), null);
-        yield return Case("Fulu attester slashing of non-slashable data", Topic(FuluDigest, GossipTopics.AttesterSlashing), Encode(FuluSlashing([1, 2], [2, 3], secondSource: 5, secondTarget: 6)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
+        yield return Case("Fulu attester slashing of non-slashable data is only dropped", Topic(FuluDigest, GossipTopics.AttesterSlashing), Encode(FuluSlashing([1, 2], [2, 3], secondSource: 5, secondTarget: 6)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
         yield return Case("Fulu attester slashing with no common index", Topic(FuluDigest, GossipTopics.AttesterSlashing), Encode(FuluSlashing([1, 2], [3, 4], secondSource: 5, secondTarget: 6)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
 
         yield return Case("execution payload envelope is consumed", Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope()), MessageValidity.Ignored, typeof(SignedExecutionPayloadEnvelope), null);
