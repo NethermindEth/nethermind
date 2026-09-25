@@ -108,7 +108,7 @@ public class P2PProtocolHandler(
                 {
                     if (_receivedHello)
                     {
-                        DisconnectRepeatedHello();
+                        DisconnectBreachOfProtocol("Repeated Hello message");
                         break;
                     }
 
@@ -189,7 +189,7 @@ public class P2PProtocolHandler(
                     break;
                 }
             default:
-                DisconnectUnhandledPacket(msg.PacketType);
+                DisconnectBreachOfProtocol($"Unknown P2P message type {msg.PacketType}");
                 break;
         }
 
@@ -232,17 +232,8 @@ public class P2PProtocolHandler(
             => Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void DisconnectUnhandledPacket(int packetType)
+        void DisconnectBreachOfProtocol(string details)
         {
-            string details = $"Unknown P2P message type {packetType}";
-            if (Logger.IsDebug) Logger.Debug($"{Session.RemoteNodeId} {details}");
-            Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void DisconnectRepeatedHello()
-        {
-            const string details = "Repeated Hello message";
             if (Logger.IsDebug) Logger.Debug($"{Session.RemoteNodeId} {details}");
             Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
         }
