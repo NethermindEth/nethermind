@@ -345,6 +345,7 @@ public class CertainBatchLookupTests
         Substitute.For<ILogManager>(),
         Substitute.For<ITxPool>(),
         blockFinder ?? Substitute.For<IBlockFinder>(),
+        Substitute.For<IBlockTree>(),
         Substitute.For<IShareableTxProcessorSource>(),
         TxDecoder.Instance,
         l1OriginStore,

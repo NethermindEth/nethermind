@@ -274,6 +274,7 @@ public class TxPoolContentListsTests
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,
+            Substitute.For<IBlockTree>(),
             shareableTxProcessor,
             TxDecoder.Instance,
             Substitute.For<IL1OriginStore>(),
