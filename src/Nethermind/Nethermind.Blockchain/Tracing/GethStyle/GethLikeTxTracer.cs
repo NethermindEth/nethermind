@@ -12,7 +12,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
+public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOperationStorage
 {
     private readonly RefundTracker? _refundTracker;
 
@@ -103,6 +103,17 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
         _refundTracker?.RestoreSnapshot();
     }
 
+    /// <inheritdoc/>
+    public void ReportStorageAttempt(Address address, UInt256 key, UInt256 value)
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        value.ToBigEndian(bytes);
+        SetOperationStorage(address, key, bytes, ReadOnlySpan<byte>.Empty);
+    }
+
+    /// <inheritdoc/>
+    public virtual void ReportStorageRefund(long refund) { }
+
     protected void ResetRefund() => _refundTracker?.Reset();
 
     public virtual GethLikeTxTrace BuildResult() => Trace;
@@ -162,6 +173,13 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
             CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
             _gasCostAlreadySetForCurrentOp = true;
         }
+    }
+
+    /// <inheritdoc/>
+    public override void ReportStorageRefund(long refund)
+    {
+        if (CurrentTraceEntry is not null)
+            CurrentTraceEntry.Refund = CurrentRefund + refund;
     }
 
     public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry?.UpdateMemorySize(newSize);
