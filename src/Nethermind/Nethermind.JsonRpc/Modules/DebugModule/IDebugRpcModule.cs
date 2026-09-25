@@ -26,7 +26,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
     [JsonRpcMethod(
-        Description = "Updates / resets head block - use only when the node got stuck due to DB / memory corruption (Nethermind specific).",
+        Description = "Moves the head to the given block and drops state kept for other branches; returns false when the block is unknown or cannot be made the head (Nethermind specific).",
         IsSharable = true)]
     ResultWrapper<bool> debug_resetHead(Hash256 blockHash);
 
@@ -36,10 +36,10 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "This method lets you run an eth_call within the context of the given block execution using the final state of parent block as the base. The block can be specified either by hash or by number. It takes the same input object as a eth_call. It returns the same output as debug_traceTransaction.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
-    [JsonRpcMethod(Description = "", IsSharable = false)]
+    [JsonRpcMethod(Description = "Returns the full stack trace of the transaction at the given index of the block specified by number, tag or hash. The block that the parameter resolves to is the one traced, so a hash that is not on the canonical chain traces that block rather than the canonical one at the same height.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex, GethTraceOptions options = null);
 
-    [JsonRpcMethod(Description = "", IsSharable = false)]
+    [JsonRpcMethod(Description = "Returns the full stack trace of the transaction at the given index of the block with the specified hash. The block need not be on the canonical chain.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockHash, int txIndex, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of all invoked opcodes of all transactions that were included in the block specified. The parent of the block must be present or it will fail.", IsImplemented = true, IsSharable = false)]

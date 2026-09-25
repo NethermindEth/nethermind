@@ -52,7 +52,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         IForkInfo forkInfo,
         ILogManager logManager,
         ITxPoolConfig txPoolConfig,
-        ISpecProvider specProvider,
+        IChainHeadSpecProvider specProvider,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
             gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
@@ -96,14 +96,14 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private ReceiptsResponse FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
         ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-        ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
+        ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
         bool lastBlockIncomplete = false;
 
         try
         {
             ulong responseReceiptsContentSize = 0;
             bool hasNonEmptyReceiptBlock = false;
-            for (int blockIndex = 0; blockIndex < hashes.Length; blockIndex++)
+            for (int blockIndex = 0; blockIndex < hashes.Length && blockIndex < MaxReceiptsLookups; blockIndex++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {

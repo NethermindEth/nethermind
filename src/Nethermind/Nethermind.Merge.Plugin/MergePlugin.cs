@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Memory;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -37,7 +38,6 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
-using Nethermind.Trie.Pruning;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -136,7 +136,7 @@ public class BaseMergePluginModule : Module
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .OnActivate<IMainProcessingContext>(((context, ctx) =>
             {
-                ctx.Resolve<InvalidChainTracker.InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockchainProcessor);
+                ctx.Resolve<InvalidChainTracker.InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockProcessingQueue);
             }))
 
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
@@ -165,7 +165,7 @@ public class BaseMergePluginModule : Module
 
             .AddDecorator<IHealthHintService, MergeHealthHintService>()
 
-            .AddDecorator<IFinalizedStateProvider, MergeFinalizedStateProvider>()
+            .AddDecorator<IStateHeaderProvider, MergeFinalizedStateProvider>()
 
             // Engine rpc related
             .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()
@@ -204,15 +204,9 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IHandler<Hash256?, InclusionListBytes>, GetInclusionListTransactionsHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
-                .AddSingleton<GCKeeper>((ctx) =>
-                {
-                    IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-                    return new GCKeeper(
-                        initConfig.DisableGcOnNewPayload
-                            ? ctx.Resolve<NoSyncGcRegionStrategy>()
-                            : NoGCStrategy.Instance,
-                        ctx.Resolve<ILogManager>());
-                })
+                .AddSingleton<IGCStrategy>(ctx => ctx.Resolve<IInitConfig>().DisableGcOnNewPayload
+                    ? ctx.Resolve<NoSyncGcRegionStrategy>()
+                    : NoGCStrategy.Instance)
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
                 .AddSingleton<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
                 .AddSingleton<IJsonRpcServiceConfigurer, SszMiddlewareConfigurer>()

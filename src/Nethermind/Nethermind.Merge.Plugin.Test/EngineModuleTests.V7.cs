@@ -350,16 +350,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block genesis = chain.BlockFinder.FindGenesisBlock()!;
 
-        PayloadAttributes attrs = new()
-        {
-            Timestamp = genesis.Header.Timestamp + 12,
-            PrevRandao = genesis.Header.Random!,
-            SuggestedFeeRecipient = TestItem.AddressC,
-            Withdrawals = [],
-            ParentBeaconBlockRoot = Keccak.Zero,
-            SlotNumber = 1,
-            TargetGasLimit = genesis.Header.GasLimit,
-        };
+        PayloadAttributes attrs = CreateAmsterdamPayloadAttributes(genesis.Header);
         ForkchoiceStateV1 fcuState = new(genesis.Hash!, genesis.Hash!, genesis.Hash!);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV4(fcuState, attrs);
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
@@ -945,7 +936,8 @@ public partial class EngineModuleTests
                 ? throw new MissingTrieNodeException("Node missing", null, TreePath.Empty, Keccak.Zero)
                 : Inner.TryGetAccount(baseBlock, address, out account);
 
-        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index) => Inner.GetStorage(baseBlock, address, in index);
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) =>
+            Inner.GetStorage(baseBlock, address, in index, out value);
 
         public byte[]? GetCode(Hash256 codeHash) => Inner.GetCode(codeHash);
 

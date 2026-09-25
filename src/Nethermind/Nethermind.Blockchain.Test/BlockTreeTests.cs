@@ -65,7 +65,9 @@ public class BlockTreeTests
         _headersDb?.Dispose();
     }
 
-    private BlockTree BuildBlockTree()
+    private BlockTree BuildBlockTree() => BuildBlockTreeBuilder().TestObject;
+
+    private BlockTreeBuilder BuildBlockTreeBuilder()
     {
         _blocksDb = new TestMemDb();
         _headersDb = new TestMemDb();
@@ -75,7 +77,7 @@ public class BlockTreeTests
             .WithHeadersDb(_headersDb)
             .WithBlockInfoDb(_blocksInfosDb)
             .WithoutSettingHead;
-        return builder.TestObject;
+        return builder;
     }
 
     private static void AddToMain(BlockTree blockTree, Block block0)
@@ -473,6 +475,70 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block1);
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Suggesting_a_block_whose_header_is_already_known_stores_missing_payloads(bool bodyAlreadyStored)
+    {
+        BlockTreeBuilder builder = BuildBlockTreeBuilder();
+        BlockTree blockTree = builder.TestObject;
+        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
+        IBlockStore blockStore = builder.BlockStore;
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        blockTree.SuggestBlock(block0);
+
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block1.EncodedBlockAccessList = encodedBal;
+        block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
+        if (bodyAlreadyStored)
+        {
+            blockStore.Insert(block1);
+        }
+
+        blockTree.Insert(block1.Header); // fast sync inserts headers ahead of the bodies
+
+        AddBlockResult result = blockTree.SuggestBlock(block1);
+
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block1.Number, block1.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
+            Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
+                Is.Not.Null, "a known header must not make the block's body be discarded");
+            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Suggesting_a_block_whose_body_is_already_stored_still_stores_its_access_list()
+    {
+        BlockTreeBuilder builder = BuildBlockTreeBuilder();
+        BlockTree blockTree = builder.TestObject;
+        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        blockTree.SuggestBlock(block0);
+
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
+        blockTree.Insert(block1.Header);
+        blockTree.SuggestBlock(block1); // the bodies feed lands first, carrying no access list
+
+        // the access lists feed descends independently, so the same block can come back carrying only that
+        block1.EncodedBlockAccessList = encodedBal;
+
+        AddBlockResult result = blockTree.SuggestBlock(block1);
+
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block1.Number, block1.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
+            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal),
+                "a stored body must not make the block's access list be discarded");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1490,6 +1556,26 @@ public class BlockTreeTests
             Assert.That(tree.Head?.Header, Is.EqualTo(block5.Header), "head");
             Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
         }
+    }
+
+    [Test]
+    public void Resuggesting_known_longer_lower_difficulty_block_keeps_best_suggested([Values] bool shouldProcess)
+    {
+        BlockTreeSuggestOptions options = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+        BlockTree tree = BuildBlockTree();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        Block a1 = Build.A.Block.WithDifficulty(1).WithParent(genesis).TestObject;
+        Block a2 = Build.A.Block.WithDifficulty(1).WithParent(a1).TestObject;
+        Block a3 = Build.A.Block.WithDifficulty(1).WithParent(a2).TestObject;
+        Block b1 = Build.A.Block.WithDifficulty(5).WithParent(genesis).WithExtraData([1]).TestObject;
+
+        tree.SuggestBlock(genesis);
+        foreach (Block block in new[] { a1, a2, a3, b1 }) tree.SuggestBlock(block, options);
+        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(b1.Hash), "higher difficulty fork");
+
+        tree.SuggestBlock(a3, options);
+
+        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(b1.Hash), "after re-suggesting a3");
     }
 
     [Test]
@@ -2784,6 +2870,22 @@ public class BlockTreeTests
         {
             Assert.That(blockTree.FindBlock(b.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, $"b{b.Number} must be de-canonicalized");
         }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_WhenHeadRewinds_RaisesBlockRemovedFromMainForEachLevelAbove()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
+        Block[] chain = BuildAndSuggestChain(blockTree, genesis, 4);
+        blockTree.TryUpdateMainChain(chain[3].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        List<(Hash256?, bool Added)> events = [];
+        blockTree.BlockRemovedFromMain += (_, e) => events.Add((e.Header.Hash, false));
+        blockTree.BlockAddedToMain += (_, e) => events.Add((e.Block.Hash, true));
+
+        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        Assert.That(events, Is.EqualTo(new[] { (chain[3].Hash, false), (chain[2].Hash, false), (chain[1].Hash, false), (chain[0].Hash, true) }));
     }
 
     [TestCase(1, TestName = "SingleStaleLevel")]

@@ -6,13 +6,14 @@ using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.TxPool;
 
@@ -46,6 +47,7 @@ public partial class EngineRpcModule(
     IBlobCustodyTracker blobCustodyTracker,
     ISpecProvider specProvider,
     GCKeeper gcKeeper,
+    IBlockProcessingQueue processingQueue,
     ILogManager logManager) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
@@ -77,6 +79,7 @@ public partial class EngineRpcModule(
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
+        IBlockProcessingQueue processingQueue,
         ILogManager logManager)
         : this(
             getPayloadHandlerV1,
@@ -106,6 +109,7 @@ public partial class EngineRpcModule(
             new BlobCustodyTracker(),
             specProvider,
             gcKeeper,
+            processingQueue,
             logManager)
     {
     }
@@ -124,7 +128,7 @@ public partial class EngineRpcModule(
     /// <summary>Validates a custody-column update carried by a forkchoice call, and applies it
     /// (execution-apis#793).</summary>
     /// <remarks>Shared by every forkchoice version that accepts the field, so the validation and the
-    /// tracker update cannot drift apart between them. Applying is best-effort per execution-apis#793 —
+    /// tracker update cannot drift apart between them. Applying is best-effort per execution-apis#793 -
     /// a failure is logged and swallowed; only a malformed bitfield is reported back to the caller.</remarks>
     /// <returns><c>null</c> when there is nothing to reject, otherwise the <c>InvalidParams</c> message.</returns>
     private string? ValidateAndApplyCustodyColumns(BitArray? custodyColumns)

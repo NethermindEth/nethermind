@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -38,6 +39,7 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Testably.Abstractions;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -45,19 +47,55 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class JsonRpcServiceTests
 {
+    [TestCase("engine_newPayloadV1", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV99", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadWithWitnessV5", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", false, false, RpcEndpoint.Http)]
+    [TestCase("engine_forkchoiceUpdatedV4", true, false, RpcEndpoint.Http)]
+    [TestCase("eth_call", true, false, RpcEndpoint.Http)]
+    [TestCase("Engine_newPayloadV5", true, false, RpcEndpoint.Http)]
+    [TestCase(null, true, false, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", false, true, RpcEndpoint.IPC)]
+    [TestCase("eth_call", false, false, RpcEndpoint.IPC)]
+    public async Task New_payload_cancels_pending_collection_before_dispatch(string? method, bool authenticated, bool cancels, RpcEndpoint endpoint)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.PostBlockDelayMs.Returns(60_000);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.Yes));
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance);
+        Task pending = keeper.ScheduleGCInternal(throttle: false);
+        IRpcModuleProvider provider = Substitute.For<IRpcModuleProvider>();
+        provider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
+            .Returns(ModuleResolution.Unknown);
+        JsonRpcService service = new(provider, NullLogManager.Instance, new JsonRpcConfig(), keeper);
+        using JsonRpcContext context = new(endpoint, url: new JsonRpcUrl("http", "localhost", 8551, RpcEndpoint.Http, authenticated, ["engine"]));
+        using JsonRpcResponse response = await service.SendRequestAsync(new JsonRpcRequest { Method = method! }, context);
+        if (cancels) await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        else Assert.That(pending.IsCompleted, Is.False);
+        keeper.Dispose();
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     [SetUp]
     public void Initialize()
     {
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
+        _gcKeeper = new GCKeeper(NoGCStrategy.Instance, _logManager);
         _context = new JsonRpcContext(RpcEndpoint.Http);
         // StrictHexFormat is pinned for the whole assembly by StrictHexFormatAssemblySetup; no fixture may touch
         // that static, because it is process-global and every concurrent block-parameter parse reads it (#13204).
     }
 
     [TearDown]
-    public void TearDown() => _context?.Dispose();
+    public void TearDown()
+    {
+        _context?.Dispose();
+        _gcKeeper.Dispose();
+    }
 
+    private GCKeeper _gcKeeper = null!;
     private IJsonRpcService _jsonRpcService = null!;
     private IConfigProvider _configurationProvider = null!;
     private ILogManager _logManager = null!;
@@ -226,7 +264,7 @@ public class JsonRpcServiceTests
     {
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(pool);
-        _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
         Assert.That(response.Id, Is.EqualTo(request.Id));
         return response;
@@ -739,7 +777,7 @@ public class JsonRpcServiceTests
         IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
         moduleProvider.Resolve(Arg.Any<string>()).Throws(new Exception("test"));
 
-        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
@@ -833,7 +871,7 @@ public class JsonRpcServiceTests
                 return resolution;
             });
 
-        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("debug_traceCall");
         using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, _context);
 
@@ -929,6 +967,40 @@ public class JsonRpcServiceTests
             .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
+    }
+
+    [TestCaseSource(nameof(StateUnavailableShapes))]
+    public void State_unavailable_exception_is_resource_unavailable_only_for_state_not_retained(Exception thrown, int expectedCode, string expectedMessage, bool warns)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(thrown);
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), expectedCode, expectedMessage);
+
+        logger.Received(warns ? 1 : 0).Warn(Arg.Is<string>(static text => text.StartsWith("Missing trie node during eth_getLogs")));
+    }
+
+    private static IEnumerable<TestCaseData> StateUnavailableShapes()
+    {
+        StateNotRetainedException notRetained = new("State for block 1 is unavailable");
+        yield return new TestCaseData(notRetained, ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, bare)");
+        yield return new TestCaseData(new TargetInvocationException(notRetained), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, wrapped)");
+        yield return new TestCaseData(MissingTrieNode(notRetained), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, missing-trie wrap)");
+        yield return new TestCaseData(new TargetInvocationException(MissingTrieNode(notRetained)), ErrorCodes.ResourceUnavailable, notRetained.Message, false).SetName("{m}(not retained, wrapped missing-trie wrap)");
+
+        // A history row that cannot be trusted keeps the pre-existing mapping: -32000 with the WARN that is the
+        // operator's only sign of corruption at the default log level, or an internal error when nothing wrapped it.
+        StateUnavailableException untrusted = new("The flat history rows below that path do not reproduce the proven state root");
+        yield return new TestCaseData(MissingTrieNode(untrusted), ErrorCodes.ResourceNotFound, "State proof at historical block 1 is unavailable", true).SetName("{m}(untrusted, missing-trie wrap)");
+        yield return new TestCaseData(untrusted, ErrorCodes.InternalError, "Internal error", false).SetName("{m}(untrusted, bare)");
+        yield return new TestCaseData(new TargetInvocationException(untrusted), ErrorCodes.InternalError, "Internal error", false).SetName("{m}(untrusted, wrapped)");
+
+        static MissingTrieNodeException MissingTrieNode(StateUnavailableException inner) =>
+            new("State proof at historical block 1 is unavailable", null, TreePath.Empty, TestItem.KeccakA, inner);
     }
 
     [RpcModule(ModuleType.Eth)]

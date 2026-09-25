@@ -24,6 +24,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.P2P.Messages;
@@ -90,7 +91,7 @@ public class XdcProtocolVersionTests
     {
         using Peer peer = Peer.Create(XdcProtocolVersions.Xdc165);
         peer.ReceiveStatus();
-        peer.TxPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+        peer.TxPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
         peer.Serializer.Deserialize<NewPooledTransactionHashesMessage>(Arg.Any<IByteBuffer>())
             .Returns(new NewPooledTransactionHashesMessage(new[] { TestItem.KeccakA }.ToPooledList()));
@@ -156,7 +157,7 @@ public class XdcProtocolVersionTests
             IForkInfo forkInfo = Substitute.For<IForkInfo>();
             XdcConsensusMessageHandler.Factory consensusMessages = new(
                 Substitute.For<ITimeoutCertificateManager>(), votesManager, Substitute.For<ISyncInfoManager>(),
-                blockTree, LimboLogs.Instance);
+                blockTree, Substitute.For<ISyncPeerPool>(), LimboLogs.Instance);
 
             ZeroProtocolHandlerBase handler = version switch
             {

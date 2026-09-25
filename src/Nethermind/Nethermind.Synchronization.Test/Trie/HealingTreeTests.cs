@@ -345,7 +345,7 @@ public class HealingTreeTests
             mainWorldState.CreateAccount(storageAddress, 100, 100);
             for (int i = 1; i < 100; i++)
             {
-                mainWorldState.Set(new StorageCell(storageAddress, (UInt256)i), i.ToBigEndianByteArray());
+                mainWorldState.Set(new StorageCell(storageAddress, (UInt256)i), new UInt256(i.ToBigEndianByteArray(), isBigEndian: true));
             }
 
             mainWorldState.CreateAccount(_codeAddress, 1, 1);
@@ -402,7 +402,8 @@ public class HealingTreeTests
             Assert.That(mainWorldState.GetNonce(storageAddress), Is.EqualTo(100ul));
             for (int i = 1; i < 100; i++)
             {
-                Assert.That(mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i)).ToArray(), Is.EqualTo(i.ToBigEndianByteArray()));
+                mainWorldState.Get(new StorageCell(storageAddress, (UInt256)i), out UInt256 storageValue1);
+                Assert.That(storageValue1, Is.EqualTo((UInt256)i));
             }
 
             if (keyScheme == INodeStorage.KeyScheme.HalfPath)
