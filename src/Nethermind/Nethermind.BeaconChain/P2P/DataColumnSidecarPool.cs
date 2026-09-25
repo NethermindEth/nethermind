@@ -23,7 +23,8 @@ namespace Nethermind.BeaconChain.P2P;
 /// The slot-to-root index is itself LRU-bounded to the same capacity: an unbounded map keyed by slot
 /// would otherwise grow for as long as the process runs, one entry per slot forever. It is
 /// last-write-wins and untracked against reorgs: a sidecar added for a slot that is later reorged out
-/// is only replaced once a sidecar for the new canonical block at that slot is added.
+/// is only replaced once a sidecar for the new canonical block at that slot is added, so by-range
+/// serving never reads it and looks up the canonical root's sidecars by (root, column) instead.
 /// Gloas sidecars (<see cref="DataColumnSidecarGloas"/>) sit in their own map with the same bound and
 /// no slot index: a slot can carry competing blocks, so by-range serving must resolve the canonical
 /// root first and look up by (root, column). A Gloas sidecar whose block is not yet known can be
