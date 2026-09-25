@@ -144,15 +144,16 @@ Browser-based clients send an `Origin` header, and the server rejects any origin
 #### curl
 
 With protocol version `2026-07-28` there is no `initialize` handshake. Every request carries the protocol version in
-both the `MCP-Protocol-Version` header and `params._meta`, names its method in the `Mcp-Method` header, and a
-`tools/call` request names its tool in the `Mcp-Name` header.
+both the `MCP-Protocol-Version` header and `params._meta`, names its method in the `Mcp-Method` header. Requests that target one item also name it in the `Mcp-Name` header: the
+tool for `tools/call`, the URI for `resources/read` and the prompt for `prompts/get`. Without it the server answers
+HTTP 400, `Missing required Mcp-Name header`.
 
 ```bash
 MCP_URL=http://127.0.0.1:8555/mcp
 MCP_TOKEN=$(cat mcp.token)
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"curl","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}'
 
-# Usage: mcp <method> <params members> [tool name]
+# Usage: mcp <method> <params members> [tool name | resource URI | prompt name]
 mcp() {
   local extra=()
   [ -n "$3" ] && extra=(-H "Mcp-Name: $3")
@@ -176,6 +177,12 @@ mcp tools/list "$META"
 mcp tools/call "\"name\":\"chain_info\",\"arguments\":{},$META" chain_info
 mcp tools/call "\"name\":\"node_status\",\"arguments\":{},$META" node_status
 mcp tools/call "\"name\":\"get_block\",\"arguments\":{\"block\":\"finalized\"},$META" get_block
+
+# Resources and prompts
+mcp resources/list "$META"
+mcp resources/read "\"uri\":\"nethermind://guide\",$META" nethermind://guide
+mcp prompts/list "$META"
+mcp prompts/get "\"name\":\"why_did_my_transaction_fail\",\"arguments\":{\"hash\":\"0x...\"},$META" why_did_my_transaction_fail
 ```
 
 Clients on earlier protocol versions use the `initialize` handshake. Because the server is stateless, later requests
