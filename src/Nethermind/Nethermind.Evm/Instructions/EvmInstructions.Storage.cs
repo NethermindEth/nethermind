@@ -551,7 +551,10 @@ public static partial class EvmInstructions
                     if (!TGasPolicy.TryConsumeStorageWrite<TEip8037, OffFlag, Eip8038>(ref gas, spec))
                     {
                         if (TTracingInst.IsActive && !TEip8037.IsActive && !Eip8038.IsActive)
+                        {
                             vm.TraceOperationGasCost(traceStorageAccessCost + gasCosts.SStoreResetCost);
+                            if (newIsZero) vm.TraceStorageRefund(sClearRefunds);
+                        }
                         goto OutOfGas;
                     }
 

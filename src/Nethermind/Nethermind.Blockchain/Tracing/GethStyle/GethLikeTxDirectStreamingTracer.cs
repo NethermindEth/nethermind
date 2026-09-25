@@ -180,6 +180,12 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceAc
         _pendingError ??= GetErrorDescription(error);
     }
 
+    /// <inheritdoc/>
+    public override void ReportStorageRefund(long refund)
+    {
+        if (_hasPendingOpcode) _pendingRefund = CurrentRefund + refund;
+    }
+
     public override void SetOperationMemorySize(ulong newSize)
     {
         // Memory size is implicit in the data captured by SetOperationMemory — no separate field in JSON.

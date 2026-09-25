@@ -197,6 +197,13 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> StorageOpcodeCases()
     {
+        foreach (TestCaseData scenario in StorageOpcodeScenarios())
+            foreach (bool disableStack in new[] { false, true })
+                yield return new TestCaseData([.. scenario.Arguments, disableStack]);
+    }
+
+    private static System.Collections.Generic.IEnumerable<TestCaseData> StorageOpcodeScenarios()
+    {
         foreach (ForkActivation activation in new[] { MainnetSpecProvider.CancunActivation, MainnetSpecProvider.PragueActivation })
         {
             yield return new TestCaseData(activation, "6000600055", 24000UL, 1UL, 5000UL, "out of gas");
@@ -212,15 +219,15 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(StorageOpcodeCases))]
-    public void Storage_opcode_reports_cost_and_error(ForkActivation activation, string bytecode, ulong gasLimit, ulong initialValue, ulong expectedCost, string? expectedError)
+    public void Storage_opcode_reports_cost_and_error(ForkActivation activation, string bytecode, ulong gasLimit, ulong initialValue, ulong expectedCost, string? expectedError, bool disableStack)
     {
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(activation);
         TestState.CreateAccount(Recipient, 1.Ether);
         TestState.Set(new StorageCell(Recipient, 0), (Nethermind.Int256.UInt256)initialValue);
         TestState.Commit(spec);
         (Block block, Transaction tx) = PrepareTx(activation, gasLimit, Bytes.FromHexString(bytecode));
-        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default);
-        _processor.CallAndRestore(tx, block.Header, tracer);
+        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default with { DisableStack = disableStack });
+        _processor.CallAndRestore(tx, block.Header, new CompositeTxTracer(NullTxTracer.Instance, tracer.WithCancellation(CancellationToken.None)));
         using GethLikeTxTrace result = tracer.BuildResult();
         GethTxTraceEntry? lastStorage = null;
         foreach (GethTxTraceEntry entry in result.Entries)
@@ -230,7 +237,34 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             Assert.That(lastStorage!.GasCost, Is.EqualTo(expectedCost));
             Assert.That(lastStorage.Error, Is.EqualTo(expectedError));
+            ulong expectedValue = bytecode switch
+            {
+                "6000600055" => 0,
+                "6001600055" => 1,
+                _ => 2
+            };
+            using JsonDocument json = JsonDocument.Parse(JsonSerializer.Serialize(result, SerializerOptions));
+            JsonElement storageEntry = json.RootElement.GetProperty("structLogs")[result.Entries.IndexOf(lastStorage)];
+            bool hasStorage = storageEntry.TryGetProperty("storage", out JsonElement storage);
+            Assert.That(hasStorage, Is.True);
+            if (hasStorage)
+                Assert.That(storage.GetProperty("0x" + new string('0', 64)).GetString(), Is.EqualTo("0x" + expectedValue.ToString("x64")));
+            Assert.That(lastStorage.Refund, Is.EqualTo(expectedValue == 0 ? (long?)spec.GasCosts.SClearRefund : null));
         }
+
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            using GethLikeTxDirectStreamingTracer streaming = new(tx, GethTraceOptions.Default with { DisableStack = disableStack }, writer, null, CancellationToken.None);
+            writer.WriteStartArray();
+            _processor.CallAndRestore(tx, block.Header, streaming.WithCancellation(CancellationToken.None));
+            using GethLikeTxTrace streamedResult = streaming.BuildResult();
+            writer.WriteEndArray();
+            writer.Flush();
+        }
+        using JsonDocument streamed = JsonDocument.Parse(buffer.WrittenMemory);
+        using JsonDocument expected = JsonDocument.Parse(JsonSerializer.Serialize(result, SerializerOptions));
+        Assert.That(JsonElement.DeepEquals(streamed.RootElement, expected.RootElement.GetProperty("structLogs")), Is.True);
     }
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> OutOfGasTraceCases()
