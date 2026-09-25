@@ -30,13 +30,12 @@ namespace Nethermind.Mcp.Plugin.Tools;
 /// <see cref="CallToolResult.IsError"/> and carry <c>{"error": {"code", "message", "data"?}}</c> with a code from
 /// <see cref="McpToolErrorCodes"/>.
 /// </remarks>
-/// <param name="rpcModuleProvider">The provider eth modules are rented from.</param>
+/// <param name="executor">Runs tool bodies against rented modules under the MCP limits.</param>
 /// <param name="blockFinder">Resolves <c>get_logs</c> block selectors to numbers before the range check.</param>
 /// <param name="config">The MCP limits.</param>
 /// <param name="rpcConfig">The JSON-RPC configuration; <see cref="IJsonRpcConfig.GasCap"/> also caps <c>call</c> gas.</param>
-/// <param name="logManager">The log manager.</param>
 [McpServerToolType]
-public sealed class McpEthTools(IRpcModuleProvider rpcModuleProvider, IBlockFinder blockFinder, IMcpConfig config, IJsonRpcConfig rpcConfig, ILogManager logManager)
+internal sealed class McpEthTools(McpToolExecutor executor, IBlockFinder blockFinder, IMcpConfig config, IJsonRpcConfig rpcConfig) : IMcpToolSet
 {
     private const string BlockSelectorDescription =
         "Block selector: \"latest\", \"earliest\", \"safe\", \"finalized\", a block number as a 0x-prefixed hex string (\"0x12a05f2\") " +
@@ -46,41 +45,23 @@ public sealed class McpEthTools(IRpcModuleProvider rpcModuleProvider, IBlockFind
     private const string TransactionHashDescription = "32-byte transaction hash: 0x followed by 64 hex characters.";
     private const int LogCancellationCheckInterval = 64;
 
-    private readonly McpToolExecutor _executor = new(rpcModuleProvider, config, logManager);
+    private readonly McpToolExecutor _executor = executor;
     private readonly ulong _maxCallGas = Math.Min((ulong)Math.Max(1, config.MaxCallGas), rpcConfig.GasCap.EffectiveGasCap());
     private readonly int _maxCallDataSize = Math.Max(0, config.MaxCallDataSize);
     private readonly ulong _maxLogBlockRange = (ulong)Math.Max(1, config.MaxLogBlockRange);
     private readonly int _maxLogs = Math.Max(1, config.MaxLogs);
     private readonly int _maxResultSize = Math.Max(1, config.MaxResultSize);
 
-    /// <summary>Creates the MCP server tool descriptors for every tool method of this instance.</summary>
-    internal IReadOnlyList<McpServerTool> CreateServerTools()
+    /// <inheritdoc/>
+    public IEnumerable<McpServerTool> CreateServerTools() => McpToolFactory.Create(this, DescribeLimits, _maxResultSize);
+
+    // Descriptions are static attributes, so this node's actual limits are appended here.
+    private string DescribeLimits(MethodInfo method) => method.Name switch
     {
-        MethodInfo[] methods = typeof(McpEthTools).GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly);
-        List<McpServerTool> tools = new(methods.Length);
-        foreach (MethodInfo method in methods)
-        {
-            if (method.GetCustomAttribute<McpServerToolAttribute>() is null)
-            {
-                continue;
-            }
-
-            // Descriptions are static attributes, so this node's actual limits are appended here.
-            string limits = method.Name switch
-            {
-                nameof(GetLogs) => $" Limits on this node: at most {_maxLogBlockRange} blocks per range and {_maxLogs} logs per result.",
-                nameof(Call) => $" Limits on this node: gas at most {_maxCallGas}, data at most {_maxCallDataSize} bytes.",
-                _ => string.Empty
-            };
-            McpServerToolCreateOptions options = new()
-            {
-                Description = $"{method.GetCustomAttribute<DescriptionAttribute>()?.Description}{limits} Results larger than {_maxResultSize} bytes fail with resource_exhausted."
-            };
-            tools.Add(McpServerTool.Create(method, this, options));
-        }
-
-        return tools;
-    }
+        nameof(GetLogs) => $" Limits on this node: at most {_maxLogBlockRange} blocks per range and {_maxLogs} logs per result.",
+        nameof(Call) => $" Limits on this node: gas at most {_maxCallGas}, data at most {_maxCallDataSize} bytes.",
+        _ => string.Empty
+    };
 
     /// <summary>Returns the chain ID and the current head block number and hash.</summary>
     [McpServerTool(Name = "chain_info", Title = "Chain info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]

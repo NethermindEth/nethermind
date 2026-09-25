@@ -34,7 +34,7 @@ namespace Nethermind.Mcp.Plugin;
 public sealed class McpHost(
     IMcpConfig config,
     IJsonRpcConfig jsonRpcConfig,
-    McpEthTools tools,
+    McpToolCatalog tools,
     ILogManager logManager,
     IMetricsConfig? metricsConfig = null) : IAsyncDisposable, IDisposable, IStoppableService
 {

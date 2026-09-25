@@ -18,4 +18,9 @@ public class McpConfig : IMcpConfig
     public int MaxLogs { get; set; } = 10_000;
     public long MaxCallGas { get; set; } = 50_000_000;
     public int MaxCallDataSize { get; set; } = 128 * 1024;
+    public string? TlsCertificatePath { get; set; }
+    public string? TlsCertificateKeyPath { get; set; }
+    public string[] AllowedHosts { get; set; } = [];
+    public long MaxIndexedLogBlockRange { get; set; } = 1_000_000;
+    public int MaxTraceCalls { get; set; } = 2000;
 }

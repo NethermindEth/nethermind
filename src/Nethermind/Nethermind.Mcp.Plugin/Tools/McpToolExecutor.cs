@@ -58,11 +58,28 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
     /// <param name="body">The tool body; it must finish using the module (including lazy results) before returning.</param>
     /// <param name="cancellationToken">The MCP request token.</param>
     /// <exception cref="OperationCanceledException">The client cancelled the request.</exception>
-    public async Task<CallToolResult> ExecuteAsync(
+    public Task<CallToolResult> ExecuteAsync(
         string toolName,
         string rpcMethod,
         Func<IEthRpcModule, CancellationToken, Task<CallToolResult>> body,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        ExecuteAsync<IEthRpcModule>(toolName, rpcMethod, body, cancellationToken);
+
+    /// <summary>
+    /// Rents the <typeparamref name="TModule"/> module serving <paramref name="rpcMethod"/>, runs <paramref name="body"/> on it
+    /// and returns its result, under the MCP concurrency and time limits.
+    /// </summary>
+    /// <typeparam name="TModule">The JSON-RPC module interface that declares <paramref name="rpcMethod"/>.</typeparam>
+    /// <param name="toolName">The MCP tool name, used in log messages.</param>
+    /// <param name="rpcMethod">The JSON-RPC method whose pool and sharing mode the rental follows.</param>
+    /// <param name="body">The tool body; it must finish using the module (including lazy results) before returning.</param>
+    /// <param name="cancellationToken">The MCP request token.</param>
+    /// <exception cref="OperationCanceledException">The client cancelled the request.</exception>
+    public async Task<CallToolResult> ExecuteAsync<TModule>(
+        string toolName,
+        string rpcMethod,
+        Func<TModule, CancellationToken, Task<CallToolResult>> body,
+        CancellationToken cancellationToken) where TModule : class, IRpcModule
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -195,11 +212,11 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
         return CreateResult(buffer.WrittenSpan, isError: true);
     }
 
-    private async Task<CallToolResult> RunAndReleaseAsync(
+    private async Task<CallToolResult> RunAndReleaseAsync<TModule>(
         string toolName,
         string rpcMethod,
-        Func<IEthRpcModule, CancellationToken, Task<CallToolResult>> body,
-        CancellationToken cancellationToken)
+        Func<TModule, CancellationToken, Task<CallToolResult>> body,
+        CancellationToken cancellationToken) where TModule : class, IRpcModule
     {
         try
         {
@@ -213,11 +230,11 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
         }
     }
 
-    private async Task<CallToolResult> RunRentedAsync(
+    private async Task<CallToolResult> RunRentedAsync<TModule>(
         string toolName,
         string rpcMethod,
-        Func<IEthRpcModule, CancellationToken, Task<CallToolResult>> body,
-        CancellationToken cancellationToken)
+        Func<TModule, CancellationToken, Task<CallToolResult>> body,
+        CancellationToken cancellationToken) where TModule : class, IRpcModule
     {
         RpcModuleProvider.ResolvedMethodInfo? method = null;
         IRpcModule? module = null;
@@ -233,13 +250,13 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
             }
 
             module = await rpcModuleProvider.Rent(method);
-            if (module is not IEthRpcModule ethModule)
+            if (module is not TModule typedModule)
             {
-                return Error(McpToolErrorCodes.Unavailable, $"The eth JSON-RPC module is not available on this node.");
+                return Error(McpToolErrorCodes.Unavailable, $"The JSON-RPC module serving {rpcMethod} is not available on this node.");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            return await body(ethModule, cancellationToken);
+            return await body(typedModule, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -265,6 +282,37 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
                 rpcModuleProvider.Return(method!, module);
             }
         }
+    }
+
+    /// <summary>
+    /// Rents an additional module for use inside a running tool body, without taking another concurrency slot.
+    /// </summary>
+    /// <remarks>
+    /// Only call this from a body started by <see cref="ExecuteAsync{TModule}"/>; the lease must be disposed before the body
+    /// returns so the module goes back to its pool. Rental failures surface as the same exceptions
+    /// <see cref="ExecuteAsync{TModule}"/> maps to error results.
+    /// </remarks>
+    /// <returns>A lease whose <see cref="ModuleLease{TModule}.Module"/> is <see langword="null"/> if the method is unavailable.</returns>
+    public async Task<ModuleLease<TModule>> RentAsync<TModule>(string rpcMethod) where TModule : class, IRpcModule
+    {
+        RpcModuleProvider.ResolvedMethodInfo? method = rpcModuleProvider.Resolve(rpcMethod);
+        if (method is null)
+        {
+            return default;
+        }
+
+        IRpcModule module = await rpcModuleProvider.Rent(method);
+        if (module is TModule typed)
+        {
+            return new ModuleLease<TModule>(rpcModuleProvider, method, typed);
+        }
+
+        if (module is not null)
+        {
+            rpcModuleProvider.Return(method, module);
+        }
+
+        return default;
     }
 
     private CallToolResult TimeoutError() =>
@@ -303,5 +351,22 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
         }
 
         return builder.ToString();
+    }
+}
+
+/// <summary>A module rented by <see cref="McpToolExecutor.RentAsync{TModule}"/>; disposing it returns the module to its pool.</summary>
+internal readonly struct ModuleLease<TModule>(IRpcModuleProvider provider, RpcModuleProvider.ResolvedMethodInfo method, TModule module) : IDisposable
+    where TModule : class, IRpcModule
+{
+    /// <summary>Gets the rented module, or <see langword="null"/> when the method is unavailable on this node.</summary>
+    public TModule? Module => module;
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        if (module is not null)
+        {
+            provider.Return(method, module);
+        }
     }
 }

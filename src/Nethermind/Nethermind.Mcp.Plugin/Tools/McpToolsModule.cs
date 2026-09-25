@@ -12,6 +12,16 @@ public sealed class McpToolsModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
-        builder.AddSingleton<McpEthTools>();
+        builder
+            .AddSingleton<McpToolExecutor>()
+            .AddSingleton<McpChainProfile>()
+            .AddSingleton<McpToolCatalog>();
+
+        // Every tool set in this assembly is served, so adding a tool set needs no registration change.
+        builder.RegisterAssemblyTypes(typeof(McpToolsModule).Assembly)
+            .Where(static type => typeof(IMcpToolSet).IsAssignableFrom(type) && type is { IsClass: true, IsAbstract: false })
+            .AsSelf()
+            .As<IMcpToolSet>()
+            .SingleInstance();
     }
 }

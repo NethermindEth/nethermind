@@ -13,8 +13,8 @@ public interface IMcpConfig : IConfig
     [ConfigItem(Description = "Whether to start the MCP server.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    /// <summary>Gets or sets the address the MCP listener binds to. Only loopback addresses are accepted.</summary>
-    [ConfigItem(Description = "The loopback IP address the MCP listener binds to. Non-loopback addresses are rejected at startup.", DefaultValue = "127.0.0.1")]
+    /// <summary>Gets or sets the IP address the MCP listener binds to.</summary>
+    [ConfigItem(Description = "The IP address the MCP listener binds to. A non-loopback address enables remote mode, which requires `TlsCertificatePath`, `TlsCertificateKeyPath`, `AuthTokenFile` and `AllowedHosts`.", DefaultValue = "127.0.0.1")]
     string Host { get; set; }
 
     /// <summary>Gets or sets the TCP port of the MCP listener.</summary>
@@ -60,4 +60,24 @@ public interface IMcpConfig : IConfig
     /// <summary>Gets or sets the maximum size of `call` input data, in bytes.</summary>
     [ConfigItem(Description = "The maximum size of the `call` tool input data, in bytes.", DefaultValue = "131072")]
     int MaxCallDataSize { get; set; }
+
+    /// <summary>Gets or sets the path to the PEM certificate served in remote mode.</summary>
+    [ConfigItem(Description = "Path to the PEM-encoded TLS certificate (chain) served by the MCP listener. Required in remote mode; also enables HTTPS on loopback.", DefaultValue = "null")]
+    string? TlsCertificatePath { get; set; }
+
+    /// <summary>Gets or sets the path to the PEM private key of <see cref="TlsCertificatePath"/>.</summary>
+    [ConfigItem(Description = "Path to the PEM-encoded private key of `TlsCertificatePath`.", DefaultValue = "null")]
+    string? TlsCertificateKeyPath { get; set; }
+
+    /// <summary>Gets or sets the additional <c>Host</c> header values accepted, such as the node's DNS name in remote mode.</summary>
+    [ConfigItem(Description = "Additional `Host` header values (host or host:port, for example `node.example.com`) the MCP endpoint accepts besides loopback names. Required in remote mode.", DefaultValue = "[]")]
+    string[] AllowedHosts { get; set; }
+
+    /// <summary>Gets or sets the maximum <c>get_logs</c> block span when the node's log index covers the range.</summary>
+    [ConfigItem(Description = "The maximum number of blocks a log query may span when the node's log index (`LogIndex.Enabled`) covers the whole range. Used instead of `MaxLogBlockRange` for indexed ranges.", DefaultValue = "1000000")]
+    long MaxIndexedLogBlockRange { get; set; }
+
+    /// <summary>Gets or sets the maximum number of call frames a trace tool returns.</summary>
+    [ConfigItem(Description = "The maximum number of call frames returned by `trace_transaction`; deeper or wider call trees are truncated and flagged.", DefaultValue = "2000")]
+    int MaxTraceCalls { get; set; }
 }
