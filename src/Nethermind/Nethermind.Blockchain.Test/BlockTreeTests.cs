@@ -1559,6 +1559,26 @@ public class BlockTreeTests
     }
 
     [Test]
+    public void Resuggesting_known_longer_lower_difficulty_block_keeps_best_suggested([Values] bool shouldProcess)
+    {
+        BlockTreeSuggestOptions options = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+        BlockTree tree = BuildBlockTree();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        Block a1 = Build.A.Block.WithDifficulty(1).WithParent(genesis).TestObject;
+        Block a2 = Build.A.Block.WithDifficulty(1).WithParent(a1).TestObject;
+        Block a3 = Build.A.Block.WithDifficulty(1).WithParent(a2).TestObject;
+        Block b1 = Build.A.Block.WithDifficulty(5).WithParent(genesis).WithExtraData([1]).TestObject;
+
+        tree.SuggestBlock(genesis);
+        foreach (Block block in new[] { a1, a2, a3, b1 }) tree.SuggestBlock(block, options);
+        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(b1.Hash), "higher difficulty fork");
+
+        tree.SuggestBlock(a3, options);
+
+        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(b1.Hash), "after re-suggesting a3");
+    }
+
+    [Test]
     public void Report_bad_block_stores_block_and_does_not_alter_main_chain()
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
@@ -2850,6 +2870,22 @@ public class BlockTreeTests
         {
             Assert.That(blockTree.FindBlock(b.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, $"b{b.Number} must be de-canonicalized");
         }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_WhenHeadRewinds_RaisesBlockRemovedFromMainForEachLevelAbove()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
+        Block[] chain = BuildAndSuggestChain(blockTree, genesis, 4);
+        blockTree.TryUpdateMainChain(chain[3].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        List<(Hash256?, bool Added)> events = [];
+        blockTree.BlockRemovedFromMain += (_, e) => events.Add((e.Header.Hash, false));
+        blockTree.BlockAddedToMain += (_, e) => events.Add((e.Block.Hash, true));
+
+        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        Assert.That(events, Is.EqualTo(new[] { (chain[3].Hash, false), (chain[2].Hash, false), (chain[1].Hash, false), (chain[0].Hash, true) }));
     }
 
     [TestCase(1, TestName = "SingleStaleLevel")]

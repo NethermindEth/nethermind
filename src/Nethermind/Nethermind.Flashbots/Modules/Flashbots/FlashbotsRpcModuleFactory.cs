@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -26,6 +27,7 @@ namespace Nethermind.Flashbots.Modules.Flashbots
         ISpecProvider specProvider,
         IFlashbotsConfig flashbotsConfig,
         IEthereumEcdsa ethereumEcdsa,
+        IBlockProcessingQueue processingQueue,
         IBlockValidationModule[] validationBlockProcessingModules
     ) : ModuleFactoryBase<IFlashbotsRpcModule>
     {
@@ -48,7 +50,8 @@ namespace Nethermind.Flashbots.Modules.Flashbots
                 logManager,
                 specProvider,
                 flashbotsConfig,
-                ethereumEcdsa
+                ethereumEcdsa,
+                processingQueue
             );
 
             return new FlashbotsRpcModule(validateSubmissionHandler);

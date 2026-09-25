@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
-                   && (orphaned || ValidateSlotNumber(header, parent, spec, ref error));
+                   && ValidateSlotNumber(header, spec, ref error);
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
@@ -409,7 +409,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected bool ValidateSlotNumber(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        protected bool ValidateSlotNumber(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip7843Enabled)
             {

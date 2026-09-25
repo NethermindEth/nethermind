@@ -2,7 +2,7 @@ name: Hive tests
 
 on:
   push:
-    tags: ['*', '!zisk-guest-*', '!bootnode-*']
+    tags: ['*', '!zkvm-guests-*', '!bootnode-*']
     branches: [master]
   workflow_dispatch:
     inputs:
@@ -113,7 +113,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Build Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         env:
           DOCKER_BUILD_SUMMARY: false
         with:

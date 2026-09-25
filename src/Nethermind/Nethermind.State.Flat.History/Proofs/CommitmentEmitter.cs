@@ -18,7 +18,7 @@ public sealed class CommitmentEmitter : IDisposable
     public const int WalkMaxOpenWindowNodes = 50_000;
     private const int TipExactBranchEntries = 1 << 18;
     private const int WalkExactBranchEntriesCeiling = 1 << 14;
-    public const int StorageSnapshotDepth = 1;
+    private const int ShallowStorageSnapshotDepth = 1;
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
     private const int EmptyRecord = -1;
@@ -34,6 +34,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly Stack<WindowState> _spareWindows = new();
     private readonly int _maxOpenWindowNodes;
     private readonly bool _respectFloors;
+    private readonly bool _deepStorageSnapshots;
 
     private readonly RowArena _blockArena = new();
     private readonly Dictionary<NodePathKey, (int Offset, int Length)> _blockNodes = [];
@@ -56,8 +57,9 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _retainedFloor;
     private ulong _fineFloor;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, bool respectFloors)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, bool respectFloors, bool deepStorageSnapshots)
     {
+        _deepStorageSnapshots = deepStorageSnapshots;
         _exactBranches = new ClockCache<NodePathKey, bool>(exactBranchEntries);
         _respectFloors = respectFloors;
         _maxSpareWindows = Math.Min(maxOpenWindowNodes, MaxSpareWindowsCeiling);
@@ -70,8 +72,8 @@ public sealed class CommitmentEmitter : IDisposable
         _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     }
 
-    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, WalkMaxOpenWindowNodes, WalkExactBranchEntries(policy), respectFloors: false);
+    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, bool deepStorageSnapshots = false) =>
+        new(history, policy, metadata, WalkMaxOpenWindowNodes, WalkExactBranchEntries(policy), respectFloors: false, deepStorageSnapshots);
 
     private static int WalkExactBranchEntries(CommitmentDepthPolicy policy)
     {
@@ -82,13 +84,15 @@ public sealed class CommitmentEmitter : IDisposable
     }
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, DefaultMaxOpenWindowNodes, TipExactBranchEntries, respectFloors: true);
+        new(history, policy, metadata, DefaultMaxOpenWindowNodes, TipExactBranchEntries, respectFloors: true, deepStorageSnapshots: false);
 
     public CommitmentDepthPolicy Policy => _policy;
 
     public int AccountRecordDepth => _policy.AccountCheckpointDepth + 1;
 
     public int StorageRecordDepth => _policy.StorageCheckpointDepth + 1;
+
+    public int StorageSnapshotDepth => _deepStorageSnapshots ? StorageRecordDepth : ShallowStorageSnapshotDepth;
 
     public void BeginBlock(ulong block)
     {
