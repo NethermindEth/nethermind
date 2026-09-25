@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
@@ -11,7 +12,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -25,6 +25,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -68,12 +69,14 @@ public class PooledTransactionsRequestingTests
 
         TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
         IBlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.WithSpecProvider(specProvider).TestObject;
+        (_, IStateReader stateReader, IContainer worldStateContainer) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
+        worldStateContainer.AddTo(_disposables);
 
         TxPool.TxPool txPool = new(
             new EthereumEcdsa(specProvider.ChainId),
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2),
+                new ChainHeadSpecProvider(specProvider, blockTree), blockTree, stateReader),
             new TxPoolConfig() { AcceptTxWhenNotSynced = true },
             new TxValidator(specProvider.ChainId),
             new SpecChangeTxValidator(specProvider.ChainId),

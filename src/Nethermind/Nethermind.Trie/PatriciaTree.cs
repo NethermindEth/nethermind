@@ -333,7 +333,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        public ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             byte[]? array = null;
             try
@@ -498,7 +498,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value) => Set(rawKey, new CappedArray<byte>(value));
+        public void Set(ReadOnlySpan<byte> rawKey, byte[] value) => Set(rawKey, new CappedArray<byte>(value));
 
         [SkipLocalsInit]
         [DebuggerStepThrough]

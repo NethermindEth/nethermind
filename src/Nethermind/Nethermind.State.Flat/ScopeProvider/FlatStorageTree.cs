@@ -148,13 +148,13 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, _tree, onRootUpdated, _address, commit: true);
-        return new StorageTreeBulkWriteBatch(trieBatch, this);
+        StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, _tree, onRootUpdated, _address, commit: true);
+        return new TrieAndOverlayStorageWriteBatch(trieBatch, this);
     }
 
     // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
-    private sealed class StorageTreeBulkWriteBatch(
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
+    private sealed class TrieAndOverlayStorageWriteBatch(
+        StorageTreeBulkWriteBatch trieBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, in UInt256 value)

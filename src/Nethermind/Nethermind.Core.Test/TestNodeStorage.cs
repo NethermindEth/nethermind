@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Trie;
 
 namespace Nethermind.Core.Test;
@@ -75,28 +74,6 @@ public sealed class TestNodeStorage(IKeyValueStoreWithBatching keyValueStore) : 
         lock (_lock)
         {
             return new WriteBatch(_keyValueStore.StartWriteBatch(), _lock);
-        }
-    }
-
-    public void Flush(bool onlyWal)
-    {
-        lock (_lock)
-        {
-            if (_keyValueStore is IDb db)
-            {
-                db.Flush(onlyWal);
-            }
-        }
-    }
-
-    public void Compact()
-    {
-        lock (_lock)
-        {
-            if (_keyValueStore is IDb db)
-            {
-                db.Compact();
-            }
         }
     }
 

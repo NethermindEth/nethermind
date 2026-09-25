@@ -30,12 +30,12 @@ namespace Nethermind.Benchmarks.State;
 [MinIterationCount(40)]
 public class StorageRootCommitBenchmark
 {
-    // Below this count, TrieStoreScopeProvider.StorageTreeBulkWriteBatch writes each slot straight
+    // Below this count, StorageTreeBulkWriteBatch writes each slot straight
     // into the storage trie (no buffering); above it, entries are buffered and flushed as one
     // BulkSet call. IndividualSetEstimate below is chosen to always stay under it regardless of
     // ChangedSlots, and BulkSetEstimate to always clear it, so the two benchmark methods exercise
     // the two code paths deliberately rather than incidentally by ChangedSlots' own magnitude.
-    private const int BulkThreshold = TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH;
+    private const int BulkThreshold = StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH;
     private const int IndividualSetEstimate = 0;
 
     private const int SlotCount = 10_000;

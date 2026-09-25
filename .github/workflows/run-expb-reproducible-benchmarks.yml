@@ -68,7 +68,7 @@ on:
         description: >-
           Optional extra flags appended to the selected client's command line.
           Nethermind example (single): --Merge.SweepMemory=NoGC.
-          Example (multiple): --Sync.FastSync=false, --Pruning.CacheMb=12000
+          Example (multiple): --Sync.FastSync=false, --FlatDb.TrieCacheMemoryBudget=4294967296
           (or provide one flag per line). Reference-client example:
           --engine.slow-block-threshold=0 for reth.
         required: false

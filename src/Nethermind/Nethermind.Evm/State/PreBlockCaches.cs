@@ -17,8 +17,6 @@ namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
-    private readonly Func<CacheType>[] _clearCaches;
-
     private readonly SeqlockCache<StorageCell, UInt256> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache;
     private readonly PrecompileCaches _precompileCaches;
@@ -44,12 +42,6 @@ public class PreBlockCaches
         _storageCache = new SeqlockCache<StorageCell, UInt256>(config.StorageCacheSetsBits);
         _stateCache = new SeqlockCache<AddressAsKey, Account>(config.StateCacheSetsBits);
         _precompileCaches = precompileCaches;
-        _clearCaches =
-        [
-            () => { _storageCache.Clear(); return CacheType.None; },
-            () => { _stateCache.Clear(); return CacheType.None; },
-            () => { _precompileCaches.ClearBlockCache(); return CacheType.None; }
-        ];
         _writeBack = new WriteBackBatch(this);
     }
 
@@ -126,25 +118,21 @@ public class PreBlockCaches
         }
     }
 
-    public CacheType ClearCaches()
+    public void ClearCaches()
     {
         JoinPendingWriteBack();
         lock (_reconcileLock)
         {
-            return ClearCachesCore();
+            ClearCachesCore();
         }
     }
 
-    private CacheType ClearCachesCore()
+    private void ClearCachesCore()
     {
-        CacheType isDirty = CacheType.None;
-        foreach (Func<CacheType> clearCache in _clearCaches)
-        {
-            isDirty |= clearCache();
-        }
-
+        _storageCache.Clear();
+        _stateCache.Clear();
+        _precompileCaches.ClearBlockCache();
         _validFor = null;
-        return isDirty;
     }
 
     // Epoch bumps only: safe while populators for another head are still writing, unlike the precompile dictionary's clear.
@@ -521,13 +509,4 @@ public sealed record PreBlockCachesConfig
     public int StorageCacheSetsBits { get; init; } = 18;
 
     public int SurvivingPrecompileCacheMaxEntries { get; init; } = 16384;
-}
-
-[Flags]
-public enum CacheType
-{
-    None = 0,
-    Storage = 0b1,
-    State = 0b10,
-    Precompile = 0b100
 }

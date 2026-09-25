@@ -144,22 +144,6 @@ public class TreePathTests
     }
 
     [Test]
-    public void TestToNibble([Values(0, 1, 2, 3, 63, 64)] int nibbleLength)
-    {
-        byte[] nibbles = new byte[nibbleLength];
-        for (int i = 0; i < nibbles.Length; i++)
-        {
-            nibbles[i] = (byte)(i & 0x0F);
-        }
-
-        TreePath path = TreePath.FromNibble(nibbles);
-
-        byte[] result = path.ToNibble();
-
-        Assert.That(result, Is.EqualTo(nibbles).AsCollection);
-    }
-
-    [Test]
     public void TestEncodePathMatchesNibbleSpan([Values(0, 1, 2, 3, 20, 63, 64)] int nibbleLength)
     {
         byte[] nibbles = new byte[nibbleLength];

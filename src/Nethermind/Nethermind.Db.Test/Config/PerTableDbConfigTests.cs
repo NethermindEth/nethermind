@@ -18,8 +18,8 @@ public class PerTableDbConfigTests
         DbConfig dbConfig = new();
         string[] tables =
         [
-            DbNames.Storage,
-            DbNames.State,
+            DbNames.Flat,
+            DbNames.FlatHistory,
             DbNames.Code,
             DbNames.Blocks,
             DbNames.Headers,

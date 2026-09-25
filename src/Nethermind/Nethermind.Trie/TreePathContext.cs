@@ -34,13 +34,7 @@ public struct TreePathContext : INodeContext<TreePathContext>
     public readonly TreePathContext AddStorage(in ValueHash256 storage) => new();
 }
 
-public interface ITreePathContextWithStorage
-{
-    TreePath Path { get; }
-    Hash256? Storage { get; }
-}
-
-public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<TreePathContextWithStorage>
+public readonly struct TreePathContextWithStorage : INodeContext<TreePathContextWithStorage>
 {
     public TreePath Path { get; init; } = TreePath.Empty;
     // Not using ValueHash as value is shared with many context.

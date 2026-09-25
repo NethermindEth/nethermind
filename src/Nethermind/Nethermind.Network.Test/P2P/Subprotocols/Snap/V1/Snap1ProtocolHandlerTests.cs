@@ -192,7 +192,6 @@ public class Snap1ProtocolHandlerTests
     public void GetTrieNodes_forwards_requested_byte_budget_to_snap_server()
     {
         ISnapServer snapServer = Substitute.For<ISnapServer>();
-        snapServer.CanServe.Returns(true);
         snapServer.GetTrieNodes(Arg.Any<IReadOnlyList<PathGroup>>(), Arg.Any<Hash256>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(EmptyByteArrayList.Instance);
         ISession session = Substitute.For<ISession>();

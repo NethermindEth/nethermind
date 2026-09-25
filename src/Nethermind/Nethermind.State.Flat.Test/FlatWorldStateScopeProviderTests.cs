@@ -219,7 +219,7 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<IProcessExitSource>(_ => new CancellationTokenSourceProcessExitSource(_cancellationTokenSource))
                     .AddSingleton<ILogManager>(LimboLogs.Instance)
                     .AddSingleton<IFlatDbConfig>(config)
-                    .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
+                    .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
                     .AddSingleton<IInitConfig>(_ => Substitute.For<IInitConfig>())
                 ;
 
@@ -1171,7 +1171,7 @@ public class FlatWorldStateScopeProviderTests
         FlatWorldStateScope scope = new(
             new StateId(0, TestItem.KeccakA),
             bundle,
-            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
+            new KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
             Substitute.For<IFlatCommitTarget>(),
             config,
             warmer,

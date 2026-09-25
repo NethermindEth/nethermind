@@ -55,7 +55,6 @@ namespace Nethermind.Synchronization.SnapSync
         private int _consecutiveAccountRefreshes;
 
         private readonly ILogger _logger;
-        private readonly ISnapTrieFactory _snapTrieFactory;
         string? _lastStateRangesReport;
         private DateTimeOffset _lastLogTime = DateTimeOffset.MinValue;
         private readonly TimeSpan _maxTimeBetweenLog = TimeSpan.FromSeconds(5);
@@ -80,10 +79,9 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly bool _enableStorageRangeSplit;
         private readonly ulong _stateMinDistanceFromHead;
 
-        public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
+        public ProgressTracker(ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<ProgressTracker>() ?? throw new ArgumentNullException(nameof(logManager));
-            _snapTrieFactory = snapTrieFactory ?? throw new ArgumentNullException(nameof(snapTrieFactory));
 
             _pivot = pivot;
 
@@ -236,7 +234,6 @@ namespace Nethermind.Synchronization.SnapSync
                 if (rangePhaseFinished)
                 {
                     _logger.Info("Snap - State Ranges (Phase 1) finished.");
-                    _snapTrieFactory.MarkRangePhaseFinished();
                 }
 
                 LogRequest(NO_REQUEST);
@@ -513,18 +510,6 @@ namespace Nethermind.Synchronization.SnapSync
             _largeStorageProgress.Clear();
             _estimatedStorageRemaining = null;
             _shouldStartLoggingLargeStorage = false;
-        }
-
-        public void LoadProgress()
-        {
-            if (!_snapTrieFactory.IsRangePhaseFinished()) return;
-
-            _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
-            foreach (KeyValuePair<ValueHash256, AccountRangePartition> partition in AccountRangePartitions)
-            {
-                partition.Value.MoreAccountsToRight = false;
-            }
-            AccountRangeReadyForRequest.Clear();
         }
 
         public void TrackAccountToHeal(ValueHash256 path)

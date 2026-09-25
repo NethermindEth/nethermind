@@ -27,7 +27,7 @@ public class SnapSyncRunnerTests
     public void Finalizes_whatever_the_dispatcher_does(DispatcherOutcome outcome, Type? expectedException)
     {
         ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
-        using ProgressTracker tracker = CreateProgressTracker(factory);
+        using ProgressTracker tracker = CreateProgressTracker();
 
         using CancellationTokenSource cts = new();
         if (outcome == DispatcherOutcome.Cancels) cts.Cancel();
@@ -55,7 +55,7 @@ public class SnapSyncRunnerTests
     public async Task Requests_the_account_ranges_again_when_run_twice()
     {
         ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
-        using ProgressTracker tracker = CreateProgressTracker(factory);
+        using ProgressTracker tracker = CreateProgressTracker();
         SnapSyncRunner runner = new(_ => Task.CompletedTask, factory, tracker);
 
         await runner.Run(default);
@@ -78,10 +78,10 @@ public class SnapSyncRunnerTests
         batch.Dispose();
     }
 
-    private static ProgressTracker CreateProgressTracker(ISnapTrieFactory factory)
+    private static ProgressTracker CreateProgressTracker()
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
         SyncConfig syncConfig = new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 };
-        return new(factory, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        return new(syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }

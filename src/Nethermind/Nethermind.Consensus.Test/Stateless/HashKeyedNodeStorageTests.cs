@@ -32,8 +32,6 @@ public class HashKeyedNodeStorageTests
 
     private static HashKeyedNodeStorage Storage(params byte[][] state) => new(state);
 
-    private static HashKeyedNodeStorage Storage(bool threadSafe, params byte[][] state) => new(state, threadSafe);
-
     private static ValueHash256 HashOf(byte[] node) => ValueKeccak.Compute(node);
 
     [Test]
@@ -68,9 +66,9 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Round_trips_a_written_node([Values] bool throughBatch, [Values] bool threadSafe)
+    public void Round_trips_a_written_node([Values] bool throughBatch)
     {
-        HashKeyedNodeStorage storage = Storage(threadSafe);
+        HashKeyedNodeStorage storage = Storage();
         byte[] node = [0xc2, 0x01, 0x02];
         ValueHash256 hash = HashOf(node);
 
@@ -81,11 +79,11 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Evicts_a_node_written_with_no_data([Values] bool throughBatch, [Values] bool threadSafe)
+    public void Evicts_a_node_written_with_no_data([Values] bool throughBatch)
     {
         byte[] node = Nodes[2];
         ValueHash256 hash = HashOf(node);
-        HashKeyedNodeStorage storage = Storage(threadSafe, node);
+        HashKeyedNodeStorage storage = Storage(node);
 
         Write(storage, throughBatch, hash, null);
 
@@ -94,9 +92,9 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Keeps_the_seeded_empty_root_whatever_is_written_to_it([Values] bool remove, [Values] bool threadSafe)
+    public void Keeps_the_seeded_empty_root_whatever_is_written_to_it([Values] bool remove)
     {
-        HashKeyedNodeStorage storage = Storage(threadSafe);
+        HashKeyedNodeStorage storage = Storage();
 
         byte[] data = remove ? null : [0xff];
 
@@ -106,11 +104,11 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Separates_keys_that_share_a_hash_code([Range(0, 7)] int half, [Values] bool threadSafe)
+    public void Separates_keys_that_share_a_hash_code([Range(0, 7)] int half)
     {
         (ValueHash256 first, ValueHash256 second) = FindHashCodeCollision(half);
 
-        HashKeyedNodeStorage storage = Storage(threadSafe);
+        HashKeyedNodeStorage storage = Storage();
         storage.Set(null, TreePath.Empty, first, [0x01]);
         storage.Set(null, TreePath.Empty, second, [0x02]);
 
@@ -119,7 +117,7 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Resolves_colliding_witness_buckets_before_and_after_writes([Values(2, 8, 9, 16)] int count, [Values] bool threadSafe)
+    public void Resolves_colliding_witness_buckets_before_and_after_writes([Values(2, 8, 9, 16)] int count)
     {
         int mask = (int)BitOperations.RoundUpToPowerOf2((uint)count + 1) - 1;
         int bucket = ((int)(BitConverter.ToUInt32(Keccak.EmptyTreeHash.Bytes) & (uint)mask) + 1) & mask;
@@ -130,7 +128,7 @@ public class HashKeyedNodeStorageTests
             byte[] node = BitConverter.GetBytes(candidate);
             if ((BitConverter.ToUInt32(HashOf(node).Bytes) & (uint)mask) == bucket) nodes[found++] = node;
         }
-        HashKeyedNodeStorage storage = new(nodes.AsSpan(0, count), threadSafe);
+        HashKeyedNodeStorage storage = new(nodes.AsSpan(0, count));
 
         for (int phase = 0; phase < 2; phase++)
         {
@@ -151,11 +149,11 @@ public class HashKeyedNodeStorageTests
     }
 
     [Test]
-    public void Duplicate_witness_nodes_resolve_and_can_be_evicted([Values(1, 9)] int count, [Values] bool threadSafe)
+    public void Duplicate_witness_nodes_resolve_and_can_be_evicted([Values(1, 9)] int count)
     {
         byte[][] nodes = new byte[count][];
         Array.Fill(nodes, Nodes[1]);
-        HashKeyedNodeStorage storage = Storage(threadSafe, nodes);
+        HashKeyedNodeStorage storage = Storage(nodes);
         ValueHash256 hash = HashOf(Nodes[1]);
         Assert.That(storage.Get(null, TreePath.Empty, hash), Is.EqualTo(Nodes[1]));
         storage.Set(null, TreePath.Empty, hash, null);

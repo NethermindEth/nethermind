@@ -95,7 +95,7 @@ public class StateSyncPivotTest
     // SnapSyncFeed.AnalyzeResponsePerPeer reaches the pivot only through ProgressTracker.UpdatePivot, which is where
     // the rate limit lives; these tests drive the composition rather than the pivot alone.
     private static ProgressTracker BuildTracker(Synchronization.FastSync.StateSyncPivot pivot, TestSyncConfig syncConfig) =>
-        new(Substitute.For<ISnapTrieFactory>(), syncConfig, pivot, LimboLogs.Instance);
+        new(syncConfig, pivot, LimboLogs.Instance);
 
     private static IBlockTree BuildBlockTree()
     {

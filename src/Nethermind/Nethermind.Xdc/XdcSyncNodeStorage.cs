@@ -38,12 +38,6 @@ internal sealed class XdcSyncNodeStorage(IPersistence.IPersistenceReader reader)
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash) =>
         Get(address is { } value ? value.ToHash256() : null, path, in hash) is not null;
 
-    public void Flush(bool onlyWal) =>
-        throw new InvalidOperationException("The XDC sync state store is read-only.");
-
-    public void Compact() =>
-        throw new InvalidOperationException("The XDC sync state store is read-only.");
-
     public bool HasRoot(Hash256 stateRoot) =>
         Get(null, TreePath.Empty, stateRoot.ValueHash256) is not null;
 }

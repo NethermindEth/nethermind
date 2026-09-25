@@ -82,7 +82,7 @@ public class FlatOverridableWorldScopeTests
                 .AddSingleton<IFlatDbConfig>(config)
                 .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
                 .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
-                .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
+                .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new KeyValueWithBatchingBackedCodeDb(new TestMemDb()));
 
             // Register keyed IDb for code database
             _containerBuilder.RegisterInstance<IDb>(new TestMemDb()).Keyed<IDb>(DbNames.Code);

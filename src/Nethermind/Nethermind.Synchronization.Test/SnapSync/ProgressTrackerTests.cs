@@ -136,10 +136,9 @@ public class ProgressTrackerTests
     }
 
     [Test]
-    public void Will_mark_range_phase_finished_when_ranges_drain()
+    public void Will_report_finished_when_ranges_drain()
     {
-        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
-        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
+        using ProgressTracker progressTracker = CreateProgressTracker();
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         Assert.That(request!.AccountRangeRequest, Is.Not.Null);
@@ -148,36 +147,6 @@ public class ProgressTrackerTests
         request.Dispose();
         bool finished = progressTracker.IsFinished(out _);
         Assert.That(finished, Is.True);
-
-        snapTrieFactory.Received(1).MarkRangePhaseFinished();
-    }
-
-    [Test]
-    public void Will_skip_account_ranges_when_range_phase_already_finished()
-    {
-        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
-        snapTrieFactory.IsRangePhaseFinished().Returns(true);
-        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
-
-        progressTracker.LoadProgress();
-
-        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.True);
-        Assert.That(request, Is.Null);
-    }
-
-    // Regression: account ranges must be requested again rather than skipped over a store that was just emptied.
-    [Test]
-    public void Will_request_account_ranges_when_range_phase_not_finished()
-    {
-        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
-        snapTrieFactory.IsRangePhaseFinished().Returns(false);
-        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
-
-        progressTracker.LoadProgress();
-
-        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.False);
-        Assert.That(request!.AccountRangeRequest, Is.Not.Null);
-        request.Dispose();
     }
 
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x2000000000000000000000000000000000000000000000000000000000000000", null, "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
@@ -261,7 +230,7 @@ public class ProgressTrackerTests
         IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
         pivot.Diff.Returns(diff);
         SyncConfig syncConfig = new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1, StateMinDistanceFromHead = 32UL };
-        using ProgressTracker progressTracker = new(Substitute.For<ISnapTrieFactory>(), syncConfig, pivot, LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(syncConfig, pivot, LimboLogs.Instance);
 
         progressTracker.UpdatePivot();
 
@@ -339,10 +308,10 @@ public class ProgressTrackerTests
         }
     }
 
-    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null)
+    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
         SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
-        return new(snapTrieFactory ?? Substitute.For<ISnapTrieFactory>(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        return new(syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }

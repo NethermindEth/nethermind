@@ -47,20 +47,6 @@ namespace Nethermind.Db
         internal static void AddStateTreeReads(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateTreeReads.Value : ref _otherStateTreeReads.Value, count);
 
         [CounterMetric]
-        [Description("Number of State Reader reads.")]
-        public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Sum;
-        private static CacheLinePaddedLong _mainStateReaderReads;
-        // Bumped once per state read (StateReader), so every RPC and prewarm thread previously
-        // hit one shared word: a contended cross-core RMW per read. The block-processing thread
-        // keeps its own padded word and is left alone.
-        private static readonly StripedLong _otherStateReaderReads = new();
-        internal static void IncrementStateReaderReads()
-        {
-            if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStateReaderReads.Value);
-            else _otherStateReaderReads.Increment();
-        }
-
-        [CounterMetric]
         [Description("Number of state trie writes.")]
         public static long StateTreeWrites => _stateTreeWrites.Value;
         private static CacheLinePaddedLong _stateTreeWrites;
@@ -119,12 +105,6 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _otherPreBlockStorageMisses;
         internal static long MainThreadPreBlockStorageMisses => _mainPreBlockStorageMisses.Value;
         internal static void AddPreBlockStorageMisses(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockStorageMisses.Value : ref _otherPreBlockStorageMisses.Value, count);
-
-        [CounterMetric]
-        [Description("Number of storage reader reads.")]
-        public static long StorageReaderReads => _storageReaderReads.Sum;
-        private static readonly StripedLong _storageReaderReads = new();
-        internal static void IncrementStorageReaderReads() => _storageReaderReads.Increment();
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]

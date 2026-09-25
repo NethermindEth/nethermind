@@ -12,10 +12,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -36,7 +34,7 @@ namespace Nethermind.State;
 /// the same StateProvider would skip re-inserting the bytes, throwing
 /// "Code 0x… is missing from the database" on the next read.
 /// </param>
-public class TrieStoreScopeProvider(
+public sealed class TrieStoreScopeProvider(
     ITrieStore trieStore,
     IKeyValueStoreWithBatching codeDb,
     IStateHeaderProvider stateHeaderProvider,
@@ -46,18 +44,12 @@ public class TrieStoreScopeProvider(
     private readonly ITrieStore _trieStore = trieStore;
     private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
     private readonly ILogManager _logManager = logManager;
-    protected StateTree? _backingStateTree;
+    private StateTree? _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
 
-    protected StateTree BackingStateTree =>
-        _backingStateTree ?? throw new InvalidOperationException("A state tree is only available within a world-state scope.");
-
-    protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
+    private StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
     public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
-
-    /// <summary>Whether a scope can be opened at <paramref name="baseBlock"/>; a backend that recovers missing nodes on demand may accept a root it does not hold.</summary>
-    protected virtual bool CanBeginScope(BlockHeader? baseBlock) => HasRoot(baseBlock);
 
     public bool HasStateForTargetBlock(BlockHeader targetBlock) => this.HasRootForTarget(_stateHeaderProvider, targetBlock);
 
@@ -69,7 +61,7 @@ public class TrieStoreScopeProvider(
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
         try
         {
-            if (!CanBeginScope(baseBlock))
+            if (!HasRoot(baseBlock))
             {
                 trieStoreCloser.Dispose();
                 scope = null;
@@ -88,7 +80,7 @@ public class TrieStoreScopeProvider(
         }
     }
 
-    protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
+    private StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
 
     private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope
     {
@@ -273,39 +265,9 @@ public class TrieStoreScopeProvider(
 
         public void Commit(ulong blockNumber)
         {
-            using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
-
-            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
-                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
-                {
-                    storage.Value.Commit();
-                }
-            }
-            else
-            {
-                // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-                // may make it worst. Always check on mainnet.
-                using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
-                {
-                    if (blockCommitter.TryRequestConcurrencyQuota())
-                    {
-                        commitTask.Add(Task.Factory.StartNew((ctx) =>
-                        {
-                            StorageTree st = ctx as StorageTree
-                                ?? throw new InvalidOperationException("A storage commit task requires a storage tree.");
-                            st.Commit();
-                            blockCommitter.ReturnConcurrencyQuota();
-                        }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-                    }
-                    else
-                    {
-                        storage.Value.Commit();
-                    }
-                }
-
-                Task.WaitAll(commitTask.AsSpan());
+                storage.Value.Commit();
             }
 
             _backingStateTree.Commit();
@@ -386,143 +348,6 @@ public class TrieStoreScopeProvider(
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
-        }
-    }
-
-    public class StorageTreeBulkWriteBatch(
-        int estimatedEntries,
-        StorageTree storageTree,
-        Action<Address, Hash256> onRootUpdated,
-        AddressAsKey address,
-        bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
-    {
-        // Slight optimization on small contract as the index hash can be precalculated in some case.
-        public const int MIN_ENTRIES_TO_BATCH = 16;
-
-        private bool _hasSelfDestruct;
-        private bool _wasSetCalled = false;
-
-        private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
-            estimatedEntries > MIN_ENTRIES_TO_BATCH
-                ? new(estimatedEntries)
-                : null;
-
-        private ValueHash256 _keyBuff = new();
-        private PendingHashes? _pendingHashes;
-
-        private sealed class PendingHashes
-        {
-            internal KeyHashBatch Batch;
-            internal PendingHashes() => Batch.Initialize(Hash256.Size);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void AddUnhashedEntry(ReadOnlySpan<byte> preimage, ReadOnlySpan<byte> encoded, bool isZero)
-        {
-            PendingHashes pending = _pendingHashes ??= new();
-            int index = _bulkWrite!.Count;
-            _bulkWrite.Add(StorageTree.CreateBulkSetEntry(default, encoded, isZero));
-            pending.Batch.AddMissing(preimage, index);
-            if (pending.Batch.IsFull) pending.Batch.Flush(_bulkWrite.AsSpan());
-        }
-
-        [SkipLocalsInit]
-        public void Set(in UInt256 index, in UInt256 value)
-        {
-            Unsafe.SkipInit(out EvmWord word);
-            bool isZero = value.IsZero;
-            ReadOnlySpan<byte> encoded = isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word);
-            _wasSetCalled = true;
-            if (_bulkWrite is null)
-            {
-                storageTree.Set(index, encoded, isZero);
-            }
-            else
-            {
-                if (Avx2.IsSupported)
-                {
-                    if (!StorageTree.TryGetCachedKey(index, out _keyBuff, out ValueHash256 preimage))
-                    {
-                        AddUnhashedEntry(preimage.BytesAsSpan, encoded, isZero);
-                        return;
-                    }
-                }
-                else
-                {
-                    StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
-                }
-                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, encoded, isZero));
-            }
-        }
-
-        public void Clear()
-        {
-            if (_bulkWrite is null)
-            {
-                storageTree.RootHash = Keccak.EmptyTreeHash;
-            }
-
-            if (_wasSetCalled) throw new InvalidOperationException("Must call clear first in a storage write batch");
-            _hasSelfDestruct = true;
-        }
-
-        public void Dispose()
-        {
-            bool hasSet = _wasSetCalled || _hasSelfDestruct;
-            int bulkCount = 0;
-            if (_bulkWrite is not null)
-            {
-                if (_hasSelfDestruct)
-                {
-                    storageTree.RootHash = Keccak.EmptyTreeHash;
-                }
-
-                _pendingHashes?.Batch.Flush(_bulkWrite.AsSpan());
-                _pendingHashes = null;
-                bulkCount = _bulkWrite.Count;
-                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
-                storageTree.BulkSet(asRef);
-            }
-
-            if (hasSet)
-            {
-                if (commit)
-                {
-                    storageTree.Commit();
-                }
-                else
-                {
-                    storageTree.UpdateRootHash(bulkCount > 64);
-                }
-                onRootUpdated(address, storageTree.RootHash);
-            }
-        }
-    }
-
-    public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb, bool isPersistent = false) : IWorldStateScopeProvider.ICodeDb
-    {
-        // Persisted-code hint cache. Non-null only for durable codeDbs (production).
-        // Overlay codeDbs leave this null — overlay writes are not durable and must never
-        // populate a hint that survives the overlay's reset.
-        // Capacity 1_024: 4x the per-block filter (256) to cover hot factory-deployed
-        // bytecode across multiple recent blocks. False negatives just cause a redundant
-        // write; false positives would lose the just-deployed code (the bug being prevented).
-        private readonly AssociativeKeyCache<ValueHash256>? _persistedHint
-            = isPersistent ? new AssociativeKeyCache<ValueHash256>(1_024) : null;
-
-        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes];
-
-        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(codeDb.StartWriteBatch());
-
-        public bool ContainsCode(in ValueHash256 codeHash) => _persistedHint?.Get(codeHash) ?? false;
-
-        public void MarkCodePersisted(in ValueHash256 codeHash) => _persistedHint?.Set(codeHash);
-
-        private class CodeSetter(IWriteBatch writeBatch) : IWorldStateScopeProvider.ICodeSetter
-        {
-            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) => writeBatch.PutSpan(codeHash.Bytes, code);
-
-            public void Dispose() => writeBatch.Dispose();
         }
     }
 }

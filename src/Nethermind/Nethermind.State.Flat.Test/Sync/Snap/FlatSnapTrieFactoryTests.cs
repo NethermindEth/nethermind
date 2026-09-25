@@ -93,17 +93,6 @@ public class FlatSnapTrieFactoryTests
     }
 
     [Test]
-    public void RangePhase_NeverCarriesIntoTheNextRun()
-    {
-        (FlatSnapTrieFactory flatFactory, _, _) = Build();
-        ISnapTrieFactory factory = flatFactory;
-
-        factory.MarkRangePhaseFinished();
-
-        Assert.That(factory.IsRangePhaseFinished(), Is.False);
-    }
-
-    [Test]
     public void Factory_CreatesTreesWithoutThrowing_ForBothDoubleWriteFlagValues([Values] bool doubleWriteCheck)
     {
         (FlatSnapTrieFactory factory, _, _) = Build(doubleWriteCheck);

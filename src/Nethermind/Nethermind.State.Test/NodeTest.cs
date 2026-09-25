@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -140,7 +139,7 @@ namespace Nethermind.Store.Test
 
             // The oracle is an independent copy. A write into the stored buffer must fail
             // the compare, not silently update the expectation.
-            return (TestTrieStoreFactory.Build(nodeStorage, NullLogManager.Instance).GetTrieStore(null), [.. rlpBytes]);
+            return (new TestRawTrieStore(nodeStorage).GetTrieStore(null), [.. rlpBytes]);
         }
     }
 }

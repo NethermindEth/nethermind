@@ -184,7 +184,6 @@ namespace Nethermind.State
             }
             else
             {
-                // Bind the CappedArray overload the Rlp one used to forward to.
                 Set(rawKey, new CappedArray<byte>(EncodeNonZeroValue(value)));
             }
         }

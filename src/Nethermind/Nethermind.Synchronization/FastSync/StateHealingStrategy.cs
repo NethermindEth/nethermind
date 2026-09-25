@@ -5,7 +5,6 @@ using System;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization.FastSync;
 
@@ -14,7 +13,7 @@ namespace Nethermind.Synchronization.FastSync;
 /// the advertised snap capabilities match what this node will request. Blindly advertising snap/2 makes state
 /// healing unavailable, since snap/2 drops GetTrieNodes (EIP-8189).
 /// </summary>
-public sealed class StateHealingStrategy(ISyncConfig syncConfig, Lazy<IBalHealing> balHealing, ILogManager logManager)
+public sealed class StateHealingStrategy(ISyncConfig syncConfig, ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<StateHealingStrategy>();
 
@@ -33,12 +32,6 @@ public sealed class StateHealingStrategy(ISyncConfig syncConfig, Lazy<IBalHealin
             if (_logger.IsDebug)
                 _logger.Debug($"Will Heal state with trie nodes - snap sync: {syncConfig.SnapSync}, " +
                               $"BAL healing: {syncConfig.BalHealing}, pivot: {pivot.Number}, BAL hash: {pivot.BlockAccessListHash}.");
-            return;
-        }
-
-        if (!balHealing.Value.IsAvailable)
-        {
-            if (_logger.IsDebug) _logger.Debug("Will Heal state with trie nodes - the state backend does not support BAL healing.");
             return;
         }
 

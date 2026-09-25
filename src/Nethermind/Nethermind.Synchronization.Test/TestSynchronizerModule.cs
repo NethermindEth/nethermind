@@ -9,7 +9,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.SnapSync;
@@ -28,7 +27,6 @@ public class TestSynchronizerModule(
         builder
             .AddModule(new TestNethermindModule(new ConfigProvider(syncConfig)))
             .AddModule(new SynchronizerModule(syncConfig))
-            .AddSingleton<IDbFactory>((_) => new MemDbFactory())
             .AddSingleton<IBlockTree>(Substitute.For<IBlockTree>())
             .AddSingleton<ITimerFactory>(Substitute.For<ITimerFactory>())
             .AddSingleton<ISyncConfig>(syncConfig)

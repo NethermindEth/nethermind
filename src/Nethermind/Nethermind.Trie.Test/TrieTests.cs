@@ -64,7 +64,7 @@ namespace Nethermind.Trie.Test
         private static readonly byte[] _keyC = Bytes.FromHexString("00000000001aa");
         private static readonly byte[] _keyD = Bytes.FromHexString("00000000001bb");
 
-        private ITrieStore CreateTrieStore(IDb? memDb = null) => TestTrieStoreFactory.Build(memDb ?? new MemDb(), _logManager);
+        private ITrieStore CreateTrieStore(IDb? memDb = null) => new TestRawTrieStore(memDb ?? new MemDb());
 
         [Test]
         public void Single_leaf()
@@ -73,7 +73,7 @@ namespace Nethermind.Trie.Test
             using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             // leaf (root)
         }
@@ -86,7 +86,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyA, _longLeaf2);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             // leaf (root)
 
@@ -102,9 +102,9 @@ namespace Nethermind.Trie.Test
             using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.Set(_keyA, _longLeaf2);
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.UpdateRootHash();
 
             // leaf (root)
@@ -122,7 +122,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyA, []);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             // leaf (root)
 
@@ -137,9 +137,9 @@ namespace Nethermind.Trie.Test
             using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.Set(_keyA, []);
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.UpdateRootHash();
 
             // leaf (root)
@@ -154,24 +154,24 @@ namespace Nethermind.Trie.Test
             MemDb memDb = new();
             using ITrieStore trieStore = CreateTrieStore(memDb);
             PatriciaTree patriciaTree = new(trieStore, _logManager);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
-            trieStore.CommitPatriciaTrie(2, patriciaTree);
+            patriciaTree.Commit();
+            patriciaTree.Commit();
+            patriciaTree.Commit();
             patriciaTree.Set(_keyA, _longLeaf1);
-            trieStore.CommitPatriciaTrie(3, patriciaTree);
-            trieStore.CommitPatriciaTrie(4, patriciaTree);
+            patriciaTree.Commit();
+            patriciaTree.Commit();
             patriciaTree.Set(_keyA, []);
-            trieStore.CommitPatriciaTrie(5, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.Set(_keyB, _longLeaf2);
-            trieStore.CommitPatriciaTrie(6, patriciaTree);
-            trieStore.CommitPatriciaTrie(7, patriciaTree);
-            trieStore.CommitPatriciaTrie(8, patriciaTree);
-            trieStore.CommitPatriciaTrie(9, patriciaTree);
-            trieStore.CommitPatriciaTrie(10, patriciaTree);
-            trieStore.CommitPatriciaTrie(11, patriciaTree);
+            patriciaTree.Commit();
+            patriciaTree.Commit();
+            patriciaTree.Commit();
+            patriciaTree.Commit();
+            patriciaTree.Commit();
+            patriciaTree.Commit();
             patriciaTree.Set(_keyB, []);
-            trieStore.CommitPatriciaTrie(12, patriciaTree);
-            trieStore.CommitPatriciaTrie(13, patriciaTree);
+            patriciaTree.Commit();
+            patriciaTree.Commit();
             patriciaTree.UpdateRootHash();
 
             // leaf (root)
@@ -190,7 +190,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             // leaf (root)
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
@@ -223,7 +223,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keysA, _longLeaf1);
             patriciaTree.Set(_keysB, _longLeaf1);
             patriciaTree.Set(_keysC, _longLeaf1);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
 
@@ -259,11 +259,11 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.Set(_keyA, []);
             patriciaTree.Set(_keyB, []);
             patriciaTree.Set(_keyC, []);
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.UpdateRootHash();
 
             // leaf (root)
@@ -286,7 +286,7 @@ namespace Nethermind.Trie.Test
                 patriciaTree.Set(key.Bytes, value);
             }
 
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             patriciaTree.UpdateRootHash();
 
@@ -319,7 +319,7 @@ namespace Nethermind.Trie.Test
                 patriciaTree.Set(key.Bytes, []);
             }
 
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.UpdateRootHash();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
@@ -360,7 +360,7 @@ namespace Nethermind.Trie.Test
                 patriciaTree.Set(key.Bytes, value);
             }
 
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.UpdateRootHash();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
@@ -385,7 +385,7 @@ namespace Nethermind.Trie.Test
                 patriciaTree.Set(key.Bytes, value);
             }
 
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             for (int j = 0; j < i; j++)
             {
@@ -395,7 +395,7 @@ namespace Nethermind.Trie.Test
                 _logger.Trace($"Setting {key.Bytes.ToHexString()} = {value.ToHexString()}");
             }
 
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.UpdateRootHash();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
@@ -430,7 +430,7 @@ namespace Nethermind.Trie.Test
                 patriciaTree.Set(key.Bytes, []);
             }
 
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.UpdateRootHash();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
@@ -454,7 +454,7 @@ namespace Nethermind.Trie.Test
                 patriciaTree.Set(key.Bytes, value);
             }
 
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             for (int j = 0; j < i; j++)
             {
@@ -462,7 +462,7 @@ namespace Nethermind.Trie.Test
                 patriciaTree.Set(key.Bytes, []);
             }
 
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.UpdateRootHash();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
@@ -500,7 +500,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
             patriciaTree.Set(_keyD, _longLeaf1);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             // leaf (root)
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
@@ -521,7 +521,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyC, _longLeaf1);
             patriciaTree.Set(_keyD, _longLeaf1);
             patriciaTree.Set(_keyA, []);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             // leaf (root)
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
@@ -546,7 +546,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf2));
@@ -560,7 +560,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree patriciaTree = new(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
             Assert.That(checkTree.Get(_keyB).ToArray(), Is.EqualTo(_longLeaf1));
@@ -575,11 +575,11 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
             patriciaTree.UpdateRootHash();
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.Set(_keyA, _longLeaf3);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.UpdateRootHash();
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
+            patriciaTree.Commit();
 
             // extension
             // branch
@@ -595,11 +595,11 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.UpdateRootHash();
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.Set(_keyA, _longLeaf3);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.UpdateRootHash();
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
+            patriciaTree.Commit();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
@@ -628,7 +628,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(key2, _longLeaf1);
             patriciaTree.Set(key3, _longLeaf1);
             patriciaTree.UpdateRootHash();
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(key1).ToArray(), Is.EqualTo(_longLeaf1));
@@ -675,10 +675,10 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(key2, _longLeaf1);
             patriciaTree.Set(key3, _longLeaf1);
             patriciaTree.UpdateRootHash();
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.Set(key3, []);
             patriciaTree.UpdateRootHash();
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
+            patriciaTree.Commit();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(key1).ToArray(), Is.EqualTo(_longLeaf1));
@@ -697,11 +697,11 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyC, _longLeaf1);
             patriciaTree.Set(_keyD, _longLeaf1);
             patriciaTree.UpdateRootHash();
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
             patriciaTree.Set(_keyA, _longLeaf3);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.UpdateRootHash();
-            trieStore.CommitPatriciaTrie(1, patriciaTree);
+            patriciaTree.Commit();
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
             Assert.That(checkTree.Get(_keyA).ToArray(), Is.EqualTo(_longLeaf1));
@@ -737,10 +737,7 @@ namespace Nethermind.Trie.Test
                 tree.Set(key.Bytes, value.BytesToArray());
             }
 
-            using (trieStore.BeginBlockCommit(0))
-            {
-                tree.Commit();
-            }
+            tree.Commit();
 
             Parallel.For(0, repetition, (index, _) =>
             {
@@ -762,7 +759,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyB, _longLeaf2);
             patriciaTree.Set(_keyC, _longLeaf1);
             patriciaTree.Set(_keyD, _longLeaf2);
-            trieStore.CommitPatriciaTrie(0, patriciaTree);
+            patriciaTree.Commit();
 
             // Test warmup on various keys
             Assert.That(() => patriciaTree.WarmUpPath(_keyA), Throws.Nothing);  // Existing key
@@ -793,10 +790,7 @@ namespace Nethermind.Trie.Test
                     tree.Set(key.Bytes, key.BytesToArray());
                 }
 
-                using (trieStore.BeginBlockCommit(0))
-                {
-                    tree.Commit();
-                }
+                tree.Commit();
             }, CancellationToken.None, TaskCreationOptions.None, schedulerPair.ConcurrentScheduler);
 
             Assert.That(task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Commit deadlocked on bounded scheduler");

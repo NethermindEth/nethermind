@@ -21,7 +21,7 @@ public class FlatScopeProvider(
     bool isReadOnly)
     : IWorldStateScopeProvider, IDisposable
 {
-    private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
     private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
 
     private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>

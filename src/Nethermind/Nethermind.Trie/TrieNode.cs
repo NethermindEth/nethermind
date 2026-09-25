@@ -6,12 +6,10 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 using static Nethermind.Trie.BranchData;
@@ -920,215 +918,6 @@ namespace Nethermind.Trie
         /// Imagine a branch like this:
         ///        B
         /// ||||||||||||||||
-        /// -T--TP-K--P--TT-
-        /// where T is a transient child (not yet persisted) and P is a persisted child node and K is node hash
-        /// After calling this method with <paramref name="skipPersisted"/> == <value>false</value> you will end up with
-        ///        B
-        /// ||||||||||||||||
-        /// -A--AA-K--A--AA-
-        /// where A is a <see cref="TrieNode"/> on which the <paramref name="action"/> was invoked.
-        /// After calling this method with <paramref name="skipPersisted"/> == <value>true</value> you will end up with
-        ///        B
-        /// ||||||||||||||||
-        /// -A--AP-K--P--AA-
-        /// where A is a <see cref="TrieNode"/> on which the <paramref name="action"/> was invoked.
-        /// Note that nodes referenced by hash are not called.
-        /// </summary>
-        public void CallRecursively(
-            Action<TrieNode, Hash256?, TreePath> action,
-            Hash256? storageAddress,
-            ref TreePath currentPath,
-            ITrieNodeResolver resolver,
-            bool skipPersisted,
-            in ILogger logger,
-            int maxPathLength = Int32.MaxValue,
-            bool resolveStorageRoot = true)
-        {
-            if (skipPersisted && IsPersisted)
-            {
-                if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
-                return;
-            }
-
-            if (currentPath.Length >= maxPathLength)
-            {
-                action(this, storageAddress, currentPath);
-                return;
-            }
-
-            if (_nodeData is BranchData branchData)
-            {
-                ref readonly BranchArray data = ref branchData.Branches;
-                int previousLength = AppendChildPath(ref currentPath, 0);
-                for (int i = 0; i < BranchArray.Length; i++)
-                {
-                    if (data[i] is TrieNode child)
-                    {
-                        if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
-                        currentPath.SetLast(i);
-                        child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger,
-                            maxPathLength, resolveStorageRoot);
-                    }
-                }
-
-                currentPath.TruncateMut(previousLength);
-            }
-            else if (_nodeData is ExtensionData extensionData)
-            {
-                if (extensionData.Value is TrieNode child)
-                {
-                    if (logger.IsTrace) logger.Trace($"Persist recursively on child 0 {child} of {this}");
-                    int previousLength = AppendChildPath(ref currentPath, 0);
-                    child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger,
-                        maxPathLength, resolveStorageRoot);
-                    currentPath.TruncateMut(previousLength);
-                }
-            }
-            else if (_nodeData is LeafData leafData)
-            {
-                TrieNode? storageRoot = leafData.StorageRoot;
-                if (resolveStorageRoot && (storageRoot is not null ||
-                                           TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
-                {
-                    if (logger.IsTrace)
-                        logger.Trace($"Persist recursively on storage root {leafData.StorageRoot} of {this}");
-                    Hash256 storagePathAddr;
-                    using (currentPath.ScopedAppend(Key))
-                    {
-                        if (currentPath.Length != 64)
-                            throw new TrieException(
-                                $"unexpected storage path length. Total nibble count should add up to 64. Got {currentPath.Length}.");
-                        storagePathAddr = currentPath.Path.ToCommitment();
-                    }
-
-                    TreePath emptyPath = TreePath.Empty;
-                    storageRoot!.CallRecursively(
-                        action,
-                        storagePathAddr,
-                        ref emptyPath,
-                        resolver.GetStorageTrieNodeResolver(storagePathAddr),
-                        skipPersisted,
-                        logger);
-                }
-            }
-
-            action(this, storageAddress, currentPath);
-        }
-
-        public ValueTask CallRecursivelyAsync(
-            Func<TrieNode, Hash256?, TreePath, ValueTask> action,
-            Hash256? storageAddress,
-            ref TreePath currentPath,
-            ITrieNodeResolver resolver,
-            ILogger logger)
-        {
-            if (IsPersisted)
-            {
-                if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
-                return default;
-            }
-
-            if (currentPath.Length >= Int32.MaxValue)
-            {
-                return action(this, storageAddress, currentPath);
-            }
-
-            if (_nodeData is not LeafData leafData)
-            {
-                if (_nodeData is null)
-                {
-                    return action(this, storageAddress, currentPath);
-                }
-
-                return CallRecursivelyNotLeafAsync(
-                    action,
-                    storageAddress,
-                    currentPath,
-                    resolver,
-                    logger);
-            }
-            else
-            {
-                return CallRecursivelyLeafAsync(
-                    action,
-                    storageAddress,
-                    currentPath,
-                    resolver,
-                    leafData,
-                    logger);
-            }
-        }
-
-        private async ValueTask CallRecursivelyNotLeafAsync(
-            Func<TrieNode, Hash256?, TreePath, ValueTask> action,
-            Hash256? storageAddress,
-            TreePath currentPath,
-            ITrieNodeResolver resolver,
-            ILogger logger)
-        {
-            if (_nodeData is BranchData branchData)
-            {
-                for (int i = 0; i < BranchArray.Length; i++)
-                {
-                    if (branchData.Branches[i] is TrieNode child)
-                    {
-                        if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
-                        int previousLength = AppendChildPath(ref currentPath, i);
-                        await child.CallRecursivelyAsync(action, storageAddress, ref currentPath, resolver, logger);
-                        currentPath.TruncateMut(previousLength);
-                    }
-                }
-            }
-            else if (_nodeData is ExtensionData extensionData)
-            {
-                if (extensionData.Value is TrieNode child)
-                {
-                    if (logger.IsTrace) logger.Trace($"Persist recursively on child 0 {child} of {this}");
-                    int previousLength = AppendChildPath(ref currentPath, 0);
-                    await child.CallRecursivelyAsync(action, storageAddress, ref currentPath, resolver, logger);
-                    currentPath.TruncateMut(previousLength);
-                }
-            }
-
-            await action(this, storageAddress, currentPath);
-        }
-
-        private async ValueTask CallRecursivelyLeafAsync(
-            Func<TrieNode, Hash256?, TreePath, ValueTask> action,
-            Hash256? storageAddress,
-            TreePath currentPath,
-            ITrieNodeResolver resolver,
-            LeafData leafData,
-            ILogger logger)
-        {
-            TrieNode? storageRoot = leafData.StorageRoot;
-            if (storageRoot is not null || TryResolveStorageRoot(resolver, ref currentPath, out storageRoot))
-            {
-                if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {storageRoot} of {this}");
-                Hash256 storagePathAddr;
-                using (currentPath.ScopedAppend(Key))
-                {
-                    if (currentPath.Length != 64)
-                        throw new TrieException("unexpected storage path length. Total nibble count should add up to 64.");
-                    storagePathAddr = currentPath.Path.ToCommitment();
-                }
-
-                TreePath emptyPath = TreePath.Empty;
-                await storageRoot!.CallRecursivelyAsync(
-                    action,
-                    storagePathAddr,
-                    ref emptyPath,
-                    resolver.GetStorageTrieNodeResolver(storagePathAddr),
-                    logger);
-            }
-
-            await action(this, storageAddress, currentPath);
-        }
-
-        /// <summary>
-        /// Imagine a branch like this:
-        ///        B
-        /// ||||||||||||||||
         /// -T--TP----P--TT-
         /// where T is a transient child (not yet persisted) and P is a persisted child node
         /// After calling this method you will end up with
@@ -1155,7 +944,6 @@ namespace Nethermind.Trie
                         {
                             if (child.IsPersisted)
                             {
-                                Pruning.Metrics.DeepPrunedPersistedNodesCount++;
                                 UnresolveChild(i);
                             }
                             else if (maxLevelsDeep != 0)
@@ -1171,7 +959,6 @@ namespace Nethermind.Trie
                     {
                         if (child.IsPersisted)
                         {
-                            Pruning.Metrics.DeepPrunedPersistedNodesCount++;
                             UnresolveChild(0);
                         }
                         else if (maxLevelsDeep != 0)

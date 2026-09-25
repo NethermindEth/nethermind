@@ -59,13 +59,9 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
-            WriteOptions options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority)!;
-            Assert.That(options.GetLowPriority(), Is.True);
+            WriteOptions options = db.WriteFlagsToWriteOptions(WriteFlags.None)!;
+            Assert.That(options.GetLowPriority(), Is.False);
             Assert.That(options.GetDisableWal(), Is.False);
-
-            options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL)!;
-            Assert.That(options.GetLowPriority(), Is.True);
-            Assert.That(options.GetDisableWal(), Is.True);
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL)!;
             Assert.That(options.GetLowPriority(), Is.False);
@@ -148,7 +144,6 @@ namespace Nethermind.Db.Test
                 .AddSingleton<IInitConfig>(initConfig)
                 .AddSingleton<IReceiptConfig>(receiptConfig)
                 .AddSingleton<ISyncConfig>(syncConfig)
-                .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .Build();
@@ -379,7 +374,6 @@ namespace Nethermind.Db.Test
                 .AddSingleton<IDbConfig>(config)
                 .AddSingleton<IFlatDbConfig>(flatConfig)
                 .AddSingleton<IInitConfig>(initConfig)
-                .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .Add<IDisposableStack, AutofacDisposableStack>()
@@ -1020,7 +1014,6 @@ namespace Nethermind.Db.Test
                 .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
                 .AddSingleton<IDbConfig>(config)
                 .AddSingleton<IInitConfig>(initConfig)
-                .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .Build();
@@ -1215,7 +1208,7 @@ namespace Nethermind.Db.Test
             _db[[1, 2, 3]] = [4, 5, 6];
             AssertCanGetViaAllMethod(_db, [1, 2, 3], [4, 5, 6]);
 
-            _db.Set([2, 3, 4], [5, 6, 7], WriteFlags.LowPriority);
+            _db.Set([2, 3, 4], [5, 6, 7], WriteFlags.DisableWAL);
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 

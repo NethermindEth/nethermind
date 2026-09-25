@@ -168,15 +168,6 @@ namespace Nethermind.Core.Test.Builders
             return account;
         }
 
-        public static byte[] GenerateRandomAccountRlp(AccountDecoder? accountDecoder = null)
-        {
-            accountDecoder ??= _accountDecoder;
-            Account account = GenerateRandomAccount();
-            IRlpDecoder<Account?> encoder = accountDecoder;
-            byte[] value = encoder.Encode(account).Bytes;
-            return value;
-        }
-
         public static Account GenerateIndexedAccount(int index)
         {
             Account account = new(

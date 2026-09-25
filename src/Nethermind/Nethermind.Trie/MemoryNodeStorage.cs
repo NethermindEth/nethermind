@@ -49,14 +49,6 @@ public sealed class MemoryNodeStorage : INodeStorage
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash) =>
         hash == Keccak.EmptyTreeHash.ValueHash256 || _nodes.ContainsKey(hash);
 
-    public void Flush(bool onlyWal)
-    {
-    }
-
-    public void Compact()
-    {
-    }
-
     private sealed class WriteBatch(MemoryNodeStorage storage) : INodeStorage.IWriteBatch
     {
         public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags) =>

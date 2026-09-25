@@ -365,7 +365,6 @@ public abstract class StateSyncFeedTestsBase(
         private readonly ITrieStore _store = store;
         private readonly AccountDecoder _decoder = new();
 
-        public bool CanServe => true;
 
         public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit, CancellationToken cancellationToken)
         {
@@ -476,7 +475,7 @@ public class RemoteDbContext
     {
         CodeDb = new MemDb();
         Db = new MemDb();
-        TrieStore = TestTrieStoreFactory.Build(Db, logManager);
+        TrieStore = new TestRawTrieStore(Db);
         StateTree = new StateTree(TrieStore, logManager);
     }
 

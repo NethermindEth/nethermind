@@ -17,12 +17,6 @@ public interface IStateBoundary
     ulong? OldestStateBlock { get; }
 
     /// <summary>
-    /// Configured rolling-window retention in blocks. Null when there is no rolling window;
-    /// the absolute floor is reported via <see cref="OldestStateBlock"/> instead.
-    /// </summary>
-    ulong? RetentionWindowBlocks { get; }
-
-    /// <summary>
     /// Highest block whose state is durably persisted; null when unknown (fresh node or still
     /// syncing). The ceiling counterpart to the <see cref="OldestStateBlock"/> floor.
     /// </summary>
@@ -36,6 +30,5 @@ public sealed class NullStateBoundary : IStateBoundary
     private NullStateBoundary() { }
 
     public ulong? OldestStateBlock => null;
-    public ulong? RetentionWindowBlocks => null;
     public ulong? BestPersistedState => null;
 }

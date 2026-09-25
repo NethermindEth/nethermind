@@ -2,54 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 
 namespace Nethermind.Consensus.Stateless;
 
 internal sealed partial class HashKeyedNodeStorage
 {
-    private Dictionary<NodeKey, byte[]?>? _nodes;
-    private ConcurrentDictionary<NodeKey, byte[]?>? _concurrentNodes;
+    // The host updates storage roots on several threads, so the overlay stays safe for readers on any of them.
+    private readonly ConcurrentDictionary<NodeKey, byte[]?> _nodes = new();
 
-    private partial void InitializeOverlay(bool threadSafe)
-    {
-        if (threadSafe)
-        {
-            _concurrentNodes = [];
-        }
-        else
-        {
-            _nodes = [];
-        }
-    }
+    private bool TryGetOverlay(NodeKey key, out byte[]? value) => _nodes.TryGetValue(key, out value);
 
-    private partial bool TryGetOverlay(NodeKey key, out byte[]? value)
-    {
-        if (_concurrentNodes is not null)
-        {
-            if (_concurrentNodes.TryGetValue(key, out value))
-            {
-                return true;
-            }
-        }
-        else if (_nodes!.TryGetValue(key, out value))
-        {
-            return true;
-        }
-
-        value = null;
-        return false;
-    }
-
-    private partial void SetOverlay(NodeKey key, byte[]? value)
-    {
-        if (_concurrentNodes is not null)
-        {
-            _concurrentNodes[key] = value;
-        }
-        else
-        {
-            _nodes![key] = value;
-        }
-    }
+    private void SetOverlay(NodeKey key, byte[]? value) => _nodes[key] = value;
 }

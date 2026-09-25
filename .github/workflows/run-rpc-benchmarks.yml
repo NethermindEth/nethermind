@@ -139,7 +139,7 @@ on:
           - flat
         default: flat
       additional_nethermind_flags:
-        description: Extra Nethermind flags for single-node runs (e.g. --Pruning.CacheMb=4000).
+        description: Extra Nethermind flags for single-node runs (e.g. --FlatDb.TrieCacheMemoryBudget=1073741824).
         required: false
         default: ""
       debug_trace_call_corpus:

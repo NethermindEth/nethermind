@@ -26,7 +26,7 @@ public class VisitingTests
     {
         MemDb memDb = new();
 
-        using ITrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
+        using ITrieStore trieStore = new TestRawTrieStore(memDb);
         PatriciaTree patriciaTree = new(trieStore, LimboLogs.Instance);
 
         Span<byte> raw = stackalloc byte[32];
@@ -39,7 +39,7 @@ public class VisitingTests
             patriciaTree.Set(raw, Rlp.Encode(new Account(10UL, (ulong)(10_000_000 + i))));
         }
 
-        using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
+        patriciaTree.Commit();
 
         AppendingVisitor visitor = new(false);
 
@@ -64,12 +64,10 @@ public class VisitingTests
     {
         MemDb memDb = new();
 
-        using ITrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
+        using ITrieStore trieStore = new TestRawTrieStore(memDb);
 
         byte[] value = Enumerable.Range(1, 32).Select(static i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;
-
-        IBlockCommitter blockCommit = trieStore.BeginBlockCommit(0);
 
         for (int outerIndex = 0; outerIndex < 64; outerIndex++)
         {
@@ -101,7 +99,6 @@ public class VisitingTests
         }
 
         stateTree.Commit();
-        blockCommit.Dispose();
 
         AppendingVisitor visitor = new(true);
 

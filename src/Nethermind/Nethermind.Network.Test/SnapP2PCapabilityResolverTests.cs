@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
@@ -13,7 +12,6 @@ using Nethermind.Specs;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -23,13 +21,6 @@ namespace Nethermind.Network.Test;
 public class SnapP2PCapabilityResolverTests
 {
     private const ulong Pivot = 1000;
-
-    private static Lazy<IBalHealing> AvailableBalHealing()
-    {
-        IBalHealing healing = Substitute.For<IBalHealing>();
-        healing.IsAvailable.Returns(true);
-        return new Lazy<IBalHealing>(healing);
-    }
 
     private static readonly Capability Snap1 = new(Protocol.Snap, SnapVersions.Snap1);
     private static readonly Capability Snap2 = new(Protocol.Snap, SnapVersions.Snap2);
@@ -50,7 +41,7 @@ public class SnapP2PCapabilityResolverTests
 
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = balEnabled });
 
-        StateHealingStrategy healingStrategy = new(syncConfig, AvailableBalHealing(), LimboLogs.Instance);
+        StateHealingStrategy healingStrategy = new(syncConfig, LimboLogs.Instance);
         if (healDecided)
         {
             healingStrategy.SetPivot(Build.A.BlockHeader.WithNumber(Pivot)
@@ -136,7 +127,7 @@ public class SnapP2PCapabilityResolverTests
     public void Adds_snap2_and_raises_Changed_once_the_heal_path_is_decided()
     {
         ISyncConfig syncConfig = new SyncConfig { SnapSync = true };
-        StateHealingStrategy healingStrategy = new(syncConfig, AvailableBalHealing(), LimboLogs.Instance);
+        StateHealingStrategy healingStrategy = new(syncConfig, LimboLogs.Instance);
 
         ISyncProgressResolver progressResolver = Substitute.For<ISyncProgressResolver>();
         progressResolver.SyncPivot.Returns((Pivot, Keccak.Zero));

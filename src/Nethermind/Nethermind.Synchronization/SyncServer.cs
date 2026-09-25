@@ -28,7 +28,6 @@ using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -416,7 +415,7 @@ namespace Nethermind.Synchronization
 
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
-        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken)
         {
             using DeferredRlpItemList.Builder builder = new(keys.Count);
             DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
@@ -426,16 +425,9 @@ namespace Nethermind.Synchronization
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
-                if ((includedTypes & NodeDataType.Code) == NodeDataType.Code)
-                {
-                    Span<byte> value = _codeDb.GetSpan(keys[i].Bytes);
-                    writer.WriteValue(value);
-                    _codeDb.DangerousReleaseMemory(value);
-                }
-                else
-                {
-                    writer.WriteValue([]);
-                }
+                Span<byte> value = _codeDb.GetSpan(keys[i].Bytes);
+                writer.WriteValue(value);
+                _codeDb.DangerousReleaseMemory(value);
                 count++;
             }
 

@@ -32,9 +32,6 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     // ITrieStore
     public bool HasRoot(Hash256 stateRoot) => true;
 
-    public bool HasRoot(Hash256 stateRoot, ulong blockNumber) =>
-        flatDbManager.HasStateForBlock(new StateId(blockNumber, stateRoot));
-
     public IDisposable BeginScope(BlockHeader? baseBlock)
     {
         // A single bundle slot: a nested scope would overwrite the outer one, leaking its lease and pulling the adapter from under it.
@@ -46,8 +43,6 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     }
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
-
-    public IBlockCommitter BeginBlockCommit(ulong blockNumber) => NullCommitter.Instance;
 
     public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 

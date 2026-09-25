@@ -775,7 +775,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
     public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
 
-    public CacheType ClearCaches()
+    public void ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CancelAndJoinSpeculative();
@@ -783,7 +783,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The account and storage caches carry over: the block's commit writes its final values into them, and PrepareFor
         // keeps or clears them before the next use.
         _preBlockCaches?.ClearPrecompileCache();
-        return CacheType.None;
     }
 
     public void Dispose()

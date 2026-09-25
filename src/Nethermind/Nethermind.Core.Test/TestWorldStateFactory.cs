@@ -21,18 +21,8 @@ public static class TestWorldStateFactory
     {
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
-        TestRawTrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.GetDb<IDb>(DbNames.State), logManager);
+        TestRawTrieStore trieStore = new(dbProvider.GetDb<IDb>(DbNames.State));
         return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, stateHeaderProvider, logManager), logManager);
-    }
-
-    public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null, IStateHeaderProvider? stateHeaderProvider = null)
-    {
-        dbProvider ??= TestMemDbProvider.Init();
-        logManager ??= LimboLogs.Instance;
-        stateHeaderProvider ??= UnavailableStateHeaderProvider.Instance;
-
-        TestRawTrieStore trieStore = TestTrieStoreFactory.Build(dbProvider.GetDb<IDb>(DbNames.State), logManager);
-        return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, stateHeaderProvider, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
     }
 
     public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider(IStateHeaderProvider stateHeaderProvider)

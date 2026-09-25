@@ -23,8 +23,8 @@ namespace Nethermind.Consensus.Stateless;
 /// key. The empty-tree RLP is seeded explicitly because witnesses may omit it.
 /// </para>
 /// <para>
-/// The zkEVM guest uses the unsynchronized form. The host witness verifier opts into synchronization because
-/// storage tries can be committed concurrently.
+/// The write overlay is a plain dictionary in the zkEVM guest and a concurrent one on the host, which updates
+/// storage roots on several threads.
 /// </para>
 /// </remarks>
 internal sealed partial class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
@@ -38,14 +38,8 @@ internal sealed partial class HashKeyedNodeStorage : INodeStorage, INodeStorage.
     private readonly int _bucketMask;
     private const int MaxBucketLength = 8;
 
-    private partial void InitializeOverlay(bool threadSafe);
-
-    private partial bool TryGetOverlay(NodeKey key, out byte[]? value);
-
-    private partial void SetOverlay(NodeKey key, byte[]? value);
-
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
-    public HashKeyedNodeStorage(ReadOnlySpan<byte[]> state, bool threadSafe = false)
+    public HashKeyedNodeStorage(ReadOnlySpan<byte[]> state)
     {
         int count = state.Length + 1;
         int bucketCount = (int)BitOperations.RoundUpToPowerOf2((uint)count);
@@ -72,7 +66,6 @@ internal sealed partial class HashKeyedNodeStorage : INodeStorage, INodeStorage.
             _values[slot] = value;
             if (_starts[bucket + 1] - _starts[bucket] > MaxBucketLength) _overflow[key] = value;
         }
-        InitializeOverlay(threadSafe);
     }
 
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
@@ -122,10 +115,6 @@ internal sealed partial class HashKeyedNodeStorage : INodeStorage, INodeStorage.
 
     // The store outlives every batch taken on it.
     public void Dispose() { }
-
-    public void Flush(bool onlyWal) { }
-
-    public void Compact() { }
 
     /// <summary>A node keccak as a dictionary key.</summary>
     /// <remarks>

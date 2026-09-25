@@ -22,11 +22,10 @@ public class GCSchedulerTests
 
     [Test]
     public void Refused_collection_does_not_arm_loh_compaction(
-        [Values(GCCollectionMode.Aggressive, GCCollectionMode.Forced)] GCCollectionMode mode, [Values] bool pruning)
+        [Values(GCCollectionMode.Aggressive, GCCollectionMode.Forced)] GCCollectionMode mode)
     {
-        using GCScheduler.ForcedGCExclusionScope? exclusion = pruning ? _scheduler.ExcludeForcedGC() : null;
-        bool paused = !pruning && GCScheduler.MarkGCPaused();
-        if (!pruning) Assert.That(paused, Is.True);
+        bool paused = GCScheduler.MarkGCPaused();
+        Assert.That(paused, Is.True);
         GCLargeObjectHeapCompactionMode previous = GCSettings.LargeObjectHeapCompactionMode;
         try
         {
@@ -72,7 +71,7 @@ public class GCSchedulerTests
     }
 
     [Test]
-    public void Sweep_stays_armed_while_guard_or_exclusion_is_held_then_retries()
+    public void Sweep_stays_armed_while_guard_is_held_then_retries()
     {
         long armed = ArmBudget();
 
@@ -85,13 +84,6 @@ public class GCSchedulerTests
         finally
         {
             GCScheduler.MarkGCResumed();
-        }
-
-        using (_scheduler.ExcludeForcedGC())
-        using (_scheduler.ExcludeForcedGC())
-        {
-            _scheduler.SweepIfAllocationBudgetExceeded();
-            Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.EqualTo(armed));
         }
 
         _scheduler.SweepIfAllocationBudgetExceeded();
@@ -112,13 +104,12 @@ public class GCSchedulerTests
     }
 
     [Test]
-    public void Idle_compaction_never_arms_loh_explicitly([Values] bool pruning)
+    public void Idle_compaction_never_arms_loh_explicitly()
     {
         GCScheduler scheduler = new(sustainedSweepEnabled: false);
         scheduler.SetNextGcForTest(blocking: true, compacting: true);
-        using GCScheduler.ForcedGCExclusionScope? exclusion = pruning ? scheduler.ExcludeForcedGC() : null;
-        bool paused = !pruning && GCScheduler.MarkGCPaused();
-        if (!pruning) Assert.That(paused, Is.True);
+        bool paused = GCScheduler.MarkGCPaused();
+        Assert.That(paused, Is.True);
         GCLargeObjectHeapCompactionMode previous = GCSettings.LargeObjectHeapCompactionMode;
         try
         {

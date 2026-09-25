@@ -232,17 +232,6 @@ namespace Nethermind.Core
 
         // Hint that the workload is likely to need the next value in the sequence and should prefetch it.
         HintReadAhead = 2,
-
-        // Shameful hack to use different pool of readahead iterator.
-        // It is used for snap serving performance and identifies the relevant state section.
-        // If they use the same iterator, then during the tree traversal, when it go back up to a certain level where
-        // the section differ the iterator will need to seek back (section is physically before another section),
-        // which is a lot slower.
-        HintReadAhead2 = 4,
-        HintReadAhead3 = 8,
-
-        // Used for full pruning db to skip duplicate read
-        SkipDuplicateRead = 16,
     }
 
     [Flags]
@@ -250,12 +239,7 @@ namespace Nethermind.Core
     {
         None = 0,
 
-        // Hint that this is a low priority write
-        LowPriority = 1,
-
         // Hint that this write does not require durable writes, as if it crash, it'll start over anyway.
         DisableWAL = 2,
-
-        LowPriorityAndNoWAL = LowPriority | DisableWAL,
     }
 }

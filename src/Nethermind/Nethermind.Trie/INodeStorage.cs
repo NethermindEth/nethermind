@@ -17,13 +17,6 @@ public interface INodeStorage
     /// </summary>
     bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash);
 
-    /// <summary>
-    /// Used by StateSync to make sure values are flushed.
-    /// </summary>
-    /// <param name="onlyWal">True if only WAL file should be flushed, not memtable.</param>
-    void Flush(bool onlyWal);
-    void Compact();
-
     public interface IWriteBatch : IDisposable
     {
         void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags);

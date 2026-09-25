@@ -42,11 +42,9 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
 
-            // Register the backend-independent verify-trie admin RPC.
             .RegisterSingletonJsonRpcModule<IVerifyTrieAdminRpcModule, VerifyTrieAdminRpcModule>()
         ;
 
-        // Register the verify-trie diagnostic step.
         if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
             builder.AddStep(typeof(RunVerifyTrie));
     }

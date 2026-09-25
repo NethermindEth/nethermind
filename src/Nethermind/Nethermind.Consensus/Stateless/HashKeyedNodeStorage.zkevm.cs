@@ -7,11 +7,9 @@ namespace Nethermind.Consensus.Stateless;
 
 internal sealed partial class HashKeyedNodeStorage
 {
-    private Dictionary<NodeKey, byte[]?> _nodes = null!;
+    private readonly Dictionary<NodeKey, byte[]?> _nodes = [];
 
-    private partial void InitializeOverlay(bool threadSafe) => _nodes = [];
-
-    private partial bool TryGetOverlay(NodeKey key, out byte[]? value)
+    private bool TryGetOverlay(NodeKey key, out byte[]? value)
     {
         if (_nodes.Count != 0 && _nodes.TryGetValue(key, out value)) return true;
 
@@ -19,5 +17,5 @@ internal sealed partial class HashKeyedNodeStorage
         return false;
     }
 
-    private partial void SetOverlay(NodeKey key, byte[]? value) => _nodes[key] = value;
+    private void SetOverlay(NodeKey key, byte[]? value) => _nodes[key] = value;
 }

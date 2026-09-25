@@ -349,7 +349,6 @@ namespace Nethermind.Benchmarks.Store
             {
                 if (i % _repeatedlyFactor == 0)
                 {
-                    using IBlockCommitter _ = trieStore.BeginBlockCommit(i / _repeatedlyFactor);
                     tempTree.Commit();
                 }
 
@@ -384,7 +383,6 @@ namespace Nethermind.Benchmarks.Store
                 }
             }
 
-            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             tempTree.Commit();
         }
 
@@ -425,21 +423,18 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void LargeCommit()
         {
-            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
             _largeUncommittedStateTree.Commit();
         }
 
         [Benchmark]
         public void LargeHash()
         {
-            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
             _largeUncommittedStateTree.UpdateRootHash();
         }
 
         [Benchmark]
         public void LargeHashNoParallel()
         {
-            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
             _largeUncommittedStateTree.UpdateRootHash(canBeParallel: false);
         }
 

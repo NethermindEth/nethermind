@@ -5,9 +5,9 @@ using Nethermind.Config;
 
 namespace Nethermind.Db;
 
-[ConfigCategory(Description = "Configuration of the fallback maximum blockchain reorganization depth used by the block tree and log index.")]
+[ConfigCategory(Description = "Configuration of the fallback reorganization depth of the log index. State retention is configured with FlatDb.MinReorgDepth and FlatDb.MaxReorgDepth.")]
 public interface IPruningConfig : IConfig
 {
-    [ConfigItem(Description = "Fallback maximum reorganization depth used by the block tree and log index when no explicit value is configured.", DefaultValue = "64")]
+    [ConfigItem(Description = "Fallback for LogIndex.MaxReorgDepth when that is not set. It no longer bounds how much state is kept.", DefaultValue = "64")]
     ulong PruningBoundary { get; set; }
 }
