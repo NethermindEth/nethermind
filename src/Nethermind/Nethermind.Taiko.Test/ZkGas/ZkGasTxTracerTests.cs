@@ -26,7 +26,10 @@ public class ZkGasTxTracerTests
         return (tracer!, meter);
     }
 
-    private static ExecutionEnvironment Env() => null!;
+    private static readonly ExecutionEnvironment RootEnv =
+        ExecutionEnvironment.Rent(null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+    private static ExecutionEnvironment Env() => RootEnv;
 
     // ── non-spawn opcode ──────────────────────────────────────────────────────
 

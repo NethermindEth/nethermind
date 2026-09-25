@@ -89,7 +89,7 @@ public sealed class ZkGasTxTracer : TxTracer
         _currentGasStart = gas;
         _stepActive = true;
         _stepJustEnded = false;
-        _depth = env?.CallDepth ?? 0;
+        _depth = env.CallDepth;
         _stack = default;
         _memorySize = 0;
         _returnDataLength = 0;
@@ -104,7 +104,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// <summary>
     /// Computes the gas consumed by the current opcode. For spawn opcodes, defers
     /// charging until we learn whether child work was dispatched. For all other
-    /// opcodes, charges immediately.
+    /// opcodes, holds the charge until the next step, a frame end or an error report for this one.
     /// </summary>
     public override void ReportOperationRemainingGas(ulong gas)
     {
@@ -216,11 +216,13 @@ public sealed class ZkGasTxTracer : TxTracer
 
     /// <summary>
     /// Replaces the measured gas of a failed step with what REVM (alethia-reth) had spent when it halted.
+    /// </summary>
+    /// <remarks>
     /// Nethermind reports zero gas left on any out-of-gas failure and validates stack, static context and
     /// operands in a different order, while REVM deducts the instruction table's static gas first and keeps
     /// any gas it had not charged yet. Since Unzen the per-step charge feeds the consensus-relevant
     /// <c>block.Header.Difficulty</c>, so it has to match exactly.
-    /// </summary>
+    /// </remarks>
     public override void ReportOperationError(EvmExceptionType error)
     {
         bool stepFailed = _stepJustEnded;

@@ -11,7 +11,8 @@ namespace Nethermind.Taiko.ZkGas;
 
 /// <summary>
 /// Gas left after a failed opcode as REVM's inspector sees it.
-///
+/// </summary>
+/// <remarks>
 /// Unzen zk gas follows REVM (alethia-reth): the instruction table's static gas is deducted before the
 /// instruction body runs, the body then charges in its own order, and a halt on a stack, operand or
 /// memory check keeps whatever gas was not charged yet. Only a failed <c>gas!</c> charge spends all
@@ -19,7 +20,7 @@ namespace Nethermind.Taiko.ZkGas;
 /// out-of-gas failure, so the raw per-step delta of a failed step does not match. The reconstruction
 /// below follows taiko-geth's <c>core/vm/taiko_zk_gas_runtime.go</c>, which pins the same values
 /// against alethia-reth.
-/// </summary>
+/// </remarks>
 internal static class RevmFailedStepGas
 {
     private const ulong MaxInitCodeSize = 2 * CodeSizeConstants.MaxCodeSizeEip170;
