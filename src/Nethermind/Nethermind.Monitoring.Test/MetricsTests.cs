@@ -11,11 +11,17 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Init.Modules;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Monitoring.Test;
@@ -188,6 +194,49 @@ public class MetricsTests
         {
             Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
             Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Load_CarryForwardDetailedMetrics()
+    {
+        bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
+        try
+        {
+            MetricsConfig metricsConfig = new()
+            {
+                Enabled = true,
+                EnableDetailedMetric = true
+            };
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new MonitoringModule(metricsConfig))
+                .AddSingleton<IMetricsConfig>(metricsConfig)
+                .AddSingleton<ISyncConfig>(new SyncConfig())
+                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .Build();
+            MetricsController metricsController = (MetricsController)container.Resolve<IMetricsController>();
+            metricsController.UpdateAllMetrics();
+
+            Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
+            string typeName = nameof(Nethermind.State.Flat.Metrics);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Db.Metrics.DetailedMetricsEnabled, Is.True);
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountHits)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountMisses)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotHits)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotMisses)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountWipes)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotWipes)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountCount)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotCount)}"));
+            }
+        }
+        finally
+        {
+            Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
         }
     }
 
