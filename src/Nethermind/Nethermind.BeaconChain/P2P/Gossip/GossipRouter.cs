@@ -440,7 +440,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         return data.Target!.Epoch != epoch || CountSetBits(aggregationBits) == 0 ? Verdict.Ignore(GossipDropReason.InvalidField) : timing;
     }
 
-    // phase0 attester_slashing: an empty intersection means every index is already seen; the slashable-data rule needs no state.
+    // phase0 attester_slashing: an empty intersection means every index is already seen. With no seen-index set the node cannot
+    // rule out that IGNORE for a non-empty one, so non-slashable data is only dropped, never rejected.
     private static Verdict? ValidateAttesterSlashing(ulong[] indices1, AttestationData data1, ulong[] indices2, AttestationData data2)
     {
         HashSet<ulong> second = [.. indices2];
@@ -459,7 +460,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return Verdict.Ignore(GossipDropReason.InvalidField);
         }
 
-        return BeaconStateAccessors.IsSlashableAttestationData(data1, data2) ? null : Verdict.Reject(GossipDropReason.InvalidField);
+        return BeaconStateAccessors.IsSlashableAttestationData(data1, data2) ? null : Verdict.Ignore(GossipDropReason.InvalidField);
     }
 
     // verify_execution_requests_limits MAY run at deserialization (gloas/p2p-interface.md), so it rejects first; the
