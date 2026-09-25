@@ -61,8 +61,15 @@ public interface IWorldStateScopeProvider
         /// </summary>
         void HintWarmAccount(in ValueAddress address) { }
 
-        /// <inheritdoc cref="HintWarmAccount"/>
+        /// <inheritdoc cref="HintWarmAccount(in ValueAddress)"/>
         void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+
+        /// <inheritdoc cref="HintWarmAccount(in ValueAddress)"/>
+        /// <remarks>For callers that hold the managed <see cref="Address"/>, so a backend that keeps one needs no copy.</remarks>
+        void HintWarmAccount(Address address) => HintWarmAccount(new ValueAddress(address.Bytes));
+
+        /// <inheritdoc cref="HintWarmAccount(Address)"/>
+        void HintWarmSlot(Address address, in UInt256 index) => HintWarmSlot(new ValueAddress(address.Bytes), in index);
 
         /// <summary>
         /// Get the account information for the following address.
