@@ -1559,6 +1559,26 @@ public class BlockTreeTests
     }
 
     [Test]
+    public void Resuggesting_known_longer_lower_difficulty_block_keeps_best_suggested([Values] bool shouldProcess)
+    {
+        BlockTreeSuggestOptions options = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+        BlockTree tree = BuildBlockTree();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        Block a1 = Build.A.Block.WithDifficulty(1).WithParent(genesis).TestObject;
+        Block a2 = Build.A.Block.WithDifficulty(1).WithParent(a1).TestObject;
+        Block a3 = Build.A.Block.WithDifficulty(1).WithParent(a2).TestObject;
+        Block b1 = Build.A.Block.WithDifficulty(5).WithParent(genesis).WithExtraData([1]).TestObject;
+
+        tree.SuggestBlock(genesis);
+        foreach (Block block in new[] { a1, a2, a3, b1 }) tree.SuggestBlock(block, options);
+        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(b1.Hash), "higher difficulty fork");
+
+        tree.SuggestBlock(a3, options);
+
+        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(b1.Hash), "after re-suggesting a3");
+    }
+
+    [Test]
     public void Report_bad_block_stores_block_and_does_not_alter_main_chain()
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
