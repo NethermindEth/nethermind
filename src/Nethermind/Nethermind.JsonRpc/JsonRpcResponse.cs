@@ -33,9 +33,7 @@ namespace Nethermind.JsonRpc
 
         internal ref readonly JsonRpcId IdRef => ref _id;
 
-        internal Func<Exception, JsonRpcErrorResponse>? StreamExceptionHandler { get; set; }
-
-        internal Action<bool>? StreamCompleted { get; set; }
+        internal JsonRpcService.StreamingContext? Streaming { get; set; }
 
         internal virtual bool IsResourceUnavailableError => false;
 
@@ -68,8 +66,7 @@ namespace Nethermind.JsonRpc
         {
             action?.Invoke();
             action = null;
-            StreamExceptionHandler = null;
-            StreamCompleted = null;
+            Streaming = null;
         }
     }
 

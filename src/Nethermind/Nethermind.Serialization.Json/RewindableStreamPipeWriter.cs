@@ -10,7 +10,10 @@ using Microsoft.IO;
 namespace Nethermind.Serialization.Json;
 
 /// <summary>Writes directly into a recyclable memory stream and supports discarding a failed response.</summary>
-/// <remarks>The caller owns the stream and must not reposition or write to it while using this writer.</remarks>
+/// <remarks>
+/// The caller owns the stream and must not reposition or write to it while using this writer.
+/// Rewinding truncates appended bytes; it cannot restore bytes overwritten before the stream's end.
+/// </remarks>
 public sealed class RewindableStreamPipeWriter : CountingWriter
 {
     private readonly RecyclableMemoryStream _stream;
@@ -19,6 +22,8 @@ public sealed class RewindableStreamPipeWriter : CountingWriter
     private int _flushCanceled;
 
     /// <summary>Creates a writer over a memory stream positioned at its end.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="stream"/> is null.</exception>
+    /// <exception cref="ArgumentException">The stream's position is not at its end.</exception>
     public RewindableStreamPipeWriter(RecyclableMemoryStream stream, long initialWrittenCount = 0)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -28,6 +33,10 @@ public sealed class RewindableStreamPipeWriter : CountingWriter
     }
 
     /// <summary>Discards bytes written after the supplied count, preserving earlier output.</summary>
+    /// <param name="writtenCount">A checkpoint previously read from <see cref="CountingWriter.WrittenCount"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="writtenCount"/> is outside the range from the initial count through <see cref="CountingWriter.WrittenCount"/>.
+    /// </exception>
     public void Rewind(long writtenCount)
     {
         if (writtenCount < _initialWrittenCount || writtenCount > WrittenCount) throw new ArgumentOutOfRangeException(nameof(writtenCount));

@@ -11,8 +11,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.IO;
-using Nethermind.Core.Resettables;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
@@ -65,7 +63,14 @@ public static class JsonRpcResponseWriter
             return JsonRpcResponseWriteOutcome.Of(response);
         }
 
-        bool success = false;
+        if (response.Streaming is null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+            return JsonRpcResponseWriteOutcome.Of(response);
+        }
+
+        bool? success = null;
         try
         {
             JsonRpcResponseWriteOutcome outcome = writer is RewindableStreamPipeWriter buffered
@@ -74,10 +79,14 @@ public static class JsonRpcResponseWriter
             success = outcome.Success;
             return outcome;
         }
+        catch when (!cancellationToken.IsCancellationRequested)
+        {
+            success = false;
+            throw;
+        }
         finally
         {
-            response.StreamCompleted?.Invoke(success);
-            response.StreamCompleted = null;
+            response.Streaming.Complete(success);
         }
     }
 
@@ -114,14 +123,15 @@ public static class JsonRpcResponseWriter
         bool isBatch,
         CancellationToken cancellationToken)
     {
-        using StagingPipeWriter staged = new(writer);
+        StagingPipeWriter staged = new(writer);
         try
         {
             await WriteStreamableAsync(staged, response, streamable, isBatch, cancellationToken);
         }
         // Nothing reaches the transport before commitment, so an uncommitted failure is never a transport failure.
-        catch (Exception ex) when (!staged.IsCommitted && CanReplaceFailure(response, cancellationToken))
+        catch (Exception ex) when (!staged.IsCommitted && !cancellationToken.IsCancellationRequested)
         {
+            staged.Discard();
             return WriteReplacementError(writer, response, ex, options);
         }
         staged.Commit();
@@ -146,7 +156,7 @@ public static class JsonRpcResponseWriter
         {
             await WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
         }
-        catch (Exception ex) when (CanReplaceFailure(response, cancellationToken))
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             writer.Rewind(checkpoint);
             return WriteReplacementError(writer, response, ex, options);
@@ -154,12 +164,9 @@ public static class JsonRpcResponseWriter
         return JsonRpcResponseWriteOutcome.Of(response);
     }
 
-    private static bool CanReplaceFailure(JsonRpcResponse response, CancellationToken cancellationToken) =>
-        !cancellationToken.IsCancellationRequested && response.StreamExceptionHandler is not null;
-
     private static JsonRpcResponseWriteOutcome WriteReplacementError(PipeWriter writer, JsonRpcResponse response, Exception exception, JsonSerializerOptions options)
     {
-        using JsonRpcErrorResponse error = response.StreamExceptionHandler!(exception);
+        using JsonRpcErrorResponse error = response.Streaming!.MapException(exception);
         Write(writer, error, options);
         return JsonRpcResponseWriteOutcome.Of(error);
     }
@@ -365,11 +372,12 @@ internal readonly record struct JsonRpcResponseWriteOutcome(bool Success, bool I
 /// Flushes below the limit remain local, so their results never report a completed or cancelled reader. Once
 /// committed, bytes may have reached the transport and the caller must abort on failure.
 /// </remarks>
-internal sealed class StagingPipeWriter : CountingWriter, IDisposable
+internal sealed class StagingPipeWriter : CountingWriter
 {
-    private const int Limit = 16 * 1024;
+    private const int Limit = StreamableResultWriter.FlushThresholdBytes;
     private readonly PipeWriter _writer;
-    private RecyclableMemoryStream? _buffer = RecyclableStream.GetStream("json-rpc-response");
+    private byte[]? _buffer = ArrayPool<byte>.Shared.Rent(Limit);
+    private int _buffered;
 
     internal StagingPipeWriter(PipeWriter writer)
     {
@@ -379,37 +387,34 @@ internal sealed class StagingPipeWriter : CountingWriter, IDisposable
 
     internal bool IsCommitted => _buffer is null;
     public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
-    public override long UnflushedBytes => _writer.UnflushedBytes + (_buffer?.Length ?? 0);
+    public override long UnflushedBytes => _writer.UnflushedBytes + _buffered;
 
     internal void Commit()
     {
         if (_buffer is not { } buffer) return;
         _buffer = null;
-        using (buffer)
-        {
-            foreach (ReadOnlyMemory<byte> segment in buffer.GetReadOnlySequence())
-            {
-                _writer.Write(segment.Span);
-            }
-        }
+        int buffered = _buffered;
+        _buffered = 0;
+        _writer.Write(buffer.AsSpan(0, buffered));
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 
-    public void Dispose()
+    internal void Discard()
     {
-        _buffer?.Dispose();
+        byte[]? buffer = _buffer;
         _buffer = null;
+        _buffered = 0;
+        if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
     }
 
     public override Memory<byte> GetMemory(int sizeHint = 0)
     {
+        if (sizeHint < 0) throw new ArgumentOutOfRangeException(nameof(sizeHint));
         if (_buffer is { } buffer)
         {
-            long remaining = Limit - buffer.Length;
+            int remaining = Limit - _buffered;
             if (Math.Max(sizeHint, 1) <= remaining)
-            {
-                Memory<byte> memory = buffer.GetMemory(sizeHint);
-                return memory[..(int)Math.Min(memory.Length, remaining)];
-            }
+                return buffer.AsMemory(_buffered, remaining);
             Commit();
         }
         return _writer.GetMemory(sizeHint);
@@ -419,7 +424,11 @@ internal sealed class StagingPipeWriter : CountingWriter, IDisposable
 
     public override void Advance(int bytes)
     {
-        if (_buffer is { } buffer) buffer.Advance(bytes);
+        if (_buffer is not null)
+        {
+            if ((uint)bytes > (uint)(Limit - _buffered)) throw new ArgumentOutOfRangeException(nameof(bytes));
+            _buffered += bytes;
+        }
         else _writer.Advance(bytes);
         WrittenCount += bytes;
     }

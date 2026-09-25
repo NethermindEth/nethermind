@@ -399,7 +399,7 @@ public class StartupTests
         [Values] bool batch,
         [Values] bool jsonFailure)
     {
-        ProbeBlobStreamableResult result = new(async (writer, token) =>
+        DeferredProbeBlobStreamableResult result = new(async (writer, token) =>
         {
             writer.Write(Encoding.UTF8.GetBytes("[\"" + new string('x', payloadSize)));
             if (flush) await writer.FlushAsync(token);
@@ -474,7 +474,7 @@ public class StartupTests
     [Test]
     public async Task ProcessJsonRpcRequest_LargeStreamingTimeoutRecoversBufferedOrAbortsTransport([Values] bool bufferResponse)
     {
-        ProbeBlobStreamableResult result = new(async (writer, token) =>
+        DeferredProbeBlobStreamableResult result = new(async (writer, token) =>
         {
             writer.Write(Encoding.UTF8.GetBytes("[\"" + new string('x', 32 * 1024)));
             await writer.FlushAsync(token);
@@ -499,7 +499,7 @@ public class StartupTests
         [Values(0, 32 * 1024)] int payloadSize, [Values] bool batch, [Values] bool fail)
     {
         string payload = new('x', payloadSize);
-        ProbeBlobStreamableResult result = new(async (writer, token) =>
+        DeferredProbeBlobStreamableResult result = new(async (writer, token) =>
         {
             writer.Write(Encoding.UTF8.GetBytes("[\"" + payload + "\""));
             await writer.FlushAsync(token);
@@ -536,7 +536,7 @@ public class StartupTests
         Exception failure = errorCode == ErrorCodes.LimitExceeded
             ? new LimitExceededException("limit")
             : new ModuleRentalTimeoutException("module timeout");
-        ProbeBlobStreamableResult result = new((_, _) => throw failure);
+        DeferredProbeBlobStreamableResult result = new((_, _) => throw failure);
         IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
         stats.IsEnabled.Returns(true);
         Startup startup = CreateStreamingStartup(result, bufferResponse, stats);
@@ -568,7 +568,7 @@ public class StartupTests
     [NonParallelizable]
     public async Task ProcessJsonRpcRequest_Streamed_success_records_final_outcome([Values] bool bufferResponse, [Values] bool batch)
     {
-        ProbeBlobStreamableResult result = new((writer, _) =>
+        DeferredProbeBlobStreamableResult result = new((writer, _) =>
         {
             writer.Write("[null]"u8);
             return ValueTask.CompletedTask;
@@ -1002,7 +1002,7 @@ public class StartupTests
         new TestCaseData(1UL, "\"0x1\"").SetName("ulong")
     ];
 
-    private sealed class ProbeBlobStreamableResult(Func<PipeWriter, CancellationToken, ValueTask>? write = null) : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
+    private class ProbeBlobStreamableResult(Func<PipeWriter, CancellationToken, ValueTask>? write = null) : IStreamableResult, IReadOnlyList<BlobAndProofV2?>, IDisposable
     {
         public int WriteCount { get; private set; }
         public int DisposeCount { get; private set; }
@@ -1026,6 +1026,9 @@ public class StartupTests
 
         public void Dispose() => DisposeCount++;
     }
+
+    private sealed class DeferredProbeBlobStreamableResult(Func<PipeWriter, CancellationToken, ValueTask> write)
+        : ProbeBlobStreamableResult(write), IDeferredExecutionResult;
 
     private sealed class FlushingStreamableResult(Action? onFlushed = null) : IStreamableResult
     {

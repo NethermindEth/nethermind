@@ -13,6 +13,9 @@ internal sealed class SocketSendLock : IDisposable
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private bool _faulted;
+    private Exception? _failure;
+
+    internal Exception? Failure => _failure;
 
     internal async ValueTask WaitAsync(CancellationToken cancellationToken)
     {
@@ -20,12 +23,17 @@ internal sealed class SocketSendLock : IDisposable
         if (_faulted)
         {
             _semaphore.Release();
-            throw new IOException("The connection contains an incomplete JSON-RPC message.");
+            throw new IOException("The connection contains an incomplete JSON-RPC message.", _failure);
         }
     }
 
     /// <summary>Prevents future sends. The caller must hold the send lock.</summary>
-    internal void Fault() => _faulted = true;
+    internal void Fault(Exception? failure = null)
+    {
+        if (_faulted) return;
+        _failure = failure;
+        _faulted = true;
+    }
 
     internal void Release() => _semaphore.Release();
 

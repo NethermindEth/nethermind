@@ -27,6 +27,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly JsonRpcContext _jsonRpcContext;
 
     private readonly SocketSendLock _sendSemaphore = new();
+    private readonly CancellationTokenSource _sendFailure = new();
+    private bool _disposed;
     private readonly Channel<ProcessRequest> _processChannel;
 
     private sealed record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
@@ -69,6 +71,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         base.Dispose();
         _sendSemaphore.Dispose();
+        lock (_sendFailure)
+        {
+            _disposed = true;
+            _sendFailure.Dispose();
+        }
         _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
     }
@@ -86,7 +93,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public override async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
-        using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
+        using AutoCancelTokenSource cts = new(CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _sendFailure.Token));
 
         using ArrayPoolList<Task> allTasks = new(_workerTaskCount + 1);
         allTasks.Add(Task.Run(async () =>
@@ -106,7 +113,14 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             allTasks.Add(Task.Run(() => WorkerLoop(cts.Token)));
         }
 
-        await cts.WhenAllSucceed(allTasks);
+        try
+        {
+            await cts.WhenAllSucceed(allTasks);
+        }
+        catch (OperationCanceledException) when (_sendFailure.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException("A JSON-RPC notification left an incomplete message.", _sendSemaphore.Failure);
+        }
     }
 
     private async Task WorkerLoop(CancellationToken cancellationToken)
@@ -152,21 +166,30 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default)
     {
+        JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
         await _sendSemaphore.WaitAsync(cancellationToken);
+        bool failed = false;
         try
         {
-            JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
             (long responseSize, _) = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
             return (int)responseSize;
         }
-        catch
+        catch (Exception ex)
         {
-            _sendSemaphore.Fault();
+            _sendSemaphore.Fault(ex);
+            failed = true;
             throw;
         }
         finally
         {
             _sendSemaphore.Release();
+            if (failed)
+            {
+                lock (_sendFailure)
+                {
+                    if (!_disposed) _sendFailure.Cancel();
+                }
+            }
         }
     }
 }

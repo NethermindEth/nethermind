@@ -821,13 +821,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         if (isSuccess)
         {
             if (_logger.IsTrace) _logger.Trace($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
-            if (response.TryGetStreamableResult(out _))
+            if (response.Streaming is { } streaming)
             {
-                response.StreamCompleted = static success =>
-                {
-                    if (success) Metrics.JsonRpcSuccesses++;
-                    else Metrics.JsonRpcErrors++;
-                };
+                streaming.ReportCompletion = true;
             }
             else Metrics.JsonRpcSuccesses++;
         }

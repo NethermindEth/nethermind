@@ -18,6 +18,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
+using Nethermind.Core.Memory;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
@@ -31,6 +32,15 @@ namespace Nethermind.JsonRpc.Test;
 [Parallelizable(ParallelScope.Children)]
 public class JsonRpcSocketsClientTests
 {
+    private readonly GCKeeper _keeper = new(NoGCStrategy.Instance, NullLogManager.Instance);
+
+    [OneTimeTearDown]
+    public void DisposeKeeper() => _keeper.Dispose();
+
+    private JsonRpcService.StreamingContext CreateStreamingContext(int id = 42) => new(
+        new JsonRpcService(NullModuleProvider.Instance, NullLogManager.Instance, new JsonRpcConfig(), _keeper),
+        new JsonRpcRequest { Id = new JsonRpcId((long)id), Method = "trace_call" }, "trace_call");
+
     [TestCase(false, TestName = "Single response")]
     [TestCase(true, TestName = "Batch response")]
     public async Task Socket_sink_writes_response_with_one_message_boundary(bool isBatch)
@@ -123,11 +133,7 @@ public class JsonRpcSocketsClientTests
                     await failWrite.Task.WaitAsync(deadline.Token);
                 }
                 : null) : "ok",
-                StreamExceptionHandler = _ => new JsonRpcErrorResponse
-                {
-                    Id = requests,
-                    Error = new Error { Code = ErrorCodes.Timeout, Message = "timeout" }
-                }
+                Streaming = CreateStreamingContext(requests)
             };
             IJsonRpcResponseSink sink = call.Arg<IJsonRpcResponseSink>();
             CancellationToken token = call.Arg<CancellationToken>();
@@ -184,8 +190,8 @@ public class JsonRpcSocketsClientTests
         {
             await deadline.CancelAsync();
             serverWebSocket.Abort();
-            try { await receiveLoop; }
-            catch (OperationCanceledException) { }
+            await receiveLoop.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            Assert.That(receiveLoop.Exception?.InnerException, Is.Null.Or.InstanceOf<OperationCanceledException>());
         }
 
         async Task<string> ReadMessage()
@@ -213,7 +219,7 @@ public class JsonRpcSocketsClientTests
         using JsonRpcSuccessResponse response = new()
         {
             Result = new TimedOutStreamable(committed),
-            StreamExceptionHandler = _ => new JsonRpcErrorResponse { Error = new Error { Code = ErrorCodes.Timeout } }
+            Streaming = CreateStreamingContext()
         };
         if (batch) await sink.BeginBatchAsync(CancellationToken.None);
         async Task Write() => await (batch
@@ -244,12 +250,66 @@ public class JsonRpcSocketsClientTests
         using MemoryMessageStream stream = new();
         using TestClient<MemoryMessageStream> server = new(stream);
         using JsonRpcResult failed = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = new TimedOutStreamable(true) }, default);
-        Assert.CatchAsync<OperationCanceledException>(async () => await server.Client.SendJsonRpcResult(failed));
+        Exception original = Assert.CatchAsync<OperationCanceledException>(async () => await server.Client.SendJsonRpcResult(failed))!;
         byte[] partial = stream.ToArray();
 
         using JsonRpcResult next = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "next" }, default);
-        Assert.ThrowsAsync<IOException>(async () => await server.Client.SendJsonRpcResult(next));
+        IOException later = Assert.ThrowsAsync<IOException>(async () => await server.Client.SendJsonRpcResult(next))!;
+        Assert.That(later.InnerException, Is.SameAs(original));
         AssertIncompleteMessageNotExtended(stream, partial);
+    }
+
+    [Test]
+    public async Task Missing_notification_response_does_not_fault_the_connection()
+    {
+        using MemoryMessageStream stream = new();
+        using TestClient<MemoryMessageStream> server = new(stream);
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await server.Client.SendJsonRpcResult(default));
+        using JsonRpcResult next = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "next" }, default);
+
+        await server.Client.SendJsonRpcResult(next);
+
+        Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Does.Contain("next"));
+    }
+
+    [Test]
+    public async Task Failed_notification_terminates_an_idle_receive_loop([Values] bool returnClosed)
+    {
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(5));
+        using PassiveMessageStream stream = new(returnClosed);
+        using TestClient<PassiveMessageStream> server = new(stream);
+        Task receiver = server.Client.ReceiveLoopAsync(deadline.Token);
+        await stream.Receiving.Task.WaitAsync(deadline.Token);
+        using JsonRpcResult failed = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = new TimedOutStreamable(true) }, default);
+
+        OperationCanceledException? failure = Assert.CatchAsync<OperationCanceledException>(async () => await server.Client.SendJsonRpcResult(failed));
+        IOException? stopped = Assert.ThrowsAsync<IOException>(async () => await receiver.WaitAsync(deadline.Token));
+        Assert.That(stopped!.InnerException, Is.SameAs(failure));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deadline.IsCancellationRequested, Is.False, "the notification failure must stop the receiver");
+            Assert.That(stream.CanWrite, Is.False, "the receive loop must dispose its transport");
+        }
+    }
+
+    private sealed class PassiveMessageStream(bool returnClosed) : MemoryMessageStream, IMessageBorderPreservingStream
+    {
+        internal TaskCompletionSource Receiving { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        async ValueTask<ReceiveResult> IMessageBorderPreservingStream.ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
+        {
+            Receiving.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            catch (OperationCanceledException) when (returnClosed)
+            {
+                return new ReceiveResult { Closed = true };
+            }
+            return new ReceiveResult { Closed = true };
+        }
     }
 
     private static void AssertIncompleteMessageNotExtended(MemoryMessageStream stream, byte[] partial)

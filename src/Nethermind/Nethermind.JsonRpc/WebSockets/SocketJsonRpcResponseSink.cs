@@ -48,9 +48,9 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
                 jsonRpcLocalStats.ReportCall(report, handlingTimeMicroseconds, responseBytes);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            sendSemaphore.Fault();
+            sendSemaphore.Fault(ex);
             if (_reportCalls) jsonRpcLocalStats.ReportCall(report with { Success = false });
             throw;
         }
@@ -89,9 +89,9 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
             _topLevelResponseBytes += responseBytes;
             report = outcome.ApplyTo(report);
         }
-        catch
+        catch (Exception ex)
         {
-            sendSemaphore.Fault();
+            sendSemaphore.Fault(ex);
             if (_reportCalls) jsonRpcLocalStats.ReportCall(report with { Success = false });
             throw;
         }
@@ -122,9 +122,9 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
                 jsonRpcLocalStats.ReportCall(new RpcReport(RpcReport.CollectionSerialization, handlingTimeMicroseconds, true), handlingTimeMicroseconds, _topLevelResponseBytes);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            sendSemaphore.Fault();
+            sendSemaphore.Fault(ex);
             throw;
         }
         finally

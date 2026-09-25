@@ -186,10 +186,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         if (resultWrapper is JsonRpcResponse response)
         {
             response = response.WithResponseContext(in request.IdRef, returnAction);
-            if (response.TryGetStreamableResult(out _))
+            if (response.TryGetStreamableResult(out IStreamableResult? streamable) && streamable is IDeferredExecutionResult)
             {
-                // Deferred execution must use the same error mapping as invocation. The original response owns the rental.
-                response.StreamExceptionHandler = ex => HandleInvocationException(ex, methodName, request, returnAction: null, isStreaming: true);
+                response.Streaming = new StreamingContext(this, request, methodName);
             }
             return response;
         }
@@ -1135,4 +1134,25 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => (null, null, false)
         };
     }
+    /// <summary>Maps deferred execution errors and reports the final response outcome.</summary>
+    internal sealed class StreamingContext(JsonRpcService service, JsonRpcRequest request, string methodName)
+    {
+        internal bool ReportCompletion { get; set; }
+
+        /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
+        /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
+        internal JsonRpcErrorResponse MapException(Exception exception) =>
+            service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+
+        /// <summary>Reports one completed execution, excluding an unwritten or request-cancelled response.</summary>
+        /// <remarks>A failure without request cancellation, including a transport exception, counts as an error.</remarks>
+        internal void Complete(bool? success)
+        {
+            if (!ReportCompletion) return;
+            ReportCompletion = false;
+            if (success is true) Metrics.JsonRpcSuccesses++;
+            else if (success is false) Metrics.JsonRpcErrors++;
+        }
+    }
+
 }

@@ -82,7 +82,7 @@ public abstract class StreamingResultBase(CancellationTokenSource timeoutCts, IL
 /// Base class for streamable results that emit their result through a <see cref="Utf8JsonWriter"/>.
 /// </summary>
 public abstract class JsonStreamingResultBase(CancellationTokenSource timeoutCts, ILogger logger)
-    : StreamingResultBase(timeoutCts, logger), IStreamableResult
+    : StreamingResultBase(timeoutCts, logger), IDeferredExecutionResult
 {
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         => WriteJsonToAsync(TimeoutToken, Logger, writer, EmitContent, cancellationToken);

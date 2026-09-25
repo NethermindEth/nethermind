@@ -13,7 +13,9 @@ using System.Threading.Tasks;
 using Microsoft.IO;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Test.Builders;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Core.Memory;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
@@ -30,6 +32,15 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class JsonRpcResponseWriterStreamingIdTests
 {
+    private readonly GCKeeper _keeper = new(NoGCStrategy.Instance, NullLogManager.Instance);
+
+    [OneTimeTearDown]
+    public void DisposeKeeper() => _keeper.Dispose();
+
+    private JsonRpcService.StreamingContext CreateStreamingContext() => new(
+        new JsonRpcService(NullModuleProvider.Instance, NullLogManager.Instance, new JsonRpcConfig(), _keeper),
+        new JsonRpcRequest { Id = new JsonRpcId(42L), Method = "trace_call" }, "trace_call");
+
     private sealed class StubStreamable : IStreamableResult
     {
         public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
@@ -55,7 +66,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         Pipe pipe = new();
         using JsonRpcSuccessResponse response = new() { Id = id, Result = new StubStreamable() };
 
-        await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, new JsonSerializerOptions(), CancellationToken.None);
+        await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
         await pipe.Writer.CompleteAsync();
 
         System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync();
@@ -73,12 +84,12 @@ public class JsonRpcResponseWriterStreamingIdTests
 
         if (commitMode != 2)
         {
-            await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, new JsonSerializerOptions(), CancellationToken.None);
+            await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
         }
         else
         {
             Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
-                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, new JsonSerializerOptions(), CancellationToken.None));
+                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
         }
         await pipe.Writer.CompleteAsync();
         ReadResult read = await pipe.Reader.ReadAsync();
@@ -114,7 +125,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         transport.Write("[1,"u8);
         using JsonRpcSuccessResponse response = CreateInvalidTransactionResponse(commitMode);
 
-        await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, new JsonSerializerOptions(),
+        await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, EthereumJsonSerializer.JsonOptions,
             isBatch: true, CancellationToken.None);
         transport.Write("]"u8);
         await transport.CompleteAsync();
@@ -135,18 +146,16 @@ public class JsonRpcResponseWriterStreamingIdTests
         using JsonRpcSuccessResponse response = new()
         {
             Result = new InvalidTransactionResult(0, cancelTransport ? cancellation.Cancel : null),
-            StreamExceptionHandler = cancelTransport
-                ? _ => throw new AssertionException("A cancelled transport must not receive a replacement response")
-                : null
+            Streaming = cancelTransport ? CreateStreamingContext() : null
         };
         Pipe pipe = new();
         try
         {
             Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
-                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, new JsonSerializerOptions(), cancellation.Token));
+                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, cancellation.Token));
             await pipe.Writer.CompleteAsync();
             ReadResult read = await pipe.Reader.ReadAsync();
-            Assert.That(read.Buffer.IsEmpty, Is.True);
+            Assert.That(read.Buffer.IsEmpty, Is.EqualTo(cancelTransport));
         }
         finally
         {
@@ -156,6 +165,7 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
+    [NonParallelizable]
     public async Task Trace_transport_cancellation_does_not_complete_success([Values(0, 20_000)] int padding)
     {
         using CancellationTokenSource transport = new();
@@ -170,18 +180,23 @@ public class JsonRpcResponseWriterStreamingIdTests
                 transport.Cancel();
                 ct.ThrowIfCancellationRequested();
             }, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcResponseWriterStreamingIdTests>()),
-            StreamExceptionHandler = _ => throw new AssertionException("A cancelled transport must not receive a replacement response")
+            Streaming = CreateStreamingContext()
         };
+        response.Streaming!.ReportCompletion = true;
+        long successes = Metrics.JsonRpcSuccesses;
+        long errors = Metrics.JsonRpcErrors;
         using MemoryStream stream = new();
         PipeWriter writer = PipeWriter.Create(stream);
         try
         {
             Assert.ThrowsAsync<OperationCanceledException>(async () =>
-                await JsonRpcResponseWriter.WriteAsync(writer, response, new JsonSerializerOptions(), transport.Token));
+                await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, transport.Token));
             await writer.CompleteAsync();
             string envelope = Encoding.UTF8.GetString(stream.ToArray());
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(Metrics.JsonRpcSuccesses, Is.EqualTo(successes));
+                Assert.That(Metrics.JsonRpcErrors, Is.EqualTo(errors));
                 Assert.That(envelope, Does.Not.Contain("\"error\""));
                 Assert.That(envelope, Does.Not.Contain("\"id\":42"));
                 if (padding == 0) Assert.That(envelope, Is.Empty);
@@ -220,10 +235,54 @@ public class JsonRpcResponseWriterStreamingIdTests
         using JsonRpcSuccessResponse response = new()
         {
             Result = new InvalidTransactionResult(2),
-            StreamExceptionHandler = _ => throw new AssertionException("Transport failures must propagate")
+            Streaming = CreateStreamingContext()
         };
         Assert.ThrowsAsync<IOException>(async () =>
-            await JsonRpcResponseWriter.WriteAsync(new FailingPipeWriter(), response, new JsonSerializerOptions(), CancellationToken.None));
+            await JsonRpcResponseWriter.WriteAsync(new FailingPipeWriter(), response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Deferred_failure_obeys_the_exact_prefix_limit([Values(16383, 16384, 16385)] int prefixBytes)
+    {
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = 42,
+            Result = new PrefixFailureResult(prefixBytes),
+            Streaming = CreateStreamingContext()
+        };
+        response.Streaming.ReportCompletion = true;
+        long errors = Metrics.JsonRpcErrors;
+        long successes = Metrics.JsonRpcSuccesses;
+        if (prefixBytes <= 16384)
+            await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+        else
+            Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+                await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
+        await pipe.Writer.CompleteAsync();
+        ReadResult read = await pipe.Reader.ReadAsync();
+        if (prefixBytes <= 16384)
+        {
+            using JsonDocument document = JsonDocument.Parse(read.Buffer);
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+        }
+        else Assert.That(read.Buffer.Length, Is.EqualTo(prefixBytes));
+        await pipe.Reader.CompleteAsync();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.JsonRpcErrors - errors, Is.EqualTo(1));
+            Assert.That(Metrics.JsonRpcSuccesses, Is.EqualTo(successes));
+        }
+    }
+
+    private sealed class PrefixFailureResult(int prefixBytes) : IStreamableResult
+    {
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
+        {
+            writer.Write(new byte[prefixBytes - "{\"jsonrpc\":\"2.0\",\"result\":"u8.Length]);
+            throw new InsufficientBalanceException(TestItem.AddressA);
+        }
     }
 
     private sealed class FailingPipeWriter : PipeWriter
@@ -243,7 +302,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         FlushCountingPipeWriter transport = new(pipe.Writer);
         using JsonRpcSuccessResponse response = new() { Result = new ChunkedResult() };
         await JsonRpcResponseWriter.WriteAsync(new CountingPipeWriter(transport), response,
-            new JsonSerializerOptions(), CancellationToken.None);
+            EthereumJsonSerializer.JsonOptions, CancellationToken.None);
         await transport.CompleteAsync();
         await pipe.Reader.CompleteAsync();
 
@@ -259,18 +318,24 @@ public class JsonRpcResponseWriterStreamingIdTests
             : new CountingStreamPipeWriter(stream, initialWrittenCount: 1234);
         CountingResult result = new();
         using JsonRpcSuccessResponse response = new() { Result = result };
-        await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, new JsonSerializerOptions(),
+        await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, EthereumJsonSerializer.JsonOptions,
             isBatch: true, CancellationToken.None);
         await transport.CompleteAsync();
 
-        Assert.That(result.InitialBytes, Is.EqualTo(1234 + "{\"jsonrpc\":\"2.0\",\"result\":"u8.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Writer, Is.SameAs(transport), "materialized results must bypass recovery staging");
+            Assert.That(result.InitialBytes, Is.EqualTo(1234 + "{\"jsonrpc\":\"2.0\",\"result\":"u8.Length));
+        }
     }
 
     private sealed class CountingResult : IStreamableResult
     {
         public long InitialBytes { get; private set; }
+        public PipeWriter? Writer { get; private set; }
         public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         {
+            Writer = writer;
             InitialBytes = ((CountingWriter)writer).WrittenCount;
             writer.Write("null"u8);
             return ValueTask.CompletedTask;
@@ -309,15 +374,11 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
     }
 
-    private static JsonRpcSuccessResponse CreateInvalidTransactionResponse(int commitMode) => new()
+    private JsonRpcSuccessResponse CreateInvalidTransactionResponse(int commitMode) => new()
     {
         Id = new JsonRpcId(42L),
         Result = new InvalidTransactionResult(commitMode),
-        StreamExceptionHandler = ex => new JsonRpcErrorResponse
-        {
-            Id = new JsonRpcId(42L),
-            Error = new Error { Code = ErrorCodes.InvalidInput, Message = ex.Message }
-        }
+        Streaming = CreateStreamingContext()
     };
 
     private sealed class InvalidTransactionResult(int commitMode, Action? beforeThrow = null) : IStreamableResult
