@@ -1,0 +1,62 @@
+{
+ "test_name": "PR #12988 eth_fillTransaction isolated",
+ "description": "PR #12988 admission-gate benchmark workload",
+ "clients": [
+  "nethermind"
+ ],
+ "duration": "60s",
+ "rps": 10,
+ "vus": 2000,
+ "calls": [
+  {
+   "name": "eth_fillTransaction/transfer-binance8",
+   "method": "eth_fillTransaction",
+   "params": [
+    {
+     "from": "0xF977814e90dA44bFA03b6295A0616a897441aceC",
+     "to": "0x2000000000000000000000000000000000000def",
+     "value": "0x1"
+    }
+   ],
+   "weight": 1
+  },
+  {
+   "name": "eth_fillTransaction/weth-deposit-binance8",
+   "method": "eth_fillTransaction",
+   "params": [
+    {
+     "from": "0xF977814e90dA44bFA03b6295A0616a897441aceC",
+     "to": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+     "value": "0xde0b6b3a7640000",
+     "data": "0xd0e30db0"
+    }
+   ],
+   "weight": 1
+  },
+  {
+   "name": "eth_fillTransaction/transfer-robinhood",
+   "method": "eth_fillTransaction",
+   "params": [
+    {
+     "from": "0x40B38765696e3d5d8d9d834D8AaD4bB6e418E489",
+     "to": "0x2000000000000000000000000000000000000def",
+     "value": "0x1"
+    }
+   ],
+   "weight": 1
+  },
+  {
+   "name": "eth_fillTransaction/weth-deposit-robinhood",
+   "method": "eth_fillTransaction",
+   "params": [
+    {
+     "from": "0x40B38765696e3d5d8d9d834D8AaD4bB6e418E489",
+     "to": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+     "value": "0xde0b6b3a7640000",
+     "data": "0xd0e30db0"
+    }
+   ],
+   "weight": 1
+  }
+ ]
+}

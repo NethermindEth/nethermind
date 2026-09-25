@@ -1,0 +1,41 @@
+{
+ "test_name": "PR #12988 eth_createAccessList isolated",
+ "description": "PR #12988 admission-gate benchmark workload",
+ "clients": [
+  "nethermind"
+ ],
+ "duration": "60s",
+ "rps": 10,
+ "vus": 2000,
+ "calls": [
+  {
+   "name": "eth_createAccessList/v2-swap-binance8",
+   "method": "eth_createAccessList",
+   "params": [
+    {
+     "from": "0xF977814e90dA44bFA03b6295A0616a897441aceC",
+     "to": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+     "value": "0xde0b6b3a7640000",
+     "data": "0x7ff36ab500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000f977814e90da44bfa03b6295a0616a897441acec00000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+     "gas": "0x493e0"
+    },
+    "latest"
+   ],
+   "weight": 1
+  },
+  {
+   "name": "eth_createAccessList/usdc-balanceOf",
+   "method": "eth_createAccessList",
+   "params": [
+    {
+     "from": "0xF977814e90dA44bFA03b6295A0616a897441aceC",
+     "to": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+     "gas": "0x186a0",
+     "data": "0x70a08231000000000000000000000000f977814e90da44bfa03b6295a0616a897441acec"
+    },
+    "latest"
+   ],
+   "weight": 1
+  }
+ ]
+}
