@@ -30,6 +30,14 @@ More than two arms: `tool_config.clients` (`nethermind@<image>` per arm) overrid
 
 ## What the runners actually hold
 
+The amd64 box holds the full snapshot set, so it serves every `client`, `reference_client` and
+`state_layout`. The ARM box carries the Nethermind **flat** set plus one directory per additionally
+provisioned client (`/data/<client>/<client>-<block>`), so any provisioned `client` runs there in
+single-node mode with `reference_client=none`, `state_layout=flat`, and a prebuilt image (its small
+root disk dies under a build). Sweeps resolve every arm's set under the Nethermind snapshot root, so
+geth/reth sweep arms (`tool_config.clients`) run on amd64 only; the ARM box's per-client sets serve
+single-node runs.
+
 Both boxes carry **one** private `eth_call` corpus, `eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz`
 = **497 records** (heavy simulation traffic: every record carries state overrides, median ~331 KiB). The
 sweep discovers it by glob and prints `Corpus scenarios: …` / `corpus OK: 497 records` — read those lines
