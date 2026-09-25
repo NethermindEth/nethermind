@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Metrics = Nethermind.TxPool.Metrics;
@@ -201,9 +202,10 @@ public sealed class FrameTxPrefixSimulator(
     }
 
     /// <summary>Whether an exception indicts the node rather than the transaction.</summary>
-    /// <remarks>The marker covers the <see cref="TrieException"/> family, including nodes pruning can remove.</remarks>
+    /// <remarks>The marker covers the <see cref="TrieException"/> family, including nodes pruning can remove;
+    /// <see cref="StateUnavailableException"/> is a head state this node no longer holds.</remarks>
     private static bool IsNodeFault(Exception e) =>
-        e is IInternalNethermindException or ObjectDisposedException or IOException;
+        e is IInternalNethermindException or StateUnavailableException or ObjectDisposedException or IOException;
 
     /// <summary>Lock-free read of the per-head budget, used only to shed before contending for the lock.</summary>
     /// <remarks>Advisory, and not one-sided: a stale read can cost an extra simulation or shed one the

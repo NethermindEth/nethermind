@@ -17,7 +17,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -642,7 +641,7 @@ public class PersistenceManagerTests
             Substitute.For<IProcessExitSource>());
 
         // Finalized at/above the next boundary so the finalized branch IS entered, but leave
-        // GetFinalizedStateRootAt(16) unset so its seed resolves to null. Depth (90017) exceeds the
+        // GetFinalizedHeader(16) unset so its seed resolves to null. Depth (90017) exceeds the
         // effective backstop (MinReorgDepth + CompactSize = 90016), so the backstop must persist.
         StateId tierTip = CreateStateId(config.CompactSize);
         using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
@@ -661,7 +660,7 @@ public class PersistenceManagerTests
     public void DetermineSnapshotAction_FinalizedBeyondHead_SeedsAtBoundary()
     {
         // Catch-up sync: CL reports a finalized block far beyond the local chain head.
-        // GetFinalizedStateRootAt(finalizedBlockNumber) would return null, but the boundary
+        // GetFinalizedHeader(finalizedBlockNumber) would return null, but the boundary
         // block (persisted + CompactSize) IS locally synced, so the canonical-root lookup
         // resolves there. Phase 1 must seed at the boundary and persist the boundary snapshot.
         StateId persisted = Block0;
@@ -669,7 +668,7 @@ public class PersistenceManagerTests
         StateId boundary = CreateStateId(_config.CompactSize);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(25_128_361);
-        // Deliberately leave GetFinalizedStateRootAt(25_128_361) unset → returns null;
+        // Deliberately leave GetFinalizedHeader(25_128_361) unset → returns null;
         // only the boundary block has a known canonical state root.
         _finalizedStateProvider.SetFinalizedStateRootAt(_config.CompactSize, new Hash256(boundary.StateRoot.Bytes));
 
@@ -1251,6 +1250,126 @@ public class PersistenceManagerTests
         Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
     }
 
+    [Test]
+    public void FlushToPersistence_WhenEveryBlockHasABase_PersistsFullChunks()
+    {
+        StateId previous = Block0;
+        for (ulong block = 1; block <= 32; block++)
+        {
+            StateId next = CreateStateId(block);
+            CreateSnapshot(previous, next);
+            previous = next;
+        }
+        CreateSnapshot(Block0, CreateStateId(16), compacted: true);
+        CreateSnapshot(CreateStateId(16), CreateStateId(32), compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(CreateStateId(32));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(CreateStateId(32)), "the connected chain must be drained");
+        _persistence.Received(2).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void FlushToPersistence_WhenBacklogIsPersistedOnly_DrainsConvertedChunks()
+    {
+        PersistBase(Block0, CreateStateId(16));
+        PersistBase(CreateStateId(16), CreateStateId(32));
+        _snapshotRepository.SetLastCommittedStateId(CreateStateId(32));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(CreateStateId(32)), "persisted-only candidates must remain visible to the committed seed");
+        _persistence.Received(2).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void FlushToPersistence_WhenCommittedChunkConflictsWithFinality_PersistsOnlyCanonicalPrefix()
+    {
+        StateId narrow = CreateStateId(1);
+        StateId head = CreateStateId(16);
+        CreateSnapshot(Block0, narrow);
+        CreateSnapshot(narrow, head);
+        CreateSnapshot(Block0, head, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(head);
+        _finalizedStateProvider.SetFinalizedBlockNumber(32);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(narrow.StateRoot.Bytes));
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, TestItem.KeccakA);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(narrow), "a missing finalized-tip root must not permit a conflicting committed chunk");
+        _persistence.Received(1).CreateWriteBatch(Block0, narrow);
+        _persistence.Received(1).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void FindSnapshotToPersist_WhenWideChunkIsNonCanonical_UsesNarrowChunkOnSameChain()
+    {
+        StateId narrow = CreateStateId(1);
+        StateId head = CreateStateId(16);
+        CreateSnapshot(Block0, narrow);
+        CreateSnapshot(narrow, head);
+        CreateSnapshot(Block0, head, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(head);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(narrow.StateRoot.Bytes));
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, TestItem.KeccakA);
+
+        (PersistedSnapshot? persisted, Snapshot? inMemory) =
+            _snapshotRepository.FindSnapshotToPersist(head, Block0, (ulong)_config.CompactSize);
+        using (persisted)
+        using (inMemory)
+        {
+            Assert.That(persisted?.To ?? inMemory?.To, Is.EqualTo(narrow), "rejecting a wide edge must not reject the entire connected seed");
+        }
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_WhenBackstopHasNoCandidate_WarnsOnlyIfConversionAlsoFails([Values] bool enableConversion)
+    {
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 0,
+            MaxReorgDepth = 32,
+            LongFinalityMaxReorgDepth = 32,
+            MaxInMemoryBaseSnapshotCount = 0,
+            EnableLongFinality = enableConversion
+        };
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<PersistenceManager>().Returns(wrappedLogger);
+        using PersistenceManager manager = new(config, _tier.Resolve<ICompactionSchedule>(), _finalizedStateProvider,
+            _persistence, _snapshotRepository, NullStatePersistenceBarrier.Instance, logManager,
+            _persistedSnapshotCompactor, _tier.Loader, Substitute.For<IProcessExitSource>());
+        StateId head = CreateStateId(64);
+        CreateSnapshot(Block0, head);
+        _snapshotRepository.SetLastCommittedStateId(head);
+
+        (PersistedSnapshot? persisted, Snapshot? inMemory, PersistenceManager.ConversionCandidate? conversion) =
+            manager.DetermineSnapshotAction(head);
+        using (persisted)
+        using (inMemory)
+        using (conversion?.Base)
+        using (conversion?.Compacted)
+        {
+            Assert.That(conversion is not null, Is.EqualTo(enableConversion), "conversion must be considered before warning");
+            logger.Received(enableConversion ? 0 : 1).Warn(Arg.Is<string>(message => message.Contains("neither persistence nor conversion")));
+        }
+        (PersistedSnapshot? repeatedPersisted, Snapshot? repeatedInMemory, PersistenceManager.ConversionCandidate? repeatedConversion) =
+            manager.DetermineSnapshotAction(head);
+        using (repeatedPersisted)
+        using (repeatedInMemory)
+        using (repeatedConversion?.Base)
+        using (repeatedConversion?.Compacted)
+            logger.Received(enableConversion ? 0 : 1).Warn(Arg.Is<string>(message => message.Contains("neither persistence nor conversion")));
+    }
+
     // FlushToPersistence prunes both tiers as it drains, so a flush without capture would leave the flushed
     // range permanently absent from history on every shutdown.
     [Test]
@@ -1677,7 +1796,7 @@ public class PersistenceManagerTests
         method.Invoke(_persistenceManager, [compacted]);
     }
 
-    private class TestFinalizedStateProvider : IFinalizedStateProvider
+    private class TestFinalizedStateProvider : IStateHeaderProvider
     {
         private ulong _finalizedBlockNumber;
         private readonly Dictionary<ulong, Hash256> _finalizedStateRoots = [];
@@ -1693,12 +1812,16 @@ public class PersistenceManagerTests
 
         public int GetLookupCount(ulong blockNumber) => _lookupCounts.GetValueOrDefault(blockNumber);
 
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber)
         {
             _lookupCounts[blockNumber] = GetLookupCount(blockNumber) + 1;
             if (blockNumber > RootLookupCeiling) return null;
-            return _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+            return _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root)
+                ? new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, Address.Zero, UInt256.Zero, blockNumber, 30_000_000, 0, []) { StateRoot = root }
+                : null;
         }
+
+        public BlockHeader? FindParentHeader(BlockHeader target) => null;
     }
 
     private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook

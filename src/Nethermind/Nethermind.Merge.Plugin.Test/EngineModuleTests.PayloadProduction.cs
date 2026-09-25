@@ -138,6 +138,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await chain.WaitForCommitted(getPayloadResult.BlockHash);
 
         UInt256 totalValue = ((int)(count * value)).GWei;
         BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.BlockHash);
@@ -742,6 +743,7 @@ public partial class EngineModuleTests
             }
 
             Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid), $"iteration {iteration}");
+            await chain.WaitForCommitted(getPayloadResult.BlockHash);
 
 
             // starting building on block X

@@ -196,11 +196,12 @@ namespace Nethermind.TxPool
         internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
             => tx.IsOverflowWhenAddingPricedCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
 
-        private struct SenderBucketState(Transaction tx, UInt256 accountNonce, bool unreservedOnly, bool keyedNoncesEnabled)
+        private struct SenderBucketState(Transaction tx, ulong accountNonce, bool unreservedOnly, bool keyedNoncesEnabled)
         {
             public readonly Transaction Tx = tx;
-            public readonly UInt256 AccountNonce = accountNonce;
-            public readonly UInt256 TxNonce = tx.Nonce;
+            // Match the source nonce types to avoid UInt256 copies and comparisons during bucket scans.
+            public readonly ulong AccountNonce = accountNonce;
+            public readonly ulong TxNonce = tx.Nonce;
             public readonly bool UnreservedOnly = unreservedOnly;
             public readonly bool KeyedNoncesEnabled = keyedNoncesEnabled;
             public UInt256 CumulativeCost = UInt256.Zero;
@@ -218,7 +219,7 @@ namespace Nethermind.TxPool
         /// admission rejects a keyed transaction outright — the walk keeps the early exit ascending nonce order
         /// allows.</remarks>
         /// <returns><c>true</c> when the sum overflows, leaving <paramref name="cumulativeCost"/> unusable.</returns>
-        internal static bool IsOverflowWhenSummingSenderBucket(this Transaction tx, TxDistinctSortedPool pool, in UInt256 accountNonce, bool unreservedOnly, bool keyedNoncesEnabled, out UInt256 cumulativeCost)
+        internal static bool IsOverflowWhenSummingSenderBucket(this Transaction tx, TxDistinctSortedPool pool, ulong accountNonce, bool unreservedOnly, bool keyedNoncesEnabled, out UInt256 cumulativeCost)
         {
             SenderBucketState bucket = new(tx, accountNonce, unreservedOnly, keyedNoncesEnabled);
             // tx.SenderAddress! as unknownSenderFilter will run before either caller

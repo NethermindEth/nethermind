@@ -676,33 +676,33 @@
   },
   {
     "pname": "Nethermind.DotNetty.Buffers",
-    "version": "1.0.2.76",
-    "hash": "sha256-GgmB9EHhpeZjEIL9u+PgSHVL2vR8ywTFR028smOyGpo="
+    "version": "0.8.0.11",
+    "hash": "sha256-wydMpFxS+/3kX0ISMCjcr1fn3GlpkMLLrJOah4/MmhY="
   },
   {
     "pname": "Nethermind.DotNetty.Codecs",
-    "version": "1.0.2.76",
-    "hash": "sha256-AQj8WtmhanxnByD2D5iqxZmAyYnoXckruY8ZDlCTIes="
+    "version": "0.8.0.11",
+    "hash": "sha256-0P5zBH870QUZRSGXAHNtUGyHVOtBRMk7Ay3tXhIutU8="
   },
   {
     "pname": "Nethermind.DotNetty.Common",
-    "version": "1.0.2.76",
-    "hash": "sha256-D0+9hOx6o183XkBItp8sIA7DFgkIVDFkJjEjTFrl9XU="
+    "version": "0.8.0.11",
+    "hash": "sha256-vzAWkLkX8zbJYyvp4DEqpvdo861FceJOjgCHKt64BN4="
   },
   {
     "pname": "Nethermind.DotNetty.Handlers",
-    "version": "1.0.2.76",
-    "hash": "sha256-HBbLE1QdLPEWQf2CKcK9EPmM2XUxWjfyB0Xq3JDOt8M="
+    "version": "0.8.0.11",
+    "hash": "sha256-x/ixcVQI0zAyAX8MtTo/8BpZ1taJT1vd/etZ91jqKrE="
   },
   {
     "pname": "Nethermind.DotNetty.Transport",
-    "version": "1.0.2.76",
-    "hash": "sha256-b77Kybf2O1NvNmXQnauDMzBjXER4jouJN7eA2dmIlV4="
+    "version": "0.8.0.11",
+    "hash": "sha256-BITEkmV0YBaQebIUWVTShnXD5Bv8tppu0blLqW9typU="
   },
   {
     "pname": "Nethermind.GmpBindings",
-    "version": "1.0.3",
-    "hash": "sha256-qYE1TkmlbItCszf7XTjvt4mVQncXjoXUBOD7J+nTu5U="
+    "version": "2.0.0",
+    "hash": "sha256-jY+p+Pg3PcZqMBDHG691dvNBNX0K3GuUg7mvFtnmQn8="
   },
   {
     "pname": "Nethermind.Libp2p",
