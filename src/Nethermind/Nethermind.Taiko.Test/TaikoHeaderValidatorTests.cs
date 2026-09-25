@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Taiko.Rpc;
 using Nethermind.Taiko.TaikoSpec;
 using NSubstitute;
 using NUnit.Framework;
@@ -443,5 +444,52 @@ public class TaikoHeaderValidatorTests
 
         Assert.That(valid, Is.False);
         Assert.That(error, Does.Contain("WithdrawalsRoot").Or.Contain("withdrawals"));
+    }
+
+    /// <summary>
+    /// The Shasta base fee floor is 0.01 gwei on Taiko mainnet and 0.005 gwei elsewhere, as in taiko-geth and alethia-reth.
+    /// The parent mirrors a live Alethia block: 112,056 gas used against a 23M target, 2 s after its own parent.
+    /// </summary>
+    [TestCase(BatchLookupThresholds.TaikoMainnetChainId, 10_000_000UL, TestName = "Shasta base fee on Taiko mainnet is clamped to 0.01 gwei")]
+    [TestCase(BatchLookupThresholds.TaikoHoodiChainId, 8_756_090UL, TestName = "Shasta base fee on other Taiko chains keeps the EIP-4396 value")]
+    public void Shasta_BaseFee_ClampedToChainFloor(ulong chainId, ulong expectedBaseFee)
+    {
+        ISpecProvider provider = new TestSpecProvider(new TaikoUnzenReleaseSpec()) { ChainId = chainId };
+
+        BlockHeader grandParent = Build.A.BlockHeader
+            .WithNumber(100)
+            .WithTimestamp(1_000)
+            .TestObject;
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(101)
+            .WithParent(grandParent)
+            .WithTimestamp(1_002)
+            .WithBaseFee(10_000_000)
+            .WithGasLimit(46_000_000)
+            .WithGasUsed(112_056)
+            .TestObject;
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(parent.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(grandParent);
+        TaikoHeaderValidator validator = new(blockTree, Always.Valid, provider, Substitute.For<IL1OriginStore>(), Timestamper.Default, LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(102)
+            .WithParent(parent)
+            .WithTimestamp(1_004)
+            .WithGasLimit(46_000_000)
+            .WithBaseFee(expectedBaseFee)
+            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
+            .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithExtraData(ShastaExtraData)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .TestObject;
+
+        bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
+
+        Assert.That(valid, Is.True, error);
     }
 }

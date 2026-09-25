@@ -2247,8 +2247,10 @@ public partial class EthRpcModuleTests
             .To(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        yield return new TestCaseData(raw, "100", ErrorCodes.Timeout, "not included within 100ms")
+        yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, "not included within 100ms")
             .SetName("Timeout");
+        yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, $"\"data\":\"{tx.Hash}\"")
+            .SetName("TimeoutCarriesTransactionHash");
     }
 
     [Test]
