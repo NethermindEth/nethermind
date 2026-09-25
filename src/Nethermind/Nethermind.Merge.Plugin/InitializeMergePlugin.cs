@@ -14,6 +14,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin;
@@ -49,6 +50,7 @@ public class InitializeMergePlugin(
         MergePlugin.MigrateSecondsPerSlot(blocksConfig, mergeConfig);
 
         EnsureNotConflictingSettings(mergeConfig);
+        InclusionListBuilder.ValidateOldestSenderTier(mergeConfig);
         EnsureJsonRpcUrl(mergeConfig, specProvider, jsonRpcConfig, logManager);
     }
 

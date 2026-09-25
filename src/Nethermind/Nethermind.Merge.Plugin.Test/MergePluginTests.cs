@@ -146,6 +146,22 @@ public class MergePluginTests
         Assert.DoesNotThrow(() => container.Resolve<IBlockProducerFactory>().InitBlockProducer());
     }
 
+    // The inclusion-list age tier is read by a handler built with the lazily resolved engine RPC module, so
+    // without a startup check a malformed value would surface as a failure of the first engine call instead.
+    [TestCase(1.5, 200)]
+    [TestCase(0.5, -1)]
+    public void Init_merge_plugin_rejects_a_malformed_inclusion_list_age_tier(double oldestShare, int oldestCount)
+    {
+        using IContainer container = BuildContainer();
+        _mergeConfig.InclusionListOldestSenderShare = oldestShare;
+        _mergeConfig.InclusionListOldestSenderCount = oldestCount;
+
+        InvalidConfigurationException? exception = Assert.ThrowsAsync<InvalidConfigurationException>(
+            async () => await container.Resolve<InitializeMergePlugin>().Execute(default));
+
+        Assert.That(exception!.ExitCode, Is.EqualTo(ExitCodes.ForbiddenOptionValue));
+    }
+
     [Test]
     public void AddTypeInfoResolver_updates_existing_serializer_instances()
     {

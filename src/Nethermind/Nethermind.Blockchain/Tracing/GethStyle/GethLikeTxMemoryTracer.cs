@@ -60,10 +60,10 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
     }
 
-    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public override void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
         if (CurrentTraceEntry is not null && !returnData.IsEmpty)
-            CurrentTraceEntry.ReturnData = returnData.Span.ToHexString(true);
+            CurrentTraceEntry.ReturnData = returnData.ToHexString(true);
     }
 
 }

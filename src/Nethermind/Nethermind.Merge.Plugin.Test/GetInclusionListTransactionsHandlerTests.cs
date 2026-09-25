@@ -36,7 +36,7 @@ public class GetInclusionListTransactionsHandlerTests
         IChainHeadInfoProvider chainHeadInfo = Substitute.For<IChainHeadInfoProvider>();
         chainHeadInfo.ReadOnlyStateProvider.Returns(Substitute.For<IReadOnlyStateProvider>());
 
-        return new GetInclusionListTransactionsHandler(pool, Substitute.For<IBlockTree>(), specProvider, chainHeadInfo);
+        return new GetInclusionListTransactionsHandler(pool, Substitute.For<IBlockTree>(), specProvider, chainHeadInfo, new MergeConfig());
     }
 
     // The list is built before its block exists and a missed slot moves the timestamp, so only whether

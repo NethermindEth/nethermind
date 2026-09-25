@@ -1103,7 +1103,9 @@ public class BlockchainBridgeTests
             });
 
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
-        adapter.Execute(new Transaction { GasLimit = 200_000 }, Substitute.For<ITxTracer>());
+        Transaction explicitGas = new() { GasLimit = 200_000 };
+        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(explicitGas);
+        ExecuteWithReceiptsTracer(adapter, receiptsTracer, explicitGas);
         Transaction omittedGas = new() { GasLimit = 500_000 };
         adapter.PrepareForInclusionCheck(omittedGas, ulong.MaxValue);
 

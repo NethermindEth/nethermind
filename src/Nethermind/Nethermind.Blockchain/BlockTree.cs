@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly IStateBoundary _stateBoundary;
+        private readonly BlockTreeMutationLock _mutationLock;
 
         public BlockHeader? Genesis { get; protected set; }
         public Block? Head { get; private set; }
@@ -118,6 +119,7 @@ namespace Nethermind.Blockchain
             ISyncConfig? syncConfig,
             IStateBoundary? stateBoundary,
             ILogManager? logManager,
+            BlockTreeMutationLock mutationLock,
             ulong genesisBlockNumber = 0)
         {
             Logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -132,6 +134,7 @@ namespace Nethermind.Blockchain
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _stateBoundary = stateBoundary ?? throw new ArgumentNullException(nameof(stateBoundary));
+            _mutationLock = mutationLock;
             _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
             _genesisBlockNumber = genesisBlockNumber;
@@ -289,7 +292,7 @@ namespace Nethermind.Blockchain
         {
             if (!CanAcceptNewBlocks)
             {
-                throw new InvalidOperationException("Cannot accept new blocks at the moment.");
+                throw new BlockTreeNotReadyException();
             }
             _headerStore.BulkInsert(headers);
 
@@ -988,6 +991,8 @@ namespace Nethermind.Blockchain
 
         public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks)
         {
+            if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) return false;
+            using BlockTreeMutationLock.Scope mutationScope = mutation;
             PreloadedBlockLookup cache = PreloadedBlockLookup.Build(preloadedBlocks);
 
             // The head must have a body to be moved onto the main chain - preloaded by the caller or already in
@@ -1493,6 +1498,67 @@ namespace Nethermind.Blockchain
             }
         }
 
+        /// <inheritdoc/>
+        public bool TryRewindHead(Hash256 blockHash)
+        {
+            if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) return false;
+            using BlockTreeMutationLock.Scope mutationScope = mutation;
+            Block? block = FindBlock(blockHash, BlockTreeLookupOptions.None);
+            if (block?.Hash is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {blockHash} - the block is unknown or its body is unavailable.");
+                return false;
+            }
+
+            Block? head = Head;
+            if (head is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - there is no current head.");
+                return false;
+            }
+
+            if (block.Number > head.Number)
+            {
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - it is above the current head {head.ToString(Block.Format.Short)}.");
+                return false;
+            }
+
+            if (!IsMainChain(block.Header))
+            {
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - the block is not on the main chain.");
+                return false;
+            }
+
+            bool isCurrentHead = block.Hash == head.Hash;
+            if (!isCurrentHead && Logger.IsWarn) Logger.Warn($"Rewinding the head from {head.ToString(Block.Format.Short)} to {block.ToString(Block.Format.Short)}.");
+
+            BlockAcceptingNewBlocks();
+            try
+            {
+                if (isCurrentHead)
+                {
+                    using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+                    ClearStaleMarkersAbove(block.Number, batch);
+                }
+                // Updating an existing canonical block clears the canonical markers above it.
+                else if (!TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block))
+                {
+                    if (Logger.IsWarn) Logger.Warn($"Failed to rewind the head to {block.ToString(Block.Format.Short)}.");
+                    return false;
+                }
+
+                // Allow a shorter replacement branch to become best suggested.
+                BestSuggestedHeader = block.Header;
+                BestSuggestedBody = block;
+            }
+            finally
+            {
+                ReleaseAcceptingNewBlocks();
+            }
+
+            return true;
+        }
+
         private void UpdateHeadBlock(Block block)
         {
             BlockEventArgs args = SetHeadBlock(block);
@@ -1828,7 +1894,23 @@ namespace Nethermind.Blockchain
         /// <param name="endNumber">End level of the slice to delete</param>
         /// <param name="force">Should it force of deletion of valid blocks</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
+        /// <exception cref="InvalidOperationException">Chain maintenance overlaps the deletion or the replacement head block is unavailable.</exception>
         public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false)
+        {
+            if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Chain mutation contention or overlapping maintenance; retry the request.");
+            using BlockTreeMutationLock.Scope mutationScope = mutation;
+            BlockAcceptingNewBlocks();
+            try
+            {
+                return DeleteChainSliceCore(startNumber, endNumber, force);
+            }
+            finally
+            {
+                ReleaseAcceptingNewBlocks();
+            }
+        }
+
+        private int DeleteChainSliceCore(ulong startNumber, ulong? endNumber, bool force)
         {
             int deleted = 0;
             endNumber ??= BestKnownNumber;
@@ -1838,7 +1920,7 @@ namespace Nethermind.Blockchain
                 throw new ArgumentException("Start number must be equal or greater end number.", nameof(startNumber));
             }
 
-            if (endNumber - startNumber > 50000)
+            if (endNumber - startNumber > IBlockTree.MaxDeletionSpan)
             {
                 throw new ArgumentException(
                     $"Cannot delete that many blocks at once (start: {startNumber}, end {endNumber}).",
@@ -1863,11 +1945,16 @@ namespace Nethermind.Blockchain
                 Hash256? newHeadHash = chainLevelInfo.HasBlockOnMainChain
                     ? chainLevelInfo.BlockInfos[0].BlockHash
                     : Genesis?.Hash;
-                newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1);
+                newHeadBlock = (newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None,
+                    blockNumber: chainLevelInfo.HasBlockOnMainChain ? startNumber - 1 : Genesis?.Number))
+                    ?? throw new InvalidOperationException("The replacement head block is unavailable.");
             }
 
-            using (_chainLevelInfoRepository.StartBatch())
+            using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
             {
+                if (newHeadBlock is not null)
+                    ClearStaleMarkersAbove(newHeadBlock.Number, batch, (startNumber, endNumber.Value), scanThrough: Head!.Number);
+
                 for (ulong i = endNumber.Value; i >= startNumber; i--)
                 {
                     ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
@@ -1876,7 +1963,7 @@ namespace Nethermind.Blockchain
                         continue;
                     }
 
-                    _chainLevelInfoRepository.Delete(i);
+                    _chainLevelInfoRepository.Delete(i, batch);
                     deleted++;
 
                     foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
@@ -1890,10 +1977,21 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            // Suggestions above a deleted level lose their ancestry; reset bodies before using them as header fallbacks.
+            if (newHeadBlock is not null || (deleted > 0 && BestSuggestedBody?.Number >= startNumber))
+                BestSuggestedBody = newHeadBlock ?? Head;
+            if (newHeadBlock is not null || (deleted > 0 && BestSuggestedHeader?.Number >= startNumber))
+                BestSuggestedHeader = BestSuggestedBody?.Header ?? Head?.Header;
+            if (deleted > 0 && BestSuggestedBeaconBody?.Number >= startNumber)
+                BestSuggestedBeaconBody = null;
+            if (deleted > 0 && BestSuggestedBeaconHeader?.Number >= startNumber)
+                BestSuggestedBeaconHeader = BestSuggestedBeaconBody?.Header;
+            if (LowestInsertedBeaconHeader?.Number >= startNumber && LowestInsertedBeaconHeader.Number <= endNumber)
+                LowestInsertedBeaconHeader = null;
+            if (LowestInsertedHeader?.Number >= startNumber && LowestInsertedHeader.Number <= endNumber)
+                LowestInsertedHeader = null;
             if (newHeadBlock is not null)
-            {
                 UpdateHeadBlock(newHeadBlock);
-            }
 
             return deleted;
         }

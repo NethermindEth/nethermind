@@ -16,6 +16,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <param name="txPool">Source of the pending transactions; <c>null</c> yields an empty list.</param>
 /// <param name="blockTree">Supplies the head header the next block's base fee is derived from.</param>
 /// <param name="specProvider">Resolves the fork gate and the base-fee parameters.</param>
+/// <param name="mergeConfig">Settings for the optional age-tier sender draw.</param>
 /// <param name="chainHeadInfo">
 /// Supplies head state. The pool admits a sender's bucket on any one entry being ready, so only the account
 /// itself says where that sender's appendable run starts.
@@ -24,10 +25,11 @@ public class GetInclusionListTransactionsHandler(
     ITxPool? txPool,
     IBlockTree blockTree,
     ISpecProvider specProvider,
-    IChainHeadInfoProvider chainHeadInfo) : IHandler<Hash256?, InclusionListBytes>
+    IChainHeadInfoProvider chainHeadInfo,
+    IMergeConfig mergeConfig) : IHandler<Hash256?, InclusionListBytes>
 {
     private readonly InclusionListBuilder? _inclusionListBuilder =
-        txPool is null ? null : new(txPool, blockTree, specProvider, chainHeadInfo.ReadOnlyStateProvider);
+        txPool is null ? null : new(txPool, blockTree, specProvider, chainHeadInfo.ReadOnlyStateProvider, mergeConfig);
 
     /// <inheritdoc/>
     /// <param name="parentBlockHash">Block whose header fixes the next-block base fee the candidates are
