@@ -1118,7 +1118,7 @@ public class PbtNodeGroupTests
             if (consume)
             {
                 if (scenario != 0)
-                    TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.AppendHeld(ref reader, ref hashes, writer, groupPath, ref frontier, results, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0), null);
+                    TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.AppendHeld(ref reader, ref hashes, writer, groupPath, ref frontier, results, TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(0), default, null);
                 Assert.That(writer.WrittenCount == 0, Is.EqualTo(scenario == 0));
                 if (scenario != 0)
                     Assert.That(PbtNodeReader.FromValidated(writer.Entry(0, writer.WrittenCount).Span).IsLeaf, Is.EqualTo(scenario == 2),

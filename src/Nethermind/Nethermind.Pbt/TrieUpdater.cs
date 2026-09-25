@@ -904,13 +904,35 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// encoding needs, which is computed once on demand. Nothing is hashed here.
     /// </remarks>
     private static ValueHash256 LinkHash<TFrame>(scoped ref TFrame reader, scoped in Frontier frontier, int position)
+        where TFrame : struct, IGroupFrame<TKey, TPath> =>
+        LinkParentAt(ref reader, frontier, DeepestStoredAbove(frontier.Stored, position)).HashOf(position);
+
+    /// <summary>The links of the node the group stores at <paramref name="position"/>, or of its input for -1.</summary>
+    /// <remarks>An input that is empty or a leaf holds no link.</remarks>
+    private static LinkParent LinkParentAt<TFrame>(scoped ref TFrame reader, scoped in Frontier frontier, int position)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
+        if (position < 0 && (frontier.Root.IsEmpty || frontier.Root.IsLeaf)) return default;
         int bitDepth = reader.BitDepth;
-        SpineNode node = NodeAt(ref reader, frontier.Root, bitDepth, DeepestStoredAbove(frontier.Stored, position));
-        if (node.BranchDepth != bitDepth + local.Length - 1) return default;
-        return local.GetBit(local.Length - 1) == 0 ? node.Node.LeftHash : node.Node.RightHash;
+        SpineNode node = NodeAt(ref reader, frontier.Root, bitDepth, position);
+        return new(node.BranchDepth + 1 - bitDepth, node.Node.LeftHash, node.Node.RightHash);
+    }
+
+    /// <summary>The links of the deepest node a group stores above a position, read once for every untouched node they name.</summary>
+    /// <param name="linkLength">The local path length of the positions the links name, or zero for none, as no link names the group root.</param>
+    internal readonly struct LinkParent(int linkLength, in ValueHash256 leftHash, in ValueHash256 rightHash)
+    {
+        private readonly int _linkLength = linkLength;
+        private readonly ValueHash256 _leftHash = leftHash;
+        private readonly ValueHash256 _rightHash = rightHash;
+
+        /// <summary>The hash the link naming <paramref name="position"/> holds, or default when no link names it.</summary>
+        internal ValueHash256 HashOf(int position)
+        {
+            NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
+            if (local.Length != _linkLength) return default;
+            return local.GetBit(local.Length - 1) == 0 ? _leftHash : _rightHash;
+        }
     }
 
     /// <summary>The deepest position above <paramref name="position"/> that the group stores a node at, or -1 for its root.</summary>

@@ -23,7 +23,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// does store. Only the descendants are copied: the node itself may still be promoted by an updated sibling's deletion.
     /// </remarks>
     internal static ComposedNode AppendHeld<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
-        scoped ref Frontier frontier, scoped Span<FoldResult> results, int position, TrieUpdaterMetrics? metrics)
+        scoped ref Frontier frontier, scoped Span<FoldResult> results, int position, in LinkParent parent, TrieUpdaterMetrics? metrics)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Debug.Assert((frontier.Mask & (1u << position)) != 0, "Only a held position is taken.");
@@ -41,7 +41,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             case EntrySource.AtPosition when entry.SourcePosition != RootSource:
                 ReadOnlyMemory<byte> stored = reader.GetEncoding(entry.SourcePosition);
                 return stored.IsEmpty
-                    ? AppendImplicitBranch(ref reader, ref hashes, writer, frontier, position, metrics)
+                    ? AppendImplicitBranch(ref reader, ref hashes, writer, parent, position, metrics)
                     : AppendReanchored(writer, position, local.Length - PbtFourLevelGroupGeometry.LocalPathOf(entry.SourcePosition).Length,
                         PbtNodeReader.FromValidated(stored.Span));
             default:
@@ -70,7 +70,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         // hash known and the branch left out again, its child hashes are only needed by Land, so they are
         // resolved there instead, sparing the rehash of every unchanged node below it.
         static ComposedNode AppendImplicitBranch(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
-            scoped in Frontier frontier, int position, TrieUpdaterMetrics? metrics)
+            in LinkParent parent, int position, TrieUpdaterMetrics? metrics)
         {
             int width = PbtFourLevelGroupGeometry.WidthOf(position);
             if (width is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
@@ -78,7 +78,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 int offset = writer.WrittenCount;
                 int length = PbtNodeCodec.BranchLength(0, 0, 0);
                 Span<byte> branch = writer.Append(position, length);
-                ValueHash256 linkHash = LinkHash(ref reader, frontier, position);
+                ValueHash256 linkHash = parent.HashOf(position);
                 if (linkHash != default)
                 {
                     // The link hash only stands in for the child hashes, which omission does not look at.
@@ -162,6 +162,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         uint frontierMask = frontier.Mask & ~folds.Positions;
         writer.ReserveFirstBuffer(reader.PayloadLength);
         ComposeFrameBuffer frames = default;
+        frames[0].Parent = LinkParentAt(ref reader, frontier, -1);
         int frameCount = 1;
         ComposedNode prevSubtree = default;
         while (frameCount != 0)
@@ -181,7 +182,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                     int copied = reader.CopyRange(writer, position - 2 * frame.Path.Width + 2, position + 1);
                     metrics?.AddBulkCopy(copied);
                     int length = reader.GetEncoding(position).Length;
-                    prevSubtree = new ComposedNode(writer.WrittenCount - length, length, LinkHash(ref reader, frontier, position));
+                    prevSubtree = new ComposedNode(writer.WrittenCount - length, length, frame.Parent.HashOf(position));
                     frameCount--;
                     continue;
                 }
@@ -195,7 +196,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
                 if ((frontierMask & (1u << position)) != 0)
                 {
-                    prevSubtree = AppendHeld(ref reader, ref hashes, writer, path, ref frontier, results, position, metrics);
+                    prevSubtree = AppendHeld(ref reader, ref hashes, writer, path, ref frontier, results, position, frame.Parent, metrics);
                     frameCount--;
                     continue;
                 }
@@ -209,7 +210,8 @@ internal static partial class TrieUpdater<TKey, TPath>
 
                 // Nothing is held here, so keep going down the left child.
                 frame.Stage = ComposeStage.AwaitingLeft;
-                frames[frameCount] = new(frame.Path.Left);
+                frame.ChildParent = (frontier.Stored & (1u << position)) != 0 ? LinkParentAt(ref reader, frontier, position) : frame.Parent;
+                frames[frameCount] = new(frame.Path.Left, frame.ChildParent);
                 frameCount++;
                 continue;
             }
@@ -242,7 +244,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                     SettleLeft(writer, path, leftPosition, Land(ref reader, ref hashes, writer, prevSubtree, leftPosition, metrics), ref frame, metrics);
                     frame.Stage = ComposeStage.AwaitingRight;
                 }
-                frames[frameCount] = new(frame.Path.Right);
+                frames[frameCount] = new(frame.Path.Right, frame.ChildParent);
                 frameCount++;
                 continue;
             }
@@ -446,9 +448,13 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>What a frame waits for: set before its child is pushed, and handled once that child returns up.</summary>
     private enum ComposeStage : byte { Descend, AwaitingLeft, AwaitingRight, AwaitingOnlyRight }
 
-    private struct ComposeFrame(NodeGroupPath path)
+    private struct ComposeFrame(NodeGroupPath path, in LinkParent parent)
     {
         internal NodeGroupPath Path = path;
+        /// <summary>The links of the deepest node the group stores above this position.</summary>
+        internal LinkParent Parent = parent;
+        /// <summary>The links of the deepest node the group stores above this position's children, set as the walk goes down.</summary>
+        internal LinkParent ChildParent;
         internal ComposeStage Stage;
         internal ValueHash256 LeftHash;
         /// <summary>Where the left child's preimage awaiting its sibling sits in the writer.</summary>
