@@ -101,7 +101,8 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
     {
-        if (TryGetStoredTrace(txHash, TraceRpcModule.GetParityTypes(traceTypes), out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
+        if (TraceRpcModule.TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes)
+            && TryGetStoredTrace(txHash, parityTypes, out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
         {
             return BuildStoreStreamingSingleResult(
                 runStreaming: (writer, pipeWriter, ct) =>
@@ -182,9 +183,10 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
         BlockHeader block = blockSearch.Object!;
 
-        if (TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
+        if (TraceRpcModule.TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes)
+            && TryGetBlockTraces(block, out List<ParityLikeTxTrace>? traces) && traces is not null)
         {
-            FilterTraces(traces, TraceRpcModule.GetParityTypes(traceTypes));
+            FilterTraces(traces, parityTypes);
 
             return BuildStoreStreamingResult<ParityTxTraceFromReplay>(
                 runStreaming: (writer, pipeWriter, ct) =>

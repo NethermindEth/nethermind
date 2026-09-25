@@ -125,7 +125,7 @@ public class TraceStoreRpcModuleTests
         Replay(new DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer>(
             new ParityLikeBlockTracer(new TraceStoreConfig().TraceTypes), test.Store, new ParityLikeTraceSerializer(LimboLogs.Instance), LimboLogs.Instance), block);
         string[] types = selection.Split(',');
-        ParityTraceTypes liveTypes = TraceRpcModule.GetParityTypes(types);
+        Assert.That(TraceRpcModule.TryGetParityTypes(types, out ParityTraceTypes liveTypes), Is.True);
         JToken expected;
         if (streaming)
         {
@@ -221,6 +221,17 @@ public class TraceStoreRpcModuleTests
         TestContext test = new();
 
         Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, new[] { ParityTraceTypes.Trace.ToString() }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.DbTrace))))).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public void trace_replayTransaction_defers_unknown_trace_type_to_inner_module()
+    {
+        TestContext test = new();
+        string[] traceTypes = ["unknown"];
+
+        test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, traceTypes);
+
+        test.InnerModule.Received(1).trace_replayTransaction(test.DbTrace.TransactionHash!, traceTypes, false);
     }
 
     [Test]

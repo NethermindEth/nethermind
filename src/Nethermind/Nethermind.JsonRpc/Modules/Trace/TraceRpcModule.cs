@@ -60,17 +60,28 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly ILogger _logger = logManager.GetClassLogger<TraceRpcModule>();
 
-        public static ParityTraceTypes GetParityTypes(string[] types)
+        /// <summary>
+        /// Parses Parity trace type names (case-insensitive) into a combined <see cref="ParityTraceTypes"/> flag set.
+        /// </summary>
+        /// <returns><see langword="false"/> when <paramref name="types"/> is <see langword="null"/> or contains an unknown name.</returns>
+        public static bool TryGetParityTypes(string[]? types, out ParityTraceTypes result)
         {
-            // A JSON null per-call selection in trace_callMany reaches here; ArgumentException maps to invalid params.
-            ArgumentNullException.ThrowIfNull(types);
-            ParityTraceTypes result = ParityTraceTypes.None;
+            result = ParityTraceTypes.None;
+            // A JSON null per-call selection in trace_callMany reaches here.
+            if (types is null) return false;
             foreach (string type in types)
             {
-                result |= FastEnum.Parse<ParityTraceTypes>(type, true);
+                if (!FastEnum.TryParse(type, ignoreCase: true, out ParityTraceTypes parsed))
+                {
+                    result = ParityTraceTypes.None;
+                    return false;
+                }
+                result |= parsed;
             }
-            return result;
+            return true;
         }
+
+        public static ResultWrapper<T> InvalidTraceTypes<T>() => ResultWrapper<T>.Fail("Invalid trace types", ErrorCodes.InvalidParams);
 
         /// <summary>
         /// Traces one transaction. Doesn't charge fees.
@@ -121,7 +132,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
 
                 tx.Hash = new Hash256(new UInt256((ulong)i).ToValueHash());
-                ParityTraceTypes traceTypes = GetParityTypes(calls[i].TraceTypes);
+                if (!TryGetParityTypes(calls[i].TraceTypes, out ParityTraceTypes traceTypes))
+                {
+                    return InvalidTraceTypes<IEnumerable<ParityTxTraceFromReplay>>();
+                }
+
                 txs[i] = tx;
                 traceTypeByTransaction.Add(tx.Hash, traceTypes);
             }
@@ -165,6 +180,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
             Dictionary<Address, AccountOverride>? stateOverride = null)
         {
+            if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
+            {
+                return InvalidTraceTypes<ParityTxTraceFromReplay>();
+            }
+
             SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
             {
@@ -173,7 +193,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             BlockHeader header = headerSearch.Object!.Clone();
             Block block = new(header, [tx], []);
-            ParityTraceTypes parityTypes = GetParityTypes(traceTypes);
 
             return BuildStreamingSingleResult(
                 runStreaming: (writer, pipeWriter, ct) =>
@@ -197,6 +216,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
         {
+            if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
+            {
+                return InvalidTraceTypes<ParityTxTraceFromReplay>();
+            }
+
             SearchResult<Hash256> blockHashSearch = receiptFinder.SearchForReceiptBlockHash(txHash);
             if (blockHashSearch.IsError)
             {
@@ -222,7 +246,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             BlockHeader parentHeader = parentSearch.Object!;
-            ParityTraceTypes parityTypes = GetParityTypes(traceTypes);
 
             return BuildStreamingSingleResult(
                 runStreaming: (writer, pipeWriter, ct) =>
@@ -251,6 +274,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
+            if (!TryGetParityTypes(traceTypes, out ParityTraceTypes traceTypes1))
+            {
+                return InvalidTraceTypes<IEnumerable<ParityTxTraceFromReplay>>();
+            }
+
+            // Genesis has no parent to replay from, and no transactions or rewards to trace.
+            if (block.IsGenesis)
+            {
+                return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success([]);
+            }
+
             SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
             if (parentSearch.IsError)
             {
@@ -262,7 +296,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(parentSearch.Object);
             }
 
-            ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             BlockHeader parentHeader = parentSearch.Object!;
 
             return BuildStreamingMultiResult<ParityTxTraceFromReplay>(
@@ -723,7 +756,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// Trace simulated blocks transactions (eth_simulateV1)
         /// </summary>
         public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
-            SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) => new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new ParityStyleSimulateBlockTracerFactory(types: GetParityTypes(traceTypes ?? ["Trace"])), _secondsPerSlot)
-                .Execute(payload, blockParameter);
+            SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) =>
+            TryGetParityTypes(traceTypes ?? ["Trace"], out ParityTraceTypes parityTypes)
+                ? new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new ParityStyleSimulateBlockTracerFactory(types: parityTypes), _secondsPerSlot)
+                    .Execute(payload, blockParameter)
+                : InvalidTraceTypes<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>>();
     }
 }

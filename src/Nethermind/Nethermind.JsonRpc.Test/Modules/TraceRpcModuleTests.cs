@@ -108,15 +108,64 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_block_returns_no_traces_for_genesis([Values("earliest", "0x0")] string blockParameter, [Values] bool streaming)
+    public async Task Trace_block_and_replay_return_no_traces_for_genesis(
+        [Values("trace_block", "trace_replayBlockTransactions")] string method, [Values("earliest", "0x0")] string blockParameter, [Values] bool streaming)
     {
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
 
-        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_block", blockParameter);
+        object[] parameters = method == "trace_block" ? [blockParameter] : [blockParameter, new[] { "trace" }];
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
         Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","result":[],"id":67}"""));
+    }
+
+    [Test]
+    public async Task Rejects_unknown_trace_type_as_invalid_params(
+        [Values("trace_replayTransaction", "trace_replayBlockTransactions", "trace_call", "trace_callMany", "trace_simulateV1")] string method)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        string[] traceTypes = ["unknown"];
+        object transaction = new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0" };
+        object[] parameters = method switch
+        {
+            // An unknown hash fails the receipt lookup, so this also checks the types are validated before that.
+            "trace_replayTransaction" => [TestItem.KeccakA, traceTypes],
+            // Genesis short-circuits replay, so this also checks the types are validated before that.
+            "trace_replayBlockTransactions" => ["earliest", traceTypes],
+            "trace_call" => [transaction, traceTypes, "latest"],
+            "trace_callMany" => [new[] { new object[] { transaction, traceTypes } }, "latest"],
+            _ => [new { blockStateCalls = new[] { new { calls = new[] { transaction } } } }, "latest", traceTypes],
+        };
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("Invalid trace types"), response);
+        }
+    }
+
+    [Test]
+    public async Task Trace_replayBlockTransactions_returns_error_for_missing_block_or_parent([Values] bool parentMissing)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Block head = blockchain.BlockTree.Head!;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true,
+            new MissingHeaderBlockTree(blockchain.BlockTree, head.ParentHash!));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+        ulong blockNumber = parentMissing ? head.Number : head.Number + 1;
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_replayBlockTransactions", $"0x{blockNumber:x}", new[] { "trace" });
+        Assert.That(response, Is.EqualTo(
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.ResourceNotFound},\"message\":\"{BlockFinderExtensions.HeaderNotFound}\"}},\"id\":67}}"));
     }
 
     [Test]
