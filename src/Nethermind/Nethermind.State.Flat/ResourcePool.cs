@@ -24,7 +24,9 @@ public class ResourcePool : IResourcePool
         _categories = new()
         {
             // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
-            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, (int)flatConfig.CompactSize + 8, 2) },
+            // Sized to the in-memory base snapshot window as well: a release larger than the pool disposes the rest,
+            // and every block after that starts with a fresh content whose state-node map regrows on the LOH.
+            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, Math.Max((int)flatConfig.CompactSize, flatConfig.MaxInMemoryBaseSnapshotCount) + 8, 2) },
 
             // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
             { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
