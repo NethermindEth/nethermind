@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Json;
@@ -28,10 +27,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     private readonly SocketSendLock _sendSemaphore = new();
     private readonly CancellationTokenSource _sendFailure = new();
-    private int _disposed;
     private readonly Channel<ProcessRequest> _processChannel;
-
-    private readonly int _workerTaskCount = 1;
 
     private sealed record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
     {
@@ -43,6 +39,9 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             return ValueTask.CompletedTask;
         }
     }
+
+    private readonly int _workerTaskCount = 1;
+    private int _disposed;
 
     public JsonRpcSocketsClient(
         string clientName,
