@@ -591,7 +591,9 @@ for `eth_call` in every combination.
 corpus's record count) instead size the cell by how many requests it should issue: the
 rate is unchanged and the length is derived as `ceil(count / rps)`, since k6's
 constant-arrival-rate executor holds the rate. `corpus_passes: 5` on a 50k corpus at
-`rps_list: "500"` is 250,000 requests over 500s. Draws are *with replacement* from a
+`rps_list: "500"` is 250,000 requests over 500s. The two are mutually exclusive: on
+`corpus-ab`, a `tool_config.corpus_passes` replaces the `corpus_requests` that
+`requests_per_cell` derives, and a `tool_config` setting both is refused. Draws are *with replacement* from a
 seeded generator (`seed`, default 1): every arm and every rate replays the same sequence,
 but coverage is still `N x (1 - (1 - 1/N)^requests)`, not a guarantee every record is visited.
 

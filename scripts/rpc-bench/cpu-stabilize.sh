@@ -14,16 +14,19 @@ source "$HERE/lib.sh"
 
 : "${STATE_DIR:?directory for the saved sysfs values}"
 CPU_MAX_FREQ_KHZ="${CPU_MAX_FREQ_KHZ:-}"
+CPU_SYSFS="${CPU_SYSFS:-/sys/devices/system/cpu}"   # overridable so the tests can drive a fake tree
 SAVED="$STATE_DIR/cpu-sysfs.orig"
 
 write_sys() { as_root sh -c "printf '%s' '$2' > '$1'" 2>/dev/null; }
+save_sys() { printf '%s\t%s\n' "$1" "$(cat "$1")" >> "$SAVED"; }
 
 turbo_path() {
-  [[ -e /sys/devices/system/cpu/intel_pstate/no_turbo ]] && { echo "/sys/devices/system/cpu/intel_pstate/no_turbo 1"; return; }
-  [[ -e /sys/devices/system/cpu/cpufreq/boost ]] && echo "/sys/devices/system/cpu/cpufreq/boost 0"
+  [[ -e "$CPU_SYSFS/intel_pstate/no_turbo" ]] && { echo "$CPU_SYSFS/intel_pstate/no_turbo 1"; return; }
+  [[ -e "$CPU_SYSFS/cpufreq/boost" ]] && echo "$CPU_SYSFS/cpufreq/boost 0"
 }
 
 apply() {
+  [[ -z "$CPU_MAX_FREQ_KHZ" || "$CPU_MAX_FREQ_KHZ" =~ ^[1-9][0-9]*$ ]] || die "CPU_MAX_FREQ_KHZ must be a positive integer, got '$CPU_MAX_FREQ_KHZ'"
   mkdir -p "$STATE_DIR"
   # A run killed between apply and restore leaves the box capped; restoring first keeps the cap from being
   # recorded as the "original" and made permanent.
@@ -35,28 +38,33 @@ apply() {
     return 1
   fi
   : > "$SAVED"
-  local path off governors freqs
-  read -r path off <<< "$(turbo_path)"
-  if [[ -n "${path:-}" ]]; then
-    printf '%s\t%s\n' "$path" "$(cat "$path")" >> "$SAVED"
-    write_sys "$path" "$off" && log "turbo boost disabled ($path=$off)" || log "::warning::could not write $path"
+  local turbo off policy n policies=()
+  read -r turbo off <<< "$(turbo_path)"
+  # One entry per cpufreq policy, not per CPU: cpuN/cpufreq links to its policy and a cluster's CPUs share one, so a
+  # per-CPU walk read the second CPU's "original" after the first one's write. Every original is recorded before the
+  # first write, turbo's included, so none of them is a value this script already changed.
+  for policy in "$CPU_SYSFS"/cpufreq/policy[0-9]*; do [[ -e "$policy/scaling_governor" ]] && policies+=("$policy"); done
+  [[ -z "${turbo:-}" ]] || save_sys "$turbo"
+  for policy in "${policies[@]}"; do
+    save_sys "$policy/scaling_governor"
+    [[ -z "$CPU_MAX_FREQ_KHZ" ]] || save_sys "$policy/scaling_max_freq"
+  done
+
+  if [[ -n "${turbo:-}" ]]; then
+    write_sys "$turbo" "$off" && log "turbo boost disabled ($turbo=$off)" || log "::warning::could not write $turbo"
   fi
-  governors=(/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_governor)
-  if [[ -e "${governors[0]}" ]]; then
-    for path in "${governors[@]}"; do printf '%s\t%s\n' "$path" "$(cat "$path")" >> "$SAVED"; write_sys "$path" performance; done
-    log "governor=performance on ${#governors[@]} cpus"
-  else
+  if (( ${#policies[@]} == 0 )); then
     log "no cpufreq sysfs on this host — CPU frequency left as is"
+    [[ -z "$CPU_MAX_FREQ_KHZ" ]] || log "::warning::CPU_MAX_FREQ_KHZ set but no scaling_max_freq sysfs on this host"
+    return 0
   fi
+  n=0
+  for policy in "${policies[@]}"; do write_sys "$policy/scaling_governor" performance && n=$((n + 1)); done
+  log "governor=performance on $n of ${#policies[@]} cpufreq policies"
   if [[ -n "$CPU_MAX_FREQ_KHZ" ]]; then
-    [[ "$CPU_MAX_FREQ_KHZ" =~ ^[1-9][0-9]*$ ]] || die "CPU_MAX_FREQ_KHZ must be a positive integer, got '$CPU_MAX_FREQ_KHZ'"
-    freqs=(/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_max_freq)
-    if [[ -e "${freqs[0]}" ]]; then
-      for path in "${freqs[@]}"; do printf '%s\t%s\n' "$path" "$(cat "$path")" >> "$SAVED"; write_sys "$path" "$CPU_MAX_FREQ_KHZ"; done
-      log "scaling_max_freq=${CPU_MAX_FREQ_KHZ} kHz on ${#freqs[@]} cpus (now $(cat "${freqs[0]}"))"
-    else
-      log "::warning::CPU_MAX_FREQ_KHZ set but no scaling_max_freq sysfs on this host"
-    fi
+    n=0
+    for policy in "${policies[@]}"; do write_sys "$policy/scaling_max_freq" "$CPU_MAX_FREQ_KHZ" && n=$((n + 1)); done
+    log "scaling_max_freq=${CPU_MAX_FREQ_KHZ} kHz on $n of ${#policies[@]} cpufreq policies (now $(cat "${policies[0]}/scaling_max_freq"))"
   fi
 }
 

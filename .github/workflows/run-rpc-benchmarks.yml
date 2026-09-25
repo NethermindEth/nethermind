@@ -486,7 +486,10 @@ jobs:
             flood) preset_cfg="$(jq -n --arg rates "${rps}" --argjson duration "${duration}" '{rates: $rates, duration: $duration}')" ;;
             ethcallchaos) preset_cfg="$(jq -n --argjson rate "${first_rps}" --argjson duration "${duration}" '{rate: $rate, duration: $duration}')" ;;
           esac
-          tool_config="$(jq -c -n --argjson a "${preset_cfg}" --argjson b "${user_tool_config}" '$a * $b')"
+          # corpus_passes is the other way to size a corpus cell, so choosing it replaces the corpus_requests the inputs
+          # derived; a tool_config that sets both still reaches the sweep, which refuses the pair.
+          tool_config="$(jq -c -n --argjson a "${preset_cfg}" --argjson b "${user_tool_config}" \
+            '(if $b.corpus_passes != null and $b.corpus_requests == null then $a | del(.corpus_requests) else $a end) * $b')"
           corpus_raw="$(echo "${tool_config}" | jq -r 'if has("eth_call_corpus") then (.eth_call_corpus|type) else "absent" end')"
           case "${corpus_raw}" in absent|boolean) ;; *) fail "eth_call_corpus must be a JSON boolean, got ${corpus_raw}." ;; esac
           eth_call_corpus="$(echo "${tool_config}" | jq -r 'if .eth_call_corpus == true then "true" else "false" end')"
@@ -831,6 +834,9 @@ jobs:
           docker version
 
       - name: Print resolved configuration
+        # tool_config is user JSON: expanded from the environment it stays data, where ${{ }} would make it shell source.
+        env:
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
         run: |
           echo "Runner:      ${{ needs.resolve.outputs.runner_label }}"
           echo "Tool:        ${{ needs.resolve.outputs.benchmark_tool }}"
@@ -853,7 +859,7 @@ jobs:
           echo "Layout flags: ${{ needs.resolve.outputs.layout_flags }}"
           echo "CPU cap kHz: ${{ needs.resolve.outputs.cpu_max_freq_khz }} (stabilize=${{ needs.resolve.outputs.cpu_stabilize }})"
           echo "Baseline:    ${{ needs.resolve.outputs.baseline_mode }} (${{ needs.resolve.outputs.baseline_image }})"
-          echo "tool_config: ${{ needs.resolve.outputs.tool_config }}"
+          printf 'tool_config: %s\n' "${TOOL_CONFIG}"
 
       - name: Reclaim root disk before pulling
         if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'

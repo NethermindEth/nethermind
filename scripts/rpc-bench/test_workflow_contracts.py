@@ -9,6 +9,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -16,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import corpus_results  # noqa: E402
 
 
-WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "run-rpc-benchmarks.yml"
+REPO = Path(__file__).parents[2]
+WORKFLOW = REPO / ".github" / "workflows" / "run-rpc-benchmarks.yml"
 LIB = Path(__file__).parent / "lib.sh"
 SWEEP = Path(__file__).parent / "run-rpc-sweep.sh"
 JSONBENCH = Path(__file__).parent / "run-jsonbench.sh"
@@ -34,6 +36,70 @@ def _usable_bash():
 
 
 BASH = _usable_bash()
+
+
+def run_block(name):
+    """The script a step's `run: |` block hands to bash, de-indented."""
+    lines = RpcBenchmarkWorkflowTests.step(name).splitlines()
+    run_line = next(index for index, line in enumerate(lines) if line == "        run: |")
+    body = []
+    for line in lines[run_line + 1:]:
+        if line and len(line) - len(line.lstrip(" ")) < 10:
+            break
+        body.append(line[10:] if line else "")
+    return "\n".join(body) + "\n"
+
+
+def expand(script, values):
+    """Fills ${{ }} expressions in the way Actions does: into the script's text, before bash parses it."""
+    return re.sub(r"\$\{\{\s*(.*?)\s*\}\}", lambda match: values.get(match.group(1), "x"), script)
+
+
+def run_in_repo(script_text, environment, *bash_args, timeout=60):
+    """Runs a step's script from the repository root, with the step's environment exported first."""
+    script = REPO / f".rpc-workflow-test-{os.getpid()}.sh"
+    wrapper = REPO / f".rpc-workflow-test-{os.getpid()}.wrapper.sh"
+    script.write_bytes(script_text.encode("utf-8"))
+    wrapper_lines = ["#!/usr/bin/env bash", "set -e"]
+    wrapper_lines.extend(f"export {name}={shlex.quote(value)}" for name, value in environment.items())
+    wrapper_lines.append(" ".join(["exec bash", *bash_args, shlex.quote(script.name)]))
+    wrapper.write_bytes(("\n".join(wrapper_lines) + "\n").encode("utf-8"))
+    try:
+        return subprocess.run([BASH, "--noprofile", "--norc", wrapper.name], cwd=REPO, env=os.environ.copy(),
+                              capture_output=True, text=True, timeout=timeout)
+    finally:
+        wrapper.unlink(missing_ok=True)
+        script.unlink(missing_ok=True)
+
+
+def github_outputs(text):
+    """A $GITHUB_OUTPUT file's values: `name=value` lines and `name<<DELIMITER` blocks."""
+    outputs, lines, index = {}, text.splitlines(), 0
+    while index < len(lines):
+        line, index = lines[index], index + 1
+        block = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)<<(\S+)", line)
+        if block:
+            end = lines.index(block.group(2), index)
+            outputs[block.group(1)], index = "\n".join(lines[index:end]), end + 1
+        elif "=" in line:
+            name, value = line.split("=", 1)
+            outputs[name] = value
+    return outputs
+
+
+def dispatch_defaults():
+    """The resolver's IN_* environment for a workflow_dispatch that leaves every input at its default."""
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    inputs = workflow[workflow.index("    inputs:\n"):workflow.index("\n  pull_request:")]
+    defaults, name = {}, None
+    for line in inputs.splitlines():
+        if re.fullmatch(r"      [a-z_]+:", line):
+            name = line.strip().rstrip(":")
+        elif line.startswith("        default: "):
+            defaults[name] = line[len("        default: "):].strip('"')
+    wiring = re.findall(r"^          (IN_[A-Z_]+): \$\{\{ inputs\.([a-z_]+) \}\}$",
+                        RpcBenchmarkWorkflowTests.step("Resolve configuration"), re.M)
+    return {variable: defaults.get(input_name, "") for variable, input_name in wiring}
 
 # tool_config keys the sweep reads that do not shape what the cell measures, so they stay out of the cell
 # fingerprint: the arms themselves and how they are compared, repeats of the same cell, the json-bench-only
@@ -222,24 +288,10 @@ class BenaadamsFindingsTests(unittest.TestCase):
 class ResolverExecutionTests(unittest.TestCase):
     @staticmethod
     def resolver_script():
-        block = RpcBenchmarkWorkflowTests.step("Resolve configuration")
-        lines = block.splitlines()
-        run_line = next(index for index, line in enumerate(lines) if line == "        run: |")
-        body = []
-        for line in lines[run_line + 1:]:
-            if line and len(line) - len(line.lstrip(" ")) < 10:
-                break
-            body.append(line[10:] if line else "")
-        return "\n".join(body) + "\n"
+        return run_block("Resolve configuration")
 
-    def run_resolver(self, tool_config: str, baseline_image: str = "cache"):
-        output_name = f".rpc-resolver-test-{os.getpid()}"
-        script_name = f".rpc-resolver-test-{os.getpid()}.sh"
-        wrapper_name = f".rpc-resolver-test-{os.getpid()}.wrapper.sh"
-        script = WORKFLOW.parents[2] / script_name
-        wrapper = WORKFLOW.parents[2] / wrapper_name
-        output = WORKFLOW.parents[2] / output_name
-        script.write_bytes(self.resolver_script().encode("utf-8"))
+    def run_resolver(self, tool_config: str, baseline_image: str = "cache", **inputs):
+        output = REPO / f".rpc-resolver-test-{os.getpid()}"
         output.touch()
         environment = {
             "EVENT_NAME": "workflow_dispatch",
@@ -270,23 +322,29 @@ class ResolverExecutionTests(unittest.TestCase):
             "WR_CONCLUSION": "",
             "WR_HEAD_BRANCH": "",
             "WR_HEAD_SHA": "",
-            "GITHUB_OUTPUT": output_name,
+            "GITHUB_OUTPUT": output.name,
         }
-        wrapper_lines = ["#!/usr/bin/env bash", "set -e"]
-        wrapper_lines.extend(f"export {name}={shlex.quote(value)}" for name, value in environment.items())
-        wrapper_lines.append(f"exec bash {shlex.quote(script_name)}")
-        wrapper.write_bytes(("\n".join(wrapper_lines) + "\n").encode("utf-8"))
+        environment.update(inputs)
+        environment["IN_TOOL_CONFIG"] = tool_config
         try:
-            result = subprocess.run(
-                [BASH, "--noprofile", "--norc", wrapper_name],
-                cwd=WORKFLOW.parents[2], env=os.environ.copy(),
-                capture_output=True, text=True, timeout=60,
-            )
-            return result, output.read_text(encoding="utf-8")
+            return run_in_repo(self.resolver_script(), environment), output.read_text(encoding="utf-8")
         finally:
-            wrapper.unlink(missing_ok=True)
-            script.unlink(missing_ok=True)
             output.unlink(missing_ok=True)
+
+    @staticmethod
+    def run_sweep_step(outputs):
+        """The `Run RPC sweep` step on the resolver's outputs, as far as it gets without a benchmark box."""
+        step = RpcBenchmarkWorkflowTests.step("Run RPC sweep")
+        environment = {variable: outputs.get(output, "") for variable, output in
+                       re.findall(r"^          ([A-Z_]+): \$\{\{ needs\.resolve\.outputs\.([a-z_]+) \}\}$", step, re.M)}
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch).as_posix()
+            # Nothing here is the runner's: the snapshot set is absent, so the sweep stops at the first thing it
+            # needs from the box - after every check of its configuration.
+            environment.update({"SCRATCH_ROOT": f"{root}/scratch", "SNAPSHOT_ROOT": f"{root}/snapshots",
+                                "CORPUS_DIR": f"{root}/corpus", "OUT_DIR": f"{root}/out", "STATE_DIR": f"{root}/state",
+                                "BASELINE_CACHE_HIT": "true", "BASELINE_FALLBACK_IMAGE": "nethermindeth/nethermind:master"})
+            return run_in_repo(expand(run_block("Run RPC sweep"), {}), environment, "-eo pipefail", timeout=120)
 
     def test_jsonbench_sweep_accepts_complete_user_clients_with_cache_sentinel(self):
         clients = "nethermind@baseline/image:tag nethermind@candidate/image:tag"
@@ -305,6 +363,107 @@ class ResolverExecutionTests(unittest.TestCase):
                 result, _ = self.run_resolver(config)
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn(expected, result.stdout + result.stderr)
+
+    def test_an_explicit_corpus_passes_replaces_the_derived_request_count(self):
+        # The documented passes-based sizing on an otherwise default dispatch: the inputs derive corpus_requests too,
+        # and the sweep refuses a config carrying both.
+        result, output = self.run_resolver(json.dumps({"corpus_passes": 40}), **dispatch_defaults())
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        outputs = github_outputs(output)
+        tool_config = json.loads(outputs["tool_config"])
+        self.assertEqual(40, tool_config["corpus_passes"])
+        self.assertNotIn("corpus_requests", tool_config)
+
+        sweep = self.run_sweep_step(outputs)
+        self.assertNotIn("mutually exclusive", sweep.stdout + sweep.stderr)
+        self.assertIn("no nethermind snapshot set", sweep.stdout + sweep.stderr)
+
+    def test_a_tool_config_that_sets_both_sizings_is_still_refused(self):
+        config = json.dumps({"corpus_passes": 40, "corpus_requests": 5000})
+        result, output = self.run_resolver(config, **dispatch_defaults())
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+        sweep = self.run_sweep_step(github_outputs(output))
+        self.assertNotEqual(0, sweep.returncode)
+        self.assertIn("corpus_requests and corpus_passes are mutually exclusive", sweep.stdout + sweep.stderr)
+
+
+@unittest.skipUnless(BASH, "no usable bash to execute the workflow step")
+class PrintConfigurationTests(unittest.TestCase):
+    def test_tool_config_is_logged_as_data(self):
+        script = run_block("Print resolved configuration")
+        marker = REPO / f".rpc-print-test-{os.getpid()}.executed"
+        self.addCleanup(marker.unlink, missing_ok=True)
+        for value in ({"extra_args": '--filter "(eth_call|eth_getLogs)"'},
+                      {"label": "it's (quoted)"},
+                      {"extra_args": f"$(touch {marker.name})"},
+                      {"extra_args": f"`touch {marker.name}`"}):
+            tool_config = json.dumps(value, separators=(",", ":"))
+            with self.subTest(tool_config=tool_config):
+                result = run_in_repo(expand(script, {"needs.resolve.outputs.tool_config": tool_config}),
+                                     {"TOOL_CONFIG": tool_config}, "-e")
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertIn(f"tool_config: {tool_config}\n", result.stdout)
+                self.assertFalse(marker.exists(), "a command substitution inside tool_config was executed")
+
+
+@unittest.skipUnless(BASH, "no usable bash to run cpu-stabilize.sh")
+class CpuStabilizeExecutionTests(unittest.TestCase):
+    """cpu-stabilize.sh against a fake sysfs tree in which two CPUs share a cpufreq policy, as a cluster's do."""
+
+    ORIGINALS = {"policy0": ("schedutil", "3700000"), "policy2": ("powersave", "3500000")}
+    CPUS = {"cpu0": "policy0", "cpu1": "policy0", "cpu2": "policy2"}
+
+    def setUp(self):
+        scratch = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, scratch, ignore_errors=True)
+        self.sysfs, self.saved, shim = scratch / "cpu", scratch / "state" / "cpu-sysfs.orig", scratch / "bin"
+        for policy, (governor, max_freq) in self.ORIGINALS.items():
+            (self.sysfs / "cpufreq" / policy).mkdir(parents=True)
+            (self.sysfs / "cpufreq" / policy / "scaling_governor").write_bytes(f"{governor}\n".encode())
+            (self.sysfs / "cpufreq" / policy / "scaling_max_freq").write_bytes(f"{max_freq}\n".encode())
+        (self.sysfs / "cpufreq" / "boost").write_bytes(b"1\n")
+        for cpu, policy in self.CPUS.items():
+            (self.sysfs / cpu).mkdir()
+            try:
+                os.symlink(self.sysfs / "cpufreq" / policy, self.sysfs / cpu / "cpufreq", target_is_directory=True)
+            except OSError:
+                self.skipTest("this box cannot create the symlinks a shared policy needs")
+        # write_sys escalates through sudo when not root; this tree is the test's own.
+        shim.mkdir()
+        (shim / "sudo").write_bytes(b'#!/bin/sh\nexec "$@"\n')
+        (shim / "sudo").chmod(0o755)
+        self.environment = {**os.environ, "PATH": f"{shim}{os.pathsep}{os.environ['PATH']}",
+                            "CPU_SYSFS": self.sysfs.as_posix(), "STATE_DIR": self.saved.parent.as_posix(),
+                            "CPU_MAX_FREQ_KHZ": "3000000"}
+
+    def stabilize(self, action):
+        result = subprocess.run([BASH, "--noprofile", "--norc", CPU_STABILIZE.as_posix(), action],
+                                env=self.environment, capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def setting(self, cpu, name):
+        return (self.sysfs / cpu / "cpufreq" / name).read_text().strip()
+
+    def test_cpus_sharing_a_policy_get_their_governor_and_frequency_back(self):
+        self.stabilize("apply")
+        for cpu in self.CPUS:
+            self.assertEqual("performance", self.setting(cpu, "scaling_governor"), cpu)
+            self.assertEqual("3000000", self.setting(cpu, "scaling_max_freq"), cpu)
+        self.assertEqual("0", (self.sysfs / "cpufreq" / "boost").read_text().strip())
+        # One record per setting, every one taken before the first write: none is a value apply itself wrote.
+        records = [line.split("\t") for line in self.saved.read_text().splitlines()]
+        self.assertEqual(1 + 2 * len(self.ORIGINALS), len(records))
+        self.assertEqual(len(records), len({path for path, _ in records}))
+        self.assertFalse({value for _, value in records} & {"performance", "3000000", "0"}, records)
+
+        self.stabilize("restore")
+        for cpu, policy in self.CPUS.items():
+            governor, max_freq = self.ORIGINALS[policy]
+            self.assertEqual(governor, self.setting(cpu, "scaling_governor"), cpu)
+            self.assertEqual(max_freq, self.setting(cpu, "scaling_max_freq"), cpu)
+        self.assertEqual("1", (self.sysfs / "cpufreq" / "boost").read_text().strip())
+        self.assertFalse(self.saved.exists())
 
 
 class SweepContractTests(unittest.TestCase):
