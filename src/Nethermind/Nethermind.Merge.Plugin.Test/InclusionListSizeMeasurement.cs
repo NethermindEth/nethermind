@@ -101,7 +101,6 @@ public class InclusionListSizeMeasurement
         TestContext.Out.WriteLine($"RESULT list bytes mean={(double)totalBytes / Draws:F0} of " +
                                   $"{Eip7805Constants.MaxBytesPerInclusionList}, " +
                                   $"with SSZ offsets {(double)(totalBytes + (long)SszOffsetBytes * sum) / Draws:F0}");
-
     }
 
     private static Transaction[] LoadCorpus()
