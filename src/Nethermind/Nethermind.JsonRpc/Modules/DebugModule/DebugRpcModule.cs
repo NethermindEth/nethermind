@@ -66,9 +66,9 @@ public class DebugRpcModule(
     }
 
     public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) =>
-        startNumber < 0
-            ? ResultWrapper<int>.Fail($"startNumber must be non-negative (got {startNumber})", ErrorCodes.InvalidParams)
-            : ResultWrapper<int>.Success(debugBridge.DeleteChainSlice((ulong)startNumber, force));
+        startNumber <= 0
+            ? ResultWrapper<int>.Fail($"startNumber must be positive (got {startNumber})", ErrorCodes.InvalidParams)
+            : debugBridge.DeleteChainSlice((ulong)startNumber, force);
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
@@ -530,7 +530,8 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) => throw new NotImplementedException();
+    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) =>
+        ResultWrapper<bool>.Success(debugBridge.UpdateHeadBlock(blockParameter));
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {
