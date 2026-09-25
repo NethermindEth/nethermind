@@ -604,6 +604,19 @@ public class JsonRpcServiceTests
         ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
     }
 
+    // Real requests carry UTF-8 params, so the trace_filter mode converter is also checked on that path.
+    [TestCase("\"garbage\"")]
+    [TestCase("null")]
+    public void Trace_filter_rejects_unknown_mode_in_utf8_params(string mode)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        JsonRpcResponse response = TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"mode\":{mode}}}]");
+
+        AssertInvalidParamsWithoutData(response, "invalid trace filter mode, expected \"intersection\" or \"union\"");
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
     // #13156: a parameter the caller got wrong is answered with -32602; it must not also cost the operator a WARN line
     // (with a stack trace) per request. The detail stays available at Debug.
     [Test]

@@ -256,6 +256,37 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
+    public async Task trace_filter_from_store_combines_address_lists_by_mode([Values] TraceFilterMode mode, [Values] bool streaming)
+    {
+        TestContext test = new(streaming: streaming);
+        Hash256 block = test.DbTrace.BlockHash!;
+        ParityLikeTxTrace Call(Address from, Address to) => new()
+        {
+            BlockHash = block,
+            TransactionHash = test.DbTrace.TransactionHash,
+            Action = new ParityTraceAction { Type = "call", CallType = "call", From = from, To = to }
+        };
+        ParityLikeTxTrace reward = new() { BlockHash = block, Action = new ParityTraceAction { Type = "reward", Author = TestItem.AddressC, RewardType = "block" } };
+        test.Store.Set(block, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(
+            new[] { Call(TestItem.AddressA, TestItem.AddressB), Call(TestItem.AddressB, TestItem.AddressB), reward }));
+
+        using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc
+        {
+            FromBlock = BlockParameter.Latest,
+            ToBlock = BlockParameter.Latest,
+            FromAddress = [TestItem.AddressA],
+            ToAddress = [TestItem.AddressC],
+            Mode = mode
+        });
+
+        // Written as the RPC server writes it, so the streaming case runs the streamed filter, not the buffered one.
+        JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
+        string?[] matched = [.. result.Select(static trace => (string?)(trace["action"]!["from"] ?? trace["action"]!["author"]))];
+        string[] expected = mode == TraceFilterMode.Union ? [TestItem.AddressA.ToString(), TestItem.AddressC.ToString()] : [];
+        Assert.That(matched, Is.EqualTo(expected));
+    }
+
+    [Test]
     public void trace_filter_returns_from_inner_module_when_any_block_trace_is_missing([Values(0, 1, 2)] int parallelization)
     {
         TestContext test = new(parallelization: parallelization);

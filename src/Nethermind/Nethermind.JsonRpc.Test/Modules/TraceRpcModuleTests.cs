@@ -582,6 +582,62 @@ public class TraceRpcModuleTests
             Assert.That(bySenderAndAuthor, Is.Empty);
         }
     }
+
+    [Test]
+    public async Task Trace_filter_combines_address_lists_by_mode([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Block head = blockchain.BlockTree.Head!;
+        string range = $"\"fromBlock\":\"0x{head.Number - 2:x}\",\"toBlock\":\"latest\"";
+        string author = head.Beneficiary!.ToString();
+        string sender = TestItem.AddressB.ToString();
+        string other = TestItem.AddressE.ToString();
+
+        async Task<string[]> Filter(string fields)
+        {
+            using JsonDocument filter = JsonDocument.Parse($"{{{range}{fields}}}");
+            string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", filter.RootElement);
+            using JsonDocument document = JsonDocument.Parse(response);
+            Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result), Is.True, response);
+            return [.. result.EnumerateArray().Select(static trace => trace.GetRawText())];
+        }
+
+        string[] all = await Filter("");
+        string[] rewards = [.. all.Where(static trace => trace.Contains("\"type\":\"reward\""))];
+        string[] calls = [.. all.Where(static trace => !trace.Contains("\"type\":\"reward\""))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewards, Has.Length.EqualTo(3));
+            Assert.That(calls, Is.Not.Empty.And.All.Contains($"\"from\":\"{sender}\""));
+            // A call matches by sender and a reward by author; a reward has no sender side.
+            Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"],\"mode\":\"union\""), Is.EqualTo(all));
+            Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{other}\"],\"mode\":\"union\""), Is.EqualTo(calls));
+            Assert.That(await Filter($",\"fromAddress\":[\"{other}\"],\"toAddress\":[\"{author}\"],\"mode\":\"union\""), Is.EqualTo(rewards));
+            Assert.That(await Filter($",\"toAddress\":[\"{author}\"],\"mode\":\"union\""), Is.EqualTo(rewards));
+            Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"],\"mode\":\"union\",\"after\":2,\"count\":3"), Is.EqualTo(all[2..5]));
+            Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"],\"mode\":\"intersection\""), Is.Empty);
+            Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"]"), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Trace_filter_rejects_unknown_mode(
+        [Values("\"garbage\"", "\"Union\"", "\"INTERSECTION\"", "\"\"", "null", "0", "true", "[\"union\"]")] string mode)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        using JsonDocument filter = JsonDocument.Parse($"{{\"fromBlock\":\"latest\",\"toBlock\":\"latest\",\"mode\":{mode}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", filter.RootElement);
+
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid trace filter mode, expected \"intersection\" or \"union\""},"id":67}"""));
+    }
+
     [Test]
     public async Task Trace_filter_complex_scenario()
     {

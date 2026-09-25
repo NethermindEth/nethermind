@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -37,6 +41,47 @@ public class TxTraceFilterTests
         Assert.That(filterForFromAndTo.ShouldUseTxTrace(action2), Is.EqualTo(false));
         Assert.That(filterForFromAndTo.ShouldUseTxTrace(action3), Is.EqualTo(true));
         Assert.That(filterForFromAndTo.ShouldUseTxTrace(reward), Is.EqualTo(false));
+    }
+
+    private static readonly ParityTraceAction AToB = new() { From = TestItem.AddressA, To = TestItem.AddressB };
+    private static readonly ParityTraceAction BToC = new() { From = TestItem.AddressB, To = TestItem.AddressC };
+    private static readonly ParityTraceAction AToC = new() { From = TestItem.AddressA, To = TestItem.AddressC };
+    private static readonly ParityTraceAction BToB = new() { From = TestItem.AddressB, To = TestItem.AddressB };
+    private static readonly ParityTraceAction RewardToC = new() { Type = "reward", Author = TestItem.AddressC };
+
+    private static IEnumerable<TestCaseData> ModeCases()
+    {
+        Address[] a = [TestItem.AddressA];
+        Address[] c = [TestItem.AddressC];
+        // Expected matches for AToB, BToC, AToC, BToB, RewardToC.
+        yield return new TestCaseData(TraceFilterMode.Union, a, c, new[] { true, true, true, false, true }).SetName("union of both lists");
+        yield return new TestCaseData(TraceFilterMode.Union, a, null, new[] { true, false, true, false, false }).SetName("union with sender list only");
+        yield return new TestCaseData(TraceFilterMode.Union, null, c, new[] { false, true, true, false, true }).SetName("union with recipient list only");
+        yield return new TestCaseData(TraceFilterMode.Union, null, null, new[] { true, true, true, true, true }).SetName("union without lists");
+        yield return new TestCaseData(TraceFilterMode.Union, new[] { TestItem.AddressB }, new[] { TestItem.AddressD }, new[] { false, true, false, true, false }).SetName("union excludes reward without recipient match");
+        yield return new TestCaseData(TraceFilterMode.Union, new[] { TestItem.AddressD, TestItem.AddressA }, new[] { TestItem.AddressD, TestItem.AddressB }, new[] { true, false, true, true, false }).SetName("union of lists with several addresses");
+        // An empty list matches no address, so under union it adds no matches.
+        yield return new TestCaseData(TraceFilterMode.Union, Array.Empty<Address>(), c, new[] { false, true, true, false, true }).SetName("union with an empty sender list");
+        yield return new TestCaseData(TraceFilterMode.Intersection, a, c, new[] { false, false, true, false, false }).SetName("intersection of both lists");
+        yield return new TestCaseData(TraceFilterMode.Intersection, new[] { TestItem.AddressD, TestItem.AddressA }, new[] { TestItem.AddressD, TestItem.AddressB }, new[] { true, false, false, false, false }).SetName("intersection of lists with several addresses");
+        yield return new TestCaseData(TraceFilterMode.Intersection, null, c, new[] { false, true, true, false, true }).SetName("intersection with recipient list only");
+        yield return new TestCaseData(TraceFilterMode.Intersection, null, null, new[] { true, true, true, true, true }).SetName("intersection without lists");
+    }
+
+    [TestCaseSource(nameof(ModeCases))]
+    public void Trace_filter_combines_address_lists_by_mode(TraceFilterMode mode, Address[]? from, Address[]? to, bool[] expected)
+    {
+        TxTraceFilter filter = new(from, to, 0, null, mode);
+        bool[] actual = [.. new[] { AToB, BToC, AToC, BToB, RewardToC }.Select(filter.ShouldUseTxTrace)];
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Trace_filter_pages_union_matches()
+    {
+        TxTraceFilter filter = new([TestItem.AddressA], [TestItem.AddressC], 1, 2, TraceFilterMode.Union);
+        bool[] actual = [.. new[] { AToB, BToB, BToC, RewardToC, AToC }.Select(filter.ShouldUseTxTrace)];
+        Assert.That(actual, Is.EqualTo(new[] { false, false, true, true, false }));
     }
 
     [Test]

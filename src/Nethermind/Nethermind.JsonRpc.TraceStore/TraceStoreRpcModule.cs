@@ -232,7 +232,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
             (blockTraces ??= []).Add(traces);
         }
 
-        TxTraceFilter filter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
+        TxTraceFilter filter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count, traceFilterForRpc.Mode);
 
         if (blockTraces is null)
         {

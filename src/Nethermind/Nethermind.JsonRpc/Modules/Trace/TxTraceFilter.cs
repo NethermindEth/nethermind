@@ -12,12 +12,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
         Address[]? fromAddresses,
         Address[]? toAddresses,
         int after,
-        int? count)
+        int? count,
+        TraceFilterMode mode = TraceFilterMode.Intersection)
     {
         private readonly Address[]? _fromAddresses = fromAddresses;
         private readonly Address[]? _toAddresses = toAddresses;
         private int _after = after;
         private int? _count = count;
+        private readonly TraceFilterMode _mode = mode;
 
         public IEnumerable<ParityTxTraceFromStore> FilterTxTraces(IEnumerable<ParityTxTraceFromStore> txTraces)
         {
@@ -53,7 +55,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return false;
         }
 
-        private bool MatchAddresses(Address? fromAddress, Address? toAddress) =>
-            _fromAddresses?.Contains(fromAddress) != false && _toAddresses?.Contains(toAddress) != false;
+        private bool MatchAddresses(Address? fromAddress, Address? toAddress)
+        {
+            // null when the list is not set, so it does not restrict the match
+            bool? fromMatch = _fromAddresses?.Contains(fromAddress);
+            bool? toMatch = _toAddresses?.Contains(toAddress);
+            return _mode == TraceFilterMode.Union && (fromMatch.HasValue || toMatch.HasValue)
+                ? fromMatch == true || toMatch == true
+                : fromMatch != false && toMatch != false;
+        }
     }
 }
