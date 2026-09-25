@@ -128,13 +128,15 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     internal static UInt256 ComputeDaUsageEstimate(Transaction tx)
     {
         UInt256 flzLen = L1CostFastlzCoef * ComputeFlzCompressLen(tx);
-        return DaFootprintScale.IsZero ?
-            default :
-            UInt256.Max(
-                MinTransactionSizeScaled,
-                flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
-            ) / DaFootprintScale;
+        return DaUsageFromEstimatedSize(UInt256.Max(
+            MinTransactionSizeScaled,
+            flzLen > L1CostInterceptNeg ? flzLen - L1CostInterceptNeg : 0 // avoid uint underflow
+        ));
     }
+
+    /// <summary>Scales the Fjord estimated size that <see cref="ComputeL1CostFjord"/> reports down to the DA usage estimate.</summary>
+    internal static UInt256 DaUsageFromEstimatedSize(in UInt256 estimatedSize) =>
+        DaFootprintScale.IsZero ? default : estimatedSize / DaFootprintScale;
 
     [SkipLocalsInit]
     public static UInt256 ComputeDataGas(Transaction tx, bool isRegolith)

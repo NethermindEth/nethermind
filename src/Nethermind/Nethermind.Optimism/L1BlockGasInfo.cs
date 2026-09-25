@@ -157,15 +157,17 @@ public sealed class L1BlockGasInfo
                 operatorFeeScalar = _operatorFeeScalar;
                 operatorFeeConstant = _operatorFeeConstant;
             }
-            if (_daFootprintGasScalar is { } daFootprintGasScalar)
-            {
-                daFootprint = (UInt64)OptimismCostHelper.ComputeDaUsageEstimate(tx) * daFootprintGasScalar;
-            }
             if (_isFjord)
             {
                 UInt256 fastLzSize = OptimismCostHelper.ComputeFlzCompressLen(tx);
                 l1Fee = OptimismCostHelper.ComputeL1CostFjord(fastLzSize, _l1GasPrice.Value, _l1BlobBaseFee!.Value, _l1BaseFeeScalar!.Value, _l1BlobBaseFeeScalar!.Value, out UInt256 estimatedSize);
                 l1GasUsed = OptimismCostHelper.ComputeGasUsedFjord(estimatedSize);
+
+                // Jovian implies Fjord, so the DA footprint reuses the estimate instead of compressing the tx again.
+                if (_daFootprintGasScalar is { } daFootprintGasScalar)
+                {
+                    daFootprint = (UInt64)OptimismCostHelper.DaUsageFromEstimatedSize(estimatedSize) * daFootprintGasScalar;
+                }
             }
             else if (_isEcotone)
             {

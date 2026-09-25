@@ -89,10 +89,11 @@ public class OptimismReceiptTests
         AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: 0, expectedOperatorFeeConstant: 0);
     }
 
-    // A transaction this small sits at the 100-byte minimum DA size, so its DA footprint is 100 * daFootprintGasScalar.
-    [TestCase(false, null, null, TestName = "Isthmus 176-byte L1 attributes")]
-    [TestCase(true, 802UL, 80_200UL, TestName = "Jovian 178-byte L1 attributes")]
-    public void ContainsOperatorFeeParameters_PostIsthmus_FromExtraData(bool isJovian, ulong? expectedDaFootprintGasScalar, ulong? expectedBlobGasUsed)
+    // A transaction without data sits at the 100-byte minimum DA size, so its DA footprint is 100 * daFootprintGasScalar.
+    [TestCase(false, null, null, 0, TestName = "Isthmus 176-byte L1 attributes")]
+    [TestCase(true, 802UL, 80_200UL, 0, TestName = "Jovian 178-byte L1 attributes")]
+    [TestCase(true, 802UL, 169_222UL, 2_000, TestName = "Jovian 178-byte L1 attributes, above the minimum DA size")]
+    public void ContainsOperatorFeeParameters_PostIsthmus_FromExtraData(bool isJovian, ulong? expectedDaFootprintGasScalar, ulong? expectedBlobGasUsed, int txDataLength)
     {
         // Isthmus style l1 attributes with:
         // - baseFeeScalar = 2
@@ -114,12 +115,15 @@ public class OptimismReceiptTests
                     .TestObject
                 )
             .TestObject;
-        Transaction tx = Build.A.Transaction.TestObject;
+        byte[] txData = new byte[txDataLength];
+        for (int i = 0; i < txData.Length; i++) txData[i] = (byte)(i * 31 % 251);
+        Transaction tx = Build.A.Transaction.WithData(txData).TestObject;
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
         IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
+        helper.IsFjord(Arg.Any<BlockHeader>()).Returns(true);
         helper.IsJovian(Arg.Any<BlockHeader>()).Returns(isJovian);
 
         L1BlockGasInfo blockGasInfo = new(block, helper);
@@ -136,6 +140,8 @@ public class OptimismReceiptTests
         {
             Assert.That(receipt.DaFootprintGasScalar, Is.EqualTo(expectedDaFootprintGasScalar));
             Assert.That(receipt.BlobGasUsed, Is.EqualTo(expectedBlobGasUsed));
+            // The receipt has to agree with the per-transaction estimate the header's blobGasUsed sums.
+            if (isJovian) Assert.That(receipt.BlobGasUsed, Is.EqualTo((ulong)OptimismCostHelper.ComputeDaUsageEstimate(tx) * expectedDaFootprintGasScalar));
         }
     }
 
