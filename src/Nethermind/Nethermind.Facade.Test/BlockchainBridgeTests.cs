@@ -172,6 +172,17 @@ public class BlockchainBridgeTests
     }
 
     [Test]
+    public void Call_leaves_the_hash_of_ethereum_types_null([Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559)] TxType type)
+    {
+        Transaction tx = Build.A.Transaction.WithType(type).TestObject;
+        tx.Hash = TestItem.KeccakA;
+
+        _blockchainBridge.Call(Build.A.BlockHeader.TestObject, tx);
+
+        Assert.That(tx.Hash, Is.Null);
+    }
+
+    [Test]
     public void Call_uses_valid_block_number()
     {
         _timestamper.UtcNow = DateTime.MinValue;
