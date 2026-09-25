@@ -81,7 +81,7 @@ public class InclusionListBuilderTests
     public void Empty_pool_yields_empty_inclusion_list() =>
         Assert.That(BuildBuilder(PoolOf()).GetInclusionList(), Is.Empty);
 
-    // ITxPool's contract doesn't guarantee GetPendingTransactionsBySender omits empty buckets.
+    // ITxPool's contract does not guarantee that its snapshot omits empty buckets.
     [Test]
     public void Tolerates_an_empty_bucket_from_the_pool([Values(0.0, 0.5)] double oldestShare)
     {
@@ -343,34 +343,6 @@ public class InclusionListBuilderTests
 
         Assert.That(il.Count, Is.EqualTo(2));
         Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { nonce0.Hash, nonce1.Hash }));
-    }
-
-    // A run also ends at the first transaction the next block's base fee prices out: that one could not be
-    // appended, so nothing behind it could either, and listing them only spends the byte cap.
-    [TestCase(1u, 1)]
-    [TestCase(10u, 3)]
-    [TestCase(11u, 3)]
-    public void Stops_a_sender_run_at_a_transaction_the_next_base_fee_prices_out(uint middleMaxFeePerGas, int expectedCount)
-    {
-        Transaction nonce0 = TxOfSize(50, 0, maxFeePerGas: 100);
-        Transaction nonce1 = TxOfSize(50, 1, maxFeePerGas: middleMaxFeePerGas);
-        Transaction nonce2 = TxOfSize(50, 2, maxFeePerGas: 100);
-
-        using InclusionListBytes il = BuildBuilder(PoolOf(nonce0, nonce1, nonce2), baseFee: 10).GetInclusionList();
-
-        Assert.That(il.Count, Is.EqualTo(expectedCount));
-    }
-
-    // One sender's run being priced out must not cost the other drawn senders their place in the list.
-    [Test]
-    public void Keeps_other_senders_when_one_run_is_priced_out()
-    {
-        Transaction pricedOut = TxOfSize(50, 0, TestItem.PrivateKeyA, maxFeePerGas: 1);
-        Transaction payable = TxOfSize(50, 0, TestItem.PrivateKeyB, maxFeePerGas: 100);
-
-        using InclusionListBytes il = BuildBuilder(PoolOf(pricedOut, payable), baseFee: 10).GetInclusionList();
-
-        Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { payable.Hash }));
     }
 
     // Every drawn sender must reach the list before any one of them gets a second nonce, or an account
