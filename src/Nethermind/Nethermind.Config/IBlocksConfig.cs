@@ -60,6 +60,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
     int MempoolPreWarmConcurrency { get; set; }
 
+    [ConfigItem(Description = "Seed the processing scope's account cache (`HintGet`) when a read is served from the pre-block cache the pre-warmer filled. `false` serves the cached account without seeding.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmHintGetOnCacheHit { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

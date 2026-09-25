@@ -1367,6 +1367,27 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_ConsumerCacheHit_SeedsScopeOnlyWhenHintGetOnCacheHitEnabled([Values] bool hintGetOnCacheHit)
+    {
+        PreBlockCaches caches = new(TestPreBlockCachesConfig.Small with { HintGetOnCacheHit = hintGetOnCacheHit });
+        AddressAsKey key = TestItem.AddressA;
+        Account cached = new(1, 100);
+        caches.PrepareFor(TestItem.KeccakA);
+        caches.StateCache.Set(in key, cached);
+        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
+        PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+
+        using (IWorldStateScopeProvider.IScope scope = consumer.BeginScope(HeaderAt(TestItem.KeccakA, 1)))
+        {
+            Assert.That(scope.Get(TestItem.AddressA), Is.SameAs(cached));
+        }
+
+        baseScope.Received(hintGetOnCacheHit ? 1 : 0).HintGet(TestItem.AddressA, cached);
+    }
+
+    [Test]
     public void Test_ConsumerScope_OpeningFailure_LeavesNothingBehind()
     {
         PreBlockCaches caches = NewCaches();
@@ -1458,7 +1479,14 @@ public class ScopeProviderTests(bool useFlat)
         PreBlockCaches caches = NewCaches();
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         bool openDuringBaseDispose = false;
-        baseScope.When(s => s.Dispose()).Do(_ => openDuringBaseDispose = caches.ConsumerScopeOpen);
+        bool cacheLockHeldDuringBaseDispose = true;
+        IWorldStateScopeProvider.IScope mainScopeDuringBaseDispose = baseScope;
+        baseScope.When(s => s.Dispose()).Do(_ =>
+        {
+            openDuringBaseDispose = caches.ConsumerScopeOpen;
+            cacheLockHeldDuringBaseDispose = Monitor.IsEntered(caches);
+            mainScopeDuringBaseDispose = caches.MainScope;
+        });
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
         baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
         PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
@@ -1471,6 +1499,8 @@ public class ScopeProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(openDuringBaseDispose, Is.True, "the underlying scope drains its background readers on dispose, so sessions stay excluded until then");
+            Assert.That(cacheLockHeldDuringBaseDispose, Is.False, "draining readers must not hold the session factory lock");
+            Assert.That(mainScopeDuringBaseDispose, Is.Null);
             Assert.That(caches.ConsumerScopeOpen, Is.False);
         }
     }
@@ -1529,9 +1559,56 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_MainScope_Disposal_WaitsForWarmupSessionFactory()
+    {
+        PreBlockCaches caches = NewCaches();
+        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IScope populatorBaseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession warmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>())
+            .Returns(call => call.Succeed(2, baseScope), call => call.Succeed(2, populatorBaseScope));
+        PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+        PrewarmerScopeProvider populator = new(baseProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
+        IWorldStateScopeProvider.IScope consumerScope = consumer.BeginScope(null);
+        Thread disposeThread = new(consumerScope.Dispose) { IsBackground = true };
+        baseScope.CreateTrieWarmupSession().Returns(_ =>
+        {
+            disposeThread.Start();
+            Assert.That(SpinWait.SpinUntil(() =>
+                (disposeThread.ThreadState & (ThreadState.WaitSleepJoin | ThreadState.Stopped)) != 0,
+                TimeSpan.FromSeconds(10)), Is.True, "disposal must reach the factory lock");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(caches.MainScope, Is.SameAs(baseScope), "the factory must finish before unregistering its scope");
+                baseScope.DidNotReceive().Dispose();
+            }
+            return warmupSession;
+        });
+
+        try
+        {
+            using IWorldStateScopeProvider.IScope populatorScope = populator.BeginScope(null);
+        }
+        finally
+        {
+            Assert.That(disposeThread.Join(TimeSpan.FromSeconds(10)), Is.True);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.MainScope, Is.Null);
+            Assert.That(caches.ConsumerScopeOpen, Is.False);
+            baseScope.Received(1).Dispose();
+        }
+    }
+
+    [Test]
     public void Test_ScopeDecorators_ForwardWarmHints()
     {
         IWorldStateScopeProvider.IScope inner = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        inner.CreateTrieWarmupSession().Returns(trieWarmupSession);
         IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
         innerProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, inner));
 
@@ -1543,22 +1620,25 @@ public class ScopeProviderTests(bool useFlat)
 
         ValueAddress addressA = new(TestItem.AddressA.Bytes);
         using (main.BeginScope(null))
+        using (IWorldStateScopeProvider.ITrieWarmupSession session = caches.MainScope.CreateTrieWarmupSession())
         {
-            caches.MainScope.HintWarmAccount(in addressA);
-            caches.MainScope.HintWarmSlot(in addressA, (UInt256)1);
+            session.HintWarmAccount(in addressA);
+            session.HintWarmSlot(in addressA, (UInt256)1);
         }
 
-        inner.Received(1).HintWarmAccount(addressA);
-        inner.Received(1).HintWarmSlot(addressA, (UInt256)1);
+        trieWarmupSession.Received(1).HintWarmAccount(addressA);
+        trieWarmupSession.Received(1).HintWarmSlot(addressA, (UInt256)1);
     }
 
     /// <summary>
-    /// Runs <paramref name="work"/> on a populator world state and returns the consumer scope its hints reached.
+    /// Runs <paramref name="work"/> on a populator world state and returns the warm-up session its hints reached.
     /// </summary>
-    private static IWorldStateScopeProvider.IScope RunPopulator(Context ctx, Hash256 baseRoot, Action<WorldState> work)
+    private static IWorldStateScopeProvider.ITrieWarmupSession RunPopulator(Context ctx, Hash256 baseRoot, Action<WorldState> work)
     {
         PreBlockCaches caches = NewCaches();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        mainScope.CreateTrieWarmupSession().Returns(trieWarmupSession);
         // The wrapper captures it when the scope opens, so it must be in place first.
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
@@ -1569,7 +1649,7 @@ public class ScopeProviderTests(bool useFlat)
             work(state);
         }
 
-        return mainScope;
+        return trieWarmupSession;
     }
 
     [Test]
@@ -1579,9 +1659,9 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 baseRoot = CommitBaseState(ctx);
 
         // A read leaves the account's leaf alone, so the commit never walks its path.
-        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws => ws.GetBalance(TestItem.AddressA));
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = RunPopulator(ctx, baseRoot, ws => ws.GetBalance(TestItem.AddressA));
 
-        mainScope.DidNotReceive().HintWarmAccount(Arg.Any<ValueAddress>());
+        trieWarmupSession.DidNotReceive().HintWarmAccount(Arg.Any<ValueAddress>());
     }
 
     [Test]
@@ -1590,10 +1670,10 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 baseRoot = CommitBaseState(ctx);
 
-        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot,
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = RunPopulator(ctx, baseRoot,
             ws => ws.AddToBalance(TestItem.AddressA, 1, Cancun.Instance, out _));
 
-        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        trieWarmupSession.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
     }
 
     [Test]
@@ -1605,15 +1685,15 @@ public class ScopeProviderTests(bool useFlat)
         // The storage root lives in the account, so writing a slot rewrites the contract's leaf as well, and
         // once is enough however many of its slots the block writes.
         StorageCell slotA2 = new(TestItem.AddressA, 2);
-        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = RunPopulator(ctx, baseRoot, ws =>
         {
             for (int i = 0; i < repetitions; i++) ws.Set(in SlotA1, (UInt256)(7 + i));
             for (int i = 0; i < repetitions; i++) ws.Set(in slotA2, (UInt256)(8 + i));
         });
 
-        mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
-        mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), slotA2.Index);
-        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        trieWarmupSession.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
+        trieWarmupSession.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), slotA2.Index);
+        trieWarmupSession.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
     }
 
     [Test]
@@ -1623,6 +1703,8 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 baseRoot = CommitBaseState(ctx);
         PreBlockCaches caches = NewCaches();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        mainScope.CreateTrieWarmupSession().Returns(trieWarmupSession);
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
         WorldState state = new(populator, LimboLogs.Instance);
@@ -1637,7 +1719,7 @@ public class ScopeProviderTests(bool useFlat)
                 if (resetTransactionChanges) state.Reset(resetBlockChanges: false);
                 state.Set(in SlotA1, (UInt256)8);
             }
-            mainScope.Received(round + 1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
+            trieWarmupSession.Received(round + 1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
         }
     }
 
@@ -1648,13 +1730,13 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 baseRoot = CommitBaseState(ctx);
 
         // Destroying storage moves the root without writing a slot, so nothing else on the write path hints it.
-        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = RunPopulator(ctx, baseRoot, ws =>
         {
             ws.GetBalance(TestItem.AddressA);
             ws.MarkStorageDestroyed(TestItem.AddressA);
         });
 
-        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        trieWarmupSession.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
     }
 
     [Test]
@@ -1663,13 +1745,13 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 baseRoot = CommitBaseState(ctx);
 
-        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = RunPopulator(ctx, baseRoot, ws =>
         {
             ws.GetBalance(TestItem.AddressA);
             ws.ClearStorage(TestItem.AddressA);
         });
 
-        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        trieWarmupSession.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
     }
 
     [Test]
@@ -1678,7 +1760,7 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 baseRoot = CommitBaseState(ctx);
 
-        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws =>
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = RunPopulator(ctx, baseRoot, ws =>
         {
             ws.GetBalance(TestItem.AddressB);
             ws.AddToBalance(TestItem.AddressA, 1, Cancun.Instance, out _);
@@ -1687,10 +1769,10 @@ public class ScopeProviderTests(bool useFlat)
         });
 
         // The commit rewrites the leaves of A, C (through its storage root) and D, and leaves B alone.
-        mainScope.Received().HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        mainScope.Received().HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes));
-        mainScope.Received().HintWarmAccount(new ValueAddress(TestItem.AddressD.Bytes));
-        mainScope.DidNotReceive().HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+        trieWarmupSession.Received().HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        trieWarmupSession.Received().HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes));
+        trieWarmupSession.Received().HintWarmAccount(new ValueAddress(TestItem.AddressD.Bytes));
+        trieWarmupSession.DidNotReceive().HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
     }
 
     [Test]
@@ -1699,22 +1781,25 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 baseRoot = CommitBaseState(ctx);
 
-        IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws => ws.Get(in SlotA1, out _));
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = RunPopulator(ctx, baseRoot, ws => ws.Get(in SlotA1, out _));
 
-        mainScope.DidNotReceive().HintWarmSlot(Arg.Any<ValueAddress>(), Arg.Any<UInt256>());
-        mainScope.DidNotReceive().HintWarmAccount(Arg.Any<ValueAddress>());
+        trieWarmupSession.DidNotReceive().HintWarmSlot(Arg.Any<ValueAddress>(), Arg.Any<UInt256>());
+        trieWarmupSession.DidNotReceive().HintWarmAccount(Arg.Any<ValueAddress>());
     }
 
     [Test]
-    public void Test_PopulatorHintWarmSlot_RoutesToMainScope()
+    public void Test_PopulatorHintWarmSlot_RoutesToMainScopeWarmupSession([Values] bool captureStorageReads)
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
 
         PreBlockCaches caches = NewCaches();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        mainScope.CreateTrieWarmupSession().Returns(trieWarmupSession);
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
 
+        using PreBlockCaches.StorageReadCapture capture = captureStorageReads ? caches.BeginStorageReadCapture(new StrongBox<int>(16)) : null;
         ValueAddress addressA = new(TestItem.AddressA.Bytes);
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(null))
         {
@@ -1722,7 +1807,9 @@ public class ScopeProviderTests(bool useFlat)
             scope.HintWarmSlot(in addressA, (UInt256)1);
         }
 
-        mainScope.Received(1).HintWarmSlot(addressA, (UInt256)1);
+        mainScope.Received(1).CreateTrieWarmupSession();
+        trieWarmupSession.Received(captureStorageReads ? 0 : 1).HintWarmSlot(addressA, (UInt256)1);
+        trieWarmupSession.Received(1).Dispose();
     }
 
     [Test]

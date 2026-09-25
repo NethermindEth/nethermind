@@ -4,12 +4,10 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
@@ -100,8 +98,6 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
     public void Add(TransientResource transientResource)
     {
-        transientResource.WaitForExclusiveLease();
-
         if (_maxCacheMemoryThreshold == 0)
         {
             for (int i = 0; i < ShardCount; i++)
@@ -109,7 +105,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
                 for (int j = 0; j < shard.Length; j++)
                 {
-                    if (shard[j].node is { } newNode && !newNode.IsWarmerOwned) newNode.PrunePersistedRecursively(1);
+                    if (shard[j].node is { } newNode) newNode.PrunePersistedRecursively(1);
 
                 }
             }
@@ -132,36 +128,13 @@ public sealed class TrieNodeCache : ITrieNodeCache
             }
         }
 
-        static TrieNode? TryMaterializeResolvedWarmerNode(TrieNode source)
-        {
-            if (source.NodeType == NodeType.Unknown) return null;
-
-            CappedArray<byte> fullRlp = source.FullRlp;
-            if (fullRlp.IsNull) return null;
-
-            Hash256? keccak = source.Keccak;
-            // A warmer can race a writer, so reverify the bytes before promoting them to the shared cache.
-            if (keccak is not null && ValueKeccak.Compute(fullRlp.AsSpan()) != keccak) return null;
-
-            TrieNode detached = keccak is null
-                ? new TrieNode(NodeType.Unknown, fullRlp)
-                : new TrieNode(NodeType.Unknown, keccak, fullRlp);
-            TreePath path = TreePath.Empty;
-
-            return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
-        }
-
         Parallel.For(0, ShardCount, (i) =>
         {
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is not { } source) continue;
-
-                TrieNode? newNode = source.IsWarmerOwned ? TryMaterializeResolvedWarmerNode(source)
-                    : source.IsHashOnlyPlaceholder() ? null
-                    : source;
-                if (newNode is not null)
+                // Unresolved placeholders warm nothing and would evict the bucket's resolved node.
+                if (shard[j].node is { } newNode and not { NodeType: NodeType.Unknown, HasRlp: false })
                 {
                     AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
                 }

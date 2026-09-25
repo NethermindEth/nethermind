@@ -51,15 +51,23 @@ public class PreBlockCaches
             () => { _precompileCaches.ClearBlockCache(); return CacheType.None; }
         ];
         _writeBack = new WriteBackBatch(this);
+        HintGetOnCacheHit = config.HintGetOnCacheHit;
     }
 
     public SeqlockCache<StorageCell, UInt256> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
 
+    /// <inheritdoc cref="PreBlockCachesConfig.HintGetOnCacheHit"/>
+    public bool HintGetOnCacheHit { get; }
+
     /// <summary>
-    /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
-    /// (<see cref="IWorldStateScopeProvider.IScope.HintWarmAccount"/>); may disappear at any time.
+    /// The main processing scope, registered as a factory for reference-counted trie warm-up session borrows.
     /// </summary>
+    /// <remarks>
+    /// Registration, removal, and <see cref="IWorldStateScopeProvider.IScope.CreateTrieWarmupSession"/> calls
+    /// must hold the lock on this cache instance. Borrowers release their references on disposal;
+    /// the main scope's disposal stops further warm-up and drains active reads.
+    /// </remarks>
     public IWorldStateScopeProvider.IScope? MainScope
     {
         get => _mainScope;
@@ -521,6 +529,12 @@ public sealed record PreBlockCachesConfig
     public int StorageCacheSetsBits { get; init; } = 18;
 
     public int SurvivingPrecompileCacheMaxEntries { get; init; } = 16384;
+
+    /// <summary>
+    /// Whether a consumer read served from the account cache seeds the scope-local cache through
+    /// <see cref="IWorldStateScopeProvider.IScope.HintGet"/>.
+    /// </summary>
+    public bool HintGetOnCacheHit { get; init; } = true;
 }
 
 [Flags]

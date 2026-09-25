@@ -6,7 +6,10 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -42,7 +45,13 @@ public sealed class SnapshotBundle : IDisposable
 
     internal SnapshotPooledList _snapshots;
     private readonly ITrieNodeCache _trieNodeCache;
+
+    // Incrementing this invalidates queued warmer jobs, including jobs owned by leased warmup sessions.
+    private volatile int _hintSequenceId;
     private bool _isDisposed;
+    private readonly Lock _warmupSessionLock = new();
+    private FlatTrieWarmupSession? _warmupSession;
+    private bool _warmingStopped;
     private readonly IResourcePool _resourcePool;
 
     internal ResourcePool.Usage _usage;
@@ -170,10 +179,6 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node) && node.NodeType != NodeType.Unknown)
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
         else if (DoFindStateNodeExternal(path, hash, out node))
         {
         }
@@ -185,99 +190,10 @@ public sealed class SnapshotBundle : IDisposable
         return node;
     }
 
-    public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
-    {
-        // The warmer never reads the recyclable _snapshots; it warms nodes from persistence into the
-        // _transientResource. Pin the transient per read (lease + ABA re-check) while the bundle is live,
-        // else fall back to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null)
-        {
-            return TryFindStateNodeInPersistence(path, hash, out TrieNode? node) ? node : CreateWarmerUnknownNode(hash);
-        }
-
-        try
-        {
-            return WarmUpStateNode(transientResource, path, hash);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    private TrieNode WarmUpStateNode(TransientResource transientResource, in TreePath path, Hash256 hash)
-    {
-        if (transientResource.TryGetStateNode(path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
-        }
-
-        return TryFindStateNodeInPersistence(path, hash, out node)
-            ? transientResource.GetOrAddStateNode(path, node)
-            : transientResource.GetOrAddStateNode(path, CreateWarmerUnknownNode(hash));
-    }
-
-    private static TrieNode CreateWarmerUnknownNode(Hash256 hash)
-    {
-        TrieNode node = new(NodeType.Unknown, hash);
-        node.MarkWarmerOwned();
-        return node;
-    }
-
-    // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
-    // retired resource that was already re-rented by another bundle, so the acquire cannot be trusted on
-    // its own: the identity re-check catches a resource swapped out by CollectAndApplySnapshot, and the
-    // disposed re-check catches one released by Dispose, which leaves _transientResource pointing at the
-    // recycled instance. The current resource always holds its owner lease (armed at pool checkout and
-    // kept across SwapTransientResource) until Dispose, so the only way the acquire never succeeds is a
-    // disposed bundle whose transient will not be replaced - the _isDisposed check bails there instead of
-    // spinning forever (the target has no whole-bundle lease deferring that release).
-    private TransientResource? TryLeaseTransientResource()
-    {
-        SpinWait spinWait = default;
-        while (true)
-        {
-            if (Volatile.Read(ref _isDisposed)) return null;
-
-            TransientResource transientResource = Volatile.Read(ref _transientResource);
-            if (transientResource.TryAcquireLease())
-            {
-                if (ReferenceEquals(Volatile.Read(ref _transientResource), transientResource)
-                    && !Volatile.Read(ref _isDisposed))
-                {
-                    return transientResource;
-                }
-
-                transientResource.ReleaseLease();
-            }
-
-            spinWait.SpinOnce();
-        }
-    }
-
-    private bool TryFindStateNodeInPersistence(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        if (_trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
-        HashedKey<TreePath> key = new(path);
-        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
-    }
-
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         HashedKey<TreePath> key = new(path);
+
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStateNode(key, out node))
@@ -287,7 +203,21 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
+        if (_readOnlySnapshotBundle.TryFindStateNodes(key, out node)) return true;
+
+        // The transient resource and node cache are hash checked: TryGet matches on the node's Keccak, so a
+        // hit serves the requested node. An unresolved placeholder (Unknown with no RLP) does not — it is
+        // treated as a miss so it cannot shadow a node that the snapshot layers above do not hold either.
+        if (_transientResource.TryGetStateNode(path, hash, out node) || _trieNodeCache.TryGet(null, path, hash, out node))
+        {
+            if (node is not { NodeType: NodeType.Unknown, HasRlp: false })
+            {
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
@@ -297,11 +227,6 @@ public sealed class SnapshotBundle : IDisposable
         HashedKey<(Hash256, TreePath)> key = new((address, path));
 
         if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
-                 && node.NodeType != NodeType.Unknown)
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -317,66 +242,13 @@ public sealed class SnapshotBundle : IDisposable
     }
 
 
-    public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
-    {
-        // Persistence-only external find, same reasoning as FindStateNodeOrUnknownForTrieWarmer.
-        // Pin the transient per read (lease + ABA re-check) while the bundle is live, else fall back
-        // to a persistence-only read (the bundle is being torn down).
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null)
-        {
-            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node)
-                ? node
-                : CreateWarmerUnknownNode(hash);
-        }
-
-        try
-        {
-            return WarmUpStorageNode(transientResource, address, path, hash);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    private TrieNode WarmUpStorageNode(TransientResource transientResource, Hash256 address, in TreePath path, Hash256 hash)
-    {
-        if (transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
-        }
-
-        return TryFindStorageNodeInPersistence(address, path, hash, out node)
-            ? transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, node)
-            : transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, CreateWarmerUnknownNode(hash));
-    }
-
-    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        if (_trieNodeCache.TryGet(address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
-        HashedKey<(Hash256, TreePath)> key = new((address, path));
-        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
-    }
-
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed. So we skip the
     // check for slightly improved latency.
     private bool DoTryFindStorageNodeExternal(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
     {
-        if (_trieNodeCache.TryGet(address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         HashedKey<(Hash256, TreePath)> key = new((address, path));
+
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStorageNode(key, out node))
@@ -386,7 +258,20 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
+        if (_readOnlySnapshotBundle.TryFindStorageNodes(key, out node)) return true;
+
+        // Same as the state lookup: the transient/cache hit is hash checked, but an unresolved
+        // placeholder is a miss.
+        if (_transientResource.TryGetStorageNode(address, path, hash, out node) || _trieNodeCache.TryGet(address, path, hash, out node))
+        {
+            if (node is not { NodeType: NodeType.Unknown, HasRlp: false })
+            {
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
@@ -535,60 +420,90 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    // The trie warmer's PushSlotJob is slightly slow due to the wake up logic.
-    // It is a net improvement to check and modify the bloom filter before calling the trie warmer push
-    // as most of the slot should already be queued by prewarmer.
-    //
-    // The dedupe bloom lives on the recyclable _transientResource and these run on prewarmer/BAL threads
-    // while the owner may retire that resource, so the read must pin it exactly like the warmer node reads
-    // do - a bare field read would let the pool Reset/Dispose the BloomFilter (native memory) underneath.
-    // A torn-down bundle declines the prewarm rather than warming into a recycled resource.
-    public bool ShouldQueuePrewarm(Address address, UInt256? slot = null)
+    internal int HintSequenceId => _hintSequenceId;
+
+    internal void StopWarming()
     {
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null) return false;
+        FlatTrieWarmupSession? session;
+        lock (_warmupSessionLock)
+        {
+            _warmingStopped = true;
+            Interlocked.Increment(ref _hintSequenceId);
+            session = _warmupSession;
+        }
 
-        try
-        {
-            return transientResource.ShouldPrewarm(address, slot);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    public bool ShouldQueuePrewarm(in ValueAddress address, UInt256? slot = null)
-    {
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null) return false;
-
-        try
-        {
-            return transientResource.ShouldPrewarm(address, slot);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
+        // Drained outside the lock: the sequence id is already bumped, so no queued job can start a new
+        // operation, and prewarm BeginScope — which needs this lock — is not convoyed behind the drain.
+        session?.StopWarming();
     }
 
     /// <summary>
-    /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
+    /// Reopens warming for the same frozen state view, binding the session to the transient resource
+    /// the bundle owns after the commit's swap. The root and captured snapshots are unchanged.
     /// </summary>
-    /// <remarks>
-    /// Warmer jobs race scope disposal by design; the managed fallout is caught in the warmer, but a read that is
-    /// already inside the persistence reader when the last lease is released would touch a freed native RocksDB
-    /// snapshot and crash the process. Holding a lease per in-flight traversal defers that release until the job ends.
-    /// </remarks>
-    /// <returns><c>false</c> when the bundle is already fully disposed; the caller must skip the traversal.</returns>
-    internal bool TryLeaseReadOnlyBundle() => _readOnlySnapshotBundle.TryLease();
+    internal void ResumeWarming()
+    {
+        lock (_warmupSessionLock)
+        {
+            if (_isDisposed) return;
 
-    /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
-    internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
+            _warmingStopped = false;
+            _warmupSession?.ResumeWarming(_transientResource);
+        }
+    }
+
+    internal IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession(
+        in StateId baseState,
+        FlatWorldStateScope? owningScope,
+        ITrieWarmer trieWarmer,
+        ILogManager logManager)
+    {
+        lock (_warmupSessionLock)
+        {
+            if (_isDisposed || IsHistorical || trieWarmer is NoopTrieWarmer)
+                return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
+
+            if (_warmupSession is null)
+            {
+                if (_warmingStopped) return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
+                if (!_readOnlySnapshotBundle.TryLease()) throw new ObjectDisposedException(nameof(SnapshotBundle));
+                TransientResource transientResource = _transientResource;
+                bool transientLeased = false;
+                try
+                {
+                    transientLeased = transientResource.TryAcquireLease();
+                    if (!transientLeased) throw new ObjectDisposedException(nameof(SnapshotBundle));
+                    _warmupSession = new FlatTrieWarmupSession(
+                        baseState, this, owningScope, _readOnlySnapshotBundle, transientResource, _trieNodeCache, trieWarmer, logManager);
+                }
+                catch
+                {
+                    if (transientLeased) transientResource.ReleaseLease();
+                    _readOnlySnapshotBundle.Dispose();
+                    throw;
+                }
+            }
+
+            _warmupSession.AcquireLease();
+            return _warmupSession;
+        }
+    }
+
+    private void ReleaseWarmupSession()
+    {
+        FlatTrieWarmupSession? session;
+        lock (_warmupSessionLock)
+        {
+            session = _warmupSession;
+            _warmupSession = null;
+        }
+        session?.Dispose();
+    }
 
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
+        StopWarming();
+
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
         Snapshot snapshot = new(
@@ -649,6 +564,8 @@ public sealed class SnapshotBundle : IDisposable
     {
         if (Interlocked.Exchange(ref _isDisposed, true)) return;
 
+        StopWarming();
+        ReleaseWarmupSession();
         _snapshots.Dispose();
 
         // Null them in case unexpected mutation from trie warmer

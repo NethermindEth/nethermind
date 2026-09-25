@@ -37,9 +37,6 @@ namespace Nethermind.Trie
         private const byte _dirtyMask = 0b001;
         private const byte _persistedMask = 0b010;
         private const byte _boundaryProof = 0b100;
-        // A warmer-owned node stays out of shared parent slots until it has been decoded.
-        private const byte _warmerOwnedMask = 0b0000_1000;
-
         private byte _blockAndFlags = 0;
 
         // Seqlock for torn-read safety: CappedArray<byte> is 12 bytes (ref + int),
@@ -97,27 +94,6 @@ namespace Nethermind.Trie
         }
 
         public bool IsDirty => (ReadBlockAndFlags() & _dirtyMask) != 0;
-
-        internal bool IsWarmerOwned => (ReadBlockAndFlags() & _warmerOwnedMask) != 0;
-
-        // The flag is set on a freshly constructed node before it is published to any shared structure, so a
-        // reader that can reach the node already sees it; this per-child gate needs no acquire.
-        private bool IsWarmerOwnedNonVolatile => (_blockAndFlags & _warmerOwnedMask) != 0;
-
-        internal void MarkWarmerOwned()
-        {
-            byte previousValue = ReadBlockAndFlags();
-            while (true)
-            {
-                if ((previousValue & _warmerOwnedMask) != 0) return;
-
-                byte newValue = (byte)(previousValue | _warmerOwnedMask);
-                byte currentValue = ExchangeBlockAndFlags(newValue, previousValue);
-                if (currentValue == previousValue) return;
-
-                previousValue = currentValue;
-            }
-        }
 
         /// <summary>
         /// Node will no longer be mutable
@@ -1281,8 +1257,7 @@ namespace Nethermind.Trie
                                 nodeRlp.DecodeKeccak(ref position, out Hash256 keccak);
 
                                 TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                childOrRef = child;
-                                if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
+                                data = childOrRef = child;
 
                                 break;
                             }
@@ -1465,8 +1440,7 @@ namespace Nethermind.Trie
                                     _currentStreamIndex++;
 
                                     TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                    childOrRef = child;
-                                    if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
+                                    data = childOrRef = child;
 
                                     break;
                                 }
