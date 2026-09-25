@@ -37,12 +37,12 @@ public sealed class ZkGasTxTracer : TxTracer
     private bool _stepActive;
     private bool _stepJustEnded;
 
-    // Step state needed to rebuild REVM's charge when the step fails
+    // Step state needed to rebuild REVM's charge when the step fails. The stack buffer belongs to the VM:
+    // it is read only by this step's ReportOperationError, before the next StartOperation, and a handler
+    // that pushes before failing (the CALL depth/balance short-circuit) returns before it is read.
     private TraceStack _stack;
     private ulong _memorySize;
     private int _returnDataLength;
-    private int _depth = -1;
-    private bool[] _staticFrames = new bool[8];
 
     // Finished non-spawn step waiting for a possible error report
     private bool _hasPendingStep;
@@ -89,7 +89,6 @@ public sealed class ZkGasTxTracer : TxTracer
         _currentGasStart = gas;
         _stepActive = true;
         _stepJustEnded = false;
-        _depth = env.CallDepth;
         _stack = default;
         _memorySize = 0;
         _returnDataLength = 0;
@@ -149,15 +148,6 @@ public sealed class ZkGasTxTracer : TxTracer
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         FlushPendingStep();
-
-        // The new frame runs one level below the last traced opcode and is static if its parent was.
-        int childDepth = _depth + 1;
-        if (childDepth >= _staticFrames.Length)
-        {
-            Array.Resize(ref _staticFrames, Math.Max(childDepth + 1, _staticFrames.Length * 2));
-        }
-
-        _staticFrames[childDepth] = callType == ExecutionType.STATICCALL || (_depth >= 0 && _staticFrames[_depth]);
 
         // Mark the deferred step as having actually spawned child work
         if (_hasDeferredStep)
@@ -257,12 +247,9 @@ public sealed class ZkGasTxTracer : TxTracer
         }
     }
 
-    private ulong RevmGasAfter(byte opcode, EvmExceptionType error, ulong gasBefore, ulong reportedGasAfter)
-    {
-        bool isStatic = _depth >= 0 && _depth < _staticFrames.Length && _staticFrames[_depth];
-        return Math.Min(gasBefore, RevmFailedStepGas.GasAfter((Instruction)opcode, error, gasBefore, reportedGasAfter,
-            _stack, _memorySize, _returnDataLength, isStatic));
-    }
+    private ulong RevmGasAfter(byte opcode, EvmExceptionType error, ulong gasBefore, ulong reportedGasAfter) =>
+        Math.Min(gasBefore, RevmFailedStepGas.GasAfter((Instruction)opcode, error, gasBefore, reportedGasAfter,
+            _stack, _memorySize, _returnDataLength));
 
     /// <summary>
     /// Charges precompile ZK gas on revert.

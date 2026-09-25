@@ -39,20 +39,21 @@ internal static class RevmFailedStepGas
         ulong reportedGasAfter,
         in TraceStack stack,
         ulong memorySize,
-        int returnDataLength,
-        bool isStatic)
+        int returnDataLength)
     {
         switch (error)
         {
+            // Nethermind checks the static context before any stack, operand or memory check of the same
+            // opcode, and REVM halts right after the static gas there too, so frames need no static tracking.
             case EvmExceptionType.StaticCallViolation:
             case EvmExceptionType.StackOverflow:
                 return PreExecution(opcode, gasBefore);
             case EvmExceptionType.StackUnderflow:
                 // CREATE2 pops its salt, and LOG1-LOG4 their topics, only after the in-body charges.
                 if (opcode == Instruction.CREATE2 && stack.Count == 3)
-                    return CreateBody(stack, memorySize, isStatic, gasBefore, out _);
+                    return CreateBody(stack, memorySize, gasBefore, out _);
                 if (opcode is >= Instruction.LOG1 and <= Instruction.LOG4 && stack.Count >= 2)
-                    return Log(opcode, stack, memorySize, isStatic, gasBefore);
+                    return Log(opcode, stack, memorySize, gasBefore);
                 return PreExecution(opcode, gasBefore);
             case EvmExceptionType.BadInstruction:
                 // REVM ships these behind Amsterdam: it deducts their static gas, then halts as not activated.
@@ -66,17 +67,17 @@ internal static class RevmFailedStepGas
             case Instruction.CREATE or Instruction.CREATE2 when stack.Count >= 3:
                 // The trailing base (+ hashing) charge is the only one left once the body got that far,
                 // and it spends everything when it cannot be paid.
-                ulong gasAfterBody = CreateBody(stack, memorySize, isStatic, gasBefore, out bool reachedTail);
+                ulong gasAfterBody = CreateBody(stack, memorySize, gasBefore, out bool reachedTail);
                 return reachedTail ? 0 : gasAfterBody;
             case >= Instruction.LOG0 and <= Instruction.LOG4 when stack.Count >= 2:
-                return Log(opcode, stack, memorySize, isStatic, gasBefore);
+                return Log(opcode, stack, memorySize, gasBefore);
             case Instruction.KECCAK256 when stack.Count >= 2:
             case Instruction.CALLDATACOPY or Instruction.CODECOPY or Instruction.RETURNDATACOPY or Instruction.MCOPY when stack.Count >= 3:
             case Instruction.EXTCODECOPY when stack.Count >= 4:
                 return Copy(opcode, stack, memorySize, returnDataLength, gasBefore);
             case Instruction.CALL or Instruction.CALLCODE when stack.Count >= 7:
             case Instruction.DELEGATECALL or Instruction.STATICCALL when stack.Count >= 6:
-                return Call(opcode, stack, memorySize, isStatic, gasBefore);
+                return Call(opcode, stack, memorySize, gasBefore);
             case Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.RETURN or Instruction.REVERT:
                 // Nothing is charged in the body before the memory expansion, which halts keeping gas.
                 return PreExecution(opcode, gasBefore);
@@ -96,14 +97,13 @@ internal static class RevmFailedStepGas
     }
 
     /// <summary>
-    /// CREATE/CREATE2 body up to, but excluding, the trailing base charge: static-context check and size
-    /// validation halt before any charge, the EIP-3860 word cost spends everything when unaffordable, and
-    /// the memory expansion halts keeping gas.
+    /// CREATE/CREATE2 body up to, but excluding, the trailing base charge: size validation halts before any
+    /// charge, the EIP-3860 word cost spends everything when unaffordable, and the memory expansion halts
+    /// keeping gas.
     /// </summary>
-    private static ulong CreateBody(in TraceStack stack, ulong memorySize, bool isStatic, ulong gasBefore, out bool reachedTail)
+    private static ulong CreateBody(in TraceStack stack, ulong memorySize, ulong gasBefore, out bool reachedTail)
     {
         reachedTail = false;
-        if (isStatic) return gasBefore;
 
         UInt256 size = stack.PeekUInt256(2);
         if (!size.IsUint64) return gasBefore;
@@ -129,9 +129,8 @@ internal static class RevmFailedStepGas
     /// LOG: static gas, a length beyond 64 bits halts before the topic+data charge, that charge spends
     /// everything when unaffordable, and the offset or memory expansion halt keeps gas. Topics are popped last.
     /// </summary>
-    private static ulong Log(Instruction opcode, in TraceStack stack, ulong memorySize, bool isStatic, ulong gasBefore)
+    private static ulong Log(Instruction opcode, in TraceStack stack, ulong memorySize, ulong gasBefore)
     {
-        if (isStatic) return PreExecution(opcode, gasBefore);
         if (gasBefore < GasCostOf.Log) return 0;
 
         ulong gas = gasBefore - GasCostOf.Log;
@@ -192,17 +191,15 @@ internal static class RevmFailedStepGas
     }
 
     /// <summary>
-    /// CALL family: static gas, a value-bearing CALL in a static frame halts right after its leading pops,
-    /// then the input range is resized and charged before the output range, each halt keeping gas. The
-    /// charges that follow (account access, value transfer, new account) spend everything.
+    /// CALL family: static gas, then the input range is resized and charged before the output range, each
+    /// halt keeping gas. The charges that follow (account access, value transfer, new account) spend everything.
     /// </summary>
-    private static ulong Call(Instruction opcode, in TraceStack stack, ulong memorySize, bool isStatic, ulong gasBefore)
+    private static ulong Call(Instruction opcode, in TraceStack stack, ulong memorySize, ulong gasBefore)
     {
         ulong staticGas = StaticGas(opcode);
         if (gasBefore < staticGas) return 0;
 
         ulong gas = gasBefore - staticGas;
-        if (opcode == Instruction.CALL && isStatic && !stack.PeekUInt256(2).IsZero) return gas;
 
         int inOffset = opcode is Instruction.CALL or Instruction.CALLCODE ? 3 : 2;
         if (!TryChargeMemory(ref gas, ref memorySize, stack.PeekUInt256(inOffset), stack.PeekUInt256(inOffset + 1))) return gas;

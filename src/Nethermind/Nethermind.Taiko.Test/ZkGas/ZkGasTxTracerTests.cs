@@ -64,6 +64,22 @@ public class ZkGasTxTracerTests
     }
 
     [Test]
+    public void Error_after_a_report_outside_the_step_keeps_the_measured_charge()
+    {
+        (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
+
+        tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
+        tracer.ReportOperationRemainingGas(90);
+        // A second report with no step in progress, as when a call result is pushed on resume.
+        tracer.ReportOperationRemainingGas(90);
+        tracer.ReportOperationError(EvmExceptionType.StackUnderflow);
+        tracer.ReportActionEnd(90, ReadOnlyMemory<byte>.Empty);
+
+        ulong expected = 10UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
+    }
+
+    [Test]
     public void NonSpawnOpcode_StackUnderflow_ChargesRevmStaticGas()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
@@ -284,5 +300,8 @@ public class ZkGasTxTracerTests
         (ZkGasTxTracer tracer, ZkGasMeter _) = Make();
         Assert.That(tracer.IsTracingActions, Is.True);
         Assert.That(tracer.IsTracingInstructions, Is.True);
+        Assert.That(tracer.IsTracingStack, Is.True);
+        Assert.That(tracer.IsTracingMemory, Is.True);
+        Assert.That(tracer.IsTracingReturnData, Is.True);
     }
 }

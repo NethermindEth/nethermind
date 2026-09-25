@@ -1,13 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Test;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -27,8 +30,10 @@ public class ZkGasRevmParityTests : VirtualMachineTestsBase
     private const string PushZeroAddress = "730000000000000000000000000000000000000000";
     private const string InnerHex = "2000000000000000000000000000000000000000";
     private const string TargetHex = "3000000000000000000000000000000000000000";
+    private const string NestedHex = "4000000000000000000000000000000000000000";
 
     private static readonly Address Inner = new("0x" + InnerHex);
+    private static readonly Address Nested = new("0x" + NestedHex);
 
     protected override ForkActivation Activation => MainnetSpecProvider.OsakaActivation;
 
@@ -116,11 +121,18 @@ public class ZkGasRevmParityTests : VirtualMachineTestsBase
     public void Memory_and_copy_family(Instruction opcode, string code, ulong frameGas, ulong expected) =>
         Assert.That(Run(code, frameGas, opcode), Is.EqualTo(expected));
 
+    [TestCase("60206000650200000000003e00", 6UL, TestName = "RETURNDATACOPY capped memory with return data charges static and copy gas")]
+    [TestCase("60206001650200000000003e00", 3UL, TestName = "RETURNDATACOPY out of bounds with return data charges static gas")]
+    public void Returndatacopy_after_call(string copyCode, ulong expected) =>
+        Assert.That(Run(CallInner(Instruction.STATICCALL, 0xffff, keepGoing: true) + copyCode, 200_000, [Instruction.RETURNDATACOPY], innerCode: "60206000f3"),
+            Is.EqualTo(expected));
+
     [TestCase(Instruction.CALL, "602065020000000000600060006000" + PushZeroAddress + "61fffff100", 100UL, TestName = "CALL capped output memory charges static gas")]
     [TestCase(Instruction.DELEGATECALL, "60206502000000000060006000" + PushZeroAddress + "61fffff400", 100UL, TestName = "DELEGATECALL capped output memory charges static gas")]
     [TestCase(Instruction.CALL, "602065020000000000602060006000" + PushZeroAddress + "61fffff100", 103UL, TestName = "CALL capped output after input expansion charges input memory")]
     [TestCase(Instruction.CALL, "602065020000000000604060006000" + PushZeroAddress + "61fffff100", 106UL, TestName = "CALL capped output after two-word input expansion")]
     [TestCase(Instruction.DELEGATECALL, "60206502000000000060206000" + PushZeroAddress + "61fffff400", 103UL, TestName = "DELEGATECALL capped output after input expansion charges input memory")]
+    [TestCase(Instruction.CALL, "6000600052602065020000000000602060006000" + PushZeroAddress + "61fffff100", 100UL, TestName = "CALL capped output after input already in memory charges static gas")]
     [TestCase(Instruction.CALL, "600060006020650200000000006000" + PushZeroAddress + "61fffff100", 100UL, TestName = "CALL capped input memory charges static gas")]
     [TestCase(Instruction.CALL, "6020" + PushMax + "602060006000" + PushZeroAddress + "61fffff100", 103UL, TestName = "CALL output offset overflow after input expansion")]
     [TestCase(Instruction.CALL, "600060006020" + PushMax + "6000" + PushZeroAddress + "61fffff100", 100UL, TestName = "CALL input offset overflow charges static gas")]
@@ -149,6 +161,12 @@ public class ZkGasRevmParityTests : VirtualMachineTestsBase
         Assert.That(Run(CallInner(Instruction.STATICCALL, 0xffff), 200_000, [opcode], innerCode: innerCode), Is.EqualTo(expected));
 
     [Test]
+    public void Static_context_is_inherited_by_nested_frame() =>
+        Assert.That(Run(CallInner(Instruction.STATICCALL, 0xffff), 200_000, [Instruction.CALL],
+            innerCode: CallInner(Instruction.DELEGATECALL, 0xffff, NestedHex),
+            nestedCode: "6020" + PushMax + "602060006001" + PushZeroAddress + "61fffff100"), Is.EqualTo(100UL));
+
+    [Test]
     public void Static_log_write_protection_uses_multiplier() =>
         Assert.That(Run(CallInner(Instruction.STATICCALL, 0xffff), 200_000, [Instruction.LOG1], multiplier: 7, innerCode: "600060006000a1"),
             Is.EqualTo(375UL * 7));
@@ -169,6 +187,13 @@ public class ZkGasRevmParityTests : VirtualMachineTestsBase
         Assert.That(Run("6000600060006000" + PushMax + "73" + TargetHex + "612710f100", 100_000, Instruction.CALL),
             Is.EqualTo(ZkGasSchedule.SpawnEstimateCall));
 
+    /// <remarks>
+    /// Frames 0..1024 each run one CALL; the one at depth 1024 hits the depth short-circuit, which REVM also counts as spawned.
+    /// </remarks>
+    [Test]
+    public void Call_at_depth_limit_counts_as_spawned() =>
+        Assert.That(Run("5f5f5f5f5f305af100", 100_000_000_000, Instruction.CALL), Is.EqualTo(1025 * ZkGasSchedule.SpawnEstimateCall));
+
     [TestCase(Instruction.RETURN, "60206000f3", 3UL, TestName = "Successful RETURN charges its memory expansion")]
     [TestCase(Instruction.REVERT, "60206000fd", 3UL, TestName = "REVERT charges its memory expansion")]
     [TestCase(Instruction.MSTORE, "600160005200", 6UL, TestName = "Successful MSTORE charges static and memory gas")]
@@ -180,7 +205,7 @@ public class ZkGasRevmParityTests : VirtualMachineTestsBase
 
     private ulong Run(string code, ulong frameGas, Instruction metered, ushort multiplier) => Run(code, frameGas, [metered], multiplier);
 
-    private ulong Run(string code, ulong frameGas, Instruction[] metered, ushort multiplier = 1, string? innerCode = null)
+    private ulong Run(string code, ulong frameGas, Instruction[] metered, ushort multiplier = 1, string? innerCode = null, string? nestedCode = null)
     {
         ushort[] multipliers = new ushort[256];
         foreach (Instruction opcode in metered)
@@ -194,13 +219,23 @@ public class ZkGasRevmParityTests : VirtualMachineTestsBase
             TestState.InsertCode(Inner, Bytes.FromHexString(innerCode), SpecProvider.GenesisSpec);
         }
 
-        ZkGasMeter meter = new(blockZkGasLimit: 1UL << 40, txIntrinsicZkGas: 0, opcodeMultipliers: multipliers);
-        (Block block, Transaction tx) = PrepareTx(Activation, 21_000 + frameGas, Bytes.FromHexString(code));
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), new ZkGasTxTracer(meter));
-        return meter.TxZkGasUsed;
+        if (nestedCode is not null)
+        {
+            TestState.CreateAccount(Nested, UInt256.Zero);
+            TestState.InsertCode(Nested, Bytes.FromHexString(nestedCode), SpecProvider.GenesisSpec);
+        }
+
+        // Goes through the block tracer so the flags reach the VM the way they do in block processing.
+        ZkGasBlockTracer blockTracer = new(NullBlockTracer.Instance, blockZkGasLimit: 1UL << 40, txIntrinsicZkGas: 0, opcodeMultipliers: multipliers);
+        ulong txGas = 21_000 + frameGas;
+        (Block block, Transaction tx) = PrepareTx(Activation, txGas, Bytes.FromHexString(code), blockGasLimit: Math.Max(DefaultBlockGasLimit, txGas));
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = blockTracer.StartNewTxTrace(tx);
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
+        return blockTracer.Meter.TxZkGasUsed;
     }
 
-    private static string CallInner(Instruction opcode, ushort gas) =>
+    private static string CallInner(Instruction opcode, ushort gas, string targetHex = InnerHex, bool keepGoing = false) =>
         "6000600060006000" + (opcode is Instruction.CALL or Instruction.CALLCODE ? "6000" : "")
-        + "73" + InnerHex + "61" + gas.ToString("x4") + ((byte)opcode).ToString("x2") + "00";
+        + "73" + targetHex + "61" + gas.ToString("x4") + ((byte)opcode).ToString("x2") + (keepGoing ? "50" : "00");
 }
