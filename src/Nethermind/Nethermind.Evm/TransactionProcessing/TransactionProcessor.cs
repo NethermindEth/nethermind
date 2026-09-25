@@ -1264,7 +1264,8 @@ namespace Nethermind.Evm.TransactionProcessing
             WarmUpTxAccesses(tx, spec, in accessTracker, recipient, warmUpRecipient: loadRecipient);
             if (tx.IsContractCreation)
             {
-                codeInfo = CodeInfoFactory.CreateCodeInfo(tx.Data);
+                // Initcode is analyzed on first use, as for CREATE: queueing it would only race its first jump.
+                codeInfo = new CodeInfo(tx.Data);
             }
             else if (!loadRecipient)
             {

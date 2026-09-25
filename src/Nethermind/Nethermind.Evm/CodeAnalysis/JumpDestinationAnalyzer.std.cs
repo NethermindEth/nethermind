@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
@@ -26,15 +25,10 @@ public sealed partial class JumpDestinationAnalyzer
     [MethodImpl(MethodImplOptions.NoInlining)]
     private long[] CreateOrWaitForJumpDestinationBitmap()
     {
-        // A single processor never queues the background analysis, so there is no completion event
-        // to allocate, signal or wait on.
-        if (Core.Cpu.RuntimeInformation.IsSingleProcessor) return CreateJumpDestinationBitmap();
-
+        // No background analysis has claimed the code, so analyze here without a completion event to allocate,
+        // signal or wait on; one that starts meanwhile only repeats the scan.
         object? previous = Volatile.Read(ref _analysisComplete);
-        if (previous is null)
-        {
-            AnalyzeJumpDestinations(out previous);
-        }
+        if (previous is null) return CreateJumpDestinationBitmap();
 
         if (previous is ManualResetEventSlim resetEvent)
         {
@@ -63,13 +57,6 @@ public sealed partial class JumpDestinationAnalyzer
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetNormalPriority();
         // Already in progress, wait for completion.
         resetEvent.Wait();
-    }
-
-    private void AnalyzeJumpDestinations([NotNull] out object? previous)
-    {
-        ManualResetEventSlim analysisComplete = new(initialState: false);
-        previous = Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null);
-        previous ??= CompleteAnalysis(analysisComplete);
     }
 
     /// <remarks>

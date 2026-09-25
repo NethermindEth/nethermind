@@ -26,16 +26,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             [Values(64, 66, 32768)] int length, [Values] bool analysisCompletesFirst)
         {
             const int Workers = 4;
-            const int GroupSize = 4;
-            const int JumpDestOffset = 2;
             TimeSpan timeout = TimeSpan.FromSeconds(30);
-            byte[] code = new byte[length];
-            for (int i = 0; i <= length - GroupSize; i += GroupSize)
-            {
-                code[i] = (byte)Instruction.PUSH1;
-                code[i + 1] = (byte)Instruction.JUMPDEST;
-                code[i + JumpDestOffset] = (byte)Instruction.JUMPDEST;
-            }
+            byte[] code = GroupedJumpDestinations(length);
             TaskCompletionSource analysisStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource continueAnalysis = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource startReaders = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -59,13 +51,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     workers[worker] = Task.Run(async () =>
                     {
                         await startReaders.Task;
-                        int mismatch = -1;
-                        for (int offset = 0; offset < length && mismatch < 0; offset++)
-                        {
-                            bool expected = offset < length - length % GroupSize && offset % GroupSize == JumpDestOffset;
-                            if (codeInfo.ValidateJump(offset) != expected) mismatch = offset;
-                        }
-                        Assert.That(mismatch, Is.EqualTo(-1), "first offset with an unexpected jump-destination bit");
+                        AssertGroupedJumpDestinations(codeInfo, length);
                     });
                 }
                 continueAnalysis.TrySetResult();
@@ -91,6 +77,56 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 failure ??= ExceptionDispatchInfo.Capture(exception);
             }
             failure?.Throw();
+        }
+
+        [Test]
+        [Repeat(10)]
+        public async Task Concurrent_first_use_publishes_complete_bitmap([Values(64, 66, 32768)] int length)
+        {
+            // Without a background analysis every reader may analyze the code itself; each must see a complete bitmap.
+            const int Readers = 4;
+            CodeInfo codeInfo = new(GroupedJumpDestinations(length));
+            TaskCompletionSource startReaders = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task[] readers = new Task[Readers];
+            for (int reader = 0; reader < readers.Length; reader++)
+            {
+                readers[reader] = Task.Run(async () =>
+                {
+                    await startReaders.Task;
+                    AssertGroupedJumpDestinations(codeInfo, length);
+                });
+            }
+
+            startReaders.TrySetResult();
+            await Task.WhenAll(readers).WaitAsync(TimeSpan.FromSeconds(30));
+        }
+
+        private const int GroupSize = 4;
+        private const int JumpDestOffset = 2;
+
+        /// <summary>Repeats PUSH1 JUMPDEST JUMPDEST STOP, so the third byte of each whole group is the only jump destination.</summary>
+        private static byte[] GroupedJumpDestinations(int length)
+        {
+            byte[] code = new byte[length];
+            for (int i = 0; i <= length - GroupSize; i += GroupSize)
+            {
+                code[i] = (byte)Instruction.PUSH1;
+                code[i + 1] = (byte)Instruction.JUMPDEST;
+                code[i + JumpDestOffset] = (byte)Instruction.JUMPDEST;
+            }
+
+            return code;
+        }
+
+        private static void AssertGroupedJumpDestinations(CodeInfo codeInfo, int length)
+        {
+            int mismatch = -1;
+            for (int offset = 0; offset < length && mismatch < 0; offset++)
+            {
+                bool expected = offset < length - length % GroupSize && offset % GroupSize == JumpDestOffset;
+                if (codeInfo.ValidateJump(offset) != expected) mismatch = offset;
+            }
+            Assert.That(mismatch, Is.EqualTo(-1), "first offset with an unexpected jump-destination bit");
         }
 
         [Test]
