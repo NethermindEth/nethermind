@@ -19,6 +19,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
     private readonly long _startedAt = Stopwatch.GetTimestamp();
     private readonly int[] _units = new int[items];
     private readonly string?[] _phases = new string?[items];
+    private readonly ulong[] _replayBlocks = new ulong[items];
     private readonly double[] _base = new double[items];
     private readonly double[] _scale = new double[items];
     private readonly Stack<(double Base, double Scale)>[] _frames = new Stack<(double Base, double Scale)>[items];
@@ -46,7 +47,15 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
                 while (!_stop.IsCancellationRequested)
                 {
                     await Task.Delay(Heartbeat, _stop.Token);
-                    logger.Info(Report());
+                    try
+                    {
+                        logger.Info(Report());
+                    }
+                    catch (Exception e) when (e is not OperationCanceledException)
+                    {
+                        // A progress line must never end the heartbeat, let alone the walk.
+                        if (logger.IsWarn) logger.Warn($"History walk progress report failed: {e}");
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -77,15 +86,21 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         _scale[item] = frame.Scale;
     }
 
+    /// <remarks>
+    /// A storage item's replay block is best-effort: borrowed groups of one range replay on other threads and the last writer wins,
+    /// so the block shown can step back between heartbeats, and a scan tick hides it until the next replay update.
+    /// </remarks>
     public void Replaying(int item, ulong block)
     {
         if (item < HistoryWalkRun.AccountPartitions) _units[item] = (int)((_base[item] + Fraction(block) * Scale(item)) * UnitsPerItem);
+        else Volatile.Write(ref _replayBlocks[item], block);
         _phases[item] = "replay";
     }
 
     public void ScanningKeySpace(int item, uint position, uint span)
     {
         _units[item] = (int)((ulong)position * UnitsPerItem / span);
+        Volatile.Write(ref _replayBlocks[item], 0);
         _phases[item] = "scan";
     }
 
@@ -94,6 +109,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
     public void Completed(int item)
     {
         _units[item] = UnitsPerItem;
+        Volatile.Write(ref _replayBlocks[item], 0);
         _phases[item] = null;
         Interlocked.Increment(ref _completed);
     }
@@ -118,7 +134,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         double seconds = Stopwatch.GetElapsedTime(_foldLastReportAt, now).TotalSeconds;
         double blocksPerSecond = seconds > 0 ? (block - _foldLastBlock) / seconds : 0;
         ulong doneThisRun = block - _foldStartBlock;
-        string eta = doneThisRun == 0 ? "n/a" : Format(Stopwatch.GetElapsedTime(_foldStartedAt) * ((double)(to - block) / doneThisRun));
+        string eta = Eta(Stopwatch.GetElapsedTime(_foldStartedAt), to - block, doneThisRun);
         _foldLastReportAt = now;
         _foldLastBlock = block;
 
@@ -130,7 +146,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
 
     private double Scale(int item) => _scale[item] == 0 ? 1 : _scale[item];
 
-    private string Report()
+    internal string Report()
     {
         long done = 0;
         StringBuilder inFlight = new();
@@ -141,6 +157,8 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
             if (phase is null) continue;
 
             inFlight.Append(inFlight.Length == 0 ? " | " : ", ").Append(Name(item)).Append(' ').Append(phase).Append(' ').Append((_units[item] / (UnitsPerItem / 100d)).ToString("F1", CultureInfo.InvariantCulture)).Append('%');
+            ulong replayBlock = Volatile.Read(ref _replayBlocks[item]);
+            if (replayBlock != 0) inFlight.Append(CultureInfo.InvariantCulture, $" (block {replayBlock:N0} / {to:N0})");
         }
 
         long total = (long)items * UnitsPerItem;
@@ -155,12 +173,23 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(_startedAt);
         long doneThisRun = done - _startingUnits;
-        string eta = doneThisRun <= 0 ? "n/a" : Format(elapsed * (total - done) / doneThisRun);
+        string eta = Eta(elapsed, total - done, doneThisRun);
 
         return $"{"History walk",ProgressLogger.PrefixAlignment}{Volatile.Read(ref _completed),ProgressLogger.BlockPaddingLength:N0} / {items,ProgressLogger.BlockPaddingLength:N0} ({fraction.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(fraction, 1)}| {stepsPerSecond,ProgressLogger.SpeedPaddingLength:N0} subtree steps/s (~{blocksPerSecond:N0} per subtree) | ETA {eta} | {GC.GetTotalMemory(false) >> 20:N0} MB managed{inFlight}";
     }
 
     private static string Name(int item) => item < HistoryWalkRun.AccountPartitions ? $"accounts 0x{item:x2}" : $"storage 0x{item - HistoryWalkRun.AccountPartitions:x2}";
+
+    /// <remarks>
+    /// Divides before multiplying and works in double ticks: <c>elapsed * remaining</c> overflows <see cref="TimeSpan"/> days into a long walk.
+    /// </remarks>
+    internal static string Eta(TimeSpan elapsed, double remaining, double doneThisRun)
+    {
+        if (doneThisRun <= 0) return "n/a";
+
+        double ticks = elapsed.Ticks * (remaining / doneThisRun);
+        return ticks < TimeSpan.MaxValue.Ticks ? Format(TimeSpan.FromTicks((long)ticks)) : "n/a";
+    }
 
     private static string Format(TimeSpan span) => span.TotalDays >= 1 ? $"{(int)span.TotalDays}d {span.Hours:D2}h" : $"{(int)span.TotalHours}h {span.Minutes:D2}m";
 
@@ -173,6 +202,11 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         }
         catch (OperationCanceledException)
         {
+        }
+        catch (Exception e)
+        {
+            // Disposal follows the walk's verdict; a reporter fault must not replace it.
+            if (logger.IsWarn) logger.Warn($"History walk progress reporter failed: {e}");
         }
 
         _stop.Dispose();

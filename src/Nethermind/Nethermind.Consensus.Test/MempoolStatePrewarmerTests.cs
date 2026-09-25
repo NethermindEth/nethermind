@@ -28,6 +28,20 @@ namespace Nethermind.Consensus.Test;
 [TestFixture]
 public class MempoolStatePrewarmerTests
 {
+    // Slot 12, so the arrival grace is 4s: mid-slot, on the boundary and within the grace after it all stay on that
+    // boundary - the block for it is still in flight; only past the grace is a missed slot the better bet. A clock
+    // behind the parent still moves forward, and a head that arrived a slot late keeps the boundary it can still get.
+    [TestCase(100UL, 105UL, 112UL)]
+    [TestCase(100UL, 112UL, 112UL)]
+    [TestCase(100UL, 113UL, 112UL)]
+    [TestCase(100UL, 116UL, 112UL)]
+    [TestCase(100UL, 117UL, 124UL)]
+    [TestCase(100UL, 128UL, 124UL)]
+    [TestCase(100UL, 129UL, 136UL)]
+    [TestCase(100UL, 90UL, 112UL)]
+    public void PredictNextTimestamp_ReturnsTheFirstSlotBoundaryThatCanStillArrive(ulong parent, ulong now, ulong expected) =>
+        Assert.That(MempoolStatePrewarmer.PredictNextTimestamp(parent, now, secondsPerSlot: 12), Is.EqualTo(expected));
+
     [Test]
     public void SelectDelta_WhenEmpty_ReturnsEmpty([Values] bool missingSender)
     {
@@ -163,6 +177,8 @@ public class MempoolStatePrewarmerTests
         {
             Assert.That(deltaHeader, Is.InstanceOf<ChainSpecificHeader>(), "chain-specific header subtypes must survive so chain-specific processors don't hit an InvalidCastException");
             Assert.That(deltaHeader.Number, Is.EqualTo(parentHeader.Number + 1), "the child is the parent's successor");
+            Assert.That(deltaHeader.Timestamp, Is.EqualTo(parentHeader.Timestamp + blocksConfig.SecondsPerSlot),
+                "the predicted header must sit on the next slot boundary: the EIP-4788 cells warmed for it are indexed by its timestamp");
             Assert.That(deltaHeader.MixHash, Is.EqualTo(parentHeader.MixHash), "MixHash is propagated from the parent");
             Assert.That(deltaHeader.ParentBeaconBlockRoot, Is.EqualTo(parentHeader.ParentBeaconBlockRoot), "ParentBeaconBlockRoot is propagated from the parent");
             Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.Calculate(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
@@ -191,13 +207,13 @@ public class MempoolStatePrewarmerTests
     {
         public readonly TaskCompletionSource<BlockHeader> CapturedHeader = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
         public CacheType ClearCaches() => default;
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
 
-        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
+        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
         {
-            CapturedHeader.TrySetResult(nextDelta(CancellationToken.None)?.Header);
+            CapturedHeader.TrySetResult(nextDelta(CancellationToken.None)?.Block.Header);
             return Task.CompletedTask;
         }
 

@@ -6,6 +6,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Reflection;
@@ -81,6 +82,12 @@ public class EthereumRunnerTests
 
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
+
+    /// <summary>Budget for a single start or stop of a runner under test.</summary>
+    /// <remarks><see cref="MaxTimeAttribute"/> only reports once the test returns, so it cannot end a
+    /// start or stop that never completes; without a bound, one takes the whole assembly into the CI
+    /// hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
+    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
 
     private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
 
@@ -339,12 +346,13 @@ public class EthereumRunnerTests
         }
         finally
         {
-            await runner.StopAsync();
+            await runner.StopAsync().WaitAsync(RunnerTimeout);
         }
     }
 
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
     {
+        Stopwatch phaseTimer = Stopwatch.StartNew();
         Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
         TempPath tempPath = TempPath.GetTempDirectory();
@@ -376,6 +384,7 @@ public class EthereumRunnerTests
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
             plugins.Add(new RunnerTestPlugin());
             EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+            LogPhase("setup", phaseTimer);
 
             using CancellationTokenSource cts = new();
 
@@ -387,13 +396,14 @@ public class EthereumRunnerTests
                     cts.Cancel();
                 }
 
-                await task;
+                await task.WaitAsync(RunnerTimeout);
             }
             finally
             {
+                LogPhase("start", phaseTimer);
                 try
                 {
-                    await runner.StopAsync();
+                    await runner.StopAsync().WaitAsync(RunnerTimeout);
                 }
                 catch (Exception e)
                 {
@@ -405,6 +415,10 @@ public class EthereumRunnerTests
                     {
                         throw;
                     }
+                }
+                finally
+                {
+                    LogPhase("stop", phaseTimer);
                 }
             }
         }
@@ -426,7 +440,16 @@ public class EthereumRunnerTests
                     throw;
                 }
             }
+
+            LogPhase("teardown", phaseTimer);
         }
+    }
+
+    /// <summary>Reports how long a smoke test phase took, so a case over its <see cref="MaxTimeAttribute"/> names the phase that stalled.</summary>
+    private static void LogPhase(string name, Stopwatch phaseTimer)
+    {
+        TestContext.Out.WriteLine($"{name}: {phaseTimer.ElapsedMilliseconds} ms");
+        phaseTimer.Restart();
     }
 
     private class RunnerTestPlugin(bool forStepTest = false) : INethermindPlugin

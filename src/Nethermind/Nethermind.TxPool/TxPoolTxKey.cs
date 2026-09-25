@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -46,6 +47,8 @@ public readonly struct TxPoolTxKey : IEquatable<TxPoolTxKey>
 public sealed class TxPoolTxKeyConverter : JsonConverter<TxPoolTxKey>
 {
     private const int HashNameLength = Hash256.Size * 2 + 2;
+    // ulong.MaxValue has 20 decimal digits; the nonce form shares the hash form's buffer.
+    private const int MaxNonceNameLength = 20;
 
     public override TxPoolTxKey Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         ReadCore(ref reader);
@@ -70,6 +73,7 @@ public sealed class TxPoolTxKeyConverter : JsonConverter<TxPoolTxKey>
         Hash256? hash = key.Hash;
         if (hash is null)
         {
+            Debug.Assert(destination.Length >= MaxNonceNameLength);
             key.Nonce.TryFormat(destination, out int written, provider: CultureInfo.InvariantCulture);
             return destination[..written];
         }

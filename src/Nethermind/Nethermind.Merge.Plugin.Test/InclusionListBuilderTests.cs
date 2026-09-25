@@ -174,12 +174,6 @@ public class InclusionListBuilderTests
         yield return new TestCaseData(new[] { spent, atAccountNonce }, 5UL, new[] { atAccountNonce })
             .SetName("Skips_a_spent_nonce_heading_the_bucket");
 
-        // The non-frame snapshot vouches for the same bucket by walking past the spent entry, and it need not be
-        // contiguous with the anchor: a gap below the account nonce is as spent as the nonce beneath it.
-        Transaction spentBehindAGap = TxOfSize(50, 3);
-        yield return new TestCaseData(new[] { spentBehindAGap, atAccountNonce }, 5UL, new[] { atAccountNonce })
-            .SetName("Skips_a_spent_nonce_a_gap_below_the_anchor");
-
         // A keyed frame transaction is judged on its own sequence however the account-nonce entries sit, so it can
         // admit a bucket whose only ordinary entry is four nonces ahead. Stripping it leaves nothing appendable.
         Transaction gapped = TxOfSize(50, 9);

@@ -5658,9 +5658,8 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetLatestPendingNonce(sender), Is.EqualTo(expectedPendingNonce));
         }
 
-        /// <remarks>A keyed frame transaction makes its sender's bucket ready on its own, so a caller that drops
-        /// frame transactions would draw a bucket holding nothing it can use — and pay a NONCE_MANAGER read per
-        /// nonce key to be told so.</remarks>
+        /// <remarks>A keyed frame transaction can make a bucket ready for the full snapshot while providing
+        /// nothing the inclusion-list builder can use.</remarks>
         [TestCase(false, TestName = "sender holding only a keyed frame transaction")]
         [TestCase(true, TestName = "sender holding a keyed frame transaction and an ordinary one")]
         public void Non_frame_snapshot_keeps_only_senders_with_an_ordinary_ready_transaction(bool hasOrdinaryTx)
@@ -5684,20 +5683,18 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            Assert.That(_txPool.GetPendingTransactionsBySender(true, UInt256.Zero), Does.ContainKey(new AddressAsKey(sender)),
-                "the keyed head alone makes the bucket ready for the full filter");
+            Assert.That(_txPool.GetPendingTransactionsBySender(true, UInt256.Zero), Does.ContainKey(new AddressAsKey(sender)));
 
             IDictionary<AddressAsKey, Transaction[]> nonFrame = _txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256.Zero);
 
             Assert.That(nonFrame.ContainsKey(sender), Is.EqualTo(hasOrdinaryTx));
             if (hasOrdinaryTx)
             {
-                Assert.That(nonFrame[sender], Has.Length.EqualTo(2), "a kept bucket comes back whole, frame transactions included");
+                Assert.That(nonFrame[sender], Has.Length.EqualTo(2), "kept buckets include their frame transactions");
             }
         }
 
-        /// <remarks>The snapshot's whole saving is the account read a frame-only bucket does not make, so hoisting
-        /// that read to the head of the scan would be invisible everywhere but here.</remarks>
+        /// <remarks>A frame-only bucket should need no account read; a mixed bucket should need one.</remarks>
         [TestCase(false, 0, TestName = "a frame-only bucket is judged without an account read")]
         [TestCase(true, 1, TestName = "a bucket with an ordinary transaction pays for one")]
         public void Non_frame_snapshot_reads_an_account_only_for_a_non_frame_entry(bool hasOrdinaryTx, int expectedReads)
@@ -5723,7 +5720,6 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            // Admission cached the sender, which would serve a hoisted read and hide it from the count below.
             _txPool.ResetAddress(sender);
             counting.ResetCounts();
 

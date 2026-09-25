@@ -16,6 +16,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Trie;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using System;
@@ -259,7 +260,18 @@ namespace Nethermind.TxPool
 
                     // Nothing raises Inserted for a record the pool recreated, so without this a restart would
                     // exempt every blob-carrying frame transaction it restored from head revalidation.
-                    IndexFrameTxDependencies(restored);
+                    try
+                    {
+                        IndexFrameTxDependencies(restored);
+                    }
+                    catch (MissingTrieNodeException)
+                    {
+                        // The only head-state read in this loop. Head state can be missing, as the bucket update below
+                        // tolerates, and escaping here would leave the later records out of every ledger. Revalidation
+                        // re-indexes the delegate.
+                        IndexFrameTxDependencies(restored, resolveDelegation: false);
+                    }
+
                     StageFrameEvictionRetries(restored);
                 }
             }
@@ -268,7 +280,16 @@ namespace Nethermind.TxPool
             _blobTransactions.Inserted += OnInsertedTx;
             _blobTransactions.Removed += OnRemovedTx;
 
-            UpdateBucketsWithoutRevalidation();
+            try
+            {
+                UpdateBucketsWithoutRevalidation();
+            }
+            catch (MissingTrieNodeException e)
+            {
+                // Headers can outlive their state (e.g. after FlatDb.OnRepair=Resync). Unknown state is not an empty
+                // account, so the reloaded buckets and persisted blobs are left as they are; the next head retries.
+                if (_logger.IsWarn) _logger.Warn($"Head state is unavailable; leaving tx pool buckets untouched until the next head. {e.Message}");
+            }
             InitializeValidatedSpec();
 
             _headInfo.HeadChanged += OnHeadChange;
@@ -363,6 +384,42 @@ namespace Nethermind.TxPool
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
             DropUnreadySenders(_transactions.GetBucketSnapshot(), filterToReadyTx, baseFee);
 
+        /// <inheritdoc/>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256 baseFee)
+        {
+            // Readiness is checked after the snapshot, outside the pool-wide lock.
+            Dictionary<AddressAsKey, Transaction[]> bySender = _transactions.GetBucketSnapshot();
+            foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
+            {
+                if (bucket.Length == 0 || !HasReadyNonFrameTransaction(bucket, sender, baseFee)) bySender.Remove(sender);
+            }
+
+            return bySender;
+        }
+
+        /// <summary>Whether a sender's bucket holds a non-frame transaction ready for the next block.</summary>
+        /// <remarks>Frame-only buckets avoid account reads, and no EIP-8250 keyed-nonce state is needed for a
+        /// caller that discards frames. A spent ordinary entry does not block a later entry at the account nonce.</remarks>
+        private bool HasReadyNonFrameTransaction(ReadOnlySpan<Transaction> bucket, Address sender, in UInt256 baseFee)
+        {
+            ulong accountNonce = 0;
+            bool accountNonceRead = false;
+            foreach (Transaction tx in bucket)
+            {
+                if (tx.SupportsFrames) continue;
+                if (!accountNonceRead)
+                {
+                    accountNonce = _accounts.GetNonce(sender);
+                    accountNonceRead = true;
+                }
+
+                if (tx.Nonce < accountNonce) continue;
+                return tx.Nonce == accountNonce && tx.CanPayBaseFee(baseFee);
+            }
+
+            return false;
+        }
+
         /// <summary>Drops from a taken bucket snapshot the senders with nothing includable in the next block.</summary>
         /// <remarks>Judged after the pool walk rather than during it, to keep the head-state reads readiness needs
         /// off the pool-wide lock; the cost moves rather than goes away, as buckets later discarded are copied first.
@@ -382,52 +439,6 @@ namespace Nethermind.TxPool
             }
 
             return bySender;
-        }
-
-        /// <inheritdoc/>
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySenderWithReadyNonFrameTx(UInt256 baseFee)
-        {
-            // Filtered after the pool walk rather than under its lock, for the reasons on DropUnreadySenders.
-            Dictionary<AddressAsKey, Transaction[]> bySender = _transactions.GetBucketSnapshot();
-            foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
-            {
-                if (bucket.Length == 0 || !HasReadyNonFrameTransaction(bucket, sender, baseFee)) bySender.Remove(sender);
-            }
-
-            return bySender;
-        }
-
-        /// <summary>Whether a sender's bucket holds a non-frame transaction includable in the next block.</summary>
-        /// <remarks>The account-nonce half of <see cref="HasReadyTransaction"/>. Every EIP-8250 keyed transaction is
-        /// an EIP-8141 frame transaction, so skipping frames also skips every NONCE_MANAGER read the full scan
-        /// would make — the whole cost of that scan, and a caller that discards frame transactions buys nothing
-        /// with it.
-        /// <para>Skipping on <see cref="Transaction.SupportsFrames"/> rather than
-        /// <see cref="KeyedNonceManager.UsesKeyedNonce"/> also drops an account-domain frame transaction
-        /// (<see cref="Transaction.NonceKeys"/> null or <c>[0]</c>) sitting at the nonce, which the full scan
-        /// vouches for. Deliberate: <c>InclusionListBuilder.WithoutFrameTxs</c> strips on the same predicate, so
-        /// such a bucket yields an empty run either way and dropping it early saves it a reservoir slot.</para></remarks>
-        private bool HasReadyNonFrameTransaction(ReadOnlySpan<Transaction> bucket, Address sender, in UInt256 baseFee)
-        {
-            ulong accountNonce = 0;
-            bool accountNonceRead = false;
-            foreach (Transaction tx in bucket)
-            {
-                if (tx.SupportsFrames) continue;
-                // Deferred, so a frame-only bucket — what this filter exists to make cheap — pays no account read.
-                if (!accountNonceRead)
-                {
-                    accountNonce = _accounts.GetNonce(sender);
-                    accountNonceRead = true;
-                }
-
-                // An entry under the account nonce is stale rather than blocking: it awaits a head change the
-                // pool has not processed yet, and the next entry may sit exactly at the nonce.
-                if (tx.Nonce < accountNonce) continue;
-                return tx.Nonce == accountNonce && tx.CanPayBaseFee(baseFee);
-            }
-
-            return false;
         }
 
         /// <summary>Whether <paramref name="tx"/> carries the nonce its sender can consume in the next block.</summary>
@@ -628,7 +639,8 @@ namespace Nethermind.TxPool
         /// <param name="resolvedPayer">A payer the sweep resolved but did not record, so it is still tracked.</param>
         /// <param name="onlyIfTracked">Set by revalidation, which re-indexes a transaction the pool already holds
         /// rather than admitting one, so an eviction that landed meanwhile is not undone.</param>
-        private void IndexFrameTxDependencies(Transaction tx, Address? resolvedPayer = null, bool onlyIfTracked = false)
+        /// <param name="resolveDelegation">False only where head state is known to be unavailable.</param>
+        private void IndexFrameTxDependencies(Transaction tx, Address? resolvedPayer = null, bool onlyIfTracked = false, bool resolveDelegation = true)
         {
             if (!tx.SupportsFrames) return;
 
@@ -636,7 +648,7 @@ namespace Nethermind.TxPool
             bool hasDistinctPayer = payer is not null && payer != tx.SenderAddress;
             // A delegated sender runs the delegate's code, so that account is a dependency too; the sender's
             // own code hash only pins the designation.
-            Address? delegated = DelegationTargetOf(tx.SenderAddress!);
+            Address? delegated = resolveDelegation ? DelegationTargetOf(tx.SenderAddress!) : null;
             AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (delegated is not null ? 1 : 0)];
             int next = 0;
             accounts[next++] = tx.SenderAddress!;

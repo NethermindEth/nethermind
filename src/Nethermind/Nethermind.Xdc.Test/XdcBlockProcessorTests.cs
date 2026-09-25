@@ -61,6 +61,7 @@ internal class XdcBlockProcessorTests
         builder.WithValidators([Address.FromNumber(2)]);
         builder.WithPenalties([Address.FromNumber(3)]);
         XdcSubnetBlockHeader header = builder.TestObject;
+        header.SlotNumber = 3;
 
         Block preparedBlock = _processor.PrepareBlockForProcessing(Build.A.Block.WithHeader(header).TestObject);
 
@@ -71,6 +72,7 @@ internal class XdcBlockProcessorTests
             Assert.That(preparedHeader.NextValidators, Is.EqualTo(header.NextValidators));
             Assert.That(preparedHeader.Validators, Is.EqualTo(header.Validators));
             Assert.That(preparedHeader.Penalties, Is.EqualTo(header.Penalties));
+            Assert.That(preparedHeader.SlotNumber, Is.EqualTo(header.SlotNumber));
         });
     }
 
