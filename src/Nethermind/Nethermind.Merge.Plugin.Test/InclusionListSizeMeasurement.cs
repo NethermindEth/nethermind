@@ -105,10 +105,11 @@ public class InclusionListSizeMeasurement
                                   $"{Eip7805Constants.MaxBytesPerInclusionList}, " +
                                   $"with SSZ offsets {(double)(totalBytes + (long)SszOffsetBytes * sum) / Draws:F0}");
 
-        // On the mean, not the best draw: the statistics above describe the typical draw, so one lucky draw
-        // reaching the cap must not vouch for them.
+        // A low fill fraction alone does not mean the corpus is too small: large entries can leave unusable
+        // space after the cap has already excluded other senders.
         long meanBytes = totalBytes / Draws;
-        if (meanBytes < (long)(Eip7805Constants.MaxBytesPerInclusionList * MinSaturationFraction))
+        if (meanBytes < (long)(Eip7805Constants.MaxBytesPerInclusionList * MinSaturationFraction)
+            && mean >= txs.Length)
         {
             Assert.Inconclusive($"Draws average {meanBytes}B of the {Eip7805Constants.MaxBytesPerInclusionList}B cap " +
                                  $"({MinSaturationFraction:P0} threshold) — draws are corpus-bound, not cap-bound. Supply a larger corpus.");
@@ -180,7 +181,7 @@ public class InclusionListSizeMeasurement
         return pool;
     }
 
-    /// <summary>A builder over a zero-base-fee head, so the corpus is priced in rather than filtered out.</summary>
+    /// <summary>A builder whose head and spec determine the base fee passed to the mock pool.</summary>
     private static InclusionListBuilder BuildBuilder(ITxPool pool)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
