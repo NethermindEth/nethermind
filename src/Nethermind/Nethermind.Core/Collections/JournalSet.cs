@@ -20,7 +20,11 @@ namespace Nethermind.Core.Collections
     {
         private readonly List<T> _items = [];
         private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
+        private readonly bool _useSparseClear;
         private bool _enumerationNeedsNormalization;
+
+        public JournalSet(EqualityComparer<T> equalityComparer, bool useSparseClear) : this(equalityComparer)
+            => _useSparseClear = useSparseClear;
 
         public int TakeSnapshot() => Position;
 
@@ -61,7 +65,7 @@ namespace Nethermind.Core.Collections
 
         public void Clear()
         {
-            if (_items.Count <= _set.Capacity / 8)
+            if (_useSparseClear && _items.Count <= _set.Capacity / 8)
             {
                 foreach (T item in _items)
                 {
