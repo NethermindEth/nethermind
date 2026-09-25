@@ -48,7 +48,7 @@ public class StatelessInputGeneratorTests
     [Test]
     [NonParallelizable]
     public async Task Encoded_execution_checks_reconstructed_header_hash(
-        [Values] bool amsterdam, [Values("valid", "hash", "transactions", "withdrawals")] string mutation)
+        [Values] bool amsterdam, [Values("valid", "hash", "transactions", "withdrawals", "otherKey", "flippedByte", "prefix")] string mutation)
     {
         (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam, currentChainActivation: true);
         using (witness)
@@ -64,6 +64,7 @@ public class StatelessInputGeneratorTests
             {
                 StatelessInput<TPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<TPayload> input);
                 TPayload payload = input.NewPayloadRequest.ExecutionPayload;
+                byte[] key = [.. input.PublicKeys[0].AsSpan()];
                 switch (mutation)
                 {
                     case "hash": payload.BlockHash = TestItem.KeccakA; break;
@@ -71,9 +72,14 @@ public class StatelessInputGeneratorTests
                     case "withdrawals":
                         payload.Withdrawals = [new SszWithdrawal { Address = TestItem.PrivateKeyA.Address, Amount = 0 }];
                         break;
+                    case "otherKey": key = TestItem.PrivateKeyB.PublicKey.PrefixedBytes; break;
+                    case "flippedByte": key[^1] ^= 1; break;
+                    case "prefix": key[0] = 0x02; break;
                 }
+                input.PublicKeys[0] = SszPublicKey.FromSpan(key);
                 Block reconstructed = input.NewPayloadRequest.ToBlock(requestsEnabled: true)!;
-                Assert.That(HeaderValidator.ValidateHash(reconstructed.Header), Is.EqualTo(mutation == "valid"));
+                Assert.That(HeaderValidator.ValidateHash(reconstructed.Header),
+                    Is.EqualTo(mutation is not ("hash" or "transactions" or "withdrawals")));
                 byte[] body = StatelessInput<TPayload>.Encode(input);
                 byte[] modified = new byte[body.Length + sizeof(ushort)];
                 encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
