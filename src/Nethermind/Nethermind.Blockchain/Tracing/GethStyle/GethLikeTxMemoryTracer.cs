@@ -46,6 +46,20 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         _resultSize += GethLikeTxTraceConverter.EstimateEntrySize(entry, storageCount);
     }
 
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (CurrentTraceEntry?.Opcode == "INVALID")
+        {
+            CurrentTraceEntry.GasCost = 0;
+            return;
+        }
+        if (error == EvmExceptionType.BadInstruction && CurrentTraceEntry is not null)
+            CurrentTraceEntry.GasCost = 0;
+        if (error == EvmExceptionType.StaticCallViolation && CurrentTraceEntry?.Opcode == "SSTORE")
+            CurrentTraceEntry.Error = "out of gas: write protection";
+        if (!IsExecutionFault(error)) base.ReportOperationError(error);
+    }
+
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace trace = base.BuildResult();
