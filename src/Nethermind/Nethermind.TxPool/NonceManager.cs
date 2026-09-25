@@ -143,6 +143,9 @@ public class NonceManager : INonceManager, IDisposable
     /// </remarks>
     internal void EvictCaughtUpAddresses()
     {
+        // A sweep queued just before Dispose may only start after it returned.
+        if (_disposed) return;
+
         try
         {
             ulong target = Math.Min(_stateHeaderProvider.FinalizedBlockNumber, _chainHeadInfoProvider.HeadNumber.SaturatingSub(Reorganization.MaxDepth));

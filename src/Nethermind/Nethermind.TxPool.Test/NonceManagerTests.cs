@@ -427,12 +427,13 @@ public class NonceManagerTests
     }
 
     [Test]
-    public async Task Head_after_dispose_starts_no_sweep()
+    public async Task Head_after_dispose_starts_no_sweep([Values] bool sweepQueuedBeforeDispose)
     {
         AcceptReservation(_nonceManager, TestItem.AddressA);
         _nonceManager.Dispose();
 
-        await ProcessHead();
+        if (sweepQueuedBeforeDispose) _nonceManager.EvictCaughtUpAddresses();
+        else await ProcessHead();
 
         _stateHeaderProvider.DidNotReceive().GetFinalizedHeader(Arg.Any<ulong>());
     }
