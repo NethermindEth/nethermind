@@ -915,7 +915,7 @@ public class DebugBridgeTests
     private sealed class ObservedPersistenceManager(IPersistenceManager inner) : IPersistenceManager
     {
         public Action? BeforeDrop { get; set; }
-        public State.Flat.Persistence.IPersistence.IPersistenceReader LeaseReader() => inner.LeaseReader();
+        public State.Flat.Persistence.IPersistence.IPersistenceReader LeaseReader(State.Flat.Persistence.ReaderFlags flags = State.Flat.Persistence.ReaderFlags.None) => inner.LeaseReader(flags);
         public StateId GetCurrentPersistedStateId() => inner.GetCurrentPersistedStateId();
         public Task AddToPersistence(StateId latestSnapshot) => inner.AddToPersistence(latestSnapshot);
         public StateId FlushToPersistence(CancellationToken cancellationToken) => inner.FlushToPersistence(cancellationToken);

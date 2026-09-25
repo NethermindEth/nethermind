@@ -1300,6 +1300,7 @@ public class FastHeadersSyncTests
             .AddModule(new TestNethermindModule(new SyncConfig
             {
                 FastSync = true,
+                SnapSync = true,
                 PivotNumber = 32,
                 PivotHash = headers[32].Hash!.ToString(),
                 PivotTotalDifficulty = "1000"
@@ -1367,6 +1368,7 @@ public class FastHeadersSyncTests
             .AddModule(new TestNethermindModule(new SyncConfig
             {
                 FastSync = true,
+                SnapSync = true,
                 PivotNumber = 14,
                 PivotHash = headers[14].Hash!.ToString(),
                 PivotTotalDifficulty = "1000",
@@ -1434,6 +1436,7 @@ public class FastHeadersSyncTests
             .AddModule(new TestNethermindModule(new SyncConfig
             {
                 FastSync = true,
+                SnapSync = true,
                 PivotNumber = 2,
                 PivotHash = headers[2].Hash!.ToString(),
                 PivotTotalDifficulty = "1000"
@@ -1512,6 +1515,7 @@ public class FastHeadersSyncTests
         SyncConfig config = new()
         {
             FastSync = true,
+            SnapSync = true,
             PivotNumber = 400,
             PivotHash = headers[400].Hash!.ToString(),
             PivotTotalDifficulty = "1000",
