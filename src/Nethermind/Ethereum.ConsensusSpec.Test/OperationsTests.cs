@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
@@ -227,30 +228,65 @@ public class OperationsTests
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(OperationCase testCase) => Execute(testCase);
 
-    private static void Execute(OperationCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("operations", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
-        {
-            if (testCase.Preset == nameof(ConsensusPreset.Minimal))
-            {
-                throw new NotImplementedInDriverException(
-                    "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds (see SszStaticTests' " +
-                    "BeaconState/Attestation/SyncCommittee entries), so they cannot decode a minimal-preset pre.ssz_snappy " +
-                    "at all; this suite only runs for real against the mainnet preset (opt in with " +
-                    "NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
-            }
+    /// <summary>Handlers of a fork's table that the fork has no vectors for at <see cref="ConsensusSpecArchive.Version"/>.</summary>
+    private static readonly Dictionary<string, string[]> OperationsAbsentByFork = new(StringComparer.Ordinal)
+    {
+        ["fulu"] = ["deposit"],
+    };
 
-            switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
+    // A wrong suite path or an emptied case source enumerates zero vectors; a renamed or dropped handler leaves its vectors not-implemented; both run green.
+    [Test]
+    public void Every_fork_and_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
+    {
+        List<OperationCase> cases = FuluDriverSupport.TestedCases<OperationCase>(preset, MinimalCases, MainnetCases);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks));
+            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
             {
-                case ForkDriver<BeaconStateFulu> fulu:
-                    Run(testCase, fulu, Handlers);
-                    break;
-                case ForkDriver<BeaconStateGloas> gloas:
-                    Run(testCase, gloas, GloasHandlers);
-                    break;
-                case ForkDriver other:
-                    throw new NotImplementedInDriverException($"fork '{other.Fork}' has no operations handler table.");
+                IEnumerable<string> table = FuluDriverSupport.RequireForkDriver(fork) is ForkDriver<BeaconStateGloas> ? GloasHandlers.Keys : Handlers.Keys;
+                Assert.That(
+                    cases.Where(testCase => testCase.Fork == fork).Select(static testCase => testCase.OperationName).Distinct(),
+                    Is.EquivalentTo(table.Except(OperationsAbsentByFork.GetValueOrDefault(fork, []))),
+                    $"{fork} operations");
             }
-        });
+        }
+    }
+
+    // Not-implemented vectors are Inconclusive, so a handler that reports every mainnet vector that way still runs green.
+    [Test]
+    public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
+        FuluDriverSupport.AssertEveryKeyRunsAVector(
+            FuluDriverSupport.TestedCases<OperationCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases),
+            static testCase => $"{testCase.Fork}/{testCase.OperationName}",
+            Run);
+
+    private static void Execute(OperationCase testCase) =>
+        ConsensusSpecTestSummary.RunAndRecord("operations", testCase.Fork, testCase.Preset, testCase.VectorName, () => Run(testCase));
+
+    private static void Run(OperationCase testCase)
+    {
+        if (testCase.Preset == nameof(ConsensusPreset.Minimal))
+        {
+            throw new NotImplementedInDriverException(
+                "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds (see SszStaticTests' " +
+                "BeaconState/Attestation/SyncCommittee entries), so they cannot decode a minimal-preset pre.ssz_snappy " +
+                "at all; this suite only runs for real against the mainnet preset (opt in with " +
+                "NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
+        }
+
+        switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
+        {
+            case ForkDriver<BeaconStateFulu> fulu:
+                Run(testCase, fulu, Handlers);
+                break;
+            case ForkDriver<BeaconStateGloas> gloas:
+                Run(testCase, gloas, GloasHandlers);
+                break;
+            case ForkDriver other:
+                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no operations handler table.");
+        }
+    }
 
     private static void Run<TState>(OperationCase testCase, ForkDriver<TState> driver, Dictionary<string, (string? File, Action<OpContext<TState>, byte[]> Apply)> handlers)
         where TState : class
