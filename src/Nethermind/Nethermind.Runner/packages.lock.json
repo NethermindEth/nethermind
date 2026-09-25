@@ -750,6 +750,14 @@
           "Nethermind.State": "[2.1.0-preview, )"
         }
       },
+      "nethermind.eez": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[2.1.0-preview, )",
+          "Nethermind.Consensus": "[2.1.0-preview, )",
+          "Nethermind.Evm": "[2.1.0-preview, )"
+        }
+      },
       "nethermind.era1": {
         "type": "Project",
         "dependencies": {

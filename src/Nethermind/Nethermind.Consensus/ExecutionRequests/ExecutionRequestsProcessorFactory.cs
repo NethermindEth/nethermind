@@ -6,10 +6,10 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Nethermind.Consensus.ExecutionRequests;
 
 /// <inheritdoc cref="IExecutionRequestsProcessorFactory"/>
-public sealed class ExecutionRequestsProcessorFactory : IExecutionRequestsProcessorFactory
+public sealed class ExecutionRequestsProcessorFactory(ExecutionRequestsOptions options) : IExecutionRequestsProcessorFactory
 {
-    public static ExecutionRequestsProcessorFactory Instance { get; } = new();
+    public static ExecutionRequestsProcessorFactory Instance { get; } = new(ExecutionRequestsOptions.Default);
 
     public IExecutionRequestsProcessor Create(ITransactionProcessor transactionProcessor) =>
-        new ExecutionRequestsProcessor(transactionProcessor);
+        new ExecutionRequestsProcessor(transactionProcessor, options);
 }

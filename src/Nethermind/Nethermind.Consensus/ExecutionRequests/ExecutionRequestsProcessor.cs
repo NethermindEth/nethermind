@@ -45,6 +45,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
     private const int DepositEventIndexOffset = 512;
 
     private readonly ITransactionProcessor _transactionProcessor;
+    private readonly ExecutionRequestsOptions _options;
 
     private readonly SystemCall _withdrawalTransaction = new()
     {
@@ -86,9 +87,10 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
         GasPrice = 0,
     };
 
-    public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
+    public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor, ExecutionRequestsOptions? options = null)
     {
         _transactionProcessor = transactionProcessor;
+        _options = options ?? ExecutionRequestsOptions.Default;
         _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
         _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
@@ -203,6 +205,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
         if (!spec.DepositsEnabled)
             return;
 
+        Address? depositContractAddress = spec.DepositContractAddress;
         using ArrayPoolListRef<byte> depositRequests = new(receipts.Length * 2 + 1);
         depositRequests.Add((byte)ExecutionRequestType.Deposit);
 
@@ -215,7 +218,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
                 for (int j = 0; j < logEntries.Length; j++)
                 {
                     LogEntry log = logEntries[j];
-                    if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
+                    if (log.Address == depositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
                     {
                         DecodeDepositRequest(block, log, depositRequestBuffer);
                         depositRequests.AddRange(depositRequestBuffer);
@@ -281,6 +284,11 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
     {
         if (!state.HasCode(contractAddress))
         {
+            if (_options.CodelessRequestContracts == CodelessRequestContractBehavior.ProduceNoRequests)
+            {
+                return;
+            }
+
             throw new InvalidBlockException(block, contractEmptyError);
         }
 

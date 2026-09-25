@@ -16,7 +16,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
     private readonly Func<T> _createTransaction = transactionFactory ?? (static () => new T());
 
     // 30MB should be good enough for 300MGas block just filled with call data
-    private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<Transaction>((int)30.MiB, nameof(Transaction.Data));
+    protected static readonly RlpLimit DataRlpLimit = RlpLimit.For<Transaction>((int)30.MiB, nameof(Transaction.Data));
 
     public TxType Type => txType;
 
@@ -123,7 +123,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         decoderContext.Position = position;
 
         // The Memory-returning byte-string decode is reader-only, so it takes the cursor back.
-        transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
+        transaction.Data = decoderContext.DecodeByteArrayMemory(DataRlpLimit);
     }
 
     private static int DecodeNonce(LiteRlpReader rlp, int position, out ulong nonce)
