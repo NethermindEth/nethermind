@@ -187,15 +187,15 @@ public static partial class EvmInstructions
         }
     }
 
-    // SHL and SHR shift the four limbs inline. UInt256.LeftShift/RightShift reach an out-of-line
-    // helper, and one call anywhere in an opcode handler makes the JIT save and restore the
-    // callee-saved registers on every execution of that handler (it does not shrink-wrap).
-    // The limbs arrive as values, so the result may be written to the slot they came from.
-
     /// <summary>Logical left shift of a 256-bit value by <paramref name="shift"/> in [0, 255].</summary>
-    /// <remarks>Limb 0 is the least significant.</remarks>
+    /// <remarks>
+    /// Limb 0 is the least significant. The limbs are shifted inline because <c>UInt256.LeftShift</c> reaches an
+    /// out-of-line helper, and one call anywhere in an opcode handler makes the JIT save and restore the callee-saved
+    /// registers on every execution of that handler (it does not shrink-wrap). The limbs arrive as values, so the
+    /// result may be written to the slot they came from.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void ShiftLeft(ulong v0, ulong v1, ulong v2, ulong v3, int shift, out UInt256 result)
+    private static void ShiftLeft(ulong v0, ulong v1, ulong v2, ulong v3, int shift, out UInt256 result)
     {
         int words = shift >> 6;
         int bits = shift & 63;
@@ -225,9 +225,12 @@ public static partial class EvmInstructions
     }
 
     /// <summary>Logical right shift of a 256-bit value by <paramref name="shift"/> in [0, 255].</summary>
-    /// <remarks>Limb 0 is the least significant.</remarks>
+    /// <remarks>
+    /// Limb 0 is the least significant. Inline for the same reason as <see cref="ShiftLeft"/>, and equally safe to
+    /// write over the slot the limbs came from.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void ShiftRight(ulong v0, ulong v1, ulong v2, ulong v3, int shift, out UInt256 result)
+    private static void ShiftRight(ulong v0, ulong v1, ulong v2, ulong v3, int shift, out UInt256 result)
     {
         int words = shift >> 6;
         int bits = shift & 63;
