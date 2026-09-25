@@ -16,11 +16,16 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class HexWriterTests
 {
+    [OneTimeSetUp]
+    public void Check_instruction_set_expectations() => VectorIsaExpectations.AssertPinnedInstructionSet();
+
     private const string ZeroWord = "0000000000000000000000000000000000000000000000000000000000000000";
     private const string PatternWord = "00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9";
     private const string OnesWord = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-    // Bytes all distinct and neighbours differ in both nibbles, so swapped bytes or nibbles change the output.
+    // Bytes all distinct and neighbours differ in both nibbles, so swapping adjacent bytes changes the output.
     private const string DistinctWord = "1f5489bef3285d92c7fc31669bd0053a6fa4d90e4378ade2174c81b6eb20558a";
+    // As above, and bytes i and i + 16 also differ in both nibbles, so mixing up the two 16-byte halves changes the output.
+    private const string DistinctHalvesWord = "1f5489bef3285d92c7fc31669bd0053a70a5da0f4479aee3184d82b7ec21568b";
 
     private static string WriteToString(Action<Utf8JsonWriter> writeAction)
     {
@@ -105,28 +110,58 @@ public class HexWriterTests
     [TestCase("abcd", true, true, "0x" + "000000000000000000000000000000000000000000000000000000000000" + "abcd", TestName = "U256Buffer_Mid_ZeroPaddedWithPrefix")]
     [TestCase("abcd", true, false, "000000000000000000000000000000000000000000000000000000000000abcd", TestName = "U256Buffer_Mid_ZeroPaddedNoPrefix")]
     [TestCase(DistinctWord, true, false, DistinctWord, TestName = "U256Buffer_DistinctBytes_ZeroPaddedNoPrefix")]
+    [TestCase(DistinctHalvesWord, true, false, DistinctHalvesWord, TestName = "U256Buffer_DistinctHalves_ZeroPaddedNoPrefix")]
     public void WriteUInt256HexString_AllVariants(string valueHex, bool zeroPadded, bool addPrefix, string expectedBody)
     {
         string actual = WriteToString(w => HexWriter.WriteUInt256HexString(w, UInt256FromHex(valueHex), zeroPadded, addPrefix));
         Assert.That(actual, Is.EqualTo("\"" + expectedBody + "\""));
     }
 
-    [TestCase(0x0123456789abcdefUL)]
-    [TestCase(0xfedcba9876543210UL)]
-    public void WriteUlongHexStringValue_DistinctNibbles(ulong value)
+    // Leading zero nibbles put the first significant one in u3 (1), u2 (16, 17), u1 (32, 35) or u0 (49), odd and even.
+    [Test]
+    public void WriteUInt256_trimmed_multi_limb_all_writers([Values(0, 1, 16, 17, 32, 35, 49)] int zeroNibbles, [Values] bool addPrefix)
     {
-        string actual = WriteToString(w => HexWriter.WriteUlongHexStringValue(w, value));
-        Assert.That(actual, Is.EqualTo($"\"0x{value:x}\""));
+        UInt256 value = UInt256FromHex(new string('0', zeroNibbles) + DistinctHalvesWord[zeroNibbles..]);
+        string body = (addPrefix ? "0x" : "") + DistinctHalvesWord[zeroNibbles..].TrimStart('0');
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(WriteToString(w => HexWriter.WriteUInt256HexRawValue(w, value, zeroPadded: false, addPrefix)), Is.EqualTo("\"" + body + "\""));
+            Assert.That(WriteToString((ArrayBufferWriter<byte> w) => HexWriter.WriteUInt256HexString(w, value, zeroPadded: false, addPrefix)), Is.EqualTo("\"" + body + "\""));
+            Assert.That(WriteToString(w =>
+            {
+                w.WriteStartObject();
+                HexWriter.WriteUInt256HexPropertyName(w, value, zeroPadded: false, addPrefix);
+                w.WriteNumberValue(1);
+                w.WriteEndObject();
+            }), Is.EqualTo("{\"" + body + "\":1}"));
+        }
     }
 
-    // 0..97 bytes covers every mix of 32-byte blocks, the 16-byte block and the scalar tail; 300 takes the pooled buffer.
+    [TestCase(0UL)]
+    [TestCase(1UL)]
+    [TestCase(0x0123456789abcdefUL)]
+    [TestCase(0xfedcba9876543210UL)]
+    [TestCase(ulong.MaxValue)]
+    public void WriteUlongHexString_DistinctNibbles(ulong value)
+    {
+        string expected = $"\"0x{value:x}\"";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(WriteToString(w => HexWriter.WriteUlongHexStringValue(w, value)), Is.EqualTo(expected));
+            Assert.That(WriteToString((ArrayBufferWriter<byte> w) => HexWriter.WriteUlongHexString(w, value)), Is.EqualTo(expected));
+        }
+    }
+
+    // 0..97 bytes reaches every block size and overlapping tail; 300 takes the pooled buffer.
     private static IEnumerable<int> HexLengths => Enumerable.Range(0, 98).Append(300);
 
     [Test]
     public void WriteHexStringValue_EveryBlockAndTailLength([ValueSource(nameof(HexLengths))] int length)
     {
         byte[] data = new byte[length];
-        for (int i = 0; i < length; i++) data[i] = (byte)(i * 37 + length);
+        // Adjacent bytes, and bytes 16 apart, differ in both nibbles.
+        for (int i = 0; i < length; i++) data[i] = (byte)(i * 37 + (i >> 4) + length);
 
         string actual = WriteToString(w => HexWriter.WriteHexStringValue(w, data));
         Assert.That(actual, Is.EqualTo("\"0x" + Convert.ToHexStringLower(data) + "\""));

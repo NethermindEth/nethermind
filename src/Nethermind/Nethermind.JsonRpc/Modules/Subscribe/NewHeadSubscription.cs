@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ISpecProvider specProvider,
             IBlockForRpcFactory blockForRpcFactory,
             TransactionsOption? options = null)
-            : base(jsonRpcDuplexClient)
+            : base(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<NewHeadSubscription>() ?? throw new ArgumentNullException(nameof(logManager));

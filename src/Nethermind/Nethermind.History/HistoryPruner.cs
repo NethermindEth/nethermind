@@ -35,6 +35,9 @@ public class HistoryPruner : IHistoryPruner
     private readonly struct HistoryPrunerRequest : IBackgroundTaskRequest<HistoryPrunerRequest>;
 
     private const int LockWaitTimeoutMs = 100;
+    // A null timeout falls back to the scheduler's short default, so a disabled timeout needs an explicit far-future
+    // deadline; it must stay within CancellationTokenSource.CancelAfter's range.
+    private static readonly TimeSpan DisabledPruningTimeout = TimeSpan.FromMilliseconds(int.MaxValue);
     private const ulong SlotsPerEpoch = 32;
 
     public ulong GetRetentionBlocks(ulong retentionEpochs) => retentionEpochs * SlotsPerEpoch;
@@ -89,6 +92,8 @@ public class HistoryPruner : IHistoryPruner
     private volatile BlockHeader? _oldestBlockHeader;
     private volatile bool _hasLoadedDeletePointers;
     private volatile bool _stampsValidated;
+    // Consumed under _pruneLock after an eligible pass; the lock-free read only decides whether to enter the lock.
+    private int _initialPruningPassPending = 1;
     private int _currentlyPruning;
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
@@ -228,7 +233,8 @@ public class HistoryPruner : IHistoryPruner
         => SchedulePruneHistory(_processExitSource.Token);
 
     /// <summary>
-    /// Schedules a pruning operation if one is not already running. Pruning will only be performed if the configured pruning interval has elapsed and there are blocks eligible for pruning.
+    /// Schedules a pruning operation if one is not already running. The first eligible pruning pass bypasses the
+    /// configured pruning interval; subsequent passes require the interval to have elapsed.
     /// Cancelled when timeout elapses or process is exiting, to avoid long pruning operations during shutdown. Will be rescheduled on next trigger if pruning could not be completed.
     /// </summary>
     public void SchedulePruneHistory() => SchedulePruneHistory(_processExitSource.Token);
@@ -243,9 +249,9 @@ public class HistoryPruner : IHistoryPruner
                 {
                     try
                     {
-                        TimeSpan? pruningTimeout = _historyConfig.PruningTimeoutSeconds > 0
+                        TimeSpan pruningTimeout = _historyConfig.PruningTimeoutSeconds > 0
                             ? TimeSpan.FromSeconds(_historyConfig.PruningTimeoutSeconds)
-                            : null;
+                            : DisabledPruningTimeout;
                         if (!_backgroundTaskScheduler.TryScheduleTask(default(HistoryPrunerRequest),
                                 (_, backgroundTaskToken) =>
                                 {
@@ -282,7 +288,7 @@ public class HistoryPruner : IHistoryPruner
         // Trustworthy only once loaded: on in-memory defaults a collapsed cutoff would hide a persisted backlog.
         if (_blockTree.Head is null ||
             _blockTree.SyncPivot.BlockNumber == 0 ||
-            (_hasLoadedDeletePointers && _stampsValidated && !ShouldPruneHistory()))
+            (_hasLoadedDeletePointers && _stampsValidated && !ShouldPruneHistory(Volatile.Read(ref _initialPruningPassPending) != 0)))
         {
             SkipLocalPruning();
             return;
@@ -311,11 +317,14 @@ public class HistoryPruner : IHistoryPruner
                     _stampsValidated = true;
                 }
 
-                if (!ShouldPruneHistory())
+                bool initialPruningPassPending = _initialPruningPassPending != 0;
+                if (!ShouldPruneHistory(initialPruningPassPending))
                 {
                     SkipLocalPruning();
                     return;
                 }
+
+                _initialPruningPassPending = 0;
 
                 ulong? blockCutoff = CutoffBlockNumber;
                 ulong? balCutoff = BalCutoffBlockNumber;
@@ -509,9 +518,9 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    private bool ShouldPruneHistory()
+    private bool ShouldPruneHistory(bool initialPruningPassPending)
     {
-        if (!_enabled || !PruningIntervalHasElapsed())
+        if (!_enabled || (!initialPruningPassPending && !PruningIntervalHasElapsed()))
         {
             return false;
         }

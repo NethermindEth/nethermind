@@ -79,7 +79,7 @@ public class RocksDbPersistence : IPersistence, IDisposable
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        IColumnDbSnapshot<FlatDbColumns> snapshot = CreateGatedSnapshot();
+        IColumnDbSnapshot<FlatDbColumns> snapshot = CreateGatedSnapshot(flags);
         try
         {
             BaseTriePersistence.Reader trieReader = new(
@@ -115,14 +115,14 @@ public class RocksDbPersistence : IPersistence, IDisposable
         }
     }
 
-    private IColumnDbSnapshot<FlatDbColumns> CreateGatedSnapshot()
+    private IColumnDbSnapshot<FlatDbColumns> CreateGatedSnapshot(ReaderFlags flags = ReaderFlags.None)
     {
-        if (!_useSstIngestion) return _db.CreateSnapshot();
+        if (!_useSstIngestion) return _db.CreateSnapshot(flags);
 
         _ingestGate.EnterReadLock();
         try
         {
-            return _db.CreateSnapshot();
+            return _db.CreateSnapshot(flags);
         }
         finally
         {

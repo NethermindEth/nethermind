@@ -134,12 +134,13 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         static TrieNode? TryMaterializeResolvedWarmerNode(TrieNode source)
         {
-            if (!source.IsWarmerResolved) return null;
+            if (source.NodeType == NodeType.Unknown) return null;
 
             CappedArray<byte> fullRlp = source.FullRlp;
             if (fullRlp.IsNull) return null;
 
             Hash256? keccak = source.Keccak;
+            // A warmer can race a writer, so reverify the bytes before promoting them to the shared cache.
             if (keccak is not null && ValueKeccak.Compute(fullRlp.AsSpan()) != keccak) return null;
 
             TrieNode detached = keccak is null
@@ -147,18 +148,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 : new TrieNode(NodeType.Unknown, keccak, fullRlp);
             TreePath path = TreePath.Empty;
 
-            try
-            {
-                return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
-            }
-            catch (IndexOutOfRangeException)
-            {
-                return null;
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return null;
-            }
+            return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
         }
 
         Parallel.For(0, ShardCount, (i) =>
@@ -168,8 +158,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
             {
                 if (shard[j].node is not { } source) continue;
 
-                TrieNode? newNode = source.IsWarmerOwned
-                    ? TryMaterializeResolvedWarmerNode(source)
+                TrieNode? newNode = source.IsWarmerOwned ? TryMaterializeResolvedWarmerNode(source)
+                    : source.IsHashOnlyPlaceholder() ? null
                     : source;
                 if (newNode is not null)
                 {

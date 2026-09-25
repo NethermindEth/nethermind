@@ -37,6 +37,7 @@ public static class BasePersistence
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
+    private static readonly byte[] WipedForSyncKey = Keccak.Compute("WipedForSync").BytesToArray();
     private static readonly byte[] IngestMarkerKey = Keccak.Compute("SstIngestMarker").BytesToArray();
 
     /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
@@ -48,7 +49,8 @@ public static class BasePersistence
     private const string RawSlotDeprecationMessage =
         "Flat DB uses the legacy raw storage slot encoding, which is deprecated and will be removed in a future release. Please resync to adopt the RLP slot encoding.";
 
-    internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
+    /// <summary>Reads the flat DB's persisted state pointer, or <see cref="StateId.PreGenesis"/> when none is persisted.</summary>
+    public static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
         return bytes is null || bytes.Length == 0
@@ -62,6 +64,8 @@ public static class BasePersistence
         BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
+        // A persisted state pointer means the sync that followed a wipe has completed.
+        kv.Remove(WipedForSyncKey);
     }
 
     /// <summary>
@@ -232,7 +236,16 @@ public static class BasePersistence
         if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
     }
 
-    internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
+    /// <summary>Whether <see cref="ClearAllColumns"/> has marked the flat DB metadata as wiped for a state sync.</summary>
+    /// <remarks>
+    /// Set by the first batch of a wipe and cleared when a state pointer is persisted, i.e. when the sync that follows
+    /// completes. With a pre-genesis state pointer it tells a wiped DB awaiting its sync from one that was never used;
+    /// with a state pointer still present it means the wipe itself was interrupted.
+    /// </remarks>
+    public static bool ReadWipedForSync(IReadOnlyKeyValueStore metadata) => metadata.Get(WipedForSyncKey) is { Length: > 0 };
+
+    /// <summary>Wipes every data column and the state pointer, keeping the format markers, and marks the DB as wiped for a state sync.</summary>
+    public static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
         // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
         // partially-synced DB on restart. #11442
@@ -241,14 +254,15 @@ public static class BasePersistence
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         try
         {
+            // The wipe marker precedes every delete and the state pointer reset closes the wipe, so a wipe that dies
+            // midway reads back as "pointer and marker both present" and the next start redoes it.
+            batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(WipedForSyncKey, [1]);
+
             int count = 0;
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
             {
                 if (column == FlatDbColumns.Metadata)
                 {
-                    // Preserve the format markers; wiping them makes a re-synced RLP DB read back as raw. #11996
-                    batch.GetColumnBatch(column).Remove(CurrentStateKey);
-                    batch.GetColumnBatch(column).Remove(IngestMarkerKey);
                     continue;
                 }
 
@@ -264,6 +278,10 @@ public static class BasePersistence
                     }
                 }
             }
+
+            // Only the state pointer is reset; wiping the format markers makes a re-synced RLP DB read back as raw. #11996
+            batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(CurrentStateKey);
+            batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(IngestMarkerKey);
         }
         finally
         {

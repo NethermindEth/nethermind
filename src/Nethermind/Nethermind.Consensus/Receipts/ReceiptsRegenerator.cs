@@ -5,8 +5,6 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -33,7 +31,6 @@ namespace Nethermind.Consensus.Receipts;
 /// </remarks>
 public sealed class ReceiptsRegenerator(
     IShareableOverridableEnvSource<ReceiptsRegenerationEnv> envSource,
-    IBlockFinder blockFinder,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
     IPoSSwitcher poSSwitcher,
@@ -45,8 +42,8 @@ public sealed class ReceiptsRegenerator(
     /// Re-executes <paramref name="block"/> and yields its receipts when they reproduce the header's receipts root.
     /// </summary>
     /// <returns>
-    /// <c>false</c> when the block predates EIP-658, its parent header is gone, or the regenerated receipts fail
-    /// the root check.
+    /// <c>false</c> when the block predates EIP-658, its parent header or state is gone, or the regenerated receipts
+    /// fail the root check.
     /// </returns>
     public bool TryRegenerate(Block block, [NotNullWhen(true)] out TxReceipt[]? receipts)
     {
@@ -54,9 +51,6 @@ public sealed class ReceiptsRegenerator(
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         if (!spec.IsEip658Enabled) return false;
-
-        BlockHeader? parent = blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-        if (parent is null) return false;
 
         foreach (Transaction tx in block.Transactions)
         {
@@ -75,8 +69,7 @@ public sealed class ReceiptsRegenerator(
 
         // Re-execute on a throwaway copy: block processing writes back the resolved state root, account-change
         // buffers, and generated access list, and this runs on RPC threads against the shared block-tree instance —
-        // so it must never see that instance. The parent header is cloned for the same reason (BuildAndOverride
-        // assigns the resolved state root into whatever header it is handed).
+        // so it must never see that instance.
         BlockHeader isolatedHeader = block.Header.Clone();
         // Storage does not persist the post-merge flag and this path bypasses the recovery step that restores it;
         // without it PREVRANDAO evaluates to the pre-merge difficulty and any transaction reading it regenerates
@@ -86,7 +79,8 @@ public sealed class ReceiptsRegenerator(
         Block isolated = new(isolatedHeader, block.Body, block.BlockAccessList);
         try
         {
-            using Scope<ReceiptsRegenerationEnv> scope = envSource.BuildAndOverride(parent.Clone());
+            if (!envSource.TryBuildAndOverrideAtTarget(isolated.Header, stateOverride: null, out Scope<ReceiptsRegenerationEnv>? scope)) return false;
+            using IDisposable _ = scope;
 
             // NoValidation is required, not an optimisation: the shared validator is the merge plugin's
             // InvalidBlockInterceptor, which records into the process-wide InvalidChainTracker and could make the
