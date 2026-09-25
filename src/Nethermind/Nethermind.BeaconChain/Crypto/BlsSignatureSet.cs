@@ -53,7 +53,7 @@ public sealed class BlsSignatureSet
     {
         long[] publicKey = new long[G1Affine.Sz];
         G1Affine pk = new(publicKey);
-        if (!pk.TryDecode(compressedPublicKey, out _) || pk.IsInf() || !pk.InGroup())
+        if (!TryKeyValidate(compressedPublicKey, pk))
         {
             set = null;
             return false;
@@ -70,4 +70,12 @@ public sealed class BlsSignatureSet
         set = new BlsSignatureSet(publicKey, signature, message.ToArray());
         return true;
     }
+
+    /// <summary>
+    /// The IETF BLS <c>KeyValidate</c> the consensus specs require of every public key: decodes
+    /// <paramref name="compressedPublicKey"/> into <paramref name="publicKey"/> and accepts it only
+    /// when it is on-curve, not the point at infinity, and in the prime-order subgroup.
+    /// </summary>
+    internal static bool TryKeyValidate(ReadOnlySpan<byte> compressedPublicKey, G1Affine publicKey) =>
+        publicKey.TryDecode(compressedPublicKey, out _) && !publicKey.IsInf() && publicKey.InGroup();
 }
