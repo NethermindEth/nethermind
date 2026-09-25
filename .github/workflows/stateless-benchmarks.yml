@@ -168,7 +168,7 @@ jobs:
       - name: Restore master baseline
         id: baseline
         if: github.event_name == 'pull_request' && steps.definitions.outputs.trusted == 'true'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/zisk-bench-baseline
           key: zisk-bench-${{ env.CACHE_VERSION }}-${{ steps.sdk.outputs.version }}-${{ github.event.pull_request.base.sha }}
@@ -213,7 +213,7 @@ jobs:
 
       - name: Save master baseline
         if: github.event_name == 'push' && github.ref_name == 'master'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ${{ runner.temp }}/zisk-bench-baseline
           key: zisk-bench-${{ env.CACHE_VERSION }}-${{ steps.sdk.outputs.version }}-${{ github.sha }}
