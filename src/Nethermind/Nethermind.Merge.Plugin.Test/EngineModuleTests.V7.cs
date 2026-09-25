@@ -791,6 +791,42 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task ForkchoiceUpdatedV5_retains_an_unresolved_branch_tip_across_unrelated_payloads()
+    {
+        HeadStateInterceptor headState = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner
+                .AddSingleton<IStateReader>(headState)));
+        headState.Inner = chain.StateReader;
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 parentHash = chain.BlockTree.HeadHash;
+
+        ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(rpc, parentHash, slot: 2, finalize: false);
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        headState.PrunedBlock = first.BlockHash;
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
+            first, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
+        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        headState.PrunedBlock = null;
+
+        for (ulong slot = 3; slot < 21; slot++)
+        {
+            await BuildAndInsertEmptyBlock(rpc, parentHash, slot, finalize: false);
+        }
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(first.BlockHash, parentHash, parentHash), payloadAttributes: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.False);
+        }
+    }
+
     // A newPayloadV6 landing while forkchoiceUpdatedV5 evaluates the retained list wins: the answer being
     // computed is already stale, so publishing it would shadow the newer list on every later update.
     [Test]
@@ -949,7 +985,7 @@ public partial class EngineModuleTests
         private static bool Matches(BlockHeader? header, Hash256? hash) => hash is not null && header?.Hash == hash;
     }
 
-    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot)
+    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot, bool finalize = true)
     {
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent, Keccak.Zero, parent),
@@ -958,8 +994,9 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
 
         await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+        Hash256 checkpoint = finalize ? payload.BlockHash : parent;
         await rpc.engine_forkchoiceUpdatedV5(
-            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
+            new ForkchoiceStateV1(payload.BlockHash, checkpoint, checkpoint), payloadAttributes: null);
         return payload;
     }
 
