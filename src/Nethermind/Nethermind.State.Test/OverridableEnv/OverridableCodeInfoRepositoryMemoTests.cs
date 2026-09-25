@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
@@ -83,6 +84,41 @@ public class OverridableCodeInfoRepositoryMemoTests
         Lookup(repository, TestItem.AddressA, 2);
         Lookup(repository, TestItem.AddressB, 2);
         Assert.That(InnerLookups(inner), Is.EqualTo(1 + 1 + 1));
+    }
+
+    [Test]
+    public void Precompile_addresses_skip_the_memo(
+        [Values("0x0000000000000000000000000000000000000001", "0x000000000000000000000000000000000000000a")] string precompile)
+    {
+        (OverridableCodeInfoRepository repository, ICodeInfoRepository inner) = Build(true, [0x60, 0x00]);
+        Lookup(repository, new Address(precompile), 3);
+        Assert.That(InnerLookups(inner), Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Code_resolving_to_a_precompile_is_not_remembered()
+    {
+        ICodeInfoRepository inner = Substitute.For<ICodeInfoRepository>();
+        inner.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address>())
+            .Returns(_ => new CodeInfo(Substitute.For<IPrecompile>()));
+        OverridableCodeInfoRepository repository = new(inner, Substitute.For<IWorldState>()) { MemoizeResolvedCode = true };
+
+        Lookup(repository, TestItem.AddressA, 3);
+
+        Assert.That(InnerLookups(inner), Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Memo_hits_count_as_code_cache_hits()
+    {
+        Assume.That(ExecutionMetricsFlag.IsActive, Is.True);
+        (OverridableCodeInfoRepository repository, _) = Build(true, [0x60, 0x00]);
+        long before = Nethermind.Evm.Metrics.CodeDbCache;
+
+        Lookup(repository, TestItem.AddressA, 5);
+
+        // One inner lookup, then four memo hits; other tests may add to the process-wide counter meanwhile.
+        Assert.That(Nethermind.Evm.Metrics.CodeDbCache - before, Is.GreaterThanOrEqualTo(4));
     }
 
     [Test]
