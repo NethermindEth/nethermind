@@ -28,11 +28,13 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves a representation of tree branches on a given chain level (Nethermind specific).", IsImplemented = true, IsSharable = true)]
     ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number);
 
-    [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific).", IsImplemented = true, IsSharable = true)]
+    /// <inheritdoc cref="IDebugBridge.DeleteChainSlice" path="/member/remarks"/>
+    [JsonRpcMethod(Description = "Deletes chain levels on all branches (Nethermind specific). Requires paused, drained processing, no active initial synchronization, and preserves historical sync progress, including when forced. Deletion at or below the sync pivot requires completed historical sync; a deleted pivot is moved to the surviving head. When replacing the head, the preceding block must be canonical with its body and processing state available. Returns invalid-params for an invalid range or resource-unavailable when maintenance is unsafe.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
+    /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock(BlockParameter)" path="/member/remarks"/>
     [JsonRpcMethod(
-        Description = "Moves the head to the given block and drops state kept for other branches; returns false when the block is unknown or cannot be made the head (Nethermind specific).",
+        Description = "Rewinds to a canonical block with state available for block processing and prunes abandoned flat-state snapshots; returns false for an unknown hash or a refused rewind (Nethermind specific). Requires paused, drained block processing and no active initial synchronization. A target below the sync pivot is refused unless historical downloads are complete and retained progress is at or below the target; the pivot then moves with the head. Ancient backfill permits rewinds at or above the pivot.",
         IsSharable = true)]
     ResultWrapper<bool> debug_resetHead(Hash256 blockHash);
 
@@ -75,7 +77,8 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
 
-    [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
+    /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock(BlockParameter)" path="/member/remarks"/>
+    [JsonRpcMethod(Description = "Rewinds the head to a canonical block with state available for block processing, given by number, tag or hash, and prunes abandoned flat-state snapshots. Returns false for an unknown target or a refused rewind (Nethermind specific). Requires paused, drained block processing and no active initial synchronization. A target below the sync pivot is refused unless historical downloads are complete and retained progress is at or below the target; the pivot then moves with the head. Ancient backfill permits rewinds at or above the pivot.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]

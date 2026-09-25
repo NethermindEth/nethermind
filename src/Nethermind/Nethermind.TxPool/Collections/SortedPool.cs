@@ -133,13 +133,14 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
-        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
+        /// <remarks>Takes the pool lock for the whole walk, so callers that want only some of the groups filter
+        /// the returned snapshot rather than being handed a predicate to pay for under that lock.</remarks>
+        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot()
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
             Dictionary<TGroupKey, TValue[]> snapshots = new(_buckets.Count);
             foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
-                if (where is not null && (bucket.Count == 0 || !where((key, bucket.Min!)))) continue;
                 snapshots[key] = CopyBucketToArray(bucket);
             }
             return snapshots;
@@ -334,7 +335,13 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        private bool RemoveFromBucket([DisallowNull] TValue value, out EnhancedSortedSet<TValue>? bucketSet)
+        /// <summary>Removes <paramref name="value"/> from its group bucket.</summary>
+        /// <remarks>The only place bucket membership shrinks, so per-bucket accounting belongs here rather than on
+        /// <see cref="Removed"/>, which <see cref="RemoveLast"/> bypasses when it falls back to the bucket.</remarks>
+        /// <param name="value">Element to remove.</param>
+        /// <param name="bucketSet">Bucket the element was mapped to, or null when the group is unknown.</param>
+        /// <returns>Whether the bucket held the element.</returns>
+        protected virtual bool RemoveFromBucket([DisallowNull] TValue value, out EnhancedSortedSet<TValue>? bucketSet)
         {
             TGroupKey groupMapping = MapToGroup(value);
             if (_buckets.TryGetValue(groupMapping, out bucketSet))

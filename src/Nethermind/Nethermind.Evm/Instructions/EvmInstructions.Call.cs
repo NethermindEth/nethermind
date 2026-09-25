@@ -223,10 +223,7 @@ public static partial class EvmInstructions
             }
 
             if (TTracingInst.IsActive)
-            {
-                vm.TxTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(in gas));
-                vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
-            }
+                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), EvmExceptionType.NotEnoughBalance);
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
@@ -369,7 +366,8 @@ public static partial class EvmInstructions
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot,
-            newAccountCharged: newAccountCharged);
+            newAccountCharged: newAccountCharged,
+            frameJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.FrameJournalCheckpoint ?? 0);
 
         return EvmExceptionType.Suspend;
     }
@@ -429,7 +427,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        vm.ReturnData = returnData.ToArray();
+        vm.StageReturnData(returnData.Span);
 
         return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.

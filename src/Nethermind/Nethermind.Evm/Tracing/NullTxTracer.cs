@@ -41,7 +41,7 @@ public class NullTxTracer : TxTracer
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         => ThrowInvalidOperationException();
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         => ThrowInvalidOperationException();
 
     public override void SetOperationStack(TraceStack stack)
