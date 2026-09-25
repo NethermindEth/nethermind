@@ -64,6 +64,8 @@ public partial class DebugRpcModuleTests
             Assert.That(traces, Has.Count.EqualTo(3));
             using (Assert.EnterMultipleScope())
             {
+                if (revertFirst)
+                    Assert.That(traces[0]["result"]?["logs"], Is.Null, response);
                 for (int i = revertFirst ? 1 : 0; i < traces.Count; i++)
                     Assert.That((string?)traces[i]["result"]?["logs"]?[0]?["index"], Is.EqualTo($"0x{i - (revertFirst ? 1 : 0):x}"), response);
             }
