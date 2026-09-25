@@ -27,8 +27,9 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// Gloas changes neither das-core nor <c>MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS</c>.
 /// </para>
 /// <para>
-/// Every sidecar is re-verified at every check, so a pool entry never counts on trust. A pending
-/// sidecar that verifies against the bid and names the bid's slot is moved into the served map. Fails closed while the node's
+/// Every sidecar is re-verified at every check, so a pool entry never counts on trust. The first pending
+/// candidate that verifies against the bid and names the bid's slot is moved into the served map, and
+/// candidates that fail are discarded. Fails closed while the node's
 /// identity is unknown. The window is read from <paramref name="clock"/> at every check.
 /// </para>
 /// </remarks>
@@ -77,12 +78,16 @@ public sealed class GloasCustodySamplingAvailability(INodeColumnCustodySource cu
         }
 
         // KZG does not bind the slot; a pending sidecar arrived before its block, so gossip's sidecar.slot == block.slot check has not run.
-        if (pool.TryGetPendingGloas(blockRoot, column, out DataColumnSidecarGloas? pending)
-            && pending.Slot == blockSlot
-            && DataColumnSidecarVerifier.VerifyKzgProofs(pending, blobCommitments))
+        foreach (DataColumnSidecarGloas pending in pool.GetPendingGloas(blockRoot, column))
         {
-            pool.AddGloas(pending);
-            return true;
+            if (pending.Slot == blockSlot && DataColumnSidecarVerifier.VerifyKzgProofs(pending, blobCommitments))
+            {
+                pool.AddGloas(pending);
+                return true;
+            }
+
+            // The block root fixes the bid, so a candidate that fails against it can never verify.
+            pool.DiscardPendingGloas(pending);
         }
 
         return false;
