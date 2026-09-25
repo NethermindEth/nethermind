@@ -29,8 +29,8 @@ public ref partial struct EvmStack
         return bitmap is not null && JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
     }
 
-    // A stack built over code without its CodeInfo (only some unit tests do that) gets the empty bitmap,
-    // as before; the Debug assertion stays on the jump itself.
+    // A stack built over code without its CodeInfo gets the empty bitmap, which rejects every destination;
+    // the Debug assertion in IsJumpDestination flags that case.
     partial void InitializeJumpDestinations() =>
         _jumpDestinations = CodeLength == 0
             ? JumpDestinationAnalyzer.EmptyBitmap
