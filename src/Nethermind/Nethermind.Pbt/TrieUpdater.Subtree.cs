@@ -85,13 +85,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
         }
 
-        /// <summary>Carries the hash of this result's encoding with a <paramref name="bitCount"/>-bit prefix, so that encoding is not hashed again.</summary>
-        internal void SetKnownHash(in ValueHash256 hash, int bitCount)
-        {
-            KnownHash = hash;
-            KnownHashBitCount = (ushort)bitCount;
-        }
-
         internal readonly bool IsEmpty => Kind == NodeKind.Empty;
         internal readonly bool IsLeaf => Kind == NodeKind.Leaf;
         internal readonly ValueHash256 LeafHash => LeftHash;
@@ -156,21 +149,21 @@ internal static partial class TrieUpdater<TKey, TPath>
             PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, LeftHash, RightHash);
             CopyBranchBits(cursor, Path, Prefix, depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
             return PbtNodeCodec.BranchPreimageLength(bitCount);
-        }
 
-        private static void CopyBranchBits(scoped in PbtTraversalPath groupPath, NodeGroupPath localPath, CompressedPrefix localPrefix,
-            int start, int count, Span<byte> destination)
-        {
-            int anchorDepth = groupPath.BitDepth + localPath.Length;
-            int end = start + count;
-            int groupEnd = Math.Min(end, groupPath.BitDepth);
-            if (start < groupEnd)
-                PbtBitPrefix.CopyBits(groupPath.Bytes, start, groupEnd - start, destination, 0);
-            for (int bit = Math.Max(start, groupPath.BitDepth); bit < Math.Min(end, anchorDepth); bit++)
-                destination[(bit - start) >> 3] |= (byte)(localPath.GetBit(bit - groupPath.BitDepth) << (7 - ((bit - start) & 7)));
-            int prefixStart = Math.Max(start, anchorDepth);
-            if (prefixStart < end)
-                PbtBitPrefix.CopyBits(localPrefix.Bytes, prefixStart - anchorDepth, end - prefixStart, destination, prefixStart - start);
+            static void CopyBranchBits(scoped in PbtTraversalPath groupPath, NodeGroupPath localPath, CompressedPrefix localPrefix,
+                int start, int count, Span<byte> destination)
+            {
+                int anchorDepth = groupPath.BitDepth + localPath.Length;
+                int end = start + count;
+                int groupEnd = Math.Min(end, groupPath.BitDepth);
+                if (start < groupEnd)
+                    PbtBitPrefix.CopyBits(groupPath.Bytes, start, groupEnd - start, destination, 0);
+                for (int bit = Math.Max(start, groupPath.BitDepth); bit < Math.Min(end, anchorDepth); bit++)
+                    destination[(bit - start) >> 3] |= (byte)(localPath.GetBit(bit - groupPath.BitDepth) << (7 - ((bit - start) & 7)));
+                int prefixStart = Math.Max(start, anchorDepth);
+                if (prefixStart < end)
+                    PbtBitPrefix.CopyBits(localPrefix.Bytes, prefixStart - anchorDepth, end - prefixStart, destination, prefixStart - start);
+            }
         }
 
         internal static void Move(ref FoldResult source, ref FoldResult destination)

@@ -223,27 +223,28 @@ internal static partial class TrieUpdater<TKey, TPath>
                 reader.LeftKey.IsEmpty ? default : TKey.Create(reader.LeftKey),
                 reader.RightKey.IsEmpty ? default : TKey.Create(reader.RightKey),
                 LeafChildrenMask,
-                OwnedPrefix(cursor, anchorDepth + localLength, splitDepth, stackalloc byte[FoldResult.MaxPrefixLength]), _hash, splitDepth - _anchorDepth);
+                OwnedPrefix(this, cursor, anchorDepth + localLength, splitDepth, stackalloc byte[FoldResult.MaxPrefixLength]), _hash, splitDepth - _anchorDepth);
+
+            // The bits from from to splitDepth as a standalone compressed prefix.
+            static Span<byte> OwnedPrefix(scoped in BoundaryNode node, scoped in PbtTraversalPath cursor, int from, int splitDepth, Span<byte> buffer)
+            {
+                int bitCount = splitDepth - from;
+                if (bitCount == 0) return default;
+                Span<byte> prefix = buffer[..(sizeof(ushort) + PbtBitPrefix.ByteCount(bitCount))];
+                // Zeroed, because the bits are copied in by disjunction.
+                prefix.Clear();
+                BinaryPrimitives.WriteUInt16BigEndian(prefix, (ushort)bitCount);
+                Span<byte> bits = prefix[sizeof(ushort)..];
+                int cursorEnd = Math.Min(splitDepth, node._anchorDepth);
+                if (from < cursorEnd) PbtBitPrefix.CopyBits(cursor.Bytes, from, cursorEnd - from, bits, 0);
+                if (splitDepth > node._anchorDepth)
+                {
+                    int start = Math.Max(from, node._anchorDepth);
+                    PbtBitPrefix.CopyBits(node.Prefix.Bytes, start - node._anchorDepth, splitDepth - start, bits, start - from);
+                }
+                return prefix;
+            }
         }
 
-        /// <summary>The bits from <paramref name="from"/> to <paramref name="splitDepth"/> as a standalone compressed prefix.</summary>
-        private readonly Span<byte> OwnedPrefix(scoped in PbtTraversalPath cursor, int from, int splitDepth, Span<byte> buffer)
-        {
-            int bitCount = splitDepth - from;
-            if (bitCount == 0) return default;
-            Span<byte> prefix = buffer[..(sizeof(ushort) + PbtBitPrefix.ByteCount(bitCount))];
-            // Zeroed, because the bits are copied in by disjunction.
-            prefix.Clear();
-            BinaryPrimitives.WriteUInt16BigEndian(prefix, (ushort)bitCount);
-            Span<byte> bits = prefix[sizeof(ushort)..];
-            int cursorEnd = Math.Min(splitDepth, _anchorDepth);
-            if (from < cursorEnd) PbtBitPrefix.CopyBits(cursor.Bytes, from, cursorEnd - from, bits, 0);
-            if (splitDepth > _anchorDepth)
-            {
-                int start = Math.Max(from, _anchorDepth);
-                PbtBitPrefix.CopyBits(Prefix.Bytes, start - _anchorDepth, splitDepth - start, bits, start - from);
-            }
-            return prefix;
-        }
     }
 }
