@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
@@ -45,16 +46,13 @@ public class OverrideCodeCacheTests
     }
 
     [Test]
-    public void Changing_the_callers_array_later_never_returns_the_old_hash()
+    public void A_miss_keeps_the_callers_array_rather_than_a_copy()
     {
-        byte[] code = [0x60, 0x2a, 0x60, 0x00, 0x52, 0x5b, 0x00];
-        OverrideCodeCache.Resolve(code, out _, out _);
+        byte[] code = [0x60, 0x2a, 0x60, 0x00, 0x52, 0x5b, .. Guid.NewGuid().ToByteArray()];
+        OverrideCodeCache.Resolve(code, out _, out CodeInfo info);
 
-        code[1] = 0x2b;
-        OverrideCodeCache.Resolve(code, out ValueHash256 hash, out CodeInfo info);
-
-        Assert.That(hash, Is.EqualTo(ValueKeccak.Compute(code)));
-        Assert.That(info.CodeSpan.SequenceEqual(code), Is.True);
+        Assert.That(MemoryMarshal.TryGetArray(info.Code, out ArraySegment<byte> segment), Is.True);
+        Assert.That(segment.Array, Is.SameAs(code));
     }
 
     [Test]
