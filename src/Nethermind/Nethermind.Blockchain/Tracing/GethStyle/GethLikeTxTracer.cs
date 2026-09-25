@@ -50,6 +50,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         Trace.Failed = true;
+        Trace.Gas = gasSpent.SpentGas;
         Trace.ReturnValue = output ?? [];
     }
 
