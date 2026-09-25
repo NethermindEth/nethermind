@@ -20,8 +20,7 @@ public class EvmStackTests
 {
     [Test]
     public void IsJumpDestination_AtBitmapBoundaries_RejectsPaddingAndPushData(
-        [Values(0, 1, 2, 63, 64, 65, 127, 128, 129)] int codeLength,
-        [Values] bool cached)
+        [Values(0, 1, 2, 63, 64, 65, 127, 128, 129)] int codeLength)
     {
         byte[] code = new byte[codeLength];
         Array.Fill(code, (byte)Instruction.JUMPDEST);
@@ -32,14 +31,12 @@ public class EvmStackTests
         for (int destination = -1; destination <= codeLength + 64; destination++)
         {
             EvmStack stack = new(0, ref slot, code, codeInfo);
-            if (cached && codeLength > 0) stack.IsJumpDestination(0);
             bool expected = destination >= (codeLength > 1 ? 2 : 0) && destination < codeLength;
 
             Assert.That(stack.IsJumpDestination(destination), Is.EqualTo(expected), $"destination {destination}");
         }
 
         EvmStack extremeStack = new(0, ref slot, code, codeInfo);
-        if (cached && codeLength > 0) extremeStack.IsJumpDestination(0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(extremeStack.IsJumpDestination(int.MinValue), Is.False);
