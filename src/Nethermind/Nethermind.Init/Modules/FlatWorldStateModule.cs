@@ -134,12 +134,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
         }
 
+        // Registered unconditionally so `nethermind import-flat-db` can always find it. Carrying
+        // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
+        builder
+            .AddSingleton<Importer>()
+            .AddStep(typeof(ImportFlatDb));
+
         if (flatDbConfig.ImportFromPruningTrieState)
-        {
-            builder
-                .AddSingleton<Importer>()
-                .AddStep(typeof(ImportFlatDb));
-        }
+            builder.SelectStepTarget(typeof(ImportFlatDb));
 
         // Only pulls the state DB open during init; PruningTrieStoreModule still decides.
         if (flatDbConfig.DropPruningTrieState)

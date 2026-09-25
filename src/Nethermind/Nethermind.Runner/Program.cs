@@ -234,7 +234,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     processExitSource = new(cancellationToken);
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
-    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins);
+    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins, parseResult.GetValue(BasicOptions.Command));
 
     try
     {
@@ -475,6 +475,7 @@ RootCommand CreateRootCommand()
 {
     RootCommand rootCommand =
     [
+        BasicOptions.Command,
         BasicOptions.Configuration,
         BasicOptions.ConfigurationDirectory,
         BasicOptions.DatabasePath,
@@ -578,6 +579,12 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 
 static class BasicOptions
 {
+    public static Argument<string?> Command { get; } = new("command")
+    {
+        Description = "A standalone command to run instead of the node. Runs only that command and exits; an unknown name lists what is available.",
+        Arity = ArgumentArity.ZeroOrOne
+    };
+
     public static Option<string> Configuration { get; } =
         new("--config", "-c")
         {
