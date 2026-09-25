@@ -14,14 +14,17 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -31,6 +34,10 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugBridge : IDebugBridge
 {
+    private readonly BlockTreeMutationLock _mutationLock;
+    private readonly IBlockProcessingPauseControl _pauseControl;
+    private readonly IBlockProcessingQueue _processingQueue;
+    private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
     private readonly IBlockTree _blockTree;
@@ -39,6 +46,8 @@ public class DebugBridge : IDebugBridge
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly ISyncProgressResolver _syncProgressResolver;
+    private readonly ISyncPointers _syncPointers;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
     private readonly IWorldStateManager _worldStateManager;
@@ -56,8 +65,20 @@ public class DebugBridge : IDebugBridge
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
         IBlockStore blockStore,
-        IWorldStateManager worldStateManager)
+        IWorldStateManager worldStateManager,
+        ILogManager logManager,
+        BlockTreeMutationLock mutationLock,
+        IBlockProcessingPauseControl pauseControl,
+        IBlockProcessingQueue processingQueue,
+        ISyncProgressResolver syncProgressResolver,
+        ISyncPointers syncPointers)
     {
+        _logger = logManager.GetClassLogger<DebugBridge>();
+        _mutationLock = mutationLock;
+        _pauseControl = pauseControl;
+        _processingQueue = processingQueue;
+        _syncProgressResolver = syncProgressResolver;
+        _syncPointers = syncPointers;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -98,31 +119,149 @@ public class DebugBridge : IDebugBridge
 
     public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 
-    public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
-
-    public bool UpdateHeadBlock(Hash256 blockHash)
+    public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
     {
-        BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-        if (header is null) return false;
+        ResultWrapper<int>? deletionError = GetDeletionError(startNumber, out _);
+        if (deletionError is not null) return deletionError;
+        if (!CanMutateChain()) return NotDrained();
 
-        // Move the live head first, by the route forkchoiceUpdated takes, so `latest` and the state kept
-        // below agree; pruning against a head the node does not advertise would drop the state it serves.
-        // A successful move also writes the persisted head pointer; a rejected one must not, or a restart
-        // would start from a head the node never reached.
-        if (_blockTree.Head?.Hash != header.Hash
-            && !_blockTree.TryUpdateMainChain(header, wereProcessed: true, forceUpdateHeadBlock: true))
+        if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
+            if (_logger.IsWarn) _logger.Warn($"Cannot delete the chain slice from {startNumber}: chain mutation contention or overlapping maintenance; retry the request.");
+            return ResultWrapper<int>.Fail("Chain mutation contention or overlapping maintenance; retry the request.", ErrorCodes.ResourceUnavailable);
+        }
+        using BlockTreeMutationLock.Scope mutationScope = mutation;
+        if (!CanMutateChain()) return NotDrained();
+        deletionError = GetDeletionError(startNumber, out ulong endNumber);
+        if (deletionError is not null) return deletionError;
+
+        bool replacesHead = _blockTree.Head?.Number >= startNumber;
+        bool replacesPivot = startNumber <= _blockTree.SyncPivot.BlockNumber &&
+                             _blockTree.SyncPivot.BlockNumber <= endNumber;
+        Block? target = replacesHead
+            ? _blockTree.FindBlock(startNumber - 1, BlockTreeLookupOptions.RequireCanonical)
+            : _blockTree.Head;
+        if ((replacesHead || replacesPivot) && (target is null || !HasProcessingState(target.Header)))
+            return ResultWrapper<int>.Fail("The new head body or state is unavailable for block processing.", ErrorCodes.ResourceUnavailable);
+
+        if (replacesPivot && HasHistoricalProgressAbove(target!.Number))
+            return ResultWrapper<int>.Fail("Historical sync progress is above the replacement head; rewind less deeply before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+
+        int deleted = _blockTree.DeleteChainSlice(startNumber, endNumber, force);
+        // Completed history remains contiguous from its retained floors to target, below the deleted range.
+        // Relocate only after deletion succeeds so a rejected deletion leaves the pivot unchanged.
+        if (replacesPivot) _blockTree.SyncPivot = (target!.Number, target.Hash!);
+        return ResultWrapper<int>.Success(deleted);
+
+        static ResultWrapper<int> NotDrained() =>
+            ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+    }
+
+    private ResultWrapper<int>? GetDeletionError(ulong startNumber, out ulong endNumber)
+    {
+        endNumber = _blockTree.BestKnownNumber;
+        if (startNumber == 0 || startNumber > endNumber)
+            return ResultWrapper<int>.Fail($"startNumber must be positive and cannot exceed the known chain high-water mark ({endNumber}).", ErrorCodes.InvalidParams);
+        if (endNumber - startNumber > IBlockTree.MaxDeletionSpan)
+            return ResultWrapper<int>.Fail($"The deletion range cannot span more than {IBlockTree.MaxDeletionSpan + 1} chain levels.", ErrorCodes.InvalidParams);
+
+        SyncMode mode = _syncModeSelector.Current;
+        if (IsInitialSyncActive(mode))
+            return ResultWrapper<int>.Fail("Initial synchronization is active; wait for it to complete before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+        if (startNumber <= _blockTree.SyncPivot.BlockNumber)
+        {
+            if ((mode & SyncMode.FastBlocks) != 0)
+                return ResultWrapper<int>.Fail("Ancient backfill is running below the sync pivot; choose a startNumber above it.", ErrorCodes.ResourceUnavailable);
+            if (!IsHistoricalSyncFinished())
+                return ResultWrapper<int>.Fail("Historical sync is unfinished; wait for it to complete or choose a startNumber above the sync pivot.", ErrorCodes.ResourceUnavailable);
+        }
+
+        ulong validatedEnd = endNumber;
+        return IsDeleted(_blockTree.LowestInsertedHeader?.Number) ||
+               IsDeleted(_syncPointers.LowestInsertedBodyNumber) ||
+               IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) ||
+               IsDeleted(_syncPointers.LowestInsertedBlockAccessListBlockNumber)
+            ? ResultWrapper<int>.Fail("Historical sync progress lies in the deletion range; choose a higher startNumber.", ErrorCodes.ResourceUnavailable)
+            : null;
+
+        bool IsDeleted(ulong? number) => number >= startNumber && number <= validatedEnd;
+    }
+
+    public bool UpdateHeadBlock(Hash256 blockHash) => UpdateHeadBlock(new BlockParameter(blockHash));
+
+    public bool UpdateHeadBlock(BlockParameter blockParameter)
+    {
+        if (!CanRewindChain()) return false;
+
+        if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: chain mutation contention or overlapping maintenance; retry the request.");
+            return false;
+        }
+        using BlockTreeMutationLock.Scope mutationScope = mutation;
+        if (!CanRewindChain()) return false;
+
+        BlockHeader? header = _blockTree.FindHeader(blockParameter);
+        if (header is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: block is unknown.");
             return false;
         }
 
-        // benchmarkoor compatibility: it rewinds to the same head after every test, so state kept for the
-        // branches those tests built must go, or it accumulates for the whole run.
-        // Known limitation: the block tree keeps WasProcessed on the dropped blocks and NewPayloadHandler
-        // keeps its result cache, so resubmitting one of them returns VALID without re-execution and its
-        // child then answers SYNCING for want of parent state. Callers must replay fresh payloads only.
+        if (!HasProcessingState(header))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: state is unavailable for block processing.");
+            return false;
+        }
+
+        bool rewindPivot = header.Number < _blockTree.SyncPivot.BlockNumber;
+        if (rewindPivot && ((_syncModeSelector.Current & SyncMode.FastBlocks) != 0 ||
+                            !IsHistoricalSyncFinished() || HasHistoricalProgressAbove(header.Number)))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: the sync pivot cannot follow it; rewind less deeply.");
+            return false;
+        }
+        if (!_blockTree.TryRewindHead(header.Hash!)) return false;
+        // Keep completed sync aligned with the rewound head before state cleanup can yield to the selector.
+        if (rewindPivot) _blockTree.SyncPivot = (header.Number, header.Hash!);
+
         _worldStateManager.DropStateNotReachableFrom(header);
         return true;
     }
+
+    private static bool IsInitialSyncActive(SyncMode mode) => (mode &
+        (SyncMode.BeaconHeaders | SyncMode.StateNodes | SyncMode.FastSync | SyncMode.UpdatingPivot | SyncMode.DbLoad)) != 0;
+
+    private bool IsHistoricalSyncFinished() =>
+        _syncProgressResolver.IsFastBlocksHeadersFinished() &&
+        _syncProgressResolver.IsFastBlocksBodiesFinished() &&
+        _syncProgressResolver.IsFastBlocksReceiptsFinished() &&
+        _syncProgressResolver.IsFastBlockAccessListsFinished();
+
+    private bool HasHistoricalProgressAbove(ulong number) =>
+        _blockTree.LowestInsertedHeader?.Number > number ||
+        _syncPointers.LowestInsertedBodyNumber > number ||
+        _syncPointers.LowestInsertedReceiptBlockNumber > number ||
+        _syncPointers.LowestInsertedBlockAccessListBlockNumber > number;
+
+    private bool CanRewindChain()
+    {
+        if (!CanMutateChain()) return false;
+        if (!IsInitialSyncActive(_syncModeSelector.Current)) return true;
+        if (_logger.IsWarn) _logger.Warn("Cannot rewind the head while initial synchronization is active; wait for synchronization to complete.");
+        return false;
+    }
+
+    private bool CanMutateChain()
+    {
+        if (_pauseControl.IsPaused && _processingQueue.IsEmpty && !_blockTree.IsProcessingBlock) return true;
+        if (_logger.IsWarn) _logger.Warn("Cannot mutate the chain: pause block processing and wait for it to drain.");
+        return false;
+    }
+
+    private bool HasProcessingState(BlockHeader header) =>
+        // The scope provider rejects read-only flat history, which the state reader would accept.
+        _worldStateManager.GlobalWorldState.HasRoot(header);
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);
 

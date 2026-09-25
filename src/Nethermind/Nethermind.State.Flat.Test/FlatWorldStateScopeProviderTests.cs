@@ -190,6 +190,9 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<IFlatDbManager>(_ =>
                     {
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
+                        // NSubstitute does not run default interface members, so route the usage overload to the stubbed one.
+                        flatDiff.HasStateForBlock(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>())
+                            .Returns(c => flatDiff.HasStateForBlock(c.ArgAt<StateId>(0)));
                         flatDiff.When(it => it.AddSnapshot(Arg.Any<Snapshot>(), Arg.Any<TransientResource>()))
                             .Do(c =>
                             {

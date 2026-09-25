@@ -137,6 +137,7 @@ namespace Nethermind.Synchronization.Peers
                 contextCounts.Blocks += contexts.HasFlag(AllocationContexts.Blocks) ? 1 : 0;
                 contextCounts.State += contexts.HasFlag(AllocationContexts.State) ? 1 : 0;
                 contextCounts.Snap += contexts.HasFlag(AllocationContexts.Snap) ? 1 : 0;
+                contextCounts.BlockAccessLists += contexts.HasFlag(AllocationContexts.BlockAccessLists) ? 1 : 0;
             }
         }
 
@@ -217,12 +218,12 @@ namespace Nethermind.Synchronization.Peers
         {
             _stringBuilder.AppendLine();
             _stringBuilder.Append("===")
-                                .Append("[Active ][Sleep  ][Peer(ProtocolVersion/Head/Host:Port/Direction)]")
+                                .Append("[Active  ][Sleep   ][Peer(ProtocolVersion/Head/Host:Port/Direction)]")
                                 .Append("[Transfer Speeds (L/H/B/R/N/S)      ]")
                                 .Append("[Client Info (Name/Version/Operating System/Language)     ]")
                                 .AppendLine();
             _stringBuilder.Append("----------------------------------------------------------------------" +
-                "----------------------------------------------------------------------------------------");
+                "-------------------------------------------------------------------------------------------------");
         }
 
         private void RememberState(out bool initializedCountChanged)
@@ -241,6 +242,7 @@ namespace Nethermind.Synchronization.Peers
             public int Blocks { get; set; }
             public int State { get; set; }
             public int Snap { get; set; }
+            public int BlockAccessLists { get; set; }
             public int Total { get; set; }
 
             public readonly void AppendTo(StringBuilder sb, string allText)
@@ -259,6 +261,7 @@ namespace Nethermind.Synchronization.Peers
                 if (Blocks > 0) AddComma(sb, ref added).Append(Blocks).Append(" Blocks");
                 if (State > 0) AddComma(sb, ref added).Append(State).Append(" State");
                 if (Snap > 0) AddComma(sb, ref added).Append(Snap).Append(" Snap");
+                if (BlockAccessLists > 0) AddComma(sb, ref added).Append(BlockAccessLists).Append(" Block Access Lists");
 
                 static StringBuilder AddComma(StringBuilder sb, ref bool itemAdded)
                 {

@@ -62,6 +62,19 @@ def workflow_named_step_if(workflow: str, job_name: str, step_name: str) -> str:
     return conditions[0]
 
 
+def workflow_step_script(workflow: str, job_name: str, step_name: str) -> str:
+    """Extract a named multi-line Bash step with the workflow indentation removed."""
+    body = workflow_named_step_body(workflow, job_name, step_name)
+    marker = "        run: |\n"
+    start = body.index(marker) + len(marker)
+    lines = []
+    for line in body[start:].splitlines():
+        if line.strip() and not line.startswith(" " * 10):
+            break
+        lines.append(line[10:])
+    return "\n".join(lines)
+
+
 RESOLVE_RUN_MARKER = "        run: |\n"
 
 
@@ -1134,6 +1147,135 @@ esac
                 self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
                 self.assertIn("::error::", result.stdout)
 
+    def validate_paths(self, **environment_overrides: str) -> subprocess.CompletedProcess[str]:
+        """Run the benchmark job's path-validation body with these resolved outputs."""
+        script = self.directory / "validate-paths.sh"
+        script.write_text(
+            workflow_step_script(
+                RPC_WORKFLOW.read_text(encoding="utf-8"), "benchmark", "Validate snapshot and output paths"
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        scratch = (self.directory / "scratch").as_posix()
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "BENCHMARK_TOOL": "jsonbench",
+                "DB_SOURCE": "",
+                "REFERENCE_DB_SOURCE": "",
+                "SCRATCH_ROOT": scratch,
+                "SNAPSHOT_ROOT": (self.directory / "snapshots").as_posix(),
+                "TOOL_CONFIG": "{}",
+                "DIAG_DIR": f"{scratch}/diag",
+                "BENCH_TEMP": f"{scratch}/rpcbench.test",
+                "OUT_DIR": f"{scratch}/rpcbench.test/out",
+                "STATE_DIR": f"{scratch}/rpcbench.test/state",
+                **environment_overrides,
+            }
+        )
+        return subprocess.run(
+            [BASH, str(script)], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
+        )
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to read the sweep's snapshot sets")
+    def test_path_validation_checks_the_snapshots_each_mode_actually_mounts(self) -> None:
+        # `db_source` is resolved for every dispatch, but only `Start node` mounts it and that step is
+        # skipped in sweep mode - run-rpc-sweep.sh derives one `<type>-<block>` set per client type itself.
+        # Requiring `db_source` to exist in sweep mode aborted a bare sweep over a directory it never touches.
+        snapshots = self.directory / "snapshots"
+        (snapshots / "nethermind-flat-25490000").mkdir(parents=True)
+        (snapshots / "nethermind-flat-25000000").mkdir()
+        parked = self.directory / "parked-db"
+        parked.mkdir()
+        absent = (self.directory / "absent").as_posix()
+
+        sweep = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent)
+        self.assertEqual(sweep.returncode, 0, sweep.stdout + sweep.stderr)
+        # `Set up run paths` owns the output dirs; the check only reads.
+        self.assertFalse((self.directory / "scratch").exists())
+
+        pinned = self.validate_paths(
+            BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent, TOOL_CONFIG='{"snapshot_block":"25000000"}'
+        )
+        self.assertEqual(pinned.returncode, 0, pinned.stdout + pinned.stderr)
+
+        # A sweep snapshot that is genuinely absent still has to stop the run, named by its own input.
+        missing_sweep = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG='{"snapshot_block":"1"}')
+        self.assertEqual(missing_sweep.returncode, 1, missing_sweep.stdout + missing_sweep.stderr)
+        self.assertIn("tool_config.snapshot_block", missing_sweep.stdout)
+
+        # The sweep's Nethermind set is the flat one. A layout with no set is refused before the pull, even with
+        # the flat set present, and every other arm type mounts its own set.
+        flat = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG='{"state_layout":"flat"}')
+        self.assertEqual(flat.returncode, 0, flat.stdout + flat.stderr)
+        halfpath = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG='{"state_layout":"halfpath"}')
+        self.assertEqual(halfpath.returncode, 1, halfpath.stdout + halfpath.stderr)
+        self.assertIn("tool_config.state_layout 'halfpath'", halfpath.stdout)
+        cross_client = json.dumps(
+            {"clients": "nethermind@registry.example/nm:pr reth@registry.example/reth:main#RUST_LOG=info"}
+        )
+        missing_reth = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=cross_client)
+        self.assertEqual(missing_reth.returncode, 1, missing_reth.stdout + missing_reth.stderr)
+        self.assertIn(f"{snapshots.as_posix()}/reth-25490000", missing_reth.stdout)
+        (snapshots / "reth-25490000").mkdir()
+        present_reth = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=cross_client)
+        self.assertEqual(present_reth.returncode, 0, present_reth.stdout + present_reth.stderr)
+
+        # Single-node mode keeps the original contract against `db_source`.
+        single = self.validate_paths(DB_SOURCE=parked.as_posix())
+        self.assertEqual(single.returncode, 0, single.stdout + single.stderr)
+        missing_db = self.validate_paths(DB_SOURCE=absent)
+        self.assertEqual(missing_db.returncode, 1, missing_db.stdout + missing_db.stderr)
+        self.assertIn("node_config.db_source", missing_db.stdout)
+
+        # The overlap guards stay unconditional: they are what keeps output off a pristine snapshot.
+        for db_tree in ("nethermind-flat-25490000", "reth-25490000"):
+            with self.subTest(overlapping=db_tree):
+                overlapping = self.validate_paths(
+                    BENCHMARK_TOOL="jsonbench-sweep",
+                    TOOL_CONFIG=cross_client,
+                    SCRATCH_ROOT=(snapshots / db_tree).as_posix(),
+                )
+                self.assertEqual(overlapping.returncode, 1, overlapping.stdout + overlapping.stderr)
+                self.assertIn("disjoint", overlapping.stdout)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_arm_runs_a_provisioned_client_single_node_from_its_own_set(self) -> None:
+        # The ARM box keeps one directory per client beside the Nethermind root: /data/<client>/<client>-<block>.
+        for client, expected_db, expected_isolation in (
+            ("reth", "/data/reth/reth-25490000", "direct"),
+            ("nethermind", "/data/nethermind/nethermind-flat-25490000", "overlay"),
+        ):
+            with self.subTest(client=client):
+                result, outputs = self.resolve(
+                    IN_TOOL="jsonbench", IN_ARCH="arm64", IN_CLIENT=client, IN_DOCKER_IMAGE="registry.example/client:tag"
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["client"], client)
+                self.assertEqual(outputs["db_source"], expected_db)
+                self.assertEqual(outputs["db_isolation"], expected_isolation)
+                self.assertEqual(outputs["image_ref"], "registry.example/client:tag")
+
+        # The sweep presets pin the node to Nethermind whatever `client` says, so they keep the Nethermind set.
+        result, outputs = self.resolve(
+            IN_TOOL="corpus-ab", IN_ARCH="arm64", IN_CLIENT="reth", IN_DOCKER_IMAGE="registry.example/nm:pr"
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(outputs["client"], "nethermind")
+        self.assertEqual(outputs["db_source"], "/data/nethermind/nethermind-flat-25490000")
+
+        # Only a second node stays refused on that box.
+        result, _ = self.resolve(
+            IN_TOOL="jsonbench",
+            IN_ARCH="arm64",
+            IN_CLIENT="reth",
+            IN_REFERENCE_CLIENT="nethermind",
+            IN_DOCKER_IMAGE="registry.example/client:tag",
+        )
+        self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("reference client", result.stdout)
+
     @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
     def test_explicit_sweep_clients_supply_the_image_on_arm(self) -> None:
         cases = (
@@ -1306,6 +1448,7 @@ printf 'parity_fail=%s parity_skipped=%s rows=%s\\n' "$parity_fail" "$parity_ski
                 self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
                 self.assertIn(expected, result.stdout)
 
+
     def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")
         start_profilers = START_PROFILERS.read_text(encoding="utf-8")
@@ -1426,6 +1569,195 @@ printf 'parity_fail=%s parity_skipped=%s rows=%s\\n' "$parity_fail" "$parity_ski
         )
         self.assertIn('DOTNET_TRACE: "false"', workflow_named_step_body(rpc_workflow, "benchmark", "Start reference node"))
         self.assertIn("rpcbench.nettrace", workflow_named_step_body(rpc_workflow, "benchmark", "Publish step summary"))
+
+    def test_benchmark_outputs_use_the_per_run_dir_and_killed_runs_are_swept(self) -> None:
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        job = workflow_job_body(rpc_workflow, "benchmark")
+
+        # Placement of the per-run dir and the disk gate itself are pinned by scripts/ci/test_rpc_runner_workspace.py.
+        self.assertNotIn("diag/results", job)
+        self.assertNotIn("${{ runner.temp }}/rpcbench-out", job)
+        self.assertNotIn("${{ runner.temp }}/rpcbench-state", job)
+        self.assertNotIn("${{ runner.temp }}/dottrace-rpcbench.zip", job)
+        self.assertNotIn("${{ runner.temp }}/perf-rpcbench.zip", job)
+        self.assertNotIn("${{ runner.temp }}/dotnet-trace-rpcbench.zip", job)
+        self.assertIn('"${BENCH_TEMP}/rpcbench-corpus-results"', job)
+        self.assertIn("find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete", job)
+        self.assertIn('docker rmi "${img}" >/dev/null 2>&1 && echo "  dropped ${img}"', job)
+
+        upload = job.index("- name: Upload benchmark results")
+        cleanup = job.index("- name: Defensive cleanup")
+        self.assertLess(upload, cleanup)
+
+        start_node = START_NODE.read_text(encoding="utf-8")
+        self.assertIn("/data/*/*-*", start_node)
+
+        reclaim = workflow_step_script(rpc_workflow, "benchmark", "Reclaim root disk before pulling")
+        fake_bin = self.directory / "headroom-bin"
+        fake_bin.mkdir()
+        docker_root = self.directory / "docker-root"
+        docker_root.mkdir()
+        self.write_executable(
+            "headroom-bin/docker",
+            '#!/bin/bash\n[[ "$1" == "info" ]] && printf \'%s\\n\' "$FAKE_DOCKER_ROOT"\nexit 0\n',
+        )
+        self.write_executable(
+            "headroom-bin/df",
+            r'''#!/bin/bash
+if [[ "$*" == *"--output=avail"* ]]; then printf 'Avail\n%s\n' "$((100 * 1024 * 1024 * 1024))";
+else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n'; fi
+''',
+        )
+        for command in ("apt-get", "journalctl", "rm", "du"):
+            self.write_executable(f"headroom-bin/{command}", "#!/bin/bash\nexit 0\n")
+        self.write_executable(
+            "headroom-bin/find",
+            '#!/bin/bash\nprintf "%s\\n" "$*" >> "$FIND_CALLS"\nexit 0\n',
+        )
+
+        find_calls = self.directory / "find-calls"
+        environment = os.environ.copy()
+        environment.update(
+            SCRATCH_ROOT=(self.directory / "scratch").as_posix(),
+            BENCH_TEMP=(self.directory / "scratch" / "rpcbench.test").as_posix(),
+            FIND_CALLS=find_calls.as_posix(),
+            FAKE_DOCKER_ROOT=docker_root.as_posix(),
+            FAKE_BIN=fake_bin.as_posix(),
+            KEEP_IMAGES="",
+            KEEP_TOOL_CONFIG="{}",
+        )
+        launcher = (
+            'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+            'export PATH="$(to_posix "$FAKE_BIN"):$PATH"; exec bash -c "$1"'
+        )
+        result = subprocess.run(
+            [BASH, "-c", launcher, "bash", reclaim], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        # On ARM the per-run dir sits on the scratch disk; a run that died with the box never reaches `Remove run
+        # output`, so only a bounded sweep here keeps it from leaking its multi-GB archives for good.
+        sweeps = [line for line in find_calls.read_text(encoding="utf-8").splitlines() if "rpcbench.*" in line]
+        self.assertEqual(len(sweeps), 1, find_calls.read_text(encoding="utf-8"))
+        self.assertIn("-maxdepth 1", sweeps[0])
+        self.assertIn("-mtime +1", sweeps[0])
+
+    def test_start_node_lists_snapshot_candidates_or_says_there_are_none(self) -> None:
+        fake_bin = self.directory / "candidates-bin"
+        fake_bin.mkdir()
+        # A real ls exits 2 whenever any pattern is unmatched, whether or not others matched.
+        self.write_executable(
+            "candidates-bin/ls",
+            "#!/usr/bin/env bash\n"
+            '[[ -n "${FAKE_LS_OUTPUT:-}" ]] && printf \'%s\\n\' "$FAKE_LS_OUTPUT"\n'
+            "exit 2\n",
+        )
+
+        def run_start_node(listing: str) -> subprocess.CompletedProcess[str]:
+            environment = os.environ.copy()
+            environment.update(
+                FAKE_BIN=fake_bin.as_posix(),
+                FAKE_LS_OUTPUT=listing,
+                DB_SOURCE=(self.directory / "absent-snapshot").as_posix(),
+                SCRATCH_ROOT=(self.directory / "scratch").as_posix(),
+                STATE_DIR=(self.directory / "state").as_posix(),
+                NODE_IMAGE="nethermindeth/nethermind:test",
+            )
+            launcher = (
+                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+                'export PATH="$(to_posix "$FAKE_BIN"):$PATH"; exec bash "$1"'
+            )
+            return subprocess.run(
+                [BASH, "-c", launcher, "bash", START_NODE.as_posix()],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+                env=environment,
+            )
+
+        none_found = run_start_node("")
+        self.assertNotEqual(none_found.returncode, 0, f"{none_found.stdout}\n{none_found.stderr}")
+        self.assertIn("<none found under /mnt or /data>", none_found.stdout)
+        self.assertIn("set node_config.db_source to a valid snapshot path", none_found.stderr)
+
+        found = run_start_node("/data/reth/reth-25490000")
+        self.assertNotEqual(found.returncode, 0, f"{found.stdout}\n{found.stderr}")
+        self.assertIn("  /data/reth/reth-25490000", found.stdout)
+        self.assertNotIn("<none found", found.stdout)
+
+    def test_path_validation_rejects_symlinked_output_escape(self) -> None:
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        validate = workflow_step_script(rpc_workflow, "benchmark", "Validate snapshot and output paths")
+
+        def run_validate(scratch: Path, db: Path, bench_temp: Path) -> subprocess.CompletedProcess[str]:
+            environment = os.environ.copy()
+            environment.update(
+                BENCHMARK_TOOL="jsonbench",
+                DB_SOURCE=db.as_posix(),
+                REFERENCE_DB_SOURCE="",
+                SCRATCH_ROOT=scratch.as_posix(),
+                SNAPSHOT_ROOT=(self.directory / "snapshots").as_posix(),
+                TOOL_CONFIG="{}",
+                DIAG_DIR=(scratch / "diag").as_posix(),
+                BENCH_TEMP=bench_temp.as_posix(),
+                OUT_DIR=(bench_temp / "out").as_posix(),
+                STATE_DIR=(bench_temp / "state").as_posix(),
+            )
+            launcher = (
+                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+                'for name in DB_SOURCE SCRATCH_ROOT DIAG_DIR BENCH_TEMP OUT_DIR STATE_DIR; do '
+                'value="$(to_posix "${!name}")"; printf -v "$name" "%s" "$value"; export "$name"; done; '
+                'exec bash -c "$1"'
+            )
+            return subprocess.run(
+                [BASH, "-c", launcher, "bash", validate],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+                env=environment,
+            )
+
+        primary_db = self.directory / "primary-db"
+        primary_db.mkdir()
+
+        missing_db = self.directory / "missing-db"
+        missing_scratch = self.directory / "missing-scratch"
+        missing = run_validate(missing_scratch, missing_db, missing_scratch / "rpcbench.test")
+        self.assertNotEqual(missing.returncode, 0, f"{missing.stdout}\n{missing.stderr}")
+        self.assertIn("missing or unresolvable", missing.stdout)
+        self.assertIn("set node_config.db_source to an existing snapshot path", missing.stdout)
+        self.assertFalse(missing_scratch.exists())
+
+        scratch_symlink = self.directory / "scratch-symlink"
+        scratch_symlink.mkdir()
+        try:
+            (scratch_symlink / "diag").symlink_to(primary_db, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"directory symlinks are unavailable: {error}")
+        escaped = run_validate(scratch_symlink, primary_db, scratch_symlink / "rpcbench.test")
+        self.assertNotEqual(escaped.returncode, 0, f"{escaped.stdout}\n{escaped.stderr}")
+        self.assertIn("escapes SCRATCH_ROOT", escaped.stdout)
+
+        # The per-run output dir may live outside the scratch root (RUNNER_TEMP on amd64), but never inside a DB tree.
+        scratch = self.directory / "scratch"
+        scratch.mkdir()
+        try:
+            (scratch / "rpcbench.test").symlink_to(primary_db, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"directory symlinks are unavailable: {error}")
+        overlapping = run_validate(scratch, primary_db, scratch / "rpcbench.test")
+        self.assertNotEqual(overlapping.returncode, 0, f"{overlapping.stdout}\n{overlapping.stderr}")
+        self.assertIn("overlaps the DB source", overlapping.stdout)
+        self.assertEqual([], list(primary_db.iterdir()))
+
+        good_scratch = self.directory / "good-scratch"
+        for bench_temp in (good_scratch / "rpcbench.arm", self.directory / "runner-temp" / "rpcbench.amd"):
+            with self.subTest(bench_temp=bench_temp.name):
+                good = run_validate(good_scratch, primary_db, bench_temp)
+                self.assertEqual(good.returncode, 0, f"{good.stdout}\n{good.stderr}")
+                # `Set up run paths` creates the output dirs; the check itself only reads.
+                self.assertFalse(bench_temp.exists())
 
     def test_workflow_profile_contracts_cover_both_collectors(self) -> None:
         expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
