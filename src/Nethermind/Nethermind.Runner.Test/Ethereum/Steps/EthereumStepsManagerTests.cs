@@ -3,8 +3,11 @@
 
 #pragma warning disable IDE0290 // Test step classes have unused DI parameters by design
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -242,27 +245,183 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             Assert.That(container.Resolve<StepB>().WasExecuted, Is.True);
         }
 
-        private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos)
+        private static readonly StepInfo[] _targetGraph =
+            [typeof(StepA), typeof(StepB), typeof(StepCStandard), typeof(StepE), typeof(CommandStep)];
+
+        private static IEnumerable<TestCaseData> TargetCases()
+        {
+            yield return new TestCaseData(typeof(StepB), null, new[] { typeof(StepB), typeof(StepC), typeof(StepE) })
+                .SetName("Target pulls in its declared dependency and an inverted dependents edge");
+            yield return new TestCaseData(typeof(StepCStandard), null, new[] { typeof(StepC) })
+                .SetName("Target given as the concrete implementation resolves to its base slot");
+            yield return new TestCaseData(typeof(StepA), null, new[] { typeof(StepA) })
+                .SetName("Dependency-free target runs alone");
+            yield return new TestCaseData(null, null, new[] { typeof(StepA), typeof(StepB), typeof(StepC), typeof(StepE) })
+                .SetName("Without a target every step but the command step runs");
+            yield return new TestCaseData(null, CommandStep.CommandName, new[] { typeof(CommandStep) })
+                .SetName("Command name selects the command step");
+        }
+
+        [TestCaseSource(nameof(TargetCases))]
+        [CancelAfter(5000)]
+        public async Task Only_the_target_closure_runs(Type? target, string? command, Type[] expectedExecuted)
+        {
+            await using IContainer container = CreateNethermindEnvironment(target, command, _targetGraph);
+
+            // StepE blocks until released; it is in the graph to prove an inverted `dependents:` edge is followed.
+            container.Resolve<StepE>().Waiter.SetResult();
+
+            await container.Resolve<EthereumStepsManager>().InitializeAll(CancellationToken.None);
+
+            Type[] executed = [.. _targetGraph
+                .Where(step => ((IRecordingStep)container.Resolve(step.StepType)).WasExecuted)
+                .Select(step => step.StepBaseType)];
+
+            Assert.That(executed, Is.EquivalentTo(expectedExecuted));
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Target_that_completes_leaves_the_run_successful([Values] bool hasTarget, CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                hasTarget ? typeof(StepA) : null, command: null, [typeof(StepA)]);
+
+            await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken);
+
+            Assert.That(container.Resolve<StepA>().WasExecuted, Is.True);
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Target_that_does_not_complete_fails_the_run(CancellationToken cancellationToken)
+        {
+            // A TaskCanceledException raised inside a step leaves its task Canceled rather than Faulted, and
+            // nothing requested cancellation, so without the outcome check the run would report success.
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(SelfCancellingStep), command: null, [typeof(SelfCancellingStep)]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
+                Throws.TypeOf<StepDependencyException>());
+        }
+
+        [Test]
+        public async Task Target_run_interrupted_by_shutdown_does_not_report_success()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(StepForever), command: null, [typeof(StepForever)]);
+            using CancellationTokenSource cancellation = new(TimeSpan.FromMilliseconds(200));
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellation.Token),
+                Throws.InstanceOf<OperationCanceledException>());
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task A_failing_ancestor_fails_the_run_with_its_own_error(CancellationToken cancellationToken)
+        {
+            // StepCAuRa throws; StepB depends on StepC, so the target is cancelled by the ancestor rather than
+            // faulting itself. The ancestor's exception is the useful one to surface.
+            await using IContainer container = CreateAuraApi(
+                typeof(StepB), command: null, [typeof(StepB), typeof(StepCAuRa)]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
+                Throws.TypeOf<TestException>());
+        }
+
+        [Test]
+        public async Task Unknown_command_reports_the_available_ones()
+        {
+            await using IContainer container = CreateNethermindEnvironment(target: null, command: "no-such-command", _targetGraph);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(CancellationToken.None),
+                Throws.TypeOf<InvalidConfigurationException>()
+                    .With.Message.Contains(CommandStep.CommandName)
+                    .And.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.UnrecognizedOption));
+        }
+
+        [Test]
+        public async Task Unregistered_target_names_the_registered_steps()
+        {
+            await using IContainer container = CreateNethermindEnvironment(typeof(StepA), command: null, [typeof(StepB), typeof(StepCStandard)]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(CancellationToken.None),
+                Throws.TypeOf<StepDependencyException>().With.Message.Contains(nameof(StepB)));
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Config_and_command_selecting_the_same_step_is_not_a_conflict(CancellationToken cancellationToken)
+        {
+            // The production path for a config-backed command: the command names the step and the configuration
+            // that the job needs selects the very same one.
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(CommandStep), CommandStep.CommandName, _targetGraph);
+
+            container.Resolve<StepE>().Waiter.SetResult();
+            await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken);
+
+            Assert.That(container.Resolve<CommandStep>().WasExecuted, Is.True);
+        }
+
+        [Test]
+        public async Task Two_distinct_targets_are_rejected()
+        {
+            await using IContainer container = CreateNethermindEnvironment(typeof(StepA), CommandStep.CommandName, _targetGraph);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(CancellationToken.None),
+                Throws.TypeOf<InvalidConfigurationException>()
+                    .With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ConflictingConfigurations));
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Pruned_steps_are_never_started(CancellationToken cancellationToken)
+        {
+            // StepForever would never complete, so reaching the end proves it was not merely side-effect free.
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(StepA), command: null, [typeof(StepA), typeof(StepForever)]);
+
+            await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken);
+
+            Assert.That(container.Resolve<StepA>().WasExecuted, Is.True);
+        }
+
+        private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos) =>
+            CreateNethermindEnvironment(target: null, command: null, stepInfos);
+
+        private static IContainer CreateNethermindEnvironment(Type? target, string? command, IEnumerable<StepInfo> stepInfos)
         {
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
             consensusPlugin.ApiType.ReturnsForAnyArgs(typeof(NethermindApi));
 
-            return CreateCommonBuilder(stepInfos)
+            ContainerBuilder builder = CreateCommonBuilder(stepInfos)
                 .AddSingleton<IConsensusPlugin>(consensusPlugin)
-                .Bind<INethermindApi, NethermindApi>()
-                .Build();
+                .Bind<INethermindApi, NethermindApi>();
+
+            if (target is not null) builder.SelectStepTarget(target);
+            if (command is not null) builder.AddSingleton(new StepCommandSelection(command));
+
+            return builder.Build();
         }
 
-        private static IContainer CreateAuraApi(params IEnumerable<StepInfo> stepInfos)
+        private static IContainer CreateAuraApi(params IEnumerable<StepInfo> stepInfos) =>
+            CreateAuraApi(target: null, command: null, stepInfos);
+
+        private static IContainer CreateAuraApi(Type? target, string? command, IEnumerable<StepInfo> stepInfos)
         {
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
             consensusPlugin.ApiType.ReturnsForAnyArgs(typeof(AuRaNethermindApi));
 
-            return CreateCommonBuilder(stepInfos)
+            ContainerBuilder builder = CreateCommonBuilder(stepInfos)
                 .AddSingleton<AuRaNethermindApi>()
                 .AddSingleton<IConsensusPlugin>(consensusPlugin)
-                .Bind<INethermindApi, AuRaNethermindApi>()
-                .Build();
+                .Bind<INethermindApi, AuRaNethermindApi>();
+
+            if (target is not null) builder.SelectStepTarget(target);
+            if (command is not null) builder.AddSingleton(new StepCommandSelection(command));
+
+            return builder.Build();
         }
 
         private static ContainerBuilder CreateCommonBuilder(params IEnumerable<StepInfo> stepInfos)
@@ -324,6 +483,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         public override Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
+    /// <summary>Ends Canceled without anyone requesting cancellation, e.g. an HTTP timeout inside a step.</summary>
+    public class SelfCancellingStep : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => throw new TaskCanceledException();
+    }
+
     public class StepForever : IStep
     {
         public async Task Execute(CancellationToken cancellationToken) => await Task.Delay(100000, cancellationToken);
@@ -333,9 +498,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
-    public class StepA : IStep
+    /// <summary>Lets a test assert which steps of a graph actually ran.</summary>
+    public interface IRecordingStep
     {
-        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+        bool WasExecuted { get; }
+    }
+
+    public class StepA : IStep, IRecordingStep
+    {
+        public bool WasExecuted { get; private set; }
+
+        public Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            return Task.CompletedTask;
+        }
 
         public StepA(NethermindApi runnerContext)
         {
@@ -343,9 +520,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     }
 
     [RunnerStepDependencies(typeof(StepC))]
-    public class StepB : IStep
+    public class StepB : IStep, IRecordingStep
     {
-        public bool WasExecuted = false;
+        public bool WasExecuted { get; private set; }
 
         public Task Execute(CancellationToken cancellationToken)
         {
@@ -358,9 +535,29 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
-    public abstract class StepC : IStep
+    public abstract class StepC : IStep, IRecordingStep
     {
-        public virtual Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+        public bool WasExecuted { get; private set; }
+
+        public virtual Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    [StepCommand(CommandStep.CommandName, "A step that only runs when it is the target.")]
+    public class CommandStep : IStep, IRecordingStep
+    {
+        public const string CommandName = "test-command";
+
+        public bool WasExecuted { get; private set; }
+
+        public Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            return Task.CompletedTask;
+        }
     }
 
     public abstract class StepD : IStep
@@ -369,11 +566,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     }
 
     [RunnerStepDependencies(dependencies: [], dependents: [typeof(StepB)])]
-    public class StepE : IStep
+    public class StepE : IStep, IRecordingStep
     {
         public TaskCompletionSource Waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public virtual Task Execute(CancellationToken cancellationToken) => Waiter.Task;
+        public bool WasExecuted { get; private set; }
+
+        public virtual async Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            await Waiter.Task;
+        }
     }
 
     /// <summary>

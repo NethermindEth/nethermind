@@ -5,6 +5,8 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
@@ -51,6 +53,30 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
 
     public ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
+    private Address? _delegatedAddress;
+    internal Address? DelegatedAddress
+    {
+        get
+        {
+            if (Code.Length != Eip7702Constants.DelegationHeaderLength + Address.Size)
+            {
+                return null;
+            }
+
+            Address? delegatedAddress = Volatile.Read(ref _delegatedAddress);
+            if (delegatedAddress is not null)
+            {
+                return delegatedAddress;
+            }
+
+            if (!ICodeInfoRepository.TryGetDelegatedAddress(Code.Span, out Address? parsedAddress))
+            {
+                return null;
+            }
+
+            return Interlocked.CompareExchange(ref _delegatedAddress, parsedAddress, null) ?? parsedAddress;
+        }
+    }
 
     public IPrecompile? Precompile { get; }
 
