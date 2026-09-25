@@ -10,70 +10,42 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-// The only stack buffer, the branch encoding in GetHash, is fully written before it is read.
-[SkipLocalsInit]
-internal struct GroupFrameReader<TKey, TPath> : IDisposable
+/// <summary>Reads a node group that is physically stored, as one frame of a fold.</summary>
+/// <remarks>
+/// A frame reader only ever wraps a stored payload: never construct one for a group that does not exist. A group the
+/// boundary node proves absent is folded through <see cref="AbsentGroupFrame{TKey, TPath}"/> instead, and the tree
+/// root's group, the only one whose existence is learned from the store, is probed with <see cref="TryLoad"/>.
+/// </remarks>
+internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposable
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
-    private readonly IPbtStore _store;
-    private ValueHash256 _groupHash;
-    private readonly TrieUpdaterMetrics? _metrics;
+    private readonly ValueHash256 _groupHash;
     private RefCountingMemory? _lease;
-    private DescendantBuffer _descendantBytes;
-    private ushort _descendantMask;
-    private bool _loaded;
     private OffsetBuffer _offsets;
     private LengthBuffer _lengths;
-    private HashBuffer _hashes;
-    private uint _hashed;
-    private uint _stored;
+    private readonly uint _stored;
 
-    internal GroupFrameReader(IPbtStore store, int bitDepth, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
-        : this(store, bitDepth, metrics) => _groupHash = groupHash;
+    /// <summary>Loads the group stored at <paramref name="path"/>, keyed by <paramref name="groupHash"/>.</summary>
+    /// <exception cref="InvalidDataException">The store holds no group at <paramref name="path"/>.</exception>
+    internal GroupFrameReader(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
+        : this(Fetch(store, path, groupHash, metrics) ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth, groupHash, metrics) { }
 
-    /// <summary>Opens a frame whose group key is only established once the group turns out to exist.</summary>
-    internal GroupFrameReader(IPbtStore store, int bitDepth, TrieUpdaterMetrics? metrics)
+    private GroupFrameReader(RefCountingMemory lease, int bitDepth, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
     {
         BitDepth = bitDepth;
-        _store = store;
-        _metrics = metrics;
+        _groupHash = groupHash;
+        _lease = lease;
         metrics?.IncrementGroupFrameResolutions();
-    }
-
-    /// <summary>Keys this frame's group, which only an unresolved frame still needs.</summary>
-    internal void SetGroupHash(in ValueHash256 hash)
-    {
-        Debug.Assert(!_loaded, "A resolved frame never loads its group.");
-        _groupHash = hash;
-    }
-
-    private void EnsureLoaded(scoped in PbtTraversalPath path)
-    {
-        Debug.Assert(path.BitDepth == BitDepth);
-        if (_loaded) return;
-        _metrics?.IncrementPhysicalGroupFetches();
-        _lease = _store.GetNodeGroup(path, _groupHash);
-        _loaded = true;
-        if (_lease is null) return;
+        metrics?.IncrementGroupParses();
         try
         {
-            _metrics?.IncrementGroupParses();
-            // The store validated the payload, so the footer is walked by its set bits alone, which a small group has few of.
-            ReadOnlySpan<byte> payload = _lease.GetSpan();
-            ushort descendantMask = _descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
-            ReadOnlySpan<byte> field = payload[^(PbtNodeGroupCodec.DescendantMaskLength + BitOperations.PopCount(descendantMask) * PbtNodeGroupCodec.DescendantBytesLength)..];
-            for (uint remaining = descendantMask; remaining != 0; remaining &= remaining - 1)
-            {
-                _descendantBytes[BitOperations.TrailingZeroCount(remaining)] =
-                    BinaryPrimitives.ReadUInt32LittleEndian(field) | ((long)BinaryPrimitives.ReadUInt16LittleEndian(field[sizeof(uint)..]) << 32);
-                field = field[PbtNodeGroupCodec.DescendantBytesLength..];
-            }
-
+            // The store validated the payload, so the offsets are walked by the availability bits alone, which a small group has few of.
+            ReadOnlySpan<byte> payload = lease.GetSpan();
             ReadOnlySpan<byte> entries = payload[PbtNodeGroupCodec.HeaderLength..];
             uint availability = PbtNodeGroupCodec.ReadAvailability(entries);
-            Debug.Assert(BitDepth == 0 || (availability & (1u << PbtFourLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
-            int entriesEnd = PbtNodeGroupCodec.HeaderLength + entries.Length - PbtNodeGroupCodec.GetTrailerLength(availability, descendantMask);
+            Debug.Assert(bitDepth == 0 || (availability & (1u << PbtFourLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
+            int entriesEnd = PbtNodeGroupCodec.HeaderLength + entries.Length - PbtNodeGroupCodec.GetTrailerLength(availability, PbtNodeGroupCodec.ReadDescendantMask(payload));
             ReadOnlySpan<byte> offsets = payload[entriesEnd..];
             int previous = -1;
             for (uint remaining = availability; remaining != 0; remaining &= remaining - 1)
@@ -89,60 +61,54 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         }
         catch
         {
-            Dispose();
+            ((IDisposable)lease).Dispose();
             throw;
         }
     }
 
-    internal int BitDepth { get; }
-
-    /// <summary>Whether the frame has been loaded or declared absent, so its descendant sizes are final.</summary>
-    internal readonly bool IsResolved => _loaded;
-
-    /// <summary>The stored payload's length, or zero when nothing was loaded.</summary>
-    internal readonly int PayloadLength => _lease?.GetSpan().Length ?? 0;
-
-    /// <summary>The summed payload lengths of the groups physically stored below boundary slot <paramref name="slot"/>, without loading.</summary>
-    /// <remarks>Read only once the frame is resolved, or for a frame whose input is empty or a leaf, which has no descendants.</remarks>
-    internal readonly long DescendantBytes(int slot) => _descendantBytes[slot];
-
-    /// <summary>The boundary slots whose <see cref="DescendantBytes"/> may be nonzero; every other slot is zero.</summary>
-    internal readonly ushort DescendantMask => _descendantMask;
-
-    /// <summary>Declares that no group is stored below this frame's boundary node, so a later load is a no-op instead of a store miss.</summary>
+    /// <summary>Loads the group stored at <paramref name="path"/>, or reports that the store holds none.</summary>
     /// <remarks>
-    /// A group holds the nodes strictly below its boundary node, so a boundary node with nothing stored below it
-    /// owns an empty group, which <see cref="PbtNodeGroupWriter{TPath}.Detach"/> turned into a deletion. Such a
-    /// group has no descendant groups either, so every slot keeps its zero size.
+    /// Only the tree root's group may be missing, when the tree is empty. Its absence cannot be derived from
+    /// <paramref name="groupHash"/>, which may be stale or default when unknown, so the store is asked.
     /// </remarks>
-    internal void DeclareAbsent()
+    internal static bool TryLoad(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics,
+        out GroupFrameReader<TKey, TPath> reader)
     {
-        Debug.Assert(!_loaded, "A frame is declared absent before it is loaded.");
-        _loaded = true;
+        RefCountingMemory? lease = Fetch(store, path, groupHash, metrics);
+        reader = lease is null ? default : new(lease, path.BitDepth, groupHash, metrics);
+        return lease is not null;
     }
 
-    /// <summary><see cref="DeclareAbsent"/>, recording the descendants the group's spanning branch keeps below <paramref name="slot"/>.</summary>
-    /// <remarks>
-    /// A branch whose prefix spans past this group is the only node under its parent's boundary slot, so the
-    /// parent's size for that slot is exactly this group's size below the branch.
-    /// </remarks>
-    internal void InheritDescendants(int slot, long descendantBytes)
+    private static RefCountingMemory? Fetch(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
     {
-        DeclareAbsent();
-        _descendantBytes[slot] = descendantBytes;
-        _descendantMask |= (ushort)(1 << slot);
+        metrics?.IncrementPhysicalGroupFetches();
+        return store.GetNodeGroup(path, groupHash);
     }
 
-    internal ReadOnlyMemory<byte> GetEncoding(scoped in PbtTraversalPath path, int position)
+    public int BitDepth { get; }
+
+    /// <inheritdoc/>
+    public readonly int PayloadLength => _lease!.GetSpan().Length;
+
+    /// <inheritdoc/>
+    public readonly long DescendantBytes(int slot)
     {
-        EnsureLoaded(path);
-        return _lengths[position] == 0 ? default : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
+        ReadOnlySpan<byte> payload = _lease!.GetSpan();
+        ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
+        return (descendantMask & (1 << slot)) == 0 ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantMask, slot);
     }
 
-    internal int CopyRange(scoped in PbtTraversalPath path, PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition)
+    /// <inheritdoc/>
+    public readonly ushort DescendantMask => PbtNodeGroupCodec.ReadDescendantMask(_lease!.GetSpan());
+
+    /// <inheritdoc/>
+    public readonly ReadOnlyMemory<byte> GetEncoding(int position) =>
+        _lengths[position] == 0 ? default : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
+
+    /// <inheritdoc/>
+    public readonly int CopyRange(PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition)
     {
         if (startPosition == endPosition) return 0;
-        EnsureLoaded(path);
         while (startPosition < endPosition && _lengths[startPosition] == 0) startPosition++;
         if (startPosition == endPosition) return 0;
         int lastPosition = endPosition - 1;
@@ -153,143 +119,31 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         return writer.CopyRange(entries, _offsets, _lengths, startPosition, lastPosition);
     }
 
-    /// <summary>Records the hash a parent node holds for <paramref name="position"/>, so composing it needs no rehash.</summary>
-    internal void SeedHash(int position, in ValueHash256 hash)
-    {
-        _hashes[position] = hash;
-        _hashed |= 1u << position;
-    }
-
-    /// <summary>The hash a parent's link held for the node at <paramref name="position"/>, or default when no link named it.</summary>
-    internal readonly ValueHash256 SeededHash(int position) => (_hashed & (1u << position)) != 0 ? _hashes[position] : default;
-
-    /// <summary>The positions this frame stores an encoding at, loading it if it has not been read yet.</summary>
-    internal uint StoredPositions(scoped in PbtTraversalPath path)
-    {
-        EnsureLoaded(path);
-        return _stored;
-    }
+    /// <inheritdoc/>
+    public readonly uint StoredPositions => _stored;
 
     /// <summary>Takes the group's own root, whose hash is this frame's identity.</summary>
-    internal TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot(scoped in PbtTraversalPath path)
+    internal readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot()
     {
-        ReadOnlyMemory<byte> encoding = GetEncoding(path, PbtFourLevelGroupGeometry.RootPosition);
+        ReadOnlyMemory<byte> encoding = GetEncoding(PbtFourLevelGroupGeometry.RootPosition);
         if (encoding.IsEmpty) return default;
         return PbtNodeReader.FromValidated(encoding.Span).IsLeaf
             ? new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, _groupHash)
             : new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, BitDepth, _groupHash);
     }
 
-    /// <summary>Takes the boundary node stored at <paramref name="position"/>, whose hash decomposition already knows.</summary>
-    /// <remarks>The hash is the seeded link hash where a link named this node, and otherwise the one hash its encoding needs.</remarks>
-    internal TrieUpdater<TKey, TPath>.BoundaryNode TakeBoundaryNode(scoped in PbtTraversalPath path, int position)
+    /// <inheritdoc/>
+    public readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeBoundaryNode(int position, in ValueHash256 hash)
     {
-        ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
+        ReadOnlyMemory<byte> encoding = GetEncoding(position);
         if (encoding.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
         if (PbtNodeReader.FromValidated(encoding.Span).IsLeaf) return new(encoding, _groupHash);
-        return new(encoding, BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, GetHash(path, position));
+        return new(encoding, BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, hash);
     }
 
-    /// <summary>Takes the leaf inlined in the branch at <paramref name="position"/>, which stores no node of its own.</summary>
-    internal TrieUpdater<TKey, TPath>.BoundaryNode TakeInlineLeaf(scoped in PbtTraversalPath path, int position, bool right) =>
-        new(GetEncoding(path, position), right);
-
-    private ValueHash256 GetHash(scoped in PbtTraversalPath path, int position)
-    {
-        uint bit = 1u << position;
-        if ((_hashed & bit) != 0) return _hashes[position];
-        ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
-        ValueHash256 hash = default;
-        if (!encoding.IsEmpty)
-        {
-            _metrics?.IncrementNodeHashes();
-            hash = PbtNodeCodec.Hash(PbtNodeReader.FromValidated(encoding.Span));
-        }
-        else if (PbtFourLevelGroupGeometry.WidthOf(position) is int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
-        {
-            GetChildHashes(path, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
-            if (left != default && right != default)
-            {
-                Span<byte> branch = stackalloc byte[67];
-                PbtNodeCodec.CreateBranchEncoding(branch, 0, left, right);
-                _metrics?.IncrementNodeHashes();
-                hash = Blake3Hash.Hash(branch);
-            }
-        }
-        _hashes[position] = hash;
-        _hashed |= bit;
-        return hash;
-    }
-
-    /// <summary>
-    /// <see cref="GetHash"/> for both children of an omitted branch; two stored encodings that still need
-    /// hashing are hashed together.
-    /// </summary>
-    internal void GetChildHashes(scoped in PbtTraversalPath path, int leftPosition, int rightPosition, out ValueHash256 left, out ValueHash256 right)
-    {
-        uint bits = (1u << leftPosition) | (1u << rightPosition);
-        if ((_hashed & bits) == 0)
-        {
-            ReadOnlyMemory<byte> leftEncoding = GetEncoding(path, leftPosition);
-            ReadOnlyMemory<byte> rightEncoding = GetEncoding(path, rightPosition);
-            if (!leftEncoding.IsEmpty && !rightEncoding.IsEmpty)
-            {
-                _metrics?.AddNodeHashes(2);
-                Blake3Hash.HashTwo(PbtNodeReader.FromValidated(leftEncoding.Span).Preimage, PbtNodeReader.FromValidated(rightEncoding.Span).Preimage, out left, out right);
-                _hashes[leftPosition] = left;
-                _hashes[rightPosition] = right;
-                _hashed |= bits;
-                return;
-            }
-        }
-        left = GetHash(path, leftPosition);
-        right = GetHash(path, rightPosition);
-    }
-
-    /// <summary><see cref="GetChildHashes"/> that also pairs the hashing of every omitted level below the two children.</summary>
-    /// <remarks>
-    /// An omitted child is rebuilt from its own children first, so siblings at every level are hashed together
-    /// rather than only the stored ones at the bottom.
-    /// </remarks>
-    internal void GetChildHashesPaired(scoped in PbtTraversalPath path, int leftPosition, int rightPosition, out ValueHash256 left, out ValueHash256 right)
-    {
-        Span<byte> leftBuffer = stackalloc byte[PbtNodeCodec.BranchPreimageLength(0)];
-        Span<byte> rightBuffer = stackalloc byte[PbtNodeCodec.BranchPreimageLength(0)];
-        ReadOnlySpan<byte> leftPreimage = PendingPreimage(path, leftPosition, leftBuffer);
-        ReadOnlySpan<byte> rightPreimage = PendingPreimage(path, rightPosition, rightBuffer);
-        if (!leftPreimage.IsEmpty && !rightPreimage.IsEmpty)
-        {
-            _metrics?.AddNodeHashes(2);
-            Blake3Hash.HashTwo(leftPreimage, rightPreimage, out _hashes[leftPosition], out _hashes[rightPosition]);
-        }
-        else if (!leftPreimage.IsEmpty)
-        {
-            _metrics?.IncrementNodeHashes();
-            _hashes[leftPosition] = Blake3Hash.Hash(leftPreimage);
-        }
-        else if (!rightPreimage.IsEmpty)
-        {
-            _metrics?.IncrementNodeHashes();
-            _hashes[rightPosition] = Blake3Hash.Hash(rightPreimage);
-        }
-        _hashed |= (1u << leftPosition) | (1u << rightPosition);
-        left = _hashes[leftPosition];
-        right = _hashes[rightPosition];
-    }
-
-    /// <summary>The preimage <paramref name="position"/> still needs hashing, or empty when its hash is known or it holds no node.</summary>
-    private ReadOnlySpan<byte> PendingPreimage(scoped in PbtTraversalPath path, int position, Span<byte> buffer)
-    {
-        if ((_hashed & (1u << position)) != 0) return default;
-        ReadOnlyMemory<byte> encoding = GetEncoding(path, position);
-        if (!encoding.IsEmpty) return PbtNodeReader.FromValidated(encoding.Span).Preimage;
-        _hashes[position] = default;
-        if (PbtFourLevelGroupGeometry.WidthOf(position) is not (int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)) return default;
-        GetChildHashesPaired(path, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
-        if (left == default || right == default) return default;
-        PbtNodeCodec.CreateBranchEncoding(buffer, 0, left, right);
-        return buffer;
-    }
+    /// <inheritdoc/>
+    public readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeInlineLeaf(int position, bool right) =>
+        new(GetEncoding(position), right);
 
     public void Dispose()
     {
@@ -308,18 +162,6 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         {
             foreach (ref GroupFrameReader<TKey, TPath> reader in _readers) reader.Dispose();
         }
-    }
-
-    [InlineArray(PbtNodeGroupCodec.PositionCount)]
-    private struct HashBuffer
-    {
-        private ValueHash256 _element;
-    }
-
-    [InlineArray(PbtNodeGroupCodec.DescendantSlots)]
-    private struct DescendantBuffer
-    {
-        private long _element;
     }
 
     [InlineArray(PbtNodeGroupCodec.PositionCount)]

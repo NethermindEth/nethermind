@@ -95,100 +95,17 @@ public static partial class TrieUpdater
                 AddWorker<PbtStoragePath, PbtStorageNodePath>(changes.Storage, Eip8297KeyDerivation.StorageZone, _storageFoldLabel);
                 if (workers.Count == 0) return currentRoot;
 
-                GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> rootReader = new(store, 0, currentRoot, metrics);
-                using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
+                PbtTraversalPath rootPath = new(Span<byte>.Empty);
+                if (!GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.TryLoad(store, rootPath, currentRoot, metrics,
+                        out GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> rootReader))
                 {
-                    using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = new(0, memoryProvider, prefixlessBranchOmission);
-                    PbtTraversalPath rootPath = new(Span<byte>.Empty);
-                    Span<byte> sharedPathBuffer = stackalloc byte[1];
-                    int touchedRootMask = 0;
-                    foreach (PartitionFold worker in workers)
-                    {
-                        touchedRootMask |= 1 << (worker.Zone >> 4);
-                        touchedZoneMasks[worker.Zone >> 4] |= 1 << (worker.Zone & 15);
-                    }
-                    Frontier rootFrontier = new(touchedRootMask);
-                    Span<FoldResult> rootResults = stackalloc FoldResult[BitOperations.PopCount((uint)touchedRootMask)];
-                    Span<FoldResult> zoneResults = stackalloc FoldResult[workers.Count];
-                    BoundaryNode root = rootReader.TakeRoot(rootPath);
-                    Decompose(ref rootReader, rootPath, ref root, 0, ref rootFrontier, touchedRootMask);
-                    foreach (PartitionFold worker in workers)
-                    {
-                        int slot = worker.Zone >> 4;
-                        PbtTraversalPath sharedPath = new(sharedPathBuffer);
-                        sharedPath.AppendMut(slot);
-                        ref GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
-                        if (sharedWriters[slot] is not { } sharedWriter)
-                        {
-                            BoundaryNode boundary = TakeBoundary(ref rootReader, rootPath, ref rootFrontier, slot);
-                            sharedReader = new(store, 4, metrics);
-                            sharedWriter = new(4, memoryProvider, prefixlessBranchOmission);
-                            sharedWriters[slot] = sharedWriter;
-                            ResolveAbsentGroup(ref sharedReader, in rootReader, sharedPath, boundary);
-                            // A group that cannot exist is never keyed, so a spanning branch is not re-anchored to hash it.
-                            if (!sharedReader.IsResolved) sharedReader.SetGroupHash(boundary.HashAt(sharedPath, 4, metrics));
-                            zoneFrontiers.AsSpan()[slot] = new(touchedZoneMasks[slot]);
-                            Decompose(ref sharedReader, sharedPath, ref boundary, 4, ref zoneFrontiers.AsSpan()[slot], touchedZoneMasks[slot]);
-                        }
-                        BoundaryNode workerBoundary = TakeBoundary(ref sharedReader, sharedPath, ref zoneFrontiers.AsSpan()[slot], worker.Zone & 15);
-                        // Workers fold on other threads, so the shared frame's size is handed over here; the frame is
-                        // resolved whenever the boundary is a branch, which is the only case that inherits it.
-                        if (IsAbsentGroupBelow(workerBoundary, 8)) worker.InheritedDescendantBytes = sharedReader.DescendantBytes(worker.Zone & 15);
-                        worker.Current = workerBoundary.Owned();
-                    }
-
-                    int nextWorker = 0;
-                    for (; nextWorker < workers.Count - 1 && !foldQuota.TryRequestConcurrencyQuota(); nextWorker++)
-                        workers[nextWorker].Fold();
-                    if (nextWorker < workers.Count - 1)
-                    {
-                        int callerThreadId = Environment.CurrentManagedThreadId;
-                        int admissionSlotClaimed = 0;
-                        try
-                        {
-                            Parallel.For(nextWorker, workers.Count,
-                                () => TakeWorkerQuota(foldQuota, callerThreadId, ref admissionSlotClaimed),
-                                (index, _, tookQuota) =>
-                                {
-                                    workers[index].Fold();
-                                    return tookQuota;
-                                },
-                                tookQuota => ReturnWorkerQuota(foldQuota, tookQuota));
-                        }
-                        finally
-                        {
-                            ReturnAdmissionSlot(foldQuota, ref admissionSlotClaimed);
-                        }
-                    }
-                    else if (nextWorker < workers.Count)
-                    {
-                        workers[nextWorker].Fold();
-                    }
-
-                    foreach (PartitionFold worker in workers)
-                    {
-                        sharedWriters[worker.Zone >> 4]!.AddDescendantDelta(worker.Zone & 15, worker.Result.SizeDelta);
-                        SetBoundary(ref zoneFrontiers.AsSpan()[worker.Zone >> 4], ZoneResults(zoneResults, touchedZoneMasks, worker.Zone >> 4), worker.Zone & 15, ref worker.Result);
-                        if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
-                    }
-                    for (int slot = 0; slot < sharedReaders.Count; slot++)
-                    {
-                        if (sharedWriters[slot] is not { } sharedWriter) continue;
-                        PbtTraversalPath sharedPath = new(sharedPathBuffer);
-                        sharedPath.AppendMut(slot);
-                        ref GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
-                        FoldResult zoneRoot = Compose(ref sharedReader, sharedWriter, sharedPath, 0, metrics, ref zoneFrontiers.AsSpan()[slot],
-                            ZoneResults(zoneResults, touchedZoneMasks, slot));
-                        ValueHash256 groupHash = zoneRoot.Hash(rootPath, 4, metrics);
-                        long zoneDelta = PublishGroup(storeWriter, ref sharedReader, sharedWriter, sharedPath, groupHash);
-                        SetBoundary(ref rootFrontier, rootResults, slot, ref zoneRoot);
-                        rootWriter.AddDescendantDelta(slot, zoneDelta);
-                    }
-                    FoldResult rootResult = Compose(ref rootReader, rootWriter, rootPath, 0, metrics, ref rootFrontier, rootResults);
-                    ValueHash256 hash = rootWriter.WriteRoot(rootPath, rootResult, metrics);
-                    PublishGroup(storeWriter, ref rootReader, rootWriter, rootPath, hash);
-                    return hash;
+                    AbsentGroupFrame<PbtStorageTreeKey, PbtStorageNodePath> emptyRoot = new(0, metrics);
+                    return FoldZones(store, ref emptyRoot, default, workers, sharedReaders.AsSpan(), sharedWriters.AsSpan(), zoneFrontiers.AsSpan(),
+                        touchedZoneMasks, storeWriter, foldQuota, memoryProvider, prefixlessBranchOmission, metrics);
                 }
+                using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
+                    return FoldZones(store, ref rootReader, rootReader.TakeRoot(), workers, sharedReaders.AsSpan(), sharedWriters.AsSpan(), zoneFrontiers.AsSpan(),
+                        touchedZoneMasks, storeWriter, foldQuota, memoryProvider, prefixlessBranchOmission, metrics);
             }
             finally
             {
@@ -211,6 +128,134 @@ public static partial class TrieUpdater
                 else worker.Dispose();
             }
         }
+    }
+
+    /// <summary>Folds the workers' zones below the root group of <paramref name="rootReader"/>, then composes and publishes the groups above them.</summary>
+    [SkipLocalsInit]
+    private static ValueHash256 FoldZones<TRoot>(IPbtStore store, ref TRoot rootReader, BoundaryNode root, ArrayPoolList<PartitionFold> workers,
+        Span<GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>> sharedReaders, Span<PbtNodeGroupWriter<PbtStorageNodePath>?> sharedWriters,
+        Span<Frontier> zoneFrontiers, Span<int> touchedZoneMasks, IPbtConcurrentWriter storeWriter, ConcurrencyController foldQuota,
+        IRefCountingMemoryProvider memoryProvider, PbtPrefixlessBranchOmission prefixlessBranchOmission, TrieUpdaterMetrics? metrics)
+        where TRoot : struct, IGroupFrame<PbtStorageTreeKey, PbtStorageNodePath>
+    {
+        using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = new(0, memoryProvider, prefixlessBranchOmission);
+        PbtTraversalPath rootPath = new(Span<byte>.Empty);
+        Span<byte> sharedPathBuffer = stackalloc byte[1];
+        int touchedRootMask = 0;
+        foreach (PartitionFold worker in workers)
+        {
+            touchedRootMask |= 1 << (worker.Zone >> 4);
+            touchedZoneMasks[worker.Zone >> 4] |= 1 << (worker.Zone & 15);
+        }
+        Frontier rootFrontier = new(touchedRootMask);
+        Span<FoldResult> rootResults = stackalloc FoldResult[BitOperations.PopCount((uint)touchedRootMask)];
+        Span<FoldResult> zoneResults = stackalloc FoldResult[workers.Count];
+        Span<AbsentGroupFrame<PbtStorageTreeKey, PbtStorageNodePath>> absentZones = stackalloc AbsentGroupFrame<PbtStorageTreeKey, PbtStorageNodePath>[sharedReaders.Length];
+        Span<StoredGroupHashes> zoneHashes = stackalloc StoredGroupHashes[sharedReaders.Length];
+        int absentZoneMask = 0;
+        StoredGroupHashes rootHashes = default;
+        Decompose(ref rootReader, rootPath, ref root, 0, ref rootFrontier, touchedRootMask);
+        foreach (PartitionFold worker in workers)
+        {
+            int slot = worker.Zone >> 4;
+            PbtTraversalPath sharedPath = new(sharedPathBuffer);
+            sharedPath.AppendMut(slot);
+            if (sharedWriters[slot] is null)
+            {
+                BoundaryNode boundary = TakeBoundary(ref rootReader, ref rootHashes, rootPath, ref rootFrontier, slot, metrics);
+                sharedWriters[slot] = new(4, memoryProvider, prefixlessBranchOmission);
+                zoneHashes[slot] = default;
+                zoneFrontiers[slot] = new(touchedZoneMasks[slot]);
+                if (IsAbsentGroup(boundary, 4))
+                {
+                    absentZoneMask |= 1 << slot;
+                    absentZones[slot] = AbsentFrame(boundary, sharedPath, 4, rootReader.DescendantBytes(slot), metrics);
+                    Decompose(ref absentZones[slot], sharedPath, ref boundary, 4, ref zoneFrontiers[slot], touchedZoneMasks[slot]);
+                }
+                else
+                {
+                    sharedReaders[slot] = new(store, sharedPath, boundary.HashAt(sharedPath, 4, metrics), metrics);
+                    Decompose(ref sharedReaders[slot], sharedPath, ref boundary, 4, ref zoneFrontiers[slot], touchedZoneMasks[slot]);
+                }
+            }
+            if ((absentZoneMask >> slot & 1) != 0) TakeWorkerBoundary(ref absentZones[slot], ref zoneHashes[slot], sharedPath, ref zoneFrontiers[slot], worker, metrics);
+            else TakeWorkerBoundary(ref sharedReaders[slot], ref zoneHashes[slot], sharedPath, ref zoneFrontiers[slot], worker, metrics);
+        }
+
+        int nextWorker = 0;
+        for (; nextWorker < workers.Count - 1 && !foldQuota.TryRequestConcurrencyQuota(); nextWorker++)
+            workers[nextWorker].Fold();
+        if (nextWorker < workers.Count - 1)
+        {
+            int callerThreadId = Environment.CurrentManagedThreadId;
+            int admissionSlotClaimed = 0;
+            try
+            {
+                Parallel.For(nextWorker, workers.Count,
+                    () => TakeWorkerQuota(foldQuota, callerThreadId, ref admissionSlotClaimed),
+                    (index, _, tookQuota) =>
+                    {
+                        workers[index].Fold();
+                        return tookQuota;
+                    },
+                    tookQuota => ReturnWorkerQuota(foldQuota, tookQuota));
+            }
+            finally
+            {
+                ReturnAdmissionSlot(foldQuota, ref admissionSlotClaimed);
+            }
+        }
+        else if (nextWorker < workers.Count)
+        {
+            workers[nextWorker].Fold();
+        }
+
+        foreach (PartitionFold worker in workers)
+        {
+            sharedWriters[worker.Zone >> 4]!.AddDescendantDelta(worker.Zone & 15, worker.Result.SizeDelta);
+            SetBoundary(ref zoneFrontiers[worker.Zone >> 4], ZoneResults(zoneResults, touchedZoneMasks, worker.Zone >> 4), worker.Zone & 15, ref worker.Result);
+            if (worker.Metrics is { } workerMetrics) metrics!.Add(workerMetrics);
+        }
+        for (int slot = 0; slot < sharedWriters.Length; slot++)
+        {
+            if (sharedWriters[slot] is not { } sharedWriter) continue;
+            PbtTraversalPath sharedPath = new(sharedPathBuffer);
+            sharedPath.AppendMut(slot);
+            FoldResult zoneRoot = default;
+            Span<FoldResult> results = ZoneResults(zoneResults, touchedZoneMasks, slot);
+            long zoneDelta = (absentZoneMask >> slot & 1) != 0
+                ? ComposeZone(ref absentZones[slot], ref zoneHashes[slot], sharedWriter, sharedPath, ref zoneFrontiers[slot], results, storeWriter, metrics, ref zoneRoot)
+                : ComposeZone(ref sharedReaders[slot], ref zoneHashes[slot], sharedWriter, sharedPath, ref zoneFrontiers[slot], results, storeWriter, metrics, ref zoneRoot);
+            SetBoundary(ref rootFrontier, rootResults, slot, ref zoneRoot);
+            rootWriter.AddDescendantDelta(slot, zoneDelta);
+        }
+        FoldResult rootResult = default;
+        Compose(ref rootReader, ref rootHashes, rootWriter, rootPath, 0, metrics, ref rootFrontier, rootResults, ref rootResult);
+        ValueHash256 hash = rootWriter.WriteRoot(rootPath, rootResult, metrics);
+        PublishGroup(storeWriter, ref rootReader, rootWriter, rootPath, hash);
+        return hash;
+    }
+
+    /// <summary>Hands <paramref name="worker"/> its boundary node from the zone group of <paramref name="zoneReader"/>.</summary>
+    /// <remarks>Workers fold on other threads, so the zone frame's size is handed over here too, to the only boundary that inherits it.</remarks>
+    private static void TakeWorkerBoundary<TFrame>(ref TFrame zoneReader, ref StoredGroupHashes zoneHashes, scoped in PbtTraversalPath zonePath,
+        ref Frontier zoneFrontier, PartitionFold worker, TrieUpdaterMetrics? metrics)
+        where TFrame : struct, IGroupFrame<PbtStorageTreeKey, PbtStorageNodePath>
+    {
+        BoundaryNode boundary = TakeBoundary(ref zoneReader, ref zoneHashes, zonePath, ref zoneFrontier, worker.Zone & 15, metrics);
+        if (IsAbsentGroupBelow(boundary, 8)) worker.InheritedDescendantBytes = zoneReader.DescendantBytes(worker.Zone & 15);
+        worker.Current = boundary.Owned();
+    }
+
+    /// <summary>Composes and publishes the zone group of <paramref name="zoneReader"/>, returning its size change and leaving its root in <paramref name="zoneRoot"/>.</summary>
+    private static long ComposeZone<TFrame>(ref TFrame zoneReader, ref StoredGroupHashes zoneHashes, PbtNodeGroupWriter<PbtStorageNodePath> zoneWriter,
+        PbtTraversalPath zonePath, ref Frontier zoneFrontier, Span<FoldResult> zoneResults, IPbtNodeGroupSink sink, TrieUpdaterMetrics? metrics,
+        ref FoldResult zoneRoot)
+        where TFrame : struct, IGroupFrame<PbtStorageTreeKey, PbtStorageNodePath>
+    {
+        Compose(ref zoneReader, ref zoneHashes, zoneWriter, zonePath, 0, metrics, ref zoneFrontier, zoneResults, ref zoneRoot);
+        ValueHash256 groupHash = zoneRoot.Hash(new PbtTraversalPath(Span<byte>.Empty), 4, metrics);
+        return PublishGroup(sink, ref zoneReader, zoneWriter, zonePath, groupHash);
     }
 
     /// <summary>The results of the zone group at root <paramref name="slot"/>, one per touched zone, laid out after the lower slots' own.</summary>
@@ -250,28 +295,39 @@ public static partial class TrieUpdater
             PbtTraversalPath path = new(pathBuffer);
             path.AppendMut(Zone >> 4);
             path.AppendMut(Zone & 15);
-            Span<byte> sourceBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
-            GroupFrameReader<TKey, TPath> reader = new(store, 8, Metrics);
-            using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
+            TrieUpdater<TKey, TPath>.BoundaryNode current = TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(ref Current);
+            if (TrieUpdater<TKey, TPath>.IsAbsentGroup(current, 8))
             {
-                using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider, prefixlessBranchOmission);
-                using IPbtConcurrentWriter concurrentWriter = store.CreateWriter();
-                TrieUpdater<TKey, TPath>.BoundaryNode current = TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(ref Current);
-                TrieUpdater<TKey, TPath>.FoldResult result = default;
-                TrieUpdater<TKey, TPath>.FoldContext context = new(store, concurrentWriter, memoryProvider, Metrics,
-                    foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
-                TrieUpdater<TKey, TPath>.ResolveAbsentGroup(ref reader, current, path, InheritedDescendantBytes);
-                // A group that cannot exist is never keyed, so a spanning branch is not re-anchored to hash it.
-                if (!reader.IsResolved) reader.SetGroupHash(current.HashAt(path, 8, Metrics));
-                // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
-                result = TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, writer, current,
-                    operations.AsSpan(), ref path, 8, 4, new(table.AsSpan(), 8, false));
-                // The result is anchored at the zone cursor its boundary slot sits on, four bits above this group.
-                ValueHash256 groupHash = result.Hash(path.Truncated(sourceBuffer, 4), 8, Metrics);
-                result.SizeDelta = TrieUpdater<TKey, TPath>.PublishGroup(concurrentWriter, ref reader, writer, path, groupHash);
-                Result = FoldResult.TakeFrom<TKey, TPath>(ref result);
+                AbsentGroupFrame<TKey, TPath> absent = TrieUpdater<TKey, TPath>.AbsentFrame(current, path, 8, InheritedDescendantBytes, Metrics);
+                FoldZone(ref absent, current, ref path);
+            }
+            else
+            {
+                GroupFrameReader<TKey, TPath> reader = new(store, path, current.HashAt(path, 8, Metrics), Metrics);
+                using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
+                    FoldZone(ref reader, current, ref path);
             }
             foldTime?.Observe(Stopwatch.GetTimestamp() - start, foldLabel);
+        }
+
+        [SkipLocalsInit]
+        private void FoldZone<TFrame>(ref TFrame reader, scoped in TrieUpdater<TKey, TPath>.BoundaryNode current, ref PbtTraversalPath path)
+            where TFrame : struct, IGroupFrame<TKey, TPath>
+        {
+            Span<byte> sourceBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
+            using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider, prefixlessBranchOmission);
+            using IPbtConcurrentWriter concurrentWriter = store.CreateWriter();
+            TrieUpdater<TKey, TPath>.FoldContext context = new(store, concurrentWriter, memoryProvider, Metrics,
+                foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
+            TrieUpdater<TKey, TPath>.StoredGroupHashes hashes = default;
+            TrieUpdater<TKey, TPath>.FoldResult result = default;
+            // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
+            TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, ref hashes, writer, current,
+                operations.AsSpan(), ref path, 8, 4, new(table.AsSpan(), 8, false), ref result);
+            // The result is anchored at the zone cursor its boundary slot sits on, four bits above this group.
+            ValueHash256 groupHash = result.Hash(path.Truncated(sourceBuffer, 4), 8, Metrics);
+            result.SizeDelta = TrieUpdater<TKey, TPath>.PublishGroup(concurrentWriter, ref reader, writer, path, groupHash);
+            FoldResult.TakeFrom<TKey, TPath>(ref result, ref Result);
         }
 
         public override void Dispose()
@@ -287,19 +343,21 @@ internal static partial class TrieUpdater<TKey, TPath>
     where TPath : struct, IPbtNodePath<TPath>
 {
     [SkipLocalsInit]
-    internal static FoldResult FoldBoundary(
+    internal static void FoldBoundary<TFrame>(
         FoldContext context,
-        ref GroupFrameReader<TKey, TPath> reader,
+        ref TFrame reader, ref StoredGroupHashes hashes,
         PbtNodeGroupWriter<TPath> writer,
         BoundaryNode current,
         Span<PbtWriteOperation<TKey>> operations,
         ref PbtTraversalPath path,
         int bitDepth,
         int resultDepth,
-        BucketPlan plan)
+        BucketPlan plan,
+        ref FoldResult result)
+        where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
         PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, context.Metrics);
-        return FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, resultDepth, partition);
+        FoldBoundaryFromPartition(context, ref reader, ref hashes, writer, current, operations, ref path, bitDepth, resultDepth, partition, ref result);
     }
 }

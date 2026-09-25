@@ -34,21 +34,14 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly ValueHash256 LeftHash;
         internal readonly ValueHash256 RightHash;
         /// <summary>The hash already computed for this branch, or default when it must be computed.</summary>
-        internal readonly ValueHash256 KnownHash;
+        internal ValueHash256 KnownHash;
         /// <summary>The compressed-prefix bit count of the encoding <see cref="KnownHash"/> is the hash of.</summary>
-        internal readonly ushort KnownHashBitCount;
+        internal ushort KnownHashBitCount;
         /// <summary>Which children of a branch are leaves: <see cref="LeftLeaf"/> and <see cref="RightLeaf"/> bits.</summary>
         internal readonly byte LeafChildren;
         internal readonly NodeGroupPath Path;
         /// <summary>The change in stored size across the groups this result was folded from, still owed to the caller's boundary slot.</summary>
         internal long SizeDelta;
-
-        private FoldResult(in FoldResult source, in ValueHash256 knownHash, int knownHashBitCount)
-        {
-            this = source;
-            KnownHash = knownHash;
-            KnownHashBitCount = (ushort)knownHashBitCount;
-        }
 
         internal FoldResult(TKey key, in ValueHash256 hash)
         {
@@ -91,9 +84,6 @@ internal static partial class TrieUpdater<TKey, TPath>
                 return bitCount == 0 ? default : prefix[..(sizeof(ushort) + PbtBitPrefix.ByteCount(bitCount))];
             }
         }
-
-        /// <summary>This result carrying the hash of its encoding with a <paramref name="bitCount"/>-bit prefix, so that encoding is not hashed again.</summary>
-        internal readonly FoldResult WithKnownHash(in ValueHash256 hash, int bitCount) => new(this, hash, bitCount);
 
         internal readonly bool IsEmpty => Kind == NodeKind.Empty;
         internal readonly bool IsLeaf => Kind == NodeKind.Leaf;
@@ -159,35 +149,34 @@ internal static partial class TrieUpdater<TKey, TPath>
             PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, LeftHash, RightHash);
             CopyBranchBits(cursor, Path, Prefix, depth, bitCount, encoding.Slice(3, PbtBitPrefix.ByteCount(bitCount)));
             return PbtNodeCodec.BranchPreimageLength(bitCount);
+
+            static void CopyBranchBits(scoped in PbtTraversalPath groupPath, NodeGroupPath localPath, CompressedPrefix localPrefix,
+                int start, int count, Span<byte> destination)
+            {
+                int anchorDepth = groupPath.BitDepth + localPath.Length;
+                int end = start + count;
+                int groupEnd = Math.Min(end, groupPath.BitDepth);
+                if (start < groupEnd)
+                    PbtBitPrefix.CopyBits(groupPath.Bytes, start, groupEnd - start, destination, 0);
+                for (int bit = Math.Max(start, groupPath.BitDepth); bit < Math.Min(end, anchorDepth); bit++)
+                    destination[(bit - start) >> 3] |= (byte)(localPath.GetBit(bit - groupPath.BitDepth) << (7 - ((bit - start) & 7)));
+                int prefixStart = Math.Max(start, anchorDepth);
+                if (prefixStart < end)
+                    PbtBitPrefix.CopyBits(localPrefix.Bytes, prefixStart - anchorDepth, end - prefixStart, destination, prefixStart - start);
+            }
         }
 
-        private static void CopyBranchBits(scoped in PbtTraversalPath groupPath, NodeGroupPath localPath, CompressedPrefix localPrefix,
-            int start, int count, Span<byte> destination)
+        internal static void Move(ref FoldResult source, ref FoldResult destination)
         {
-            int anchorDepth = groupPath.BitDepth + localPath.Length;
-            int end = start + count;
-            int groupEnd = Math.Min(end, groupPath.BitDepth);
-            if (start < groupEnd)
-                PbtBitPrefix.CopyBits(groupPath.Bytes, start, groupEnd - start, destination, 0);
-            for (int bit = Math.Max(start, groupPath.BitDepth); bit < Math.Min(end, anchorDepth); bit++)
-                destination[(bit - start) >> 3] |= (byte)(localPath.GetBit(bit - groupPath.BitDepth) << (7 - ((bit - start) & 7)));
-            int prefixStart = Math.Max(start, anchorDepth);
-            if (prefixStart < end)
-                PbtBitPrefix.CopyBits(localPrefix.Bytes, prefixStart - anchorDepth, end - prefixStart, destination, prefixStart - start);
-        }
-
-        internal static FoldResult Move(ref FoldResult source)
-        {
-            FoldResult result = source;
+            destination = source;
             source = default;
-            return result;
         }
 
-        internal static FoldResult TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.FoldResult source)
+        internal static void TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.FoldResult source, ref FoldResult result)
             where TSourceKey : unmanaged, IPbtKey<TSourceKey>
             where TSourcePath : struct, IPbtNodePath<TSourcePath>
         {
-            FoldResult result = default;
+            result = default;
             if (!source.IsEmpty)
             {
                 if (source.IsLeaf)
@@ -203,7 +192,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
             result.SizeDelta = source.SizeDelta;
             source = default;
-            return result;
         }
     }
 
