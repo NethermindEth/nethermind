@@ -312,10 +312,9 @@ public class PbtAnchorPublicationTests
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
         (_, ulong count) = PbtSnapshotCodec.ReadHeader(snapshot);
         using PbtNodeGroupStore oracle = new();
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(0);
-        foreach (RebuildEntry leaf in PbtSnapshotCodec.ReadLeaves(snapshot, count)) builder.Set(leaf.Key, leaf.Leaf);
-        using PbtWriteBatch<PbtStorageTreeKey> batch = builder.Build();
-        Assert.That(TrieUpdater.UpdateRoot(oracle, default, batch, config.PrefixlessBranchOmission), Is.EqualTo(expectedRoot.ValueHash256));
+        List<(byte[] Key, byte[]? Value)> leaves = [];
+        foreach (RebuildEntry leaf in PbtSnapshotCodec.ReadLeaves(snapshot, count)) leaves.Add((leaf.Key.Bytes.ToArray(), leaf.Leaf.ToByteArray()));
+        Assert.That(oracle.Fold(default, leaves, config.PrefixlessBranchOmission, FoldFanOut.Default, null), Is.EqualTo(expectedRoot.ValueHash256));
         using IPbtIterator<PbtStorageNodePath> groupKeys = reader.EnumerateNodeGroupKeys();
         Assert.That(CanonicalGroups(groupKeys.Drain(), reader.GetNodeGroup),
             Is.EqualTo(CanonicalGroups(oracle.EnumerateNodeGroupKeys(), oracle.GetPhysicalNodeGroup)));

@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using static Nethermind.Pbt.TrieUpdater;
@@ -23,14 +22,13 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// does store. Only the descendants are copied: the node itself may still be promoted by an updated sibling's deletion.
     /// </remarks>
     internal static ComposedNode AppendHeld<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
-        scoped ref Frontier frontier, scoped Span<FoldResult> results, int position, in LinkParent parent, TrieUpdaterMetrics? metrics)
+        scoped ref Frontier frontier, scoped Span<FoldResult> results, int position, in LinkParent parent)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Debug.Assert((frontier.Mask & (1u << position)) != 0, "Only a held position is taken.");
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
         NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
         int copied = reader.CopyRange(writer, position - 2 * local.Width + 2, position);
-        if (copied != 0) metrics?.AddBulkCopy(copied);
         ref readonly DecompositionEntry entry = ref frontier.Entries[local.Slot];
         switch (entry.Source)
         {
@@ -41,12 +39,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             case EntrySource.AtPosition when entry.SourcePosition != RootSource:
                 ReadOnlyMemory<byte> stored = reader.GetEncoding(entry.SourcePosition);
                 return stored.IsEmpty
-                    ? AppendImplicitBranch(ref reader, ref hashes, writer, parent, position, metrics)
+                    ? AppendImplicitBranch(ref reader, ref hashes, writer, parent, position)
                     : AppendReanchored(writer, position, local.Length - PbtFourLevelGroupGeometry.LocalPathOf(entry.SourcePosition).Length,
                         PbtNodeReader.FromValidated(stored.Span));
             default:
                 FoldResult boundary = default;
-                frontier.TakeBoundaryNode(ref reader, ref hashes, local.Slot, metrics).ToFoldResult(path, path.BitDepth, ref boundary);
+                frontier.TakeBoundaryNode(ref reader, ref hashes, local.Slot).ToFoldResult(path, path.BitDepth, ref boundary);
                 return AppendResult(writer, position, boundary);
         }
 
@@ -70,7 +68,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         // hash known and the branch left out again, its child hashes are only needed by Land, so they are
         // resolved there instead, sparing the rehash of every unchanged node below it.
         static ComposedNode AppendImplicitBranch(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
-            in LinkParent parent, int position, TrieUpdaterMetrics? metrics)
+            in LinkParent parent, int position)
         {
             int width = PbtFourLevelGroupGeometry.WidthOf(position);
             if (width is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
@@ -87,7 +85,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                     if (writer.Omits(position, branch)) return new(offset, length, linkHash) { ChildHashesPending = true };
                 }
 
-                hashes.GetChildHashes(ref reader, position - width, position - 1, metrics, out ValueHash256 left, out ValueHash256 right);
+                hashes.GetChildHashes(ref reader, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
                 if (left != default && right != default)
                 {
                     PbtNodeCodec.CreateBranchEncoding(branch, 0, left, right);
@@ -139,7 +137,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// kept, anchored at <paramref name="resultDepth"/>.
     /// </remarks>
     internal static void Compose<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth,
-        TrieUpdaterMetrics? metrics, scoped ref Frontier frontier, scoped Span<FoldResult> results, ref FoldResult result)
+        scoped ref Frontier frontier, scoped Span<FoldResult> results, ref FoldResult result)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Debug.Assert(frontier.Unresolved == 0, "Every touched slot is taken by its fold before composition.");
@@ -165,7 +163,6 @@ internal static partial class TrieUpdater<TKey, TPath>
                 {
                     // A direct copy is stored with its descendants as one contiguous range, ending at the node itself.
                     int copied = reader.CopyRange(writer, position - 2 * frame.Path.Width + 2, position + 1);
-                    metrics?.AddBulkCopy(copied);
                     int length = reader.GetEncoding(position).Length;
                     prevSubtree = new ComposedNode(writer.WrittenCount - length, length, frame.Parent.HashOf(position));
                     frameCount--;
@@ -173,7 +170,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 }
                 if ((frontierMask & (1u << position)) != 0)
                 {
-                    prevSubtree = AppendHeld(ref reader, ref hashes, writer, path, ref frontier, results, position, frame.Parent, metrics);
+                    prevSubtree = AppendHeld(ref reader, ref hashes, writer, path, ref frontier, results, position, frame.Parent);
                     frameCount--;
                     continue;
                 }
@@ -214,7 +211,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 else
                 {
                     int leftPosition = position - frame.Path.Width;
-                    SettleLeft(writer, path, leftPosition, Land(ref reader, ref hashes, writer, prevSubtree, leftPosition, metrics), ref frame, metrics);
+                    SettleLeft(writer, path, leftPosition, Land(ref reader, ref hashes, writer, prevSubtree, leftPosition), ref frame);
                     frame.Stage = ComposeStage.AwaitingRight;
                 }
                 frames[frameCount] = new(frame.Path.Right, frame.ChildParent);
@@ -232,19 +229,18 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 // Back up from the right child with both children present: settle the right one and append the branch
                 // over the two, returning it up to the parent frame.
-                prevSubtree = AppendBranch(writer, path, position, Land(ref reader, ref hashes, writer, prevSubtree, position - 1, metrics), ref frame, metrics);
+                prevSubtree = AppendBranch(writer, path, position, Land(ref reader, ref hashes, writer, prevSubtree, position - 1), ref frame);
                 frameCount--;
                 continue;
             }
         }
-        TakeRoot(writer, path, resultDepth, Land(ref reader, ref hashes, writer, prevSubtree, PbtFourLevelGroupGeometry.RootPosition, metrics), ref result);
+        TakeRoot(writer, path, resultDepth, Land(ref reader, ref hashes, writer, prevSubtree, PbtFourLevelGroupGeometry.RootPosition), ref result);
 
         // Settles the left child at leftPosition into frame, dropping it when the group does not keep it.
         // A leaf is inlined into the branch above it, so only its key and hash are kept. An omitted branch is hashed now,
         // while it is still the last entry, since the right subtree is written over it. A kept branch stays in the
         // writer, its preimage read back from there to be hashed together with its sibling's.
-        static void SettleLeft(PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path, int leftPosition, in ComposedNode left, ref ComposeFrame frame,
-            TrieUpdaterMetrics? metrics)
+        static void SettleLeft(PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path, int leftPosition, in ComposedNode left, ref ComposeFrame frame)
         {
             ReadOnlySpan<byte> encoding = writer.Entry(left.Offset, left.Length).Span;
             PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
@@ -261,7 +257,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 if (frame.LeftHash == default)
                 {
-                    metrics?.IncrementNodeHashes();
                     frame.LeftHash = Blake3Hash.Hash(node.Preimage);
                 }
                 writer.DropLast(leftPosition);
@@ -277,8 +272,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         // Settles the right child, the last entry, and appends the branch over it and the frame's left child at position.
         [SkipLocalsInit]
-        static ComposedNode AppendBranch(PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path, int position, in ComposedNode right, ref ComposeFrame frame,
-            TrieUpdaterMetrics? metrics)
+        static ComposedNode AppendBranch(PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path, int position, in ComposedNode right, ref ComposeFrame frame)
         {
             int rightPosition = position - 1;
             ReadOnlySpan<byte> encoding = writer.Entry(right.Offset, right.Length).Span;
@@ -288,7 +282,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             ValueHash256 rightHash = right.Hash;
             ReadOnlySpan<byte> rightPreimage = rightHash == default ? node.Preimage : default;
             ReadOnlySpan<byte> leftPreimage = frame.LeftPreimageLength == 0 ? default : writer.Entry(frame.LeftPreimageOffset, frame.LeftPreimageLength).Span;
-            HashPending(leftPreimage, ref frame.LeftHash, rightPreimage, ref rightHash, metrics);
+            HashPending(leftPreimage, ref frame.LeftHash, rightPreimage, ref rightHash);
             if (rightIsLeaf || writer.Omits(rightPosition, encoding))
                 writer.DropLast(rightPosition);
             else
@@ -307,22 +301,19 @@ internal static partial class TrieUpdater<TKey, TPath>
             return new(offset, length, default);
 
             // Hashes the sibling preimages still pending, together when both are.
-            static void HashPending(ReadOnlySpan<byte> leftPreimage, ref ValueHash256 leftHash, ReadOnlySpan<byte> rightPreimage, ref ValueHash256 rightHash, TrieUpdaterMetrics? metrics)
+            static void HashPending(ReadOnlySpan<byte> leftPreimage, ref ValueHash256 leftHash, ReadOnlySpan<byte> rightPreimage, ref ValueHash256 rightHash)
             {
                 if (leftPreimage.IsEmpty && rightPreimage.IsEmpty) return;
                 if (leftPreimage.IsEmpty)
                 {
-                    metrics?.IncrementNodeHashes();
                     rightHash = Blake3Hash.Hash(rightPreimage);
                 }
                 else if (rightPreimage.IsEmpty)
                 {
-                    metrics?.IncrementNodeHashes();
                     leftHash = Blake3Hash.Hash(leftPreimage);
                 }
                 else
                 {
-                    metrics?.AddNodeHashes(2);
                     Blake3Hash.HashTwo(leftPreimage, rightPreimage, out leftHash, out rightHash);
                 }
             }
@@ -335,8 +326,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// encoding does not depend on its position. An implicit branch appended without its child hashes has them resolved here.
     /// </remarks>
     [SkipLocalsInit]
-    private static ComposedNode Land<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, in ComposedNode node, int position,
-        TrieUpdaterMetrics? metrics)
+    private static ComposedNode Land<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, in ComposedNode node, int position)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         if (node.RiseBitCount == 0) return node;
@@ -357,7 +347,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (node.ChildHashesPending)
         {
             int width = PbtFourLevelGroupGeometry.WidthOf(childPosition);
-            hashes.GetChildHashes(ref reader, childPosition - width, childPosition - 1, metrics, out leftHash, out rightHash);
+            hashes.GetChildHashes(ref reader, childPosition - width, childPosition - 1, out leftHash, out rightHash);
         }
         CompressedPrefix prefix = stored.Prefix;
         int riseBitCount = node.RiseBitCount;

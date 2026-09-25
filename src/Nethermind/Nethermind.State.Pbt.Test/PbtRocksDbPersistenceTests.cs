@@ -488,7 +488,8 @@ public class PbtRocksDbPersistenceTests
         List<(byte[] Key, byte[]? Value)> changes = [];
         for (int index = 0; index < 32; index++)
         {
-            byte[] key = [(byte)(index << 3)];
+            byte[] key = PbtStoreTestExtensions.ZoneKey("00");
+            key[1] = (byte)(index << 3);
             byte[] value = Value((byte)(index + 1));
             changes.Add((key, value));
             oracle.Insert(key, value);
@@ -543,14 +544,11 @@ public class PbtRocksDbPersistenceTests
             }
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(persisted);
             Assert.That(reopened.EnumerateRecords().Count, Is.EqualTo(tree.Nodes.Count));
-            using PbtWriteBatchBuilder<PbtStorageTreeKey> mutations = new(0);
-            byte[] deletedKey = Bytes.FromHexString("00");
-            byte[] replacedKey = Bytes.FromHexString("08");
-            mutations.Delete(new PbtStorageTreeKey(deletedKey));
-            mutations.Set(new PbtStorageTreeKey(replacedKey), new ValueHash256(Value(99)));
+            byte[] deletedKey = PbtStoreTestExtensions.ZoneKey("0000");
+            byte[] replacedKey = PbtStoreTestExtensions.ZoneKey("0008");
             oracle.Delete(deletedKey);
             oracle.Insert(replacedKey, Value(99));
-            ValueHash256 updatedRoot = TrieUpdater.UpdateRoot(reopened, reader.CurrentRoot, mutations.Build());
+            ValueHash256 updatedRoot = reopened.Fold(reader.CurrentRoot, [(deletedKey, null), (replacedKey, Value(99))]);
             Assert.That(updatedRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(reopened.EnumerateRecords(), Has.Count.EqualTo(30).And.All.Matches<PbtNodeRecord>(record => record.Encoding.Span[0] == 1), "the promoted leaf leaves 30 branches, all with inline leaves");
         }

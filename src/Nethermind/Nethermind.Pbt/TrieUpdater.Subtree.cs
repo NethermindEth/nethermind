@@ -100,7 +100,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         /// <summary>The hash of this node written at <paramref name="depth"/> when read against <paramref name="cursor"/>.</summary>
         [SkipLocalsInit]
-        internal readonly ValueHash256 Hash(scoped in PbtTraversalPath cursor, int depth, TrieUpdaterMetrics? metrics)
+        internal readonly ValueHash256 Hash(scoped in PbtTraversalPath cursor, int depth)
         {
             if (IsEmpty) return default;
             if (IsLeaf) return LeafHash;
@@ -108,7 +108,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (KnownHash != default && bitCount == KnownHashBitCount) return KnownHash;
             Span<byte> preimage = stackalloc byte[PbtNodeCodec.BranchPreimageLength(bitCount)];
             WriteBranchPreimage(cursor, depth, bitCount, preimage);
-            metrics?.IncrementNodeHashes();
             return Blake3Hash.Hash(preimage);
         }
 
@@ -118,7 +117,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             : PbtNodeCodec.BranchLength(BranchDepth(cursor) - depth, LeftLeafKeyLength, RightLeafKeyLength);
 
         /// <summary>Writes this node at <paramref name="depth"/> when read against <paramref name="cursor"/>, returning its hash.</summary>
-        internal readonly ValueHash256 EncodeAt(scoped in PbtTraversalPath cursor, int depth, Span<byte> encoding, TrieUpdaterMetrics? metrics)
+        internal readonly ValueHash256 EncodeAt(scoped in PbtTraversalPath cursor, int depth, Span<byte> encoding)
         {
             if (IsLeaf)
             {
@@ -138,7 +137,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             // An omitted branch rebuilt at its own anchor, or a published group root written into its parent
             // group, is the node already hashed at this prefix length.
             if (KnownHash != default && bitCount == KnownHashBitCount) return KnownHash;
-            metrics?.IncrementNodeHashes();
             return Blake3Hash.Hash(encoding[..preimageLength]);
         }
 

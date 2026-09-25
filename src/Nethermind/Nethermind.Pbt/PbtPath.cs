@@ -7,15 +7,10 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Pbt;
 
 /// <summary>An immutable complete EIP-8297 account- or code-zone key: zone byte, 32-byte hash and sub-index byte.</summary>
-/// <remarks>
-/// Every key is exactly <see cref="KeyLength"/> bytes, so <see cref="TrieUpdater"/> skips its variable-length
-/// terminal handling. Shorter account-zone paths are represented by <see cref="PbtTreeKey"/>.
-/// </remarks>
+/// <remarks>Every key is exactly <see cref="KeyLength"/> bytes. Shorter account-zone paths are represented by <see cref="PbtTreeKey"/>.</remarks>
 public readonly struct PbtPath : IPbtKey<PbtPath>
 {
     public const int KeyLength = Eip8297KeyDerivation.AccountKeyLength;
-    /// <inheritdoc/>
-    public static bool IsFixedLength => true;
     /// <inheritdoc/>
     public static int Capacity => KeyLength;
     /// <inheritdoc/>

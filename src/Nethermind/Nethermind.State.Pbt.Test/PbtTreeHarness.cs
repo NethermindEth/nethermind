@@ -14,7 +14,7 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <summary>Drives <see cref="TrieUpdater"/> over a persistent variable-length complete-key store.</summary>
+/// <summary>Drives the partitioned <see cref="TrieUpdater"/> over a persistent node-group store.</summary>
 internal sealed class PbtTreeHarness : IDisposable
 {
     private PbtNodeGroupStore _store = new();
@@ -30,18 +30,7 @@ internal sealed class PbtTreeHarness : IDisposable
     public IReadOnlyList<PbtNodeRecord> Nodes => _store.EnumerateRecords();
     public IReadOnlyList<PbtPhysicalPayload> PhysicalPayloads => _store.ExportPhysicalPayloads();
 
-    public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes, TrieUpdaterMetrics? metrics = null)
-    {
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> batch = new(0);
-        foreach ((byte[] key, byte[]? value) in writes)
-        {
-            PbtStorageTreeKey fullKey = new(key);
-            if (value is null) batch.Delete(fullKey);
-            else batch.Set(fullKey, new ValueHash256(value));
-        }
-        RootHash = TrieUpdater.UpdateRoot(_store, RootHash, batch.Build(), metrics);
-        return RootHash;
-    }
+    public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes) => RootHash = _store.Fold(RootHash, writes);
 
     public bool TryGetNode<TPath>(TPath path, out byte[]? encoding) where TPath : struct, IPbtNodePath<TPath>
     {
@@ -201,6 +190,18 @@ internal static class PbtStoreTestExtensions
         byte[] key = new byte[prefix[0] == Eip8297KeyDerivation.StorageZone ? PbtStoragePath.KeyLength : PbtPath.KeyLength];
         prefix.CopyTo(key, 0);
         return key;
+    }
+
+    /// <summary>Folds zone-key <paramref name="writes"/> into the tree at <paramref name="root"/> through the partitioned driver production folds with.</summary>
+    internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes) =>
+        store.Fold(root, writes, PbtPrefixlessBranchOmission.Interior, FoldFanOut.Default, null);
+
+    /// <inheritdoc cref="Fold(IPbtStore, in ValueHash256, IEnumerable{ValueTuple{byte[], byte[]}})"/>
+    internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes,
+        PbtPrefixlessBranchOmission omission, FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider)
+    {
+        using PbtPartitionBatches changes = PreparePartitions(writes);
+        return TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), fanOut, omission, null, memoryProvider);
     }
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)

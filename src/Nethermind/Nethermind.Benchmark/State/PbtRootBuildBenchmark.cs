@@ -18,7 +18,7 @@ namespace Nethermind.Benchmarks.State;
 
 /// <summary>Computes the root of a whole tree from sorted leaves: the image verifier's streaming calculator against the updater building it from empty.</summary>
 /// <remarks>
-/// The calculator only hashes, while the updaters also encode and publish every group, so the gap is the cost of
+/// The calculator only hashes, while the updater also encodes and publish every group, so the gap is the cost of
 /// building the stored tree on top of the root. Each updater invocation starts from an empty store. Keys are
 /// account-zone keys, the shape the partitioned driver expects.
 /// </remarks>
@@ -29,18 +29,13 @@ public class PbtRootBuildBenchmark
     {
         /// <summary><see cref="PbtImageRootCalculator"/>, which the snapshot verifier checks an image's root with.</summary>
         ImageRootCalculator,
-        /// <summary>The sorted-range updater, building every group from an empty tree.</summary>
-        Sorted,
-        /// <summary>The sorted-range updater folding each frame's slots across threads, building every group from an empty tree.</summary>
-        SortedParallel,
-        /// <summary>The sorted-range updater through the partitioned driver, sorting the shards and folding slots across threads, building every group from an empty tree.</summary>
-        SortedPartitioned,
+        /// <summary>The partitioned updater, sorting the shards and folding slots across threads, building every group from an empty tree.</summary>
+        Partitioned,
     }
 
     private PbtOverlayStore _store = null!;
     private readonly ConcurrencyController _foldQuota = new(Environment.ProcessorCount);
     private RebuildEntry[] _entries = null!;
-    private PbtWriteOperation<PbtStorageTreeKey>[] _operations = null!;
     /// <summary>The leaves as account operations grouped by zone shard and shuffled within each, as the batch builder leaves them.</summary>
     private PbtWriteOperation<PbtPath>[] _shardedOperations = null!;
     private int[] _zoneTable = null!;
@@ -48,7 +43,7 @@ public class PbtRootBuildBenchmark
     [Params(10_000, 100_000, 1_000_000)]
     public int LeafCount { get; set; }
 
-    [Params(Variant.ImageRootCalculator, Variant.Sorted, Variant.SortedParallel, Variant.SortedPartitioned)]
+    [Params(Variant.ImageRootCalculator, Variant.Partitioned)]
     public Variant Method { get; set; }
 
     [GlobalSetup]
@@ -68,14 +63,12 @@ public class PbtRootBuildBenchmark
         }
 
         _entries = new RebuildEntry[LeafCount];
-        _operations = new PbtWriteOperation<PbtStorageTreeKey>[LeafCount];
         PbtWriteOperation<PbtPath>[] accountOperations = new PbtWriteOperation<PbtPath>[LeafCount];
         int index = 0;
         foreach ((PbtStorageTreeKey key, ValueHash256 leaf) in leaves)
         {
             _entries[index] = new RebuildEntry(key, leaf);
-            accountOperations[index] = new(new PbtPath(key.Bytes), leaf);
-            _operations[index++] = new(key, leaf);
+            accountOperations[index++] = new(new PbtPath(key.Bytes), leaf);
         }
         _zoneTable = PbtTrieUpdaterBenchmark.ShardTable<PbtPath>(accountOperations, PbtTrieUpdaterBenchmark.ZoneShardNibbleIndex);
         random.Shuffle(accountOperations);
@@ -101,9 +94,6 @@ public class PbtRootBuildBenchmark
         return variant switch
         {
             Variant.ImageRootCalculator => PbtImageRootCalculator.Calculate(_entries, CancellationToken.None),
-            Variant.Sorted => TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRootSorted(_store, default, _operations, PbtPrefixlessBranchOmission.Interior),
-            Variant.SortedParallel => TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRootSorted(_store, default, _operations.AsMemory(),
-                PbtPrefixlessBranchOmission.Interior, _foldQuota, FoldFanOut.Default),
             _ => BuildPartitioned(),
         };
     }

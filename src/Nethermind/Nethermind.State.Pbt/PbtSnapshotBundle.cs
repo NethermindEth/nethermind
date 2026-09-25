@@ -56,7 +56,7 @@ public sealed class PbtSnapshotBundle(
     private void SetPbtLeaf(PbtPath key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        int partition = PbtWriteBatchSet<PbtPath>.PartitionOf(key);
+        int partition = PbtPartitions.PartitionOf(key);
         if (partition == (int)PbtPartition.Account) _accountBatch.SetLeaf(key, value);
         else if (partition == (int)PbtPartition.Code) _codeBatch.SetLeaf(key, value);
         else throw new ArgumentException("A canonical account or code key is required.", nameof(key));
@@ -65,7 +65,7 @@ public sealed class PbtSnapshotBundle(
     private void SetPbtLeaf(in PbtStorageTreeKey key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (PbtWriteBatchSet<PbtStorageTreeKey>.PartitionOf(key) == (int)PbtPartition.Storage) _storageBatch.SetLeaf((PbtStoragePath)key, value);
+        if (PbtPartitions.PartitionOf(key) == (int)PbtPartition.Storage) _storageBatch.SetLeaf((PbtStoragePath)key, value);
         else SetPbtLeaf((PbtPath)key, value);
     }
 

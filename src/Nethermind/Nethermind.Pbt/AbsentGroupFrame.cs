@@ -20,15 +20,11 @@ internal readonly struct AbsentGroupFrame<TKey, TPath> : IGroupFrame<TKey, TPath
     private readonly ushort _descendantMask;
     private readonly long _descendantBytes;
 
-    internal AbsentGroupFrame(int bitDepth, TrieUpdaterMetrics? metrics)
-    {
-        BitDepth = bitDepth;
-        metrics?.IncrementGroupFrameResolutions();
-    }
+    internal AbsentGroupFrame(int bitDepth) => BitDepth = bitDepth;
 
     /// <param name="slot">The boundary slot everything stored below the group lies under.</param>
     /// <param name="descendantBytes">The summed payload lengths of the groups stored below <paramref name="slot"/>.</param>
-    internal AbsentGroupFrame(int bitDepth, int slot, long descendantBytes, TrieUpdaterMetrics? metrics) : this(bitDepth, metrics)
+    internal AbsentGroupFrame(int bitDepth, int slot, long descendantBytes) : this(bitDepth)
     {
         _descendantMask = descendantBytes == 0 ? (ushort)0 : (ushort)(1 << slot);
         _descendantBytes = descendantBytes;

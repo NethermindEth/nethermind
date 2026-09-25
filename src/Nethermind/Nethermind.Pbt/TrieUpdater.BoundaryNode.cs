@@ -185,12 +185,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// A node addressed at its own anchor keys its group by the hash it already carries. A prefix jump addresses it
         /// deeper, where its shorter encoding hashes differently, and that re-anchored hash is what published the group.
         /// </remarks>
-        internal readonly ValueHash256 HashAt(scoped in PbtTraversalPath cursor, int depth, TrieUpdaterMetrics? metrics)
+        internal readonly ValueHash256 HashAt(scoped in PbtTraversalPath cursor, int depth)
         {
             if (IsEmpty || IsLeaf || depth == _anchorDepth) return _hash;
             FoldResult reAnchored = default;
             ToFoldResult(cursor, depth, ref reAnchored);
-            return reAnchored.Hash(cursor, depth, metrics);
+            return reAnchored.Hash(cursor, depth);
         }
 
         /// <summary>This node as a composed result addressed at <paramref name="anchorDepth"/>, detached from its frame.</summary>

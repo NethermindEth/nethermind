@@ -28,16 +28,14 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
 
     /// <summary>Loads the group stored at <paramref name="path"/>, keyed by <paramref name="groupHash"/>.</summary>
     /// <exception cref="InvalidDataException">The store holds no group at <paramref name="path"/>.</exception>
-    internal GroupFrameReader(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
-        : this(Fetch(store, path, groupHash, metrics) ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth, groupHash, metrics) { }
+    internal GroupFrameReader(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash)
+        : this(store.GetNodeGroup(path, groupHash) ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth, groupHash) { }
 
-    private GroupFrameReader(RefCountingMemory lease, int bitDepth, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
+    private GroupFrameReader(RefCountingMemory lease, int bitDepth, in ValueHash256 groupHash)
     {
         BitDepth = bitDepth;
         _groupHash = groupHash;
         _lease = lease;
-        metrics?.IncrementGroupFrameResolutions();
-        metrics?.IncrementGroupParses();
         try
         {
             // The store validated the payload, so the offsets are walked by the availability bits alone, which a small group has few of.
@@ -71,18 +69,12 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     /// Only the tree root's group may be missing, when the tree is empty. Its absence cannot be derived from
     /// <paramref name="groupHash"/>, which may be stale or default when unknown, so the store is asked.
     /// </remarks>
-    internal static bool TryLoad(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics,
+    internal static bool TryLoad(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash,
         out GroupFrameReader<TKey, TPath> reader)
     {
-        RefCountingMemory? lease = Fetch(store, path, groupHash, metrics);
-        reader = lease is null ? default : new(lease, path.BitDepth, groupHash, metrics);
+        RefCountingMemory? lease = store.GetNodeGroup(path, groupHash);
+        reader = lease is null ? default : new(lease, path.BitDepth, groupHash);
         return lease is not null;
-    }
-
-    private static RefCountingMemory? Fetch(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash, TrieUpdaterMetrics? metrics)
-    {
-        metrics?.IncrementPhysicalGroupFetches();
-        return store.GetNodeGroup(path, groupHash);
     }
 
     public int BitDepth { get; }
