@@ -320,7 +320,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             int offset = 0;
             foreach (int count in shardTable.Slice(1, shardCount))
             {
-                operations.Slice(offset, count).Sort(OperationComparer.Instance);
+                PbtOperationSort.Sort(operations.Slice(offset, count));
                 offset += count;
             }
             return;
@@ -330,7 +330,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         int[] starts = new int[shardCount + 1];
         starts[0] = OffsetOf(array, operations);
         for (int shard = 0; shard < shardCount; shard++) starts[shard + 1] = starts[shard] + shardTable[1 + shard];
-        ForEachOnQuota(context.FoldQuota, shardCount, shard => array.AsSpan(starts[shard], starts[shard + 1] - starts[shard]).Sort(OperationComparer.Instance));
+        ForEachOnQuota(context.FoldQuota, shardCount, shard => PbtOperationSort.Sort(array.AsSpan(starts[shard], starts[shard + 1] - starts[shard])));
     }
 
     /// <summary>Folds a zone group whose operations <see cref="SortShards"/> sorted, leaving its root in <paramref name="result"/> anchored at <paramref name="resultDepth"/>.</summary>
@@ -349,12 +349,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         AssertSorted(operations);
         ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, shardTable);
         TakeRoot(writer, path, resultDepth, root, ref result);
-    }
-
-    private sealed class OperationComparer : IComparer<PbtWriteOperation<TKey>>
-    {
-        internal static readonly OperationComparer Instance = new();
-        public int Compare(PbtWriteOperation<TKey> left, PbtWriteOperation<TKey> right) => left.Key.CompareTo(right.Key);
     }
 
     private static int OffsetOf(PbtWriteOperation<TKey>[] array, ReadOnlySpan<PbtWriteOperation<TKey>> span)
