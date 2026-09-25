@@ -26,7 +26,7 @@ public static partial class EvmInstructions
 
         /// <summary>
         /// Performs the shift operation.
-        /// The lower 8 bits of <paramref name="a"/> (accessed as a.u0) are used as the shift amount.
+        /// An amount of 256 or more (including any amount above 64 bits) yields zero.
         /// </summary>
         /// <remarks>The value operand and result may alias. A zero shift must preserve the value.</remarks>
         /// <param name="a">The shift amount.</param>
@@ -139,33 +139,123 @@ public static partial class EvmInstructions
 
     /// <summary>
     /// Implements a left shift operation.
-    /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
+    /// The shift amount is the first operand (256 or more yields zero), and the value is the second operand.
     /// </summary>
     internal struct OpShl : IOpShift
     {
         /// <summary>
         /// Performs a left shift: shifts <paramref name="b"/> left by the number of bits specified in <paramref name="a"/>.
         /// </summary>
-        /// <param name="a">The shift amount, where only the lower 8 bits are used.</param>
+        /// <param name="a">The shift amount; 256 or more yields zero.</param>
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the left shift operation.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => b.LeftShift((int)a.u0, out result);
+        {
+            if (!a.IsUint64 || a.u0 >= 256)
+            {
+                result = default;
+                return;
+            }
+
+            ShiftLeft(b.u0, b.u1, b.u2, b.u3, (int)a.u0, out result);
+        }
     }
 
     /// <summary>
     /// Implements a right shift operation.
-    /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
+    /// The shift amount is the first operand (256 or more yields zero), and the value is the second operand.
     /// </summary>
     internal struct OpShr : IOpShift
     {
         /// <summary>
         /// Performs a logical right shift: shifts <paramref name="b"/> right by the number of bits specified in <paramref name="a"/>.
         /// </summary>
-        /// <param name="a">The shift amount, where only the lower 8 bits are used.</param>
+        /// <param name="a">The shift amount; 256 or more yields zero.</param>
         /// <param name="b">The value to be shifted.</param>
         /// <param name="result">The result of the right shift operation.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => b.RightShift((int)a.u0, out result);
+        {
+            if (!a.IsUint64 || a.u0 >= 256)
+            {
+                result = default;
+                return;
+            }
+
+            ShiftRight(b.u0, b.u1, b.u2, b.u3, (int)a.u0, out result);
+        }
+    }
+
+    /// <summary>Logical left shift of a 256-bit value by <paramref name="shift"/> in [0, 255].</summary>
+    /// <remarks>
+    /// Limb 0 is the least significant. The limbs are shifted inline because <c>UInt256.LeftShift</c> reaches an
+    /// out-of-line helper, and one call anywhere in an opcode handler makes the JIT save and restore the callee-saved
+    /// registers on every execution of that handler (it does not shrink-wrap). The limbs arrive as values, so the
+    /// result may be written to the slot they came from.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ShiftLeft(ulong v0, ulong v1, ulong v2, ulong v3, int shift, out UInt256 result)
+    {
+        int words = shift >> 6;
+        int bits = shift & 63;
+        if (words == 1)
+        {
+            v3 = v2; v2 = v1; v1 = v0; v0 = 0;
+        }
+        else if (words == 2)
+        {
+            v3 = v1; v2 = v0; v1 = 0; v0 = 0;
+        }
+        else if (words == 3)
+        {
+            v3 = v0; v2 = 0; v1 = 0; v0 = 0;
+        }
+
+        if (bits != 0)
+        {
+            int carry = 64 - bits;
+            v3 = (v3 << bits) | (v2 >> carry);
+            v2 = (v2 << bits) | (v1 >> carry);
+            v1 = (v1 << bits) | (v0 >> carry);
+            v0 <<= bits;
+        }
+
+        result = new UInt256(v0, v1, v2, v3);
+    }
+
+    /// <summary>Logical right shift of a 256-bit value by <paramref name="shift"/> in [0, 255].</summary>
+    /// <remarks>
+    /// Limb 0 is the least significant. Inline for the same reason as <see cref="ShiftLeft"/>, and equally safe to
+    /// write over the slot the limbs came from.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ShiftRight(ulong v0, ulong v1, ulong v2, ulong v3, int shift, out UInt256 result)
+    {
+        int words = shift >> 6;
+        int bits = shift & 63;
+        if (words == 1)
+        {
+            v0 = v1; v1 = v2; v2 = v3; v3 = 0;
+        }
+        else if (words == 2)
+        {
+            v0 = v2; v1 = v3; v2 = 0; v3 = 0;
+        }
+        else if (words == 3)
+        {
+            v0 = v3; v1 = 0; v2 = 0; v3 = 0;
+        }
+
+        if (bits != 0)
+        {
+            int carry = 64 - bits;
+            v0 = (v0 >> bits) | (v1 << carry);
+            v1 = (v1 >> bits) | (v2 << carry);
+            v2 = (v2 >> bits) | (v3 << carry);
+            v3 >>= bits;
+        }
+
+        result = new UInt256(v0, v1, v2, v3);
     }
 }
