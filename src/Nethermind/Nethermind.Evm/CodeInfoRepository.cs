@@ -176,9 +176,9 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (codeSource != Address.Zero)
         {
-            authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
+            authorizedBuffer = new byte[Eip7702Constants.DelegationHeaderLength + Address.Size];
             Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
-            codeSource.Bytes.CopyTo(authorizedBuffer.AsSpan(Eip7702Constants.DelegationHeader.Length));
+            codeSource.Bytes.CopyTo(authorizedBuffer.AsSpan(Eip7702Constants.DelegationHeaderLength));
             codeHash = ValueKeccak.Compute(authorizedBuffer);
         }
         else

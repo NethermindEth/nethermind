@@ -58,7 +58,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     {
         get
         {
-            if (Code.Length != Eip7702Constants.DelegationHeader.Length + Address.Size)
+            if (Code.Length != Eip7702Constants.DelegationHeaderLength + Address.Size)
             {
                 return null;
             }

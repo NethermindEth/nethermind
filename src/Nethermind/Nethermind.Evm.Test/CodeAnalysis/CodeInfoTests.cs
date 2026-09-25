@@ -99,7 +99,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public async Task Concurrent_delegation_getter_returns_same_address_instance()
         {
             const int Workers = 4;
-            byte[] code = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
+            byte[] code = new byte[Eip7702Constants.DelegationHeaderLength + Address.Size];
             Eip7702Constants.DelegationHeader.CopyTo(code);
             using Barrier barrier = new(Workers);
             using GatedCodeMemory memory = new(code, () =>
