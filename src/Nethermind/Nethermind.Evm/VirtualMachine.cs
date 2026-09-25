@@ -1174,8 +1174,6 @@ public partial class VirtualMachine<TGasPolicy>(
                 _txTracer.ReportActionEnd(gasAvailable - codeDepositGasCost, currentState.To, outputBytes);
             }
         }
-        // ReturnDataBuffer holds the last child frame's returndata (see HandleRegularReturn), not this frame's output,
-        // so a top-level frame that made a sub-call would report stale bytes; report its terminal output directly.
         else
         {
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(currentState.Gas), outputBytes);
