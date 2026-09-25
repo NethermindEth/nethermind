@@ -100,10 +100,10 @@ public class GethStyleTracer(
         {
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
             CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, call,
-                tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
+                tracedBlock => PrepareIndexedCall(tracedBlock, options, state, callSpec));
             IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
-            if (!callTracer.IsPrepared) throw new InvalidOperationException("The synthetic call was not prepared for tracing.");
+            if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
             return tracer.BuildResult().SingleOrDefault();
         }
         catch
@@ -129,18 +129,17 @@ public class GethStyleTracer(
         return block.WithReplacedBodyCloned(block.Body.WithChangedTransactions(transactions));
     }
 
-    private void PrepareIndexedCall(Block block, Transaction call, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec)
+    private void PrepareIndexedCall(Block tracedBlock, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec)
     {
-        options.BlockOverrides?.ApplyOverrides(block.Header);
-        if (options.NoBaseFee) block.Header.BaseFeePerGas = UInt256.Zero;
+        options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
+        if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
         IReleaseSpec overrideSpec = callSpec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, overrideSpec);
         state.Commit(overrideSpec);
-        // Keep transaction metadata consistent with overrides applied after LoadNonceFromState.
-        call.Nonce = state.GetNonce(call.SenderAddress!);
         transactionProcessorAdapter.CurrentAdapterFactory = processor =>
         {
-            processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, callSpec));
+            // This Ethereum context does not invoke chain-specific BlockProcessor context overrides (for example XDC).
+            processor.SetBlockExecutionContext(new BlockExecutionContext(tracedBlock.Header, callSpec));
             return new TraceTransactionProcessorAdapter(processor);
         };
     }
