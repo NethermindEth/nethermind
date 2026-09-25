@@ -350,6 +350,23 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public void Large_map_pool_does_not_keep_a_map_too_small_to_be_rented()
+    {
+        Type pool = typeof(PersistentStorageProvider).GetNestedType("LargeMapPool`2", BindingFlags.NonPublic)!
+            .MakeGenericType(typeof(StorageCell), typeof(UInt256));
+        MethodInfo rent = pool.GetMethod("Rent", BindingFlags.Public | BindingFlags.Static)!;
+        MethodInfo giveBack = pool.GetMethod("Return", BindingFlags.Public | BindingFlags.Static)!;
+        Dictionary<StorageCell, UInt256> small = new(1000);
+
+        giveBack.Invoke(null, [small]);
+        // The smallest retained map comes back first, so a kept small map would be the one rented here.
+        object rented = rent.Invoke(null, [1, null])!;
+        giveBack.Invoke(null, [rented]);
+
+        Assert.That(rented, Is.Not.SameAs(small));
+    }
+
     private static object GetBlockChange(WorldState provider, Address address)
     {
         FieldInfo storagesField = typeof(PersistentStorageProvider).GetField(

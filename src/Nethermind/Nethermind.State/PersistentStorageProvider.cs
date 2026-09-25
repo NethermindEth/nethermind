@@ -1008,6 +1008,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         private const int MaxRetainedEntries = 256 * 1024;
         private const int MaxRetainedCapacity = 128 * 1024;
+        // No Rent asks for less (change maps start at 4,096, original values larger): a smaller map returned here
+        // would count against the budget without ever being rented, and nothing evicts it.
+        internal const int MinRetainedCapacity = 4096;
         private static readonly Lock Lock = new();
         private static readonly List<Dictionary<TKey, TValue>> Retained = [];
         private static int _retainedEntries;
@@ -1039,7 +1042,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public static void Return(Dictionary<TKey, TValue> map)
         {
             int capacity = map.Capacity;
-            if (capacity > MaxRetainedCapacity) return;
+            if (capacity > MaxRetainedCapacity || capacity < MinRetainedCapacity) return;
 
             lock (Lock)
             {
