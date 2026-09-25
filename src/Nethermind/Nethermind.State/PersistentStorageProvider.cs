@@ -44,8 +44,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private Dictionary<StorageCell, UInt256> _originalValues = [];
     // The provider's own originals map, parked while a pooled large one holds its entries; restored each round.
     private Dictionary<StorageCell, UInt256>? _parkedOriginalValues;
-    // Above this the map would be trimmed at the end of every round, so a heavy block or call regrew it.
-    private const int OriginalsGrowIntoLargeAt = Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity;
+    // A map past the trim limit is cut back at the end of every round, so a heavy block or call regrew it on the LOH.
+    // A resize takes the next prime at least twice the capacity, under 2.4 times it at these sizes (3,371 grows to
+    // 7,013 but 4,049 to 8,419), so a full map above 5/12 of the limit moves into a pooled one instead.
+    private const int OriginalsGrowIntoLargeAbove = Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity * 5 / 12;
     // Memoizes captured values only; transaction originals still resolve through the journal.
     private StorageCell _lastCapturedCell;
     private UInt256 _lastCapturedOriginal;
@@ -627,7 +629,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
     {
         Dictionary<StorageCell, UInt256> originals = _originalValues;
-        if (originals.Count == originals.Capacity && originals.Count >= OriginalsGrowIntoLargeAt && !originals.ContainsKey(cell))
+        if (originals.Count == originals.Capacity && originals.Capacity > OriginalsGrowIntoLargeAbove && !originals.ContainsKey(cell))
         {
             GrowOriginalsIntoLarge();
         }
