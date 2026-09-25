@@ -40,11 +40,15 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     // compaction rents fresh ones.
     private const int MaxPooledLargeArrayLength = 1 << 21;
     private const int MaxPooledLargeArraysPerSize = 4;
-    private static readonly int LargeEntryArrayMinLength = Math.Max(16, 64 * 1024 / Unsafe.SizeOf<Entry>());
+    // A power of two above ArrayPool.Shared's 16-entry minimum, with rents routed by the request rounded up to a
+    // power of two, so a Shared array stays below it and every array returns to the pool it was rented from.
+    private static readonly int LargeEntryArrayMinLength = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(32, 64 * 1024 / Unsafe.SizeOf<Entry>()));
     private static readonly LargeArrayPool<Entry> LargeEntryPool = new(LargeEntryArrayMinLength, MaxPooledLargeArrayLength, MaxPooledLargeArraysPerSize);
 
     private static Entry[] RentEntries(int minimumLength) =>
-        minimumLength >= LargeEntryArrayMinLength ? LargeEntryPool.Rent(minimumLength) : ArrayPool<Entry>.Shared.Rent(minimumLength);
+        BitOperations.RoundUpToPowerOf2((uint)minimumLength) >= (uint)LargeEntryArrayMinLength
+            ? LargeEntryPool.Rent(minimumLength)
+            : ArrayPool<Entry>.Shared.Rent(minimumLength);
 
     private static void ReturnEntries(Entry[] entries)
     {
