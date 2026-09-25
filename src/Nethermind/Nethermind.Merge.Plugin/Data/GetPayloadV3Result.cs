@@ -16,7 +16,7 @@ public class GetPayloadV3Result<TVersionedExecutionPayload>(Block block, UInt256
     public override bool ValidateFork(ISpecProvider specProvider)
     {
         IReleaseSpec spec = specProvider.GetSpec(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp);
-        return spec.IsEip4844Enabled && !spec.IsEip7623Enabled;
+        return spec.IsEip4844Enabled && !spec.RequestsEnabled && !spec.IsEip7594Enabled;
     }
 
     public bool ShouldOverrideBuilder { get; } = shouldOverrideBuilder;
