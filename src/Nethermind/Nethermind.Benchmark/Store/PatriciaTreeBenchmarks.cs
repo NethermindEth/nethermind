@@ -421,22 +421,13 @@ namespace Nethermind.Benchmarks.Store
         public void CleanupLargeUncommittedTree() => ((IDisposable)_largeUncommittedFullTree).Dispose();
 
         [Benchmark]
-        public void LargeCommit()
-        {
-            _largeUncommittedStateTree.Commit();
-        }
+        public void LargeCommit() => _largeUncommittedStateTree.Commit();
 
         [Benchmark]
-        public void LargeHash()
-        {
-            _largeUncommittedStateTree.UpdateRootHash();
-        }
+        public void LargeHash() => _largeUncommittedStateTree.UpdateRootHash();
 
         [Benchmark]
-        public void LargeHashNoParallel()
-        {
-            _largeUncommittedStateTree.UpdateRootHash(canBeParallel: false);
-        }
+        public void LargeHashNoParallel() => _largeUncommittedStateTree.UpdateRootHash(canBeParallel: false);
 
         [Benchmark]
         public void ReadWithFullTree()

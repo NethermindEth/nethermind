@@ -24,7 +24,6 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 
