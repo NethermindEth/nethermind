@@ -2495,6 +2495,27 @@ public partial class EthRpcModuleTests
             Does.Contain("0x0000000000000000000000000000000000000000000000000000000000000001"));
     }
 
+    // A CREATE collision halts before any frame runs; the returned list must still be the discovered,
+    // optimized one (sender stripped), not the request's list echoed back.
+    [Test]
+    public async Task Eth_createAccessList_optimizes_supplied_entries_when_create_collides()
+    {
+        using Context ctx = await Context.Create();
+
+        const string supplied = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        Address createTarget = ContractAddress.From(new Address(CreateAccessListSender), 0);
+        string stateOverride = $$$"""{"{{{CreateAccessListSender}}}":{"nonce":"0x0"},"{{{createTarget}}}":{"nonce":"0x1"}}""";
+        string transaction = $$$"""{"type":"0x1","from":"{{{CreateAccessListSender}}}","data":"0x00","accessList":[{"address":"{{{CreateAccessListSender}}}","storageKeys":[]},{"address":"{{{supplied}}}","storageKeys":[]}]}""";
+
+        (JToken result, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"]?.Value<string>(), Is.EqualTo("contract address collision"));
+            Assert.That(result["accessList"]!.Select(static e => e["address"]!.Value<string>()), Is.EquivalentTo(new[] { supplied }));
+        }
+    }
+
     [Test]
     public async Task Eth_createAccessList_unfunded_sender_without_fee_fields_succeeds()
     {

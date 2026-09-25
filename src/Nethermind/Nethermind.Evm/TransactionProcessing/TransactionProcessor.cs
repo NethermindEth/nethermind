@@ -437,26 +437,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 JournalSet<Address>? destroyList = substate.DestroyList;
                 if (destroyList is not null)
                 {
-                    int count = destroyList.Count;
                     bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                     bool tracingRefunds = tracer.IsTracingRefunds;
                     bool tracingLogs = tracer.IsTracingLogs;
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
-                    if (count > 1)
+                    foreach (Address toBeDestroyed in destroyList)
                     {
-                        Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
-                        destroyList.CopyTo(buffer, 0);
-                        buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
-                        for (int i = 0; i < count; i++)
-                        {
-                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn, tracer, tracingLogs);
-                            if (tracingRefunds) tracer.ReportRefund(destroyRefund);
-                        }
-                        SafeArrayPool<Address>.Shared.Return(buffer);
-                    }
-                    else if (count == 1)
-                    {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, commit, removeSelfdestructBurn, tracer, tracingLogs);
+                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed, commit, removeSelfdestructBurn, tracer, tracingLogs);
                         if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
@@ -1403,7 +1390,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
                 gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
-                goto Complete;
+                goto CompleteWithoutFrame;
             }
 
             PayValue(tx, spec, opts);
@@ -1427,7 +1414,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             VirtualMachine.TxExecutionContext.GasPrice,
                             in collisionIntrinsicGasStandard,
                             floorGasLong);
-                        goto Complete;
+                        goto CompleteWithoutFrame;
                     }
                 }
             }
@@ -1439,7 +1426,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 // If noValidation we didn't charge for gas, so do not refund; otherwise return unspent gas
                 if (!opts.HasFlag(ExecutionOptions.SkipValidation))
                     WorldState.AddToBalance(tx.SenderAddress!, (tx.GasLimit - minimalGasLong) * VirtualMachine.TxExecutionContext.GasPrice, spec);
-                goto Complete;
+                goto CompleteWithoutFrame;
             }
 
             ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
@@ -1454,7 +1441,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     WorldState.Restore(snapshot);
                     TGasPolicy createStateOogIntrinsicGasStandard = gas.Standard;
                     gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in createStateOogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
-                    goto Complete;
+                    goto CompleteWithoutFrame;
                 }
 
                 substate = !DispatchFlags.Tracing(TTracingInst.IsActive)
@@ -1551,6 +1538,14 @@ namespace Nethermind.Evm.TransactionProcessing
             else
             {
                 gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong);
+            }
+            goto Complete;
+        CompleteWithoutFrame:
+            // The create-state-gas halt jumps here from inside the top-level `using (VmState ...)`, so the
+            // tracker outlives the Dispose: RentTopLevel leaves `_canRestore` false, so it never Restores.
+            if (tracer.IsTracingAccess)
+            {
+                tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
             }
         Complete:
             return statusCode;
@@ -1925,16 +1920,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
-
-        // Devirtualised wrapper over Address.CompareTo (sealed -> already devirt'd inside) so the EIP-7708
-        // destroy-list sort goes through Sort<TComparer> instead of Comparer<Address>.Default's virtual call.
-        // The IComparer<Address> contract declares nullable parameters; the destroy-list source
-        // (JournalSet<Address>) never contains null entries, so the `!` dereference is safe here.
-        private readonly struct AddressByBytesComparer : IComparer<Address>
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public int Compare(Address? x, Address? y) => x!.CompareTo(y);
-        }
     }
 
     /// <summary>
