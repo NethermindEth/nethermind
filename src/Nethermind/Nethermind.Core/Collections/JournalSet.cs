@@ -71,7 +71,7 @@ namespace Nethermind.Core.Collections
         {
             if (_useSparseClear && _items.Count <= _set.Capacity / 8)
             {
-                foreach (T item in _items)
+                foreach (T item in CollectionsMarshal.AsSpan(_items))
                 {
                     _set.Remove(item);
                 }
