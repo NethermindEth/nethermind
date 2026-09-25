@@ -31,7 +31,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _trieless;
 
     private readonly ConcurrencyController _concurrencyQuota;
-    private readonly PatriciaTree _warmupStateTree;
+    // Built on the first account warm-up: a prewarm scope, created per warm-up job, sends its hints to the main scope.
+    private PatriciaTree? _warmupStateTree;
+    private readonly Hash256 _initialStateRoot;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
@@ -71,20 +73,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _commitTarget = commitTarget;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
+        _initialStateRoot = currentStateId.StateRoot.ToCommitment();
         _stateTree = new(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
             logManager
         )
         {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
-
-        _warmupStateTree = new(
-            new StateTrieStoreWarmerAdapter(snapshotBundle),
-            logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
+            RootHash = _initialStateRoot
         };
 
         _configuration = configuration;
@@ -349,6 +344,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
+    private PatriciaTree CreateWarmupStateTree()
+    {
+        // Rooted at the scope's initial state, as before it was created lazily.
+        PatriciaTree tree = new(new StateTrieStoreWarmerAdapter(_snapshotBundle), _logManager)
+        {
+            RootHash = _initialStateRoot
+        };
+        return Interlocked.CompareExchange(ref _warmupStateTree, tree, null) ?? tree;
+    }
+
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
         try
@@ -360,7 +365,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+                (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree()).WarmUpPath(address.ToAccountPath.Bytes);
 
                 return true;
             }
@@ -394,6 +399,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
 
         FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address.ToAddress());
+        if (tree is not null && _warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
+            Interlocked.Increment(ref _outstandingWarmups);
+    }
+
+    public void HintWarmAccount(Address address)
+    {
+        if (IsDisposed || _pausePrewarmer) return;
+        if (_snapshotBundle.ShouldQueuePrewarm(address))
+            QueueStateTrieWarmup(address, _hintSequenceId);
+    }
+
+    public void HintWarmSlot(Address address, in UInt256 index)
+    {
+        if (IsDisposed || _pausePrewarmer) return;
+        if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
+
+        FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address);
         if (tree is not null && _warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
             Interlocked.Increment(ref _outstandingWarmups);
     }
