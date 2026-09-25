@@ -69,6 +69,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         internal long RequestedPooledTransactionHashes => _floodController.RequestedPooledTransactionHashes;
 
+        internal bool IsFloodDowngraded => _floodController.IsDowngraded;
+
         private protected void IgnorePooledTransactionResponse() => _floodController.ClearPooledTransactionRequests();
 
         public static string Code => Protocol.Eth;
@@ -245,7 +247,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         }
 
         protected void Handle(TransactionsMessage msg)
-            => TryScheduleTransactions(msg, _handleSlow);
+        {
+            // Items the pre-decode size guard skips never reach PrepareAndSubmitTransaction,
+            // so report them here to charge them against the flood controller.
+            for (int i = 0; i < msg.SkippedCount; i++)
+            {
+                ReportReceivedTransaction(AcceptTxResult.MaxTxSizeExceeded);
+            }
+
+            TryScheduleTransactions(msg, _handleSlow);
+        }
 
         private protected void HandlePooledTransactions(TransactionsMessage msg)
         {

@@ -35,6 +35,9 @@ public class StorageProviderTests(bool useFlat)
 {
     private static readonly ILogManager LogManager = LimboLogs.Instance;
 
+    /// <summary>The test corpus is byte arrays; storage now takes words.</summary>
+    private UInt256 Value(int index) => new(_values[index], isBigEndian: true);
+
     private readonly byte[][] _values =
     [
         [0],
@@ -153,10 +156,90 @@ public class StorageProviderTests(bool useFlat)
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
+    [TestCase(false, TestName = "StorageClearedMetric_CountsClearStorage")]
+    [TestCase(true, TestName = "StorageClearedMetric_CountsMarkStorageDestroyed")]
+    [NonParallelizable]
+    public void StorageClearedMetric_CountsOnlyCommittedClearOfNonEmptyStorage(bool markStorageDestroyed)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell persistedCell = new(ctx.Address1, 1);
+        Address freshAddress = TestItem.AddressA;
+        StorageCell freshCell = new(freshAddress, 1);
+        long storageClearedBefore = Db.Metrics.StorageCleared;
+
+        provider.Get(persistedCell, out UInt256 persistedValue);
+        Assert.That(persistedValue, Is.EqualTo(UInt256.Zero));
+        provider.Set(persistedCell, Value(1));
+        provider.Commit(Frontier.Instance);
+        long storageClearedAfterEmptyStorageReadAndWrite = Db.Metrics.StorageCleared;
+
+        provider.Set(new StorageCell(ctx.Address2, 1), Value(1));
+        provider.MarkStorageDestroyed(ctx.Address2);
+        provider.Commit(Frontier.Instance);
+        long storageClearedAfterDestroyingUnpersistedStorage = Db.Metrics.StorageCleared;
+
+        Assert.That(provider.AccountExists(freshAddress), Is.False);
+        provider.ClearStorage(freshAddress);
+        provider.CreateAccount(freshAddress, 0);
+        provider.Set(freshCell, Value(1));
+        provider.Commit(Frontier.Instance);
+        long storageClearedAfterFreshAddressClear = Db.Metrics.StorageCleared;
+
+        Snapshot beforeRevertedClear = provider.TakeSnapshot();
+        provider.ClearStorage(ctx.Address1);
+        provider.Restore(beforeRevertedClear);
+        provider.Commit(Frontier.Instance);
+        long storageClearedAfterRevertedClear = Db.Metrics.StorageCleared;
+
+        if (markStorageDestroyed)
+            provider.MarkStorageDestroyed(ctx.Address1);
+        else
+            provider.ClearStorage(ctx.Address1);
+
+        provider.Commit(Frontier.Instance, commitRoots: false);
+        long storageClearedBeforeRootCommit = Db.Metrics.StorageCleared;
+        provider.Commit(Frontier.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storageClearedAfterEmptyStorageReadAndWrite, Is.EqualTo(storageClearedBefore));
+            Assert.That(storageClearedAfterDestroyingUnpersistedStorage, Is.EqualTo(storageClearedBefore));
+            Assert.That(storageClearedAfterFreshAddressClear, Is.EqualTo(storageClearedBefore));
+            Assert.That(storageClearedAfterRevertedClear, Is.EqualTo(storageClearedBefore));
+            Assert.That(storageClearedBeforeRootCommit, Is.EqualTo(storageClearedBefore));
+            Assert.That(Db.Metrics.StorageCleared, Is.EqualTo(storageClearedBefore + 1));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void StorageClearedMetric_CountsEachContractInParallelFlush()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        Address[] addresses = [ctx.Address1, ctx.Address2, TestItem.AddressA];
+
+        provider.CreateAccount(TestItem.AddressA, 0);
+        foreach (Address address in addresses)
+            provider.Set(new StorageCell(address, 1), Value(1));
+
+        provider.Commit(Frontier.Instance);
+        long storageClearedBefore = Db.Metrics.StorageCleared;
+
+        foreach (Address address in addresses)
+            provider.ClearStorage(address);
+
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(Db.Metrics.StorageCleared, Is.EqualTo(storageClearedBefore + addresses.Length));
+    }
+
     /// <summary>A write must be visible to a later read of the same cell, in the same and in later transactions.</summary>
     /// <remarks>Reads consult the write journal only for contracts known to have journaled a write. This pins
     /// that gate: were it ever to answer false for a contract that has written, reads would fall through to
     /// the committed tree value and silently lose the write.</remarks>
+
     [Test]
     public void Write_is_visible_to_later_reads_of_the_same_contract()
     {
@@ -2411,7 +2494,6 @@ public class StorageProviderTests(bool useFlat)
         public void ReportCodeChange(Address address, byte[] before, byte[] after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
         public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
         public void ReportStorageRead(in StorageCell storageCell)
         {

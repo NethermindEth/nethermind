@@ -17,6 +17,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override string Protocol => "eth";
         public IOwnedReadOnlyList<Transaction> Transactions { get; } = transactions;
 
+        /// <summary>Items the pre-decode size guard skipped without decoding; not reflected in <see cref="Transactions"/>.</summary>
+        internal int SkippedCount { get; init; }
+
         public override string ToString() => $"{nameof(TransactionsMessage)}({Transactions?.Count})";
 
         public override void Dispose()
