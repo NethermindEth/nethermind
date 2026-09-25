@@ -261,59 +261,6 @@ public class FlatDbManagerTests
         _persistenceManager.Received(1).LeaseReader();
     }
 
-    [TestCase(5UL, false, TestName = "PersistJob_WithoutPersistedStateAdvance_KeepsReadBundleCache")]
-    [TestCase(12UL, true, TestName = "PersistJob_WithPersistedStateAdvance_ClearsReadBundleCache")]
-    public async Task PersistJob_ClearsReadBundleCacheOnlyOnPersistedStateAdvance(ulong persistedAfterPopulate, bool expectCleared)
-    {
-        StateId gatherStateId = CreateStateId(10);
-        SetUpGather(gatherStateId);
-        StateId persistedStateId = CreateStateId(5);
-        _persistenceManager.GetCurrentPersistedStateId().Returns(_ => persistedStateId);
-        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(true);
-
-        ResourcePool realResourcePool = new(_config);
-        using SemaphoreSlim persistJobStarted = new(0);
-
-        await using FlatDbManager manager = CreateManager();
-        _persistenceManager.When(x => x.AddToPersistence(Arg.Any<StateId>()))
-            .Do(_ => persistJobStarted.Release());
-
-        await AddSnapshotAndAwaitPersistJob(manager, realResourcePool, persistJobStarted, 11);
-        await AddSnapshotAndAwaitPersistJob(manager, realResourcePool, persistJobStarted, 12);
-
-        using (manager.GatherReadOnlySnapshotBundle(gatherStateId)) { }
-
-        persistedStateId = CreateStateId(persistedAfterPopulate);
-        await AddSnapshotAndAwaitPersistJob(manager, realResourcePool, persistJobStarted, 13);
-        await AddSnapshotAndAwaitPersistJob(manager, realResourcePool, persistJobStarted, 14);
-
-        _persistenceManager.ClearReceivedCalls();
-        using (manager.GatherReadOnlySnapshotBundle(gatherStateId)) { }
-        _persistenceManager.Received(expectCleared ? 1 : 0).LeaseReader();
-    }
-
-    private static async Task AddSnapshotAndAwaitPersistJob(FlatDbManager manager, ResourcePool resourcePool, SemaphoreSlim persistJobStarted, ulong blockNumber)
-    {
-        AddSnapshotAt(manager, resourcePool, blockNumber);
-        Assert.That(await persistJobStarted.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
-    }
-
-    private void SetUpGather(StateId stateId)
-    {
-        IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
-        mockReader.CurrentState.Returns(stateId);
-        _persistenceManager.LeaseReader(Arg.Any<ReaderFlags>()).Returns(mockReader);
-        _snapshotRepository.AssembleSnapshots(stateId, stateId, Arg.Any<int>())
-            .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
-    }
-
-    private static void AddSnapshotAt(FlatDbManager manager, ResourcePool resourcePool, ulong blockNumber)
-    {
-        Snapshot snapshot = resourcePool.CreateSnapshot(CreateStateId(blockNumber - 1), CreateStateId(blockNumber), ResourcePool.Usage.MainBlockProcessing);
-        TransientResource transientResource = resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        manager.AddSnapshot(snapshot, transientResource);
-    }
-
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(false, true)]

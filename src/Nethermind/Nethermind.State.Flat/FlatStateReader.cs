@@ -3,7 +3,6 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -16,13 +15,11 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
-    IFlatDbConfig flatDbConfig,
+    ITrieNodeCache trieNodeCache,
     IHistoricalTrieVisitor historicalTrieVisitor,
     ILogManager logManager
 ) : IStateReader
 {
-    private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = CreateTrieNodeRlpCache(flatDbConfig.TrieNodeRlpCacheCapacity);
-
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
         using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
@@ -71,16 +68,10 @@ public class FlatStateReader(
 
         using (reader)
         {
-            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : _trieNodeRlpCache);
+            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : trieNodeCache);
             PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
             patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         }
-    }
-
-    private static ClockCache<ValueHash256, byte[]> CreateTrieNodeRlpCache(int capacity)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(capacity, nameof(IFlatDbConfig.TrieNodeRlpCacheCapacity));
-        return new(capacity);
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));

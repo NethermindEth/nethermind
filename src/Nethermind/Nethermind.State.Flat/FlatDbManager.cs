@@ -41,8 +41,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
-    private StateId _lastClearedPersistedStateId = StateId.PreGenesis;
-
     // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
     private readonly Task _clearBundleCacheTask;
 
@@ -145,7 +143,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
-        _snapshotCompactor.DoCompactSnapshot(stateId);
+        if (_snapshotCompactor.DoCompactSnapshot(stateId))
+        {
+            ClearReadOnlyBundleCache();
+        }
 
         // Trigger persistence job.
         await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
@@ -183,11 +184,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
-        if (currentPersistedStateId != _lastClearedPersistedStateId)
-        {
-            _lastClearedPersistedStateId = currentPersistedStateId;
-            ClearReadOnlyBundleCache();
-        }
+        ClearReadOnlyBundleCache();
     }
 
     private async Task RunTrieCachePopulator(CancellationToken cancellationToken)

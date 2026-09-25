@@ -53,7 +53,6 @@ public class PersistenceManager(
         configuration.EnableLongFinality ? configuration.LongFinalityMaxReorgDepth : configuration.MaxReorgDepth,
         configuration.MinReorgDepth + configuration.CompactSize);
     private readonly ulong _compactSize = configuration.CompactSize;
-    private readonly long _maxInMemorySnapshotBytes = (long)configuration.MaxInMemorySnapshotBytes;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
@@ -107,9 +106,6 @@ public class PersistenceManager(
     ///   <c>MinReorgDepth + CompactSize</c>) -> seed = the committed head.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
-    /// A positive <c>MaxInMemorySnapshotBytes</c> adds byte-pressure relief: a reorg-safe conversion is
-    /// attempted (long finality on, above the <c>MaxInMemoryBaseSnapshotCount</c> floor), then a forced persist whose candidate leaves at least
-    /// <c>MinReorgDepth</c> blocks above the new base.
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
     /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>.
     /// </remarks>
@@ -131,9 +127,6 @@ public class PersistenceManager(
         // ---- Phase 1: persistence to RocksDB ----
         ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         ulong nextBoundary = schedule.NextFullCompactionAfter(in currentPersistedState);
-
-        bool overByteBudget = _maxInMemorySnapshotBytes > 0
-            && snapshotRepository.InMemoryBytes > _maxInMemorySnapshotBytes;
 
         // Normal finalized-driven persistence. Anchor at the next boundary block, not at the
         // CL-reported finalized tip. The outer gate guarantees boundary <= finalizedBlockNumber, so
@@ -174,33 +167,6 @@ public class PersistenceManager(
                     $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}; " +
                     $"forcing persistence to bound memory (finalized block {finalizedBlockNumber}).");
                 return (persisted, inMemory, null);
-            }
-        }
-
-        if (overByteBudget)
-        {
-            if (_enableLongFinality && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount)
-            {
-                ConversionCandidate? byteCandidate = TryFindSnapshotToConvert(currentPersistedState);
-                if (byteCandidate is not null) return (null, null, byteCandidate);
-            }
-
-            if (snapshotsDepth > _minReorgDepth)
-            {
-                StateId backstopSeed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
-                (PersistedSnapshot? persisted, Snapshot? inMemory) =
-                    snapshotRepository.FindSnapshotToPersist(backstopSeed, currentPersistedState, _compactSize);
-                ulong? candidateBlock = persisted?.To.BlockNumber ?? inMemory?.To.BlockNumber;
-                if (candidateBlock is { } newBase && latestSnapshot.BlockNumber.SaturatingSub(newBase) >= _minReorgDepth)
-                {
-                    if (_logger.IsInfo) _logger.Info(
-                        $"In-memory snapshot bytes {snapshotRepository.InMemoryBytes} exceeded the byte budget {_maxInMemorySnapshotBytes}; " +
-                        $"forcing persistence to bound memory (depth {snapshotsDepth}, finalized block {finalizedBlockNumber}).");
-                    return (persisted, inMemory, null);
-                }
-
-                persisted?.Dispose();
-                inMemory?.Dispose();
             }
         }
 
