@@ -104,6 +104,16 @@ on:
         required: false
         type: boolean
         default: false
+      dotnet_dump:
+        description: >-
+          Write a heap dump of the node right after the measured cell (nethermind, any single-node
+          shape) and turn it into dotnet-dump analyze text reports: object counts and sizes by type
+          (all, live, dead, large objects), per-heap generation sizes and object size statistics.
+          The node is paused while the dump is written, after the measurement. Ships as the
+          dotnet-dump-rpcbench artifact; the dump itself is not uploaded.
+        required: false
+        type: boolean
+        default: false
       debug_trace_call_corpus:
         description: >-
           Replay the private eth_call corpus as debug_traceCall — the geth-style Debug-module
@@ -192,6 +202,7 @@ jobs:
       perf: ${{ steps.resolve.outputs.perf }}
       dotnet_trace: ${{ steps.resolve.outputs.dotnet_trace }}
       dotnet_trace_max_seconds: ${{ steps.resolve.outputs.dotnet_trace_max_seconds }}
+      dotnet_dump: ${{ steps.resolve.outputs.dotnet_dump }}
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       image_mode: ${{ steps.resolve.outputs.image_mode }}
       image_ref: ${{ steps.resolve.outputs.image_ref }}
@@ -236,6 +247,7 @@ jobs:
           IN_DOTTRACE: ${{ inputs.dottrace }}
           IN_PERF: ${{ inputs.perf }}
           IN_DOTNET_TRACE: ${{ inputs.dotnet_trace }}
+          IN_DOTNET_DUMP: ${{ inputs.dotnet_dump }}
           IN_TRACE_CALL_CORPUS: ${{ inputs.trace_call_corpus }}
           IN_DEBUG_TRACE_CALL_CORPUS: ${{ inputs.debug_trace_call_corpus }}
           IN_STATE_LAYOUT: ${{ inputs.state_layout }}
@@ -256,6 +268,7 @@ jobs:
             dottrace="${IN_DOTTRACE:-false}"
             perf="${IN_PERF:-false}"
             dotnet_trace="${IN_DOTNET_TRACE:-false}"
+            dotnet_dump="${IN_DOTNET_DUMP:-false}"
             trace_call_corpus="${IN_TRACE_CALL_CORPUS:-false}"
             debug_trace_call_corpus="${IN_DEBUG_TRACE_CALL_CORPUS:-false}"
             state_layout="${IN_STATE_LAYOUT:-flat}"
@@ -273,6 +286,7 @@ jobs:
             dottrace="false"
             perf="false"
             dotnet_trace="false"
+            dotnet_dump="false"
             trace_call_corpus="false"
             debug_trace_call_corpus="false"
             state_layout="flat"
@@ -348,6 +362,18 @@ jobs:
           esac
           if [[ "${dotnet_trace}" == "true" && "${client}" != "nethermind" ]]; then
             echo "dotnet_trace requires client=nethermind (EventPipe is .NET-specific)."
+            exit 1
+          fi
+          case "${dotnet_dump}" in
+            true|false) ;;
+            *) echo "dotnet_dump must be true or false (got '${dotnet_dump}')."; exit 1;;
+          esac
+          if [[ "${dotnet_dump}" == "true" && "${client}" != "nethermind" ]]; then
+            echo "dotnet_dump requires client=nethermind (heap dumps are .NET-specific)."
+            exit 1
+          fi
+          if [[ "${dotnet_dump}" == "true" && "${benchmark_tool}" == "jsonbench-sweep" ]]; then
+            echo "::error::dotnet_dump=true needs a single-node shape — jsonbench-sweep starts and stops its own nodes per cell."
             exit 1
           fi
           # The collector attaches between the warm-up and the measured cell, so its window is the cell
@@ -678,6 +704,7 @@ jobs:
             echo "perf=${perf:-false}"
             echo "dotnet_trace=${dotnet_trace:-false}"
             echo "dotnet_trace_max_seconds=${dotnet_trace_max_seconds}"
+            echo "dotnet_dump=${dotnet_dump:-false}"
             echo "dottrace_mode=${dottrace_mode}"
             echo "image_mode=${image_mode}"
             echo "image_ref=${image_ref}"
@@ -829,6 +856,7 @@ jobs:
           echo "dotTrace mode: ${{ needs.resolve.outputs.dottrace_mode || 'none' }}"
           echo "perf:        ${{ needs.resolve.outputs.perf }}"
           echo "dotnet-trace: ${{ needs.resolve.outputs.dotnet_trace }} (session cap: ${{ needs.resolve.outputs.dotnet_trace_max_seconds || 'none' }}s)"
+          echo "dotnet-dump: ${{ needs.resolve.outputs.dotnet_dump }}"
           echo "Warm-up:     ${{ needs.resolve.outputs.warmup_seconds }}s at ${{ needs.resolve.outputs.warmup_rps }} rps (single-node jsonbench; 0 = none: perf starts once RPC is ready, dotTrace collects from launch)"
           echo "DB source:   ${{ needs.resolve.outputs.db_source }}"
           echo "Ref DB:      ${{ needs.resolve.outputs.ref_db_source }}"
@@ -979,6 +1007,7 @@ jobs:
           PERF: ${{ needs.resolve.outputs.perf }}
           DOTNET_TRACE: ${{ needs.resolve.outputs.dotnet_trace }}
           DOTNET_TRACE_MAX_SECONDS: ${{ needs.resolve.outputs.dotnet_trace_max_seconds }}
+          DOTNET_DUMP: ${{ needs.resolve.outputs.dotnet_dump }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           # With a warm-up the profilers start in 'Start profilers' below, after it, so they cover only the measured cell.
           PROFILE_AFTER_WARMUP: ${{ needs.resolve.outputs.warmup_seconds != '0' && 'true' || 'false' }}
@@ -1006,6 +1035,7 @@ jobs:
           DOTTRACE: "false"
           PERF: "false"
           DOTNET_TRACE: "false"
+          DOTNET_DUMP: "false"
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
 
@@ -1334,6 +1364,21 @@ jobs:
             exit 1
           fi
 
+      - name: Collect dotnet-dump reports
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_dump == 'true'
+        shell: bash
+        env:
+          ARCHIVE: ${{ env.BENCH_TEMP }}/dotnet-dump-rpcbench.zip
+        run: |
+          set -euo pipefail
+          if [[ -s "${DIAG_DIR}/dotnet-dump/dumpheap-stat.txt" ]]; then
+            ( cd "${DIAG_DIR}" && zip -9r "${ARCHIVE}" dotnet-dump )
+            echo "Archived dotnet-dump reports to ${ARCHIVE}"
+          else
+            echo "::error::dotnet_dump was requested but no ${DIAG_DIR}/dotnet-dump/dumpheap-stat.txt was produced."
+            exit 1
+          fi
+
       - name: Scan node logs for errors
         id: scan
         if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
@@ -1502,6 +1547,15 @@ jobs:
         with:
           name: dotnet-trace-rpcbench
           path: ${{ env.BENCH_TEMP }}/dotnet-trace-rpcbench.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload dotnet-dump reports
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_dump == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dotnet-dump-rpcbench
+          path: ${{ env.BENCH_TEMP }}/dotnet-dump-rpcbench.zip
           retention-days: 30
           if-no-files-found: error
 
