@@ -120,6 +120,64 @@ public partial class PatriciaTree
 
     private readonly record struct Context(BulkSetEntry[] OriginalEntriesArray, BulkSetEntry[] OriginalSortBufferArray);
 
+    private void BulkSetParallelJobs(
+        in Context ctx,
+        ArrayPoolList<(int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)> jobs,
+        Span<BulkSetEntry> entries,
+        ref TreePath path,
+        TrieNode node,
+        ReadOnlySpan<int> indexes,
+        int nibMask,
+        int flipCount,
+        Flags flags)
+    {
+        Context closureCtx = ctx;
+        BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
+        BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
+        TrieNode.ChildIterator childIterator = node.CreateChildIterator();
+
+        while (nibMask != 0)
+        {
+            int nib = BitOperations.TrailingZeroCount(nibMask);
+            nibMask &= nibMask - 1;
+            int startRange = indexes[nib];
+
+            int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
+
+            Span<BulkSetEntry> jobEntry = entries.Slice(startRange, endRange - startRange);
+
+            TreePath childPath = path.Append(nib);
+            TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
+            jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
+        }
+
+        ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
+            GetTraverseStack,
+            (i, workerTraverseStack) =>
+            {
+                (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
+
+                Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
+                Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
+
+                TrieNode? newChild = BulkSet(
+                    in closureCtx,
+                    workerTraverseStack,
+                    jobEntries,
+                    bufferEntries,
+                    ref childPath,
+                    child,
+                    flipCount,
+                    flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
+
+                jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
+
+                return workerTraverseStack;
+            },
+            ReturnTraverseStack
+        );
+    }
+
     /// <param name="ctx">Just to reduce the param count</param>
     /// <param name="traverseStack">Stack used in set. Parallel call use different stack.</param>
     /// <param name="entries">The entries</param>
@@ -209,51 +267,9 @@ public partial class PatriciaTree
                 TrieNode? newChild
                 )> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
 
-            Context closureCtx = ctx;
-            BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
-            BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
-            TrieNode.ChildIterator childIterator = node.CreateChildIterator();
-
-            while (nibMask != 0)
-            {
-                int nib = BitOperations.TrailingZeroCount(nibMask);
-                nibMask &= nibMask - 1;
-                int startRange = indexes[nib];
-
-                int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
-
-                Span<BulkSetEntry> jobEntry = entries.Slice(startRange, endRange - startRange);
-
-                TreePath childPath = path.Append(nib);
-                TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
-                jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
-            }
-
-            ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
-                GetTraverseStack,
-                (i, workerTraverseStack) =>
-                {
-                    (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
-
-                    Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
-                    Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
-
-                    TrieNode? newChild = BulkSet(
-                        in closureCtx,
-                        workerTraverseStack,
-                        jobEntries,
-                        bufferEntries,
-                        ref childPath,
-                        child,
-                        flipCount,
-                        flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
-
-                    jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
-
-                    return workerTraverseStack;
-                },
-                ReturnTraverseStack
-            );
+            // In its own method: the parallel lambda captures flipCount and flags, and a closure over parameters is
+            // allocated on entry to the method that owns them, i.e. on every recursive BulkSet call.
+            BulkSetParallelJobs(in ctx, jobs, entries, ref path, node, indexes, nibMask, flipCount, flags);
 
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
