@@ -49,6 +49,50 @@ public class LookupKNearestNeighbourTests
         return (lookup, routing, health);
     }
 
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_handles_cancelled_requests_without_rethrowing([Values] bool cancelLookup, CancellationToken token)
+    {
+        (LookupKNearestNeighbour<int, int, int> lookup, _, INodeHealthTracker<int> health) =
+            CreateLookup(1, TimeSpan.FromMilliseconds(100), [Seed1]);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource<int[]?> request = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationTokenRegistration registration = default;
+        AsyncLocal<bool> observing = new() { Value = true };
+        int exceptions = 0;
+        void OnException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+        {
+            if (observing.Value && args.Exception is OperationCanceledException) Interlocked.Increment(ref exceptions);
+        }
+
+        AppDomain.CurrentDomain.FirstChanceException += OnException;
+        int[] result;
+        try
+        {
+            result = await lookup.Lookup(Self, 8, (_, findToken) =>
+            {
+                registration = findToken.Register(() => request.TrySetCanceled(findToken));
+                if (cancelLookup) caller.Cancel();
+                return request.Task;
+            }, caller.Token);
+        }
+        finally
+        {
+            observing.Value = false;
+            AppDomain.CurrentDomain.FirstChanceException -= OnException;
+            registration.Dispose();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Empty);
+            Assert.That(request.Task.IsCanceled, Is.True);
+            Assert.That(exceptions, Is.Zero);
+        }
+        health.Received(cancelLookup ? 0 : 1).OnRequestFailed(Seed1);
+        health.DidNotReceive().OnIncomingMessageFrom(Arg.Any<int>());
+    }
+
     [TestCase(1)]
     [TestCase(3)]
     [CancelAfter(10000)]
@@ -162,6 +206,30 @@ public class LookupKNearestNeighbourTests
 
     [Test]
     [CancelAfter(10000)]
+    public async Task Lookup_deduplicates_overlapping_and_cyclic_responses([Values(1, 3)] int alpha, CancellationToken token)
+    {
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(alpha, TimeSpan.FromSeconds(10), [Seed1, Seed1, Seed2, Seed3]);
+        ConcurrentDictionary<int, int> requests = new();
+        int[] graph = [Seed1, Seed2, Seed3, N1, N2];
+
+        int[] result = await lookup.Lookup(Self, 8, async (node, _) =>
+        {
+            requests.AddOrUpdate(node, 1, static (_, count) => count + 1);
+            await Task.Yield();
+            return graph;
+        }, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EquivalentTo(graph));
+            Assert.That(requests.Select(static entry => entry.Key), Is.EquivalentTo(graph));
+            Assert.That(requests.Select(static entry => entry.Value), Is.All.EqualTo(1));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10000)]
     public async Task Lookup_nodes_should_stream_routing_table_nodes_before_network_lookup_finishes(CancellationToken token)
     {
         (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
@@ -259,14 +327,16 @@ public class LookupKNearestNeighbourTests
 
     [Test]
     [CancelAfter(10000)]
-    public async Task Find_neighbour_unexpected_failure_is_logged_as_warning(CancellationToken token)
+    public async Task Find_neighbour_unexpected_failure_is_logged_as_warning([Values] bool faultedTask, CancellationToken token)
     {
         // A non-transport failure is unexpected and should still be reported.
         CapturingLogger logger = new();
         (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
             CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1], new CapturingLoggerFactory(logger));
 
-        _ = await lookup.Lookup(Self, 8, (_, _) => throw new InvalidOperationException("boom"), token);
+        _ = await lookup.Lookup(Self, 8, (_, _) => faultedTask
+            ? Task.FromException<int[]?>(new InvalidOperationException("boom"))
+            : throw new InvalidOperationException("boom"), token);
 
         Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.True);
     }

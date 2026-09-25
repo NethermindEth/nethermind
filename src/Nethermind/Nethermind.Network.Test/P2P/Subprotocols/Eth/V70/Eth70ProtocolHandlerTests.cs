@@ -28,6 +28,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -42,7 +43,7 @@ public class Eth70ProtocolHandlerTests
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
     private IGossipPolicy _gossipPolicy = null!;
-    private ISpecProvider _specProvider = null!;
+    private IChainHeadSpecProvider _specProvider = null!;
     private Block _genesisBlock = null!;
     private Eth70ProtocolHandler _handler = null!;
     private ITxGossipPolicy _txGossipPolicy = null!;
@@ -60,7 +61,7 @@ public class Eth70ProtocolHandlerTests
         _session.Node.Returns(node);
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
-        _specProvider = Substitute.For<ISpecProvider>();
+        _specProvider = Substitute.For<IChainHeadSpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -836,6 +837,19 @@ public class Eth70ProtocolHandlerTests
             Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
             Assert.That(response.LastBlockIncomplete, Is.False);
         }
+    }
+
+    [Test]
+    public void Should_bound_receipt_lookups_for_blocks_without_transactions()
+    {
+        // A block with no transactions costs a single byte of response, so the size limit alone
+        // never ends the loop.
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns([]);
+
+        ReceiptsMessage70 response = RequestReceipts(
+            Enumerable.Repeat(Keccak.Zero, NethermindSyncLimits.MaxHashesFetch).ToArray());
+
+        Assert.That(response.TxReceipts, Has.Count.EqualTo(2 * NethermindSyncLimits.MaxReceiptFetch));
     }
 
     [Test]

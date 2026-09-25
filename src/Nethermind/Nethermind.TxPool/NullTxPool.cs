@@ -56,13 +56,17 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Hash256? hash) => false;
 
+        public bool EvictTransaction(Transaction tx) => false;
+
         public Transaction? GetBestTx() => null;
 
         public IEnumerable<Transaction> GetBestTxOfEachSender() => Array.Empty<Transaction>();
 
         public bool IsKnown(Hash256 hash) => false;
 
-        public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+        public bool IsKnown(in ValueHash256 hash) => false;
+
+        public bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction)
         {
             transaction = null;
             return false;
@@ -95,7 +99,7 @@ namespace Nethermind.TxPool
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs) => 0;
 
-        public bool TryGetPendingBlobCellMask(Hash256 hash, out BlobCellMask availableMask)
+        public bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask)
         {
             availableMask = default;
             return false;
@@ -130,7 +134,7 @@ namespace Nethermind.TxPool
 
         public ulong GetLatestPendingNonce(Address address) => 0;
 
-        public AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
+        public AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {

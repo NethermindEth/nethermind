@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -414,6 +415,24 @@ public class DebugModuleTests
         }
     }
 
+    [TestCaseSource(nameof(TraceBaseStateGuardErrorCases))]
+    public void DebugTraceTransactionByIndex_WhenTraceBaseStateGuardRejects_ReturnsResourceUnavailable(
+        Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> invoke,
+        Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge> setup,
+        string expectedErrorSubstring)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+
+        setup(header, parent, _blockFinder, _blockchainBridge);
+
+        ResultWrapper<GethLikeTxTrace> actual = invoke(CreateModule(), header);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+    }
+
     [Test]
     public void DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
     {
@@ -461,12 +480,85 @@ public class DebugModuleTests
         await _debugBridge.Received().MigrateReceipts(100, 200);
     }
 
+    // EIP-8141: a frame transaction always executes at least one frame. A frames-less frame receipt
+    // still encodes (as an empty frames list) but the decoder rejects it, so it must never be stored.
     [Test]
-    public async Task DebugResetHead_WhenInvoked_UpdatesHeadBlock()
+    public async Task DebugInsertReceipts_FrameTxReceiptWithoutFrames_IsRejectedAndNotStored(
+        [Values(true, false)] bool nullFrames)
     {
+        ReceiptForRpc receipt = FrameReceiptPayload(nullFrames ? null : []);
+
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
+    }
+
+    // The payer is written null-tolerantly and read strictly, so a payer-less frame receipt would persist and
+    // then throw on every later read of its block's receipts. It is the same failure mode as a frames-less one.
+    [Test]
+    public async Task DebugInsertReceipts_FrameTxReceiptWithoutPayer_IsRejectedAndNotStored()
+    {
+        ReceiptForRpc receipt = FrameReceiptPayload(
+            [new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, ExecutionGasUsed = 21_000 }],
+            withPayer: false);
+
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
+    }
+
+    // A null array entry is a caller error too: it otherwise dereferences into an internal error.
+    [Test]
+    public async Task DebugInsertReceipts_NullReceiptEntry_IsRejectedAndNotStored()
+    {
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [null!]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
+    }
+
+    // The counterpart: the check must not stand between a well-formed frame receipt and the bridge.
+    [Test]
+    public async Task DebugInsertReceipts_FrameTxReceiptWithFrames_ReachesTheBridge()
+    {
+        ReceiptForRpc receipt = FrameReceiptPayload([
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, ExecutionGasUsed = 21_000 },
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, ExecutionGasUsed = 30_000 }
+        ]);
+        TxReceipt[]? inserted = null;
+        _debugBridge.WhenForAnyArgs(static b => b.InsertReceipts(default!, default!))
+            .Do(call => inserted = call.Arg<TxReceipt[]>());
+
+        ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(inserted, Is.Not.Null);
+        Assert.That(inserted![0].FrameReceipts!.Select(static f => (f.Status, f.ExecutionGasUsed)),
+            Is.EqualTo(new[] { (TxFrameReceipt.StatusSuccess, 21_000UL), (TxFrameReceipt.StatusFailure, 30_000UL) }));
+    }
+
+    private static ReceiptForRpc FrameReceiptPayload(FrameReceiptForRpc[]? frameReceipts, bool withPayer = true) => new()
+    {
+        Type = TxType.FrameTx,
+        CumulativeGasUsed = 21_000,
+        Payer = withPayer ? TestItem.AddressA : null,
+        FrameReceipts = frameReceipts,
+        Logs = []
+    };
+
+    [Test]
+    public async Task DebugResetHead_WhenInvoked_UpdatesHeadBlock([Values] bool updated)
+    {
+        _debugBridge.UpdateHeadBlock(TestItem.KeccakA).Returns(updated);
+
         string response = await SerializedRequest("debug_resetHead", TestItem.KeccakA);
 
-        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{(updated ? "true" : "false")},\"id\":67}}"));
         _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
 
@@ -629,5 +721,53 @@ public class DebugModuleTests
             ErrorCodes.ResourceUnavailable,
             null)
         { TestName = "state_unavailable" };
+    }
+
+    private static IEnumerable<TestCaseData> TraceBaseStateGuardErrorCases()
+    {
+        (string Name, Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> Invoke, Action<BlockHeader, IBlockFinder> ResolveHeader)[] methods =
+        [
+            (
+                "ByBlockAndIndex",
+                static (module, header) => module.debug_traceTransactionByBlockAndIndex(new BlockParameter(header.Number), 0),
+                static (header, finder) =>
+                {
+                    finder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+                    finder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
+                }
+            ),
+            (
+                "ByBlockhashAndIndex",
+                static (module, header) => module.debug_traceTransactionByBlockhashAndIndex(header.Hash!, 0),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            )
+        ];
+
+        foreach ((string name, Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> invoke, Action<BlockHeader, IBlockFinder> resolveHeader) in methods)
+        {
+            yield return new TestCaseData(
+                invoke,
+                (Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge>)((header, _, finder, _) =>
+                {
+                    resolveHeader(header, finder);
+                    finder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).ReturnsNull();
+                }),
+                "Cannot find parent header")
+            { TestName = $"{name}_parent_header_missing" };
+
+            yield return new TestCaseData(
+                invoke,
+                (Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge>)((header, parent, finder, bridge) =>
+                {
+                    resolveHeader(header, finder);
+                    finder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+                    // Positive control: the block's own state reports available, so a guard that (incorrectly)
+                    // checked the block's own state instead of its parent's would let this request through.
+                    bridge.HasStateForBlock(Arg.Is(header)).Returns(true);
+                    bridge.HasStateForBlock(Arg.Is(parent)).Returns(false);
+                }),
+                "No state available for block")
+            { TestName = $"{name}_parent_state_missing" };
+        }
     }
 }

@@ -697,6 +697,29 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_estimateGas_gas_hint_above_eip8037_total_cap_returns_estimate()
+    {
+        // The over-cap gas hint is invalid for inclusion, but the estimator must clamp to
+        // TX_MAX_TOTAL_GAS_LIMIT and still return the executable minimum, not the cap error.
+        using Context ctx = await Context.Create(new TestSpecProvider(Amsterdam.Instance));
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(Eip8037Constants.TxMaxTotalGasLimit + 1)
+            .WithValue(0)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.GasPrice = null;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
+
+        // Zero-value transfer to an existing EOA: TX_BASE_COST + COLD_ACCOUNT_ACCESS.
+        ulong expected = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess;
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected.ToHexString(true)}\",\"id\":67}}"));
+    }
+
+    [Test]
     public async Task Eth_estimateGas_value_transfer_creating_account_is_exact()
     {
         // Production error margin (the shared Context defaults to 0), where the buggy estimator over-estimated.
@@ -875,6 +898,30 @@ public partial class EthRpcModuleTests
 
         JToken parsed = JToken.Parse(serialized);
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
+    }
+
+    /// <remarks>
+    /// A type-6 transaction reaches the frame estimator and the processor on its type alone, and
+    /// eth_estimateGas probes the transaction before estimating it, so an absent frame list must be
+    /// reported to the caller rather than faulting on the probe.
+    /// </remarks>
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6"}""")]
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6","frames":[]}""")]
+    public async Task Eth_estimateGas_frame_transaction_without_frames_returns_error(string txJson)
+    {
+        TestSpecProvider specProvider = new(Eip8141Prototype.Instance);
+        using Context ctx = await Context.Create(specProvider);
+
+        object transaction = JsonSerializer.Deserialize<object>(txJson)!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
+
+        JToken parsed = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(FrameTxValidation.MissingFrames));
+        }
     }
 
     [Test]

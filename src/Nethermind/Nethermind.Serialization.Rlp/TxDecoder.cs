@@ -12,6 +12,59 @@ namespace Nethermind.Serialization.Rlp;
 [Rlp.SkipGlobalRegistration]
 public sealed class TxDecoder : TxDecoder<Transaction>
 {
+    /// <summary>Locates the signed payload inside a transaction's canonical encoding.</summary>
+    /// <param name="encoded">The encoding, typed transactions left unwrapped (<see cref="RlpBehaviors.SkipTypedWrapping"/>).</param>
+    /// <param name="txType">The transaction's type, whose byte prefixes a typed encoding.</param>
+    /// <param name="signedPayload">The signed item bytes: everything the sequence holds before the trailing v/r/s.</param>
+    /// <returns><see langword="true"/> when the encoding is a well-formed sequence holding at least the three signature items.</returns>
+    /// <remarks>
+    /// The signed payload is verbatim wire bytes, so a caller can hash it behind its own sequence header instead of
+    /// encoding the transaction a second time. It excludes the type byte, which the caller re-emits, and the EIP-155
+    /// chain id triplet a legacy signing payload carries in place of the signature.
+    /// Expects bytes that already decoded as a transaction: a length prefix that runs past the end may still throw.
+    /// </remarks>
+    public static bool TryGetSignedPayload(ReadOnlySpan<byte> encoded, TxType txType, out ReadOnlySpan<byte> signedPayload)
+    {
+        signedPayload = default;
+
+        // Only the types whose signature is the trailing v/r/s triplet. A frame transaction (EIP-8250) carries
+        // per-frame signatures nested inside its payload and elides bytes there when signing, so its signed
+        // bytes are not a prefix of its encoding; a deposit transaction is not signed at all.
+        if (txType is not (TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.Blob or TxType.SetCode))
+        {
+            return false;
+        }
+
+        if (txType != TxType.Legacy)
+        {
+            if (encoded.IsEmpty || encoded[0] != (byte)txType) return false;
+            encoded = encoded[1..];
+        }
+
+        if (encoded.IsEmpty || encoded[0] < Rlp.EmptyListByte) return false;
+
+        LiteRlpReader reader = new(encoded);
+        (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength(0);
+        int payloadEnd = prefixLength + contentLength;
+
+        if (payloadEnd != encoded.Length) return false;
+
+        // Every type ends with v/y_parity, r and s, so the signed payload ends where the third item from the end begins.
+        int signedEnd = -1, secondFromLast = -1, last = -1;
+        for (int position = prefixLength; position < payloadEnd;)
+        {
+            (signedEnd, secondFromLast, last) = (secondFromLast, last, position);
+            position += reader.PeekNextRlpLength(position);
+            if (position > payloadEnd) return false;
+        }
+
+        if (signedEnd < 0) return false;
+
+        signedPayload = encoded[prefixLength..signedEnd];
+        return true;
+    }
+
+    private const int MaxRetainedTransactions = 2_048;
     public static readonly ObjectPool<Transaction> TxObjectPool;
 
     public static readonly TxDecoder Instance;
@@ -20,7 +73,9 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 
     static TxDecoder()
     {
-        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
+        // Retain reusable gossip and owned block-body transactions across receive/processing threads. This caps lazy retention, not preallocation;
+        // PoolPolicy clears payload references before retaining a transaction.
+        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), MaxRetainedTransactions);
         Instance = new TxDecoder(static () => TxObjectPool.Get());
     }
 
@@ -60,6 +115,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         RegisterDecoder(TxType.EIP1559, new EIP1559TxDecoder<T>(factory));
         RegisterDecoder(TxType.Blob, new BlobTxDecoder<T>(factory));
         RegisterDecoder(TxType.SetCode, new SetCodeTxDecoder<T>(factory));
+        RegisterDecoder(TxType.FrameTx, new FrameTxDecoder<T>(factory));
     }
 
     public void RegisterDecoder(ITxDecoder decoder) => RegisterDecoder(decoder.Type, decoder);
@@ -122,6 +178,8 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         decoderContext.Position = position;
 
         Transaction? decodedTransaction = transaction;
+        if (decodedTransaction is null && (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) != 0)
+            decodedTransaction = new T();
         GetDecoder(txType).Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
         transaction = (T?)decodedTransaction;
 
