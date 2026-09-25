@@ -416,9 +416,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Second_hello_is_rejected_even_when_handling_the_first_throws()
         {
-            // Pins that _receivedHello is set before HandleHello runs: if a first Hello throws partway
-            // through negotiation (e.g. a ProtocolInitialized subscriber faults), a following Hello must
-            // still be rejected as repeated rather than replaying negotiation from a half-applied state.
+            // Pins that _receivedHello is set before HandleHello runs.
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
 
