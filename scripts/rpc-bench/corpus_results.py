@@ -38,9 +38,9 @@ METRIC_FIELDS: dict[str, tuple[str, ...]] = {
     "dropped_iterations": ("count",),
 }
 OPTIONAL_METRICS = ("dropped_iterations", "checks", "http_req_failed")
-CLASS_FIELDS = METRIC_FIELDS["http_req_duration"] + ("count",)
+CLASS_FIELDS = METRIC_FIELDS["http_req_duration"] + ("count", "fail_rate")
 CLASS_NAME_PATTERN = re.compile(r"class_[0-9]+")
-SUBMETRIC_PATTERN = re.compile(r"^(http_req_duration|http_reqs)\{(.*)\}$")
+SUBMETRIC_PATTERN = re.compile(r"^(http_req_duration|http_reqs|http_req_failed)\{(.*)\}$")
 CLASS_TAG_PATTERN = re.compile(r"req_name:['\"]?(class_[0-9]+)['\"]?")
 BLOCK_HASH_PATTERN = re.compile(r"0x[0-9a-f]{64}")
 STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(:-?\d+)?")
@@ -106,12 +106,15 @@ def _class_submetrics(raw_metrics: dict) -> dict[str, dict]:
         if match.group(1) == "http_req_duration":
             for field in METRIC_FIELDS["http_req_duration"]:
                 entry[field] = _metric_value(metric, field, f"{key}.{field}")
+        elif match.group(1) == "http_req_failed":
+            entry["fail_rate"] = _metric_value(metric, "rate", f"{key}.rate")
         else:
             entry["count"] = _metric_value(metric, "count", f"{key}.count")
     complete = {}
     for name, entry in sorted(classes.items(), key=lambda item: int(item[0].split("_")[1])):
         if all(field in entry for field in METRIC_FIELDS["http_req_duration"]):
             entry.setdefault("count", 0)
+            entry.setdefault("fail_rate", 0)
             complete[name] = {"values": entry}
     return complete
 
