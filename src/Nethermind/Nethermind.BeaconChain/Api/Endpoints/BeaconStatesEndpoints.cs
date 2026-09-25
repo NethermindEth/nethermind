@@ -71,10 +71,10 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        RootDto dto = new(resolved.Block.Message!.StateRoot!.ToString());
+        RootDto dto = new(resolved.StateRoot.ToString());
         return BeaconApiJson.WriteEnvelopeAsync(c, dto,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, resolved.Block.Message.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
             c.RequestAborted);
     }
 

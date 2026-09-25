@@ -8,7 +8,9 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -447,7 +449,7 @@ public class BeaconJsonBodiesTests
     }
 }
 
-/// <summary>Sepolia schedules Gloas, so a block in a Gloas epoch can exist there; its body layout is not the one this writer serializes.</summary>
+/// <summary>Sepolia schedules Gloas, so children of one parent can straddle the fork boundary there.</summary>
 public class BeaconJsonBodiesGloasTests
 {
     private BeaconApiTestHost _host = null!;
@@ -459,22 +461,6 @@ public class BeaconJsonBodiesGloasTests
     public async Task StopHost() => await _host.DisposeAsync();
 
     [Test]
-    public async Task Block_json_for_a_gloas_epoch_block_is_501_while_ssz_still_serves()
-    {
-        ulong gloasSlot = BeaconChainSpec.Sepolia.GloasForkEpoch * BeaconChainSpec.Sepolia.SlotsPerEpoch + 3;
-        Hash256 root = BeaconApiTestHost.TestRoot(0x80);
-        _host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(gloasSlot, BeaconApiTestHost.FilledHash(0x00)));
-
-        HttpResponseMessage json = await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", "application/json");
-        JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(json);
-        Assert.That(json.StatusCode, Is.EqualTo((HttpStatusCode)501));
-        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("gloas"));
-
-        HttpResponseMessage ssz = await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", "application/octet-stream");
-        Assert.That(ssz.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-    }
-
-    [Test]
     public async Task Headers_by_parent_root_names_the_fork_only_when_every_listed_child_is_in_the_same_one()
     {
         ulong gloasSlot = BeaconChainSpec.Sepolia.GloasForkEpoch * BeaconChainSpec.Sepolia.SlotsPerEpoch;
@@ -483,7 +469,7 @@ public class BeaconJsonBodiesGloasTests
         Hash256 gloasChild = BeaconApiTestHost.TestRoot(0x83);
         _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(gloasSlot - 5, BeaconApiTestHost.FilledHash(0x00)));
         _host.Store.PutBlock(fuluChild, BeaconApiTestHost.RichBlock(gloasSlot - 2, parent));
-        _host.Store.PutBlock(gloasChild, BeaconApiTestHost.RichBlock(gloasSlot + 1, parent));
+        _host.Store.PutForkedBlock(gloasChild, new ForkedSignedBeaconBlock.OfGloas(SignedBeaconBlockBuilders.CreateMinimalGloasBlock(gloasSlot + 1, parent)));
 
         HttpResponseMessage mixed = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", "application/json");
         string raw = await mixed.Content.ReadAsStringAsync();
