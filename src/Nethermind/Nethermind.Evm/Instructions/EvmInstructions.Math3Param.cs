@@ -58,6 +58,6 @@ public static partial class EvmInstructions
 
     public struct OpMulMod : IOpMath3Param
     {
-        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => UInt256.MultiplyMod(in a, in b, in c, out result);
+        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => ModularArithmetic.MultiplyMod(in a, in b, in c, out result);
     }
 }
