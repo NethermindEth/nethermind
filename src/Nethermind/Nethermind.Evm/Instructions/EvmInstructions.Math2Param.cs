@@ -165,11 +165,9 @@ public static partial class EvmInstructions
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
-        // The operands are passed by reference straight from their slots (stack words are in UInt256
-        // limb layout; the popped slot stays intact). Copying them into locals first made MUL, DIV, SDIV,
-        // MOD and SMOD store each operand to the frame and read it back as limbs, and a load cannot be
-        // forwarded from a wider store. The result goes to a local first, so no Operation ever sees its
-        // output alias an input.
+        // Operands are read in place: slots hold the UInt256 limb layout and the popped slot stays intact
+        // until the next push. The result goes to a local because the Int256 routines behind MUL/DIV/MOD
+        // are not guaranteed alias-safe.
         ref UInt256 b = ref As<byte, UInt256>(ref topRef);
         TOpMath.Operation(in Add(ref b, 1), in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
