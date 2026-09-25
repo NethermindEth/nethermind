@@ -209,7 +209,7 @@ public class ProtocolsManagerTests
         private readonly IPeerManager _peerManager;
         private readonly INetworkConfig _networkConfig;
         private readonly ITxPoolConfig _txPoolConfig;
-        private readonly ISpecProvider _specProvider;
+        private readonly IChainHeadSpecProvider _specProvider;
         private readonly IForkInfo _forkInfo;
 
         public Context()
@@ -250,7 +250,7 @@ public class ProtocolsManagerTests
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _txPoolConfig = Substitute.For<ITxPoolConfig>();
-            _specProvider = Substitute.For<ISpecProvider>();
+            _specProvider = Substitute.For<IChainHeadSpecProvider>();
             _manager = new ProtocolsManager(
                 _syncPeerPool,
                 _txPool,

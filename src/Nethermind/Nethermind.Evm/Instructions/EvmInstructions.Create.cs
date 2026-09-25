@@ -188,8 +188,7 @@ public static partial class EvmInstructions
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
 
-        // Analyze and compile the initialization code.
-        CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
+        CodeInfo? codeInfo = new(initCode);
 
         // EIP-684: if the account already exists with code or a non-zero nonce, the creation fails.
         // Collision behaves as an immediate exceptional halt - burned callGas counts as block_execution.
@@ -231,7 +230,8 @@ public static partial class EvmInstructions
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot,
-            isCreateStateGasCharged: chargeCreateStateGas);
+            isCreateStateGasCharged: chargeCreateStateGas,
+            frameJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.FrameJournalCheckpoint ?? 0);
 
         return EvmExceptionType.Suspend;
         // Jump forward to be unpredicted by the branch predictor.

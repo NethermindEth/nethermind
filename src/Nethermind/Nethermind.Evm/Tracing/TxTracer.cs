@@ -52,7 +52,7 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
     public virtual void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
     public virtual void ReportAccountRead(Address address) { }
-    public virtual void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
+    public virtual void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
     public virtual void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
     public virtual void ReportStorageClear(Address address) { }
 
