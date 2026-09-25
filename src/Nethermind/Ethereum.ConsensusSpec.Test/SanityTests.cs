@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
@@ -40,22 +41,52 @@ public class SanityTests
     [TestCaseSource(nameof(MainnetSlotCases))]
     public void Slots_mainnet(SanityCase testCase) => ExecuteSlots(testCase);
 
-    private static void ExecuteBlocks(SanityCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("sanity/blocks", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
+    // A wrong suite path or an emptied case source enumerates zero vectors, and a sub-suite this driver does not enumerate never runs; both stay green.
+    [Test]
+    public void Every_fork_and_sub_suite_has_vectors_in_the_archive([Values] ConsensusPreset preset)
+    {
+        List<SanityCase> blocks = FuluDriverSupport.TestedCases<SanityCase>(preset, MinimalBlockCases, MainnetBlockCases);
+        List<SanityCase> slots = FuluDriverSupport.TestedCases<SanityCase>(preset, MinimalSlotCases, MainnetSlotCases);
+        using (Assert.EnterMultipleScope())
         {
-            FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
-            switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
+            Assert.That(blocks.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), "blocks");
+            Assert.That(slots.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks), "slots");
+            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
             {
-                case ForkDriver<BeaconStateFulu> fulu:
-                    RunBlocks(testCase, fulu);
-                    break;
-                case ForkDriver<BeaconStateGloas> gloas:
-                    RunBlocks(testCase, gloas);
-                    break;
-                case ForkDriver other:
-                    throw new NotImplementedInDriverException($"fork '{other.Fork}' has no state type this suite knows.");
+                IEnumerable<string> subSuites = ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, "sanity")).Select(Path.GetFileName)!;
+                Assert.That(subSuites, Is.EquivalentTo(SubSuites), $"{fork} sanity sub-suites in the archive");
             }
-        });
+        }
+    }
+
+    // Not-implemented vectors are Inconclusive, so a driver that reports every mainnet vector that way still runs green.
+    [Test]
+    public void Every_fork_and_sub_suite_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented()
+    {
+        FuluDriverSupport.AssertEveryKeyRunsAVector(
+            FuluDriverSupport.TestedCases<SanityCase>(ConsensusPreset.Mainnet, MinimalBlockCases, MainnetBlockCases), static testCase => testCase.Fork, RunBlocks);
+        FuluDriverSupport.AssertEveryKeyRunsAVector(
+            FuluDriverSupport.TestedCases<SanityCase>(ConsensusPreset.Mainnet, MinimalSlotCases, MainnetSlotCases), static testCase => testCase.Fork, RunSlots);
+    }
+
+    private static void ExecuteBlocks(SanityCase testCase) =>
+        ConsensusSpecTestSummary.RunAndRecord("sanity/blocks", testCase.Fork, testCase.Preset, testCase.VectorName, () => RunBlocks(testCase));
+
+    private static void RunBlocks(SanityCase testCase)
+    {
+        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
+        {
+            case ForkDriver<BeaconStateFulu> fulu:
+                RunBlocks(testCase, fulu);
+                break;
+            case ForkDriver<BeaconStateGloas> gloas:
+                RunBlocks(testCase, gloas);
+                break;
+            case ForkDriver other:
+                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no state type this suite knows.");
+        }
+    }
 
     private static void RunBlocks<TState>(SanityCase testCase, ForkDriver<TState> driver) where TState : class
     {
@@ -100,21 +131,23 @@ public class SanityTests
     }
 
     private static void ExecuteSlots(SanityCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("sanity/slots", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
+        ConsensusSpecTestSummary.RunAndRecord("sanity/slots", testCase.Fork, testCase.Preset, testCase.VectorName, () => RunSlots(testCase));
+
+    private static void RunSlots(SanityCase testCase)
+    {
+        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
         {
-            FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
-            switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
-            {
-                case ForkDriver<BeaconStateFulu> fulu:
-                    RunSlots(testCase, fulu);
-                    break;
-                case ForkDriver<BeaconStateGloas> gloas:
-                    RunSlots(testCase, gloas);
-                    break;
-                case ForkDriver other:
-                    throw new NotImplementedInDriverException($"fork '{other.Fork}' has no state type this suite knows.");
-            }
-        });
+            case ForkDriver<BeaconStateFulu> fulu:
+                RunSlots(testCase, fulu);
+                break;
+            case ForkDriver<BeaconStateGloas> gloas:
+                RunSlots(testCase, gloas);
+                break;
+            case ForkDriver other:
+                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no state type this suite knows.");
+        }
+    }
 
     private static void RunSlots<TState>(SanityCase testCase, ForkDriver<TState> driver) where TState : class
     {
@@ -127,19 +160,23 @@ public class SanityTests
         FuluDriverSupport.AssertPostStateRoot(driver, Path.Combine(testCase.CasePath, "post.ssz_snappy"), state);
     }
 
-    private static IEnumerable<TestCaseData> MinimalBlockCases() => Cases(ConsensusPreset.Minimal, "blocks", "meta.yaml");
-    private static IEnumerable<TestCaseData> MinimalSlotCases() => Cases(ConsensusPreset.Minimal, "slots", "slots.yaml");
+    private const string BlocksSubSuite = "blocks";
+    private const string SlotsSubSuite = "slots";
+    private static readonly string[] SubSuites = [BlocksSubSuite, SlotsSubSuite];
+
+    private static IEnumerable<TestCaseData> MinimalBlockCases() => Cases(ConsensusPreset.Minimal, BlocksSubSuite, "meta.yaml");
+    private static IEnumerable<TestCaseData> MinimalSlotCases() => Cases(ConsensusPreset.Minimal, SlotsSubSuite, "slots.yaml");
 
     private static IEnumerable<TestCaseData> MainnetBlockCases()
     {
         if (!ConsensusSpecArchive.MainnetEnabled) yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet, "blocks", "meta.yaml")) yield return data;
+        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet, BlocksSubSuite, "meta.yaml")) yield return data;
     }
 
     private static IEnumerable<TestCaseData> MainnetSlotCases()
     {
         if (!ConsensusSpecArchive.MainnetEnabled) yield break;
-        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet, "slots", "slots.yaml")) yield return data;
+        foreach (TestCaseData data in Cases(ConsensusPreset.Mainnet, SlotsSubSuite, "slots.yaml")) yield return data;
     }
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset, string subSuite, string marker)

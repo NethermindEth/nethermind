@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using NUnit.Framework;
@@ -68,29 +69,68 @@ public class EpochProcessingTests
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(EpochProcessingCase testCase) => Execute(testCase);
 
-    private static void Execute(EpochProcessingCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("epoch_processing", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
-        {
-            if (testCase.Preset == nameof(ConsensusPreset.Minimal))
-            {
-                throw new NotImplementedInDriverException(
-                    "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds, so they cannot decode a " +
-                    "minimal-preset pre.ssz_snappy at all; this suite only runs for real against the mainnet preset " +
-                    "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
-            }
+    /// <summary>Handlers with no mainnet vectors at <see cref="ConsensusSpecArchive.Version"/>; only the minimal preset generates them.</summary>
+    private static readonly string[] MinimalOnlySubTransitions = ["sync_committee_updates"];
 
-            switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
+    /// <summary>Handlers of a fork's table that the fork has no vectors for; process_proposer_lookahead is introduced in fulu (EIP-7917).</summary>
+    private static readonly Dictionary<string, string[]> SubTransitionsAbsentByFork = new(StringComparer.Ordinal)
+    {
+        ["electra"] = ["proposer_lookahead"],
+    };
+
+    // A wrong suite path or an emptied case source enumerates zero vectors; a renamed or dropped handler leaves its vectors not-implemented; both run green.
+    [Test]
+    public void Every_fork_and_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
+    {
+        List<EpochProcessingCase> cases = FuluDriverSupport.TestedCases<EpochProcessingCase>(preset, MinimalCases, MainnetCases);
+        string[] absentForPreset = preset == ConsensusPreset.Mainnet ? MinimalOnlySubTransitions : [];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ConsensusSpecArchive.StateTransitionForks));
+            foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
             {
-                case ForkDriver<BeaconStateFulu> fulu:
-                    Run(testCase, fulu, Handlers);
-                    break;
-                case ForkDriver<BeaconStateGloas> gloas:
-                    Run(testCase, gloas, GloasHandlers);
-                    break;
-                case ForkDriver other:
-                    throw new NotImplementedInDriverException($"fork '{other.Fork}' has no epoch_processing handler table.");
+                IEnumerable<string> table = FuluDriverSupport.RequireForkDriver(fork) is ForkDriver<BeaconStateGloas> ? GloasHandlers.Keys : Handlers.Keys;
+                Assert.That(
+                    cases.Where(testCase => testCase.Fork == fork).Select(static testCase => testCase.SubTransitionName).Distinct(),
+                    Is.EquivalentTo(table.Except(absentForPreset).Except(SubTransitionsAbsentByFork.GetValueOrDefault(fork, []))),
+                    $"{fork} sub-transitions");
             }
-        });
+        }
+    }
+
+    // Not-implemented vectors are Inconclusive, so a handler that reports every mainnet vector that way still runs green.
+    [Test]
+    public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
+        FuluDriverSupport.AssertEveryKeyRunsAVector(
+            FuluDriverSupport.TestedCases<EpochProcessingCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases),
+            static testCase => $"{testCase.Fork}/{testCase.SubTransitionName}",
+            Run);
+
+    private static void Execute(EpochProcessingCase testCase) =>
+        ConsensusSpecTestSummary.RunAndRecord("epoch_processing", testCase.Fork, testCase.Preset, testCase.VectorName, () => Run(testCase));
+
+    private static void Run(EpochProcessingCase testCase)
+    {
+        if (testCase.Preset == nameof(ConsensusPreset.Minimal))
+        {
+            throw new NotImplementedInDriverException(
+                "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds, so they cannot decode a " +
+                "minimal-preset pre.ssz_snappy at all; this suite only runs for real against the mainnet preset " +
+                "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
+        }
+
+        switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
+        {
+            case ForkDriver<BeaconStateFulu> fulu:
+                Run(testCase, fulu, Handlers);
+                break;
+            case ForkDriver<BeaconStateGloas> gloas:
+                Run(testCase, gloas, GloasHandlers);
+                break;
+            case ForkDriver other:
+                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no epoch_processing handler table.");
+        }
+    }
 
     private static void Run<TState>(EpochProcessingCase testCase, ForkDriver<TState> driver, Dictionary<string, Action<TState, EpochCache>> handlers)
         where TState : class
