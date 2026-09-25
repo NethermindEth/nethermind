@@ -66,7 +66,7 @@ public class LatencyAndMessageSizeBasedRequestSizer(
             return (result, AdaptiveRequestSizer.Direction.Decrease);
         }
 
-        if (result.Count == 0 && affectiveRequestSize > 0)
+        if (result.Count == 0)
         {
             // Nothing came back: the peer does not have these items (e.g. pruned history), which says
             // nothing about how many it can serve. Shrinking here drives the size to the minimum.

@@ -542,8 +542,22 @@ namespace Nethermind.Synchronization.Peers
 
         private int DropWorstPeer()
         {
+            ulong? nextBodyNumber = _blockTree.BestSuggestedBody?.Number is { } bestBodyNumber
+                ? bestBodyNumber + (bestBodyNumber < ulong.MaxValue ? 1UL : 0UL)
+                : null;
+
             string? IsPeerWorstWithReason(PeerInfo currentPeer, PeerInfo toCompare)
             {
+                if (nextBodyNumber is { } number)
+                {
+                    bool currentCannotServe = currentPeer.SyncPeer.EarliestBlock > number;
+                    bool comparedCannotServe = toCompare.SyncPeer.EarliestBlock > number;
+                    if (currentCannotServe != comparedCannotServe)
+                    {
+                        return comparedCannotServe ? "PRUNED HISTORY" : null;
+                    }
+                }
+
                 if (toCompare.HeadNumber < currentPeer.HeadNumber)
                 {
                     return "LOWEST NUMBER";
