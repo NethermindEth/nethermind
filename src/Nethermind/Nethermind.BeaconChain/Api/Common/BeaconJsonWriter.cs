@@ -86,17 +86,7 @@ internal static class BeaconJsonWriter
         WriteEth1Data(w, body.Eth1Data!);
         WriteHex(w, "graffiti", body.Graffiti!.Bytes);
 
-        w.WriteStartArray("proposer_slashings");
-        foreach (ProposerSlashing slashing in body.ProposerSlashings!)
-        {
-            w.WriteStartObject();
-            w.WritePropertyName("signed_header_1");
-            WriteSignedBeaconBlockHeader(w, slashing.SignedHeader1!);
-            w.WritePropertyName("signed_header_2");
-            WriteSignedBeaconBlockHeader(w, slashing.SignedHeader2!);
-            w.WriteEndObject();
-        }
-        w.WriteEndArray();
+        WriteProposerSlashings(w, body.ProposerSlashings!);
 
         w.WriteStartArray("attester_slashings");
         foreach (AttesterSlashing slashing in body.AttesterSlashings!)
@@ -117,8 +107,173 @@ internal static class BeaconJsonWriter
         }
         w.WriteEndArray();
 
+        WriteDeposits(w, body.Deposits!);
+        WriteVoluntaryExits(w, body.VoluntaryExits!);
+        WriteSyncAggregate(w, body.SyncAggregate!);
+
+        w.WritePropertyName("execution_payload");
+        WriteExecutionPayload(w, body.ExecutionPayload!);
+
+        WriteBlsToExecutionChanges(w, body.BlsToExecutionChanges!);
+        WriteKzgCommitments(w, body.BlobKzgCommitments!);
+
+        w.WritePropertyName("execution_requests");
+        WriteExecutionRequests(w, body.ExecutionRequests!);
+        w.WriteEndObject();
+    }
+
+    /// <summary>Writes a Gloas signed block: the bid replaces the payload, and the parent's execution requests ride in the body (specs/gloas/beacon-chain.md <c>BeaconBlockBody</c>).</summary>
+    public static void WriteSignedBeaconBlock(Utf8JsonWriter w, SignedBeaconBlockGloas block)
+    {
+        w.WriteStartObject();
+        w.WritePropertyName("message");
+        BeaconBlockGloas message = block.Message!;
+        w.WriteStartObject();
+        WriteUInt(w, "slot", message.Slot);
+        WriteUInt(w, "proposer_index", message.ProposerIndex);
+        WriteHex(w, "parent_root", message.ParentRoot!.Bytes);
+        WriteHex(w, "state_root", message.StateRoot!.Bytes);
+        w.WritePropertyName("body");
+        WriteBeaconBlockBody(w, message.Body!);
+        w.WriteEndObject();
+        WriteHex(w, "signature", block.Signature.Bytes);
+        w.WriteEndObject();
+    }
+
+    private static void WriteBeaconBlockBody(Utf8JsonWriter w, BeaconBlockBodyGloas body)
+    {
+        w.WriteStartObject();
+        WriteHex(w, "randao_reveal", body.RandaoReveal.Bytes);
+        w.WritePropertyName("eth1_data");
+        WriteEth1Data(w, body.Eth1Data!);
+        WriteHex(w, "graffiti", body.Graffiti!.Bytes);
+        WriteProposerSlashings(w, body.ProposerSlashings!);
+
+        w.WriteStartArray("attester_slashings");
+        foreach (AttesterSlashingGloas slashing in body.AttesterSlashings!)
+        {
+            w.WriteStartObject();
+            w.WritePropertyName("attestation_1");
+            WriteIndexedAttestation(w, slashing.Attestation1!.AttestingIndices!, slashing.Attestation1.Data!, slashing.Attestation1.Signature);
+            w.WritePropertyName("attestation_2");
+            WriteIndexedAttestation(w, slashing.Attestation2!.AttestingIndices!, slashing.Attestation2.Data!, slashing.Attestation2.Signature);
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+
+        w.WriteStartArray("attestations");
+        foreach (AttestationGloas attestation in body.Attestations!)
+        {
+            WriteAttestation(w, attestation.AggregationBits!, attestation.Data!, attestation.Signature, attestation.CommitteeBits!);
+        }
+        w.WriteEndArray();
+
+        WriteDeposits(w, body.Deposits!);
+        WriteVoluntaryExits(w, body.VoluntaryExits!);
+        WriteSyncAggregate(w, body.SyncAggregate!);
+        WriteBlsToExecutionChanges(w, body.BlsToExecutionChanges!);
+
+        w.WritePropertyName("signed_execution_payload_bid");
+        WriteSignedExecutionPayloadBid(w, body.SignedExecutionPayloadBid!);
+
+        w.WriteStartArray("payload_attestations");
+        foreach (PayloadAttestation attestation in body.PayloadAttestations!)
+        {
+            w.WriteStartObject();
+            WriteBitVector(w, "aggregation_bits", attestation.AggregationBits!);
+            w.WritePropertyName("data");
+            WritePayloadAttestationData(w, attestation.Data!);
+            WriteHex(w, "signature", attestation.Signature.Bytes);
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+
+        w.WritePropertyName("parent_execution_requests");
+        WriteExecutionRequests(w, body.ParentExecutionRequests!);
+        w.WriteEndObject();
+    }
+
+    private static void WriteSignedExecutionPayloadBid(Utf8JsonWriter w, SignedExecutionPayloadBid signed)
+    {
+        ExecutionPayloadBid bid = signed.Message!;
+        w.WriteStartObject();
+        w.WritePropertyName("message");
+        w.WriteStartObject();
+        WriteHex(w, "parent_block_hash", bid.ParentBlockHash!.Bytes);
+        WriteHex(w, "parent_block_root", bid.ParentBlockRoot!.Bytes);
+        WriteHex(w, "block_hash", bid.BlockHash!.Bytes);
+        WriteHex(w, "prev_randao", bid.PrevRandao!.Bytes);
+        WriteHex(w, "fee_recipient", bid.FeeRecipient!.Bytes);
+        WriteUInt(w, "gas_limit", bid.GasLimit);
+        WriteUInt(w, "builder_index", bid.BuilderIndex);
+        WriteUInt(w, "slot", bid.Slot);
+        WriteUInt(w, "value", bid.Value);
+        WriteUInt(w, "execution_payment", bid.ExecutionPayment);
+        WriteKzgCommitments(w, bid.BlobKzgCommitments!);
+        WriteHex(w, "execution_requests_root", bid.ExecutionRequestsRoot!.Bytes);
+        w.WriteEndObject();
+        WriteHex(w, "signature", signed.Signature.Bytes);
+        w.WriteEndObject();
+    }
+
+    private static void WritePayloadAttestationData(Utf8JsonWriter w, PayloadAttestationData data)
+    {
+        w.WriteStartObject();
+        WriteHex(w, "beacon_block_root", data.BeaconBlockRoot!.Bytes);
+        WriteUInt(w, "slot", data.Slot);
+        w.WriteBoolean("payload_present", data.PayloadPresent);
+        w.WriteBoolean("blob_data_available", data.BlobDataAvailable);
+        w.WriteEndObject();
+    }
+
+    private static void WriteExecutionRequests(Utf8JsonWriter w, ExecutionRequestsGloas requests)
+    {
+        w.WriteStartObject();
+        WriteExecutionRequestLists(w, requests.Deposits!, requests.Withdrawals!, requests.Consolidations!);
+
+        w.WriteStartArray("builder_deposits");
+        foreach (BuilderDepositRequest deposit in requests.BuilderDeposits!)
+        {
+            w.WriteStartObject();
+            WriteHex(w, "pubkey", deposit.Pubkey.Bytes);
+            WriteHex(w, "withdrawal_credentials", deposit.WithdrawalCredentials!.Bytes);
+            WriteUInt(w, "amount", deposit.Amount);
+            WriteHex(w, "signature", deposit.Signature.Bytes);
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+
+        w.WriteStartArray("builder_exits");
+        foreach (BuilderExitRequest exit in requests.BuilderExits!)
+        {
+            w.WriteStartObject();
+            WriteHex(w, "source_address", exit.SourceAddress!.Bytes);
+            WriteHex(w, "pubkey", exit.Pubkey.Bytes);
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+        w.WriteEndObject();
+    }
+
+    private static void WriteProposerSlashings(Utf8JsonWriter w, ProposerSlashing[] slashings)
+    {
+        w.WriteStartArray("proposer_slashings");
+        foreach (ProposerSlashing slashing in slashings)
+        {
+            w.WriteStartObject();
+            w.WritePropertyName("signed_header_1");
+            WriteSignedBeaconBlockHeader(w, slashing.SignedHeader1!);
+            w.WritePropertyName("signed_header_2");
+            WriteSignedBeaconBlockHeader(w, slashing.SignedHeader2!);
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+    }
+
+    private static void WriteDeposits(Utf8JsonWriter w, Deposit[] deposits)
+    {
         w.WriteStartArray("deposits");
-        foreach (Deposit deposit in body.Deposits!)
+        foreach (Deposit deposit in deposits)
         {
             w.WriteStartObject();
             w.WriteStartArray("proof");
@@ -134,9 +289,12 @@ internal static class BeaconJsonWriter
             w.WriteEndObject();
         }
         w.WriteEndArray();
+    }
 
+    private static void WriteVoluntaryExits(Utf8JsonWriter w, SignedVoluntaryExit[] exits)
+    {
         w.WriteStartArray("voluntary_exits");
-        foreach (SignedVoluntaryExit exit in body.VoluntaryExits!)
+        foreach (SignedVoluntaryExit exit in exits)
         {
             w.WriteStartObject();
             w.WritePropertyName("message");
@@ -148,18 +306,21 @@ internal static class BeaconJsonWriter
             w.WriteEndObject();
         }
         w.WriteEndArray();
+    }
 
+    private static void WriteSyncAggregate(Utf8JsonWriter w, SyncAggregate aggregate)
+    {
         w.WritePropertyName("sync_aggregate");
         w.WriteStartObject();
-        WriteBitVector(w, "sync_committee_bits", body.SyncAggregate!.SyncCommitteeBits!);
-        WriteHex(w, "sync_committee_signature", body.SyncAggregate.SyncCommitteeSignature.Bytes);
+        WriteBitVector(w, "sync_committee_bits", aggregate.SyncCommitteeBits!);
+        WriteHex(w, "sync_committee_signature", aggregate.SyncCommitteeSignature.Bytes);
         w.WriteEndObject();
+    }
 
-        w.WritePropertyName("execution_payload");
-        WriteExecutionPayload(w, body.ExecutionPayload!);
-
+    private static void WriteBlsToExecutionChanges(Utf8JsonWriter w, SignedBlsToExecutionChange[] changes)
+    {
         w.WriteStartArray("bls_to_execution_changes");
-        foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges!)
+        foreach (SignedBlsToExecutionChange change in changes)
         {
             w.WriteStartObject();
             w.WritePropertyName("message");
@@ -172,21 +333,26 @@ internal static class BeaconJsonWriter
             w.WriteEndObject();
         }
         w.WriteEndArray();
+    }
 
+    private static void WriteKzgCommitments(Utf8JsonWriter w, SszKzgCommitment[] commitments)
+    {
         w.WriteStartArray("blob_kzg_commitments");
-        foreach (SszKzgCommitment commitment in body.BlobKzgCommitments!) WriteHexValue(w, commitment.AsSpan());
+        foreach (SszKzgCommitment commitment in commitments) WriteHexValue(w, commitment.AsSpan());
         w.WriteEndArray();
-
-        w.WritePropertyName("execution_requests");
-        WriteExecutionRequests(w, body.ExecutionRequests!);
-        w.WriteEndObject();
     }
 
     private static void WriteExecutionRequests(Utf8JsonWriter w, ExecutionRequests requests)
     {
         w.WriteStartObject();
+        WriteExecutionRequestLists(w, requests.Deposits!, requests.Withdrawals!, requests.Consolidations!);
+        w.WriteEndObject();
+    }
+
+    private static void WriteExecutionRequestLists(Utf8JsonWriter w, DepositRequest[] deposits, WithdrawalRequest[] withdrawals, ConsolidationRequest[] consolidations)
+    {
         w.WriteStartArray("deposits");
-        foreach (DepositRequest deposit in requests.Deposits!)
+        foreach (DepositRequest deposit in deposits)
         {
             w.WriteStartObject();
             WriteHex(w, "pubkey", deposit.Pubkey.Bytes);
@@ -199,7 +365,7 @@ internal static class BeaconJsonWriter
         w.WriteEndArray();
 
         w.WriteStartArray("withdrawals");
-        foreach (WithdrawalRequest withdrawal in requests.Withdrawals!)
+        foreach (WithdrawalRequest withdrawal in withdrawals)
         {
             w.WriteStartObject();
             WriteHex(w, "source_address", withdrawal.SourceAddress!.Bytes);
@@ -210,7 +376,7 @@ internal static class BeaconJsonWriter
         w.WriteEndArray();
 
         w.WriteStartArray("consolidations");
-        foreach (ConsolidationRequest consolidation in requests.Consolidations!)
+        foreach (ConsolidationRequest consolidation in consolidations)
         {
             w.WriteStartObject();
             WriteHex(w, "source_address", consolidation.SourceAddress!.Bytes);
@@ -219,7 +385,6 @@ internal static class BeaconJsonWriter
             w.WriteEndObject();
         }
         w.WriteEndArray();
-        w.WriteEndObject();
     }
 
     private static void WriteExecutionPayload(Utf8JsonWriter w, ExecutionPayload payload)
@@ -283,26 +448,33 @@ internal static class BeaconJsonWriter
         w.WriteEndObject();
     }
 
-    private static void WriteAttestation(Utf8JsonWriter w, Attestation attestation)
+    private static void WriteAttestation(Utf8JsonWriter w, Attestation attestation) =>
+        WriteAttestation(w, attestation.AggregationBits!, attestation.Data!, attestation.Signature, attestation.CommitteeBits!);
+
+    /// <remarks>A Gloas <c>ProgressiveBitList</c> serializes like a bitlist, with the same length sentinel.</remarks>
+    private static void WriteAttestation(Utf8JsonWriter w, BitArray aggregationBits, AttestationData data, BlsSignature signature, BitArray committeeBits)
     {
         w.WriteStartObject();
-        WriteBitList(w, "aggregation_bits", attestation.AggregationBits!);
+        WriteBitList(w, "aggregation_bits", aggregationBits);
         w.WritePropertyName("data");
-        WriteAttestationData(w, attestation.Data!);
-        WriteHex(w, "signature", attestation.Signature.Bytes);
-        WriteBitVector(w, "committee_bits", attestation.CommitteeBits!);
+        WriteAttestationData(w, data);
+        WriteHex(w, "signature", signature.Bytes);
+        WriteBitVector(w, "committee_bits", committeeBits);
         w.WriteEndObject();
     }
 
-    private static void WriteIndexedAttestation(Utf8JsonWriter w, IndexedAttestation attestation)
+    private static void WriteIndexedAttestation(Utf8JsonWriter w, IndexedAttestation attestation) =>
+        WriteIndexedAttestation(w, attestation.AttestingIndices!, attestation.Data!, attestation.Signature);
+
+    private static void WriteIndexedAttestation(Utf8JsonWriter w, ulong[] attestingIndices, AttestationData data, BlsSignature signature)
     {
         w.WriteStartObject();
         w.WriteStartArray("attesting_indices");
-        foreach (ulong index in attestation.AttestingIndices!) WriteUIntValue(w, index);
+        foreach (ulong index in attestingIndices) WriteUIntValue(w, index);
         w.WriteEndArray();
         w.WritePropertyName("data");
-        WriteAttestationData(w, attestation.Data!);
-        WriteHex(w, "signature", attestation.Signature.Bytes);
+        WriteAttestationData(w, data);
+        WriteHex(w, "signature", signature.Bytes);
         w.WriteEndObject();
     }
 

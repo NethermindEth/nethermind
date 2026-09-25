@@ -75,6 +75,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     public async Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
     {
         Metrics.BeaconChainForkchoiceUpdatedCalls++;
+        // V3 stays valid after Amsterdam only without payload attributes: execution-apis amsterdam.md "Osaka API" bounds only the payload timestamp.
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await detector.InnerEngine.engine_forkchoiceUpdatedV3(
             new ForkchoiceStateV1(headExecHash, finalizedExecHash, safeExecHash));
         return LastForkchoiceStatus = Unwrap(result.Result, result.Data?.PayloadStatus, "forkchoiceUpdatedV3");
