@@ -224,6 +224,21 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
+    public void trace_replayTransaction_rejects_unknown_trace_type_without_falling_back([Values] bool stored)
+    {
+        TestContext test = new();
+        Hash256 txHash = stored ? test.DbTrace.TransactionHash! : test.NonDbTraces.First().TransactionHash!;
+
+        ResultWrapper<ParityTxTraceFromReplay> result = test.Module.trace_replayTransaction(txHash, ["unknown"]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            test.InnerModule.DidNotReceive().trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>());
+        }
+    }
+
+    [Test]
     public void trace_replayBlockTransactions_returns_from_inner_module()
     {
         TestContext test = new();

@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return true;
         }
 
-        private static ResultWrapper<T> InvalidTraceTypes<T>() => ResultWrapper<T>.Fail("Invalid trace types", ErrorCodes.InvalidParams);
+        public static ResultWrapper<T> InvalidTraceTypes<T>() => ResultWrapper<T>.Fail("Invalid trace types", ErrorCodes.InvalidParams);
 
         /// <summary>
         /// Traces one transaction. Doesn't charge fees.
