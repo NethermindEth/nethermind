@@ -47,7 +47,6 @@ public class GossipMessageValidatorTests
             Compress(SignedVoluntaryExit.Encode(new SignedVoluntaryExit { Message = new VoluntaryExit { Epoch = 1, ValidatorIndex = 2 } })), MessageValidity.Ignored, null, GossipDropReason.UnknownTopic);
         yield return Case("digest outside the transition window", Topic(ForkDigest.Compute(Sepolia, 0), GossipTopics.BeaconBlock), validBlock, MessageValidity.Ignored, null, GossipDropReason.UnknownTopic);
         yield return Case("Gloas-only topic on a Fulu digest", Topic(FuluDigest, GossipTopics.ExecutionPayload), Encode(Envelope()), MessageValidity.Ignored, null, GossipDropReason.UnknownTopic);
-        yield return Case("data column sidecar is accepted unchecked", Topic(GloasDigest, GossipTopics.DataColumnSidecarTopicName(5)), [1, 2, 3], MessageValidity.Accepted, null, null);
         yield return Case("invalid snappy", Topic(GloasDigest, GossipTopics.BeaconBlock), [0xff, 0xff, 0xff, 0xff], MessageValidity.Rejected, null, GossipDropReason.InvalidSnappy);
         yield return Case("Gloas aggregate one byte over its size bound", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Compress(new byte[16830]), MessageValidity.Rejected, null, GossipDropReason.Oversized);
         yield return Case("Gloas aggregate at its size bound reaches decoding", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Compress(new byte[16829]), MessageValidity.Rejected, null, GossipDropReason.InvalidSsz);
@@ -203,7 +202,7 @@ public class GossipMessageValidatorTests
         router.AttesterSlashingReceived += raised.Add;
         router.GloasAttesterSlashingReceived += raised.Add;
         router.ExecutionPayloadEnvelopeReceived += raised.Add;
-        return (new GossipMessageValidator(router, Sepolia, clock), router, raised);
+        return (new GossipMessageValidator(router, new ColumnGossipRouter(Sepolia, clock, LimboLogs.Instance), Sepolia, clock), router, raised);
     }
 
     private static DateTime SlotStart(ulong slot) => DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot);
