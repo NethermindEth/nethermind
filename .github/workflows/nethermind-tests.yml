@@ -205,7 +205,7 @@ jobs:
           set -e
           if [[ $rc -eq 0 ]]; then
             exit 0
-          elif [[ $rc -eq 1 ]]; then
+          elif [[ $rc -eq 1 || $rc -eq 2 ]]; then  # 2: at least one test failed, which a retry would only mask
             exit 1
           elif compgen -G "TestResults/*_hang.*" > /dev/null; then
             echo "::error::Test host hung and was dumped; see the hang-dump artifact"
@@ -312,7 +312,7 @@ jobs:
           set -e
           if [[ $rc -eq 0 ]]; then
             exit 0
-          elif [[ $rc -eq 1 ]]; then
+          elif [[ $rc -eq 1 || $rc -eq 2 ]]; then  # 2: at least one test failed, which a retry would only mask
             exit 1
           elif compgen -G "TestResults/*_hang.*" > /dev/null; then
             echo "::error::Test host hung and was dumped; see the hang-dump artifact"
@@ -405,7 +405,7 @@ jobs:
           set -e
           if [[ $rc -eq 0 ]]; then
             exit 0
-          elif [[ $rc -eq 1 ]]; then
+          elif [[ $rc -eq 1 || $rc -eq 2 ]]; then  # 2: at least one test failed, which a retry would only mask
             exit 1
           elif compgen -G "TestResults/*_hang.*" > /dev/null; then
             echo "::error::Test host hung and was dumped; see the hang-dump artifact"
@@ -437,7 +437,7 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest
+      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
       setup_group: all
 
   matrix-guard:

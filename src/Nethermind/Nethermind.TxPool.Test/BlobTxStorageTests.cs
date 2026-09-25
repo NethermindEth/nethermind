@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CkzgLib;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -24,6 +25,55 @@ namespace Nethermind.TxPool.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlobTxStorageTests
 {
+    [Test]
+    public void TryGetBlobTransactionsFromBlock_should_decode_legacy_entries([Range(1, 3)] int txCount)
+    {
+        const ulong blockNumber = 42;
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction[] transactions = CreateBlobTransactions(txCount);
+
+        byte[] legacyEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm).Bytes;
+        columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs)
+            .Set(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), legacyEntry);
+
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] decoded), Is.True);
+        AssertNetworkWrappersEqual(transactions, decoded!);
+    }
+
+    // Between #11094 and #13592 the column held one whole-block array written with RlpBehaviors.Storage.
+    [Test]
+    public void TryGetBlobTransactionsFromBlock_should_decode_v1_storage_block_arrays([Range(1, 3)] int txCount)
+    {
+        const ulong blockNumber = 42;
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        Transaction[] transactions = CreateV1BlobTransactions(txCount);
+
+        byte[] storageEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage).Bytes;
+        columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs)
+            .Set(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), storageEntry);
+
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] decoded), Is.True);
+        AssertNetworkWrappersEqual(transactions, decoded!);
+    }
+
+    [Test]
+    public void TryGetBlobTransactionsFromBlock_should_roundtrip_current_v1_entries([Range(1, 2)] int txCount)
+    {
+        const ulong blockNumber = 42;
+        BlobTxStorage blobTxStorage = new();
+        Transaction[] transactions = CreateV1BlobTransactions(txCount);
+
+        using (ArrayPoolListRef<Transaction> pooledTransactions = new(transactions.AsSpan()))
+        {
+            blobTxStorage.AddBlobTransactionsFromBlock(blockNumber, pooledTransactions);
+        }
+
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] decoded), Is.True);
+        AssertNetworkWrappersEqual(transactions, decoded!);
+    }
+
     [Test]
     public void Missing_processed_payload_is_a_cache_miss([Values(0, 1)] int missingIndex)
     {
@@ -226,6 +276,77 @@ public class BlobTxStorageTests
 
         Action act = () => blobTxStorage.Add(tx);
         Assert.That(act, Throws.TypeOf<ArgumentNullException>());
+    }
+
+    // Persisted through the same InMempoolForm as a type-3, so the type and sidecar both have to survive.
+    [Test]
+    public void should_roundtrip_blob_carrying_frame_tx_with_sidecar()
+    {
+        const ProofVersion version = ProofVersion.V1;
+        BlobTxStorage blobTxStorage = new();
+        Transaction tx = BuildBlobCarryingFrameTx(blobCount: 2, version);
+        blobTxStorage.Add(tx);
+
+        Assert.That(blobTxStorage.TryGet(tx.Hash, tx.SenderAddress!, tx.Timestamp, out Transaction full), Is.True);
+        ShardBlobNetworkWrapper expected = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        ShardBlobNetworkWrapper actual = (ShardBlobNetworkWrapper)full!.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(full.Type, Is.EqualTo(TxType.FrameTx));
+            Assert.That(actual.Version, Is.EqualTo(version));
+            Assert.That(actual.Blobs, Is.EqualTo(expected.Blobs));
+            Assert.That(actual.Commitments, Is.EqualTo(expected.Commitments));
+            Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
+
+            LightTransaction light = blobTxStorage.GetAll().Single();
+            Assert.That(light.Type, Is.EqualTo(TxType.FrameTx));
+            Assert.That(light.GetProofVersion(), Is.EqualTo(version));
+            Assert.That(light.BlobVersionedHashes, Is.EqualTo(tx.BlobVersionedHashes));
+        }
+    }
+
+    private static Transaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
+    {
+        // The count only has to satisfy the RLP round-trip; nothing here verifies KZG.
+        int proofsCount = version is ProofVersion.V1 ? blobCount * Ckzg.CellsPerExtBlob : blobCount;
+        byte[][] versionedHashes = new byte[blobCount][];
+        byte[][] blobs = new byte[blobCount][];
+        byte[][] commitments = new byte[blobCount][];
+        byte[][] proofs = new byte[proofsCount][];
+        for (int i = 0; i < blobCount; i++)
+        {
+            byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
+            hash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+            hash[1] = (byte)i;
+            versionedHashes[i] = hash;
+            blobs[i] = [(byte)i];
+            commitments[i] = [(byte)(i + 1)];
+        }
+        for (int i = 0; i < proofsCount; i++)
+        {
+            proofs[i] = [(byte)(i + 2)];
+        }
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = TestItem.AddressA,
+            GasLimit = 1_000_000,
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 100,
+            MaxFeePerBlobGas = 1,
+            Frames =
+            [
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            BlobVersionedHashes = versionedHashes,
+            NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version),
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
     }
 
     [Test]
@@ -611,8 +732,9 @@ public class BlobTxStorageTests
             .SetName("GetAll_skips_unreadable_record(non_canonical_scalar)");
         yield return new TestCaseData((Func<byte[], byte[]>)(_ => [0xff, 0xff, 0xff, 0xff]), typeof(RlpException))
             .SetName("GetAll_skips_unreadable_record(garbage)");
-        // A record written by a newer version carrying a fifth optional field: every record fails after a downgrade.
-        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01]), typeof(RlpException))
+        // A record written by a newer version carrying one optional field beyond this build's set: every record
+        // fails after a downgrade. Two elements, since EIP-8141 records already read one more than a blob record.
+        yield return new TestCaseData((Func<byte[], byte[]>)(valid => [.. valid, 0x01, 0x01]), typeof(RlpException))
             .SetName("GetAll_skips_unreadable_record(extra_optional_field)");
     }
 
@@ -645,6 +767,56 @@ public class BlobTxStorageTests
     }
 
     private static Transaction CreateBlobTransaction() => CreateBlobTransaction(TestItem.PrivateKeyA);
+
+    private static Transaction[] CreateBlobTransactions(int count)
+    {
+        Transaction[] transactions = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            transactions[i] = CreateBlobTransaction(TestItem.PrivateKeys[i], i);
+        }
+
+        return transactions;
+    }
+
+    private static Transaction[] CreateV1BlobTransactions(int count)
+    {
+        Transaction[] transactions = CreateBlobTransactions(count);
+        BlobCellMask cellMask = BlobCellMask.FromIndices([1, 3]);
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transactions[i].NetworkWrapper!;
+            transactions[i].NetworkWrapper = wrapper with
+            {
+                Blobs = [],
+                Version = ProofVersion.V1,
+                CellMask = cellMask,
+                Cells = [[(byte)(i + 1)], [(byte)(i + 2)]]
+            };
+            transactions[i].ClearLengthCache();
+        }
+
+        return transactions;
+    }
+
+    private static void AssertNetworkWrappersEqual(Transaction[] expected, Transaction[] actual)
+    {
+        Assert.That(actual, Has.Length.EqualTo(expected.Length));
+        for (int i = 0; i < expected.Length; i++)
+        {
+            ShardBlobNetworkWrapper expectedWrapper = (ShardBlobNetworkWrapper)expected[i].NetworkWrapper!;
+            ShardBlobNetworkWrapper actualWrapper = (ShardBlobNetworkWrapper)actual[i].NetworkWrapper!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actualWrapper.Blobs, Is.EqualTo(expectedWrapper.Blobs));
+                Assert.That(actualWrapper.Commitments, Is.EqualTo(expectedWrapper.Commitments));
+                Assert.That(actualWrapper.Proofs, Is.EqualTo(expectedWrapper.Proofs));
+                Assert.That(actualWrapper.Version, Is.EqualTo(expectedWrapper.Version));
+                Assert.That(actualWrapper.CellMask, Is.EqualTo(expectedWrapper.CellMask));
+                Assert.That(actualWrapper.Cells, Is.EqualTo(expectedWrapper.Cells));
+            }
+        }
+    }
 
     private static Transaction CreateBlobTransaction(PrivateKey signer, int nonce = 0, int blobCount = 1) => Build.A.Transaction
         .WithShardBlobTxTypeAndFields(blobCount)

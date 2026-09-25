@@ -171,6 +171,28 @@ on:
           scenario, including each image of a multi-image run.
         required: false
         default: ""
+      docker_cpu_overrides:
+        description: >-
+          Per-dispatch CPU budget overrides, space- or semicolon-separated KEY=VALUE pairs (one input,
+          since workflow_dispatch allows at most 25), e.g. `cpu=16 cpuset=0-15 infra_cpuset=0-1,8-9`.
+          `cpu` (expb `resources.cpu`) is how many CPUs of the client cpuset to pin as whole cores (no
+          Docker quota is ever applied); `cpuset` (`resources.cpuset`) is the client's pinning;
+          `infra_cpuset` (`resources.infra_cpuset`) pins k6, payload-server and Alloy. A missing key
+          keeps the runner's value; `all` lifts that limit (`cpu=all` pins the whole cpuset, `cpuset=all`
+          leaves the client unpinned). Only the rendered temporary config changes, never the box's config.
+        required: false
+        default: ""
+      measurement_mode:
+        description: >-
+          Processing measurement preset. standard preserves the normal RocksDB/client path;
+          compute-warm enables EXPB_EVM_WARMUP=1 and raises the RPC gas cap for a lower-variance
+          compute-focused signal. Compute-warm runs are not comparable with standard runs.
+        required: false
+        type: choice
+        options:
+          - standard
+          - compute-warm
+        default: standard
   pull_request:
     types: [labeled]
   push:
@@ -221,6 +243,10 @@ jobs:
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
       client_env: ${{ steps.resolve.outputs.client_env }}
+      docker_cpu: ${{ steps.resolve.outputs.docker_cpu }}
+      docker_cpuset: ${{ steps.resolve.outputs.docker_cpuset }}
+      docker_infra_cpuset: ${{ steps.resolve.outputs.docker_infra_cpuset }}
+      measurement_mode: ${{ steps.resolve.outputs.measurement_mode }}
       client: ${{ steps.resolve.outputs.client }}
       measurement_source: ${{ steps.resolve.outputs.measurement_source }}
       client_snapshot_dir: ${{ steps.resolve.outputs.client_snapshot_dir }}
@@ -258,6 +284,8 @@ jobs:
           DISPATCH_PERF: ${{ inputs.perf }}
           DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
           DISPATCH_CLIENT_ENV: ${{ inputs.client_env }}
+          DISPATCH_DOCKER_CPU_OVERRIDES: ${{ inputs.docker_cpu_overrides }}
+          DISPATCH_MEASUREMENT_MODE: ${{ inputs.measurement_mode }}
         run: |
           set -euo pipefail
 
@@ -331,6 +359,42 @@ jobs:
             fi
             if [[ -n "${dottrace_mode}" ]]; then dottrace="true"; else dottrace="false"; fi
             client_env="${DISPATCH_CLIENT_ENV:-}"
+            docker_cpu=""
+            docker_cpuset=""
+            docker_infra_cpuset=""
+            read -ra cpu_override_entries <<< "$(printf '%s' "${DISPATCH_DOCKER_CPU_OVERRIDES:-}" | tr ';\r\n' '   ' | tr '[:upper:]' '[:lower:]')"
+            for entry in ${cpu_override_entries[@]+"${cpu_override_entries[@]}"}; do
+              case "${entry}" in
+                cpu=*) docker_cpu="${entry#*=}" ;;
+                cpuset=*) docker_cpuset="${entry#*=}" ;;
+                infra_cpuset=*) docker_infra_cpuset="${entry#*=}" ;;
+                *) echo "::error::docker_cpu_overrides entries must be cpu=, cpuset= or infra_cpuset= (got '${entry}')."; exit 1 ;;
+              esac
+            done
+            if [[ "${docker_cpu}" == "0" ]]; then docker_cpu="all"; fi
+            if [[ -n "${docker_cpu}" && ! "${docker_cpu}" =~ ^([1-9][0-9]?|all)$ ]]; then
+              echo "::error::docker_cpu_overrides cpu must be a whole number of CPUs between 1 and 99, or 'all' (got '${docker_cpu}')."
+              exit 1
+            fi
+            cpuset_pattern='^([0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*|all)$'
+            if [[ -n "${docker_cpuset}" && ! "${docker_cpuset}" =~ ${cpuset_pattern} ]]; then
+              echo "::error::docker_cpu_overrides cpuset must be a Docker cpuset list such as 2-7,10-15, or 'all' (got '${docker_cpuset}')."
+              exit 1
+            fi
+            if [[ -n "${docker_infra_cpuset}" && ! "${docker_infra_cpuset}" =~ ${cpuset_pattern} ]]; then
+              echo "::error::docker_cpu_overrides infra_cpuset must be a Docker cpuset list such as 0-1,8-9, or 'all' (got '${docker_infra_cpuset}')."
+              exit 1
+            fi
+            # The client's CPU budget is enforced only by pinning resources.cpu CPUs of its cpuset (there
+            # is no quota), so an unpinned client has no budget to apply: cpuset=all implies cpu=all.
+            if [[ "${docker_cpuset}" == "all" ]]; then
+              if [[ -n "${docker_cpu}" && "${docker_cpu}" != "all" ]]; then
+                echo "::error::docker_cpu_overrides cpu=${docker_cpu} needs a cpuset to pin to; cpuset=all leaves the client unpinned (use cpu=all)."
+                exit 1
+              fi
+              docker_cpu="all"
+            fi
+            measurement_mode="${DISPATCH_MEASUREMENT_MODE:-standard}"
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -359,6 +423,10 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            docker_cpu=""
+            docker_cpuset=""
+            docker_infra_cpuset=""
+            measurement_mode="standard"
             client="nethermind"
             measurement_source="auto"
           else
@@ -380,6 +448,10 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            docker_cpu=""
+            docker_cpuset=""
+            docker_infra_cpuset=""
+            measurement_mode="standard"
             client="nethermind"
             measurement_source="auto"
           fi
@@ -420,6 +492,10 @@ jobs:
             fi
             if printf '%s\n' "${expb_env}" | tr ',' '\n' | sed 's/^[[:space:]]*//' | grep -Eq '^EXPB_EVM_WARMUP[[:space:]]*='; then
               echo "EXPB_EVM_WARMUP is Nethermind-only and cannot be used with client=${client}."
+              exit 1
+            fi
+            if [[ "${measurement_mode}" == "compute-warm" ]]; then
+              echo "measurement_mode=compute-warm is Nethermind-only (it relies on EXPB_EVM_WARMUP) and cannot be used with client=${client}."
               exit 1
             fi
             if [[ -n "${trace_blocks}" ]]; then
@@ -510,6 +586,11 @@ jobs:
             exit 1
           fi
 
+          if [[ -n "${amount}" ]] && ! [[ "${amount}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "amount must be a positive integer when provided, got '${amount}'."
+            exit 1
+          fi
+
           if [[ "${rebuild_docker}" != "true" && "${rebuild_docker}" != "false" ]]; then
             echo "rebuild_docker must be true or false, got '${rebuild_docker}'."
             exit 1
@@ -517,6 +598,11 @@ jobs:
 
           if ! [[ "${run_count}" =~ ^[0-9]+$ ]] || [[ "${run_count}" -lt 1 ]]; then
             echo "run_count must be a positive integer, got '${run_count}'."
+            exit 1
+          fi
+
+          if [[ "${measurement_mode}" != "standard" && "${measurement_mode}" != "compute-warm" ]]; then
+            echo "measurement_mode must be standard or compute-warm, got '${measurement_mode}'."
             exit 1
           fi
 
@@ -594,6 +680,10 @@ jobs:
             echo "dottrace_mode=${dottrace_mode}"
             echo "trace_blocks=${trace_blocks}"
             echo "client_env=${client_env}"
+            echo "docker_cpu=${docker_cpu}"
+            echo "docker_cpuset=${docker_cpuset}"
+            echo "docker_infra_cpuset=${docker_infra_cpuset}"
+            echo "measurement_mode=${measurement_mode}"
             echo "client=${client}"
             echo "measurement_source=${measurement_source}"
             echo "client_snapshot_dir=${client_snapshot_dir}"
@@ -610,6 +700,9 @@ jobs:
     needs: [resolve]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.resolve-image.outputs.image }}
+      image_revision: ${{ steps.resolve-image.outputs.revision }}
     steps:
       - name: Docker image source
         if: needs.resolve.outputs.should_trigger_publish_docker != 'true' && needs.resolve.outputs.should_wait_for_publish_docker != 'true'
@@ -638,6 +731,7 @@ jobs:
 
       - name: Wait for publish-docker.yml to complete
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        id: wait-publish-docker
         env:
           GITHUB_TOKEN: ${{ github.token }}
           WORKFLOW_ID: publish-docker.yml
@@ -653,6 +747,7 @@ jobs:
           NAME_FILTER: Publish Docker image
           REF: ${{ needs.resolve.outputs.branch }}
         run: |
+          set -euo pipefail
           # An empty runId would silently fall back to run discovery - the exact false green this
           # guards against. benc-uk/workflow-dispatch returns without setting outputs (and without
           # failing) when the target workflow is disabled, and @v1 is a moving tag that could drop the
@@ -663,9 +758,20 @@ jobs:
           fi
           chmod +x scripts/wait-for-workflow.sh
           ./scripts/wait-for-workflow.sh
+          publish_head_sha=$(curl -sf \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${ORG_NAME}/${REPO_NAME}/actions/runs/${RUN_ID}" \
+            | jq -r '.head_sha // empty')
+          if ! [[ "${publish_head_sha}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::publish-docker run ${RUN_ID} has no valid head_sha."
+            exit 1
+          fi
+          echo "head_sha=${publish_head_sha}" >> "${GITHUB_OUTPUT}"
 
       - name: Wait for parallel publish-docker.yml
         if: needs.resolve.outputs.should_wait_for_publish_docker == 'true'
+        id: wait-parallel-publish-docker
         env:
           GITHUB_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.sha }}
@@ -723,6 +829,12 @@ jobs:
 
             if [[ "${status}" == "completed" ]]; then
               if [[ "${conclusion}" == "success" ]]; then
+                publish_head_sha=$(echo "${run_data}" | jq -r '.head_sha // empty')
+                if ! [[ "${publish_head_sha}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+                  echo "::error::Parallel publish-docker run ${run_id} has no valid head_sha."
+                  exit 1
+                fi
+                echo "head_sha=${publish_head_sha}" >> "${GITHUB_OUTPUT}"
                 echo "Parallel publish-docker.yml completed successfully."
                 echo "Run: https://github.com/${OWNER}/${REPO}/actions/runs/${run_id}"
                 exit 0
@@ -744,6 +856,57 @@ jobs:
             sleep "${poll_interval}"
           done
 
+      - name: Resolve immutable image and revision
+        id: resolve-image
+        env:
+          IMAGE_LABEL: ${{ needs.resolve.outputs.image_label }}
+          EXPECTED_REVISION: ${{ steps.wait-publish-docker.outputs.head_sha || steps.wait-parallel-publish-docker.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${IMAGE_LABEL}" ]]; then
+            echo "::error::No Docker image label was resolved."
+            exit 1
+          fi
+
+          inspect_output="$(docker buildx imagetools inspect "${IMAGE_LABEL}")"
+          image_digest="$(printf '%s\n' "${inspect_output}" | awk '$1 == "Digest:" { print $2; exit }')"
+          if ! [[ "${image_digest}" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+            echo "::error::Could not resolve an immutable multiarch digest for ${IMAGE_LABEL}."
+            exit 1
+          fi
+          image="${IMAGE_LABEL%%@*}@${image_digest}"
+          echo "Resolved ${IMAGE_LABEL} to ${image}."
+
+          docker pull "${image}"
+          version_status=0
+          version_output="$(docker run --rm --network none --platform linux/amd64 --entrypoint /nethermind/Nethermind.Runner "${image}" --version 2>&1)" || version_status=$?
+          printf '%s\n' "${version_output}"
+          if [[ "${version_status}" -ne 0 ]]; then
+            echo "::error::Pinned image version probe failed with exit code ${version_status}."
+            exit "${version_status}"
+          fi
+          revision="$(printf '%s\n' "${version_output}" | sed -nE 's/^Commit:[[:space:]]*([0-9a-fA-F]{40})[[:space:]]*$/\1/p' | head -n 1)"
+          if ! [[ "${revision}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Pinned image ${image} did not report a valid 40-character Commit revision."
+            exit 1
+          fi
+
+          if [[ -n "${EXPECTED_REVISION}" ]]; then
+            expected_lower="$(printf '%s' "${EXPECTED_REVISION}" | tr '[:upper:]' '[:lower:]')"
+            revision_lower="$(printf '%s' "${revision}" | tr '[:upper:]' '[:lower:]')"
+            if [[ "${revision_lower}" != "${expected_lower}" ]]; then
+              echo "::error::Pinned image reports commit ${revision}, but publish-docker produced ${EXPECTED_REVISION}."
+              exit 1
+            fi
+          fi
+
+          {
+            echo "image=${image}"
+            echo "revision=${revision}"
+          } >> "${GITHUB_OUTPUT}"
+
   benchmark:
     name: benchmark (${{ matrix.payload_set }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
     needs: [resolve, prepare-docker]
@@ -760,8 +923,10 @@ jobs:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
       FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
       FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
-      NETHERMIND_IMAGE: ${{ needs.resolve.outputs.image_label }}
+      NETHERMIND_IMAGE: ${{ needs.prepare-docker.outputs.image }}
+      IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
+      MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
       CLIENT: ${{ needs.resolve.outputs.client }}
       MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
     steps:
@@ -807,6 +972,7 @@ jobs:
           echo "Payload set: ${{ matrix.payload_set }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
+          echo "Docker image revision: ${IMAGE_REVISION}"
           echo "Client: ${CLIENT}"
           echo "Measurement source: ${MEASUREMENT_SOURCE}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
@@ -831,12 +997,12 @@ jobs:
       - name: Restore cached master metrics
         id: restore-master-metrics
         if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-${{ matrix.payload_set }}-
+            expb-master-metrics-v4-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -855,7 +1021,8 @@ jobs:
         env:
           SOURCE_CONFIG_FILE: ${{ env.EXPB_DATA_DIR }}/${{ env.CONFIG_FILE }}
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
-          DOCKER_TAG: ${{ needs.resolve.outputs.clean_branch }}
+          DOCKER_TAG: ${{ needs.prepare-docker.outputs.image }}
+          IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           AMOUNT: ${{ needs.resolve.outputs.amount }}
           PAYLOAD_SET: ${{ matrix.payload_set }}
@@ -863,6 +1030,11 @@ jobs:
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          DOCKER_CPU: ${{ needs.resolve.outputs.docker_cpu }}
+          DOCKER_CPUSET: ${{ needs.resolve.outputs.docker_cpuset }}
+          DOCKER_INFRA_CPUSET: ${{ needs.resolve.outputs.docker_infra_cpuset }}
+          EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
+          MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
@@ -918,6 +1090,18 @@ jobs:
               ' \
             > "${flags_file}"
 
+          if [[ "${MEASUREMENT_MODE}" == "compute-warm" ]]; then
+            if printf '%s\n' "${ADDITIONAL_EXTRA_FLAGS}" | grep -Eiq -- '--JsonRpc[.]GasCap([=[:space:]]|$)'; then
+              echo "::error::measurement_mode=compute-warm cannot be combined with a JsonRpc.GasCap override."
+              exit 1
+            fi
+            if printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n' | grep -Eiq '^[[:space:]]*EXPB_EVM_WARMUP[[:space:]]*='; then
+              echo "::error::measurement_mode=compute-warm cannot be combined with an EXPB_EVM_WARMUP override."
+              exit 1
+            fi
+            printf '%s\n' '--JsonRpc.GasCap=1000000000000' >> "${flags_file}"
+          fi
+
           YQ="${RUNNER_TEMP}/yq"
           case "$(uname -m)" in
             x86_64) yq_arch="amd64" ;;
@@ -925,12 +1109,13 @@ jobs:
             *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
           esac
           curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 60 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
-         chmod +x "${YQ}"
+          chmod +x "${YQ}"
           yq_version="$("${YQ}" --version)"
           [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
+            -e "s#nethermindeth/nethermind:<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
@@ -939,6 +1124,67 @@ jobs:
             -e "s#/mnt/sda/nethermind-flat-25490000#${FLAT_SNAPSHOT_BLOCK_DIR}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
+
+          # Per-dispatch CPU budget override for the client and infra containers, applied before the
+          # affinity pinning below so resources.cpu and resources.cpuset feed it. Only the rendered copy
+          # changes; empty inputs leave the runner's resources block as is. `all` lifts a limit: cpu=0
+          # pins the whole cpuset, and a missing cpuset gives Docker no --cpuset-cpus.
+          if [[ "${DOCKER_CPU:-}" == "all" ]]; then
+            "${YQ}" -i '.resources.cpu = 0' "${RENDERED_CONFIG_FILE}"
+          elif [[ -n "${DOCKER_CPU:-}" ]]; then
+            C="${DOCKER_CPU}" "${YQ}" -i '.resources.cpu = (strenv(C) | tonumber)' "${RENDERED_CONFIG_FILE}"
+          fi
+          for override in cpuset:DOCKER_CPUSET infra_cpuset:DOCKER_INFRA_CPUSET; do
+            key="${override%%:*}"
+            env_name="${override##*:}"
+            value="${!env_name:-}"
+            if [[ "${value}" == "all" ]]; then
+              K="${key}" "${YQ}" -i 'del(.resources[strenv(K)])' "${RENDERED_CONFIG_FILE}"
+            elif [[ -n "${value}" ]]; then
+              K="${key}" S="${value}" "${YQ}" -i '.resources[strenv(K)] = strenv(S)' "${RENDERED_CONFIG_FILE}"
+            fi
+          done
+
+          # Limit the client by affinity instead of the CFS quota, whose throttling adds run-to-run
+          # variance: keep resources.cpu CPUs of the cpuset, as whole cores so no SMT sibling is shared.
+          expand_cpus() {
+            local part
+            local -a parts
+            IFS=',' read -ra parts <<< "$1"
+            for part in "${parts[@]}"; do
+              if [[ "${part}" == *-* ]]; then seq "${part%-*}" "${part#*-}"; elif [[ -n "${part}" ]]; then echo "${part}"; fi
+            done
+          }
+          topology="${CPU_TOPOLOGY_DIR:-/sys/devices/system/cpu}"
+          cpu_count="$("${YQ}" -r '.resources.cpu // 0' "${RENDERED_CONFIG_FILE}")"
+          cpuset="$("${YQ}" -r '.resources.cpuset // ""' "${RENDERED_CONFIG_FILE}")"
+          [[ "${cpu_count}" =~ ^[0-9]+$ ]] || { echo "::error::resources.cpu must be a whole number of CPUs, got '${cpu_count}'."; exit 1; }
+          if (( cpu_count > 0 )); then
+            [[ -n "${cpuset}" ]] || { echo "::error::resources.cpu=${cpu_count} needs a resources.cpuset to pin the client to."; exit 1; }
+            mapfile -t allowed < <(expand_cpus "${cpuset}")
+            if (( cpu_count < ${#allowed[@]} )); then
+              declare -A in_set=() taken=()
+              for cpu in "${allowed[@]}"; do in_set[${cpu}]=1; done
+              for cpu in "${allowed[@]}"; do
+                [[ -n "${taken[${cpu}]:-}" ]] && continue
+                siblings_file="${topology}/cpu${cpu}/topology/thread_siblings_list"
+                [[ -r "${siblings_file}" ]] || { echo "::error::cannot read ${siblings_file} to pin whole cores."; exit 1; }
+                core=()
+                while read -r sibling; do
+                  [[ -n "${in_set[${sibling}]:-}" ]] && core+=("${sibling}")
+                done < <(expand_cpus "$(< "${siblings_file}")")
+                (( ${#taken[@]} + ${#core[@]} <= cpu_count )) || continue
+                for sibling in "${core[@]}"; do taken[${sibling}]=1; done
+              done
+              (( ${#taken[@]} == cpu_count )) || { echo "::error::cannot pick ${cpu_count} CPUs as whole cores from cpuset ${cpuset}."; exit 1; }
+              cpuset="$(printf '%s\n' "${!taken[@]}" | sort -n | paste -sd, -)"
+              C="${cpuset}" "${YQ}" -i '.resources.cpuset = strenv(C)' "${RENDERED_CONFIG_FILE}"
+            fi
+            echo "Pinned the client to CPUs ${cpuset} for resources.cpu=${cpu_count}."
+          fi
+
+          # Zero disables the CPU quota; omitting cpu would restore EXPB's default quota.
+          "${YQ}" -i '.resources.cpu = 0' "${RENDERED_CONFIG_FILE}"
 
           scenario_key="${SCENARIO_NAME}"
 
@@ -971,6 +1217,9 @@ jobs:
             done
           fi
 
+          echo "Effective resources block:"
+          "${YQ}" '.resources' "${RENDERED_CONFIG_FILE}"
+
           expected_amount="$("${YQ}" -r ".scenarios.\"${scenario_key}\".amount // \"\"" "${RENDERED_CONFIG_FILE}")"
           echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
@@ -994,12 +1243,14 @@ jobs:
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
           elif [[ -n "${EXPB_BRANCH}" ]]; then
             expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
+          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" ]]; then
+            expb_source="git+https://github.com/${EXPB_REPO}@main"
           else
             expb_source="git+https://github.com/${EXPB_REPO}"
           fi
-
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
+          echo "EXPB_SOURCE=${expb_source}" >> "${GITHUB_ENV}"
           expb_bin="$(uv tool dir --bin)/expb"
           requested_flags=()
           if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
@@ -1138,10 +1389,12 @@ jobs:
         working-directory: ${{ env.EXPB_DATA_DIR }}
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          CPU_OVERRIDE: ${{ needs.resolve.outputs.docker_cpu }}${{ needs.resolve.outputs.docker_cpuset }}${{ needs.resolve.outputs.docker_infra_cpuset }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
+          MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
           MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
         run: |
           set -euo pipefail
@@ -1161,6 +1414,11 @@ jobs:
                 echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
               fi
             done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
+          fi
+
+          if [[ "${MEASUREMENT_MODE}" == "compute-warm" ]]; then
+            export EXPB_EVM_WARMUP=1
+            echo "Enabled EXPB_EVM_WARMUP=1 for compute-warm measurement."
           fi
 
           on_terminate() {
@@ -1238,6 +1496,34 @@ jobs:
             > "${fifo}" 2>&1 &
           expb_pid=$!
 
+          # With a CPU override in play, read the limits the kernel enforces on every expb container
+          # (client and infra) from the host cgroup, not from what expb asked Docker for. Best effort:
+          # the readout is printed after the run and never fails the step.
+          cgroup_report="${RUNNER_TEMP}/expb-container-cgroups.txt"
+          cgroup_pid=""
+          if [[ -n "${CPU_OVERRIDE:-}" ]]; then
+            (
+              for _ in $(seq 1 300); do
+                sleep 2
+                if docker ps --filter label=expb --format '{{.Names}}' 2>/dev/null | grep -Eqv -- '-(k6|alloy|payload-server)$'; then break; fi
+              done
+              sleep 30
+              for id in $(docker ps -q --no-trunc --filter label=expb 2>/dev/null); do
+                name="$(docker inspect -f '{{.Name}}' "${id}" 2>/dev/null)"
+                limits="$(docker inspect -f 'NanoCpus={{.HostConfig.NanoCpus}} CpusetCpus={{.HostConfig.CpusetCpus}}' "${id}" 2>/dev/null)"
+                cgroup=""
+                for dir in "/sys/fs/cgroup/system.slice/docker-${id}.scope" "/sys/fs/cgroup/docker/${id}"; do
+                  if [[ -d "${dir}" ]]; then
+                    cgroup="cpu.max='$(cat "${dir}/cpu.max" 2>/dev/null)' cpuset.cpus.effective='$(cat "${dir}/cpuset.cpus.effective" 2>/dev/null)'"
+                    break
+                  fi
+                done
+                echo "${name#/}: ${limits} ${cgroup:-cgroup dir not found}"
+              done
+            ) > "${cgroup_report}" 2>&1 &
+            cgroup_pid=$!
+          fi
+
           set +e
           wait "${expb_pid}"
           expb_exit_code=$?
@@ -1245,6 +1531,13 @@ jobs:
 
           rm -f "${fifo}"
           wait "${tee_pid}"
+
+          if [[ -n "${cgroup_pid}" ]]; then
+            kill "${cgroup_pid}" 2>/dev/null || true
+            wait "${cgroup_pid}" 2>/dev/null || true
+            echo "Container CPU limits as enforced by the host cgroup:"
+            cat "${cgroup_report}" 2>/dev/null || echo "(no readout captured)"
+          fi
 
           exit "${expb_exit_code}"
 
@@ -1254,6 +1547,7 @@ jobs:
         shell: bash
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
           MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
           EXPECTED_AMOUNT: ${{ steps.render-config.outputs.expected_amount }}
         run: |
@@ -1272,6 +1566,30 @@ jobs:
           fi
 
           sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${RAW_RUN_LOG}" > "${clean_log}"
+
+          warmup_status="not-requested"
+          if [[ "${MEASUREMENT_MODE}" == "compute-warm" ]]; then
+            measured_payload_indices="${RUNNER_TEMP}/expb-measured-payload-indices.txt"
+            warmup_success_indices="${RUNNER_TEMP}/expb-warmup-success-indices.txt"
+            warmup_failed_indices="${RUNNER_TEMP}/expb-warmup-failed-indices.txt"
+            awk -F'|' '/^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ { value = $2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", value); print value }' "${clean_log}" | LC_ALL=C sort -u > "${measured_payload_indices}"
+            grep -Eio '\[payload-server\][[:space:]]+warmup[[:space:]]+block=[0-9]+[[:space:]]+ok\b' "${clean_log}" | sed -E 's/.*block=([0-9]+).*/\1/' | LC_ALL=C sort -u > "${warmup_success_indices}" || true
+            grep -Eio '\[payload-server\][[:space:]]+warmup[[:space:]]+block=[0-9]+[[:space:]]+FAILED\b' "${clean_log}" | sed -E 's/.*block=([0-9]+).*/\1/' | LC_ALL=C sort -u > "${warmup_failed_indices}" || true
+            missing_warmups=""
+            if [[ -s "${measured_payload_indices}" ]]; then
+              missing_warmups="$(LC_ALL=C comm -23 "${measured_payload_indices}" "${warmup_success_indices}")"
+            else
+              missing_warmups="no measured K6 payload rows"
+            fi
+            if [[ -s "${warmup_failed_indices}" ]]; then
+              warmup_status="failed"
+            elif [[ -z "${missing_warmups}" ]]; then
+              warmup_status="ok"
+            else
+              warmup_status="missing"
+              echo "Missing successful warmup records for measured payload indices: ${missing_warmups}"
+            fi
+          fi
 
           grep -in "Exception" "${clean_log}" > "${exception_lines}" || true
           exception_found="false"
@@ -1441,13 +1759,24 @@ jobs:
             compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_file}"
             paired_count=$(wc -l < "${client_ms}")
             paired_count="${paired_count//[[:space:]]/}"
-            emit_mgas_s "" "${client_ms}" "${paired_count}"
-            emit_mgas_s "TTFB_" "${ttfb_ms}" "${paired_count}"
-            # Time outside processing per payload, from the same pairing.
-            outside_ms="${RUNNER_TEMP}/expb-outside-ms.txt"
-            awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
-            if [[ -s "${outside_ms}" ]]; then
-              compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_file}"
+            request_count=$(wc -l < "${ttfb_ms}")
+            request_count="${request_count//[[:space:]]/}"
+            # The prefix pairing holds only while the feed is complete or lacks just its last record; any
+            # other gap sits mid-run and would shear every value after it. Same rule as collect_metrics in
+            # scripts/expb/sequential_driver.py.
+            if (( paired_count == request_count || paired_count == request_count - 1 )); then
+              emit_mgas_s "" "${client_ms}" "${paired_count}"
+              emit_mgas_s "TTFB_" "${ttfb_ms}" "${paired_count}"
+              # Time outside processing per payload, from the same pairing.
+              outside_ms="${RUNNER_TEMP}/expb-outside-ms.txt"
+              awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
+              if [[ -s "${outside_ms}" ]]; then
+                compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_file}"
+              fi
+            else
+              echo "::warning::${paired_count} feed records for ${request_count} k6 rows cannot be paired; processing MGas/s and request minus processing are n/a"
+              # The request series pairs gas and time within each k6 row, so it keeps a throughput of its own.
+              emit_mgas_s "TTFB_" "${ttfb_ms}"
             fi
           elif [[ -s "${ttfb_ms}" ]]; then
             # Without the client feed the unprefixed keys hold the k6 request table, and so does their
@@ -1479,9 +1808,13 @@ jobs:
             echo "-----------------------------------------"
             echo "  Request minus processing"
             echo "-----------------------------------------"
-            grep "^OUTSIDE_" "${metrics_file}" | while IFS='=' read -r key val; do
-              printf "  %-10s %s ms\n" "${key#OUTSIDE_}" "${val}"
-            done
+            if grep -q "^OUTSIDE_" "${metrics_file}"; then
+              grep "^OUTSIDE_" "${metrics_file}" | while IFS='=' read -r key val; do
+                printf "  %-10s %s ms\n" "${key#OUTSIDE_}" "${val}"
+              done
+            else
+              echo "  n/a (the feed and the k6 table could not be paired)"
+            fi
           fi
           echo "========================================="
           echo ""
@@ -1492,6 +1825,7 @@ jobs:
             echo "exception_lines_file=${exception_lines}"
             echo "invalid_block_found=${invalid_block_found}"
             echo "invalid_block_lines_file=${invalid_block_lines}"
+            echo "warmup_status=${warmup_status}"
             echo "metrics_file=${metrics_file}"
             while IFS= read -r line; do
               key="${line%%=*}"
@@ -1502,19 +1836,11 @@ jobs:
 
       - name: Upload metrics artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: expb-single-metrics-${{ matrix.payload_set }}-run${{ matrix.run }}
           path: ${{ steps.analyze.outputs.metrics_file }}
           retention-days: 30
-
-      - name: Upload raw benchmark log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: expb-single-log-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/expb-run.log
-          retention-days: 7
 
       - name: Prepare master metrics cache
         if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
@@ -1526,10 +1852,10 @@ jobs:
 
       - name: Save master metrics cache
         if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.run_id }}
+          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -1555,6 +1881,11 @@ jobs:
             if [[ -f "${{ steps.analyze.outputs.invalid_block_lines_file }}" ]]; then
               head -n 40 "${{ steps.analyze.outputs.invalid_block_lines_file }}"
             fi
+            exit 1
+          fi
+
+          if [[ "${{ needs.resolve.outputs.measurement_mode }}" == "compute-warm" && "${{ steps.analyze.outputs.warmup_status }}" != "ok" ]]; then
+            echo "Compute-warm measurement did not complete all requested warmups (status: ${{ steps.analyze.outputs.warmup_status || 'missing' }})."
             exit 1
           fi
 
@@ -1636,12 +1967,55 @@ jobs:
 
       - name: Upload profiling artifact
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.collect-profiling.outputs.artifact_name }}
           path: ${{ steps.collect-profiling.outputs.archive }}
           retention-days: 30
           if-no-files-found: ignore
+
+      - name: Stage benchmark logs
+        if: always()
+        shell: bash
+        env:
+          RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          CLEAN_RUN_LOG: ${{ runner.temp }}/expb-run.clean.log
+          METRICS_FILE: ${{ steps.analyze.outputs.metrics_file }}
+          RENDERED_CONFIG_FILE: ${{ steps.render-config.outputs.rendered_config_file }}
+          YQ_BIN: ${{ runner.temp }}/yq
+          LOG_ARTIFACT_DIR: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${LOG_ARTIFACT_DIR}"
+          [[ -f "${RAW_RUN_LOG}" ]] && cp "${RAW_RUN_LOG}" "${LOG_ARTIFACT_DIR}/combined.log" || true
+          [[ -f "${CLEAN_RUN_LOG}" ]] && cp "${CLEAN_RUN_LOG}" "${LOG_ARTIFACT_DIR}/combined.clean.log" || true
+          [[ -n "${METRICS_FILE}" && -f "${METRICS_FILE}" ]] && cp "${METRICS_FILE}" "${LOG_ARTIFACT_DIR}/metrics.env" || true
+          if [[ -n "${RENDERED_CONFIG_FILE}" && -f "${RENDERED_CONFIG_FILE}" ]]; then
+            [[ -x "${YQ_BIN}" ]] || { echo "::error::yq is required to sanitize the rendered config before artifact staging."; exit 1; }
+            sanitized_config="$(mktemp "${LOG_ARTIFACT_DIR}/.rendered-config.XXXXXX")"
+            trap 'rm -f "${sanitized_config}"' EXIT
+            "${YQ_BIN}" 'del(.export)' "${RENDERED_CONFIG_FILE}" > "${sanitized_config}"
+            mv "${sanitized_config}" "${LOG_ARTIFACT_DIR}/rendered-config.yaml"
+            trap - EXIT
+          fi
+          {
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "event=${{ github.event_name }}"
+            echo "payload_set=${{ matrix.payload_set }}"
+            echo "run=${{ matrix.run }}"
+            echo "run_count=${{ needs.resolve.outputs.run_count }}"
+            echo "measurement_mode=${{ needs.resolve.outputs.measurement_mode }}"
+            echo "expb_source=${EXPB_SOURCE:-unknown}"
+          } > "${LOG_ARTIFACT_DIR}/metadata.txt"
+
+      - name: Upload benchmark logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Cleanup rendered config
         if: always()
@@ -1663,9 +2037,12 @@ jobs:
   # ---------------------------------------------------------------------------
 
   report:
-    needs: [resolve, benchmark]
+    needs: [resolve, prepare-docker, benchmark]
     if: always() && github.event_name == 'pull_request' && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     runs-on: ubuntu-latest
+    concurrency:
+      group: expb-report-${{ github.repository }}-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     steps:
       - name: Download all metrics artifacts
         uses: actions/download-artifact@v8
@@ -1676,32 +2053,32 @@ jobs:
       - name: Restore master metrics (superblocks)
         id: restore-master-superblocks
         continue-on-error: true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v3-superblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-superblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-superblocks-
+            expb-master-metrics-v4-superblocks-
 
       - name: Restore master metrics (realblocks)
         id: restore-master-realblocks
         continue-on-error: true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v3-realblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-realblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-realblocks-
+            expb-master-metrics-v4-realblocks-
 
       - name: Restore master metrics (fusaka)
         id: restore-master-fusaka
         continue-on-error: true
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-fusaka
-          key: expb-master-metrics-v3-fusaka-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-fusaka-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-fusaka-
+            expb-master-metrics-v4-fusaka-
 
       - name: Build PR comparison comment
         id: pr-comment
@@ -1715,6 +2092,8 @@ jobs:
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          IMAGE: ${{ needs.prepare-docker.outputs.image }}
+          IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           CLIENT: ${{ needs.resolve.outputs.client }}
         run: |
@@ -1723,6 +2102,10 @@ jobs:
           marker="<!-- expb-reproducible-benchmark-report -->"
           comment_file="${RUNNER_TEMP}/expb-pr-comment.md"
           : > "${comment_file}"
+          if ! [[ "${IMAGE_REVISION}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::No valid revision was reported by the pinned benchmark image; refusing to publish a misleading benchmark comment."
+            exit 1
+          fi
 
           load_metric() {
             local file="$1"
@@ -1884,6 +2267,8 @@ jobs:
           }
 
           append_line "${marker}"
+          append_line "Tested image: \`${IMAGE}\`"
+          append_line "Tested against commit: ${IMAGE_REVISION}"
           append_line "### EXPB Benchmark Comparison"
           append_blank
           append_line "Run: [View workflow run](${RUN_URL})"
@@ -1929,25 +2314,25 @@ jobs:
               per_page: 100,
             });
 
-            const existing = comments.find((comment) =>
+            const existing = comments.filter((comment) =>
+              comment.user?.login === 'github-actions[bot]' &&
               comment.body && comment.body.includes(marker),
             );
 
-            if (existing) {
-              await github.rest.issues.updateComment({
+            for (const comment of existing) {
+              await github.rest.issues.deleteComment({
                 owner,
                 repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body,
+                comment_id: comment.id,
               });
             }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
 
   # ---------------------------------------------------------------------------
   # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
@@ -2165,8 +2550,7 @@ jobs:
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'multi'
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.resolve.outputs.matrix }}
-      ordered_tags: ${{ steps.resolve.outputs.ordered_tags }}
+      images: ${{ steps.resolve.outputs.images }}
     steps:
       - name: Resolve Docker images
         id: resolve
@@ -2175,7 +2559,6 @@ jobs:
           DOCKER_IMAGES: ${{ needs.resolve.outputs.docker_images }}
           LAST: ${{ needs.resolve.outputs.retrospective_last }}
           STEP: ${{ needs.resolve.outputs.retrospective_step }}
-          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
         run: |
           set -euo pipefail
 
@@ -2184,32 +2567,27 @@ jobs:
           all_dates=()
 
           if [[ -n "${DOCKER_IMAGES}" ]]; then
-            # Explicit docker images mode: parse comma-separated full image references
             echo "Parsing explicit docker images: ${DOCKER_IMAGES}"
             IFS=',' read -ra raw_images <<< "${DOCKER_IMAGES}"
             for raw in "${raw_images[@]}"; do
-              image="$(echo "${raw}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-              if [[ -n "${image}" ]]; then
-                all_images+=("${image}")
-                all_tags+=("${image##*:}")
-                all_dates+=("n/a")
+              image="${raw#"${raw%%[![:space:]]*}"}"
+              image="${image%"${image##*[![:space:]]}"}"
+              [[ -n "${image}" ]] || continue
+              if [[ "${image}" == *@* ]]; then
+                tag="${image##*@}"
+              else
+                tag="${image##*:}"
               fi
+              all_images+=("${image}")
+              all_tags+=("${tag}")
+              all_dates+=("n/a")
             done
             if [[ "${#all_images[@]}" -eq 0 ]]; then
               echo "::error::docker_images must contain at least one non-empty image reference."
               exit 1
             fi
-            duplicate_tag_count="$(printf '%s\n' "${all_tags[@]}" | sort | uniq -d | wc -l)"
-            if [[ "${duplicate_tag_count}" -gt 0 ]]; then
-              original_tags=("${all_tags[@]}")
-              for i in "${!original_tags[@]}"; do
-                all_tags["${i}"]="${original_tags[${i}]}-${i}"
-              done
-              echo "Duplicate explicit image tags detected; suffixed every matrix tag with its array index."
-            fi
             echo "Parsed ${#all_images[@]} explicit docker images."
           else
-            # Retrospective mode: scan Docker Hub for master-* images
             if ! [[ "${LAST}" =~ ^[0-9]+$ ]] || [[ "${LAST}" -lt 1 ]]; then
               echo "retrospective_last must be a positive integer, got '${LAST}'."
               exit 1
@@ -2220,32 +2598,20 @@ jobs:
             fi
 
             echo "Fetching last ${LAST} master-* Docker images from Docker Hub (step=${STEP})..."
-
             page=1
             page_size=100
             remaining="${LAST}"
-
-            # Always request full pages: Docker Hub paginates by page_size x page, so shrinking
-            # page_size on the last page shifts the window (duplicating mid-range tags and
-            # dropping the oldest ones). Trim to LAST after collecting.
             while [[ "${remaining}" -gt 0 ]]; do
               url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${page_size}&page=${page}&name=master-"
               response=$(curl -sf "${url}" || echo '{"results":[]}')
-
               mapfile -t page_tags < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .name')
               mapfile -t page_dates < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .last_updated[:10]')
-
-              if [[ "${#page_tags[@]}" -eq 0 ]]; then
-                echo "No more tags found at page ${page}."
-                break
-              fi
-
+              [[ "${#page_tags[@]}" -gt 0 ]] || break
               for i in "${!page_tags[@]}"; do
                 all_tags+=("${page_tags[$i]}")
                 all_images+=("nethermindeth/nethermind:${page_tags[$i]}")
                 all_dates+=("${page_dates[$i]}")
               done
-
               remaining=$(( remaining - page_size ))
               page=$(( page + 1 ))
             done
@@ -2255,15 +2621,6 @@ jobs:
               all_images=("${all_images[@]:0:LAST}")
               all_dates=("${all_dates[@]:0:LAST}")
             fi
-
-            echo "Found ${#all_tags[@]} master-* images on Docker Hub."
-
-            if [[ "${#all_tags[@]}" -eq 0 ]]; then
-              echo "No master-<sha7> Docker images found."
-              exit 1
-            fi
-
-            # Apply step: pick every Nth image (newest first)
             selected_tags=()
             selected_images=()
             selected_dates=()
@@ -2272,65 +2629,110 @@ jobs:
               selected_images+=("${all_images[$i]}")
               selected_dates+=("${all_dates[$i]}")
             done
-
             all_tags=("${selected_tags[@]}")
             all_images=("${selected_images[@]}")
             all_dates=("${selected_dates[@]}")
-            echo "Selected ${#all_tags[@]} images after applying step=${STEP}."
           fi
 
-          if [[ "${#all_tags[@]}" -eq 0 ]]; then
-            echo "No images to benchmark."
-            exit 1
-          fi
-
-          # GitHub Actions matrix has a limit of 256 entries
-          if [[ "${#all_tags[@]}" -gt 256 ]]; then
-            echo "Warning: truncating to 256 matrix entries (GitHub Actions limit)."
-            all_tags=("${all_tags[@]:0:256}")
-            all_images=("${all_images[@]:0:256}")
-            all_dates=("${all_dates[@]:0:256}")
-          fi
-
-          for i in "${!all_tags[@]}"; do
-            echo "  ${all_tags[$i]}  ${all_dates[$i]}"
-          done
-
-          # Build matrix JSON (with run dimension) and ordered list
-          run_count="${RUN_COUNT:-1}"
-          matrix_json='{"include":['
-          ordered_json='['
-          first_matrix=true
-          first_ordered=true
-          for i in "${!all_tags[@]}"; do
-            tag="${all_tags[$i]}"
+          [[ "${#all_images[@]}" -gt 0 ]] || { echo "No images to benchmark."; exit 1; }
+          images_json='[]'
+          for i in "${!all_images[@]}"; do
             image="${all_images[$i]}"
+            tag="${all_tags[$i]}"
             date="${all_dates[$i]}"
-            if [[ "${first_ordered}" != "true" ]]; then ordered_json+=','; fi
-            first_ordered=false
-            ordered_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\",\"image\":\"${image}\"}"
-            for (( r=1; r<=run_count; r++ )); do
-              if [[ "${first_matrix}" != "true" ]]; then matrix_json+=','; fi
-              first_matrix=false
-              matrix_json+="{\"tag\":\"${tag}\",\"date\":\"${date}\",\"image\":\"${image}\",\"run\":${r}}"
-            done
+            digest=$(printf '%s' "${image}" | sha256sum | cut -c1-12)
+            image_id="image-$((i + 1))-${digest}"
+            images_json=$(jq -cn --argjson current "${images_json}" --arg id "${image_id}" --arg tag "${tag}" --arg image "${image}" --arg date "${date}" '$current + [{id: $id, tag: $tag, image: $image, date: $date}]')
+            echo "${image_id}: ${image} (${date})"
           done
-          matrix_json+=']}'
-          ordered_json+=']'
 
-          {
-            echo "matrix=${matrix_json}"
-            echo "ordered_tags=${ordered_json}"
-          } >> "${GITHUB_OUTPUT}"
+          echo "images=${images_json}" >> "${GITHUB_OUTPUT}"
+  generate-dottrace-reports:
+    needs: [resolve, benchmark, benchmark-multi]
+    # Timeline snapshots cannot be converted by Reporter.exe - they ship as the raw .dtp artifact only.
+    if: >-
+      always()
+      && needs.resolve.outputs.dottrace == 'true'
+      && needs.resolve.outputs.dottrace_mode != 'timeline'
+      && needs.resolve.outputs.should_run == 'true'
+      && (needs.benchmark.result == 'success' || needs.benchmark-multi.result == 'success')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download snapshot artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}
+          path: snapshots/
+          merge-multiple: true
 
+      - name: Install dotTrace Reporter
+        shell: pwsh
+        run: |
+          $url = 'https://www.nuget.org/api/v2/package/JetBrains.dotTrace.CommandLineTools.windows-x64/2026.1.0.1'
+          Write-Host "Downloading dotTrace CommandLineTools from NuGet..."
+          Invoke-WebRequest -Uri $url -OutFile dottrace-clt.zip
+          Expand-Archive -Path dottrace-clt.zip -DestinationPath dottrace-clt
+          $reporter = Get-ChildItem -Path dottrace-clt -Recurse -Filter 'Reporter.exe' | Select-Object -First 1
+          if (-not $reporter) {
+            Write-Error "Reporter.exe not found in package"
+            exit 1
+          }
+          Write-Host "Found Reporter.exe at $($reporter.FullName)"
+          echo "REPORTER=$($reporter.FullName)" >> $env:GITHUB_ENV
+
+      - name: Generate XML reports
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
+
+          # Pattern file: match all methods, include full call stacks
+          $patternFile = 'pattern.xml'
+          @'
+          <Patterns>
+            <Pattern PrintCallstacks="Full">.*</Pattern>
+          </Patterns>
+          '@ | Set-Content -Path $patternFile
+
+          # Extract all snapshot zips
+          Get-ChildItem -Path snapshots -Filter '*.zip' | ForEach-Object {
+            $dest = Join-Path extracted $_.BaseName
+            Write-Host "Extracting $($_.Name) -> $dest"
+            Expand-Archive -Path $_.FullName -DestinationPath $dest
+          }
+
+          # Find .dtp files (exact extension, not .dtp.0000 chunks)
+          $snapshots = Get-ChildItem -Path extracted -Recurse | Where-Object { $_.Extension -eq '.dtp' }
+
+          if ($snapshots.Count -eq 0) {
+            Write-Host "No .dtp snapshot files found after extraction."
+            exit 0
+          }
+
+          foreach ($dtp in $snapshots) {
+            $name = $dtp.BaseName
+            $outFile = "reports/${name}-report.xml"
+            Write-Host "::group::Generating report for $name"
+            Write-Host "  $($dtp.FullName) -> $outFile"
+            & $env:REPORTER report $dtp.FullName --pattern=$patternFile --save-to=$outFile
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Reporter failed for $name with exit code $LASTEXITCODE"
+            }
+            Write-Host "::endgroup::"
+          }
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dottrace-reports
+          path: reports/
+          retention-days: 30
+          if-no-files-found: ignore
   benchmark-multi:
-    name: benchmark (${{ matrix.tag }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
+    name: benchmark (multi-image sequential)
     needs: [resolve, resolve-images]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'multi'
-    strategy:
-      matrix: ${{ fromJson(needs.resolve-images.outputs.matrix) }}
-      max-parallel: 1
-      fail-fast: false
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 720
     env:
@@ -2338,27 +2740,18 @@ jobs:
       FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
       FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
       CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
-      NETHERMIND_IMAGE: ${{ matrix.image }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
+      RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+      MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
       CLIENT: ${{ needs.resolve.outputs.client }}
       MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
       CLIENT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.client_snapshot_dir }}
       SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
     steps:
-      - name: Print resolved inputs
-        run: |
-          echo "Multi-image benchmark run"
-          echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
-          echo "Docker image: ${NETHERMIND_IMAGE}"
-          echo "Client: ${CLIENT}"
-          echo "Measurement source: ${MEASUREMENT_SOURCE}"
-          if [[ -n "${CLIENT_SNAPSHOT_DIR}" ]]; then echo "Client snapshot: ${CLIENT_SNAPSHOT_DIR}"; fi
-          echo "Image tag: ${{ matrix.tag }}"
-          echo "Run: ${{ matrix.run }} of ${{ needs.resolve.outputs.run_count }}"
-          echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
-          echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
-          echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
-
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
       - name: Ensure Docker is installed
         shell: bash
         run: |
@@ -2370,156 +2763,11 @@ jobs:
             run_as_root systemctl start docker || run_as_root service docker start
           fi
           docker version
-
       - name: Ensure EXPB config file exists
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f "${EXPB_DATA_DIR}/${CONFIG_FILE}" ]]; then
-            echo "Config file '${EXPB_DATA_DIR}/${CONFIG_FILE}' does not exist."
-            echo "Available github-action config files in '${EXPB_DATA_DIR}':"
-            ls -1 "${EXPB_DATA_DIR}"/github-action*mainnet*.yaml || true
-            exit 1
-          fi
-
-      - name: Render benchmark config
-        id: render-config
-        shell: bash
-        env:
-          SOURCE_CONFIG_FILE: ${{ env.EXPB_DATA_DIR }}/${{ env.CONFIG_FILE }}
-          RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config-${{ matrix.tag }}-run${{ matrix.run }}.yaml
-          DOCKER_TAG: ${{ matrix.tag }}
-          DOCKER_IMAGE: ${{ matrix.image }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
-          AMOUNT: ${{ needs.resolve.outputs.amount }}
-          SCENARIO_NAME: ${{ needs.resolve.outputs.client }}-multi-${{ matrix.tag }}-run${{ matrix.run }}
-          ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
-          TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
-          CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
-          CLIENT: ${{ needs.resolve.outputs.client }}
-          CLIENT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.client_snapshot_dir }}
-          SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
-        run: |
-          set -euo pipefail
-          flags_file="$(mktemp)"
-          printf '%s' "${ADDITIONAL_EXTRA_FLAGS}" \
-            | tr '\r' '\n' \
-            | tr ',' '\n' \
-            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
-            | sed '/^$/d' \
-            | awk '
-                function emit_pending() {
-                  if (pending != "") {
-                    print pending
-                    pending = ""
-                  }
-                }
-                {
-                  line = $0
-                  if (match(line, /^--[^[:space:]=]+[[:space:]]+/)) {
-                    key = substr(line, 1, RLENGTH)
-                    sub(/[[:space:]]+$/, "", key)
-                    value = substr(line, RLENGTH + 1)
-                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-                    emit_pending()
-                    print key "=" value
-                    next
-                  }
-                  if (line ~ /^--/) {
-                    emit_pending()
-                    pending = line
-                    next
-                  }
-                  if (pending != "") {
-                    print pending "=" line
-                    pending = ""
-                  } else {
-                    print line
-                  }
-                }
-                END {
-                  emit_pending()
-                }
-              ' \
-            > "${flags_file}"
-
-          YQ="${RUNNER_TEMP}/yq"
-          case "$(uname -m)" in
-            x86_64) yq_arch="amd64" ;;
-            aarch64|arm64) yq_arch="arm64" ;;
-            *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
-          esac
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 60 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
-         chmod +x "${YQ}"
-          yq_version="$("${YQ}" --version)"
-          [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
-
-          # Replace placeholders and rename scenario key with sed (preserves comments)
-          sed \
-            -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
-            -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
-            ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
-            -e "s#/mnt/sda/expb-data#${EXPB_DATA_DIR}#g" \
-            -e "s#/mnt/sda/nethermind-flat-snapshot#${FLAT_SNAPSHOT_DIR}#g" \
-            -e "s#/mnt/sda/nethermind-flat-25490000#${FLAT_SNAPSHOT_BLOCK_DIR}#g" \
-            -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
-            "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
-
-          # Select the adapter and snapshot after preserving the source config's comments and
-          # placeholders. Reference clients use the overlay backend and never inherit Nethermind flags.
-          scenario_key="${SCENARIO_NAME}"
-          if [[ "${CLIENT}" != "nethermind" ]]; then
-            # Opening large reference snapshots can take several minutes on the benchmark runners.
-            SK="${scenario_key}" C="${CLIENT}" S="${CLIENT_SNAPSHOT_DIR}" M="${SNAPSHOT_MOUNT_PATH}" DI="${DOCKER_IMAGE}" \
-              "${YQ}" -i '.scenarios.[strenv(SK)].client = strenv(C) |
-                .scenarios.[strenv(SK)].image = strenv(DI) |
-                .scenarios.[strenv(SK)].snapshot_source = strenv(S) |
-                .scenarios.[strenv(SK)].snapshot_backend = "overlay" |
-                .scenarios.[strenv(SK)].extra_flags = [] |
-                .scenarios.[strenv(SK)].extra_env = {} |
-                .scenarios.[strenv(SK)].extra_commands = [] |
-                .scenarios.[strenv(SK)].extra_volumes = {} |
-                .scenarios.[strenv(SK)].snapshot_mount_path = strenv(M) |
-                .scenarios.[strenv(SK)].startup_wait = 600' "${RENDERED_CONFIG_FILE}"
-            echo "Rendered ${CLIENT} scenario against snapshot ${CLIENT_SNAPSHOT_DIR} (overlay, mount ${SNAPSHOT_MOUNT_PATH})."
-          else
-            SK="${scenario_key}" C="${CLIENT}" DI="${DOCKER_IMAGE}" \
-              "${YQ}" -i '.scenarios.[strenv(SK)].client = strenv(C) |
-                .scenarios.[strenv(SK)].image = strenv(DI)' "${RENDERED_CONFIG_FILE}"
-          fi
-
-          # Append extra flags using yq (proper YAML handling)
-          while IFS= read -r flag; do
-            [[ -z "${flag}" ]] && continue
-            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
-          done < "${flags_file}"
-
-          # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
-          if [[ -n "${TRACE_BLOCKS:-}" ]]; then
-            SK="${scenario_key}" V="${TRACE_BLOCKS}" \
-              "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.NETHERMIND_PROFILE_BLOCKS = strenv(V)' "${RENDERED_CONFIG_FILE}"
-            echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
-          fi
-
-          # Extra client container env vars (KEY=VALUE, comma-separated), e.g. GC tuning experiments.
-          # Keys/values go through strenv so quotes and yq metacharacters in values stay literal.
-          if [[ -n "${CLIENT_ENV:-}" ]]; then
-            IFS=',' read -ra client_env_entries <<< "${CLIENT_ENV}"
-            for entry in "${client_env_entries[@]}"; do
-              entry="${entry#"${entry%%[![:space:]]*}"}"
-              entry="${entry%"${entry##*[![:space:]]}"}"
-              [[ -z "${entry}" || "${entry}" != *"="* ]] && continue
-              env_key="${entry%%=*}"
-              env_value="${entry#*=}"
-              SK="${scenario_key}" K="${env_key}" V="${env_value}" \
-                "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
-              echo "Set client env ${env_key}=${env_value}."
-            done
-          fi
-
-          expected_amount="$("${YQ}" -r ".scenarios.\"${scenario_key}\".amount // \"\"" "${RENDERED_CONFIG_FILE}")"
-          echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
-          echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
+          test -f "${EXPB_DATA_DIR}/${CONFIG_FILE}"
 
       - name: Verify client snapshot and provenance
         if: needs.resolve.outputs.client != 'nethermind'
@@ -2550,41 +2798,6 @@ jobs:
             fi
           done
           find "${SNAPSHOT_SOURCE}" -mindepth 1 -maxdepth 1 -printf 'Snapshot entry: %f\n' | sort
-
-      - name: Install or upgrade expb
-        shell: bash
-        env:
-          EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
-          EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
-          PERF: ${{ needs.resolve.outputs.perf }}
-          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
-        run: |
-          set -euo pipefail
-          if ! command -v uv >/dev/null 2>&1; then
-            curl -LsSf https://astral.sh/uv/install.sh | sh
-            export PATH="${HOME}/.local/bin:${PATH}"
-          fi
-          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
-            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
-          elif [[ -n "${EXPB_BRANCH}" ]]; then
-            expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
-          else
-            expb_source="git+https://github.com/${EXPB_REPO}"
-          fi
-          echo "Installing expb from ${expb_source}"
-          uv tool install --force --from "${expb_source}" expb
-          expb_bin="$(uv tool dir --bin)/expb"
-          requested_flags=()
-          if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
-          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
-          if [[ "${#requested_flags[@]}" -gt 0 ]]; then
-            if ! capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"; then
-              echo "::error::Installed expb from ${expb_source} does not support requested capability flag(s): ${requested_flags[*]}."
-              printf '%s\n' "${capability_output}"
-              exit 1
-            fi
-          fi
-          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
       - name: Reap leftover benchmark containers and networks
         shell: bash
@@ -2703,788 +2916,268 @@ jobs:
             done < <(printf '%s' "${scratch[${mp}]}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p' | sort -u)
           done
           exit 0
+      - name: Check benchmark disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h / "${EXPB_DATA_DIR}"
+          root_available_kb="$(df -Pk / | awk 'NR == 2 { print $4 }')"
+          data_available_kb="$(df -Pk "${EXPB_DATA_DIR}" | awk 'NR == 2 { print $4 }')"
+          if ! [[ "${root_available_kb}" =~ ^[0-9]+$ && "${data_available_kb}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not determine free space for the runner root or ${EXPB_DATA_DIR}."
+            exit 1
+          fi
+          if (( root_available_kb < 2 * 1024 * 1024 )); then
+            echo "::error::Only ${root_available_kb} KiB is free on the runner root filesystem; at least 2 GiB is required before starting a campaign."
+            echo "::error::Inspect runner diagnostics and other root-volume files before retrying."
+            exit 1
+          fi
+          if (( data_available_kb < 10 * 1024 * 1024 )); then
+            echo "::error::Only ${data_available_kb} KiB is free on ${EXPB_DATA_DIR}; at least 10 GiB is required before starting a campaign."
+            echo "::error::Inspect existing campaign artifacts on the data volume and choose a runner with more free space."
+            exit 1
+          fi
 
-      - name: Run expb scenarios
-        id: run-expb
+      - name: Install or upgrade expb and yq
+        shell: bash
+        env:
+          EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
+          EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
+          PERF: ${{ needs.resolve.outputs.perf }}
+          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
+        run: |
+          set -euo pipefail
+          if ! command -v uv >/dev/null 2>&1; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="${HOME}/.local/bin:${PATH}"
+          fi
+          if [[ -n "${EXPB_BRANCH}" ]]; then
+            expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
+          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" ]]; then
+            expb_source="git+https://github.com/${EXPB_REPO}@main"
+          else
+            expb_source="git+https://github.com/${EXPB_REPO}"
+          fi
+          uv tool install --force --from "${expb_source}" expb
+          echo "EXPB_SOURCE=${expb_source}" >> "${GITHUB_ENV}"
+          expb_bin="$(uv tool dir --bin)/expb"
+          requested_flags=()
+          if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
+          if [[ "${#requested_flags[@]}" -gt 0 ]]; then
+            if ! capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"; then
+              echo "::error::Installed expb from ${expb_source} does not support requested capability flag(s): ${requested_flags[*]}."
+              printf '%s\n' "${capability_output}"
+              exit 1
+            fi
+          fi
+          echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+          yq="${RUNNER_TEMP}/yq"
+          case "$(uname -m)" in
+            x86_64) yq_arch=amd64 ;;
+            aarch64|arm64) yq_arch=arm64 ;;
+            *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+          esac
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 60 --max-time 120 "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${yq}"
+          chmod +x "${yq}"
+          yq_version="$("${yq}" --version)"
+          [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
+      - name: Run sequential EXPB campaign
+        id: run-campaign
         continue-on-error: true
         shell: bash
-        working-directory: ${{ env.EXPB_DATA_DIR }}
         env:
-          RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
-          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
-          PERF: ${{ needs.resolve.outputs.perf }}
-          DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
+          EXPB_IMAGES_JSON: ${{ needs.resolve-images.outputs.images }}
+          # An explicit `docker_images` dispatch is an A/B: one bad arm invalidates the comparison, so
+          # the campaign stops. A retrospective sweep bisects across many master builds and its other
+          # images stay useful, so there only the failed image is abandoned.
+          CAMPAIGN_FAIL_FAST: ${{ needs.resolve.outputs.docker_images != '' }}
+          EXPB_CONFIG_TEMPLATE: ${{ needs.resolve.outputs.expb_data_dir }}/${{ needs.resolve.outputs.config_file }}
+          EXPB_CAMPAIGN_DIR: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
+          FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
+          FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
+          YQ_BIN: ${{ runner.temp }}/yq
+          EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+          CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
+          MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
+          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          AMOUNT: ${{ needs.resolve.outputs.amount }}
+          ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
+          DOCKER_CPU: ${{ needs.resolve.outputs.docker_cpu }}
+          DOCKER_CPUSET: ${{ needs.resolve.outputs.docker_cpuset }}
+          DOCKER_INFRA_CPUSET: ${{ needs.resolve.outputs.docker_infra_cpuset }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
+          PERF: ${{ needs.resolve.outputs.perf }}
+          CLIENT: ${{ needs.resolve.outputs.client }}
           MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
+          CLIENT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.client_snapshot_dir }}
+          SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
         run: |
           set -euo pipefail
-          expb_pid=""
-          : > "${RAW_RUN_LOG}"
-
-          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
-          # values containing commas must use the newline-separated form).
-          if [[ -n "${EXPB_ENV_PASSTHROUGH:-}" ]]; then
-            while IFS= read -r _kv; do
-              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-              [[ -z "${_kv}" ]] && continue
-              if [[ "${_kv}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-                export "${_kv}"
-                echo "Exported expb env: ${_kv%%=*}=<value>"
-              else
-                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
-              fi
-            done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
-          fi
-
-          on_terminate() {
-            echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."
-            if [[ -n "${expb_pid}" ]] && kill -0 "${expb_pid}" 2>/dev/null; then
-              kill -TERM "${expb_pid}" 2>/dev/null || true
-              remaining="${CLEANUP_GRACE_SECONDS}"
-              while [[ "${remaining}" -gt 0 ]]; do
-                if ! kill -0 "${expb_pid}" 2>/dev/null; then
-                  echo "expb exited during cleanup grace period."
-                  break
-                fi
-                sleep 1
-                remaining=$((remaining - 1))
-              done
-              if kill -0 "${expb_pid}" 2>/dev/null; then
-                echo "Cleanup grace period elapsed. Forcing expb shutdown."
-                kill -KILL "${expb_pid}" 2>/dev/null || true
-              fi
-            fi
-            exit 143
-          }
-
-          trap on_terminate TERM INT
-
-          profiling_flags=()
-          measurement_flags=()
-          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
-            measurement_flags+=(--no-client-metrics)
-          fi
-          if [[ "${DOTTRACE}" == "true" ]]; then
-            # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
-            # always rides along with dotTrace - different channel, adds the GC/lock story
-            # the CPU profile cannot show. Requires expb with --dotnet-trace support.
-            profiling_flags+=(--dottrace --dottrace-mode "${DOTTRACE_MODE:-sampling}" --dotnet-trace)
-          fi
-          if [[ "${PERF}" == "true" ]]; then
-            # perf samples on the host; the client only needs the perf-map env, which
-            # expb sets on the container. Nothing extra is required in the image.
-            profiling_flags+=(--perf)
-          fi
-
-          if [[ "${#profiling_flags[@]}" -eq 0 ]]; then
-            echo "expb profiling flags: none"
-          else
-            printf 'expb profiling flags:'
-            printf ' %q' "${profiling_flags[@]}"
-            printf '\n'
-          fi
-          if [[ "${#measurement_flags[@]}" -eq 0 ]]; then
-            echo "expb measurement flags: client metrics enabled (measurement_source=${MEASUREMENT_SOURCE})"
-          else
-            echo "expb measurement flags: --no-client-metrics (measurement_source=${MEASUREMENT_SOURCE})"
-          fi
-
-          # Marker for profiling artifact collection — only files newer than this
+          echo "Client: ${CLIENT}"
+          echo "Measurement source: ${MEASUREMENT_SOURCE}"
+          if [[ -n "${CLIENT_SNAPSHOT_DIR}" ]]; then echo "Client snapshot: ${CLIENT_SNAPSHOT_DIR} (mount ${SNAPSHOT_MOUNT_PATH})"; fi
+          mkdir -p "${EXPB_CAMPAIGN_DIR}"
           touch "${RUNNER_TEMP}/.expb-run-marker"
-
-          fifo="${RUNNER_TEMP}/expb-pipe"
-          mkfifo "${fifo}"
-          tee "${RAW_RUN_LOG}" < "${fifo}" &
-          tee_pid=$!
-
-          expb execute-scenarios \
-            --config-file "${{ steps.render-config.outputs.rendered_config_file }}" \
-            --per-payload-metrics \
-            --per-payload-metrics-logs \
-            --print-logs \
-            ${measurement_flags[@]+"${measurement_flags[@]}"} \
-            ${profiling_flags[@]+"${profiling_flags[@]}"} \
-            > "${fifo}" 2>&1 &
-          expb_pid=$!
-
-          set +e
-          wait "${expb_pid}"
-          expb_exit_code=$?
-          set -e
-
-          rm -f "${fifo}"
-          wait "${tee_pid}"
-
-          exit "${expb_exit_code}"
-
-      - name: Analyze benchmark output
-        id: analyze
+          python3 "${GITHUB_WORKSPACE}/scripts/expb/sequential_driver.py"
+      - name: Upload campaign artifact
+        id: upload-campaign
         if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: expb-campaign-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Remove uploaded campaign directory
+        if: always() && steps.upload-campaign.outcome == 'success'
         shell: bash
         env:
-          RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
-          TAG: ${{ matrix.tag }}
-          RUN: ${{ matrix.run }}
-          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
-          EXPECTED_AMOUNT: ${{ steps.render-config.outputs.expected_amount }}
+          EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
+          CAMPAIGN_RUN_ID: ${{ github.run_id }}
+          CAMPAIGN_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-
-          key="${TAG}-run${RUN}"
-          clean_log="${RUNNER_TEMP}/expb-run-${key}.clean.log"
-          exception_lines="${RUNNER_TEMP}/expb-exceptions-${key}.log"
-          invalid_block_lines="${RUNNER_TEMP}/expb-invalid-blocks-${key}.log"
-          processing_ms="${RUNNER_TEMP}/expb-processing-ms-${key}.txt"
-          processing_ms_sorted="${RUNNER_TEMP}/expb-processing-ms-sorted-${key}.txt"
-          metrics_dir="${RUNNER_TEMP}/expb-metrics-${key}"
-
-          mkdir -p "${metrics_dir}"
-
-          if [[ ! -f "${RAW_RUN_LOG}" ]]; then
-            echo "Run output log '${RAW_RUN_LOG}' was not produced."
-            {
-              echo "TAG=${TAG}"
-              echo "RUN=${RUN}"
-              echo "ERROR=no_log"
-            } > "${metrics_dir}/metrics.env"
+          # A failed upload intentionally leaves the campaign directory available for diagnosis.
+          if ! [[ "${CAMPAIGN_RUN_ID}" =~ ^[0-9]+$ && "${CAMPAIGN_RUN_ATTEMPT}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Campaign identifiers must be numeric before cleanup."
             exit 1
           fi
-
-          sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${RAW_RUN_LOG}" > "${clean_log}"
-
-          grep -in "Exception" "${clean_log}" > "${exception_lines}" || true
-          exception_found="false"
-          if [[ -s "${exception_lines}" ]]; then
-            exception_found="true"
-            echo "Found Exception lines in benchmark output:"
-            head -n 40 "${exception_lines}"
+          campaigns_root_input="${EXPB_DATA_DIR}/campaigns"
+          [[ ! -L "${campaigns_root_input}" ]] || { echo "::error::Refusing symlinked campaigns root: ${campaigns_root_input}"; exit 1; }
+          if [[ ! -e "${campaigns_root_input}" ]]; then
+            echo "Campaigns root already absent: ${campaigns_root_input}"
+            exit 0
           fi
-
-          grep -Ein "invalid[[:space:]_-]*block" "${clean_log}" > "${invalid_block_lines}" || true
-          invalid_block_found="false"
-          if [[ -s "${invalid_block_lines}" ]]; then
-            invalid_block_found="true"
-            echo "Found invalid block lines in benchmark output:"
-            head -n 40 "${invalid_block_lines}"
-          fi
-
-          # Flag additional severe runtime signals (warn, don't hard-fail)
-          for pattern in "Unhandled" "Fatal" "^.*ERROR.*$"; do
-            severe_lines=$(grep -in "${pattern}" "${clean_log}" | head -n 20) || true
-            if [[ -n "${severe_lines}" ]]; then
-              echo "::warning::Severe log pattern '${pattern}' detected in benchmark output"
-              echo "${severe_lines}"
-            fi
-          done
-
-          # Use K6 TTFB for engine-api mode so all clients share the same clock. Auto retains
-          # Nethermind's internal SSE processing metric with a TTFB fallback.
-          client_ms="${RUNNER_TEMP}/expb-client-ms-${key}.txt"
-          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
-            : > "${client_ms}"
-            echo "Using K6 TTFB data (measurement_source=engine-api)."
-          else
-            grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
-          fi
-
-          if [[ -s "${client_ms}" ]]; then
-            echo "Using SSE client_metric data ($(wc -l < "${client_ms}") samples)."
-            cp "${client_ms}" "${processing_ms}"
-          else
-            [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]] || echo "No SSE client_metric data found, falling back to K6 TTFB table."
-            awk -F'|' '
-              /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
-                value = $4
-                gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-                if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                  print value
-                }
-              }
-            ' "${clean_log}" > "${processing_ms}"
-          fi
-
-          count=$(wc -l < "${processing_ms}")
-          count="${count//[[:space:]]/}"
-
-          if [[ "${count}" -eq 0 ]]; then
-            echo "Could not extract any processing_ms data from benchmark output."
-            {
-              echo "TAG=${TAG}"
-              echo "RUN=${RUN}"
-              echo "EXCEPTION_FOUND=${exception_found}"
-              echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
-              echo "ERROR=no_metrics"
-            } > "${metrics_dir}/metrics.env"
+          campaigns_root="$(realpath -e -- "${campaigns_root_input}")"
+          [[ -d "${campaigns_root}" ]] || { echo "::error::Campaigns root is not a directory: ${campaigns_root}"; exit 1; }
+          target_input="${campaigns_root}/${CAMPAIGN_RUN_ID}/${CAMPAIGN_RUN_ATTEMPT}"
+          if [[ -L "${target_input}" ]]; then
+            echo "::error::Refusing symlinked campaign directory: ${target_input}"
             exit 1
           fi
-          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
-            if [[ "${EXPECTED_AMOUNT}" =~ ^[0-9]+$ ]]; then
-              if [[ "${count}" -ne "${EXPECTED_AMOUNT}" ]]; then
-                echo "Expected ${EXPECTED_AMOUNT} K6 TTFB samples, extracted ${count}; refusing a partial engine-api measurement."
-                {
-                  echo "TAG=${TAG}"
-                  echo "RUN=${RUN}"
-                  echo "EXCEPTION_FOUND=${exception_found}"
-                  echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
-                  echo "ERROR=partial_engine_api_metrics"
-                } > "${metrics_dir}/metrics.env"
-                exit 1
-              fi
-            else
-              # The config carries no usable `amount`, so nothing can say whether the run is complete -
-              # and a partial cross-client run biases the comparison it was dispatched to make.
-              echo "::warning::No usable amount ('${EXPECTED_AMOUNT}') in the rendered config; the engine-api completeness check is disabled for this run."
+          run_dir_input="${campaigns_root}/${CAMPAIGN_RUN_ID}"
+          [[ ! -L "${run_dir_input}" ]] || { echo "::error::Refusing symlinked campaign run directory: ${run_dir_input}"; exit 1; }
+          if [[ ! -e "${target_input}" ]]; then
+            echo "Campaign directory already absent: ${target_input}"
+            exit 0
+          fi
+          [[ -d "${target_input}" ]] || { echo "::error::Campaign path is not a directory: ${target_input}"; exit 1; }
+          target="$(realpath -e -- "${target_input}")"
+          [[ "${target}" == "${campaigns_root}"/* ]] || { echo "::error::Campaign directory escaped campaigns root: ${target}"; exit 1; }
+          nested_symlink="$(find -P "${target}" -type l -print -quit 2>/dev/null)"
+          [[ -z "${nested_symlink}" ]] || { echo "::error::Refusing campaign cleanup with nested symlink: ${nested_symlink}"; exit 1; }
+          command -v findmnt >/dev/null 2>&1 || { echo "::error::findmnt is required for safe campaign cleanup."; exit 1; }
+          mounted_targets="$(findmnt --raw --submounts --noheadings --output TARGET --target "${target}")"
+          while IFS= read -r mount_target; do
+            [[ -n "${mount_target}" ]] || continue
+            mount_target="$(realpath -m -- "${mount_target}")"
+            if [[ "${mount_target}" == "${target}" || "${mount_target}" == "${target}"/* ]]; then
+              echo "::error::Refusing to remove campaign directory containing mount: ${mount_target}"
+              exit 1
             fi
-          fi
-
-          compute_percentiles() {
-            local input_file="$1"
-            local prefix="$2"
-            local sorted_file="${input_file}.sorted"
-            local n
-
-            sort -n "${input_file}" > "${sorted_file}"
-            n=$(wc -l < "${sorted_file}")
-            n="${n//[[:space:]]/}"
-
-            local min max avg median p90 p95 p99
-            min=$(head -n 1 "${sorted_file}")
-            max=$(tail -n 1 "${sorted_file}")
-            avg=$(awk '{sum += $1} END {printf "%.2f", sum / NR}' "${sorted_file}")
-
-            if (( n % 2 == 1 )); then
-              local mi=$(( (n + 1) / 2 ))
-              median=$(sed -n "${mi}p" "${sorted_file}")
-            else
-              local lo=$(( n / 2 ))
-              local hi=$(( lo + 1 ))
-              local lv hv
-              lv=$(sed -n "${lo}p" "${sorted_file}")
-              hv=$(sed -n "${hi}p" "${sorted_file}")
-              median=$(awk -v a="${lv}" -v b="${hv}" 'BEGIN {printf "%.2f", (a + b) / 2}')
-            fi
-
-            local p90i=$(( (90 * n + 99) / 100 ))
-            local p95i=$(( (95 * n + 99) / 100 ))
-            local p99i=$(( (99 * n + 99) / 100 ))
-            p90=$(sed -n "${p90i}p" "${sorted_file}")
-            p95=$(sed -n "${p95i}p" "${sorted_file}")
-            p99=$(sed -n "${p99i}p" "${sorted_file}")
-
-            echo "${prefix}COUNT=${n}"
-            echo "${prefix}AVG=${avg}"
-            echo "${prefix}MEDIAN=${median}"
-            echo "${prefix}P90=${p90}"
-            echo "${prefix}P95=${p95}"
-            echo "${prefix}P99=${p99}"
-            echo "${prefix}MIN=${min}"
-            echo "${prefix}MAX=${max}"
-          }
-
-          {
-            echo "TAG=${TAG}"
-            echo "RUN=${RUN}"
-            echo "EXCEPTION_FOUND=${exception_found}"
-            echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
-          } > "${metrics_dir}/metrics.env"
-          compute_percentiles "${processing_ms}" "" >> "${metrics_dir}/metrics.env"
-          if [[ -s "${client_ms}" ]]; then echo "SOURCE=sse"; else echo "SOURCE=k6"; fi >> "${metrics_dir}/metrics.env"
-
-          # The k6 table carries the gas used per payload and is parsed whichever series is primary, so
-          # the request and the processing series each get an MGas/s of their own.
-          ttfb_table="${RUNNER_TEMP}/expb-ttfb-table-${key}.txt"
-          ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms-${key}.txt"
-          ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas-${key}.txt"
-          awk -F'|' '
-            /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
-              gas = $3
-              value = $4
-              gsub(/^[[:space:]]+|[[:space:]]+$/, "", gas)
-              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-              if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                print gas, value
-              }
-            }
-          ' "${clean_log}" > "${ttfb_table}"
-          awk '{ print $2 }' "${ttfb_table}" > "${ttfb_ms}"
-          awk '{ print $1 }' "${ttfb_table}" > "${ttfb_gas}"
-
-          # Throughput over one per-payload time series: the shared gas total over that series' total.
-          # Row i of the k6 table is block i of the feed, and the feed reports a block when the next
-          # payload is requested, so it can lack the last one; the limit holds both series to the same
-          # payloads, so the two figures divide one shared gas total and are directly comparable.
-          mgas_s_over() {
-            awk -v limit="${2:-0}" '
-              NR == FNR { gas[NR] = $1; paired = NR; next }
-              FNR <= paired && (limit == 0 || FNR <= limit) { total_gas += gas[FNR]; total_ms += $1 }
-              END { if (total_ms > 0) printf "%.2f", (total_gas / 1000000) / (total_ms / 1000) }
-            ' "${ttfb_gas}" "${1}"
-          }
-
-          emit_mgas_s() {
-            local value
-            value="$(mgas_s_over "${2}" "${3:-0}")"
-            if [[ -n "${value}" ]]; then
-              echo "${1}MGAS_S=${value}" >> "${metrics_dir}/metrics.env"
-            fi
-          }
-
-          # n/a rather than an empty line when the series this divides by was not collected.
-          read_mgas_s() {
-            local value
-            value="$(grep -E "^${1}MGAS_S=" "${metrics_dir}/metrics.env" | head -n 1 | cut -d'=' -f2- || true)"
-            printf '%s' "${value:-n/a}"
-          }
-
-          if [[ -s "${client_ms}" && -s "${ttfb_ms}" ]]; then
-            compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_dir}/metrics.env"
-            paired_count=$(wc -l < "${client_ms}")
-            paired_count="${paired_count//[[:space:]]/}"
-            emit_mgas_s "" "${client_ms}" "${paired_count}"
-            emit_mgas_s "TTFB_" "${ttfb_ms}" "${paired_count}"
-            # Time outside processing per payload, from the same pairing.
-            outside_ms="${RUNNER_TEMP}/expb-outside-ms-${key}.txt"
-            awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
-            if [[ -s "${outside_ms}" ]]; then
-              compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_dir}/metrics.env"
-            fi
-          elif [[ -s "${ttfb_ms}" ]]; then
-            # Without the client feed the unprefixed keys hold the k6 request table, and so does their
-            # throughput; there is no processing or outside series to divide by.
-            emit_mgas_s "" "${processing_ms}"
-          fi
-
-          echo ""
-          echo "========================================="
-          echo "  Metrics for ${TAG} run ${RUN}"
-          if [[ -s "${client_ms}" ]]; then
-            echo "  Block processing (Nethermind)"
-          else
-            echo "  newPayload request time (k6)"
-          fi
-          echo "========================================="
-          grep -v "^TAG=\|^RUN=\|^EXCEPTION_\|^INVALID_\|^SOURCE=\|^TTFB_\|^MGAS_S=\|^OUTSIDE_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
-            printf "  %-10s %s ms\n" "${key}" "${val}"
-          done
-          printf "  %-10s %s MGas/s\n" "MGAS_S" "$(read_mgas_s "")"
-          if grep -q "^TTFB_AVG=" "${metrics_dir}/metrics.env" 2>/dev/null; then
-            echo "-----------------------------------------"
-            echo "  newPayload request time (k6)"
-            echo "-----------------------------------------"
-            grep "^TTFB_" "${metrics_dir}/metrics.env" | grep -v "^TTFB_MGAS_S=" | while IFS='=' read -r key val; do
-              printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
-            done
-            printf "  %-10s %s MGas/s\n" "MGAS_S" "$(read_mgas_s "TTFB_")"
-            echo "-----------------------------------------"
-            echo "  Request minus processing"
-            echo "-----------------------------------------"
-            grep "^OUTSIDE_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
-              printf "  %-10s %s ms\n" "${key#OUTSIDE_}" "${val}"
-            done
-          fi
-          echo "========================================="
-          echo ""
-
-      - name: Upload metrics artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: expb-metrics-${{ matrix.tag }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/expb-metrics-${{ matrix.tag }}-run${{ matrix.run }}/metrics.env
-          retention-days: 30
-
-      - name: Upload raw benchmark log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: expb-log-${{ matrix.tag }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
-          retention-days: 7
-
-      - name: Enforce run quality gates
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${{ steps.run-expb.outcome }}" != "success" ]]; then
-            echo "expb execute-scenarios did not finish successfully for ${{ matrix.tag }} run ${{ matrix.run }}."
-            echo "Continuing multi-image run (fail-fast is disabled)."
-          fi
-          if [[ "${{ steps.analyze.outputs.exception_found }}" == "true" ]]; then
-            echo "Exceptions were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
-          fi
-          if [[ "${{ steps.analyze.outputs.invalid_block_found }}" == "true" ]]; then
-            echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
-          fi
-
+          done <<< "${mounted_targets}"
+          rm -rf -- "${target}"
+          rmdir --ignore-fail-on-non-empty -- "$(dirname -- "${target}")"
+          echo "Removed uploaded campaign directory: ${target}"
       - name: Collect and upload profiling artifacts
         id: collect-profiling
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
-          ARTIFACT_SUFFIX: ${{ matrix.tag }}-run${{ matrix.run }}
+          EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
           MARKER: ${{ runner.temp }}/.expb-run-marker
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
-
           if [[ "${PERF}" == "true" ]]; then
             artifact_prefix="profiling"
           else
             artifact_prefix="dottrace"
           fi
-          artifact_name="${artifact_prefix}-${ARTIFACT_SUFFIX}"
+          artifact_name="${artifact_prefix}-campaign"
           archive="${RUNNER_TEMP}/${artifact_name}.zip"
-          {
-            echo "artifact_name=${artifact_name}"
-            echo "archive=${archive}"
-          } >> "${GITHUB_OUTPUT}"
-
-          mapfile -t profiling_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' -o -name 'perf' \) -newer "${MARKER}" 2>/dev/null)
+          echo "artifact_name=${artifact_name}" >> "${GITHUB_OUTPUT}"
+          echo "archive=${archive}" >> "${GITHUB_OUTPUT}"
+          mapfile -t profiling_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name dottrace -o -name dotnet-trace -o -name perf \) -newer "${MARKER}" 2>/dev/null)
           if [[ "${#profiling_dirs[@]}" -eq 0 ]]; then
-            if [[ "${PERF}" == "true" ]]; then
-              echo "::error::perf was requested but no profiling output directories were produced."
-              exit 1
-            fi
-            echo "::warning::Profiling was requested (dottrace=${DOTTRACE}, perf=${PERF}) but no profiling output directories were produced."
+            if [[ "${PERF}" == "true" ]]; then echo "::error::perf produced no profile."; exit 1; fi
+            echo "::warning::No profiling output was produced."
             exit 0
           fi
-
-          echo "Collecting from ${#profiling_dirs[@]} profiling director(ies):"
-          printf '  %s\n' "${profiling_dirs[@]}"
-
-          file_count=0
-          for d in "${profiling_dirs[@]}"; do
-            file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
-          done
-          if [[ "${file_count}" -eq 0 ]]; then
-            if [[ "${PERF}" == "true" ]]; then
-              echo "::error::perf was requested but profiling output directories are empty."
-              exit 1
-            fi
-            echo "::warning::Profiling output directories are empty, skipping zip."
-            exit 0
-          fi
-
           perf_validation_failed=false
           if [[ "${PERF}" == "true" ]]; then
-            mapfile -t folded_profiles < <(find "${profiling_dirs[@]}" -type f -name 'perf.folded' -newer "${MARKER}" 2>/dev/null)
-            valid_folded_profiles=()
-            for folded_profile in "${folded_profiles[@]}"; do
-              if bash scripts/validate-folded-profile.sh "${folded_profile}"; then
-                valid_folded_profiles+=("${folded_profile}")
-              else
-                echo "::warning::Ignoring invalid perf.folded profile: ${folded_profile}"
+            mapfile -t perf_dirs < <(find "${profiling_dirs[@]}" -type d -name perf -newer "${MARKER}" 2>/dev/null)
+            if [[ "${#perf_dirs[@]}" -eq 0 ]]; then
+              echo "::error::perf was requested but no perf output directory was produced."
+              perf_validation_failed=true
+            fi
+            for perf_dir in "${perf_dirs[@]}"; do
+              profile_ok=false
+              mapfile -t folded_profiles < <(find "${perf_dir}" -type f -name perf.folded -newer "${MARKER}" 2>/dev/null)
+              for folded_profile in "${folded_profiles[@]}"; do
+                if bash scripts/validate-folded-profile.sh "${folded_profile}"; then
+                  profile_ok=true
+                  break
+                fi
+              done
+              if [[ "${profile_ok}" != "true" ]]; then
+                echo "::error::perf directory '${perf_dir}' has no nonempty perf.folded profile."
+                perf_validation_failed=true
               fi
             done
-            if [[ "${#valid_folded_profiles[@]}" -eq 0 ]]; then
-              echo "::error::perf was requested but no perf.folded profile with a positive sample count was produced."
-              perf_validation_failed=true
-            else
-              echo "Validated positive-sample perf.folded profile(s):"
-              printf '  %s\n' "${valid_folded_profiles[@]}"
-            fi
           fi
-
           zip -9r "${archive}" "${profiling_dirs[@]}" -x '*/perf.data'
-
           if [[ "${perf_validation_failed}" == "true" ]]; then
             exit 1
           fi
 
       - name: Upload profiling artifact
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.collect-profiling.outputs.artifact_name }}
           path: ${{ steps.collect-profiling.outputs.archive }}
           retention-days: 30
           if-no-files-found: ignore
 
-      - name: Cleanup rendered config
+      - name: Enforce campaign quality gates
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          rm -f "${{ runner.temp }}/rendered-expb-config-${{ matrix.tag }}-run${{ matrix.run }}.yaml" || true
-          rendered_config_file="${{ steps.render-config.outputs.rendered_config_file }}"
-          if [[ -n "${rendered_config_file}" ]]; then
-            rm -f "${rendered_config_file}" || true
+          if [[ "${{ steps.run-campaign.outcome }}" != "success" ]]; then
+            echo "::error::The EXPB campaign failed; inspect the campaign artifact."
+            exit 1
           fi
 
-  summary:
-    needs: [resolve, resolve-images, benchmark-multi]
+  multi-campaign-summary:
+    needs: [resolve, benchmark-multi]
     if: always() && needs.resolve.outputs.mode == 'multi'
     runs-on: ubuntu-latest
     steps:
-      - name: Download all metrics artifacts
+      - name: Download campaign artifact
+        if: always()
+        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          path: ${{ runner.temp }}/all-metrics
-          pattern: expb-metrics-*
-
-      - name: Build comparison table
+          pattern: expb-campaign-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/campaign
+          merge-multiple: true
+      - name: Publish campaign summary
+        if: always()
         shell: bash
-        env:
-          METRICS_DIR: ${{ runner.temp }}/all-metrics
-          ORDERED_TAGS: ${{ needs.resolve-images.outputs.ordered_tags }}
-          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
         run: |
           set -euo pipefail
-
-          summary_file="${RUNNER_TEMP}/multi-image-summary.md"
-          run_count="${RUN_COUNT:-1}"
-
-          # Parse ordered tags JSON (unique tags, not expanded by run)
-          mapfile -t tags < <(echo "${ORDERED_TAGS}" | jq -r '.[].tag')
-          mapfile -t dates < <(echo "${ORDERED_TAGS}" | jq -r '.[].date')
-          mapfile -t images < <(echo "${ORDERED_TAGS}" | jq -r '.[].image')
-
-          load_metric() {
-            local file="$1"
-            local key="$2"
-            if [[ -f "${file}" ]]; then
-              grep -E "^${key}=" "${file}" | head -n 1 | cut -d'=' -f2- || true
-            fi
-          }
-
-          # Which measurement the unprefixed keys hold. Files written before SOURCE existed carried k6
-          # keys under TTFB_ only when the client feed was present, so that presence implies sse; without
-          # either key the file could hold either measurement.
-          metrics_source() {
-            local file="$1"
-            local source
-            source="$(load_metric "${file}" "SOURCE")"
-            if [[ -z "${source}" && -n "$(load_metric "${file}" "TTFB_AVG")" ]]; then
-              source="sse"
-            fi
-            printf '%s' "${source:-unknown}"
-          }
-
-          percentage_delta() {
-            local current="$1"
-            local baseline="$2"
-            if [[ -z "${current}" || -z "${baseline}" ]]; then
-              echo "n/a"
-              return
-            fi
-            awk -v c="${current}" -v b="${baseline}" 'BEGIN {
-              if (b == 0) { print "n/a"; }
-              else { printf "%+.2f%%", ((c - b) / b) * 100; }
-            }'
-          }
-
-          # Build header — add Run column if run_count > 1
-          if [[ "${run_count}" -gt 1 ]]; then
-            header="| # | Image Tag | Run | Date | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
-            separator="|---|-----------|-----|------|--------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
+          summary_file="$(find "${RUNNER_TEMP}/campaign" -type f -name summary.md -print -quit 2>/dev/null || true)"
+          if [[ -n "${summary_file}" ]]; then
+            cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
           else
-            header="| # | Image Tag | Date | Source | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) | AVG Delta vs First |"
-            separator="|---|-----------|------|--------|----------|-------------|----------|----------|----------|----------|----------|---------------------|"
+            echo "No campaign summary artifact was produced." >> "${GITHUB_STEP_SUMMARY}"
           fi
-
-          total_runs=$(( ${#tags[@]} * run_count ))
-          {
-            echo "## EXPB Multi-Image Benchmark Results"
-            echo ""
-            echo "Benchmarked ${#tags[@]} Docker images${run_count:+, ${run_count} run(s) each}."
-            echo ""
-            show_image_mapping=false
-            for i in "${!tags[@]}"; do
-              image_tag="${images[$i]##*:}"
-              if [[ "${tags[$i]}" != "${image_tag}" ]]; then
-                show_image_mapping=true
-                break
-              fi
-            done
-            if [[ "${show_image_mapping}" == "true" ]]; then
-              echo "**Image tag mapping:**"
-              for i in "${!tags[@]}"; do
-                echo "- \`${tags[$i]}\` → \`${images[$i]}\`"
-              done
-              echo ""
-            fi
-            echo "${header}"
-            echo "${separator}"
-          } > "${summary_file}"
-
-          baseline_avg=""
-          baseline_source=""
-          row_idx=0
-
-          for i in "${!tags[@]}"; do
-            tag="${tags[$i]}"
-            date="${dates[$i]}"
-
-            for (( r=1; r<=run_count; r++ )); do
-              row_idx=$(( row_idx + 1 ))
-              metrics_file="${METRICS_DIR}/expb-metrics-${tag}-run${r}/metrics.env"
-
-              # Build the tag+run prefix columns
-              if [[ "${run_count}" -gt 1 ]]; then
-                prefix="| ${row_idx} | \`${tag}\` | ${r} | ${date}"
-              else
-                prefix="| ${row_idx} | \`${tag}\` | ${date}"
-              fi
-
-              if [[ ! -f "${metrics_file}" ]]; then
-                echo "${prefix} | - | - | - | - | - | - | - | - | no data |" >> "${summary_file}"
-                continue
-              fi
-
-              error=$(load_metric "${metrics_file}" "ERROR")
-              if [[ -n "${error}" ]]; then
-                exception=$(load_metric "${metrics_file}" "EXCEPTION_FOUND")
-                invalid=$(load_metric "${metrics_file}" "INVALID_BLOCK_FOUND")
-                status="${error}"
-                if [[ "${exception}" == "true" ]]; then
-                  status="${status} :warning: exceptions"
-                fi
-                if [[ "${invalid}" == "true" ]]; then
-                  status="${status} :warning: invalid blocks"
-                fi
-                echo "${prefix} | - | - | - | - | - | - | - | - | ${status} |" >> "${summary_file}"
-                continue
-              fi
-
-              # Detect metrics source
-              if [[ "$(metrics_source "${metrics_file}")" == "sse" ]]; then
-                source="SSE"
-              else
-                source="TTFB"
-              fi
-
-              avg=$(load_metric "${metrics_file}" "AVG")
-              median=$(load_metric "${metrics_file}" "MEDIAN")
-              p90=$(load_metric "${metrics_file}" "P90")
-              p95=$(load_metric "${metrics_file}" "P95")
-              p99=$(load_metric "${metrics_file}" "P99")
-              min_val=$(load_metric "${metrics_file}" "MIN")
-              max_val=$(load_metric "${metrics_file}" "MAX")
-              exception=$(load_metric "${metrics_file}" "EXCEPTION_FOUND")
-              invalid=$(load_metric "${metrics_file}" "INVALID_BLOCK_FOUND")
-
-              if [[ -z "${baseline_avg}" && -n "${avg}" ]]; then
-                baseline_avg="${avg}"
-                baseline_source="${source}"
-              fi
-
-              if [[ "${source}" == "${baseline_source}" ]]; then
-                delta=$(percentage_delta "${avg}" "${baseline_avg}")
-              else
-                delta="n/a"
-              fi
-
-              warnings=""
-              if [[ "${exception}" == "true" ]]; then
-                warnings=" :warning:"
-              fi
-              if [[ "${invalid}" == "true" ]]; then
-                warnings="${warnings} :no_entry:"
-              fi
-
-              echo "${prefix} | ${source} | ${avg} | ${median} | ${p90} | ${p95} | ${p99} | ${min_val} | ${max_val} | ${delta}${warnings} |" >> "${summary_file}"
-            done
-          done
-
-          {
-            echo ""
-            echo "**Legend:** :warning: = exceptions detected, :no_entry: = invalid blocks detected"
-            echo ""
-            echo "**Source:** SSE = client-side processing time from Nethermind's SSE data feed, TTFB = K6 HTTP time-to-first-byte (fallback)"
-            echo ""
-            echo "**Delta vs First** shows the percentage change in AVG compared to the first image in the list, and reads n/a when the row's source differs from the first image's."
-          } >> "${summary_file}"
-
-          echo "--- Multi-Image Summary ---"
-          cat "${summary_file}"
-
-          cat "${summary_file}" >> "${GITHUB_STEP_SUMMARY}"
-
-  # ---------------------------------------------------------------------------
-  # dotTrace XML report generation (Windows-only Reporter.exe)
-  # ---------------------------------------------------------------------------
-
-  generate-dottrace-reports:
-    needs: [resolve, benchmark, benchmark-multi]
-    # Timeline snapshots cannot be converted by Reporter.exe - they ship as the raw .dtp artifact only.
-    if: >-
-      always()
-      && needs.resolve.outputs.dottrace == 'true'
-      && needs.resolve.outputs.dottrace_mode != 'timeline'
-      && needs.resolve.outputs.should_run == 'true'
-      && (needs.benchmark.result == 'success' || needs.benchmark-multi.result == 'success')
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - name: Download snapshot artifacts
-        uses: actions/download-artifact@v8
-        with:
-          pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}
-          path: snapshots/
-          merge-multiple: true
-
-      - name: Install dotTrace Reporter
-        shell: pwsh
-        run: |
-          $url = 'https://www.nuget.org/api/v2/package/JetBrains.dotTrace.CommandLineTools.windows-x64/2026.1.0.1'
-          Write-Host "Downloading dotTrace CommandLineTools from NuGet..."
-          Invoke-WebRequest -Uri $url -OutFile dottrace-clt.zip
-          Expand-Archive -Path dottrace-clt.zip -DestinationPath dottrace-clt
-          $reporter = Get-ChildItem -Path dottrace-clt -Recurse -Filter 'Reporter.exe' | Select-Object -First 1
-          if (-not $reporter) {
-            Write-Error "Reporter.exe not found in package"
-            exit 1
-          }
-          Write-Host "Found Reporter.exe at $($reporter.FullName)"
-          echo "REPORTER=$($reporter.FullName)" >> $env:GITHUB_ENV
-
-      - name: Generate XML reports
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path reports, extracted | Out-Null
-
-          # Pattern file: match all methods, include full call stacks
-          $patternFile = 'pattern.xml'
-          @'
-          <Patterns>
-            <Pattern PrintCallstacks="Full">.*</Pattern>
-          </Patterns>
-          '@ | Set-Content -Path $patternFile
-
-          # Extract all snapshot zips
-          Get-ChildItem -Path snapshots -Filter '*.zip' | ForEach-Object {
-            $dest = Join-Path extracted $_.BaseName
-            Write-Host "Extracting $($_.Name) -> $dest"
-            Expand-Archive -Path $_.FullName -DestinationPath $dest
-          }
-
-          # Find .dtp files (exact extension, not .dtp.0000 chunks)
-          $snapshots = Get-ChildItem -Path extracted -Recurse | Where-Object { $_.Extension -eq '.dtp' }
-
-          if ($snapshots.Count -eq 0) {
-            Write-Host "No .dtp snapshot files found after extraction."
-            exit 0
-          }
-
-          foreach ($dtp in $snapshots) {
-            $name = $dtp.BaseName
-            $outFile = "reports/${name}-report.xml"
-            Write-Host "::group::Generating report for $name"
-            Write-Host "  $($dtp.FullName) -> $outFile"
-            & $env:REPORTER report $dtp.FullName --pattern=$patternFile --save-to=$outFile
-            if ($LASTEXITCODE -ne 0) {
-              Write-Warning "Reporter failed for $name with exit code $LASTEXITCODE"
-            }
-            Write-Host "::endgroup::"
-          }
-
-      - name: Upload reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dottrace-reports
-          path: reports/
-          retention-days: 30
-          if-no-files-found: ignore
