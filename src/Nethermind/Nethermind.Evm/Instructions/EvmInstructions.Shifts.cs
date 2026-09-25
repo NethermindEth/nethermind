@@ -139,7 +139,7 @@ public static partial class EvmInstructions
 
     /// <summary>
     /// Implements a left shift operation.
-    /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
+    /// The shift amount is the first operand (256 or more yields zero), and the value is the second operand.
     /// </summary>
     internal struct OpShl : IOpShift
     {
@@ -164,7 +164,7 @@ public static partial class EvmInstructions
 
     /// <summary>
     /// Implements a right shift operation.
-    /// The shift amount is taken from the lower 8 bits of the first operand, and the value from the second operand.
+    /// The shift amount is the first operand (256 or more yields zero), and the value is the second operand.
     /// </summary>
     internal struct OpShr : IOpShift
     {

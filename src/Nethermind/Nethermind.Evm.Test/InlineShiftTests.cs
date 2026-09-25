@@ -32,56 +32,33 @@ public class InlineShiftTests
         }
     }
 
-    [Test]
-    public void Shl_matches_UInt256_LeftShift()
+    private static UInt256 Reference(bool left, in UInt256 value, int shift)
     {
-        foreach (UInt256 value in Values())
-        {
-            for (int shift = 0; shift <= 300; shift++)
-            {
-                UInt256 amount = (ulong)shift;
-                EvmInstructions.OpShl.Operation(in amount, in value, out UInt256 actual);
-                UInt256 expected = UInt256.Zero;
-                if (shift < 256) value.LeftShift(shift, out expected);
-                Assert.That(actual, Is.EqualTo(expected), $"{value} << {shift}");
-            }
-        }
+        if (shift >= 256) return UInt256.Zero;
+        UInt256 result;
+        if (left) value.LeftShift(shift, out result);
+        else value.RightShift(shift, out result);
+        return result;
     }
 
     [Test]
-    public void Shr_matches_UInt256_RightShift()
+    public void Shift_matches_UInt256_out_of_place_and_in_place([ValueSource(nameof(Values))] UInt256 value, [Values] bool left)
     {
-        foreach (UInt256 value in Values())
+        for (int shift = 0; shift <= 300; shift++)
         {
-            for (int shift = 0; shift <= 300; shift++)
-            {
-                UInt256 amount = (ulong)shift;
-                EvmInstructions.OpShr.Operation(in amount, in value, out UInt256 actual);
-                UInt256 expected = UInt256.Zero;
-                if (shift < 256) value.RightShift(shift, out expected);
-                Assert.That(actual, Is.EqualTo(expected), $"{value} >> {shift}");
-            }
-        }
-    }
+            UInt256 amount = (ulong)shift;
+            UInt256 expected = Reference(left, value, shift);
 
-    [Test]
-    public void Shifts_write_the_slot_they_read()
-    {
-        foreach (UInt256 value in Values())
-        {
-            for (int shift = 0; shift < 256; shift += 7)
-            {
-                UInt256 amount = (ulong)shift;
-                UInt256 slot = value;
-                EvmInstructions.OpShl.Operation(in amount, in slot, out slot);
-                value.LeftShift(shift, out UInt256 left);
-                Assert.That(slot, Is.EqualTo(left), $"{value} << {shift} in place");
+            UInt256 actual;
+            if (left) EvmInstructions.OpShl.Operation(in amount, in value, out actual);
+            else EvmInstructions.OpShr.Operation(in amount, in value, out actual);
+            Assert.That(actual, Is.EqualTo(expected), $"{value} {(left ? "<<" : ">>")} {shift}");
 
-                slot = value;
-                EvmInstructions.OpShr.Operation(in amount, in slot, out slot);
-                value.RightShift(shift, out UInt256 right);
-                Assert.That(slot, Is.EqualTo(right), $"{value} >> {shift} in place");
-            }
+            // Callers pass the same stack slot as b and result.
+            UInt256 slot = value;
+            if (left) EvmInstructions.OpShl.Operation(in amount, in slot, out slot);
+            else EvmInstructions.OpShr.Operation(in amount, in slot, out slot);
+            Assert.That(slot, Is.EqualTo(expected), $"{value} {(left ? "<<" : ">>")} {shift} in place");
         }
     }
 
