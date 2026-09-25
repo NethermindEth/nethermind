@@ -30,6 +30,7 @@ using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -42,6 +43,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
@@ -2210,6 +2212,69 @@ public partial class EngineModuleTests
         {
             // No skip: the unprocessed branch falls through and returns Syncing.
             Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        }
+    }
+
+    [Test]
+    public async Task rewinding_the_head_lets_the_node_execute_a_new_branch_from_there([Values] bool byHash)
+    {
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" },
+                configurer: builder => builder.AddSingleton<ISyncModeSelector>(StaticSelector.Full));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[^1].BlockHash));
+
+        IDebugRpcModule debug = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Pause();
+        ResultWrapper<bool> rewind = byHash
+            ? debug.debug_resetHead(blocks[0].BlockHash!)
+            : debug.debug_setHead(new BlockParameter(blocks[0].BlockNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewind.Data, Is.True);
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
+        }
+
+        TaskCompletionSource lockHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim releaseLock = new();
+        Task holder = Task.Run(() =>
+        {
+            using BlockTreeMutationLock.Scope scope = chain.Container.Resolve<BlockTreeMutationLock>().Enter();
+            lockHeld.SetResult();
+            if (!releaseLock.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("mutation lock was not released");
+        });
+        ResultWrapper<ForkchoiceUpdatedV1Result> pausedForkchoice;
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>>? forkchoiceTask = null;
+        try
+        {
+            await lockHeld.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            forkchoiceTask = Task.Run(() => rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(blocks[^1].BlockHash!, Keccak.Zero, Keccak.Zero)));
+            pausedForkchoice = await forkchoiceTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            releaseLock.Set();
+            await holder;
+            if (forkchoiceTask is not null) await forkchoiceTask;
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pausedForkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
+        }
+
+        chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Resume();
+
+        // A different prevRandao makes this a genuinely new block rather than a replay of blocks[1].
+        IReadOnlyList<ExecutionPayload> replacement = await ProduceBranchV1(rpc, chain, 1, blocks[0], setHead: true, TestItem.KeccakE);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replacement[0].BlockHash, Is.Not.EqualTo(blocks[1].BlockHash));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(replacement[0].BlockHash));
         }
     }
 
