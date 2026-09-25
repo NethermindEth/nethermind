@@ -32,7 +32,7 @@ jobs:
           script: |
             const body = (context.payload.comment?.body || '').trim();
             const supported = /^\/(?:review|improve|describe)$/i.test(body) ||
-              (/^\/ask\s+\S[\s\S]*$/i.test(body) && !/(^|\s)--\S/.test(body));
+              (/^\/ask\s+\S[\s\S]*$/i.test(body) && !body.includes('--'));
             if (!supported || context.payload.comment?.user?.type !== 'User') return;
 
             let permission;

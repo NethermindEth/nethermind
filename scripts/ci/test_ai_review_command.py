@@ -41,6 +41,8 @@ class AiReviewCommandTests(unittest.TestCase):
             "/review extra": False,
             "/ask --config.model=expensive why?": False,
             "/ask explain this --config.model=expensive": False,
+            '/ask why "--config.model=expensive"': False,
+            "/ask why \\--config.model=expensive": False,
         }
         for body, expected in cases.items():
             with self.subTest(body=body):
