@@ -1144,35 +1144,58 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Cancellation_during_an_instruction_throws_at_its_completion_before_the_next_callback()
+    public void Cancellation_wraps_all_observers_before_forwarding_the_next_instruction([Values] bool cancellationFirst)
     {
         byte[] code = Prepare.EvmCode.PushData(1).Op(Instruction.STOP).Done;
         (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
         using CancellationTokenSource cancellation = new();
-        // The observer runs before the cancellation tracer, so a throw deferred to the next callback lets it see a second start.
         CountingGethLikeTxTracer observer = new();
-        CompositeTxTracer tracer = new(observer, new CancellationTxTracer(new CancelOnOperationStartTracer(cancellation), cancellation.Token));
+        CancelOnOperationStartTracer inner = new(cancellation);
+        CompositeTxTracer composite = cancellationFirst ? new(inner, observer) : new(observer, inner);
+        CancellationTxTracer tracer = new(composite, cancellation.Token);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<OperationCanceledException>(() =>
                 _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
-            Assert.That(observer.StartedOperations, Is.EqualTo(1), "next instruction was started");
+            Assert.That(observer.StartedOperations, Is.EqualTo(1));
             Assert.That(observer.CompletedOperations, Is.EqualTo(1));
         }
     }
 
     [Test]
-    public void Cancellation_after_exception_start_reports_completion_and_error()
+    public void Cancellation_during_implicit_stop_completes_every_opted_in_tracer()
+    {
+        using CancellationTokenSource cancellation = new();
+        CountingGethLikeTxTracer first = new(cancellation);
+        CountingGethLikeTxTracer second = new();
+        CancellationTxTracer tracer = new(new CompositeTxTracer(first, second), cancellation.Token);
+
+        Assert.Throws<OperationCanceledException>(() => Execute(tracer, Prepare.EvmCode.PushData(1).Done));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.StartedOperations, Is.EqualTo(2));
+            Assert.That(first.CompletedOperations, Is.EqualTo(2));
+            Assert.That(second.StartedOperations, Is.EqualTo(2));
+            Assert.That(second.CompletedOperations, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Cancellation_after_exception_start_reports_completion_and_error([Values] bool cancellationFirst)
     {
         byte[] code = [(byte)Instruction.INVALID];
         (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
         using CancellationTokenSource cancellation = new();
         CancelOnOperationStartTracer innerTracer = new(cancellation);
-        CancellationTxTracer tracer = new(innerTracer, cancellation.Token);
+        InstructionCallbackTracer observer = new();
+        CompositeTxTracer composite = cancellationFirst ? new(innerTracer, observer) : new(observer, innerTracer);
+        CancellationTxTracer tracer = new(composite, cancellation.Token);
 
         Assert.Throws<OperationCanceledException>(() =>
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
+        AssertCallbacksPaired(observer, 1, (Instruction.INVALID, 0, EvmExceptionType.BadInstruction));
         Assert.That(innerTracer.Callbacks, Is.EqualTo(new[]
         {
             $"start:{Instruction.INVALID}",
@@ -1181,13 +1204,16 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }));
     }
 
-    private sealed class CountingGethLikeTxTracer() : GethLikeTxTracer(new GethTraceOptions())
+    private sealed class CountingGethLikeTxTracer(CancellationTokenSource? cancelOnStop = null) : GethLikeTxTracer(new GethTraceOptions())
     {
         public int StartedOperations { get; private set; }
         public int CompletedOperations { get; private set; }
 
-        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+        {
             StartedOperations++;
+            if (opcode == Instruction.STOP) cancelOnStop?.Cancel();
+        }
 
         public override void ReportOperationRemainingGas(ulong gas) => CompletedOperations++;
     }

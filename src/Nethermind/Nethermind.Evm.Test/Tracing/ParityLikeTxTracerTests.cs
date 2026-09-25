@@ -401,7 +401,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        IReadOnlyList<(ulong Cost, bool HasSubtrace)> operations =
+        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations =
             streaming ? StreamVmTraceOperations(code) : CollectVmTraceOperations(code);
 
         int frameIndex = 0;
@@ -413,24 +413,25 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(frameIndex, Is.InRange(0, operations.Count - 3), "index of the call/create operation");
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(operations[frameIndex].Pushes, Is.EqualTo(1), "call/create result push");
             Assert.That(operations[frameIndex + 1].Cost, Is.EqualTo(GasCostOf.Base), "POP cost");
             Assert.That(operations[frameIndex + 2].Cost, Is.EqualTo(GasCostOf.Free), "STOP cost");
         }
     }
 
-    private IReadOnlyList<(ulong Cost, bool HasSubtrace)> CollectVmTraceOperations(byte[] code)
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> CollectVmTraceOperations(byte[] code)
     {
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
-        List<(ulong, bool)> operations = [];
+        List<(ulong, bool, int)> operations = [];
         foreach (ParityVmOperationTrace operation in trace.VmTrace.Operations)
         {
-            operations.Add((operation.Cost, operation.Sub is not null));
+            operations.Add((operation.Cost, operation.Sub is not null, operation.Push?.Length ?? 0));
         }
 
         return operations;
     }
 
-    private IReadOnlyList<(ulong Cost, bool HasSubtrace)> StreamVmTraceOperations(byte[] code)
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> StreamVmTraceOperations(byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ArrayBufferWriter<byte> sink = new();
@@ -450,11 +451,13 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         writer.Flush();
         using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
-        List<(ulong, bool)> operations = [];
+        List<(ulong, bool, int)> operations = [];
         foreach (JsonElement operation in document.RootElement.GetProperty("ops").EnumerateArray())
         {
+            JsonElement push = operation.GetProperty("ex").GetProperty("push");
             operations.Add((operation.GetProperty("cost").GetUInt64(),
-                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null));
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
+                push.ValueKind is JsonValueKind.Array ? push.GetArrayLength() : 0));
         }
 
         return operations;

@@ -11,6 +11,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
+/// <summary>Checks cancellation in tracer callbacks, deferring it while an instruction's start-to-completion callbacks are in flight.</summary>
+/// <remarks>Wrap the complete tracer graph so cancellation cannot interrupt delivery to sibling observers.</remarks>
 public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper, IInstructionTracingFilter
 {
     private readonly bool _isTracingReceipt;
