@@ -4,10 +4,6 @@ on:
   issue_comment:
     types: [created]
 
-concurrency:
-  group: ai-pr-review-command-${{ github.event.issue.number }}
-  cancel-in-progress: false
-
 permissions:
   contents: read
   id-token: write
@@ -36,7 +32,7 @@ jobs:
           script: |
             const body = (context.payload.comment?.body || '').trim();
             const supported = /^\/(?:review|improve|describe)$/i.test(body) ||
-              /^\/ask\s+\S[\s\S]*$/i.test(body);
+              (/^\/ask\s+\S[\s\S]*$/i.test(body) && !/(^|\s)--\S/.test(body));
             if (!supported || context.payload.comment?.user?.type !== 'User') return;
 
             let permission;
@@ -59,6 +55,9 @@ jobs:
   command:
     needs: authorize
     if: needs.authorize.outputs.allowed == 'true'
+    concurrency:
+      group: ai-pr-review-command-${{ github.event.issue.number }}
+      cancel-in-progress: false
     uses: NethermindEth/github-workflows/.github/workflows/ai-review-command.yaml@v2.4.0
     with:
       secret_path: /apps/litellm/nethermind-ai-reviewer
