@@ -53,6 +53,7 @@ public class PersistenceManager(
         configuration.EnableLongFinality ? configuration.LongFinalityMaxReorgDepth : configuration.MaxReorgDepth,
         configuration.MinReorgDepth + configuration.CompactSize);
     private readonly ulong _compactSize = configuration.CompactSize;
+    private readonly long _maxInMemorySnapshotBytes = (long)configuration.MaxInMemorySnapshotBytes;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
@@ -107,7 +108,9 @@ public class PersistenceManager(
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
-    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>.
+    /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>. When it finds no conversion and a positive
+    /// <c>MaxInMemorySnapshotBytes</c> is exceeded, the next in-memory snapshot is force-persisted if that
+    /// leaves at least <c>MinReorgDepth</c> blocks above the new base.
     /// </remarks>
     internal (PersistedSnapshot? ToPersistPersistedSnapshot, Snapshot? ToPersist, ConversionCandidate? ToConvert) DetermineSnapshotAction(StateId latestSnapshot)
     {
@@ -158,9 +161,8 @@ public class PersistenceManager(
         // longest chain, then the latest state, only when nothing was committed this session.
         if (snapshotsDepth > _backstopReorgDepth)
         {
-            StateId backstopSeed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
             (PersistedSnapshot? persisted, Snapshot? inMemory) =
-                snapshotRepository.FindSnapshotToPersist(backstopSeed, currentPersistedState, _compactSize);
+                snapshotRepository.FindSnapshotToPersist(ForcedPersistSeed(latestSnapshot), currentPersistedState, _compactSize);
             if (persisted is not null || inMemory is not null)
             {
                 if (_logger.IsWarn) _logger.Warn(
@@ -173,6 +175,16 @@ public class PersistenceManager(
         // ---- Phase 2: conversion to the persisted-snapshot tier ----
         ConversionCandidate? conversion = _enableLongFinality && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount
             ? TryFindSnapshotToConvert(currentPersistedState) : null;
+        if (conversion is null && _maxInMemorySnapshotBytes > 0 && snapshotsDepth > _minReorgDepth
+            && snapshotRepository.InMemoryBytes > _maxInMemorySnapshotBytes
+            && TryFindByteBudgetPersist(latestSnapshot, currentPersistedState) is { } byteBudgetPersist)
+        {
+            if (_logger.IsInfo) _logger.Info(
+                $"In-memory snapshot bytes {snapshotRepository.InMemoryBytes} exceeded the byte budget {_maxInMemorySnapshotBytes}; " +
+                $"forcing persistence to bound memory (depth {snapshotsDepth}, finalized block {finalizedBlockNumber}).");
+            return (null, byteBudgetPersist, null);
+        }
+
         if (conversion is null && snapshotsDepth > _backstopReorgDepth && _logger.IsWarn
             && _lastWarnedStall != currentPersistedState)
         {
@@ -183,6 +195,30 @@ public class PersistenceManager(
         }
 
         return (null, null, conversion);
+    }
+
+    private StateId ForcedPersistSeed(in StateId latestSnapshot) =>
+        snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
+
+    /// <summary>
+    /// Byte-pressure fallback of <see cref="DetermineSnapshotAction"/>: the next in-memory snapshot to persist,
+    /// or <c>null</c> when the next candidate is in the persisted tier or would leave fewer than
+    /// <c>MinReorgDepth</c> blocks above the new base.
+    /// </summary>
+    /// <remarks>
+    /// A persisted-tier candidate holds none of the bytes the budget counts, so flushing it would drain the
+    /// long-finality window block after block without bringing the in-memory size down.
+    /// </remarks>
+    private Snapshot? TryFindByteBudgetPersist(StateId latestSnapshot, StateId currentPersistedState)
+    {
+        (PersistedSnapshot? persisted, Snapshot? inMemory) =
+            snapshotRepository.FindSnapshotToPersist(ForcedPersistSeed(latestSnapshot), currentPersistedState, _compactSize);
+        persisted?.Dispose();
+        if (inMemory is not null && latestSnapshot.BlockNumber.SaturatingSub(inMemory.To.BlockNumber) >= _minReorgDepth)
+            return inMemory;
+
+        inMemory?.Dispose();
+        return null;
     }
 
     /// <summary>
