@@ -35,8 +35,6 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
         Code = code;
-        ICodeInfoRepository.TryGetDelegatedAddress(code.Span, out Address? delegatedAddress);
-        DelegatedAddress = delegatedAddress;
         if (code.Length == 0)
         {
             _analyzer = _emptyAnalyzer;
@@ -56,7 +54,30 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
-    internal Address? DelegatedAddress { get; }
+    private Address? _delegatedAddress;
+    internal Address? DelegatedAddress
+    {
+        get
+        {
+            if (Code.Length != Eip7702Constants.DelegationHeader.Length + Address.Size)
+            {
+                return null;
+            }
+
+            Address? delegatedAddress = Volatile.Read(ref _delegatedAddress);
+            if (delegatedAddress is not null)
+            {
+                return delegatedAddress;
+            }
+
+            if (!ICodeInfoRepository.TryGetDelegatedAddress(Code.Span, out Address? parsedAddress))
+            {
+                return null;
+            }
+
+            return Interlocked.CompareExchange(ref _delegatedAddress, parsedAddress, null) ?? parsedAddress;
+        }
+    }
 
     public IPrecompile? Precompile { get; }
 
