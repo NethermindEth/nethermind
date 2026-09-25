@@ -267,7 +267,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="returnData">The current return-data buffer.</param>
     /// <remarks>Depends on <see cref="IsTracingReturnData"/></remarks>
-    void SetOperationReturnData(ReadOnlyMemory<byte> returnData);
+    void SetOperationReturnData(ReadOnlySpan<byte> returnData);
 
     /// <summary>
     ///
