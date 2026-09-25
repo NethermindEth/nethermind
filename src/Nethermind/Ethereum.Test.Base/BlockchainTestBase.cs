@@ -66,7 +66,7 @@ public abstract class BlockchainTestBase
     /// <remarks>
     /// A fixture that states no expectation leaves the response unasserted, so a fixture release that stopped
     /// stating one would return this rule to zero coverage with the lane still green. A run that is supposed
-    /// to cover the rule gates on this being non-zero — see nethtest's <c>--minFcuInclusionListAssertions</c>.
+    /// to cover the rule gates on this being non-zero in the FOCIL CI lane.
     /// </remarks>
     public static long FcuInclusionListAssertionCount => Volatile.Read(ref _fcuInclusionListAssertions);
 

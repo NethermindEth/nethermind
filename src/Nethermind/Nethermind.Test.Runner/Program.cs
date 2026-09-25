@@ -86,9 +86,6 @@ internal class Program
         public static Option<bool?> BatchRead { get; } =
             new("--batchRead") { Description = "Force BAL batch-read prewarming on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
 
-        public static Option<int> MinFcuInclusionListAssertions { get; } =
-            new("--minFcuInclusionListAssertions") { Description = "Fail the run unless the EIP-7805 inclusion-list expectation was asserted on at least this many engine_forkchoiceUpdated responses. Guards a FOCIL run against fixtures that stop stating the expectation, which would pass vacuously. [Only for Engine Test]" };
-
         public static Option<string[]> ForkAlias { get; } =
             new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeatable; needed where separate fixture releases give one fork name incompatible meanings.", AllowMultipleArgumentsPerToken = true };
     }
@@ -120,7 +117,6 @@ internal class Program
             Options.TrieDb,
             Options.ParallelExecution,
             Options.BatchRead,
-            Options.MinFcuInclusionListAssertions,
             Options.ForkAlias,
         ];
         rootCommand.SetAction(Run);
@@ -161,16 +157,6 @@ internal class Program
         bool enableWarmup = parseResult.GetValue(Options.EnableWarmup);
         bool? parallelExecution = parseResult.GetValue(Options.ParallelExecution);
         bool? batchRead = parseResult.GetValue(Options.BatchRead);
-
-        int minFcuInclusionListAssertions = parseResult.GetValue(Options.MinFcuInclusionListAssertions);
-        if (minFcuInclusionListAssertions > 0 && !isEngineTest)
-        {
-            // No other mode drives engine_forkchoiceUpdated, so the count could only ever be zero and the
-            // coverage report below would blame the fixtures for a misuse of the option.
-            Console.Error.WriteLine("--minFcuInclusionListAssertions applies only to --engineTest.");
-            Console.Error.Flush();
-            return 1;
-        }
 
         // Set before any fixture is loaded: the parse workers only ever read the table.
         ForkAliases.Set(parseResult.GetValue(Options.ForkAlias) ?? []);
@@ -234,19 +220,11 @@ internal class Program
 
         if (parseResult.GetValue(Options.Wait)) Console.ReadLine();
 
-        if (minFcuInclusionListAssertions > 0)
+        if (isEngineTest)
         {
-            // stdout carries the JSON results, and FAIL/EXCEPTION are per-test markers the CI summary counts.
-            // Reported even when it passes, so coverage collapsing is visible before it reaches zero.
             long asserted = BlockchainTestBase.FcuInclusionListAssertionCount;
-            Console.Error.WriteLine($"engine_forkchoiceUpdated inclusionListSatisfied asserted {asserted} time(s), required at least {minFcuInclusionListAssertions}");
+            Console.Error.WriteLine($"engine_forkchoiceUpdated inclusionListSatisfied asserted {asserted} time(s)");
             Console.Error.Flush();
-            if (asserted < minFcuInclusionListAssertions)
-            {
-                Console.Error.WriteLine("\x1b[31mCOVERAGE GAP\x1b[0m the fixtures state no inclusion-list expectation, so this run does not cover the EIP-7805 fork-choice rule.");
-                Console.Error.Flush();
-                return 1;
-            }
         }
 
         return 0;

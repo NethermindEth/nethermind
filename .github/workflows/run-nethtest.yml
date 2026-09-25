@@ -667,11 +667,6 @@ jobs:
           if [ -n "$BATCHREAD" ]; then
             SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
           fi
-          # Tripwire against fixtures that stop stating inclusionListSatisfied; see the fixtures step.
-          if [ -n "$MIN_IL_ASSERTIONS" ]; then
-            SETUP_ARGS="$SETUP_ARGS --minFcuInclusionListAssertions $MIN_IL_ASSERTIONS"
-          fi
-
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
           if command -v cygpath >/dev/null 2>&1; then
             RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
@@ -760,9 +755,9 @@ jobs:
                 echo ""
                 echo "### EIP-7805 fork-choice assertion coverage"
                 echo ""
-                echo "Not reported, although \`--minFcuInclusionListAssertions $MIN_IL_ASSERTIONS\` was requested."
+                echo "Not reported, although this lane requires at least $MIN_IL_ASSERTIONS assertion(s)."
               } >> "$GITHUB_STEP_SUMMARY"
-              echo "::warning::nethtest reported no inclusion-list assertion count, although it was required to"
+              echo "::warning::nethtest reported no inclusion-list assertion count, although this lane requires one"
             fi
 
             if [ "$FAILED" -gt 0 ]; then
@@ -985,6 +980,23 @@ jobs:
                 echo "::error::$TEST_TYPE ran $RAN cases, fewer than the $MIN_CASES expected; the fixture scope or the release pin has moved"
                 rc=1
               fi
+            fi
+          fi
+
+          # nethtest reports the count for every engine run; only the unfiltered FOCIL lane requires it.
+          # The stderr tee can finish just after the process exits, so give it a moment to flush the line.
+          if [ -n "$MIN_IL_ASSERTIONS" ] && [ "$rc" -eq 0 ]; then
+            IL_ASSERTIONS=""
+            for attempt in 1 2 3 4 5; do
+              IL_ASSERTIONS=$(sed -nE 's/^engine_forkchoiceUpdated inclusionListSatisfied asserted ([0-9]+) time\(s\)$/\1/p' "$STDERR_FILE" | tail -n 1)
+              [ -n "$IL_ASSERTIONS" ] && break
+              sleep 1
+            done
+            if [ -z "$IL_ASSERTIONS" ] || [ "$IL_ASSERTIONS" -lt "$MIN_IL_ASSERTIONS" ]; then
+              COVERAGE_GAP="COVERAGE GAP: expected at least $MIN_IL_ASSERTIONS fork-choice inclusion-list assertion(s), observed ${IL_ASSERTIONS:-none}"
+              echo "$COVERAGE_GAP" | tee -a "$STDERR_FILE" >&2
+              echo "::error::$COVERAGE_GAP"
+              rc=1
             fi
           fi
 
