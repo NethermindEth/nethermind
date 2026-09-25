@@ -31,6 +31,30 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private StateId _basis;
     private long _generation;
 
+    // Written-key sets are handed from one write batch to the next: each grows to a whole persisted range, which
+    // put a fresh LOH array behind every persist.
+    private HashSet<Address>? _spareWrittenAccounts;
+    private HashSet<(Address, UInt256)>? _spareWrittenSlots;
+
+    private HashSet<Address> RentWrittenAccounts() => Interlocked.Exchange(ref _spareWrittenAccounts, null) ?? [];
+
+    private HashSet<(Address, UInt256)> RentWrittenSlots() => Interlocked.Exchange(ref _spareWrittenSlots, null) ?? [];
+
+    private void ReturnWrittenSets(HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots)
+    {
+        if (writtenAccounts is not null)
+        {
+            writtenAccounts.Clear();
+            Volatile.Write(ref _spareWrittenAccounts, writtenAccounts);
+        }
+
+        if (writtenSlots is not null)
+        {
+            writtenSlots.Clear();
+            Volatile.Write(ref _spareWrittenSlots, writtenSlots);
+        }
+    }
+
     public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
     {
         _inner = inner;
@@ -207,13 +231,13 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= []).Add(addr);
+            (_writtenAccounts ??= parent.RentWrittenAccounts()).Add(addr);
             inner.SetAccount(addr, account);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
-            (_writtenSlots ??= []).Add((addr, slot));
+            (_writtenSlots ??= parent.RentWrittenSlots()).Add((addr, slot));
             inner.SetStorage(addr, slot, value);
         }
 
@@ -250,6 +274,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             inner.Dispose();
             parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+            parent.ReturnWrittenSets(_writtenAccounts, _writtenSlots);
+            _writtenAccounts = null;
+            _writtenSlots = null;
         }
     }
 }
