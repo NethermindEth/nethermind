@@ -251,16 +251,17 @@ public class JsonRpcServiceTests
     }
 
     private JsonRpcResponse TestRawRequest<T>(T module, string method, string rawParameters) where T : IRpcModule =>
-        SendRequestWithPool(
-            new SingletonModulePool<T>(new SingletonFactory<T>(module), true),
-            new JsonRpcRequest
-            {
-                JsonRpc = "2.0",
-                Method = method,
-                ParamsUtf8 = Encoding.UTF8.GetBytes(rawParameters),
-                ParamsKind = JsonValueKind.Array,
-                Id = 67
-            });
+        SendRequestWithPool(new SingletonModulePool<T>(new SingletonFactory<T>(module), true), BuildRawRequest(method, rawParameters));
+
+    private static JsonRpcRequest BuildRawRequest(string method, string rawParameters) =>
+        new()
+        {
+            JsonRpc = "2.0",
+            Method = method,
+            ParamsUtf8 = Encoding.UTF8.GetBytes(rawParameters),
+            ParamsKind = JsonValueKind.Array,
+            Id = 67
+        };
 
     private JsonRpcResponse SendRequestWithPool<T>(IRpcModulePool<T> pool, JsonRpcRequest request) where T : IRpcModule
     {
@@ -1083,6 +1084,45 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(RpcEndpoint.Ws, 1, false, false, false).SetName("Single-worker WebSocket is rejected at once");
         yield return new TestCaseData(RpcEndpoint.Ws, 2, false, false, true).SetName("Multi-worker WebSocket queues");
         yield return new TestCaseData(RpcEndpoint.IPC, 2, false, false, false).SetName("IPC is rejected at once");
+    }
+
+    [TestCase(true, TestName = "Raw params")]
+    [TestCase(false, TestName = "Parsed params")]
+    public async Task Smaller_evm_request_overtakes_a_larger_one_by_params_size(bool rawParams)
+    {
+        List<int> servedInputLengths = [];
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(callInfo =>
+        {
+            lock (servedInputLengths)
+            {
+                servedInputLengths.Add(callInfo.Arg<SignableTransactionForRpc>() is LegacyTransactionForRpc { Input: { } input } ? input.Length : -1);
+            }
+
+            return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
+        });
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        // Calldata is hex-encoded on the wire, so one unit of bytes makes the params weigh 3.
+        LegacyTransactionForRpc large = new() { Input = new byte[EvmAdmissionGate.BytesPerWeightUnit] };
+        LegacyTransactionForRpc small = new() { Input = new byte[1] };
+        JsonRpcRequest[] requests = [.. new[] { large, small }.Select(transaction => rawParams
+            ? BuildRawRequest("eth_call", $"[{new EthereumJsonSerializer().Serialize(transaction)}]")
+            : EthCall(transaction))];
+
+        Task<JsonRpcResponse>[] responses;
+        using (await HoldSlot(service))
+        {
+            responses = [.. requests.Select(request => service.SendRequestAsync(request, _context).AsTask())];
+            Assert.That(service.EvmGate.Queued, Is.EqualTo(2));
+        }
+
+        foreach (Task<JsonRpcResponse> response in responses)
+        {
+            using JsonRpcResponse completed = await response.WaitAsync(TestTimeout);
+            RpcTest.AssertSuccess<HexBytes>(completed);
+        }
+
+        Assert.That(servedInputLengths, Is.EqualTo(new[] { small.Input.Length, large.Input.Length }));
     }
 
     [Test]

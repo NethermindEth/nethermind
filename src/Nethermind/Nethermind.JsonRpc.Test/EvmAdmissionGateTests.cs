@@ -42,6 +42,8 @@ public class EvmAdmissionGateTests
         Assert.That((third.IsCompleted, gate.InFlight, gate.Queued), Is.EqualTo((false, 2, 1)));
 
         first.Dispose();
+        Assert.That(async () => await gate.AdmitAsync(0, allowQueue: false, CancellationToken.None), Throws.InstanceOf<LimitExceededException>(),
+            "a request that may not queue never gets a slot released while others wait");
         Lease granted = await third.AsTask().WaitAsync(TestTimeout);
         Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((2, 0)));
 
@@ -54,9 +56,11 @@ public class EvmAdmissionGateTests
     [TestCase(BudgetMs, 2, true, 2, true, TestName = "Full queue")]
     [TestCase(BudgetMs, 0, false, 0, true, TestName = "Request that may not queue")]
     [TestCase(BudgetMs, 0, true, 3, false, TestName = "Zero queue limit leaves the queue uncapped")]
+    [NonParallelizable]
     public async Task Busy_gate_rejects_at_once_only_when_the_request_cannot_queue(
         int maxQueueWaitMs, int queueLimit, bool allowQueue, int alreadyQueued, bool rejected)
     {
+        long rejectionsBefore = Metrics.RpcAdmissionImmediateRejections;
         EvmAdmissionGate gate = CreateGate(maxQueueWaitMs: maxQueueWaitMs, queueLimit: queueLimit);
         using Lease held = await Admit(gate);
         Task<Lease>[] queued = [.. Enumerable.Range(0, alreadyQueued).Select(_ => Admit(gate).AsTask())];
@@ -69,7 +73,8 @@ public class EvmAdmissionGateTests
             Assert.That(async () => await admission, Throws.InstanceOf<LimitExceededException>());
         }
 
-        Assert.That(gate.Queued, Is.EqualTo(queued.Length + (rejected ? 0 : 1)));
+        Assert.That((gate.Queued, Metrics.RpcAdmissionImmediateRejections - rejectionsBefore),
+            Is.EqualTo((queued.Length + (rejected ? 0 : 1), rejected ? 1 : 0)));
     }
 
     [Test]
@@ -130,15 +135,18 @@ public class EvmAdmissionGateTests
     }
 
     [TestCase(true, TestName = "Timer fires at the budget")]
-    [TestCase(false, TestName = "Late timer: rejected when a slot frees")]
+    [TestCase(false, TestName = "Late timer: rejected when a slot frees, which passes to the next waiter")]
+    [NonParallelizable]
     public async Task Waiter_is_rejected_once_its_budget_has_elapsed(bool timerFires)
     {
+        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
         ManualClock clock = new();
         EvmAdmissionGate gate = CreateGate(clock);
         Lease held = await Admit(gate);
         Task<Lease> waiter = Admit(gate).AsTask();
 
         clock.Advance(TimeSpan.FromMilliseconds(BudgetMs), timerFires);
+        Task<Lease> next = Admit(gate).AsTask();
         if (!timerFires)
         {
             Assert.That(waiter.IsCompleted, Is.False);
@@ -151,12 +159,15 @@ public class EvmAdmissionGateTests
             held.Dispose();
         }
 
-        Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((0, 0)));
+        (await next.WaitAsync(TestTimeout)).Dispose();
+        Assert.That((gate.InFlight, gate.Queued, Metrics.RpcAdmissionWaitTimeoutRejections - rejectionsBefore), Is.EqualTo((0, 0, 1)));
     }
 
     [Test]
+    [NonParallelizable]
     public async Task Cancelled_waiter_leaves_the_queue_without_taking_a_slot()
     {
+        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
         EvmAdmissionGate gate = CreateGate();
         Lease held = await Admit(gate);
         using CancellationTokenSource cancellation = new();
@@ -166,7 +177,7 @@ public class EvmAdmissionGateTests
 
         Assert.That(async () => await waiter.WaitAsync(TestTimeout), Throws.InstanceOf<OperationCanceledException>());
         held.Dispose();
-        Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((0, 0)));
+        Assert.That((gate.InFlight, gate.Queued, Metrics.RpcAdmissionCancellations - cancellationsBefore), Is.EqualTo((0, 0, 1)));
     }
 
     [Test]
