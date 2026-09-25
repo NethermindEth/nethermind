@@ -388,7 +388,15 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.ReportGasUpdateForVmTrace(refund, gasAvailable); return; }
 
-        if (_hasPendingOp) _pendingUsed = gasAvailable;
+        if (!_hasPendingOp) return;
+
+        _pendingUsed = gasAvailable;
+        if (!_gasAlreadySetForCurrentOp)
+        {
+            _gasAlreadySetForCurrentOp = true;
+            _pushAssigned = true;
+            _treatGasParityStyle = false;
+        }
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
