@@ -20,7 +20,7 @@ using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransiti
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
 /// <summary>
-/// The pure predicates behind <see cref="ForkChoiceRunner.ShouldOverrideForkchoiceUpdate"/> (silent-wrong
+/// The pure predicates behind <see cref="ForkChoiceRunner.GetProposerHead"/> (silent-wrong
 /// risks: get_proposer_head returning the ordinary head instead of ever re-org'ing), and the way
 /// <see cref="ForkChoiceRunner.OnBlock"/> hands <c>is_data_available</c> to whichever
 /// <see cref="IDataAvailabilityRule"/> its caller chose: a column list means the supernode rule the
