@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         Address[]? toAddresses,
         int after,
         int? count,
-        TraceFilterMode mode = TraceFilterMode.Intersection)
+        TraceFilterMode mode)
     {
         private readonly Address[]? _fromAddresses = fromAddresses;
         private readonly Address[]? _toAddresses = toAddresses;
