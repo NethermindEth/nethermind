@@ -517,10 +517,6 @@ namespace Nethermind.Facade
             }
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
-            // Computing the hash RLP-encodes and hashes the whole transaction on every call, and the readers on
-            // this path accept a null hash, so Ethereum's own types leave it null. Other types (OP deposits, types
-            // registered by plugins) keep it: their processors may read it. Either way the setter drops a stale
-            // pre-hash and intrinsic-gas memo. eth_createAccessList computes the hash for its error text.
             transaction.Hash = transaction.Type <= TxType.FrameTx ? null : transaction.CalculateHash();
             BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
             return txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
