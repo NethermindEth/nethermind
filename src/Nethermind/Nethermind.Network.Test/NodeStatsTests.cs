@@ -135,4 +135,22 @@ public class NodeStatsTests
         Assert.That(result, Is.EqualTo([1, 2, 3, 4]));
         Assert.That(_nodeStats.GetCurrentRequestLimit(RequestType.Bodies), Is.EqualTo(6));
     }
+
+    [TestCase(RequestType.Bodies)]
+    [TestCase(RequestType.Receipts)]
+    public async Task Request_limit_survives_peers_that_answer_with_nothing(RequestType requestType)
+    {
+        // A peer that pruned the requested history answers with an empty list. It must not shrink the limit to
+        // the minimum, or the next request estimated from it is capped at a single item for every peer.
+        _nodeStats = new NodeStatsLight(_node);
+        int initial = _nodeStats.GetCurrentRequestLimit(requestType);
+
+        for (int i = 0; i < 10; i++)
+        {
+            await _nodeStats.RunSizeAndLatencyRequestSizer<int[], int, int>(requestType, Enumerable.Range(0, 128).ToArray(),
+                static _ => Task.FromResult<(int[], long)>(([], 1)));
+        }
+
+        Assert.That(_nodeStats.GetCurrentRequestLimit(requestType), Is.EqualTo(initial));
+    }
 }

@@ -37,7 +37,7 @@ public class LatencyAndMessageSizeBasedRequestSizer(
     /// <summary>
     /// Adjust the request size depending on the latency and response size. Accept a list as request which will be capped.
     /// If the response size (byte) is too large, reduce request size.
-    /// If the response size (count) less than request size, reduce request size.
+    /// If the response size (count) less than request size, reduce request size, unless nothing came back at all.
     /// If the latency is above watermark, reduce request size.
     /// If the latency is below watermark and response size is not too large, increase request size.
     /// </summary>
@@ -64,6 +64,13 @@ public class LatencyAndMessageSizeBasedRequestSizer(
         if (duration > _upperLatencyWatermark)
         {
             return (result, AdaptiveRequestSizer.Direction.Decrease);
+        }
+
+        if (result.Count == 0 && affectiveRequestSize > 0)
+        {
+            // Nothing came back: the peer does not have these items (e.g. pruned history), which says
+            // nothing about how many it can serve. Shrinking here drives the size to the minimum.
+            return (result, AdaptiveRequestSizer.Direction.Stay);
         }
 
         if (result.Count < affectiveRequestSize)
