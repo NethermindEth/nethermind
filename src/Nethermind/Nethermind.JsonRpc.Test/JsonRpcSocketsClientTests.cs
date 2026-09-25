@@ -179,6 +179,20 @@ public class JsonRpcSocketsClientTests
         }
 
         [Test]
+        public async Task Dispose_raises_Closed_once_when_called_twice()
+        {
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+            using TestClient<IpcSocketMessageStream> tc = new(new IpcSocketMessageStream(pair.SendSocket));
+            int closed = 0;
+            tc.Client.Closed += (_, _) => closed++;
+
+            tc.Client.Dispose();
+            tc.Client.Dispose();
+
+            Assert.That(closed, Is.EqualTo(1));
+        }
+
+        [Test]
         public async Task CanHandleMessageConcurrently([Values(1, 5)] int concurrencyLevel)
         {
             using UnixSocketPair pair = await UnixSocketPair.CreateAsync();

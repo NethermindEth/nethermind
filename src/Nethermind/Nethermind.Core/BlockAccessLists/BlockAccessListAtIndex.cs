@@ -86,6 +86,22 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         Index = 0;
     }
 
+    /// <summary>Records physical account existence for execution and snapshot restoration.</summary>
+    public void RecordAccountExistence(Address address, bool exists)
+    {
+        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+        bool? previous = accountChanges.AccountExists;
+        if (previous == exists) return;
+
+        _changes.Add(new Change(previousValue: previous == true ? UInt256.One : UInt256.Zero)
+        {
+            Account = accountChanges,
+            Type = ChangeType.AccountExistence,
+            HasPrevious = previous.HasValue,
+        });
+        accountChanges.AccountExists = exists;
+    }
+
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
@@ -292,6 +308,9 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             AccountChangesAtIndex accountChanges = change.Account;
             switch (change.Type)
             {
+                case ChangeType.AccountExistence:
+                    accountChanges.AccountExists = change.HasPrevious ? !change.PreviousValue.IsZero : null;
+                    break;
                 case ChangeType.BalanceChange:
                     accountChanges.BalanceChange = change.HasPrevious
                         ? new BalanceChange(change.PreviousIndex, change.PreviousValue)
@@ -375,6 +394,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         CodeChange = 1,
         NonceChange = 2,
         StorageChange = 3,
+        AccountExistence = 4,
     }
 
     private readonly struct Change(in UInt256 previousValue = default, in UInt256 slot = default)
