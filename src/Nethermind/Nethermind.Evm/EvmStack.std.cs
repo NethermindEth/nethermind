@@ -29,6 +29,11 @@ public ref partial struct EvmStack
         return bitmap is not null && JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
     }
 
+    /// <summary>Reports whether <paramref name="destination"/> is a jump destination.</summary>
+    /// <remarks>The host bitmap covers the whole code, so this is exactly <see cref="IsJumpDestination"/>.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool IsKnownJumpDestination(int destination) => IsJumpDestination(destination);
+
     // A stack built over code without its CodeInfo gets the empty bitmap, which rejects every destination;
     // the Debug assertion in IsJumpDestination flags that case.
     partial void InitializeJumpDestinations() =>

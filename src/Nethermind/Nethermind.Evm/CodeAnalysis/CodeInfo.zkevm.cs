@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
@@ -17,16 +19,19 @@ public sealed partial class CodeInfo
     internal long[] IncrementalJumpBitmap => _incrementalJumpBitmap ??= JumpDestinationAnalyzer.CreateBitmap(Code.Length);
 
     /// <summary>Extends the scan far enough to decide <paramref name="destination"/>, and reports whether it is a jump destination.</summary>
+    /// <param name="destination">A destination inside the code.</param>
+    /// <param name="bitmap">This code's <see cref="IncrementalJumpBitmap"/>.</param>
+    /// <param name="code">This code.</param>
     /// <remarks>
     /// The guest pays for every byte it scans, and a frame typically jumps into a prefix of the code, so
     /// the scan stops at the first instruction boundary beyond the requested destination. A PUSH can
     /// overshoot it, but the resume cursor never splits an immediate or rewinds for an earlier query.
+    /// The caller passes the bitmap and code it already holds.
     /// </remarks>
-    internal bool AnalyzeJump(int destination)
+    internal bool AnalyzeJump(int destination, long[] bitmap, ReadOnlySpan<byte> code)
     {
-        if (CodeSpan[0] == (byte)Instruction.STOP || CodeSpan[destination] != (byte)Instruction.JUMPDEST) return false;
-        long[] bitmap = IncrementalJumpBitmap;
-        _analyzedUntil = (nint)JumpDestinationAnalyzer.ScanUntil((nuint)_analyzedUntil, destination, bitmap, CodeSpan);
+        if (code[0] == (byte)Instruction.STOP || code[destination] != (byte)Instruction.JUMPDEST) return false;
+        _analyzedUntil = (nint)JumpDestinationAnalyzer.ScanUntil((nuint)_analyzedUntil, destination, bitmap, code);
         return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
     }
 }
