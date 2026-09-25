@@ -24,6 +24,13 @@ public record GethTraceOptions
 
     public bool DisableStack { get; init; }
 
+    /// <summary>
+    /// Byte limit for serialized opcode logs. Zero is unlimited; a negative value suppresses all logs.
+    /// The entry that exceeds the limit is included. Execution and named tracers are unaffected.
+    /// </summary>
+    [JsonConverter(typeof(LimitConverter))]
+    public long Limit { get; init; }
+
     [JsonConverter(typeof(CustomTimeDurationConverter))]
     public TimeSpan? Timeout { get; init; }
 
@@ -46,4 +53,23 @@ public record GethTraceOptions
     public bool? StreamMode { get; init; }
 
     public static GethTraceOptions Default { get; } = new();
+
+    /// <summary>
+    /// Reads a signed JSON integer or null for the opcode logger byte limit.
+    /// </summary>
+    public sealed class LimitConverter : JsonConverter<long>
+    {
+        /// <inheritdoc/>
+        public override long Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            reader.TokenType switch
+            {
+                JsonTokenType.Null => 0,
+                JsonTokenType.Number when reader.TryGetInt64(out long limit) => limit,
+                _ => throw new JsonException("Trace limit must be a 64-bit integer.")
+            };
+
+        /// <inheritdoc/>
+        public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options) =>
+            writer.WriteNumberValue(value);
+    }
 }

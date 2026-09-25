@@ -154,7 +154,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         writer.WriteEndArray();
     }
 
-    private static void WriteEntry(
+    internal static void WriteEntry(
         Utf8JsonWriter writer,
         GethTxTraceEntry entry,
         IDictionary<UInt256, UInt256>? storage)
