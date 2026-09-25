@@ -193,7 +193,7 @@ public class SszStaticTests
         ["deneb"] = 23,
         ["electra"] = 39,
         ["fulu"] = 39,
-        ["gloas"] = 50,
+        ["gloas"] = 52,
     };
 
     /// <summary>Containers the archive has ssz_static vectors for that are not consensus objects, so they are not enumerated.</summary>
