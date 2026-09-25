@@ -263,9 +263,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(expectedOldestBlockNumber));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void GetFeeHistory_IfAncestorBodyUnavailable_TruncatesAtOldestAvailableBlock(bool withRewards)
+        [Test]
+        public void GetFeeHistory_IfAncestorBodyUnavailable_TruncatesAtOldestAvailableBlock([Values] bool withRewards)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
