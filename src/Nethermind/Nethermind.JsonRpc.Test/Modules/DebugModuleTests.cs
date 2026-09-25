@@ -678,7 +678,7 @@ public class DebugModuleTests
                 (Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge>)((header, _, finder, _) =>
                 {
                     resolveHeader(header, finder);
-                    finder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).ReturnsNull();
+                    finder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).ReturnsNull();
                 }),
                 "Cannot find parent header")
             { TestName = $"{name}_parent_header_missing" };
@@ -688,7 +688,7 @@ public class DebugModuleTests
                 (Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge>)((header, parent, finder, bridge) =>
                 {
                     resolveHeader(header, finder);
-                    finder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).ReturnsForAnyArgs(parent);
+                    finder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
                     // Positive control: the block's own state reports available, so a guard that (incorrectly)
                     // checked the block's own state instead of its parent's would let this request through.
                     bridge.HasStateForBlock(Arg.Is(header)).Returns(true);
