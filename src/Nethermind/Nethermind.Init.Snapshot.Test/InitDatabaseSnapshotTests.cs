@@ -5,7 +5,9 @@ using System.IO.Abstractions;
 using System.Net;
 using System.Security.Cryptography;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Core.Test.IO;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -49,6 +51,12 @@ public class InitDatabaseSnapshotTests
 
     [TearDown]
     public void TearDown() => _tempDir.Dispose();
+
+    // The flat state validation opens the flat DB and probes the state directory, so it must see the extracted
+    // snapshot rather than race the extraction.
+    [Test]
+    public void Snapshot_is_extracted_before_flat_state_validation() =>
+        Assert.That(new StepInfo(typeof(InitDatabaseSnapshot)).Dependents, Does.Contain(typeof(ValidateFlatState)));
 
     [Test]
     public async Task Execute_FreeSpaceCoversExtractionButNotLegacyMultiplier_ExtractsSnapshot()

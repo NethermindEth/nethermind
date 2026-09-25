@@ -195,7 +195,7 @@ jobs:
              | . as $matrix
              | $m[] as $one
              | $matrix[] | select(.runner_label == $one[1])
-             | "\($one[0])\tSync \(.network) (\(.mode))"' <<<"$MATRIX") || reclaims=""
+             | "\($one[0])\tSync \(.network) (Flat)"' <<<"$MATRIX") || reclaims=""
 
           listed=0
           unexplained=""

@@ -28,9 +28,8 @@ JOB_ENDED = RECLAIM_AT + 60
 
 
 MATRIX = (
-    '[{"network":"mainnet","mode":"Flat","runner_label":"f-1-master-mainnet"},'
-    '{"network":"mainnet","mode":"HalfPath","runner_label":"hp-1-master-mainnet"},'
-    '{"network":"gnosis","mode":"Flat","runner_label":"f-1-master-gnosis"}]'
+    '[{"network":"mainnet","runner_label":"f-1-master-mainnet"},'
+    '{"network":"gnosis","runner_label":"f-1-master-gnosis"}]'
 )
 
 GH_STUB = """#!/usr/bin/env bash
@@ -144,13 +143,6 @@ class NotifyGatingTest(unittest.TestCase):
             ["f-1-master-mainnet"],
         )
         self.assertEqual(out["should_page"], "false")
-
-    def test_the_two_modes_of_one_network_are_not_confused(self):
-        out = self.collect(
-            ["Sync mainnet (HalfPath) / sync"], ["f-1-master-mainnet"]
-        )
-        self.assertEqual(out["should_page"], "true")
-        self.assertEqual(out["failed_jobs"], "Sync mainnet (HalfPath) / sync")
 
     def test_a_marker_for_an_unknown_label_silences_nothing(self):
         out = self.collect(["Sync gnosis (Flat) / sync"], ["f-9-master-sepolia"])
