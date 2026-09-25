@@ -43,13 +43,10 @@ public class EIP1559ParametersTests
         }
     }
 
-    // A zero elasticity would divide the next block's gas target by zero; op-geth rejects it unless the denominator is zero too.
-    [TestCase("0x000000000100000000")]
-    [TestCase("0x00ffffffff00000000")]
-    [TestCase("0x00000000000000000a")]
-    [TestCase("0x0100000001000000000000000000000001")]
-    [TestCase("0x0100000000000000010000000000000000")]
-    public void DecodeBlockHeaderParameters_RejectsOneSidedZero(string hexString)
+    // op-geth accepts a zero denominator or elasticity only when both are zero.
+    [Test]
+    public void DecodeBlockHeaderParameters_RejectsOneSidedZero(
+        [Values("0x000000000100000000", "0x00ffffffff00000000", "0x00000000000000000a", "0x0100000001000000000000000000000001", "0x0100000000000000010000000000000000")] string hexString)
     {
         BlockHeader blockHeader = Build.A.BlockHeader.WithExtraData(Bytes.FromHexString(hexString)).TestObject;
 
