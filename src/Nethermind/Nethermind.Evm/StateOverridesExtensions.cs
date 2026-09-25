@@ -107,12 +107,14 @@ public static class StateOverridesExtensions
 
         if (accountOverride.Code is not null)
         {
-            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
+            // Repeated override code reuses its hash and analysed CodeInfo (verified byte for byte).
+            OverrideCodeCache.Resolve(accountOverride.Code, out ValueHash256 codeHash, out CodeInfo codeInfo);
+            stateProvider.InsertCode(address, codeHash, accountOverride.Code, currentSpec);
 
             overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code));
+                codeInfo);
         }
     }
 
