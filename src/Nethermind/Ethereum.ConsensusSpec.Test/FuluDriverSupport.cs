@@ -56,6 +56,31 @@ public static class FuluDriverSupport
         }
     }
 
+    /// <summary>The cases a suite's minimal or mainnet vector test consumes for <paramref name="preset"/>.</summary>
+    /// <remarks>Ignores the calling test for the mainnet preset unless mainnet vectors are enabled, since the mainnet source is then empty by design.</remarks>
+    public static List<TCase> TestedCases<TCase>(ConsensusPreset preset, Func<IEnumerable<TestCaseData>> minimalCases, Func<IEnumerable<TestCaseData>> mainnetCases)
+    {
+        if (preset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
+            Assert.Ignore("mainnet vectors are opt-in (NETHERMIND_CONSENSUS_SPEC_MAINNET=1)");
+
+        return [.. (preset == ConsensusPreset.Mainnet ? mainnetCases() : minimalCases()).Select(static data => (TCase)data.Arguments[0]!)];
+    }
+
+    /// <summary>Runs the first case of every distinct key and fails on the first one that throws, not-implemented included.</summary>
+    /// <remarks>
+    /// A not-implemented vector reports Inconclusive, so a key whose every vector is not-implemented runs green;
+    /// this is the check that it runs for real.
+    /// </remarks>
+    public static void AssertEveryKeyRunsAVector<TCase>(IReadOnlyCollection<TCase> cases, Func<TCase, string> keyOf, Action<TCase> run)
+    {
+        Assert.That(cases, Is.Not.Empty, "no vectors are enumerated");
+        foreach (IGrouping<string, TCase> byKey in cases.GroupBy(keyOf, StringComparer.Ordinal))
+        {
+            TCase first = byKey.First();
+            Assert.That(() => run(first), Throws.Nothing, $"'{byKey.Key}' does not run its vector {first}");
+        }
+    }
+
     /// <summary>
     /// Fails the vector unless the working state's root, taken in the fork's own shape, equals the
     /// expected post-state's; on mismatch names the diverging fields so the failure is debuggable.

@@ -67,13 +67,7 @@ public class ForkTests
     }
 
     /// <summary>The cases the <see cref="Fork"/> or <see cref="Fork_mainnet"/> test consumes for <paramref name="preset"/>.</summary>
-    private static IEnumerable<ForkCase> TestedCases(ConsensusPreset preset)
-    {
-        if (preset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
-            Assert.Ignore("mainnet vectors are opt-in (NETHERMIND_CONSENSUS_SPEC_MAINNET=1)");
-
-        return (preset == ConsensusPreset.Mainnet ? MainnetCases() : MinimalCases()).Select(static data => (ForkCase)data.Arguments[0]!);
-    }
+    private static List<ForkCase> TestedCases(ConsensusPreset preset) => FuluDriverSupport.TestedCases<ForkCase>(preset, MinimalCases, MainnetCases);
 
     private static void Execute(ForkCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("fork", testCase.Fork, testCase.Preset, testCase.VectorName, () => Run(testCase));

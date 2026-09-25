@@ -488,11 +488,13 @@ jobs:
           set -e
           if [[ $rc -eq 0 ]]; then
             exit 0
-          elif [[ $rc -eq 1 ]]; then
-            exit 1
           elif compgen -G "TestResults/*_hang.*" > /dev/null; then
             echo "::error::Test host hung and was dumped; see the hang-dump artifact"
             exit 1
+          elif [[ $rc -ne 7 ]]; then
+            # Only MTP exit code 7 (session did not complete) is a crash worth a retry; 2 (a test failed) and the rest are real failures.
+            echo "::error::dotnet test failed with exit code $rc"
+            exit $rc
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
 using NUnit.Framework;
@@ -9,7 +10,8 @@ using NUnit.Framework;
 namespace Ethereum.ConsensusSpec.Test;
 
 /// <summary>
-/// Guards against the harness counting any exception at all as a correct rejection of an invalid vector.
+/// Guards against the harness counting any exception at all as a correct rejection of an invalid vector,
+/// or a not-implemented vector as one that runs.
 /// </summary>
 [TestFixture]
 public class FuluDriverSupportTests
@@ -30,4 +32,33 @@ public class FuluDriverSupportTests
         Assert.That(() => FuluDriverSupport.AssertRejected(new NullReferenceException(), "the operation"),
             Throws.TypeOf<AssertionException>().With.Message.Contains(nameof(NullReferenceException)));
     }
+
+    private static readonly (string Key, string Name)[] KeyedCases = [("a", "a1"), ("a", "a2"), ("b", "b1")];
+
+    [Test]
+    public void AssertEveryKeyRunsAVector_runs_the_first_vector_of_every_key_and_passes_when_none_throws()
+    {
+        List<string> ran = [];
+
+        FuluDriverSupport.AssertEveryKeyRunsAVector(KeyedCases, static c => c.Key, c => ran.Add(c.Name));
+
+        Assert.That(ran, Is.EqualTo(new[] { "a1", "b1" }));
+    }
+
+    /// <summary>A not-implemented vector reports Inconclusive in its own suite, so this check must fail its key.</summary>
+    [Test]
+    public void AssertEveryKeyRunsAVector_fails_when_a_key_reports_its_vector_not_implemented() =>
+        Assert.That(
+            () => FuluDriverSupport.AssertEveryKeyRunsAVector(KeyedCases, static c => c.Key, static c =>
+            {
+                if (c.Key == "b")
+                    throw new NotImplementedInDriverException("not modelled");
+            }),
+            Throws.TypeOf<AssertionException>().With.Message.Contains("'b' does not run its vector"));
+
+    [Test]
+    public void AssertEveryKeyRunsAVector_fails_when_no_vectors_are_enumerated() =>
+        Assert.That(
+            () => FuluDriverSupport.AssertEveryKeyRunsAVector(Array.Empty<(string Key, string Name)>(), static c => c.Key, static _ => { }),
+            Throws.TypeOf<AssertionException>().With.Message.Contains("no vectors are enumerated"));
 }

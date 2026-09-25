@@ -201,27 +201,23 @@ public class BeaconChainSpec
 
     /// <summary>
     /// Sepolia activates Glamsterdam (consensus fork Gloas) at epoch 353024 (2026-10-06). Every value
-    /// below was cross-checked against at least two independent sources as of 2026-09-20:
+    /// below is from the <c>eth-clients/sepolia</c> network config as of 2026-09-22:
     /// <list type="bullet">
     /// <item>ChainId, GenesisTime, GenesisValidatorsRoot, GenesisForkVersion, and the Phase0-through-Fulu
     /// fork schedule: <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c>, cross-checked live against
-    /// a public beacon node's <c>/eth/v1/beacon/genesis</c> and <c>/eth/v1/config/fork_schedule</c>, and
-    /// against Prysm's <c>testnet_sepolia_config.go</c> (all three agree).</item>
+    /// a public beacon node's <c>/eth/v1/beacon/genesis</c> and <c>/eth/v1/config/fork_schedule</c>.</item>
     /// <item><see cref="GloasForkVersion"/> (0x90000076) and <see cref="GloasForkEpoch"/> (353024):
     /// <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c> (<c>GLOAS_FORK_VERSION</c> and
     /// <c>GLOAS_FORK_EPOCH</c>, merged 2026-09-22 in eth-clients/sepolia PR #126). The epoch also matches
     /// ethereum/pm PR #2205 (merged 2026-09-15, the cross-client activation-time proposal) and the
     /// EIP-7773 activation table (ethereum/EIPs PR #12355, merged 2026-09-17).</item>
     /// <item><see cref="BlobSchedule"/> (BPO1 274176/15, BPO2 275712/21) and
-    /// <see cref="MaxBlobsPerBlockElectra"/> (9): <c>eth-clients/sepolia config.yaml</c> and
-    /// sigp/lighthouse's built-in Sepolia config, independently.</item>
+    /// <see cref="MaxBlobsPerBlockElectra"/> (9): <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c>
+    /// (<c>BLOB_SCHEDULE</c> and <c>MAX_BLOBS_PER_BLOCK_ELECTRA</c>).</item>
     /// <item>Bootnode ENRs (<see cref="P2P.Discovery.SepoliaBootnodes"/>): <c>eth-clients/sepolia</c>
     /// <c>metadata/bootstrap_nodes.yaml</c> (the maintained registry, post PR #124's EF fleet
-    /// replacement) and OffchainLabs/prysm PR #17474 (merged 2026-09-11, the matching bootnode swap),
-    /// independently, for every entry.</item>
+    /// replacement).</item>
     /// </list>
-    /// No value here was carried from only one source: see this driver's task notes for the fields that
-    /// could not clear that bar and were deliberately left out rather than guessed.
     /// </summary>
     public static BeaconChainSpec Sepolia { get; } = new()
     {

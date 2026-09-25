@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Types;
@@ -169,12 +170,6 @@ public class SszStaticTests
         Map<ExecutionPayloadEnvelope>("ExecutionPayloadEnvelope", GloasOnly);
         Map<SignedExecutionPayloadEnvelope>("SignedExecutionPayloadEnvelope", GloasOnly);
         Map<DataColumnSidecarGloas>("DataColumnSidecar", GloasOnly);
-        // PayloadTimelinessCommittee.Indices is Vector(512) = PTC_SIZE, preset-scaled by the same
-        // reasoning as SyncCommittee above; unlike the others in this block this one was not directly
-        // observed failing (no ssz_static/PayloadTimelinessCommittee fixture was hit in the run that
-        // caught the rest), so this is inference from the field, not a reproduced failure - flagged as
-        // an uncertainty in the report rather than asserted as confirmed.
-        Map<PayloadTimelinessCommittee>("PayloadTimelinessCommittee", GloasOnly, presetDependent: true);
         Map<PayloadAttestationData>("PayloadAttestationData", GloasOnly);
         Map<PayloadAttestationMessage>("PayloadAttestationMessage", GloasOnly);
         Map<PayloadAttestation>("PayloadAttestation", GloasOnly, presetDependent: true);
@@ -186,35 +181,93 @@ public class SszStaticTests
         return result;
     }
 
+    /// <summary>The forks each preset generates ssz_static vectors for at <see cref="ConsensusSpecArchive.Version"/>; no heze container is modeled.</summary>
+    private static readonly string[] ArchiveForks = [.. AllForks, "heze"];
+
+    /// <summary>How many containers <see cref="Registry"/> maps per fork, so a dropped or narrowed row fails rather than turning its vectors not-implemented.</summary>
+    private static readonly IReadOnlyDictionary<string, int> RegisteredContainerCounts = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        ["phase0"] = 15,
+        ["altair"] = 17,
+        ["bellatrix"] = 17,
+        ["capella"] = 21,
+        ["deneb"] = 23,
+        ["electra"] = 39,
+        ["fulu"] = 39,
+        ["gloas"] = 50,
+    };
+
+    /// <summary>Containers the archive has ssz_static vectors for that are not consensus objects, so they are not enumerated.</summary>
+    /// <remarks>
+    /// <c>NewPayloadRequest</c> is only the argument of <c>execution_engine.verify_and_notify_new_payload</c>
+    /// (specs/bellatrix/beacon-chain.md and specs/gloas/beacon-chain.md, "NewPayloadRequest"); consensus never
+    /// serializes it or takes its <c>hash_tree_root</c>.
+    /// </remarks>
+    private static readonly string[] OutOfScopeContainers = ["NewPayloadRequest"];
+
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(SszStaticCase testCase) => Execute(testCase);
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(SszStaticCase testCase) => Execute(testCase);
 
-    private static void Execute(SszStaticCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("ssz_static", testCase.Fork, testCase.Preset, testCase.VectorName, () =>
+    // A wrong suite path or an emptied case source enumerates zero vectors; a renamed or dropped registry row leaves its vectors not-implemented; both run green.
+    [Test]
+    public void Every_fork_and_registered_container_has_vectors_in_the_archive([Values] ConsensusPreset preset)
+    {
+        List<SszStaticCase> cases = FuluDriverSupport.TestedCases<SszStaticCase>(preset, MinimalCases, MainnetCases);
+        HashSet<string> enumerated = [.. cases.Select(static testCase => PairKey(testCase.Fork, testCase.ContainerName))];
+        List<(string Fork, string Container)> registered = [.. Registry.SelectMany(static byName => byName.Value.Keys.Select(fork => (fork, byName.Key)))];
+        using (Assert.EnterMultipleScope())
         {
-            if (!Registry.TryGetValue(testCase.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork)
-                || !byFork.TryGetValue(testCase.Fork, out Entry entry))
+            Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ArchiveForks));
+            Assert.That(registered.Select(static pair => PairKey(pair.Fork, pair.Container)).Where(pair => !enumerated.Contains(pair)), Is.Empty, "registered containers with no vectors");
+            Assert.That(registered.GroupBy(static pair => pair.Fork).ToDictionary(static byFork => byFork.Key, static byFork => byFork.Count()), Is.EquivalentTo(RegisteredContainerCounts));
+            Assert.That(cases.Select(static testCase => testCase.ContainerName).Intersect(OutOfScopeContainers), Is.Empty, "out-of-scope containers are enumerated");
+            foreach (string container in OutOfScopeContainers)
             {
-                throw new NotImplementedInDriverException(
-                    $"No {testCase.ContainerName} container is modeled for fork '{testCase.Fork}' in this repo.");
+                bool inArchive = ArchiveForks.Any(fork => ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, "ssz_static")).Any(dir => Path.GetFileName(dir) == container));
+                Assert.That(inArchive, Is.True, $"{container} is no longer in the archive; drop it from the out-of-scope list");
             }
+        }
+    }
 
-            if (entry.PresetDependent && testCase.Preset == nameof(ConsensusPreset.Minimal))
-            {
-                throw new NotImplementedInDriverException(
-                    $"{testCase.ContainerName}'s SSZ shape embeds a mainnet-preset-scaled bound (e.g. committee/sync-committee/state-vector size) " +
-                    "baked in at compile time by this repo's SszGenerator attributes; it cannot decode a minimal-preset fixture.");
-            }
+    // Not-implemented vectors are Inconclusive, so a registry row whose every mainnet vector reports that way still runs green.
+    [Test]
+    public void Every_registered_container_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
+        FuluDriverSupport.AssertEveryKeyRunsAVector(
+            [.. FuluDriverSupport.TestedCases<SszStaticCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases)
+                .Where(static testCase => Registry.TryGetValue(testCase.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork) && byFork.ContainsKey(testCase.Fork))],
+            static testCase => PairKey(testCase.Fork, testCase.ContainerName),
+            Run);
 
-            byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, "serialized.ssz_snappy"));
-            // roots.yaml uses the same "root: '0x...'" shape meta.yaml uses for ssz_generic, so the
-            // existing parser applies unchanged.
-            UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(testCase.CasePath, "roots.yaml"));
-            entry.Handler.Run(ssz, expectedRoot);
-        });
+    private static string PairKey(string fork, string container) => $"{fork}/{container}";
+
+    private static void Execute(SszStaticCase testCase) =>
+        ConsensusSpecTestSummary.RunAndRecord("ssz_static", testCase.Fork, testCase.Preset, testCase.VectorName, () => Run(testCase));
+
+    private static void Run(SszStaticCase testCase)
+    {
+        if (!Registry.TryGetValue(testCase.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork)
+            || !byFork.TryGetValue(testCase.Fork, out Entry entry))
+        {
+            throw new NotImplementedInDriverException(
+                $"No {testCase.ContainerName} container is modeled for fork '{testCase.Fork}' in this repo.");
+        }
+
+        if (entry.PresetDependent && testCase.Preset == nameof(ConsensusPreset.Minimal))
+        {
+            throw new NotImplementedInDriverException(
+                $"{testCase.ContainerName}'s SSZ shape embeds a mainnet-preset-scaled bound (e.g. committee/sync-committee/state-vector size) " +
+                "baked in at compile time by this repo's SszGenerator attributes; it cannot decode a minimal-preset fixture.");
+        }
+
+        byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, "serialized.ssz_snappy"));
+        // roots.yaml uses the same "root: '0x...'" shape meta.yaml uses for ssz_generic, so the
+        // existing parser applies unchanged.
+        UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(testCase.CasePath, "roots.yaml"));
+        entry.Handler.Run(ssz, expectedRoot);
+    }
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 
@@ -244,6 +297,9 @@ public class SszStaticTests
             foreach (string containerDir in Directory.GetDirectories(sszStaticDir))
             {
                 string containerName = Path.GetFileName(containerDir);
+                if (Array.IndexOf(OutOfScopeContainers, containerName) >= 0)
+                    continue;
+
                 foreach (string caseDir in ConsensusSpecArchive.LeafDirs(containerDir, "serialized.ssz_snappy"))
                 {
                     string vectorName = $"{preset}/{fork}/ssz_static/{containerName}/{Path.GetRelativePath(containerDir, caseDir).Replace('\\', '/')}";
