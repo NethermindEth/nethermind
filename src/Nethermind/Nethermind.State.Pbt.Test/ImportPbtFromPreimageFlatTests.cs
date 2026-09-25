@@ -241,6 +241,7 @@ public class ImportPbtFromPreimageFlatTests
             {
                 Assert.That(staged.CurrentState, Is.EqualTo(StateId.PreGenesis));
                 Assert.That(target.IsValid, Is.False);
+                Assert.That(db.Tunes, Is.EqualTo(new[] { ITunableDb.TuneType.DisableCompaction }));
             }
         };
         ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { CopyBatchSize = batchSize };
@@ -255,6 +256,8 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(exit.ExitCode, Is.Zero);
             Assert.That(copyBatchWrites.Count, Is.EqualTo((expectedWrites + batchSize - 1) / batchSize));
             Assert.That(copyBatchWrites, Has.All.InRange(1, batchSize));
+            Assert.That(db.Tunes, Is.EqualTo(new[] { ITunableDb.TuneType.DisableCompaction, ITunableDb.TuneType.Default }));
+            Assert.That(db.Compactions, Is.EqualTo(1));
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
             Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(reader.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
@@ -1051,8 +1054,10 @@ public class ImportPbtFromPreimageFlatTests
         }
     }
 
-    private sealed class RecordingColumnsDb : IColumnsDb<PbtColumns>
+    private sealed class RecordingColumnsDb : IColumnsDb<PbtColumns>, ITunableDb
     {
+        public readonly List<ITunableDb.TuneType> Tunes = [];
+        public int Compactions;
         private readonly SnapshotableMemColumnsDb<PbtColumns> _database = new("pbt");
         private readonly Dictionary<PbtColumns, IDb> _columns = [];
         public readonly ConcurrentDictionary<string, int> Rows = new();
@@ -1079,6 +1084,8 @@ public class ImportPbtFromPreimageFlatTests
         public IColumnDbSnapshot<PbtColumns> CreateSnapshot() => _database.CreateSnapshot();
         public IColumnsWriteBatch<PbtColumns> StartWriteBatch() => new RecordingBatch(this, _database.StartWriteBatch());
         public void Dispose() => _database.Dispose();
+        public void Tune(ITunableDb.TuneType type) => Tunes.Add(type);
+        public void Compact() => Compactions++;
         public void Flush(bool onlyWal = false)
         {
             _database.Flush(onlyWal);

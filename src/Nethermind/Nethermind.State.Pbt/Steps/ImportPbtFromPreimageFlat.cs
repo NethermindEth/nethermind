@@ -185,7 +185,8 @@ public class ImportPbtFromPreimageFlat(
     /// <remarks>
     /// Workers claim ranges on demand to balance uneven storage. Batches retain a pre-genesis state
     /// pointer with <see cref="WriteFlags.DisableWAL"/>; a crash leaves deterministic blobs that the
-    /// next import safely overwrites.
+    /// next import safely overwrites. Auto-compaction is disabled during the copy and a single full
+    /// compaction runs once it completes.
     /// </remarks>
     private async Task CopyFlatColumns(int workerCount, CancellationToken cancellationToken)
     {
@@ -249,6 +250,9 @@ public class ImportPbtFromPreimageFlat(
             }
         }
 
+        ITunableDb? tunableDb = pbtDb as ITunableDb;
+        tunableDb?.Tune(ITunableDb.TuneType.DisableCompaction);
+
         using CancellationTokenSource loggingCts = new();
         Task logging = Task.Run(async () =>
         {
@@ -275,6 +279,10 @@ public class ImportPbtFromPreimageFlat(
         // Batches skipped the WAL; flush before phase two reads them.
         pbtDb.Flush();
         if (_logger.IsInfo) _logger.Info($"PBT import copied {accounts:N0} accounts and {slots:N0} slots in {copying.Elapsed:hh\\:mm\\:ss}.");
+
+        tunableDb?.Tune(ITunableDb.TuneType.Default);
+        if (_logger.IsInfo) _logger.Info("Compacting the PBT database after the flat copy. This may take a while.");
+        pbtDb.Compact();
     }
 
     /// <summary>Copies whole accounts and their code, with storage in its own column.</summary>
