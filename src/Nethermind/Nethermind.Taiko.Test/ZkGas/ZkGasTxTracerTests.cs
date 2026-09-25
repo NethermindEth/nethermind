@@ -31,12 +31,43 @@ public class ZkGasTxTracerTests
     // ── non-spawn opcode ──────────────────────────────────────────────────────
 
     [Test]
-    public void NonSpawnOpcode_ChargedImmediately()
+    public void NonSpawnOpcode_ChargedWhenNextStepStarts()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
         tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
         tracer.ReportOperationRemainingGas(97);
+
+        // Held until the VM either reports an error for the step or moves on.
+        Assert.That(meter.TxZkGasUsed, Is.Zero);
+
+        tracer.StartOperation(1, Instruction.STOP, gas: 97, env: Env());
+
+        ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void NonSpawnOpcode_ChargedWhenFrameEnds()
+    {
+        (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
+
+        tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
+        tracer.ReportOperationRemainingGas(97);
+        tracer.ReportActionEnd(97, ReadOnlyMemory<byte>.Empty);
+
+        ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void NonSpawnOpcode_StackUnderflow_ChargesRevmStaticGas()
+    {
+        (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
+
+        tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
+        tracer.ReportOperationRemainingGas(100);
+        tracer.ReportOperationError(EvmExceptionType.StackUnderflow);
 
         ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
@@ -52,6 +83,7 @@ public class ZkGasTxTracerTests
 
         tracer.StartOperation(1, Instruction.MUL, gas: 97, env: Env());
         tracer.ReportOperationRemainingGas(94);
+        tracer.ReportActionEnd(94, ReadOnlyMemory<byte>.Empty);
 
         ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x02]
                        + 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
