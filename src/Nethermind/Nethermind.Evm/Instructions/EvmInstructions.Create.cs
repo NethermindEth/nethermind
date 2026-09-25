@@ -171,12 +171,8 @@ public static partial class EvmInstructions
         if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
             goto OutOfGas;
 
-        // Get remaining gas for the create operation.
-        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-
-        // End tracing if enabled, prior to switching to the new call frame.
         if (TTracingInst.IsActive)
-            vm.EndInstructionTrace(gasAvailable);
+            vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
         // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
         if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, spec, out ulong callGas))
