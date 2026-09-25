@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
@@ -62,6 +63,9 @@ public sealed class ForkChoiceRunner
     /// <summary>The committed bid's <c>parent_block_hash</c> of each Gloas block, keyed by block root.</summary>
     private readonly Dictionary<Hash256, Hash256> _parentBlockHashes = [];
 
+    /// <summary>The slot and proposer of each registered block, for <c>is_proposer_equivocation</c>; its keys are a subset of <see cref="_blockTimeliness"/>'s, so both are pruned together.</summary>
+    private readonly Dictionary<Hash256, BlockProposer> _blockProposers = [];
+
     /// <summary>Committee shufflings only; safe to share across forks (keyed by decision root). The balance memo is never used through this instance.</summary>
     private readonly EpochCache _committees = new();
 
@@ -70,6 +74,8 @@ public sealed class ForkChoiceRunner
 
     /// <summary>The fields an indexed attestation carries in both the Fulu and the Gloas container.</summary>
     private readonly record struct IndexedVote(ulong[] AttestingIndices, AttestationData Data, BlsSignature Signature);
+
+    private readonly record struct BlockProposer(ulong Slot, ulong ProposerIndex);
 
     /// <summary>Creates the store from an anchor (the spec's <c>get_forkchoice_store</c>): the anchor becomes the justified and finalized checkpoint at its own epoch.</summary>
     /// <param name="anchorState">The post-state of <paramref name="anchorBlock"/>; also supplies the genesis time.</param>
@@ -244,6 +250,7 @@ public sealed class ForkChoiceRunner
         PruneCheckpointCache(_checkpointStates, finalized.Epoch);
         PruneCheckpointCache(_justifiedBalances, finalized.Epoch);
         PruneUnknownRoots(_blockTimeliness);
+        PruneUnknownRoots(_blockProposers);
         PruneUnknownRoots(_parentBlockHashes);
         _payloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
     }
@@ -343,6 +350,7 @@ public sealed class ForkChoiceRunner
 
         RegisterBlock(
             block.Slot,
+            block.ProposerIndex,
             blockRoot,
             parentRoot,
             block.StateRoot!,
@@ -393,6 +401,7 @@ public sealed class ForkChoiceRunner
         ExecutionPayloadBid bid = block.Body!.SignedExecutionPayloadBid!.Message!;
         RegisterBlock(
             block.Slot,
+            block.ProposerIndex,
             blockRoot,
             parentRoot,
             block.StateRoot!,
@@ -468,6 +477,7 @@ public sealed class ForkChoiceRunner
     /// <param name="pulledUp">The justification weighing run on the block's post-state; the spec's <c>compute_pulled_up_tip</c>.</param>
     private void RegisterBlock(
         ulong slot,
+        ulong proposerIndex,
         Hash256 blockRoot,
         Hash256 parentRoot,
         Hash256 stateRoot,
@@ -513,6 +523,9 @@ public sealed class ForkChoiceRunner
             _store.CurrentSlot,
             _store.JustifiedCheckpoint,
             _store.FinalizedCheckpoint);
+
+        // Recorded only once ProcessBlock returns: a block it throws on, even after inserting the node, must never count as a second proposal of its slot.
+        _blockProposers[blockRoot] = new BlockProposer(slot, proposerIndex);
     }
 
     /// <summary>Whether <paramref name="slot"/> is in an epoch at or after <see cref="BeaconChainSpec.GloasForkEpoch"/>.</summary>
@@ -713,26 +726,22 @@ public sealed class ForkChoiceRunner
             _store.FinalizedCheckpoint);
 
     /// <summary>
-    /// The spec's <c>get_proposer_head</c>: the block the proposer of <paramref name="proposalSlot"/> should
-    /// build on - <paramref name="headRoot"/>'s parent when <see cref="ShouldOverrideForkchoiceUpdate"/> says
-    /// to re-org the late, weakly-attested head out; <paramref name="headRoot"/> itself otherwise.
-    /// </summary>
-    public Hash256 GetProposerHead(Hash256 headRoot, ulong proposalSlot) =>
-        ShouldOverrideForkchoiceUpdate(headRoot, proposalSlot) ? _protoArray.GetParentRoot(headRoot)! : headRoot;
-
-    /// <summary>
-    /// The spec's <c>should_override_forkchoice_update</c>: whether the proposer of <paramref name="proposalSlot"/>
-    /// should re-org out <paramref name="headRoot"/> and build on its parent instead, because the head arrived
-    /// late, is weakly attested, and the parent is strong enough to safely take its place.
+    /// The spec's <c>get_proposer_head</c> (specs/fulu/fork-choice.md): the block the proposer of
+    /// <paramref name="proposalSlot"/> should build on. That is <paramref name="headRoot"/>'s parent when the
+    /// late, weakly attested head can safely be re-orged out, or when the head is weak and its proposer
+    /// equivocated in the slot before the proposal; <paramref name="headRoot"/> itself otherwise.
     /// </summary>
     /// <remarks>
-    /// Every condition below must hold for the re-org to happen; consensus-specs' <c>get_proposer_head</c>
-    /// fork-choice.md documents each one. Weights are refreshed via <see cref="GetHead"/> first: the spec's
-    /// own <c>get_weight</c> is a live computation over current votes and the (already-settled) proposer
-    /// boost, not a value cached from a stale <see cref="GetHead"/> call the caller happened to make earlier.
+    /// Weights are refreshed via <see cref="GetHead"/> first, because the spec's <c>get_attestation_score</c>
+    /// is a live computation over current votes, not a value cached from an earlier <see cref="GetHead"/> call.
+    /// There is no <c>is_shuffling_stable</c>: Fulu's proposer lookahead (EIP-7917) fixes the proposer before the
+    /// epoch boundary. The conditions short-circuit, which the spec allows.
     /// </remarks>
-    /// <exception cref="ForkChoiceException"><paramref name="headRoot"/> or its parent is unknown to fork choice, or the head still holds the proposer boost (its score has not settled).</exception>
-    public bool ShouldOverrideForkchoiceUpdate(Hash256 headRoot, ulong proposalSlot)
+    /// <exception cref="ForkChoiceException">
+    /// <paramref name="headRoot"/> or its parent is unknown to fork choice, the head still holds the proposer
+    /// boost (its score has not worn off), or a state <c>is_head_weak</c> needs cannot be resolved.
+    /// </exception>
+    public Hash256 GetProposerHead(Hash256 headRoot, ulong proposalSlot)
     {
         Hash256 parentRoot = _protoArray.GetParentRoot(headRoot)
             ?? throw new ForkChoiceException($"Block {headRoot} is unknown to fork choice, or has no parent to reorg onto");
@@ -742,35 +751,115 @@ public sealed class ForkChoiceRunner
         if (_store.ProposerBoostRoot == headRoot)
             throw new ForkChoiceException($"Cannot evaluate a proposer reorg for {headRoot}: it still holds the proposer boost");
 
-        // The spec's get_weight is a live computation, not a cached one; settle deltas and the
-        // (already-worn-off) boost before reading weights below.
         GetHead();
-
-        bool headLate = IsHeadLate(headRoot);
-        // No is_shuffling_stable: Fulu's proposer lookahead fixes the proposer before the epoch boundary (specs/fulu/fork-choice.md, EIP-7917).
-        bool ffgCompetitive = _protoArray.GetUnrealizedJustifiedCheckpoint(headRoot) == _protoArray.GetUnrealizedJustifiedCheckpoint(parentRoot);
-        bool finalizationOk = IsFinalizationOk(proposalSlot, _store.FinalizedCheckpoint.Epoch, ReorgMaxEpochsSinceFinalization);
-        bool proposingOnTime = IsProposingOnTime();
-        bool singleSlotReorg = IsSingleSlotReorg(parentSlot, headSlot, proposalSlot);
-
         JustifiedBalances justifiedBalances = GetJustifiedBalances(_store.JustifiedCheckpoint);
-        ulong headWeight = _protoArray.GetWeight(headRoot) ?? throw new ForkChoiceException($"Block {headRoot} is unknown to fork choice");
-        ulong parentWeight = _protoArray.GetWeight(parentRoot) ?? throw new ForkChoiceException($"Block {parentRoot} is unknown to fork choice");
-        bool headWeak = headWeight < _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgHeadWeightThresholdPercent);
-        bool parentStrong = parentWeight > _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgParentWeightThresholdPercent);
+        bool headWeak = IsHeadWeak(headRoot, headSlot, justifiedBalances);
 
-        return headLate && ffgCompetitive && finalizationOk && proposingOnTime && singleSlotReorg && headWeak && parentStrong;
+        bool reorgLateHead = IsHeadLate(headRoot)
+            && _protoArray.GetUnrealizedJustifiedCheckpoint(headRoot) == _protoArray.GetUnrealizedJustifiedCheckpoint(parentRoot)
+            && IsFinalizationOk(proposalSlot, _store.FinalizedCheckpoint.Epoch, ReorgMaxEpochsSinceFinalization)
+            && IsProposingOnTime()
+            && IsSingleSlotReorg(parentSlot, headSlot, proposalSlot)
+            && headWeak
+            && IsParentStrong(parentRoot, justifiedBalances);
+        bool reorgEquivocatingHead = headWeak && headSlot + 1 == proposalSlot && IsProposerEquivocation(headRoot);
+
+        return reorgLateHead || reorgEquivocatingHead ? parentRoot : headRoot;
     }
 
     /// <summary>The spec's <c>is_head_late</c>: a block with no recorded timeliness (unknown to this store) is treated as late, denying a reorg rather than allowing one on missing data.</summary>
     private bool IsHeadLate(Hash256 headRoot) => !_blockTimeliness.TryGetValue(headRoot, out bool timely) || !timely;
 
-    /// <summary>The spec's <c>is_proposing_on_time</c>: whether the wall clock is still in the first half of the attesting interval.</summary>
+    /// <summary>The spec's <c>is_proposing_on_time</c>: whether the wall clock is at most <c>get_proposer_reorg_cutoff_ms</c> into the slot.</summary>
     private bool IsProposingOnTime()
     {
-        ulong timeIntoSlot = (Time - GenesisTime) % _spec.SecondsPerSlot;
-        ulong cutoff = _spec.SecondsPerSlot / Presets.IntervalsPerSlot / 2;
-        return timeIntoSlot <= cutoff;
+        const ulong BasisPoints = 10_000;
+        ulong slotDurationMs = _spec.SecondsPerSlot * 1000;
+        ulong secondsSinceGenesis = Time - GenesisTime;
+        // The spec's seconds_to_milliseconds saturates at UINT64_MAX.
+        ulong timeIntoSlotMs = (secondsSinceGenesis > ulong.MaxValue / 1000 ? ulong.MaxValue : secondsSinceGenesis * 1000) % slotDurationMs;
+        return timeIntoSlotMs <= GloasTiming.ProposerReorgCutoffBps * slotDurationMs / BasisPoints;
+    }
+
+    /// <summary>
+    /// The spec's <c>is_head_weak</c>: whether the head's attestation score, plus the justified effective balance
+    /// of every equivocating validator in the head slot's committees, is below
+    /// <see cref="ReorgHeadWeightThresholdPercent"/> of a committee's share.
+    /// </summary>
+    /// <remarks>
+    /// The equivocators' balances are read unfiltered from the justified state: they are usually slashed, and
+    /// <paramref name="justifiedBalances"/> reports slashed validators as zero. Valid only right after <see cref="GetHead"/>.
+    /// </remarks>
+    private bool IsHeadWeak(Hash256 headRoot, ulong headSlot, JustifiedBalances justifiedBalances)
+    {
+        ulong headWeight = GetAttestationScore(headRoot, justifiedBalances);
+        // With no equivocators the committee term is zero, so the head state is not needed.
+        if (_equivocatingIndices.Count != 0)
+        {
+            Validator[] justifiedValidators = ValidatorsOf(GetCheckpointState(_store.JustifiedCheckpoint));
+            ulong headEpoch = BeaconStateAccessors.ComputeEpochAtSlot(headSlot);
+            CommitteeCache committees = GetBlockState(headRoot) switch
+            {
+                ForkedBeaconState.OfFulu fulu => _committees.GetCommitteeCache(fulu.State, headEpoch),
+                ForkedBeaconState.OfGloas gloas => _committees.GetCommitteeCache(gloas.State, headEpoch),
+                ForkedBeaconState state => throw new NotSupportedException($"Unhandled block state {state.GetType().Name}"),
+            };
+
+            for (int index = 0; index < committees.CommitteesPerSlot; index++)
+            {
+                foreach (int member in committees.GetBeaconCommittee(headSlot, index))
+                {
+                    if (!_equivocatingIndices.Contains((ulong)member)) continue;
+                    if (member >= justifiedValidators.Length)
+                        throw new ForkChoiceException($"Equivocating validator {member} in the committees of slot {headSlot} is not in the justified state");
+                    headWeight = checked(headWeight + justifiedValidators[member].EffectiveBalance);
+                }
+            }
+        }
+
+        return headWeight < _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgHeadWeightThresholdPercent);
+    }
+
+    /// <summary>The spec's <c>is_parent_strong</c>: whether the parent's attestation score is above <see cref="ReorgParentWeightThresholdPercent"/> of a committee's share. Valid only right after <see cref="GetHead"/>.</summary>
+    private bool IsParentStrong(Hash256 parentRoot, JustifiedBalances justifiedBalances) =>
+        GetAttestationScore(parentRoot, justifiedBalances) > _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgParentWeightThresholdPercent);
+
+    /// <summary>
+    /// The spec's <c>get_attestation_score</c>: the proto-array weight of <paramref name="root"/> without the proposer
+    /// score that the last <see cref="GetHead"/> added to the boosted block and each of its ancestors.
+    /// </summary>
+    /// <remarks>
+    /// Mirrors the proto-array's boost rule: the score is the default boost percent of a committee's share of
+    /// <paramref name="justifiedBalances"/>, and an execution-invalid boost root is never boosted. Valid only right
+    /// after <see cref="GetHead"/> with the same balances.
+    /// </remarks>
+    private ulong GetAttestationScore(Hash256 root, JustifiedBalances justifiedBalances)
+    {
+        ulong weight = _protoArray.GetWeight(root) ?? throw new ForkChoiceException($"Block {root} is unknown to fork choice");
+        Hash256 boostRoot = _store.ProposerBoostRoot;
+        if (boostRoot == Hash256.Zero || _protoArray.GetBlockExecutionStatus(boostRoot) == ExecutionStatus.Invalid)
+            return weight;
+
+        ulong slot = _protoArray.GetBlockSlot(root)!.Value;
+        return _protoArray.GetAncestor(boostRoot, slot) == root
+            ? checked(weight - _protoArray.CalculateCommitteeFraction(justifiedBalances, ProtoArrayForkChoice.DefaultProposerScoreBoostPercent))
+            : weight;
+    }
+
+    /// <summary>The spec's <c>is_proposer_equivocation</c>: whether another block in the store has the same slot and proposer as <paramref name="root"/>.</summary>
+    private bool IsProposerEquivocation(Hash256 root)
+    {
+        if (!_blockProposers.TryGetValue(root, out BlockProposer proposer))
+            return false;
+
+        int matching = 0;
+        foreach (BlockProposer other in _blockProposers.Values)
+        {
+            if (other == proposer && ++matching > 1)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
