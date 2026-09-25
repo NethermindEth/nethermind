@@ -72,8 +72,8 @@ public static class ConsensusSpecArchive
 
     /// <summary>
     /// The suite subtrees this driver knows how to run: ssz_static for every fork this repo models a
-    /// container for, the state-driven suites for <see cref="StateTransitionForks"/>, fork for <see cref="ForkUpgradeForks"/>, transition for <see cref="TransitionForks"/>, and fork_choice
-    /// for fulu only. fork_choice needs its full fixture set (steps.yaml plus the anchor/block/attestation
+    /// container for, the state-driven suites for <see cref="StateTransitionForks"/>, fork for <see cref="ForkUpgradeForks"/>, transition for <see cref="TransitionForks"/>, fork_choice
+    /// for fulu only, and networking for the forks <see cref="GossipValidationTests"/> drives. fork_choice needs its full fixture set (steps.yaml plus the anchor/block/attestation
     /// SSZ files it references), not just manifest.yaml. <see cref="ExtractionTag"/> is derived from this
     /// same table, so widening it invalidates the cached extraction by itself.
     /// </summary>
@@ -86,6 +86,7 @@ public static class ConsensusSpecArchive
         ("fork_choice", ["fulu"]),
         ("fork", ForkUpgradeForks),
         ("transition", TransitionForks),
+        ("networking", ["fulu", "gloas"]),
     ];
 
     /// <summary>
