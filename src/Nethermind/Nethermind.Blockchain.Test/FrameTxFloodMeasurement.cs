@@ -208,15 +208,9 @@ public class FrameTxFloodMeasurement
     private const double MaxSustainedLagPeriods = 5.0;
 
     /// <summary>
-    /// A non-sustained rate point is re-measured this many times before the ramp accepts the break. F-17:
-    /// <see cref="FloodOutcome.MaxLagUs"/> is a running maximum over every submission-lag sample in the
-    /// window, so a single scheduling outlier can fail an otherwise-sustained point and forfeit the rest of
-    /// the ramp. One retry absorbs a transient outlier without letting the ramp run past a genuine ceiling.
-    /// This changes acceptance from one successful measurement to at least one of two, which is one-sided:
-    /// a point whose true pass probability is p is accepted with p + (1 - p)p, so a marginal point is
-    /// accepted more often than it holds and the reported capacity is biased up by at most one grid step.
-    /// The summary carries <c>retries_used</c> and <c>capacity_from_retry</c> so a consumer can reject the
-    /// ramps this applies to rather than inferring it.
+    /// A failed rate point gets one diagnostic retry because <see cref="FloodOutcome.MaxLagUs"/> is a
+    /// running maximum and can reflect a scheduling outlier. Only the first attempt determines capacity;
+    /// a passing retry cannot turn a failed point into an accepted rate.
     /// </summary>
     private const int MaxRatePointRetries = 1;
 
@@ -608,7 +602,10 @@ public class FrameTxFloodMeasurement
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
 
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
-        RunRateRamp(ceiling, shape, "rate_ramp", "capacity", extraFields: "", baseline,
+        string extraFields = Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep)
+            ? $"frame_gas_limit={sweep.FrameGasLimit} measurement_scope=single_verify_frame "
+            : "";
+        RunRateRamp(ceiling, shape, "rate_ramp", "capacity", extraFields, baseline,
             () => MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero),
             rate => MeasureUnderFlood(rate, rejectionCounter));
     }
@@ -667,12 +664,10 @@ public class FrameTxFloodMeasurement
         // every row in the ramp needs the after-baseline that only exists once the ramp is over. Rows are
         // still flushed below even if the ramp loop or the after-baseline re-measurement throws, and a
         // throw from the latter can no longer erase a ramp failure already caught below (see `failure`).
-        // Each row carries its rate point's verdict, resolved once that point's attempts are over: a retried
-        // point emits a `sustained=no` row at a rate the ramp went on to accept, so `sustained` alone no
-        // longer locates the break. A row whose rate threw mid-attempt keeps `unknown`.
+        // `sustained` describes each attempt; `accepted` records the first-attempt capacity decision.
         List<(string Line, string Accepted)> rowLines = [];
         int retriesUsed = 0;
-        bool capacityFromRetry = false;
+        bool retryRescuedPoint = false;
 
         Exception? failure = null;
         try
@@ -681,6 +676,8 @@ public class FrameTxFloodMeasurement
             {
                 FloodOutcome outcome = default;
                 bool sustained = false;
+                bool firstAttemptSustained = false;
+                double firstAttemptAchievedRate = 0;
                 int attemptsUsed = 0;
                 int firstRowOfRate = rowLines.Count;
 
@@ -696,6 +693,11 @@ public class FrameTxFloodMeasurement
 
                     bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
                     sustained = rateHeld && lagBounded;
+                    if (attempt == 1)
+                    {
+                        firstAttemptSustained = sustained;
+                        firstAttemptAchievedRate = outcome.AchievedRate;
+                    }
                     // The plan's no-backlog condition, kept separate from `sustained` above because every
                     // published capacity figure rests on `sustained`'s current meaning.
                     bool sustainedNoBacklog = sustained && pendingPoolStable;
@@ -723,15 +725,15 @@ public class FrameTxFloodMeasurement
                     if (sustained) break;
                 }
 
+                retryRescuedPoint |= attemptsUsed > 1 && sustained && !firstAttemptSustained;
                 for (int i = firstRowOfRate; i < rowLines.Count; i++)
                 {
-                    rowLines[i] = (rowLines[i].Line, sustained ? "yes" : "no");
+                    rowLines[i] = (rowLines[i].Line, firstAttemptSustained ? "yes" : "no");
                 }
 
-                if (sustained)
+                if (firstAttemptSustained)
                 {
-                    lastSustained = outcome.AchievedRate;
-                    capacityFromRetry = attemptsUsed > 1;
+                    lastSustained = firstAttemptAchievedRate;
                 }
                 else
                 {
@@ -793,7 +795,7 @@ public class FrameTxFloodMeasurement
              + $"capacity_upper={(censored ? "unbounded" : capacityUpper.ToString("F1"))} "
              + $"censored={(censored ? "yes" : "no")} "
              + $"basis=bounded_submission_lag retries_used={retriesUsed} "
-             + $"capacity_from_retry={(capacityFromRetry ? "yes" : "no")} "
+             + $"capacity_basis=first_attempt retry_rescued_point={(retryRescuedPoint ? "yes" : "no")} "
              + $"max_rate_point_retries={MaxRatePointRetries} note=B_not_fixed {driftFields}");
 
         using (Assert.EnterMultipleScope())
