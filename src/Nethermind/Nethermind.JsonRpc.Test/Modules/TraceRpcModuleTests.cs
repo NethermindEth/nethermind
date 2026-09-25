@@ -108,6 +108,67 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_block_and_replay_return_no_traces_for_genesis(
+        [Values("trace_block", "trace_replayBlockTransactions")] string method, [Values("earliest", "0x0")] string blockParameter, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        object[] parameters = method == "trace_block" ? [blockParameter] : [blockParameter, new[] { "trace" }];
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","result":[],"id":67}"""));
+    }
+
+    [Test]
+    public async Task Rejects_unknown_trace_type_as_invalid_params(
+        [Values("trace_replayTransaction", "trace_replayBlockTransactions", "trace_call", "trace_callMany", "trace_simulateV1")] string method)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        string[] traceTypes = ["unknown"];
+        object transaction = new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0" };
+        object[] parameters = method switch
+        {
+            // An unknown hash fails the receipt lookup, so this also checks the types are validated before that.
+            "trace_replayTransaction" => [TestItem.KeccakA, traceTypes],
+            // Genesis short-circuits replay, so this also checks the types are validated before that.
+            "trace_replayBlockTransactions" => ["earliest", traceTypes],
+            "trace_call" => [transaction, traceTypes, "latest"],
+            "trace_callMany" => [new[] { new object[] { transaction, traceTypes } }, "latest"],
+            _ => [new { blockStateCalls = new[] { new { calls = new[] { transaction } } } }, "latest", traceTypes],
+        };
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("Invalid trace types"), response);
+        }
+    }
+
+    [Test]
+    public async Task Trace_replayBlockTransactions_returns_error_for_missing_block_or_parent([Values] bool parentMissing)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Block head = blockchain.BlockTree.Head!;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true,
+            new MissingHeaderBlockTree(blockchain.BlockTree, head.ParentHash!));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+        ulong blockNumber = parentMissing ? head.Number : head.Number + 1;
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_replayBlockTransactions", $"0x{blockNumber:x}", new[] { "trace" });
+        Assert.That(response, Is.EqualTo(
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.ResourceNotFound},\"message\":\"{BlockFinderExtensions.HeaderNotFound}\"}},\"id\":67}}"));
+    }
+
+    [Test]
     public async Task Trace_filter_returns_error_for_missing_state(
         [Values] bool streaming, [Values(0, 1, 2)] int missingStateOffset)
     {
@@ -537,6 +598,38 @@ public class TraceRpcModuleTests
         traceFilterRequest.ToAddress = new[] { TestItem.AddressC };
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
         Assert.That(traces.Data.Count(), Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Trace_filter_matches_rewards_by_author([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Block head = blockchain.BlockTree.Head!;
+        string fromBlock = $"0x{head.Number - 2:x}";
+        string author = head.Beneficiary!.ToString();
+
+        async Task<string[]> Filter(object filter)
+        {
+            string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", filter);
+            using JsonDocument document = JsonDocument.Parse(response);
+            return [.. document.RootElement.GetProperty("result").EnumerateArray().Select(static trace => trace.GetRawText())];
+        }
+
+        string[] rewards = [.. (await Filter(new { fromBlock, toBlock = "latest" })).Where(trace => trace.Contains($"\"author\":\"{author}\""))];
+        string[] byAuthor = await Filter(new { fromBlock, toBlock = "latest", toAddress = new[] { author } });
+        string[] paged = await Filter(new { fromBlock, toBlock = "latest", toAddress = new[] { author }, after = 1, count = 1 });
+        string[] bySenderAndAuthor = await Filter(new { fromBlock, toBlock = "latest", fromAddress = new[] { TestItem.AddressB }, toAddress = new[] { author } });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewards, Has.Length.EqualTo(3));
+            Assert.That(byAuthor, Is.EqualTo(rewards));
+            Assert.That(paged, Is.EqualTo(rewards[1..2]));
+            Assert.That(bySenderAndAuthor, Is.Empty);
+        }
     }
     [Test]
     public async Task Trace_filter_complex_scenario()
@@ -1675,8 +1768,58 @@ public class TraceRpcModuleTests
         string streamed = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
 
         JToken bufferedTrace = JToken.Parse(buffered);
-        Assert.That(bufferedTrace["result"]![0]!["vmTrace"]!["ops"]![0]!["ex"]!["push"]![0]!.Value<string>(), Is.EqualTo("0x1"));
-        Assert.That(JToken.Parse(streamed), Is.EqualTo(bufferedTrace).Using(JToken.EqualityComparer));
+        JToken ops = bufferedTrace["result"]![0]!["vmTrace"]!["ops"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ops[0]!["ex"]!["push"]![0]!.Value<string>(), Is.EqualTo("0x1"));
+            Assert.That(ops[2]!["ex"]!["store"]!["key"]!.Value<string>(), Is.EqualTo("0x0"));
+            Assert.That(ops[2]!["ex"]!["store"]!["val"]!.Value<string>(), Is.EqualTo("0x1"));
+            Assert.That(JToken.Parse(streamed), Is.EqualTo(bufferedTrace).Using(JToken.EqualityComparer));
+        }
+    }
+
+    [Test]
+    public async Task VmTrace_create_cost_includes_forwarded_gas([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        // PUSH1 0 (size), PUSH1 0 (offset), PUSH1 0 (value), CREATE, STOP: the empty-initcode CREATE is ops[3].
+        string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"0x600060006000f000\",\"gas\":\"0xf4240\"}},[\"vmTrace\",\"trace\"]]]";
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+        JToken result = JToken.Parse(response)["result"]![0]!;
+
+        ulong forwardedGas = Convert.ToUInt64(result["trace"]![1]!["action"]!["gas"]!.Value<string>(), 16);
+        Assert.That(result["vmTrace"]!["ops"]![3]!["cost"]!.Value<ulong>(), Is.EqualTo(GasCostOf.Create + forwardedGas), response);
+    }
+
+    [Test]
+    public async Task VmTrace_store_does_not_depend_on_stateDiff_selection([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        // PUSH1 1, PUSH1 0, SSTORE, PUSH1 0x20, PUSH1 0, RETURN: the SSTORE is ops[2].
+        const string bytecode = "0x60016000556020600060f3";
+        JToken vmTraceOnly = await TraceCallVmTrace(context, bytecode, "vmTrace");
+        JToken withStateDiff = await TraceCallVmTrace(context, bytecode, "vmTrace", "stateDiff");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(vmTraceOnly["ops"]![2]!["ex"]!["store"]!.Type, Is.EqualTo(JTokenType.Object));
+            Assert.That(vmTraceOnly, Is.EqualTo(withStateDiff).Using(JToken.EqualityComparer));
+        }
+    }
+
+    private static async Task<JToken> TraceCallVmTrace(Context context, string bytecode, params string[] traceTypes)
+    {
+        string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"{bytecode}\",\"gas\":\"0xf4240\"}},{JsonSerializer.Serialize(traceTypes)}]]";
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+        return JToken.Parse(response)["result"]![0]!["vmTrace"]!;
     }
 
     [Test]
@@ -1804,13 +1947,14 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task trace_block_unknown_fork_returns_invalid_params_failure_listing_known_forks()
+    public async Task trace_block_unknown_fork_returns_invalid_params_failure_listing_known_forks(
+        [Values(BlockParameterType.Latest, BlockParameterType.Earliest)] BlockParameterType blockType)
     {
         Context context = new();
         await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
-            context.TraceRpcModule.trace_block(BlockParameter.Latest, "NonExistentFork");
+            context.TraceRpcModule.trace_block(new BlockParameter(blockType), "NonExistentFork");
 
         using (Assert.EnterMultipleScope())
         {

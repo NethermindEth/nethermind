@@ -9,7 +9,8 @@ using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.TxPool;
 
-/// <summary>Response model for <c>txpool_contentFrom</c>: pending and queued transactions from a single address, keyed by nonce.</summary>
+/// <summary>Response model for <c>txpool_contentFrom</c>: the pending and queued transactions of a single address.</summary>
+/// <remarks>Keyed by decimal nonce, except EIP-8250 keyed transactions, which use the tx hash because several share one sequence.</remarks>
 public class TxPoolContentFrom
 {
     public TxPoolContentFrom(TxPoolSenderInfo info, ulong chainId)
@@ -19,18 +20,18 @@ public class TxPoolContentFrom
         Queued = MapTransactions(info.Queued, extraData);
     }
 
-    /// <summary>Transactions ready for inclusion in the next block, keyed by nonce.</summary>
-    public Dictionary<ulong, TransactionForRpc> Pending { get; }
+    /// <summary>Transactions ready for inclusion in the next block.</summary>
+    public Dictionary<TxPoolTxKey, TransactionForRpc> Pending { get; }
 
-    /// <summary>Transactions with nonce gaps awaiting preceding transactions, keyed by nonce.</summary>
-    public Dictionary<ulong, TransactionForRpc> Queued { get; }
+    /// <summary>Transactions with nonce gaps awaiting preceding transactions.</summary>
+    public Dictionary<TxPoolTxKey, TransactionForRpc> Queued { get; }
 
-    private static Dictionary<ulong, TransactionForRpc> MapTransactions(
-        IDictionary<ulong, Transaction> source,
+    private static Dictionary<TxPoolTxKey, TransactionForRpc> MapTransactions(
+        IDictionary<TxPoolTxKey, Transaction> source,
         in TransactionForRpcContext extraData)
     {
-        Dictionary<ulong, TransactionForRpc> result = [with(source.Count)];
-        foreach (KeyValuePair<ulong, Transaction> kv in source)
+        Dictionary<TxPoolTxKey, TransactionForRpc> result = [with(source.Count)];
+        foreach (KeyValuePair<TxPoolTxKey, Transaction> kv in source)
             result[kv.Key] = TransactionForRpc.FromTransaction(kv.Value, extraData);
         return result;
     }

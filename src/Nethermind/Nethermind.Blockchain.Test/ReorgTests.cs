@@ -129,7 +129,8 @@ public class ReorgTests
             stateReader,
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default,
-            Substitute.For<IProcessingStats>());
+            Substitute.For<IProcessingStats>(),
+            new BlockTreeMutationLock());
     }
 
     [OneTimeTearDown]

@@ -326,6 +326,13 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.Zero);
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Hoodi));
+
+            // Shanghai and Cancun are active from the execution genesis, which predates the beacon chain.
+            IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters).Where(static t => t > HoodiSpecProvider.GenesisTimestamp);
+            foreach (ulong t in timestamps)
+            {
+                Assert.That(ValidateSlotByTimestamp(t, HoodiSpecProvider.BeaconChainGenesisTimestampConst), Is.True);
+            }
         }
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoodiSpecProvider.CancunTimestamp));
@@ -718,6 +725,30 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    public static IEnumerable<TestCaseData> BeaconChainGenesisTimestampCases
+    {
+        get
+        {
+            yield return new TestCaseData("foundation", MainnetSpecProvider.Instance, MainnetSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("foundation");
+            yield return new TestCaseData("sepolia", SepoliaSpecProvider.Instance, SepoliaSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("sepolia");
+            yield return new TestCaseData("hoodi", HoodiSpecProvider.Instance, HoodiSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("hoodi");
+            yield return new TestCaseData("gnosis", GnosisSpecProvider.Instance, GnosisSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("gnosis");
+            yield return new TestCaseData("chiado", ChiadoSpecProvider.Instance, ChiadoSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("chiado");
+        }
+    }
+
+    [TestCaseSource(nameof(BeaconChainGenesisTimestampCases))]
+    public void Beacon_chain_genesis_timestamp_matches_hard_coded_provider(string chain, ISpecProvider hardCodedProvider, ulong expected)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadChainSpecFromChainFolder(chain));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.BeaconChainGenesisTimestamp, Is.EqualTo(expected), $"{chain} chainspec");
+            Assert.That(hardCodedProvider.BeaconChainGenesisTimestamp, Is.EqualTo(expected), $"{chain} hard-coded provider");
+        }
+    }
+
     // #13202: "Chainspec file is misconfigured!" was emitted once per eth_estimateGas call on a syncing mainnet
     // node running the chainspec we ship. eth_estimateGas asks for the spec at (head + 1, wall-clock now) - see
     // BlockchainBridge's treatBlockHeaderAsParentBlock path - so while the head is below the chain's largest block
@@ -909,6 +940,48 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(preAmsterdam.IsEip7981Enabled, Is.False);
             Assert.That(amsterdam.IsEip7976Enabled, Is.True);
             Assert.That(amsterdam.IsEip7981Enabled, Is.True);
+        }
+    }
+
+    [Test]
+    public void Frame_family_eips_activate_only_at_their_own_transition_timestamp()
+    {
+        const ulong eip8141Timestamp = 10;
+        const ulong eip8250Timestamp = 20;
+        const ulong eip8272Timestamp = 30;
+        const ulong eip7906Timestamp = 40;
+        const ulong eip7805Timestamp = 50;
+        const ulong eip8037Timestamp = 60;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip8141TransitionTimestamp = eip8141Timestamp,
+                Eip8250TransitionTimestamp = eip8250Timestamp,
+                Eip8272TransitionTimestamp = eip8272Timestamp,
+                Eip7906TransitionTimestamp = eip7906Timestamp,
+                Eip7805TransitionTimestamp = eip7805Timestamp,
+                Eip8037TransitionTimestamp = eip8037Timestamp,
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8141Timestamp - 1)).IsEip8141Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8141Timestamp)).IsEip8141Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8250Timestamp - 1)).IsEip8250Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8250Timestamp)).IsEip8250Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8272Timestamp - 1)).IsEip8272Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8272Timestamp)).IsEip8272Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7906Timestamp - 1)).IsEip7906Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7906Timestamp)).IsEip7906Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7805Timestamp - 1)).IsEip7805Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7805Timestamp)).IsEip7805Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp - 1)).IsEip8037Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp)).IsEip8037Enabled, Is.True);
         }
     }
 

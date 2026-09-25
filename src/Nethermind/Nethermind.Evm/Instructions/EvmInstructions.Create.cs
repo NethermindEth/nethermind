@@ -171,12 +171,8 @@ public static partial class EvmInstructions
         if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
             goto OutOfGas;
 
-        // Get remaining gas for the create operation.
-        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-
-        // End tracing if enabled, prior to switching to the new call frame.
         if (TTracingInst.IsActive)
-            vm.EndInstructionTrace(gasAvailable);
+            vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
         // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
         if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, spec, out ulong callGas))
@@ -188,8 +184,7 @@ public static partial class EvmInstructions
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
 
-        // Analyze and compile the initialization code.
-        CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
+        CodeInfo? codeInfo = new(initCode);
 
         // EIP-684: if the account already exists with code or a non-zero nonce, the creation fails.
         // Collision behaves as an immediate exceptional halt - burned callGas counts as block_execution.
@@ -231,7 +226,8 @@ public static partial class EvmInstructions
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot,
-            isCreateStateGasCharged: chargeCreateStateGas);
+            isCreateStateGasCharged: chargeCreateStateGas,
+            frameJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.FrameJournalCheckpoint ?? 0);
 
         return EvmExceptionType.Suspend;
         // Jump forward to be unpredicted by the branch predictor.
