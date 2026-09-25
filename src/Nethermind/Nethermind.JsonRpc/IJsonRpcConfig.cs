@@ -249,6 +249,12 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Maximum number of concurrent eth_sendRawTransactionSync calls, independent of EthModuleConcurrentInstances. Excess calls are rejected before submitting the transaction. Each pending call also counts against MaxConcurrentSharedRequests for up to RpcTxSyncMaxTimeoutMs, so keep this well below MaxConcurrentSharedRequests. 0 disables this limit; MaxConcurrentSharedRequests then remains the only bound (none if it is 0 too).", DefaultValue = "128")]
     int RpcTxSyncMaxConcurrentRequests { get; set; }
 
+    [ConfigItem(Description = "The maximum number of blocks one `eth_feeHistory` call returns, from 1 to 1024. A larger `blockCount` is lowered to it, which the API allows, so the response then covers fewer blocks than requested.", DefaultValue = "1024")]
+    int FeeHistoryMaxBlockCount { get; set; }
+
+    [ConfigItem(Description = "The maximum number of `eth_feeHistory` calls that read blocks and receipts from the database at once. Calls whose blocks are all among the recent ones the node keeps fee data for are not limited. Calls beyond the cap return `LimitExceeded` at once instead of waiting. `0` to lift the limit. Defaults to a quarter of the number of logical processors, at least 1.")]
+    int? FeeHistoryMaxConcurrentRequests { get; set; }
+
     [ConfigItem(
         Description = """
             Additional CIDR networks treated as trusted local sources for the JSON-RPC fast lane.

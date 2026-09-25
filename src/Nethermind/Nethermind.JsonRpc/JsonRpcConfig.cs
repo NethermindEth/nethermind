@@ -89,5 +89,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
     public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
     public int RpcTxSyncMaxConcurrentRequests { get; set; } = 128;
+    public int FeeHistoryMaxBlockCount { get; set; } = 1024;
+    public int? FeeHistoryMaxConcurrentRequests { get; set; } = null;
     public string[] AdditionalTrustedNetworks { get; set; } = [];
 };

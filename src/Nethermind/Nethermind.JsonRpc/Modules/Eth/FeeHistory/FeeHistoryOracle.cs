@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -18,6 +17,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Exceptions;
 using NonBlocking;
 
 namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
@@ -34,13 +34,18 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
+        private readonly ulong _maxBlockCount;
+        private readonly int _maxUncachedRequests;
+        private int _uncachedRequests;
 
-        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, ulong? maxDistanceFromHead = null)
+        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ulong? maxDistanceFromHead = null)
         {
             _blockTree = blockTree;
             _receiptStorage = receiptStorage;
             _specProvider = specProvider;
             _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount + 4;
+            _maxBlockCount = (ulong)Math.Clamp(jsonRpcConfig.FeeHistoryMaxBlockCount, 1, MaxBlockCount);
+            _maxUncachedRequests = jsonRpcConfig.FeeHistoryMaxConcurrentRequests ?? Math.Max(1, Environment.ProcessorCount / 4);
             blockTree.BlockAddedToMain += OnBlockAddedToMain;
         }
 
@@ -81,7 +86,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             int BlockTransactionsLength,
             List<RewardInfo> RewardsInBlocks);
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, ref UncachedRequestSlot uncachedRequestSlot)
         {
             if (blockParameter.Type == BlockParameterType.BlockHash
                 && _feeHistoryCache.TryGetValue(blockParameter.BlockHash!, out BlockFeeHistorySearchInfo i))
@@ -89,6 +94,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return i;
             }
 
+            // A cached block needs only its header to be found, not its body decoded.
+            if (_blockTree.FindHeader(blockParameter)?.Hash is { } hash
+                && _feeHistoryCache.TryGetValue(hash, out BlockFeeHistorySearchInfo cached))
+            {
+                return cached;
+            }
+
+            uncachedRequestSlot.EnsureAcquired();
             Block block = _blockTree.FindBlock(blockParameter);
             return block is null
                 ? null
@@ -97,7 +110,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     : SaveHistorySearchInfo(block);
         }
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, ref UncachedRequestSlot uncachedRequestSlot)
         {
             if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
             {
@@ -105,6 +118,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                                                        BlockTreeLookupOptions.TotalDifficultyNotNeeded |
                                                        BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
 
+                uncachedRequestSlot.EnsureAcquired();
                 Block? block = _blockTree.FindBlock(blockHash, options, blockNumber);
                 return block is null ? null : SaveHistorySearchInfo(block);
             }
@@ -166,8 +180,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double[] rewardPercentiles)
         {
             ArgumentNullException.ThrowIfNull(rewardPercentiles);
-            if (blockCount > MaxBlockCount)
-                blockCount = MaxBlockCount;
+            if (blockCount > _maxBlockCount)
+                blockCount = _maxBlockCount;
 
             ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(blockCount, newestBlock, rewardPercentiles);
             if (initialCheckResult.Result.ResultType == ResultType.Failure)
@@ -175,7 +189,24 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return initialCheckResult;
             }
 
-            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock);
+            UncachedRequestSlot uncachedRequestSlot = new(this);
+            try
+            {
+                return GetFeeHistory(blockCount, newestBlock, rewardPercentiles, ref uncachedRequestSlot);
+            }
+            finally
+            {
+                uncachedRequestSlot.Dispose();
+            }
+        }
+
+        private ResultWrapper<FeeHistoryResults> GetFeeHistory(
+            ulong blockCount,
+            BlockParameter newestBlock,
+            double[] rewardPercentiles,
+            ref UncachedRequestSlot uncachedRequestSlot)
+        {
+            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, ref uncachedRequestSlot);
 
             if (historyInfo is null)
             {
@@ -202,28 +233,94 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
             baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGasEst;
 
-            while (historyInfo is not null && effectiveBlockCount-- > 0)
+            try
             {
-                info = historyInfo.Value;
-                oldestBlockNumber = info.BlockNumber;
-                baseFeePerGas[effectiveBlockCount] = info.BlockBaseFeePerGas;
-                baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
-                gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
-                blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
-                if (rewards is not null)
+                while (historyInfo is not null && effectiveBlockCount-- > 0)
                 {
-                    ArrayPoolList<UInt256>? rewardsInBlock = CalculateRewardsPercentiles(info, rewardPercentiles);
-                    if (rewardsInBlock is not null)
+                    info = historyInfo.Value;
+                    oldestBlockNumber = info.BlockNumber;
+                    baseFeePerGas[effectiveBlockCount] = info.BlockBaseFeePerGas;
+                    baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
+                    gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
+                    blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
+                    if (rewards is not null)
                     {
-                        rewards[effectiveBlockCount] = rewardsInBlock;
+                        ArrayPoolList<UInt256>? rewardsInBlock = CalculateRewardsPercentiles(info, rewardPercentiles);
+                        if (rewardsInBlock is not null)
+                        {
+                            rewards[effectiveBlockCount] = rewardsInBlock;
+                        }
                     }
+                    historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, ref uncachedRequestSlot);
                 }
-                historyInfo = info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
+            }
+            catch
+            {
+                // The walk throws when it reaches the first uncached block while all slots are taken.
+                baseFeePerGas.Dispose();
+                baseFeePerBlobGas.Dispose();
+                gasUsedRatio.Dispose();
+                blobGasUsedRatio.Dispose();
+                rewards?.DisposeRecursive();
+                throw;
+            }
+
+            // An unavailable ancestor ends the walk early; the leading slots were never filled,
+            // so drop them to keep index 0 aligned with oldestBlock.
+            if (historyInfo is null && effectiveBlockCount > 0)
+            {
+                DropLeading(baseFeePerGas, effectiveBlockCount);
+                DropLeading(baseFeePerBlobGas, effectiveBlockCount);
+                DropLeading(gasUsedRatio, effectiveBlockCount);
+                DropLeading(blobGasUsedRatio, effectiveBlockCount);
+                if (rewards is not null) DropLeading(rewards, effectiveBlockCount);
             }
 
             TryRunCleanup();
 
             return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas, gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
+        }
+
+        /// <summary>
+        /// One of the limited slots for a request that has to read blocks or receipts from the database.
+        /// </summary>
+        /// <remarks>
+        /// Building the fee data of a block not in the cache reads and decodes its body and receipts, which costs
+        /// far more than serving cached data, so the number of such requests running at once is capped.
+        /// The slot is taken right before the first such read and held until the request ends, so requests served
+        /// entirely from the cache stay unlimited.
+        /// </remarks>
+        private struct UncachedRequestSlot(FeeHistoryOracle oracle) : IDisposable
+        {
+            private bool _acquired;
+
+            /// <exception cref="LimitExceededException">All slots are taken.</exception>
+            public void EnsureAcquired()
+            {
+                if (_acquired || oracle._maxUncachedRequests == 0) return;
+
+                if (Interlocked.Increment(ref oracle._uncachedRequests) > oracle._maxUncachedRequests)
+                {
+                    Interlocked.Decrement(ref oracle._uncachedRequests);
+                    throw new LimitExceededException($"Too many concurrent eth_feeHistory requests for blocks outside the cache. Limit: {oracle._maxUncachedRequests}.");
+                }
+
+                _acquired = true;
+            }
+
+            public void Dispose()
+            {
+                if (!_acquired) return;
+                _acquired = false;
+                Interlocked.Decrement(ref oracle._uncachedRequests);
+            }
+        }
+
+        private static void DropLeading<T>(ArrayPoolList<T> list, int count)
+        {
+            Span<T> items = list.AsSpan();
+            items[count..].CopyTo(items);
+            list.Truncate(items.Length - count);
         }
 
         private void TryRunCleanup()
@@ -260,27 +357,20 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private List<RewardInfo> GetRewardsInBlock(Block block, out ulong gasUsedTotal)
         {
-            static IEnumerable<ulong> CalculateGasUsed(TxReceipt[] txReceipts)
+            Transaction[] txs = block.Transactions;
+            using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, txs.Length);
+            Span<ulong> gasUsedSpan = gasUsed.AsSpan();
+            if (!TryGetGasUsedFromReceipts(block, gasUsedSpan))
             {
-                ulong previousGasUsedTotal = 0;
-                foreach (TxReceipt receipt in txReceipts)
+                // If no receipts available, approximate on GasLimit
+                // We could just go with null here too and just don't return percentiles
+                for (int i = 0; i < txs.Length; i++)
                 {
-                    ulong gasUsedTotal = receipt.GasUsedTotal;
-                    yield return gasUsedTotal - previousGasUsedTotal;
-                    previousGasUsedTotal = gasUsedTotal;
+                    gasUsedSpan[i] = txs[i].GasLimit;
                 }
             }
 
-            TxReceipt[] receipts = _receiptStorage.Get(block, false);
-            Transaction[] txs = block.Transactions;
-            using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
-                ? CalculateGasUsed(receipts)
-                // If no receipts available, approximate on GasLimit
-                // We could just go with null here too and just don't return percentiles
-                : txs.Select(static tx => tx.GasLimit));
-
             List<RewardInfo> rewardInfos = new(txs.Length);
-            Span<ulong> gasUsedSpan = gasUsed.AsSpan();
             gasUsedTotal = 0;
             for (int i = 0; i < txs.Length; i++)
             {
@@ -292,6 +382,30 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             CollectionsMarshal.AsSpan(rewardInfos).Sort(default(RewardInfoByPremiumAscendingComparer));
 
             return rewardInfos;
+        }
+
+        /// <remarks>
+        /// Iterates the stored receipts without materializing them: their logs, which a fee history never needs,
+        /// make up most of their size.
+        /// </remarks>
+        private bool TryGetGasUsedFromReceipts(Block block, Span<ulong> gasUsed)
+        {
+            if (!_receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator))
+            {
+                iterator = new ReceiptsIterator(_receiptStorage.Get(block, false));
+            }
+
+            using ReceiptsIterator receipts = iterator;
+            int count = 0;
+            ulong previousGasUsedTotal = 0;
+            while (receipts.TryGetNext(out TxReceiptStructRef receipt))
+            {
+                if (count == gasUsed.Length) return false;
+                gasUsed[count++] = receipt.GasUsedTotal - previousGasUsedTotal;
+                previousGasUsedTotal = receipt.GasUsedTotal;
+            }
+
+            return count == gasUsed.Length;
         }
 
         private static ArrayPoolList<UInt256> CalculatePercentileValues(
