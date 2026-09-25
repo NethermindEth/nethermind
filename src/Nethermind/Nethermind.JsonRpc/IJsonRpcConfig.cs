@@ -38,6 +38,7 @@ public interface IJsonRpcConfig : IConfig
             The max number of concurrent in-flight requests on the shared (sharable) singleton handler.
             Caps heavy methods promoted to sharable — `eth_call`, `eth_estimateGas`,
             `eth_createAccessList` — preventing unbounded concurrency from exhausting memory.
+            Those methods are first limited to `EthModuleConcurrentInstances` at a time; see `EvmExecutionMaxQueueWaitMs`.
             Light sharable methods (e.g. `eth_blockNumber`, `eth_getBalance`) complete in <1 ms and
             effectively never approach this limit. `eth_sendRawTransactionSync` holds a slot for as long
             as it waits for inclusion; see `RpcTxSyncMaxConcurrentRequests`. `0` to lift the limit.
@@ -180,9 +181,9 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }
 
-    /// <summary>Maximum number of EVM-executing requests waiting for an execution slot. Defaults to 500; 0 removes the limit.</summary>
+    /// <summary>Maximum number of EVM-executing requests waiting for an execution slot. Defaults to 500; 0 or less removes the limit.</summary>
     [ConfigItem(
-        Description = "The max number of EVM-executing JSON-RPC requests waiting for an execution slot; further requests are answered with `LimitExceeded` (HTTP 503) at once. `0` removes the limit.",
+        Description = "The max number of EVM-executing JSON-RPC requests waiting for an execution slot; further requests are answered with `LimitExceeded` (HTTP 503) at once. `0` or a negative value removes the limit.",
         DefaultValue = "500")]
     int EvmExecutionQueueLimit { get; set; }
 

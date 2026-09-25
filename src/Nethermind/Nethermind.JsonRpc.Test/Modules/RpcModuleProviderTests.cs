@@ -21,6 +21,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -239,7 +240,9 @@ public class RpcModuleProviderTests
     [Test]
     public void Evm_execution_flag_marks_exactly_the_evm_executing_methods()
     {
-        IEnumerable<string> flagged = typeof(IRpcModule).Assembly.GetTypes()
+        // The Engine API is swept too: a gated engine method would shed consensus-client calls under load.
+        IEnumerable<string> flagged = new[] { typeof(IRpcModule).Assembly, typeof(IEngineRpcModule).Assembly }
+            .SelectMany(static a => a.GetTypes())
             .Where(static t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t))
             .SelectMany(static t => t.GetMethods())
             .Where(static m => m.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsEvmExecution == true)
