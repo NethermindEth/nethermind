@@ -516,8 +516,9 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        // The improvement check compares against BestSuggestedBody, which unprocessed suggestions never advance,
-        // so a re-suggested known block of a longer but lighter fork would otherwise replace the header.
+        /// <summary>Tells whether pre-merge <paramref name="header"/> is lighter than <see cref="BestSuggestedHeader"/>.</summary>
+        /// <remarks>The improvement check compares against <see cref="BestSuggestedBody"/>, which unprocessed
+        /// suggestions never advance, so any lighter pre-merge block would otherwise replace the header.</remarks>
         private bool IsLighterPreMergeThanBestSuggestedHeader(BlockHeader header) =>
             !header.IsPostTTD(SpecProvider) && header.TotalDifficulty < BestSuggestedHeader?.TotalDifficulty;
 
