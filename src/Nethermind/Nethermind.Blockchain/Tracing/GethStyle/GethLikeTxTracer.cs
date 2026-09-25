@@ -55,6 +55,11 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
         Trace.ReturnValue = output ?? [];
     }
 
+    // Geth's struct logger subscribes to OnOpcode, but not to post-execution OnFault.
+    protected static bool IsExecutionFault(EvmExceptionType error) => error is
+        EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or
+        EvmExceptionType.AccessViolation;
+
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
         EvmExceptionType.None => null,
