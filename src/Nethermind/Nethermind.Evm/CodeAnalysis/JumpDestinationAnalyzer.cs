@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Core.Extensions;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.ZkEvm.Test")]
@@ -76,14 +76,10 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
 
         long[] bitmap = CreateBitmap(code.Length);
 
-        return Avx512Vbmi.IsSupported && Vector512.IsHardwareAccelerated && code.Length >= Vector512<sbyte>.Count ?
-            PopulateJumpDestinationBitmap_Vector512(bitmap, code) :
-            Avx2.IsSupported && code.Length >= Vector256<sbyte>.Count ?
-            PopulateJumpDestinationBitmap_Vector256(bitmap, code) :
-            Ssse3.IsSupported && code.Length >= Vector128<sbyte>.Count ?
-            PopulateJumpDestinationBitmap_Ssse3(bitmap, code) :
-            AdvSimd.Arm64.IsSupported && code.Length >= Vector128<sbyte>.Count ?
-            PopulateJumpDestinationBitmap_AdvSimd(bitmap, code) :
+        return Avx512Vbmi.IsSupported && Vector512.IsHardwareAccelerated && code.Length >= Vector512<sbyte>.Count ? PopulateJumpDestinationBitmap_Vector512(bitmap, code) :
+            Avx2.IsSupported && code.Length >= Vector256<sbyte>.Count ? PopulateJumpDestinationBitmap_Vector256(bitmap, code) :
+            Ssse3.IsSupported && code.Length >= Vector128<sbyte>.Count ? PopulateJumpDestinationBitmap_Ssse3(bitmap, code) :
+            AdvSimd.Arm64.IsSupported && code.Length >= Vector128<sbyte>.Count ? PopulateJumpDestinationBitmap_AdvSimd(bitmap, code) :
             PopulateJumpDestinationBitmap_Scalar(bitmap, code);
     }
 
@@ -113,7 +109,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     /// <summary>Returns 1 when the last lane is a real PUSH1, so the byte after <paramref name="push1s"/> is its data.</summary>
     /// <remarks>The last lane is a real PUSH1 exactly when the run of 0x60 bytes that ends there has odd length.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Push1CarryOut(ulong push1s) => (ulong)BitOperations.LeadingZeroCount(~push1s) & 1;
+    private static ulong Push1CarryOut(ulong push1s) => (ulong)Bytes.LeadingZeroBits(~push1s) & 1;
 
     /// <remarks>
     /// Each lane of a 64-byte block starts as its offset plus the length of the instruction that would start there.
