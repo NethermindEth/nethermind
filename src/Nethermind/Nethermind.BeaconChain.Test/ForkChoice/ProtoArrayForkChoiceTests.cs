@@ -69,7 +69,7 @@ public class ProtoArrayForkChoiceTests
     }
 
     /// <summary>
-    /// The proposer reorg tie-break (<see cref="ForkChoiceRunner.ShouldOverrideForkchoiceUpdate"/>) reads a
+    /// The proposer reorg tie-break (<see cref="ForkChoiceRunner.GetProposerHead"/>) reads a
     /// block's parent and unrealized-justified checkpoint straight from the proto-array rather than keeping
     /// a second copy, so these accessors are the only thing standing between it and silently reading the
     /// wrong node.
