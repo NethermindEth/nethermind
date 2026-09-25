@@ -306,11 +306,11 @@ public class ParityLikeTxTracer : TxTracer
 
     public override void ReportOperationRemainingGas(ulong gas)
     {
-        if (!_gasAlreadySetForCurrentOp)
+        if (!_gasAlreadySetForCurrentOp && _currentOperation is not null)
         {
             _gasAlreadySetForCurrentOp = true;
 
-            _currentOperation!.Cost -= (_treatGasParityStyle ? 0UL : gas);
+            _currentOperation.Cost -= (_treatGasParityStyle ? 0UL : gas);
 
             // based on Parity behaviour - adding stipend to the gas cost
             if (_currentOperation.Cost == 7400UL)
@@ -501,6 +501,9 @@ public class ParityLikeTxTracer : TxTracer
         // TODO: use memory pool?
         _currentVmTrace.VmTrace.Code = byteCode.ToArray();
 
-    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) =>
-        _currentOperation!.Used = gasAvailable;
+    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
+    {
+        if (_currentOperation is null) return;
+        _currentOperation.Used = gasAvailable;
+    }
 }

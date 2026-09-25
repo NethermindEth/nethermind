@@ -31,6 +31,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -1739,6 +1740,31 @@ public class TraceRpcModuleTests
         string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"{bytecode}\",\"gas\":\"0xf4240\"}},{JsonSerializer.Serialize(traceTypes)}]]";
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
         return JToken.Parse(response)["result"]![0]!["vmTrace"]!;
+    }
+
+    [Test]
+    public async Task VmTrace_top_level_precompile_failure_returns_empty_operations(
+        [Values] bool streaming, [Values] bool includeTrace)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        string[] traceTypes = includeTrace ? ["vmTrace", "trace"] : ["vmTrace"];
+        // Blake2F requires exactly 213 input bytes.
+        object call = new { from = TestItem.AddressA, to = Blake2FPrecompile.Address, data = "0x", gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, traceTypes, "latest");
+        JToken parsed = JToken.Parse(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+            Assert.That(parsed["result"]?["output"]?.Value<string>(), Is.EqualTo("0x"), response);
+            Assert.That(parsed["result"]?["vmTrace"]?["ops"], Is.Empty, response);
+            if (includeTrace)
+                Assert.That(parsed["result"]?["trace"]?[0]?["error"]?.Value<string>(), Is.EqualTo("Out of gas"), response);
+        }
     }
 
     [Test]
