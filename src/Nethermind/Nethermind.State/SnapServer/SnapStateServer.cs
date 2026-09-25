@@ -76,8 +76,9 @@ public class SnapStateServer : ISnapStateServer
         StateTree tree = new(_store, _logManager);
         bool abort = false;
         long responseSize = 0;
+        int lookups = 0;
 
-        for (int i = 0; i < pathLength && !abort && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; i++)
+        for (int i = 0; i < pathLength && !abort && responseSize < byteLimit && lookups < ISnapStateServer.MaxTrieNodeLookups && !cancellationToken.IsCancellationRequested; i++)
         {
             byte[][]? requestedPath = pathSet[i].Group;
             switch (requestedPath.Length)
@@ -88,6 +89,7 @@ public class SnapStateServer : ISnapStateServer
                     try
                     {
                         byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
+                        lookups++;
                         writer.WriteValue(rlp);
                         responseSize += rlp?.Length ?? 0;
                     }
@@ -105,14 +107,16 @@ public class SnapStateServer : ISnapStateServer
                                 ? accountPathBytes
                                 : accountPathBytes.PadRight(Hash256.Size));
                         Account? account = GetAccountByPath(tree, rootHash, accountPathBytes);
+                        lookups++;
                         if (account is not null)
                         {
                             Hash256? storageRoot = account.StorageRoot;
                             StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
 
-                            for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
+                            for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && lookups < ISnapStateServer.MaxTrieNodeLookups && !cancellationToken.IsCancellationRequested; reqStorage++)
                             {
                                 byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
+                                lookups++;
                                 writer.WriteValue(sRlp);
                                 responseSize += sRlp?.Length ?? 0;
                             }

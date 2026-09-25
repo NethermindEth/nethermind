@@ -48,7 +48,8 @@ public class ChainHeadInfoProviderTests
     public void Head_facts_are_seeded_from_a_processed_head()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithNumber(9_999_999).WithGasLimit(HeadGasLimit).WithBaseFeePerGas(7).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(9_999_999).WithGasLimit(HeadGasLimit)
+            .WithBaseFeePerGas(7).WithTimestamp(1_000_000).TestObject);
 
         ChainHeadInfoProvider provider = CreateProvider(blockTree);
 
@@ -56,6 +57,7 @@ public class ChainHeadInfoProviderTests
         {
             Assert.That(provider.BlockGasLimit, Is.EqualTo(HeadGasLimit));
             Assert.That(provider.CurrentBaseFee, Is.EqualTo((UInt256)7));
+            Assert.That(provider.HeadTimestamp, Is.EqualTo(1_000_000));
         }
     }
 

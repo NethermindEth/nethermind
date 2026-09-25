@@ -99,11 +99,13 @@ public static partial class EvmInstructions
         // Construct a transient storage cell for the executing account at the specified key.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        vm.WorldState.SetTransientState(in storageCell, in newValue);
-
         if (vm.IsTracingOpLevelStorage)
         {
-            TraceTransientStorageSet(vm, in storageCell, in newValue);
+            SetTransientStorageAndTrace(vm, in storageCell, in newValue);
+        }
+        else
+        {
+            vm.WorldState.SetTransientState(in storageCell, in newValue);
         }
 
         return EvmExceptionType.None;
@@ -518,6 +520,10 @@ public static partial class EvmInstructions
                 {
                     bool ssetOutOfGas = !TGasPolicy.TryConsumeStorageWrite<TEip8037, OnFlag, Eip8038>(ref gas, spec);
                     if (ssetOutOfGas) goto OutOfGas;
+                    if (TEip8037.IsActive && vm.TxExecutionContext.FrameTxContext is { } chargeFrameCtx)
+                    {
+                        chargeFrameCtx.RecordStateChargeOwner(in storageCell, chargeFrameCtx.CurrentFrameIndex);
+                    }
                 }
                 else
                 {
@@ -567,7 +573,18 @@ public static partial class EvmInstructions
 
                     if (TEip8037.IsActive && originalIsZero)
                     {
-                        vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetStorageSetStateCost());
+                        long stateGasCost = TGasPolicy.GetStorageSetStateCost();
+                        FrameTxContext? reversalFrameCtx = vm.TxExecutionContext.FrameTxContext;
+                        if (reversalFrameCtx is not null
+                            && reversalFrameCtx.TryResolveStateChargeOwner(in storageCell, out int chargeOwner)
+                            && chargeOwner != reversalFrameCtx.CurrentFrameIndex)
+                        {
+                            reversalFrameCtx.ReduceFrameStateGas(chargeOwner, stateGasCost);
+                        }
+                        else
+                        {
+                            vm.CreditStateGasRefund<TEip8037>(ref gas, stateGasCost);
+                        }
                         if (!Eip8038.IsActive)
                             refundFromReversal = (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead);
                     }
@@ -623,13 +640,17 @@ public static partial class EvmInstructions
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
-    private static void TraceTransientStorageSet<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageCell cell, in UInt256 value)
+    private static void SetTransientStorageAndTrace<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageCell cell, in UInt256 value)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // A transient write always takes effect, so the stored value after the write is the value just written.
+        vm.WorldState.GetTransientState(in cell, out UInt256 current);
+        vm.WorldState.SetTransientState(in cell, in value);
+
         EvmWord word = value.ToBigEndianWord();
+        EvmWord currentWord = current.ToBigEndianWord();
         ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1));
-        vm.TxTracer.SetOperationTransientStorage(cell.Address, cell.Index, bytes, value.IsZero ? BytesZero : bytes);
+        ReadOnlySpan<byte> currentBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref currentWord, 1));
+        vm.TxTracer.SetOperationTransientStorage(cell.Address, cell.Index, bytes, current.IsZero ? BytesZero : currentBytes);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -650,7 +671,7 @@ public static partial class EvmInstructions
         Unsafe.SkipInit(out EvmWord word);
         EvmWord storageWord = storageCell.Index.ToBigEndianWord();
         ReadOnlySpan<byte> storageBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref storageWord, 1));
-        vm.TxTracer.ReportStorageChange(storageBytes, value.ToMinimalBigEndian(ref word));
+        vm.TxTracer.ReportOperationStorageChange(storageBytes, value.ToMinimalBigEndian(ref word));
     }
 
     /// <summary>

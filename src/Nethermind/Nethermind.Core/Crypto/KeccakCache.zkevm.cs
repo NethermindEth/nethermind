@@ -76,6 +76,22 @@ public static partial class KeccakCache
         WriteSlot(ref slot, ref inputRef, length, words, partial, lastWord, keccak256);
     }
 
+    internal static bool TryGet(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
+    {
+        if ((nuint)(uint)input.Length - MinMemoLength > MaxMemoLength - MinMemoLength)
+        {
+            Unsafe.SkipInit(out keccak256);
+            return false;
+        }
+        return TryReadMemo(input, out keccak256);
+    }
+
+    internal static void Store(ReadOnlySpan<byte> input, in ValueHash256 keccak256)
+    {
+        if ((nuint)(uint)input.Length - MinMemoLength > MaxMemoLength - MinMemoLength) return;
+        WriteMemo(input, keccak256);
+    }
+
     /// <summary>Reads the digest memoized for an input, if its slot still holds that input.</summary>
     /// <param name="input">An input of <see cref="MinMemoLength"/> to <see cref="MaxMemoLength"/> bytes.</param>
     /// <param name="keccak256">The memoized digest, or unspecified on a miss.</param>

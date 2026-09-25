@@ -41,6 +41,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     }
 
     private readonly int _workerTaskCount = 1;
+    private int _disposed;
 
     public JsonRpcSocketsClient(
         string clientName,
@@ -65,8 +66,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         _workerTaskCount = concurrency;
     }
 
+    /// <remarks>Idempotent: a subscription can disconnect a lagging client while its owner still holds it.</remarks>
     public override void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
         base.Dispose();
         _sendSemaphore.Dispose();
         _jsonRpcContext.Dispose();

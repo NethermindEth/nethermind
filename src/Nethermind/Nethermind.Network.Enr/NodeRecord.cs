@@ -28,7 +28,7 @@ public class NodeRecord
 
     private Signature? _signature;
 
-    private SortedDictionary<string, EnrContentEntry> Entries { get; } = new(StringComparer.Ordinal);
+    private SortedList<string, EnrContentEntry> Entries { get; } = new(8, StringComparer.Ordinal);
 
     internal byte[]? OriginalRlp { get; set; }
 
@@ -334,9 +334,9 @@ public class NodeRecord
     {
         int contentLength =
             Rlp.LengthOf(EnrSequence); // this is a different meaning of a sequence than the RLP sequence
-        foreach ((_, EnrContentEntry enrContentEntry) in Entries)
+        for (int i = 0; i < Entries.Count; i++)
         {
-            contentLength += enrContentEntry.GetRlpLength();
+            contentLength += Entries.GetValueAtIndex(i).GetRlpLength();
         }
 
         return contentLength;
@@ -365,9 +365,9 @@ public class NodeRecord
         int contentLength = GetContentLengthWithoutSignature();
         writer.StartSequence(contentLength);
         writer.Encode(EnrSequence);
-        foreach ((_, EnrContentEntry contentEntry) in Entries)
+        for (int i = 0; i < Entries.Count; i++)
         {
-            contentEntry.Encode(ref writer);
+            Entries.GetValueAtIndex(i).Encode(ref writer);
         }
     }
 
@@ -410,9 +410,9 @@ public class NodeRecord
         writer.StartSequence(contentLength);
         writer.Encode(Signature!.Bytes);
         writer.Encode(EnrSequence);
-        foreach ((_, EnrContentEntry contentEntry) in Entries)
+        for (int i = 0; i < Entries.Count; i++)
         {
-            contentEntry.Encode(ref writer);
+            Entries.GetValueAtIndex(i).Encode(ref writer);
         }
     }
 

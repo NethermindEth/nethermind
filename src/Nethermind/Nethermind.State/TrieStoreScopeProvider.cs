@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.Intrinsics.X86;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -34,9 +36,15 @@ namespace Nethermind.State;
 /// the same StateProvider would skip re-inserting the bytes, throwing
 /// "Code 0x… is missing from the database" on the next read.
 /// </param>
-public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager, bool codeDbIsPersistent = false) : IWorldStateScopeProvider
+public class TrieStoreScopeProvider(
+    ITrieStore trieStore,
+    IKeyValueStoreWithBatching codeDb,
+    IStateHeaderProvider stateHeaderProvider,
+    ILogManager logManager,
+    bool codeDbIsPersistent = false) : IWorldStateScopeProvider
 {
     private readonly ITrieStore _trieStore = trieStore;
+    private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
     private readonly ILogManager _logManager = logManager;
     protected StateTree? _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
@@ -48,13 +56,36 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    /// <summary>Whether a scope can be opened at <paramref name="baseBlock"/>; a backend that recovers missing nodes on demand may accept a root it does not hold.</summary>
+    protected virtual bool CanBeginScope(BlockHeader? baseBlock) => HasRoot(baseBlock);
+
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => this.HasRootForTarget(_stateHeaderProvider, targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        this.TryBeginScopeAtBase(_stateHeaderProvider, targetBlock, metrics, out scope);
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
-        StateTree backingStateTree = _backingStateTree ??= CreateStateTree();
-        backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        try
+        {
+            if (!CanBeginScope(baseBlock))
+            {
+                trieStoreCloser.Dispose();
+                scope = null;
+                return false;
+            }
 
-        return new TrieStoreWorldStateBackendScope(backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+            StateTree backingStateTree = _backingStateTree ??= CreateStateTree();
+            backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+            scope = new TrieStoreWorldStateBackendScope(backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+            return true;
+        }
+        catch
+        {
+            trieStoreCloser.Dispose();
+            throw;
+        }
     }
 
     protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
@@ -337,8 +368,13 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
             OnAccountUpdated = null;
 
-            using (StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
+            if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
             {
+                scope._backingStateTree.SetAccounts(_dirtyAccounts);
+            }
+            else
+            {
+                using StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count);
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                 {
                     stateSetter.Set(kv.Key, kv.Value);
@@ -346,7 +382,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             }
 
             scope.ClearLoadedAccounts();
-
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account)
@@ -373,6 +408,23 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 : null;
 
         private ValueHash256 _keyBuff = new();
+        private PendingHashes? _pendingHashes;
+
+        private sealed class PendingHashes
+        {
+            internal KeyHashBatch Batch;
+            internal PendingHashes() => Batch.Initialize(Hash256.Size);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void AddUnhashedEntry(ReadOnlySpan<byte> preimage, ReadOnlySpan<byte> encoded, bool isZero)
+        {
+            PendingHashes pending = _pendingHashes ??= new();
+            int index = _bulkWrite!.Count;
+            _bulkWrite.Add(StorageTree.CreateBulkSetEntry(default, encoded, isZero));
+            pending.Batch.AddMissing(preimage, index);
+            if (pending.Batch.IsFull) pending.Batch.Flush(_bulkWrite.AsSpan());
+        }
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, in UInt256 value)
@@ -387,7 +439,18 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             }
             else
             {
-                StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
+                if (Avx2.IsSupported)
+                {
+                    if (!StorageTree.TryGetCachedKey(index, out _keyBuff, out ValueHash256 preimage))
+                    {
+                        AddUnhashedEntry(preimage.BytesAsSpan, encoded, isZero);
+                        return;
+                    }
+                }
+                else
+                {
+                    StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
+                }
                 _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, encoded, isZero));
             }
         }
@@ -414,6 +477,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     storageTree.RootHash = Keccak.EmptyTreeHash;
                 }
 
+                _pendingHashes?.Batch.Flush(_bulkWrite.AsSpan());
+                _pendingHashes = null;
                 bulkCount = _bulkWrite.Count;
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
                 storageTree.BulkSet(asRef);

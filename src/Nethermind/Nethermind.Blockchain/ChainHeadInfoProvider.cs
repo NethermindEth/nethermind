@@ -32,6 +32,7 @@ namespace Nethermind.Blockchain
             ReadOnlyStateProvider = stateProvider;
             Block? head = blockTree.Head;
             HeadNumber = head?.Number ?? 0;
+            HeadTimestamp = head?.Timestamp ?? 0;
             // Genesis is not a head worth gating on: a node still syncing to the tip would price and bound
             // transactions against it, so the facts below stay at their defaults until the first head change.
             if (head is not null && !head.IsGenesis) ReadHead(head.Header);
@@ -45,6 +46,8 @@ namespace Nethermind.Blockchain
         public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
         public ulong HeadNumber { get; private set; }
+
+        public ulong HeadTimestamp { get; private set; }
 
         public ulong? BlockGasLimit { get; internal set; }
 
@@ -86,6 +89,7 @@ namespace Nethermind.Blockchain
         private void ReadHead(BlockHeader header)
         {
             IReleaseSpec spec = SpecProvider.GetSpec(header);
+            HeadTimestamp = header.Timestamp;
             BlockGasLimit = header.GasLimit;
             CurrentBaseFee = header.BaseFeePerGas;
             CurrentFeePerBlobGas =
