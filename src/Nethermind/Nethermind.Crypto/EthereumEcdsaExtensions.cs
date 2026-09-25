@@ -189,23 +189,21 @@ public static class EthereumEcdsaExtensions
     public static bool TryRecoverPublicKey(
         this IEthereumEcdsa ecdsa, Transaction tx, ReadOnlySpan<byte> encoded, Span<byte> publicKey, bool useSignatureChainId = false)
     {
-        if (tx.Signature is not { } signature ||
-            !TryCalculateSignatureHash(ecdsa, tx, signature, encoded, useSignatureChainId, out ValueHash256 hash))
-        {
-            return false;
-        }
+        if (tx.Signature is not { } signature) return false;
+
+        // A type whose signed bytes are not a prefix of its encoding falls back to encoding the transaction.
+        ValueHash256 hash = TxDecoder.TryGetSignedPayload(encoded, tx.Type, out ReadOnlySpan<byte> signedPayload)
+            ? SignedPayloadHash(ecdsa, tx, signature, signedPayload, useSignatureChainId)
+            : CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
 
         return EthereumEcdsa.RecoverPublicKeyRaw(signature.Bytes, signature.RecoveryId, hash.Bytes, publicKey);
     }
 
-    private static bool TryCalculateSignatureHash(
-        IEthereumEcdsa ecdsa, Transaction tx, Signature signature, ReadOnlySpan<byte> encoded, bool useSignatureChainId, out ValueHash256 hash)
+    /// <summary>Hashes a signed payload that is already encoded, behind the sequence header the signer used.</summary>
+    private static ValueHash256 SignedPayloadHash(
+        IEthereumEcdsa ecdsa, Transaction tx, Signature signature, scoped ReadOnlySpan<byte> signedPayload, bool useSignatureChainId)
     {
-        hash = default;
         (bool applyEip155, ulong chainId) = SigningParameters(ecdsa, tx, signature, useSignatureChainId);
-
-        if (!TxDecoder.TryGetSignedPayload(encoded, tx.Type, out ReadOnlySpan<byte> signedPayload)) return false;
-
         bool typed = tx.Type != TxType.Legacy;
         int eip155Length = !typed && applyEip155 && chainId != 0 ? Rlp.LengthOf(chainId) + 2 : 0;
 
@@ -222,8 +220,7 @@ public static class EthereumEcdsaExtensions
             WriteByte(ref writer, EmptyByteArray);
         }
 
-        hash = writer.GetValueHash();
-        return true;
+        return writer.GetValueHash();
     }
 
     private const byte EmptyByteArray = 128;
