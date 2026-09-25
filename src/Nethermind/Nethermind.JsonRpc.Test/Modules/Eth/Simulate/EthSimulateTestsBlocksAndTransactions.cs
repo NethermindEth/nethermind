@@ -1068,20 +1068,74 @@ public class EthSimulateTestsBlocksAndTransactions
         TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
         // Pin the EIP-7928 premise so a spec change can't silently turn these into non-BAL tests.
         Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+        // Pin the EIP-8037 premise so a spec change can't silently defang the two-dimensional gas tests.
+        Assert.That(spec.IsEip8037Enabled, Is.True);
         return await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
     }
 
     /// <summary>
-    /// Regression test for #12692: under EIP-7928 the block-access-list path must project a
-    /// successful call's gas usage into the simulated block header.
+    /// Block <c>gasUsed</c> is <c>max(Σ execution, Σ state)</c>: an execution-dominated block with state gas in it reports
+    /// the execution sum. The state-dominated side is covered by <see cref="eth_simulateV1_reports_multidimensional_block_gas_used"/>.
     /// </summary>
     [Test]
-    public async Task eth_simulateV1_reports_block_gas_used_on_bal_path()
+    public async Task eth_simulateV1_block_gas_used_is_max_of_execution_and_state_dimensions([Values] bool validation)
     {
-        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+        const ulong callGas = 300_000;
+        // EIP-2780 value transfer to a new account: TX_BASE_COST + cold recipient access + TX_VALUE_COST.
+        const ulong newAccountTransferExecutionGas =
+            GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780;
+        Address invalidOpcodeContract = Address.FromNumber(0xfe);
 
-        // Explicit Gas avoids the EIP-8037 block-gas default (#12692 item 1); zero gas price keeps
-        // the funded transfer unambiguously successful.
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                        { invalidOpcodeContract, new AccountOverride { Code = Bytes.FromHexString("0xfe") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7778), Value = 1000, Gas = callGas, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = invalidOpcodeContract, Gas = callGas, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+        Assert.That(calls[0].Error, Is.Null);
+        Assert.That(calls[1].Error, Is.Not.Null);
+        // 321_000 of execution against 183_600 of state; a sum would give 504_600, "state when non-zero" 183_600.
+        Assert.That(result.Data![0].GasUsed, Is.EqualTo(newAccountTransferExecutionGas + callGas));
+    }
+
+    /// <summary>
+    /// On forks without EIP-7778 the block <c>gasUsed</c> reported by eth_simulateV1 must be the gas
+    /// the calls actually spent, not their gas limits. This is the behaviour that applies to every
+    /// currently deployed fork.
+    /// </summary>
+    [TestCase(true, TestName = "block gasUsed is the spent gas, not the call gas limit (validation=true)")]
+    [TestCase(false, TestName = "block gasUsed is the spent gas, not the call gas limit (validation=false)")]
+    public async Task eth_simulateV1_block_gas_used_is_spent_gas_without_eip7778(bool validation)
+    {
+        // Default chain is Berlin: neither EIP-7778 nor EIP-8037, so the funded transfer costs exactly
+        // the 21k intrinsic while the call asks for 300k.
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build();
+
+        // Pin the pre-EIP-7778 premise so a default-spec change can't silently invert this test.
+        Assert.That(chain.SpecProvider.GetSpec(chain.BlockFinder.Head!.Header).IsEip7778Enabled, Is.False);
+
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
@@ -1094,19 +1148,19 @@ public class EthSimulateTestsBlocksAndTransactions
                     },
                     Calls =
                     [
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1000, Gas = 100_000, GasPrice = UInt256.Zero }
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1000, Gas = 300_000, GasPrice = UInt256.Zero }
                     ]
                 }
             ],
-            Validation = true
+            Validation = validation
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
-        Assert.That(result.Data![0].GasUsed, Is.GreaterThan(0));
+        Assert.That(result.Data![0].Calls.Select(static c => c.Error), Is.All.Null);
+        Assert.That(result.Data![0].GasUsed, Is.EqualTo(GasCostOf.Transaction));
     }
 
     /// <summary>
