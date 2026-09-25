@@ -29,6 +29,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Json;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
@@ -36,6 +37,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -1870,6 +1872,50 @@ public partial class EthRpcModuleTests
     }
 
 
+    /// <summary>The block-level gas breakdown is diagnostic and outside execution-apis, so a receipt carrying it
+    /// must still serialize to the standard shape in the eth_ namespace.</summary>
+    [Test]
+    public async Task Eth_receipts_omit_the_block_gas_breakdown()
+    {
+        using Context ctx = await Context.Create();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+
+        Block block = Build.A.Block.WithNumber(1).WithTimestamp(10)
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .TestObject;
+
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.WithLogs([]).TestObject;
+        receipt.BlockGasUsed = 10;
+        receipt.ExecutionGasUsed = 11;
+        receipt.StorageGasUsed = 12;
+
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        receiptFinder.Get(Arg.Any<Block>()).Returns([receipt]);
+        receiptFinder.Get(Arg.Any<Hash256>()).Returns([receipt]);
+        blockchainBridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Returns((receipt, 10UL, new(UInt256.One), 0));
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
+
+        using JsonDocument single = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString()));
+        using JsonDocument batch = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getBlockReceipts", "latest"));
+
+        JsonElement[] receipts = [single.RootElement.GetProperty("result"), batch.RootElement.GetProperty("result")[0]];
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (JsonElement element in receipts)
+            {
+                Assert.That(element.GetProperty("gasUsed").GetString(), Is.EqualTo("0x64"), "the standard field still reports the receipt's own gas");
+                Assert.That(element.TryGetProperty("blockGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("executionGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("storageGasUsed", out _), Is.False);
+            }
+        }
+    }
+
     [Test]
     public async Task Eth_get_transaction_receipt_when_block_has_few_receipts()
     {
@@ -2091,12 +2137,102 @@ public partial class EthRpcModuleTests
         string rawTxHex, string? timeoutMs, int expectedCode, string expectedMessageFragment)
     {
         using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.RpcTxSyncMaxConcurrentRequests = 1;
         string serialized = timeoutMs is null
             ? await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex)
             : await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex, timeoutMs);
 
-        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
-        Assert.That(serialized, Does.Contain(expectedMessageFragment));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
+            Assert.That(serialized, Does.Contain(expectedMessageFragment));
+        }
+
+        string retry = await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", "c0");
+        Assert.That(retry, Does.Contain("Invalid RLP"));
+    }
+
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    [TestCase(1, true)]
+    [TestCase(2, true)]
+    public async Task EthSendRawTransactionSync_UsesSeparateLimitFromExclusiveCalls(int limit, bool submissionAccepted)
+    {
+        JsonRpcConfig config = new()
+        {
+            EthModuleConcurrentInstances = 1,
+            // Exclusive rentals fail at once instead of queueing, so eth_newBlockFilter below fails
+            // if a pending sync call holds the only exclusive instance.
+            Timeout = 0,
+            RpcTxSyncMaxConcurrentRequests = limit
+        };
+        TaskCompletionSource<(Hash256 Hash, AcceptTxResult? AddTxResult)> submission = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ITxSender sender = Substitute.For<ITxSender>();
+        sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(_ => new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>(submission.Task));
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Throws(new InvalidOperationException("Receipt lookup failed."));
+        IBlockchainBridgeFactory bridgeFactory = Substitute.For<IBlockchainBridgeFactory>();
+        bridgeFactory.CreateBlockchainBridge().Returns(bridge);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton(sender)
+            .AddSingleton(bridgeFactory)
+            .Build();
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        int pendingCount = limit == 0 ? 3 : limit;
+        List<Task<JsonRpcResponse>> pending = [];
+        try
+        {
+            for (int i = 0; i < pendingCount; i++)
+            {
+                Task<JsonRpcResponse> request = service.SendRequestAsync(
+                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context).AsTask();
+                pending.Add(request);
+                Assert.That(request.IsCompleted, Is.False);
+            }
+
+            using JsonRpcResponse filterResponse = await service.SendRequestAsync(
+                RpcTest.BuildJsonRequest("eth_newBlockFilter"), context);
+            RpcTest.AssertSuccess(filterResponse);
+
+            if (limit > 0)
+            {
+                // A refusal completes synchronously. A call let through would wait forever on the submission,
+                // which only the finally releases, so leave it to the finally instead of awaiting it here.
+                Task<JsonRpcResponse> refusedTask = service.SendRequestAsync(
+                    RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context).AsTask();
+                if (!refusedTask.IsCompleted) pending.Add(refusedTask);
+                Assert.That(refusedTask.IsCompleted, Is.True);
+
+                using JsonRpcResponse refused = await refusedTask;
+                Error error = RpcTest.AssertError(refused);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(error.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+                    Assert.That(error.SuppressWarning, Is.True, "refusal must be counted in JsonRpcOverloadRejections");
+                }
+            }
+            Assert.That(sender.ReceivedCalls().Count(), Is.EqualTo(pendingCount));
+        }
+        finally
+        {
+            submission.TrySetResult((tx.Hash!, submissionAccepted ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            foreach (JsonRpcResponse response in await Task.WhenAll(pending)) response.Dispose();
+        }
+
+        using JsonRpcResponse retry = await service.SendRequestAsync(
+            RpcTest.BuildJsonRequest("eth_sendRawTransactionSync", raw), context);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(retry).Code,
+                Is.EqualTo(submissionAccepted ? ErrorCodes.InternalError : ErrorCodes.TransactionRejected));
+            Assert.That(sender.ReceivedCalls().Count(), Is.EqualTo(pendingCount + 1));
+            bridge.Received(submissionAccepted ? pendingCount + 1 : 0).GetTxReceiptInfo(tx.Hash!);
+        }
     }
 
     private static IEnumerable<TestCaseData> SendRawTransactionSyncFailureCases()
@@ -2124,13 +2260,19 @@ public partial class EthRpcModuleTests
         bridge.GetTxReceiptInfo(txHash)
             .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { RpcTxSyncMaxConcurrentRequests = 1 })
             .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
 
-        string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
-
-        Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
-        Assert.That(serialized, Does.Not.Contain("\"error\":"));
+        for (int i = 0; i < 2; i++)
+        {
+            string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Does.Contain($"\"transactionHash\":\"{txHash}\""));
+                Assert.That(serialized, Does.Not.Contain("\"error\":"));
+            }
+        }
     }
 
     [Test]

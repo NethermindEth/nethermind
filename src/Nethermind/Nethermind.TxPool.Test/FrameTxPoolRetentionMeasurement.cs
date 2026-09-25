@@ -1,0 +1,228 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+#nullable enable
+
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Events;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
+
+namespace Nethermind.TxPool.Test;
+
+/// <summary>Measures how many chain heads a pending frame transaction survives in the pool, and how an expiry
+/// deadline bounds that.</summary>
+/// <remarks>Retention only: nothing here produces a block or calls <c>ITxPool.EvictTransaction</c> — the expiry
+/// sweep is the one eviction reached — and the pool is built without a validation-prefix simulator, so
+/// revalidation reaches no verdict on an opaque prefix either.
+/// <c>FrameTxProducerRetryMeasurement</c> is where production attempts are run and the gas each one burns is
+/// counted. Results go to <c>FRAME_POOL_RETENTION_OUT</c>, then <c>FRAME_RETRY_OUT</c>, or
+/// <c>frame-pool-retention.txt</c> in the temp directory, because the test runner swallows console
+/// writers.</remarks>
+[Explicit("measurement harness")]
+public class FrameTxPoolRetentionMeasurement
+{
+    private const int HeadAdvances = 20;
+    private const int DeadlineSlots = 3;
+    private const ulong SampleFrameGas = 50_000;
+    private const ulong FirstHeadNumber = 10_000_000;
+    private const ulong SlotSeconds = 12;
+    private const ulong GenesisTimestamp = 1_700_000_000;
+
+    private ILogManager _logManager = null!;
+    private ISpecProvider _specProvider = null!;
+    private EthereumEcdsa _ethereumEcdsa = null!;
+    private TestReadOnlyStateProvider _stateProvider = null!;
+    private TestBlockTree _blockTree = null!;
+    private TxPool _txPool = null!;
+    private ulong _headNumber;
+    private ulong _headTimestamp;
+
+    [SetUp]
+    public void Setup()
+    {
+        _logManager = LimboLogs.Instance;
+        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+        _stateProvider = new TestReadOnlyStateProvider();
+        _blockTree = new TestBlockTree();
+        _headNumber = FirstHeadNumber - 1;
+        _headTimestamp = GenesisTimestamp;
+        _blockTree.Head = BuildHead();
+        _blockTree.BestSuggestedHeader = _blockTree.Head!.Header;
+        _txPool = CreatePool();
+        _stateProvider.CreateAccount(TestItem.AddressA, UInt256.MaxValue);
+    }
+
+    // Each case times its own pool, so the previous one's head, revalidation and retry work has to stop
+    // before the next one starts.
+    [TearDown]
+    public async Task TearDown()
+    {
+        if (_txPool is not null) await _txPool.DisposeAsync();
+    }
+
+    /// <summary>Positive control: without it the retention case below cannot tell "the pool keeps it" from
+    /// "the harness never advanced the head".</summary>
+    [Test]
+    public async Task Control_included_frame_transaction_leaves_the_pool()
+    {
+        Transaction tx = BuildFrameTx(nonce: 0, deadline: null);
+        Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the sample never entered the pool");
+
+        await AdvanceHead(tx);
+
+        Emit($"case=control_included pending_after_inclusion={_txPool.GetPendingTransactionsCount()}");
+        Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "an included frame transaction was not evicted");
+    }
+
+    [Test]
+    public async Task Pending_frame_transaction_survives_every_head()
+    {
+        Transaction tx = BuildFrameTx(nonce: 0, deadline: null);
+        Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        int survived = 0;
+        for (int i = 0; i < HeadAdvances; i++)
+        {
+            await AdvanceHead(includedTx: null);
+            if (IsPending(tx)) survived++;
+        }
+
+        // Both gas figures are ceilings, not observations: ValidationWorkGas is the declared bound rather than
+        // a burn, and the default eviction budget drops a frame transaction on its first failed production.
+        ulong declaredPrefixGas = FrameTxValidation.ValidationWorkGas(tx);
+        Emit($"case=retention_no_deadline heads={HeadAdvances} survived_heads={survived} "
+             + $"declared_prefix_gas={declaredPrefixGas} production_attempts=0 "
+             + $"hypothetical_gas_if_every_head_retried={declaredPrefixGas * (ulong)survived}");
+        Assert.That(survived, Is.EqualTo(HeadAdvances), "the pool dropped a pending frame transaction on its own");
+    }
+
+    /// <summary>An expiry deadline ends the retention measured above, and is the only producer-free drop this
+    /// fixture reaches.</summary>
+    /// <remarks><c>ShedNearlyExpiredFrameTransactions</c> and <c>RevalidateFrameTransactions</c> also drop pending
+    /// frame transactions on a head change with no producer involved, but need a full pool or a changed tracked
+    /// dependency, and one unchanging sample gives neither.</remarks>
+    [Test]
+    public async Task Expiry_deadline_bounds_how_long_it_is_retained()
+    {
+        ulong deadline = _headTimestamp + SlotSeconds * DeadlineSlots;
+        Transaction tx = BuildFrameTx(nonce: 0, deadline);
+        Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        int survived = 0;
+        for (int i = 0; i < HeadAdvances; i++)
+        {
+            await AdvanceHead(includedTx: null);
+            if (!IsPending(tx)) break;
+            survived++;
+        }
+
+        Emit($"case=retention_with_deadline deadline_slots={DeadlineSlots} heads={HeadAdvances} survived_heads={survived}");
+        // The sweep compares strictly and runs before the awaited TxPoolHeadChanged, so the head landing on the
+        // deadline still survives and the next one drops the sample — an exact count, not just "fewer".
+        Assert.That(survived, Is.EqualTo(DeadlineSlots), "the deadline did not bound retention at its own slots");
+    }
+
+    /// <summary>Membership in the pending set — what a producer reads, and the one predicate both cases count
+    /// with, so the two emitted <c>survived_heads</c> are comparable.</summary>
+    /// <remarks>The standard pool only, so a sample carrying blobs would never register as pending here.</remarks>
+    private bool IsPending(Transaction tx) => Array.IndexOf(_txPool.GetPendingTransactions(), tx) >= 0;
+
+    private async Task AdvanceHead(Transaction? includedTx)
+    {
+        _headNumber++;
+        _headTimestamp += SlotSeconds;
+        Block block = includedTx is null ? BuildHead() : BuildHead(includedTx);
+
+        Task waitTask = Wait.ForEventCondition<Block>(
+            CancellationToken.None,
+            e => _txPool.TxPoolHeadChanged += e,
+            e => _txPool.TxPoolHeadChanged -= e,
+            e => e.Number == block.Number);
+
+        _blockTree.Head = block;
+        _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(block));
+        await waitTask;
+    }
+
+    private Block BuildHead(params Transaction[] transactions) =>
+        Build.A.Block
+            .WithNumber(_headNumber)
+            .WithTimestamp(_headTimestamp)
+            .WithBaseFeePerGas(0)
+            .WithGasLimit(30_000_000)
+            .WithTransactions(transactions)
+            .TestObject;
+
+    /// <remarks>The prefix approves execution and payment from the sender — the layout EIP-8141 recognizes for
+    /// the public mempool — so the sample is priced by the same path a real one would be.</remarks>
+    private Transaction BuildFrameTx(ulong nonce, ulong? deadline)
+    {
+        TxFrame[] frames = deadline is null
+            ? [SelfVerify(SampleFrameGas)]
+            : [ExpiryAt(deadline.Value, SampleFrameGas), SelfVerify(SampleFrameGas)];
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = _specProvider.ChainId,
+            Nonce = nonce,
+            SenderAddress = TestItem.AddressA,
+            Frames = frames,
+            FrameSignatures = [],
+            GasLimit = 1_000_000,
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 1.GWei,
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
+    private TxPool CreatePool()
+    {
+        ChainHeadInfoProvider headInfo = new(
+            new ChainHeadSpecProvider(_specProvider, _blockTree),
+            _blockTree,
+            _stateProvider);
+
+        return new TxPool(
+            _ethereumEcdsa,
+            new BlobTxStorage(),
+            headInfo,
+            new TxPoolConfig { GasLimit = 30_000_000 },
+            new TxValidator(_specProvider.ChainId),
+            new SpecChangeTxValidator(_specProvider.ChainId),
+            _logManager,
+            new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
+            ShouldGossip.Instance,
+            incomingTxFilters: null,
+            thereIsPriorityContract: false);
+    }
+
+    private static void Emit(string line)
+    {
+        string path = Environment.GetEnvironmentVariable("FRAME_POOL_RETENTION_OUT")
+                      ?? Environment.GetEnvironmentVariable("FRAME_RETRY_OUT")
+                      ?? Path.Combine(Path.GetTempPath(), "frame-pool-retention.txt");
+        File.AppendAllText(path, $"RESULT {line}{Environment.NewLine}");
+    }
+}
