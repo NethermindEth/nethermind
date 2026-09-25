@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
@@ -36,6 +37,45 @@ namespace Nethermind.JsonRpc.TraceStore.Test;
 public class TraceStoreRpcModuleTests
 {
     private static readonly EthereumJsonSerializer Serializer = new();
+
+    [Test]
+    public void trace_get_disposes_inner_stream_after_materialization([Values] bool fail)
+    {
+        TestContext test = new();
+        using CancellationTokenSource timeout = new();
+        int executions = 0;
+        ParityTxTraceStreamingResult<ParityTxTraceFromStore> stream = new(
+            (_, _, _) => throw new AssertionException("Should materialize instead of serializing"), timeout, LimboLogs.Instance.GetClassLogger<TraceStoreRpcModuleTests>())
+        {
+            MaterializeForInProcess = () =>
+            {
+                executions++;
+                if (fail) throw new InvalidOperationException("Replay failed");
+                return [];
+            }
+        };
+        test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(stream));
+
+        if (fail) Assert.Throws<InvalidOperationException>(() => test.Module.trace_get(TestItem.KeccakA, [0]));
+        else
+        {
+            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_get(TestItem.KeccakA, [0]);
+            Assert.That(result.Data, Is.Empty);
+        }
+        Assert.That(executions, Is.EqualTo(1));
+        Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+    }
+
+    [Test]
+    public void trace_get_preserves_inner_error([Values(ErrorCodes.ResourceNotFound, ErrorCodes.ResourceUnavailable)] int errorCode)
+    {
+        TestContext test = new();
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> error =
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("Trace unavailable", errorCode, isTemporary: true);
+        test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(error);
+
+        Assert.That(test.Module.trace_get(TestItem.KeccakA, [0]), Is.SameAs(error));
+    }
 
     private static async Task<byte[]> Serialize(JsonRpcResponse response)
     {
@@ -85,7 +125,7 @@ public class TraceStoreRpcModuleTests
         Replay(new DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer>(
             new ParityLikeBlockTracer(new TraceStoreConfig().TraceTypes), test.Store, new ParityLikeTraceSerializer(LimboLogs.Instance), LimboLogs.Instance), block);
         string[] types = selection.Split(',');
-        ParityTraceTypes liveTypes = TraceRpcModule.GetParityTypes(types);
+        Assert.That(TraceRpcModule.TryGetParityTypes(types, out ParityTraceTypes liveTypes), Is.True);
         JToken expected;
         if (streaming)
         {
@@ -181,6 +221,17 @@ public class TraceStoreRpcModuleTests
         TestContext test = new();
 
         Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, new[] { ParityTraceTypes.Trace.ToString() }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.DbTrace))))).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public void trace_replayTransaction_defers_unknown_trace_type_to_inner_module()
+    {
+        TestContext test = new();
+        string[] traceTypes = ["unknown"];
+
+        test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, traceTypes);
+
+        test.InnerModule.Received(1).trace_replayTransaction(test.DbTrace.TransactionHash!, traceTypes, false);
     }
 
     [Test]

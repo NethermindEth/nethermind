@@ -1131,18 +1131,16 @@ namespace Nethermind.Network.Test
 
             public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
             {
-                Interlocked.Increment(ref _connectAsyncCallsCount);
-
                 if (_throwPlainOperationCanceledOnCancellation)
                 {
                     Task<bool> connectTask = ThrowPlainOperationCanceled(cancellationToken);
-                    ConnectCalled?.Invoke();
+                    OnConnectCalled();
                     return connectTask;
                 }
 
                 if (_isFailing)
                 {
-                    ConnectCalled?.Invoke();
+                    OnConnectCalled();
                     return Task.FromResult(false);
                 }
 
@@ -1155,8 +1153,16 @@ namespace Nethermind.Network.Test
                 }
 
                 SessionCreated?.Invoke(this, new SessionEventArgs(session));
-                ConnectCalled?.Invoke();
+                OnConnectCalled();
                 return Task.FromResult(true);
+            }
+
+            // Counted only once the call's session is registered and announced, so a waiter released by the
+            // count never observes a connect whose session it cannot see yet.
+            private void OnConnectCalled()
+            {
+                Interlocked.Increment(ref _connectAsyncCallsCount);
+                ConnectCalled?.Invoke();
             }
 
             public async Task WaitForConnectCallsAsync(int totalCount, TimeSpan timeout)

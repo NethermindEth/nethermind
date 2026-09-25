@@ -438,6 +438,90 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>
+    /// Leaving a call/create frame latches the parity-style gas flag for the resume-time update of the parent
+    /// operation. If the resume does not consume it, the flag suppresses the cost subtraction of the next
+    /// operation, which then reports the gas remaining at its start instead of what it spent.
+    /// </summary>
+    [Test]
+    public void Operation_after_frame_return_reports_its_own_cost([Values] bool isCreate, [Values] bool streaming)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .ForInitOf(new byte[3])
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        byte[] code = (isCreate
+                ? Prepare.EvmCode.Create(initCode, 0)
+                : Prepare.EvmCode.Call(TestItem.AddressC, 40000))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations =
+            streaming ? StreamVmTraceOperations(code) : CollectVmTraceOperations(code);
+
+        int frameIndex = 0;
+        while (frameIndex < operations.Count && !operations[frameIndex].HasSubtrace)
+        {
+            frameIndex++;
+        }
+
+        Assert.That(frameIndex, Is.InRange(0, operations.Count - 3), "index of the call/create operation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(operations[frameIndex].Pushes, Is.EqualTo(1), "call/create result push");
+            Assert.That(operations[frameIndex + 1].Cost, Is.EqualTo(GasCostOf.Base), "POP cost");
+            Assert.That(operations[frameIndex + 2].Cost, Is.EqualTo(GasCostOf.Free), "STOP cost");
+        }
+    }
+
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> CollectVmTraceOperations(byte[] code)
+    {
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+        List<(ulong, bool, int)> operations = [];
+        foreach (ParityVmOperationTrace operation in trace.VmTrace.Operations)
+        {
+            operations.Add((operation.Cost, operation.Sub is not null, operation.Push?.Length ?? 0));
+        }
+
+        return operations;
+    }
+
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> StreamVmTraceOperations(byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer tracer = new(
+            block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace,
+            writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: true);
+        try
+        {
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+            tracer.BuildResult();
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+
+        writer.Flush();
+        using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+        List<(ulong, bool, int)> operations = [];
+        foreach (JsonElement operation in document.RootElement.GetProperty("ops").EnumerateArray())
+        {
+            JsonElement push = operation.GetProperty("ex").GetProperty("push");
+            operations.Add((operation.GetProperty("cost").GetUInt64(),
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
+                push.ValueKind is JsonValueKind.Array ? push.GetArrayLength() : 0));
+        }
+
+        return operations;
+    }
+
     [Test]
     public void Can_trace_memory_in_vm_trace()
     {
@@ -495,8 +579,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     // Run with DOTNET_EnableAVX=0 and DOTNET_EnableHWIntrinsic=0 to exercise the Vector128 and scalar handlers.
     private static IEnumerable<TestCaseData> SuccessfulWordOperationCases()
     {
-        const string zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
-        const string one = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        const string zero = "0x0";
+        const string one = "0x1";
         const string allA = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         const string allF = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
@@ -505,7 +589,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         yield return WordOperationCase(Instruction.NOT, ["0x00"], allF);
         yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012345"], one);
         yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012346"], zero);
-        yield return WordOperationCase(Instruction.AND, [allA, "0x0f"], $"{zero[..^2]}0a");
+        yield return WordOperationCase(Instruction.AND, [allA, "0x0f"], "0xa");
         yield return WordOperationCase(Instruction.OR, [allA, "0x0f"], $"{allA[..^2]}af");
         yield return WordOperationCase(Instruction.XOR, [allA, "0x0f"], $"{allA[..^2]}a5");
         yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x00"],
@@ -514,12 +598,9 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             "0xffffffffffffffffffffffffffffffffffffffffffffff800000000000000000");
         yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x8000000000000000000000000000000000", "0x10"],
             "0xffffffffffffffffffffffffffffff8000000000000000000000000000000000");
-        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x20"],
-            "0x0000000000000000000000000000000000000000000000000000000000000080");
-        yield return WordOperationCase(Instruction.CLZ, ["0x00"],
-            "0x0000000000000000000000000000000000000000000000000000000000000100");
-        yield return WordOperationCase(Instruction.CLZ, [one],
-            "0x00000000000000000000000000000000000000000000000000000000000000ff");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x20"], "0x80");
+        yield return WordOperationCase(Instruction.CLZ, ["0x00"], "0x100");
+        yield return WordOperationCase(Instruction.CLZ, ["0x01"], "0xff");
     }
 
     private static TestCaseData WordOperationCase(Instruction opcode, string[] operands, string expected) =>
@@ -618,25 +699,21 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(pushed, Is.EqualTo(Enumerable.Repeat(expectedByte, EvmStack.WordSize)));
     }
 
-    [Test]
-    public void Can_trace_dup_push_in_vm_trace()
+    [TestCase(Instruction.DUP1, new[] { "0x0102", "0x0102" })]
+    [TestCase(Instruction.DUP2, new[] { "0x01", "0x0102", "0x01" })]
+    public void Can_trace_dup_push_in_vm_trace(Instruction dup, string[] expected)
     {
-        string push1Hex = "0x01";
-        string push2Hex = "0x0102";
-
         byte[] code = Prepare.EvmCode
-            .PushData(push1Hex)
-            .PushData(push2Hex)
-            .Op(Instruction.DUP2)
+            .PushData("0x01")
+            .PushData("0x0102")
+            .Op(dup)
             .Done;
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
-        byte[][] dup = trace.VmTrace.Operations[2].Push;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(dup[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
-            Assert.That(dup[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
-        }
+        string[] pushed = trace.VmTrace.Operations[2].Push
+            .Select(static item => item.WithoutLeadingZeros().ToArray().ToHexString(true))
+            .ToArray();
+        Assert.That(pushed, Is.EqualTo(expected));
     }
 
     [Test]
