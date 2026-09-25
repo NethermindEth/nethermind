@@ -231,7 +231,8 @@ public static partial class EvmInstructions
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot,
-            isCreateStateGasCharged: chargeCreateStateGas);
+            isCreateStateGasCharged: chargeCreateStateGas,
+            frameJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.FrameJournalCheckpoint ?? 0);
 
         return EvmExceptionType.Suspend;
         // Jump forward to be unpredicted by the branch predictor.

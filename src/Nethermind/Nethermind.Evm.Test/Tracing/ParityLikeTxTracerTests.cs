@@ -615,25 +615,21 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(pushed, Is.EqualTo(Enumerable.Repeat(expectedByte, EvmStack.WordSize)));
     }
 
-    [Test]
-    public void Can_trace_dup_push_in_vm_trace()
+    [TestCase(Instruction.DUP1, new[] { "0x0102", "0x0102" })]
+    [TestCase(Instruction.DUP2, new[] { "0x01", "0x0102", "0x01" })]
+    public void Can_trace_dup_push_in_vm_trace(Instruction dup, string[] expected)
     {
-        string push1Hex = "0x01";
-        string push2Hex = "0x0102";
-
         byte[] code = Prepare.EvmCode
-            .PushData(push1Hex)
-            .PushData(push2Hex)
-            .Op(Instruction.DUP2)
+            .PushData("0x01")
+            .PushData("0x0102")
+            .Op(dup)
             .Done;
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
-        byte[][] dup = trace.VmTrace.Operations[2].Push;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(dup[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
-            Assert.That(dup[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
-        }
+        string[] pushed = trace.VmTrace.Operations[2].Push
+            .Select(static item => item.WithoutLeadingZeros().ToArray().ToHexString(true))
+            .ToArray();
+        Assert.That(pushed, Is.EqualTo(expected));
     }
 
     [Test]
