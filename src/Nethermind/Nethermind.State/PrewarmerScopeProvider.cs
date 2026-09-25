@@ -283,6 +283,18 @@ public class PrewarmerScopeProvider(
             (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(in address, in index);
         }
 
+        public void HintWarmAccount(Address address)
+        {
+            if (storageReadCapture is not null) return;
+            (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(address);
+        }
+
+        public void HintWarmSlot(Address address, in UInt256 index)
+        {
+            if (storageReadCapture is not null) return;
+            (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(address, in index);
+        }
+
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             sink ??= new CacheSink(preBlockCache, storageCache);

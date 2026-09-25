@@ -1581,7 +1581,7 @@ public class ScopeProviderTests(bool useFlat)
         // A read leaves the account's leaf alone, so the commit never walks its path.
         IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws => ws.GetBalance(TestItem.AddressA));
 
-        mainScope.DidNotReceive().HintWarmAccount(Arg.Any<ValueAddress>());
+        mainScope.DidNotReceive().HintWarmAccount(Arg.Any<Address>());
     }
 
     [Test]
@@ -1593,7 +1593,7 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot,
             ws => ws.AddToBalance(TestItem.AddressA, 1, Cancun.Instance, out _));
 
-        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        mainScope.Received(1).HintWarmAccount(TestItem.AddressA);
     }
 
     [Test]
@@ -1611,9 +1611,9 @@ public class ScopeProviderTests(bool useFlat)
             for (int i = 0; i < repetitions; i++) ws.Set(in slotA2, (UInt256)(8 + i));
         });
 
-        mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
-        mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), slotA2.Index);
-        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        mainScope.Received(1).HintWarmSlot(TestItem.AddressA, SlotA1.Index);
+        mainScope.Received(1).HintWarmSlot(TestItem.AddressA, slotA2.Index);
+        mainScope.Received(1).HintWarmAccount(TestItem.AddressA);
     }
 
     [Test]
@@ -1637,7 +1637,7 @@ public class ScopeProviderTests(bool useFlat)
                 if (resetTransactionChanges) state.Reset(resetBlockChanges: false);
                 state.Set(in SlotA1, (UInt256)8);
             }
-            mainScope.Received(round + 1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), SlotA1.Index);
+            mainScope.Received(round + 1).HintWarmSlot(TestItem.AddressA, SlotA1.Index);
         }
     }
 
@@ -1654,7 +1654,7 @@ public class ScopeProviderTests(bool useFlat)
             ws.MarkStorageDestroyed(TestItem.AddressA);
         });
 
-        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        mainScope.Received(1).HintWarmAccount(TestItem.AddressA);
     }
 
     [Test]
@@ -1669,7 +1669,7 @@ public class ScopeProviderTests(bool useFlat)
             ws.ClearStorage(TestItem.AddressA);
         });
 
-        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        mainScope.Received(1).HintWarmAccount(TestItem.AddressA);
     }
 
     [Test]
@@ -1687,10 +1687,10 @@ public class ScopeProviderTests(bool useFlat)
         });
 
         // The commit rewrites the leaves of A, C (through its storage root) and D, and leaves B alone.
-        mainScope.Received().HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        mainScope.Received().HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes));
-        mainScope.Received().HintWarmAccount(new ValueAddress(TestItem.AddressD.Bytes));
-        mainScope.DidNotReceive().HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+        mainScope.Received().HintWarmAccount(TestItem.AddressA);
+        mainScope.Received().HintWarmAccount(TestItem.AddressC);
+        mainScope.Received().HintWarmAccount(TestItem.AddressD);
+        mainScope.DidNotReceive().HintWarmAccount(TestItem.AddressB);
     }
 
     [Test]
@@ -1701,8 +1701,8 @@ public class ScopeProviderTests(bool useFlat)
 
         IWorldStateScopeProvider.IScope mainScope = RunPopulator(ctx, baseRoot, ws => ws.Get(in SlotA1, out _));
 
-        mainScope.DidNotReceive().HintWarmSlot(Arg.Any<ValueAddress>(), Arg.Any<UInt256>());
-        mainScope.DidNotReceive().HintWarmAccount(Arg.Any<ValueAddress>());
+        mainScope.DidNotReceive().HintWarmSlot(Arg.Any<Address>(), Arg.Any<UInt256>());
+        mainScope.DidNotReceive().HintWarmAccount(Arg.Any<Address>());
     }
 
     [Test]
