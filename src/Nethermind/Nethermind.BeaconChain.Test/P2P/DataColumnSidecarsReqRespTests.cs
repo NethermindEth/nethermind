@@ -4,14 +4,19 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Libp2p.Core;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
@@ -83,10 +88,85 @@ public class DataColumnSidecarsReqRespTests
     [TestCase(Eip7594DasConstants.NumberOfColumns + 1)]
     public void DialAsync_rejects_an_invalid_columns_count_before_writing_to_the_wire(int columnCount)
     {
-        DataColumnSidecarsByRangeProtocol protocol = new(Spec, new DataColumnSidecarPool());
+        DataColumnSidecarsByRangeProtocol protocol = new(Spec, new DataColumnSidecarPool(), null!);
         DataColumnSidecarsByRangeRequest request = new() { StartSlot = 0, Count = 1, Columns = new ulong[columnCount] };
 
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, request));
+    }
+
+    [Test]
+    public async Task By_range_serves_only_the_canonical_block_at_each_slot_whatever_the_arrival_order([Values] bool canonicalArrivesFirst)
+    {
+        const ulong startSlot = 13_410_304;
+        const ulong column = 5;
+        const ulong canonicalProposer = 1;
+        const ulong competingProposer = 2;
+        DataColumnSidecarPool pool = new();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+
+        // The middle slot has only a competing block; the last slot reverses the first slot's arrival order.
+        AddCompetingBlocks(pool, store, startSlot, canonicalArrivesFirst, hasCanonical: true);
+        AddCompetingBlocks(pool, store, startSlot + 1, canonicalArrivesFirst, hasCanonical: false);
+        AddCompetingBlocks(pool, store, startSlot + 2, !canonicalArrivesFirst, hasCanonical: true);
+
+        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, startSlot, count: 3, [column]);
+
+        Assert.That(served.Select(static s => (s.SignedBlockHeader!.Message!.Slot, s.SignedBlockHeader.Message.ProposerIndex)),
+            Is.EqualTo(new[] { (startSlot, canonicalProposer), (startSlot + 2, canonicalProposer) }));
+
+        static void AddCompetingBlocks(DataColumnSidecarPool pool, BeaconChainStore store, ulong slot, bool canonicalFirst, bool hasCanonical)
+        {
+            Hash256 canonicalRoot = Keccak.Compute($"canonical {slot}");
+            Hash256 competingRoot = Keccak.Compute($"competing {slot}");
+            DataColumnSidecar canonical = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, canonicalProposer, blobCount: 1, seed: 0x21);
+            DataColumnSidecar competing = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, competingProposer, blobCount: 1, seed: 0x22);
+            if (canonicalFirst) pool.Add(canonicalRoot, slot, canonical);
+            pool.Add(competingRoot, slot, competing);
+            if (!canonicalFirst) pool.Add(canonicalRoot, slot, canonical);
+            if (hasCanonical) store.SetCanonicalRoot(slot, canonicalRoot);
+        }
+    }
+
+    [Test]
+    public async Task By_range_serves_each_requested_column_once_in_slot_then_column_order()
+    {
+        const ulong startSlot = 13_410_304;
+        DataColumnSidecarPool pool = new();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        for (ulong slot = startSlot; slot < startSlot + 2; slot++)
+        {
+            Hash256 root = Keccak.Compute($"canonical {slot}");
+            pool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(5, slot, blobCount: 1));
+            pool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(7, slot, blobCount: 1));
+            store.SetCanonicalRoot(slot, root);
+        }
+
+        // Column 9 is not held, so it is skipped.
+        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, startSlot, count: 2, [7, 9, 5, 5]);
+
+        Assert.That(served.Select(static s => (s.SignedBlockHeader!.Message!.Slot, s.Index)),
+            Is.EqualTo(new[] { (startSlot, 5UL), (startSlot, 7UL), (startSlot + 1, 5UL), (startSlot + 1, 7UL) }));
+    }
+
+    [Test]
+    public async Task By_range_serves_at_most_MaxRequestBlocks_slots([Values(BlocksProtocolBase.MaxRequestBlocks + 1, ulong.MaxValue)] ulong requestedCount)
+    {
+        const ulong startSlot = 13_410_304;
+        const ulong column = 5;
+        const ulong slotCount = BlocksProtocolBase.MaxRequestBlocks + 1;
+        DataColumnSidecarPool pool = new();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, startSlot, blobCount: 1);
+        for (ulong slot = startSlot; slot < startSlot + slotCount; slot++)
+        {
+            Hash256 root = Keccak.Compute($"canonical {slot}");
+            pool.Add(root, slot, sidecar);
+            store.SetCanonicalRoot(slot, root);
+        }
+
+        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, startSlot, requestedCount, [column]);
+
+        Assert.That(served, Has.Count.EqualTo(BlocksProtocolBase.MaxRequestBlocks));
     }
 
     [Test]
@@ -128,6 +208,26 @@ public class DataColumnSidecarsReqRespTests
         Assert.ThrowsAsync<NullReferenceException>(() =>
             new DataColumnSidecarsByRootProtocol(Spec, new DataColumnSidecarPool()).DialAsync(null!, null!, request));
         await Task.CompletedTask;
+    }
+
+    private static async Task<IReadOnlyList<DataColumnSidecar>> RequestRangeAsync(DataColumnSidecarPool pool, BeaconChainStore store, ulong startSlot, ulong count, ulong[] columns)
+    {
+        DataColumnSidecarsByRangeProtocol protocol = new(Spec, pool, store);
+        ISessionContext context = Substitute.For<ISessionContext>();
+        context.State.Returns(new Nethermind.Libp2p.Core.State());
+
+        Channel channel = new();
+        Task listen = ListenThenCloseAsync(protocol, channel.Reverse, context);
+        IReadOnlyList<DataColumnSidecar> served = await protocol.DialAsync(channel, context, new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns });
+        await listen;
+        return served;
+    }
+
+    // The libp2p host closes the response stream once the handler returns; the dial side reads until then.
+    private static async Task ListenThenCloseAsync(DataColumnSidecarsByRangeProtocol protocol, IChannel channel, ISessionContext context)
+    {
+        await protocol.ListenAsync(channel, context);
+        await channel.WriteEofAsync();
     }
 
     private static long FailureCount(string protocolId, ReqRespFailureReason reason) =>
