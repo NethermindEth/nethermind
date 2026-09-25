@@ -195,6 +195,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
         : IPersistence.IWriteBatch
     {
+        private readonly int _maxTrackedWrites = parent._maxEntriesPerKind * 2;
+
         private HashSet<Address>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
         private bool _clearAll;
@@ -207,14 +209,24 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= []).Add(addr);
+            if (!_clearAll) TrackWrite(_writtenAccounts ??= [], addr);
             inner.SetAccount(addr, account);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
-            (_writtenSlots ??= []).Add((addr, slot));
+            if (!_clearAll) TrackWrite(_writtenSlots ??= [], (addr, slot));
             inner.SetStorage(addr, slot, value);
+        }
+
+        private void TrackWrite<TKey>(HashSet<TKey> written, TKey key)
+        {
+            written.Add(key);
+            if (written.Count <= _maxTrackedWrites) return;
+
+            _clearAll = true;
+            _writtenAccounts = null;
+            _writtenSlots = null;
         }
 
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
