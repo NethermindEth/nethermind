@@ -20,21 +20,22 @@ public class PbtFormatInteropTests
     public void Physical_payload_roundtrip()
     {
         Random random = new(8297);
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> batch = new(0);
+        List<(byte[] Key, byte[]? Value)> changes = [];
         EipReferenceTree oracle = new();
+        string[] zones = ["00", "01", "ff"];
         for (int index = 0; index < 300; index++)
         {
-            byte[] key = new byte[2 + random.Next(32)];
-            key[0] = (byte)index;
-            random.NextBytes(key.AsSpan(1));
+            byte[] key = PbtStoreTestExtensions.ZoneKey(zones[index % zones.Length]);
+            key[1] = (byte)index;
+            random.NextBytes(key.AsSpan(2));
             byte[] value = new byte[32];
             random.NextBytes(value);
-            batch.Set(new PbtStorageTreeKey(key), new ValueHash256(value));
+            changes.Add((key, value));
             oracle.Insert(key, value);
         }
 
         using PbtNodeGroupStore source = new();
-        ValueHash256 sourceRoot = TrieUpdater.UpdateRoot(source, default, batch.Build());
+        ValueHash256 sourceRoot = source.Fold(default, changes);
         using PbtNodeGroupStore target = PbtNodeGroupStore.FromPhysicalPayloads(source.ExportPhysicalPayloads());
 
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(target.ExportPhysicalPayloads());
@@ -50,7 +51,7 @@ public class PbtFormatInteropTests
     public void Physical_import_rejects_unsupported_group_formats([Values(0, 1, 2, 3, 4)] int format)
     {
         using PbtTreeHarness tree = new();
-        tree.ApplyBatch([(Bytes.FromHexString("00"), Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000001"))]);
+        tree.ApplyBatch([(PbtStoreTestExtensions.ZoneKey("00"), Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000001"))]);
         PbtPhysicalPayload physical = tree.PhysicalPayloads[0];
         byte[] payload = physical.Payload.ToArray();
         if (format == 0) payload = payload[PbtNodeGroupCodec.HeaderLength..];

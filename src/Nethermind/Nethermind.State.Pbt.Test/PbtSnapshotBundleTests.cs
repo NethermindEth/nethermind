@@ -397,17 +397,12 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(key, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> initial = new(0);
-        if (leafExists) initial.Set(key, new ValueHash256(Value(1)));
         ValueHash256 root;
-        using (PbtSnapshotStore store = new(bundle)) root = TrieUpdater.UpdateRoot(store, default, initial.Build());
+        using (PbtSnapshotStore store = new(bundle)) root = store.Fold(default, leafExists ? [(key.Bytes.ToArray(), Value(1))] : []);
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(flatValue.Bytes));
 
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> changes = new(0);
-        if (delete) changes.Delete(key);
-        else changes.Set(key, new ValueHash256(Value(2)));
         ValueHash256 updatedRoot;
-        using (PbtSnapshotStore store = new(bundle)) updatedRoot = TrieUpdater.UpdateRoot(store, root, changes.Build());
+        using (PbtSnapshotStore store = new(bundle)) updatedRoot = store.Fold(root, [(key.Bytes.ToArray(), delete ? null : Value(2))]);
 
         using PbtSnapshotStore reader = new(bundle);
         using (Assert.EnterMultipleScope())
@@ -1078,10 +1073,8 @@ public class PbtSnapshotBundleTests
         using RefCountingMemory originalPayload = Memory(originalGroup);
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(Value(2)));
         bundle.SetNodeGroup(originalGroupKey, TestItem.KeccakA.ValueHash256, originalPayload);
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> changes = new(0);
-        changes.Set(new PbtStorageTreeKey([3]), new ValueHash256(Value(4)));
 
-        Assert.Catch(() => TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), new ValueHash256(Value(5)), changes.Build()));
+        Assert.Catch(() => new PbtSnapshotStore(bundle).Fold(new ValueHash256(Value(5)), [(PbtStoreTestExtensions.ZoneKey("0003"), Value(4))]));
         AssertSnapshotUnchanged(bundle, originalLeafKey, originalGroupKey, originalGroup);
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
     }
@@ -1100,11 +1093,9 @@ public class PbtSnapshotBundleTests
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(originalLeafValue.Bytes));
         using RefCountingMemory originalPayload = Memory(originalNode);
         bundle.SetNodeGroup(originalNodePath, TestItem.KeccakA.ValueHash256, originalPayload);
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> changes = new(0);
-        changes.Set(new PbtStorageTreeKey([3]), new ValueHash256(Value(4)));
 
         CountingStore store = new(bundle);
-        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, new ValueHash256(Value(5)), changes.Build()));
+        Assert.Throws<InvalidDataException>(() => store.Fold(new ValueHash256(Value(5)), [(PbtStoreTestExtensions.ZoneKey("0003"), Value(4))]));
 
         bundle.CompleteLeafChanges();
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);

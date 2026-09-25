@@ -64,7 +64,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
                 foreach (RebuildEntry entry in chunk.AsSpan())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    int partition = PbtWriteBatchSet<PbtStorageTreeKey>.PartitionOf(entry.Key);
+                    int partition = PbtPartitions.PartitionOf(entry.Key);
                     if (partition == (int)PbtPartition.Storage) storageChanges.Set((PbtStoragePath)entry.Key, entry.Leaf);
                     else if (partition == (int)PbtPartition.Code) codeChanges.Set((PbtPath)entry.Key, entry.Leaf);
                     else if (partition == (int)PbtPartition.Account) accountChanges.Set((PbtPath)entry.Key, entry.Leaf);

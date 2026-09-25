@@ -116,10 +116,8 @@ public class PbtRebuilderTests
         using IPbtPersistence.IReader reader = target.CreateReader();
         foreach ((PbtStorageTreeKey key, ValueHash256 value) in leaves)
         {
-            using PbtWriteBatchBuilder<PbtStorageTreeKey> incrementalChange = new(0);
-            incrementalChange.Set(key, value);
-            using PbtWriteBatch<PbtStorageTreeKey> preparedChange = incrementalChange.Build();
-            incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, preparedChange, config.PrefixlessBranchOmission);
+            incrementalRoot = incrementalStore.Fold(incrementalRoot, [(key.Bytes.ToArray(), value.ToByteArray())],
+                config.PrefixlessBranchOmission, FoldFanOut.Default, null);
         }
 
         int physicalNodeCount = 0;
@@ -268,10 +266,7 @@ public class PbtRebuilderTests
                 await channel.Writer.WriteAsync(chunk);
                 await source.Drained[index].Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-                using PbtWriteBatchBuilder<PbtStorageTreeKey> changes = new(0);
-                changes.Set(key, TestItem.KeccakC.ValueHash256);
-                using PbtWriteBatch<PbtStorageTreeKey> prepared = changes.Build();
-                expectedRoot = TrieUpdater.UpdateRoot(expectedStore, expectedRoot, prepared);
+                expectedRoot = expectedStore.Fold(expectedRoot, [(key.Bytes.ToArray(), TestItem.KeccakC.BytesToArray())]);
                 using IPbtPersistence.IReader reader = target.CreateReader();
                 using (Assert.EnterMultipleScope())
                 {

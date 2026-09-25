@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using static Nethermind.Pbt.TrieUpdater;
@@ -111,59 +108,6 @@ internal static partial class TrieUpdater<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
-    /// <summary>Applies <paramref name="changes"/> and returns the resulting canonical root.</summary>
-    /// <remarks>
-    /// The batch is sorted by key and folded by <see cref="UpdateRootSorted(IPbtStore, in ValueHash256, ReadOnlySpan{PbtWriteOperation{TKey}}, PbtPrefixlessBranchOmission, TrieUpdaterMetrics?, IRefCountingMemoryProvider?)"/>.
-    /// Each completed frame publishes its complete node group.
-    /// </remarks>
-    public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<TKey> changes) =>
-        UpdateRoot(store, currentRoot, changes, null);
-
-    /// <inheritdoc cref="UpdateRoot(IPbtStore, in ValueHash256, PbtWriteBatch{TKey})"/>
-    /// <remarks>Groups rewritten by this fold leave prefixless interior branches implicit as <paramref name="prefixlessBranchOmission"/> selects.</remarks>
-    internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<TKey> changes, PbtPrefixlessBranchOmission prefixlessBranchOmission) =>
-        Fold(store, currentRoot, changes, prefixlessBranchOmission, null, null);
-
-    internal static ValueHash256 UpdateRoot(
-        IPbtStore store,
-        in ValueHash256 currentRoot,
-        PbtWriteBatch<TKey> changes,
-        TrieUpdaterMetrics? metrics,
-        IRefCountingMemoryProvider? memoryProvider = null) =>
-        Fold(store, currentRoot, changes, PbtPrefixlessBranchOmission.Interior, metrics, memoryProvider);
-
-    private static ValueHash256 Fold(
-        IPbtStore store,
-        in ValueHash256 currentRoot,
-        PbtWriteBatch<TKey> changes,
-        PbtPrefixlessBranchOmission prefixlessBranchOmission,
-        TrieUpdaterMetrics? metrics,
-        IRefCountingMemoryProvider? memoryProvider)
-    {
-        ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(changes);
-        changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
-        using ArrayPoolList<PbtWriteOperation<TKey>> ownedOperations = operations;
-        using ArrayPoolList<int> ownedTable = table;
-        return SortAndUpdateRoot(store, currentRoot, operations.AsSpan(), prefixlessBranchOmission, metrics, memoryProvider);
-    }
-
-    internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatchSet<TKey> changes, TrieUpdaterMetrics? metrics = null, IRefCountingMemoryProvider? memoryProvider = null)
-    {
-        ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(changes);
-        changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations);
-        using ArrayPoolList<PbtWriteOperation<TKey>> ownedOperations = operations;
-        return SortAndUpdateRoot(store, currentRoot, operations.AsSpan(), PbtPrefixlessBranchOmission.Interior, metrics, memoryProvider);
-    }
-
-    private static ValueHash256 SortAndUpdateRoot(IPbtStore store, in ValueHash256 currentRoot, Span<PbtWriteOperation<TKey>> operations,
-        PbtPrefixlessBranchOmission prefixlessBranchOmission, TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider)
-    {
-        operations.Sort(OperationComparer.Instance);
-        return UpdateRootSorted(store, currentRoot, operations, prefixlessBranchOmission, metrics, memoryProvider);
-    }
-
     /// <summary>Publishes a frame's group and returns the size change of the group and everything folded below it.</summary>
     /// <remarks>
     /// Each stored descendant size is the loaded (or inherited) size of its slot adjusted by the change folded below that
@@ -199,11 +143,11 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// The size the owner recorded under the boundary slot on the way here, which a spanning branch carries down with it.
     /// </param>
     internal static AbsentGroupFrame<TKey, TPath> AbsentFrame(scoped in BoundaryNode current, scoped in PbtTraversalPath path, int bitDepth,
-        long spanningDescendantBytes, TrieUpdaterMetrics? metrics) =>
+        long spanningDescendantBytes) =>
         // A spanning branch may inline two leaves as well; taking its slot size keeps the owner's accounting.
         IsAbsentGroupBelow(current, bitDepth)
-            ? new(bitDepth, BranchSlot(current, path, bitDepth), spanningDescendantBytes, metrics)
-            : new(bitDepth, metrics);
+            ? new(bitDepth, BranchSlot(current, path, bitDepth), spanningDescendantBytes)
+            : new(bitDepth);
 
     /// <summary>Whether <paramref name="current"/>'s whole subtree is the node itself, which its owner group stores.</summary>
     /// <remarks>LeafChildrenMask decodes the branch encoding, so the empty and leaf kinds are ruled out first.</remarks>
@@ -233,16 +177,14 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// concurrently; the former is the budget every nested frame takes its extra workers from before fanning out, the latter
     /// is the backing array of every operation range, so a bucket can rebuild its span on another thread,
     /// and <see cref="FanOut"/> gives how many operations a concurrent run of buckets holds at least, by what it has stored below it.
-    /// <see cref="Metrics"/> is not thread-safe, so each concurrent bucket folds under metrics of its own, merged afterwards.
     /// Groups are read from <see cref="Store"/> but published to <see cref="Writer"/>, which a concurrent bucket replaces
     /// with its own <see cref="IPbtStore.CreateWriter"/> so it never writes the store directly.
     /// </remarks>
-    internal sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, TrieUpdaterMetrics? metrics, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut, PbtPrefixlessBranchOmission prefixlessBranchOmission)
+    internal sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut, PbtPrefixlessBranchOmission prefixlessBranchOmission)
     {
         internal IPbtStore Store { get; } = store;
         internal IPbtNodeGroupSink Writer { get; } = writer;
         internal IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
-        internal TrieUpdaterMetrics? Metrics { get; } = metrics;
         internal ConcurrencyController? FoldQuota { get; } = foldQuota;
         internal PbtWriteOperation<TKey>[]? Operations { get; } = operations;
         internal FoldFanOut FanOut { get; } = fanOut;
@@ -255,7 +197,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>Takes the boundary node a fold is about to descend into, which <see cref="SetBoundary"/> then replaces with the fold's result.</summary>
     /// <remarks>A touched slot <see cref="Decompose"/> left unresolved is resolved here, as a block of its own.</remarks>
     internal static BoundaryNode TakeBoundary<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, scoped in PbtTraversalPath path,
-        scoped ref Frontier frontier, int slot, TrieUpdaterMetrics? metrics)
+        scoped ref Frontier frontier, int slot)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         if ((frontier.Unresolved >> slot & 1) != 0)
@@ -265,7 +207,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
         uint bit = 1u << BoundaryPosition(slot);
         if ((frontier.Mask & bit) == 0) return default;
-        return frontier.TakeBoundaryNode(ref reader, ref hashes, slot, metrics);
+        return frontier.TakeBoundaryNode(ref reader, ref hashes, slot);
     }
 
     internal static void SetBoundary(ref Frontier frontier, scoped Span<FoldResult> results, int slot, ref FoldResult result)
@@ -499,36 +441,4 @@ internal static partial class TrieUpdater<TKey, TPath>
         while (index < count && GetBit(prefixBytes, index) == key.GetBit(keyOffset + index)) index++;
         return index;
     }
-}
-
-internal sealed class TrieUpdaterMetrics
-{
-    internal int PhysicalGroupFetches { get; private set; }
-    internal int GroupParses { get; private set; }
-    internal int GroupFrameResolutions { get; private set; }
-    internal int BulkCopiedNodes { get; private set; }
-    internal int BulkCopyOperations { get; private set; }
-    /// <summary>Node hashes computed from an encoding, excluding those reused from a parent node.</summary>
-    internal int NodeHashes { get; private set; }
-
-    internal void Add(TrieUpdaterMetrics metrics)
-    {
-        PhysicalGroupFetches += metrics.PhysicalGroupFetches;
-        GroupParses += metrics.GroupParses;
-        GroupFrameResolutions += metrics.GroupFrameResolutions;
-        BulkCopiedNodes += metrics.BulkCopiedNodes;
-        BulkCopyOperations += metrics.BulkCopyOperations;
-        NodeHashes += metrics.NodeHashes;
-    }
-
-    internal void AddBulkCopy(int nodes)
-    {
-        BulkCopiedNodes += nodes;
-        BulkCopyOperations++;
-    }
-    internal void IncrementPhysicalGroupFetches() => PhysicalGroupFetches++;
-    internal void IncrementGroupParses() => GroupParses++;
-    internal void IncrementGroupFrameResolutions() => GroupFrameResolutions++;
-    internal void IncrementNodeHashes() => NodeHashes++;
-    internal void AddNodeHashes(int count) => NodeHashes += count;
 }

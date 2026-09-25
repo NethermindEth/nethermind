@@ -151,12 +151,12 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>Emits the resolved tree root at the root position, returning its hash.</summary>
-    internal ValueHash256 WriteRoot<TKey>(scoped in PbtTraversalPath path, in TrieUpdater<TKey, TPath>.FoldResult node, TrieUpdaterMetrics? metrics)
+    internal ValueHash256 WriteRoot<TKey>(scoped in PbtTraversalPath path, in TrieUpdater<TKey, TPath>.FoldResult node)
         where TKey : unmanaged, IPbtKey<TKey>
     {
         if (node.IsEmpty) return default;
         Span<byte> encoding = GetSpan(PbtFourLevelGroupGeometry.RootPosition, node.EncodedLength(path, 0));
-        ValueHash256 hash = node.EncodeAt(path, 0, encoding, metrics);
+        ValueHash256 hash = node.EncodeAt(path, 0, encoding);
         Commit(path);
         return hash;
     }

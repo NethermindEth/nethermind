@@ -20,9 +20,11 @@ public class StemTrieTests
     [TestCase(247)]
     public void Compressed_prefix_split_delete_and_hoist_match_reference(int divergenceBit)
     {
-        byte[] first = new byte[32];
-        byte[] second = new byte[32];
-        second[divergenceBit >> 3] = (byte)(1 << (7 - (divergenceBit & 7)));
+        byte[] first = PbtStoreTestExtensions.ZoneKey("00");
+        byte[] second = PbtStoreTestExtensions.ZoneKey("00");
+        // The zone byte leads the key, so the divergence sits the same distance into the account key.
+        int bit = 8 + divergenceBit;
+        second[bit >> 3] = (byte)(1 << (7 - (bit & 7)));
         byte[] firstValue = Value(1);
         byte[] secondValue = Value(2);
         using PbtTreeHarness tree = new();
@@ -51,10 +53,10 @@ public class StemTrieTests
     {
         (byte[] Key, byte[]? Value)[] entries =
         [
-            (Key(0x12, 0x00, 31), Value(1)),
-            (Key(0x12, 0x80, 31), Value(2)),
-            (Key(0x10, 0x00, 65), Value(3)),
-            (Key(0x12, 0x40, 66), Value(4)),
+            (PbtStoreTestExtensions.ZoneKey("FF1200"), Value(1)),
+            (PbtStoreTestExtensions.ZoneKey("FF1280"), Value(2)),
+            (PbtStoreTestExtensions.ZoneKey("FF1000"), Value(3)),
+            (PbtStoreTestExtensions.ZoneKey("FF1240"), Value(4)),
         ];
         using PbtTreeHarness incremental = new();
         foreach ((byte[] key, byte[]? value) in entries) incremental.ApplyBatch([(key, value)]);
@@ -67,14 +69,6 @@ public class StemTrieTests
             Assert.That(incremental.CanonicalRecords(), Is.EqualTo(rebuilt.CanonicalRecords()));
             Assert.That(incremental.Nodes, Has.Count.EqualTo(3), "three branches with the four leaves inlined");
         }
-    }
-
-    private static byte[] Key(byte first, byte second, int length)
-    {
-        byte[] key = new byte[length];
-        key[0] = first;
-        key[1] = second;
-        return key;
     }
 
     private static byte[] Value(byte marker)

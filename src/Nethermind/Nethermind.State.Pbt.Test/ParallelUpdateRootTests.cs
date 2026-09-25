@@ -49,26 +49,24 @@ public class ParallelUpdateRootTests
     }
 
     [Test]
-    public async Task Concurrent_group_overlays_keep_fetch_and_parse_counters_local()
+    public async Task Concurrent_folds_into_empty_trees_keep_their_group_reads_local()
     {
         (byte[] Key, byte[]? Value)[] initial = Entries(seed: 73, count: 256);
-        Task<(ValueHash256 Root, TrieUpdaterMetrics Metrics)>[] tasks =
+        Task<(ValueHash256 Root, int Reads)>[] tasks =
         [
-            Task.Run(() => ApplyWithMetrics(initial)),
-            Task.Run(() => ApplyWithMetrics(initial)),
-            Task.Run(() => ApplyWithMetrics(initial)),
-            Task.Run(() => ApplyWithMetrics(initial)),
+            Task.Run(() => ApplyCountingReads(initial)),
+            Task.Run(() => ApplyCountingReads(initial)),
+            Task.Run(() => ApplyCountingReads(initial)),
+            Task.Run(() => ApplyCountingReads(initial)),
         ];
 
-        (ValueHash256 Root, TrieUpdaterMetrics Metrics)[] results = await Task.WhenAll(tasks);
-        foreach ((ValueHash256 root, TrieUpdaterMetrics metrics) in results)
+        (ValueHash256 Root, int Reads)[] results = await Task.WhenAll(tasks);
+        foreach ((ValueHash256 root, int reads) in results)
         {
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root, Is.EqualTo(results[0].Root));
-                Assert.That(metrics.PhysicalGroupFetches, Is.EqualTo(1), "only the root group is read when building an empty tree");
-                Assert.That(metrics.GroupFrameResolutions, Is.LessThan(256), "frame resolutions follow group crossings, not logical nodes");
-                Assert.That(metrics.GroupParses, Is.LessThanOrEqualTo(metrics.PhysicalGroupFetches));
+                Assert.That(reads, Is.EqualTo(1), "only the root group is read when building an empty tree");
             }
         }
     }
@@ -211,7 +209,7 @@ public class ParallelUpdateRootTests
     }
 
     [Test]
-    public void Sibling_prefix_jumps_restore_paths_across_mutations_and_reopen([Values] bool parallel)
+    public void Sibling_prefix_jumps_restore_paths_across_mutations_and_reopen([Values] bool splitEveryFrame)
     {
         using PbtNodeGroupStore store = new();
         EipReferenceTree oracle = new();
@@ -236,21 +234,7 @@ public class ParallelUpdateRootTests
 
         void ApplyAndCompare(PbtNodeGroupStore target, List<(byte[] Key, byte[]? Value)> writes)
         {
-            if (parallel)
-            {
-                using PbtPartitionBatches partitions = PreparePartitions([.. writes]);
-                root = TrieUpdater.UpdateRoot(target, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
-            }
-            else
-            {
-                using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(0);
-                foreach ((byte[] key, byte[]? value) in writes)
-                {
-                    if (value is null) builder.Delete(new PbtStorageTreeKey(key));
-                    else builder.Set(new PbtStorageTreeKey(key), new ValueHash256(value));
-                }
-                root = TrieUpdater.UpdateRoot(target, root, builder.Build());
-            }
+            root = target.Fold(root, writes, PbtPrefixlessBranchOmission.Interior, SplitFanOut(splitEveryFrame), null);
             foreach ((byte[] key, byte[]? value) in writes)
             {
                 if (value is null)
@@ -510,7 +494,7 @@ public class ParallelUpdateRootTests
 
     [Test]
     public void Group_hashes_match_independent_boundary_subtrees_across_mutations(
-        [Values] bool parallel, [Values] bool compressed)
+        [Values] bool splitEveryFrame, [Values] bool compressed)
     {
         using HashRecordingStore store = new();
         EipReferenceTree oracle = new();
@@ -546,21 +530,7 @@ public class ParallelUpdateRootTests
         {
             store.Reads.Clear();
             store.Writes.Clear();
-            if (parallel)
-            {
-                using PbtPartitionBatches partitions = PreparePartitions(changes);
-                root = TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
-            }
-            else
-            {
-                using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(0);
-                foreach ((byte[] key, byte[]? value) in changes)
-                {
-                    if (value is null) builder.Delete(new PbtStorageTreeKey(key));
-                    else builder.Set(new PbtStorageTreeKey(key), new ValueHash256(value));
-                }
-                root = TrieUpdater.UpdateRoot(store, root, builder.Build());
-            }
+            root = store.Fold(root, changes, PbtPrefixlessBranchOmission.Interior, SplitFanOut(splitEveryFrame), null);
 
             foreach ((PbtStorageNodePath path, ValueHash256 hash) in store.Reads)
             {
@@ -805,27 +775,29 @@ public class ParallelUpdateRootTests
         return tree;
     }
 
-    private static (ValueHash256 Root, TrieUpdaterMetrics Metrics) ApplyWithMetrics(
-        (byte[] Key, byte[]? Value)[] entries)
+    private static (ValueHash256 Root, int Reads) ApplyCountingReads((byte[] Key, byte[]? Value)[] entries)
     {
-        using PbtNodeGroupStore store = new();
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> batch = new(0);
-        foreach ((byte[] key, byte[]? value) in entries)
-            batch.Set(new PbtStorageTreeKey(key), new ValueHash256(value!));
-        TrieUpdaterMetrics metrics = new();
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build(), metrics);
-        return (root, metrics);
+        using HashRecordingStore store = new();
+        ValueHash256 root = store.Fold(default, entries);
+        return (root, store.Reads.Count);
     }
 
+    /// <summary>A single-operation minimum splits every frame with two touched slots, so even small batches fold in parallel.</summary>
+    private static FoldFanOut SplitFanOut(bool splitEveryFrame) => splitEveryFrame ? PbtTreeHarness.FanOut(1) : FoldFanOut.Default;
+
+    /// <summary>Keys cycling through the account, code and storage zones, each led by its index byte.</summary>
     private static (byte[] Key, byte[]? Value)[] Entries(int seed, int count)
     {
         Random random = new(seed);
+        byte[] zones = [0x00, 0x01, 0xFF];
         (byte[] Key, byte[]? Value)[] entries = new (byte[], byte[]?)[count];
         for (int index = 0; index < entries.Length; index++)
         {
-            byte[] key = new byte[2 + random.Next(63)];
-            key[0] = (byte)index;
-            random.NextBytes(key.AsSpan(1));
+            byte zone = zones[index % zones.Length];
+            byte[] key = new byte[zone == 0xFF ? PbtStoragePath.KeyLength : PbtPath.KeyLength];
+            random.NextBytes(key.AsSpan(2));
+            key[0] = zone;
+            key[1] = (byte)index;
             byte[] value = new byte[32];
             random.NextBytes(value);
             entries[index] = (key, value);

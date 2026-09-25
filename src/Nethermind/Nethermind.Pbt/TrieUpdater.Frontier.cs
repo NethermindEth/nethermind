@@ -45,7 +45,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>Takes the boundary node at <paramref name="slot"/>, resolving it against the frame it was read from.</summary>
-        internal BoundaryNode TakeBoundaryNode<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, int slot, TrieUpdaterMetrics? metrics)
+        internal BoundaryNode TakeBoundaryNode<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, int slot)
             where TFrame : struct, IGroupFrame<TKey, TPath>
         {
             ref readonly DecompositionEntry entry = ref Entries[slot];
@@ -56,7 +56,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                     // The root stays: a touched slot resolved after this take still reads its links from it.
                     if (fromRoot) return Root;
                     ValueHash256 hash = LinkHash(ref reader, this, entry.SourcePosition);
-                    if (hash == default) hash = hashes.GetHash(ref reader, entry.SourcePosition, metrics);
+                    if (hash == default) hash = hashes.GetHash(ref reader, entry.SourcePosition);
                     return reader.TakeBoundaryNode(entry.SourcePosition, hash);
                 case EntrySource.LeftLeafOf:
                 case EntrySource.RightLeafOf:
