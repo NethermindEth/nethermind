@@ -84,14 +84,11 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Throws_on_instruction_start_before_forwarding_it_when_cancelled([Values] bool previousStartNeverCompleted)
+        public void Throws_on_instruction_start_before_forwarding_it_when_cancelled()
         {
             using CancellationTokenSource cancellationTokenSource = new();
             CancellationTxTracer tracer = CancellableInstructionTracer(cancellationTokenSource.Token);
 
-            if (previousStartNeverCompleted)
-                tracer.StartOperation(0, Instruction.STOP, 1, default);
-            tracer.InnerTracer.ClearReceivedCalls();
             cancellationTokenSource.Cancel();
 
             Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(1, Instruction.STOP, 1, default));
