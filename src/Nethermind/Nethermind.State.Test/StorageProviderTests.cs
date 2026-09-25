@@ -419,9 +419,9 @@ public class StorageProviderTests(bool useFlat)
         }
 
         object blockChange = GetBlockChange(provider, ctx.Address1);
-        Assume.That(GetCapacity(blockChange), Is.GreaterThanOrEqualTo(HeavyCount), "the heavy contract should be on a large map");
+        Assert.That(GetCapacity(blockChange), Is.GreaterThanOrEqualTo(HeavyCount), "the heavy contract should be on a large map");
         object parkedMap = GetPrivateField(blockChange, "_parked");
-        Assume.That(parkedMap, Is.Not.Null, "moving into a large map parks the contract's own map");
+        Assert.That(parkedMap, Is.Not.Null, "moving into a large map parks the contract's own map");
         // Exercise the pool's reset while we still own the state; returned objects can be rented by background work.
         blockChange.GetType().GetMethod(nameof(provider.Reset))!.Invoke(blockChange, [512]);
 
