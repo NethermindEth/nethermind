@@ -168,15 +168,16 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
-    /// <summary>Maximum time, in milliseconds, that an EVM-executing request may wait for an execution slot. Defaults to 500 ms; 0 disables queueing.</summary>
+    /// <summary>Maximum time, in milliseconds, that an EVM-executing request may wait for an execution slot. Defaults to 500 ms; 0 or less disables queueing.</summary>
     [ConfigItem(
         Description = """
             The max time, in milliseconds, an EVM-executing JSON-RPC request (`eth_call`, `eth_estimateGas`,
             `eth_createAccessList`, `eth_simulateV1`, `eth_fillTransaction`) waits for one of the
             `EthModuleConcurrentInstances` execution slots before it is answered with `LimitExceeded` (HTTP 503).
-            Smaller requests (by `params` size) are served first, but never ahead of a request that arrived more than half
-            this budget earlier. `0` disables queueing. Batch items, authenticated and IPC requests, and WebSocket requests
-            with `WebSocketsProcessingConcurrency` of 1 never queue.
+            Waiters are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
+            this budget, up to half of it; a request that has waited half this budget is served before any later arrival.
+            The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
+            Batch items, authenticated and IPC requests, and WebSocket requests with `WebSocketsProcessingConcurrency` of 1 never queue.
             """,
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }
