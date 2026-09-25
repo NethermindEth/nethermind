@@ -130,12 +130,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void EmitStorageWarmHints(in StorageCell storageCell, IWorldStateScopeProvider.IScope currentScope, bool hintSlot, bool hintAccount)
     {
-        ValueAddress address = new(storageCell.Address.Bytes);
-        if (hintSlot) currentScope.HintWarmSlot(in address, storageCell.Index);
+        if (hintSlot) currentScope.HintWarmSlot(storageCell.Address, storageCell.Index);
         // The storage root lives in the account, so anything that moves it rewrites the account's leaf as well,
         // and the account write path never sees a contract the block only stores to. The same holds for
         // ResetContractState and ClearStorage, which move the root without writing a slot.
-        if (hintAccount) currentScope.HintWarmAccount(in address);
+        if (hintAccount) currentScope.HintWarmAccount(storageCell.Address);
     }
 
     /// <summary>
@@ -693,7 +692,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots.TryAdd(address, true);
         PerContractState state = GetOrCreateStorage(address);
         state.Clear();
-        if (state.TakeAccountWarmHint()) currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
+        if (state.TakeAccountWarmHint()) currentScope.HintWarmAccount(address);
     }
 
     public override void ClearStorage(Address address)
@@ -736,7 +735,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         bool wasCleared = contractState.WasCleared;
         DefaultableDictionary.ClearSnapshot blockChange = contractState.ClearRevertibly();
         _toUpdateRoots[address] = true;
-        if (contractState.TakeAccountWarmHint()) currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
+        if (contractState.TakeAccountWarmHint()) currentScope.HintWarmAccount(address);
         int journalIndex = _storageClearJournal.Count;
         _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate, wasCleared));
         PushStorageClear(journalIndex);

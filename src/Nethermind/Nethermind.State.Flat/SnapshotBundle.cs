@@ -558,21 +558,6 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    public bool ShouldQueuePrewarm(in ValueAddress address, UInt256? slot = null)
-    {
-        TransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null) return false;
-
-        try
-        {
-            return transientResource.ShouldPrewarm(address, slot);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
     /// <summary>
     /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
     /// </summary>
