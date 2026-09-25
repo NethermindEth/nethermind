@@ -116,7 +116,8 @@ public interface IBlocksConfig : IConfig
                       "frame transaction whose omission from a block FOCIL still enforces. A costlier one is no " +
                       "Profile 2 candidate and its omission is excused. EIP-8369 is Informational and leaves the " +
                       "value to the Standards Track EIP that will enforce it, so the default is this client's " +
-                      "choice of the `MAX_VERIFY_GAS_PER_IL` ceiling. `0` to lift the limit.",
+                      "choice of the `MAX_VERIFY_GAS_PER_IL` ceiling. All validators on a network must use the " +
+                      "same value to agree on inclusion-list satisfaction. `0` to lift the limit.",
         DefaultValue = "1048576")]
     ulong FocilProfile2MaxVerifyGas { get; set; }
 }

@@ -52,7 +52,7 @@ public static class InclusionListValidator
 
     private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx)
     {
-        // Duplicate IL entries stay unmarked but fail the appendability check (nonce advanced).
+        // Index the first copy of each hash; included copies satisfy every occurrence in the IL.
         Dictionary<Hash256, int> ilByHash = new(il.Length);
         for (int i = 0; i < il.Length; i++)
         {
@@ -70,6 +70,7 @@ public static class InclusionListValidator
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i]) continue;
+            if (il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
             // EIP-8369: a frame transaction outside Profile 2 is enforced by no profile, so its omission is excused.
             if (il[i].SupportsFrames && Eip8369Profile2.Classify(il[i], maxVerifyGasPerTx) != Profile2Exclusion.None) continue;
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref accountCache)) return false;

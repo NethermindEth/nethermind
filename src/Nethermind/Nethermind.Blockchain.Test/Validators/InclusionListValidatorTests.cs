@@ -126,22 +126,33 @@ public class InclusionListValidatorTests
             // A Profile 2 candidate the payload could have appended is now an unjustified omission.
             yield return Case("Omitted Profile 2 candidate is censoring", [BuildFrameTx()], false);
 
+            Transaction included = BuildFrameTx();
+            included.Hash = Keccak.Zero;
+            Transaction includedAgain = BuildFrameTx();
+            includedAgain.Hash = Keccak.Zero;
+            yield return Case("Included frame transaction repeated in the IL is satisfied",
+                [included, includedAgain], true, blockTxs: [included]);
+            Transaction omitted = BuildFrameTx(frames: [SelfVerify(110_000)]);
+            omitted.Hash = Keccak.EmptyTreeHash;
+            yield return Case("Included frame duplicates do not excuse a different omitted candidate",
+                [included, includedAgain, omitted], false, blockTxs: [included]);
+
             // Outside both EIP-8369 profiles: blob gas has its own budget, over which the EIP defines no check.
             yield return Case("Omitted blob-carrying frame transaction is excused", [BuildFrameTx(blobCount: 1)], true);
             // Condition 2: a prefix matching none of the four admitted shapes.
             yield return Case("Omitted frame transaction with an unrecognized prefix is excused",
-                [BuildFrameTx(FramesOf(Body(50_000)))], true);
+                [BuildFrameTx([Body(50_000)])], true);
             // Condition 3: a VERIFY frame behind the validation prefix.
             yield return Case("Omitted frame transaction with a VERIFY frame after its prefix is excused",
-                [BuildFrameTx(FramesOf(SelfVerify(), Body(50_000), Verify(50_000)))], true);
+                [BuildFrameTx([SelfVerify(), Body(50_000), Verify(50_000)])], true);
             // Condition 4, and the knob that sets it: the same transaction is judged once the cap is lifted.
             yield return Case("Omitted frame transaction over the VERIFY budget is excused",
-                [BuildFrameTx(FramesOf(SelfVerify(2_000_000)))], true);
+                [BuildFrameTx([SelfVerify(2_000_000)])], true);
             yield return Case("Omitted frame transaction over the VERIFY budget is judged once the cap is lifted",
-                [BuildFrameTx(FramesOf(SelfVerify(2_000_000)))], false, maxVerifyGasPerTx: 0);
+                [BuildFrameTx([SelfVerify(2_000_000)])], false, maxVerifyGasPerTx: 0);
             // Condition 1: a candidate shape is not enough, the transaction must also be statically valid.
             yield return Case("Omitted malformed frame transaction is excused",
-                [BuildFrameTx(FramesOf(SelfVerify(value: UInt256.One)))], true, wellFormed: false);
+                [BuildFrameTx([SelfVerify(value: UInt256.One)])], true, wellFormed: false);
 
             // A sponsored transaction is judged against the payer its prefix nominates, not against its sender.
             yield return Case("Sponsored frame transaction is judged against its payer, not its sender",
@@ -153,7 +164,7 @@ public class InclusionListValidatorTests
             // 1,105,000 gas remains: the frame limits alone fit, and only the EIP-8141 intrinsic cost on
             // top of them — which Transaction.GasLimit leaves out — puts the reservation over.
             yield return Case("Omitted frame transaction whose max_gas does not fit the remaining gas is excused",
-                [BuildFrameTx(FramesOf(SelfVerify(), Body(1_000_000)))], true, gasUsed: 28_895_000);
+                [BuildFrameTx([SelfVerify(), Body(1_000_000)])], true, gasUsed: 28_895_000);
             yield return Case("Omitted frame transaction priced below the base fee is excused",
                 [BuildFrameTx(maxFeePerGas: 1.GWei)], true, baseFee: 5.GWei);
         }
@@ -167,7 +178,7 @@ public class InclusionListValidatorTests
     public bool Frame_transaction_skip_is_per_entry(bool ordinaryEntryIncluded)
     {
         // A frame transaction whose prefix matches no admitted shape: outside Profile 2, so excused.
-        Transaction[] il = [BuildFrameTx(FramesOf(Body(50_000))), _validTx];
+        Transaction[] il = [BuildFrameTx([Body(50_000)]), _validTx];
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
@@ -221,8 +232,6 @@ public class InclusionListValidatorTests
         new(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, 100_000, UInt256.Zero, default),
         new(FrameMode.Verify, FrameFlags.ApprovePayment, TestItem.AddressB, 100_000, UInt256.Zero, default),
     ];
-
-    private static TxFrame[] FramesOf(params TxFrame[] frames) => frames;
 
     private static Transaction BuildFrameTx(TxFrame[]? frames = null, int blobCount = 0, UInt256? maxFeePerGas = null)
     {
