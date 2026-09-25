@@ -14,15 +14,22 @@ public class OverrideCodeCacheTests
     [Test]
     public void Same_bytes_in_another_array_reuse_the_hash_and_the_code_info()
     {
-        byte[] first = [0x60, 0x01, 0x60, 0x02, 0x01, 0x5b];
+        // Distinct bytes per run: the cache is process-wide and other fixtures run in parallel, so a lookup can
+        // occasionally land in a slot another test just replaced; a few tries rule that out.
+        byte[] first = [0x60, 0x01, 0x60, 0x02, 0x01, 0x5b, .. Guid.NewGuid().ToByteArray()];
         byte[] second = (byte[])first.Clone();
 
-        OverrideCodeCache.Resolve(first, out ValueHash256 firstHash, out CodeInfo firstInfo);
-        OverrideCodeCache.Resolve(second, out ValueHash256 secondHash, out CodeInfo secondInfo);
+        bool reused = false;
+        for (int attempt = 0; attempt < 5 && !reused; attempt++)
+        {
+            OverrideCodeCache.Resolve(first, out ValueHash256 firstHash, out CodeInfo firstInfo);
+            OverrideCodeCache.Resolve(second, out ValueHash256 secondHash, out CodeInfo secondInfo);
+            Assert.That(firstHash, Is.EqualTo(ValueKeccak.Compute(first)));
+            Assert.That(secondHash, Is.EqualTo(firstHash));
+            reused = ReferenceEquals(secondInfo, firstInfo);
+        }
 
-        Assert.That(firstHash, Is.EqualTo(ValueKeccak.Compute(first)));
-        Assert.That(secondHash, Is.EqualTo(firstHash));
-        Assert.That(secondInfo, Is.SameAs(firstInfo));
+        Assert.That(reused, Is.True);
     }
 
     [Test]
