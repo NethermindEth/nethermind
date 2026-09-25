@@ -1416,7 +1416,7 @@ printf 'parity_fail=%s parity_skipped=%s rows=%s\\n' "$parity_fail" "$parity_ski
         ]
         positions = [job.index(step) for step in order]
         self.assertEqual(positions, sorted(positions))
-        dotnet_trace_gate = "always() && needs.resolve.outputs.dotnet_trace == 'true'"
+        dotnet_trace_gate = "always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_trace == 'true'"
         for step_name in ("Collect dotnet-trace", "Upload dotnet-trace"):
             self.assertEqual(workflow_named_step_if(rpc_workflow, "benchmark", step_name), dotnet_trace_gate)
         self.assertIn("name: dotnet-trace-rpcbench", workflow_named_step_body(rpc_workflow, "benchmark", "Upload dotnet-trace"))

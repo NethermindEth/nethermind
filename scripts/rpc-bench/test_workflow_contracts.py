@@ -110,13 +110,11 @@ class RpcBenchmarkWorkflowTests(unittest.TestCase):
         reclaim_step = self.step("Reclaim root disk before pulling")
 
         # A runner may keep its images off `/`; charging the pull headroom to `/` then blocks a box that has room.
+        # scripts/ci/test_rpc_runner_workspace.py drives the gate against each filesystem.
         self.assertIn("{{.DockerRootDir}}", reclaim_step)
-        self.assertIn("containerd config dump", reclaim_step)
-        self.assertIn('avail_gb "${image_store}"', reclaim_step)
-        self.assertNotIn("MIN_FREE_GB", reclaim_step)
-        # `/` still has to hold RUNNER_TEMP: k6 fixtures, corpus results and logs.
-        self.assertIn("MIN_ROOT_FREE_GB", reclaim_step)
-        self.assertIn("avail_gb /", reclaim_step)
+        self.assertIn('have_space "${MIN_FREE_GB}" "${image_roots[@]}"', reclaim_step)
+        # `/` still has to hold the runner itself.
+        self.assertIn("have_space 1 /", reclaim_step)
 
     def test_a_cached_baseline_from_another_schema_or_cell_is_dropped_before_the_sweep(self):
         check = self.step("Validate the cached master baseline")

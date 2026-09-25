@@ -81,7 +81,7 @@ on:
         type: number
         default: 60
       snapshot_block:
-        description: Snapshot set tag (<root>/<client>-<tag>; nethermind = nethermind-flat-<tag>). Empty = 25490000 for sweeps/geth/reth/comparisons, the expb snapshot otherwise.
+        description: Snapshot set tag (<root>/<client>-<tag>; nethermind = nethermind-flat-<tag>). Empty = 25490000 on arm64 and for sweeps/geth/reth/comparisons, the expb snapshot otherwise.
         required: false
         default: ""
       dottrace:
@@ -566,8 +566,9 @@ jobs:
           echo "${node_config}" | jq -e . >/dev/null 2>&1 || fail "node_config is not valid JSON: ${node_config}"
           nc() { echo "${node_config}" | jq -r "$1 // empty"; }
 
+          # ARM carries the numbered snapshot only; sweeps, geth/reth and comparisons also need that same-head set.
           DEFAULT_SNAPSHOT_BLOCK="25490000"
-          if [[ -z "${snapshot_block}" ]] && { [[ "${comparison}" == "true" || "${sweep}" == "true" ]] || [[ "${client}" != "nethermind" ]]; }; then
+          if [[ -z "${snapshot_block}" ]] && { [[ "${arch}" == "arm64" || "${comparison}" == "true" || "${sweep}" == "true" ]] || [[ "${client}" != "nethermind" ]]; }; then
             snapshot_block="${DEFAULT_SNAPSHOT_BLOCK}"
           fi
           snapshot_path() {
@@ -726,7 +727,12 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    defaults:
+      run:
+        # Other workflows leave sparse-checkout state in the shared workspace's .git.
+        working-directory: rpc-bench-workspace
     env:
+      # Run output paths are initialized before checkout so early failures can still report a summary.
       DIAG_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag
       CONTAINER_NAME: rpcbench-primary-${{ github.run_id }}
       REF_CONTAINER_NAME: rpcbench-reference-${{ github.run_id }}
@@ -737,11 +743,32 @@ jobs:
       # Mirrors corpus_results.BASELINE_SCHEMA (bump both together; test_workflow_contracts pins them equal).
       CORPUS_BASELINE_SCHEMA: "1"
     steps:
-      # This workspace persists between jobs and is shared with every other workflow on the box, so a job
-      # that checks out sparsely leaves core.sparseCheckout and skip-worktree bits behind for the next one.
-      # actions/checkout's own `sparse-checkout disable` then has to re-materialize the whole tree and
-      # aborts if any path is mid-write, leaving a partial tree while still reporting success - and
-      # skip-worktree keeps `git status` clean, so the damage only surfaces later as a missing script.
+      - name: Set up run paths
+        id: paths
+        working-directory: .
+        env:
+          RUNNER_LABEL: ${{ needs.resolve.outputs.runner_label }}
+          BENCH_SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+        run: |
+          mkdir -p rpc-bench-workspace
+          # The baseline cache restores into the shared workspace, which checkout no longer cleans, so a previous run's
+          # tree would otherwise be extracted over.
+          rm -rf rpcbench-corpus-baseline
+          output_parent="${RUNNER_TEMP}"
+          # ARM's small root disk cannot hold corpus copies or profiling archives.
+          if [[ "${RUNNER_LABEL}" == 'reproducible-benchmarks-arm' ]]; then
+            output_parent="${BENCH_SCRATCH_ROOT}"
+          fi
+          mkdir -p "${output_parent}"
+          bench_temp="$(mktemp -d "${output_parent}/rpcbench.XXXXXX")"
+          mkdir -p "${bench_temp}/out" "${bench_temp}/state"
+          {
+            echo "BENCH_TEMP=${bench_temp}"
+            echo "OUT_DIR=${bench_temp}/out"
+            echo "STATE_DIR=${bench_temp}/state"
+          } >> "$GITHUB_ENV"
+
+      # Repair stale state only inside the dedicated RPC checkout.
       - name: Clear inherited sparse-checkout state
         shell: bash
         run: |
@@ -762,8 +789,12 @@ jobs:
 
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          path: rpc-bench-workspace
+          persist-credentials: false
 
       - name: Make scripts executable
+        id: scripts
         shell: bash
         run: |
           set -euo pipefail
@@ -799,12 +830,6 @@ jobs:
           fi
           docker version
 
-      - name: Set up run paths
-        run: |
-          echo "OUT_DIR=$RUNNER_TEMP/rpcbench-out" >> "$GITHUB_ENV"
-          echo "STATE_DIR=$RUNNER_TEMP/rpcbench-state" >> "$GITHUB_ENV"
-          mkdir -p "$RUNNER_TEMP/rpcbench-out" "$RUNNER_TEMP/rpcbench-state"
-
       - name: Print resolved configuration
         run: |
           echo "Runner:      ${{ needs.resolve.outputs.runner_label }}"
@@ -833,40 +858,57 @@ jobs:
       - name: Reclaim root disk before pulling
         if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
+        # Filling the disk docker writes to kills the daemon and takes the runner with it. Docker and containerd may
+        # live on /data: check their filesystems for image space while reserving headroom on / for the runner;
+        # pruning images on /data cannot free root space.
         env:
           KEEP_IMAGES: |
             ${{ needs.resolve.outputs.image_ref }}
             ${{ needs.resolve.outputs.ref_image_ref }}
           KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
-        # Filling the disk docker writes to kills the daemon and takes the runner with it. That disk is not always `/`:
-        # the box may keep its image store on the data volume, so the pull headroom follows docker's configured store
-        # and `/` is only held to what RUNNER_TEMP needs. The containerd image store ignores `image prune`, so the
-        # reclaim below has to `docker rmi` explicitly.
         run: |
           set -uo pipefail
           source scripts/rpc-bench/lib.sh   # arm_image: the sweep's own `clients` entry -> image ref normalisation
-          MIN_IMAGE_FREE_GB=6
-          MIN_ROOT_FREE_GB=2
-          avail_gb() { df -BG --output=avail "$1" 2>/dev/null | tail -1 | tr -dc '0-9'; }
-          docker_root="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null)"
-          [[ -d "${docker_root}" ]] || docker_root=/var/lib/docker
-          containerd_root="$(containerd config dump 2>/dev/null | awk -F'"' '/^root = /{print $2}')"
-          [[ -d "${containerd_root}" ]] || containerd_root=/var/lib/containerd
-          # `docker info` reports overlayfs for the containerd image store and overlay2 for the legacy graphdriver.
-          [[ "$(docker info -f '{{.Driver}}' 2>/dev/null)" == "overlayfs" ]] && image_store="${containerd_root}" || image_store="${docker_root}"
-          report() { df -h / "${image_store}"; du -xsh "${docker_root}" "${containerd_root}" 2>/dev/null || true; }
-          echo "Image store: ${image_store} (docker=${docker_root} containerd=${containerd_root})"
+          MIN_FREE_GB=6
+          docker_root="$(docker info --format '{{.DockerRootDir}}')"
+          [[ -n "${docker_root}" && -d "${docker_root}" ]] || { echo "::error::Docker storage directory is unavailable"; exit 1; }
+          image_roots=("${docker_root}")
+          [[ ! -d /var/lib/containerd ]] || image_roots+=(/var/lib/containerd)
+          have_space() {
+            local minimum="$1" path free
+            shift
+            (( $# > 0 )) || return 1
+            for path in "$@"; do
+              free="$(df -B1 --output=avail "${path}" | awk 'NR==2 {print int($1/1073741824)}')" || return 1
+              [[ "${free}" =~ ^[0-9]+$ ]] || return 1
+              if (( free < minimum )); then
+                echo "Insufficient free space at ${path}: ${free} GiB available, ${minimum} GiB required."
+                # Report the backing mount too, including if a data directory moves back onto root.
+                df -h "${path}" || true
+                return 1
+              fi
+            done
+            return 0
+          }
+          report() { df -h / "${image_roots[@]}" "${BENCH_TEMP}"; }
+
           echo "== before =="; report
+
+          # Cheap, always-safe garbage first.
           docker container prune -f || true
           docker network prune -f || true
           docker builder prune -af || true
           docker image prune -f || true
           docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
           find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete 2>/dev/null || true
-          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
           apt-get clean 2>/dev/null || true
           journalctl --vacuum-size=200M 2>/dev/null || true
-          if (( $(avail_gb "${image_store}") < MIN_IMAGE_FREE_GB )); then
+
+          # The containerd image store ignores `image prune`, so only an explicit `docker rmi` frees stale tags.
+          # Drop unused ones oldest-first, and only as many as needed, so pinned A/B images survive whenever there is room.
+          if ! have_space "${MIN_FREE_GB}" "${image_roots[@]}"; then
+            # run-rpc-sweep.sh treats a failed pull as "probably local", so dropping a sweep arm's image yields a
+            # silently partial matrix. Keep them, split out of tool_config.clients exactly the way the sweep splits them.
             sweep_keep=""
             while IFS= read -r entry; do
               sweep_keep+="$(arm_image "${entry}")"$'\n'
@@ -874,20 +916,19 @@ jobs:
             keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
             echo "Reclaiming stale images (keeping: ${keep_re:-none})"
             while IFS= read -r img; do
-              (( $(avail_gb "${image_store}") >= MIN_IMAGE_FREE_GB )) && break
+              have_space "${MIN_FREE_GB}" "${image_roots[@]}" && break
               [[ -z "${img}" || "${img}" == *'<none>'* ]] && continue
               [[ -n "${keep_re}" ]] && [[ "${img}" =~ ^(${keep_re})$ ]] && continue
               [[ -n "$(docker ps -aq --filter "ancestor=${img}" 2>/dev/null)" ]] && continue
               docker rmi "${img}" >/dev/null 2>&1 && echo "  dropped ${img}"
             done < <(docker images --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' | sort | cut -f2-)
           fi
-          image_free="$(avail_gb "${image_store}")"
-          root_free="$(avail_gb /)"
+
           echo "== after =="; report
-          echo "Free after reclaim: ${image_free}G on ${image_store} (need ${MIN_IMAGE_FREE_GB}G), ${root_free}G on / (need ${MIN_ROOT_FREE_GB}G)"
-          if (( image_free < MIN_IMAGE_FREE_GB || root_free < MIN_ROOT_FREE_GB )); then
-            echo "::error::Not enough free space after reclaim (${image_free}G on the image store ${image_store}, ${root_free}G on /) — refusing to start rather than risk killing the runner daemon."
-            du -xh --max-depth=2 /var /usr /root "${image_store}" 2>/dev/null | sort -rh | head -15 || true
+          if ! have_space 1 / || ! have_space "${MIN_FREE_GB}" "${image_roots[@]}" "${BENCH_TEMP}"; then
+            echo "::error::Insufficient disk space after reclaim: need 1 GiB on / and ${MIN_FREE_GB} GiB on each Docker/containerd and benchmark-output filesystem."
+            echo "Everything reclaimable is already gone; the remaining usage needs a look over SSH."
+            du -xh --max-depth=2 /var /usr /root 2>/dev/null | sort -rh | head -15 || true
             exit 1
           fi
 
@@ -915,7 +956,7 @@ jobs:
           REF_IMAGE: ${{ needs.resolve.outputs.ref_image_ref }}
         run: docker pull "${REF_IMAGE}" || echo "Pull failed — assuming ${REF_IMAGE} is a local image."
 
-      # The saved sysfs values live on the scratch disk, not under RUNNER_TEMP: a killed run must leave them for the
+      # The saved sysfs values live on the scratch disk, not in the run output dir: a killed run must leave them for the
       # next apply to restore, or the frequency cap becomes permanent and leaks into every other benchmark on the box.
       - name: Stabilize CPU frequency
         env:
@@ -927,6 +968,7 @@ jobs:
           else ./scripts/rpc-bench/cpu-stabilize.sh restore; fi
 
       - name: Start node
+        id: start-node
         if: needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
         env:
           CLIENT: ${{ needs.resolve.outputs.client }}
@@ -953,6 +995,7 @@ jobs:
         run: ./scripts/rpc-bench/start-node.sh
 
       - name: Start reference node
+        id: start-reference
         if: needs.resolve.outputs.comparison == 'true'
         env:
           CLIENT: ${{ needs.resolve.outputs.reference_client }}
@@ -1133,7 +1176,7 @@ jobs:
           ./scripts/rpc-bench/run-ethcallchaos.sh
 
       - name: Stop reference node and verify DB integrity
-        if: always() && needs.resolve.outputs.comparison == 'true'
+        if: always() && steps.scripts.outcome == 'success' && steps.start-reference.outcome != 'skipped'
         env:
           STOP_GRACE: "180"
         run: NODE_ENV_FILE="${STATE_DIR}/node-reference.env" ./scripts/rpc-bench/stop-node.sh
@@ -1240,22 +1283,22 @@ jobs:
           ./scripts/rpc-bench/run-rpc-sweep.sh
 
       - name: Stop node and verify DB integrity
-        if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
+        if: always() && steps.scripts.outcome == 'success' && steps.start-node.outcome != 'skipped'
         env:
           STOP_GRACE: "180"
         run: ./scripts/rpc-bench/stop-node.sh
 
       - name: Restore CPU frequency
-        if: always()
+        if: always() && steps.scripts.outcome == 'success'
         env:
           STATE_DIR: ${{ needs.resolve.outputs.scratch_root }}/cpu-state
         run: ./scripts/rpc-bench/cpu-stabilize.sh restore || true
 
       - name: Collect dotTrace snapshots
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dottrace == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dottrace-rpcbench.zip
+          ARCHIVE: ${{ env.BENCH_TEMP }}/dottrace-rpcbench.zip
         run: |
           set -euo pipefail
           if [[ -d "${DIAG_DIR}/dottrace" ]] && [[ -n "$(find "${DIAG_DIR}/dottrace" -type f 2>/dev/null)" ]]; then
@@ -1266,10 +1309,10 @@ jobs:
           fi
 
       - name: Collect perf profile
-        if: always() && needs.resolve.outputs.perf == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.perf == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/perf-rpcbench.zip
+          ARCHIVE: ${{ env.BENCH_TEMP }}/perf-rpcbench.zip
         run: |
           set -euo pipefail
           # Archive first and defer the failure, so a capture that produced no usable profile still ships the
@@ -1296,10 +1339,10 @@ jobs:
           fi
 
       - name: Collect dotnet-trace
-        if: always() && needs.resolve.outputs.dotnet_trace == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_trace == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dotnet-trace-rpcbench.zip
+          ARCHIVE: ${{ env.BENCH_TEMP }}/dotnet-trace-rpcbench.zip
         run: |
           set -euo pipefail
           if [[ -s "${DIAG_DIR}/dotnet-trace/rpcbench.nettrace" ]]; then
@@ -1323,10 +1366,10 @@ jobs:
           node_log="${STATE_DIR}/node.log"
           exception_found=false; invalid_block_found=false; clean_shutdown=true
           if [[ -f "${node_log}" ]]; then
-            clean="${RUNNER_TEMP}/node.clean.log"
+            clean="${BENCH_TEMP}/node.clean.log"
             sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${node_log}" > "${clean}"
             show=true; [[ "${ETH_CALL_CORPUS}" == "true" ]] && show=false   # corpus runs print counts only
-            exc_matches="${RUNNER_TEMP}/node.exceptions.log"
+            exc_matches="${BENCH_TEMP}/node.exceptions.log"
             grep -in "Exception" "${clean}" | grep -vF 'Incorrect JSON RPC parameters' > "${exc_matches}" || true
             if [[ -s "${exc_matches}" ]]; then
               exception_found=true
@@ -1357,7 +1400,7 @@ jobs:
           echo "clean_shutdown=${clean_shutdown}" >> "${GITHUB_OUTPUT}"
           ref_log="${STATE_DIR}/node-reference.log"
           if [[ -f "${ref_log}" ]]; then
-            ref_clean="${RUNNER_TEMP}/node-reference.clean.log"
+            ref_clean="${BENCH_TEMP}/node-reference.clean.log"
             sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${ref_log}" > "${ref_clean}"
             for pattern in "Exception" "Unhandled" "Fatal" "ERROR"; do
               if grep -qi "${pattern}" "${ref_clean}"; then
@@ -1405,22 +1448,22 @@ jobs:
         with:
           name: rpcbench-results-${{ needs.resolve.outputs.benchmark_tool }}
           path: |
-            ${{ runner.temp }}/rpcbench-out/
-            ${{ runner.temp }}/rpcbench-state/node.log
-            ${{ runner.temp }}/rpcbench-state/node-reference.log
-            ${{ runner.temp }}/rpcbench-state/db-baseline.txt
-            ${{ runner.temp }}/rpcbench-state/db-final.txt
-            ${{ runner.temp }}/rpcbench-state/db-baseline-reference.txt
-            ${{ runner.temp }}/rpcbench-state/db-final-reference.txt
-            ${{ runner.temp }}/rpcbench-state/sweep/
+            ${{ env.OUT_DIR }}/
+            ${{ env.STATE_DIR }}/node.log
+            ${{ env.STATE_DIR }}/node-reference.log
+            ${{ env.STATE_DIR }}/db-baseline.txt
+            ${{ env.STATE_DIR }}/db-final.txt
+            ${{ env.STATE_DIR }}/db-baseline-reference.txt
+            ${{ env.STATE_DIR }}/db-final-reference.txt
+            ${{ env.STATE_DIR }}/sweep/
           retention-days: 30
           if-no-files-found: warn
 
       - name: Stage private corpus results
         id: stage-corpus-results
-        if: always() && needs.resolve.outputs.eth_call_corpus == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.eth_call_corpus == 'true'
         shell: bash
-        run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${RUNNER_TEMP}/rpcbench-corpus-results"
+        run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${BENCH_TEMP}/rpcbench-corpus-results"
 
       # The cached tree holds the same validated aggregates a master-baseline run uploaded (schema and cell checked
       # above, before the sweep ran); merged in, one tree renders both arms.
@@ -1429,7 +1472,7 @@ jobs:
         shell: bash
         env:
           BASELINE_DIR: ${{ github.workspace }}/rpcbench-corpus-baseline
-          STAGE_ROOT: ${{ runner.temp }}/rpcbench-corpus-results
+          STAGE_ROOT: ${{ env.BENCH_TEMP }}/rpcbench-corpus-results
         run: |
           set -euo pipefail
           [[ -d "${BASELINE_DIR}/corpus" && -f "${BASELINE_DIR}/baseline.json" ]] || { echo "::warning::cached baseline is incomplete — rendering without it"; exit 0; }
@@ -1449,7 +1492,7 @@ jobs:
           CORPUS_KEY: ${{ needs.resolve.outputs.corpus_key }}
           CELL_KEY: ${{ needs.resolve.outputs.cell_key }}
           CELL_SHAPE: ${{ needs.resolve.outputs.cell_shape }}
-          STAGE_ROOT: ${{ runner.temp }}/rpcbench-corpus-results
+          STAGE_ROOT: ${{ env.BENCH_TEMP }}/rpcbench-corpus-results
           BASELINE_DIR: ${{ github.workspace }}/rpcbench-corpus-baseline
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -1477,7 +1520,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rpcbench-results-${{ needs.resolve.outputs.benchmark_tool }}
-          path: ${{ runner.temp }}/rpcbench-corpus-results/
+          path: ${{ env.BENCH_TEMP }}/rpcbench-corpus-results/
           retention-days: 30
           if-no-files-found: error
 
@@ -1492,8 +1535,8 @@ jobs:
           BASELINE_IMAGE: ${{ needs.resolve.outputs.baseline_image }}
           FALLBACK_IMAGE: nethermindeth/nethermind:master
           CANDIDATE_IMAGE: ${{ needs.resolve.outputs.image_ref }}
-          STAGE_ROOT: ${{ runner.temp }}/rpcbench-corpus-results
-          COMMENT_FILE: ${{ runner.temp }}/rpcbench-corpus-comment.md
+          STAGE_ROOT: ${{ env.BENCH_TEMP }}/rpcbench-corpus-results
+          COMMENT_FILE: ${{ env.BENCH_TEMP }}/rpcbench-corpus-comment.md
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -1519,12 +1562,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          COMMENT_FILE: ${{ runner.temp }}/rpcbench-corpus-comment.md
+          COMMENT_FILE: ${{ env.BENCH_TEMP }}/rpcbench-corpus-comment.md
         run: |
           set -euo pipefail
           # One sticky comment per PR: labelling again replaces the table instead of stacking another copy of it.
           marker='<!-- rpc-bench-corpus-comparison -->'
-          body="${RUNNER_TEMP}/rpcbench-corpus-comment-body.md"
+          body="${BENCH_TEMP}/rpcbench-corpus-comment-body.md"
           { printf '%s\n\n' "${marker}"; cat "${COMMENT_FILE}"; } > "${body}"
           existing="$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
             --jq ".[] | select(.user.type == \"Bot\" and (.body | startswith(\"${marker}\"))) | .id" 2>/dev/null | tail -1 || true)"
@@ -1539,34 +1582,38 @@ jobs:
           fi
 
       - name: Upload dotTrace snapshot
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dottrace == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: dottrace-rpcbench
-          path: ${{ runner.temp }}/dottrace-rpcbench.zip
+          path: ${{ env.BENCH_TEMP }}/dottrace-rpcbench.zip
           retention-days: 30
           if-no-files-found: ignore
 
       - name: Upload perf profile
-        if: always() && needs.resolve.outputs.perf == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.perf == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: perf-rpcbench
-          path: ${{ runner.temp }}/perf-rpcbench.zip
+          path: ${{ env.BENCH_TEMP }}/perf-rpcbench.zip
           retention-days: 30
           if-no-files-found: error
 
       - name: Upload dotnet-trace
-        if: always() && needs.resolve.outputs.dotnet_trace == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_trace == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: dotnet-trace-rpcbench
-          path: ${{ runner.temp }}/dotnet-trace-rpcbench.zip
+          path: ${{ env.BENCH_TEMP }}/dotnet-trace-rpcbench.zip
           retention-days: 30
           if-no-files-found: error
 
+      - name: Remove run output
+        if: always() && steps.paths.outcome == 'success'
+        run: rm -rf -- "${BENCH_TEMP:?}"
+
       - name: Defensive cleanup
-        if: always()
+        if: always() && steps.scripts.outcome == 'success'
         shell: bash
         env:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
@@ -1583,7 +1630,6 @@ jobs:
           docker builder prune -af || true
           docker image prune -f || true
           docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
-          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
           df -h / || true
           docker system df || true
 

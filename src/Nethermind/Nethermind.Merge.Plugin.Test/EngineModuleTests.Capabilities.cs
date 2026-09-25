@@ -25,4 +25,22 @@ public partial class EngineModuleTests
 
         Assert.That(engineRpcCapabilitiesProvider.GetJsonRpcCapabilities()[nameof(IEngineRpcModule.engine_getBlobsV4)].IsEnabled(), Is.EqualTo(expected));
     }
+
+    [TestCase(nameof(IEngineRpcModule.engine_newPayloadV6))]
+    [TestCase(nameof(IEngineRpcModule.engine_getInclusionListV1))]
+    [TestCase(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5))]
+    [TestCase(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6))]
+    public void Engine_inclusionList_capabilities_follow_eip7805(string method)
+    {
+        IReleaseSpec enabledSpec = new ReleaseSpec { IsEip7805Enabled = true };
+        IReleaseSpec disabledSpec = new ReleaseSpec { IsEip7805Enabled = false };
+        EngineRpcCapabilitiesProvider enabledProvider = new(new TestSingleReleaseSpecProvider(enabledSpec));
+        EngineRpcCapabilitiesProvider disabledProvider = new(new TestSingleReleaseSpecProvider(disabledSpec));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enabledProvider.GetJsonRpcCapabilities()[method].IsEnabled(), Is.True);
+            Assert.That(disabledProvider.GetJsonRpcCapabilities()[method].IsEnabled(), Is.False);
+        }
+    }
 }
