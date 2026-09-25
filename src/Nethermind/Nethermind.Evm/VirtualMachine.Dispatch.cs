@@ -339,7 +339,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             TypeRef.Type<TGasPolicy>().MakeByRefType(),
             TypeRef.Type<DispatchState>().MakeByRefType(),
             TypeRef.Type<nint>(),
-            TypeRef.Type<int>()));
+            TypeRef.Type<nint>()));
         IL.Emit.Ret();
         throw IL.Unreachable();
 
@@ -428,7 +428,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 TypeRef.Type<TGasPolicy>().MakeByRefType(),
                 TypeRef.Type<DispatchState>().MakeByRefType(),
                 TypeRef.Type<nint>(),
-                TypeRef.Type<int>()));
+                TypeRef.Type<nint>()));
             IL.Emit.Ret();
         }
         else
@@ -453,7 +453,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 TypeRef.Type<TGasPolicy>().MakeByRefType(),
                 TypeRef.Type<DispatchState>().MakeByRefType(),
                 TypeRef.Type<nint>(),
-                TypeRef.Type<int>()));
+                TypeRef.Type<nint>()));
             IL.Emit.Ret();
         }
 
