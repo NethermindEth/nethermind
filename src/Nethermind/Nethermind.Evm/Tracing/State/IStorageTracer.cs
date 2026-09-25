@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 
 namespace Nethermind.Evm.Tracing.State;
@@ -21,16 +20,10 @@ public interface IStorageTracer
     /// Controls
     /// - <see cref="ReportStorageChange"/>
     /// - <see cref="ReportStorageRead"/>
+    /// - <see cref="ReportStorageClear"/>
+    /// - <see cref="ReportStorageRestore"/>
     /// </remarks>
     bool IsTracingStorage { get; }
-
-    /// <summary>
-    /// Reports change of storage slot for key
-    /// </summary>
-    /// <param name="key"></param>
-    /// <param name="value"></param>
-    /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
-    void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 
     /// <summary>
     /// Reports change of storage slot for key
