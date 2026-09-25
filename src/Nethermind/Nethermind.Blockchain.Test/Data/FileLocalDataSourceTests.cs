@@ -55,19 +55,18 @@ public class FileLocalDataSourceTests
             handle.Release();
         };
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
-        await WaitForData(fileLocalDataSource, ["C", "B"], handle);
-        Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
+        await WaitForData(fileLocalDataSource, ["C", "B"], handle, () => Volatile.Read(ref changedRaised) >= 1);
 
         int afterFirst = Volatile.Read(ref changedRaised);
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("E", "F"));
-        await WaitForData(fileLocalDataSource, ["E", "F"], handle);
-        Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
+        await WaitForData(fileLocalDataSource, ["E", "F"], handle, () => Volatile.Read(ref changedRaised) > afterFirst);
     }
 
-    private static async Task WaitForData(FileLocalDataSource<string[]> source, string[] expected, SemaphoreSlim handle)
+    // Data is published before Changed is raised, so converged data alone does not mean the event has fired yet.
+    private static async Task WaitForData(FileLocalDataSource<string[]> source, string[] expected, SemaphoreSlim handle, Func<bool>? changedRaised = null)
     {
-        if (!await WaitForCondition(handle, () => source.Data is { } data && data.SequenceEqual(expected)))
-            Assert.Fail($"Data did not converge to expected value within {Timeout.MaxWaitTime}ms");
+        if (!await WaitForCondition(handle, () => source.Data is { } data && data.SequenceEqual(expected) && (changedRaised is null || changedRaised())))
+            Assert.Fail($"Data did not converge to expected value with Changed raised within {Timeout.MaxWaitTime}ms");
     }
 
     private static async Task<bool> WaitForCondition(SemaphoreSlim handle, Func<bool> predicate)
@@ -96,8 +95,7 @@ public class FileLocalDataSourceTests
             handle.Release();
         };
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B"));
-        await WaitForData(fileLocalDataSource, ["A", "B"], handle);
-        Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
+        await WaitForData(fileLocalDataSource, ["A", "B"], handle, () => Volatile.Read(ref changedRaised) >= 1);
     }
 
     private static string GenerateStringJson(params string[] items) => $"[{string.Join(", ", items.Select(static i => $"\"{i}\""))}]";
@@ -353,12 +351,11 @@ public class FileLocalDataSourceTests
             handle.Release();
         };
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
-        await WaitForData(fileLocalDataSource, ["C", "B"], handle);
-        Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
+        await WaitForData(fileLocalDataSource, ["C", "B"], handle, () => Volatile.Read(ref changedRaised) >= 1);
 
         int afterFirst = Volatile.Read(ref changedRaised);
         File.Delete(tempFile.Path);
-        await WaitForCondition(handle, () => fileLocalDataSource.Data is null);
+        await WaitForCondition(handle, () => fileLocalDataSource.Data is null && Volatile.Read(ref changedRaised) > afterFirst);
         Assert.That(fileLocalDataSource.Data, Is.Null);
         Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
     }
